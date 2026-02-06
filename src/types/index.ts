@@ -28,6 +28,9 @@ export interface SonarrSeries {
   tags: number[];
   added: string;
   ratings: { votes: number; value: number };
+  originalLanguage?: { id: number; name: string };
+  nextAiring?: string;
+  previousAiring?: string;
   statistics: {
     seasonCount: number;
     episodeFileCount: number;
@@ -35,6 +38,7 @@ export interface SonarrSeries {
     totalEpisodeCount: number;
     sizeOnDisk: number;
     percentOfEpisodes: number;
+    latestSeasonHasFiles?: boolean;
   };
 }
 
@@ -77,12 +81,14 @@ export interface RadarrMovie {
   id: number;
   title: string;
   sortTitle: string;
+  originalTitle?: string;
+  originalLanguage?: { id: number; name: string };
   sizeOnDisk: number;
   status: string;
   overview: string;
-  inCinemas: string;
-  physicalRelease: string;
-  digitalRelease: string;
+  inCinemas?: string;
+  physicalRelease?: string;
+  digitalRelease?: string;
   images: MediaImage[];
   year: number;
   hasFile: boolean;
@@ -98,7 +104,13 @@ export interface RadarrMovie {
   genres: string[];
   tags: number[];
   added: string;
-  ratings: { imdb?: { votes: number; value: number }; tmdb?: { votes: number; value: number } };
+  ratings: { 
+    imdb?: { votes: number; value: number }; 
+    tmdb?: { votes: number; value: number };
+    rottenTomatoes?: { votes: number; value: number };
+    trakt?: { votes: number; value: number };
+  };
+  popularity?: number;
   movieFile?: {
     id: number;
     relativePath: string;
