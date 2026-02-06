@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Bell, Check, Download, X, AlertTriangle, Clock, Settings2, Loader2 } from 'lucide-react';
+import { Bell, Check, Download, X, AlertTriangle, Clock, Settings2, Loader2, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -24,6 +24,9 @@ function eventIcon(type: string) {
     case 'downloadFailed': case 'importFailed': return <X className="h-4 w-4" />;
     case 'healthWarning': return <AlertTriangle className="h-4 w-4" />;
     case 'upcomingPremiere': return <Clock className="h-4 w-4" />;
+    case 'torrentAdded': return <Download className="h-4 w-4" />;
+    case 'torrentCompleted': return <Check className="h-4 w-4" />;
+    case 'torrentDeleted': return <Trash2 className="h-4 w-4" />;
     default: return <Bell className="h-4 w-4" />;
   }
 }
@@ -35,6 +38,9 @@ function eventColor(type: string) {
     case 'downloadFailed': case 'importFailed': return 'bg-red-500/10 text-red-500';
     case 'healthWarning': return 'bg-orange-500/10 text-orange-500';
     case 'upcomingPremiere': return 'bg-purple-500/10 text-purple-500';
+    case 'torrentAdded': return 'bg-cyan-500/10 text-cyan-500';
+    case 'torrentCompleted': return 'bg-emerald-500/10 text-emerald-500';
+    case 'torrentDeleted': return 'bg-zinc-500/10 text-zinc-400';
     default: return 'bg-muted text-muted-foreground';
   }
 }

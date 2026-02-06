@@ -11,14 +11,30 @@ import { Bell, BellOff, Smartphone, ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 
-const EVENT_LABELS: Record<string, { label: string; description: string }> = {
-  grabbed: { label: 'Download Started', description: 'When a download is grabbed' },
-  imported: { label: 'Download Imported', description: 'When a download is imported' },
-  downloadFailed: { label: 'Download Failed', description: 'When a download fails' },
-  importFailed: { label: 'Import Failed', description: 'When an import fails' },
-  upcomingPremiere: { label: 'Upcoming Premiere', description: 'When a premiere is approaching' },
-  healthWarning: { label: 'Health Warning', description: 'When a service has health issues' },
-};
+const EVENT_SECTIONS: {
+  title: string;
+  events: Record<string, { label: string; description: string }>;
+}[] = [
+  {
+    title: 'Sonarr / Radarr',
+    events: {
+      grabbed: { label: 'Download Grabbed', description: 'When Sonarr/Radarr grabs a download' },
+      imported: { label: 'Media Imported', description: 'When a download is imported to library' },
+      downloadFailed: { label: 'Download Failed', description: 'When a download fails' },
+      importFailed: { label: 'Import Failed', description: 'When an import fails' },
+      upcomingPremiere: { label: 'Upcoming Premiere', description: 'Upcoming episode or movie release' },
+      healthWarning: { label: 'Health Warning', description: 'When a service has health issues' },
+    },
+  },
+  {
+    title: 'qBittorrent',
+    events: {
+      torrentAdded: { label: 'Torrent Added', description: 'When a new torrent is added' },
+      torrentCompleted: { label: 'Download Complete', description: 'When a torrent finishes downloading' },
+      torrentDeleted: { label: 'Torrent Removed', description: 'When a torrent is removed' },
+    },
+  },
+];
 
 interface Preference {
   id: string;
@@ -29,7 +45,7 @@ interface Preference {
 
 export default function NotificationPreferencesPage() {
   const router = useRouter();
-  const { isSupported, isSubscribed, isStandalone, subscribe, unsubscribe, loading, subscriptionEndpoint } = usePushNotifications();
+  const { isSupported, isSubscribed, isStandalone, subscribe, unsubscribe, loading, error: pushError, subscriptionEndpoint } = usePushNotifications();
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [prefsLoading, setPrefsLoading] = useState(false);
@@ -43,7 +59,8 @@ export default function NotificationPreferencesPage() {
   async function loadPreferences() {
     setPrefsLoading(true);
     try {
-      const res = await fetch('/api/notifications/preferences');
+      const params = subscriptionEndpoint ? `?endpoint=${encodeURIComponent(subscriptionEndpoint)}` : '';
+      const res = await fetch(`/api/notifications/preferences${params}`);
       if (res.ok) {
         const prefs = await res.json();
         setPreferences(prefs);
@@ -53,12 +70,12 @@ export default function NotificationPreferencesPage() {
   }
 
   async function handleSubscribe() {
-    const success = await subscribe();
-    if (success) {
+    const result = await subscribe();
+    if (result.success) {
       toast.success('Push notifications enabled');
       loadPreferences();
     } else {
-      toast.error('Could not enable push notifications');
+      toast.error(result.error || 'Could not enable push notifications');
     }
   }
 
@@ -107,11 +124,19 @@ export default function NotificationPreferencesPage() {
         <Card className="border-orange-500/30">
           <CardContent className="py-6 text-center space-y-2">
             <Smartphone className="h-8 w-8 mx-auto text-orange-500" />
-            <p className="font-medium">Install Helprr as a PWA</p>
+            <p className="font-medium">Install Helprr as a PWA for best experience</p>
             <p className="text-sm text-muted-foreground">
               On iOS: tap the share button in Safari, then &ldquo;Add to Home Screen&rdquo;.
-              Push notifications require standalone PWA mode.
+              You can still enable notifications in the browser.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {pushError && (
+        <Card className="border-red-500/30">
+          <CardContent className="py-4 text-center text-sm text-red-400">
+            {pushError}
           </CardContent>
         </Card>
       )}
@@ -141,21 +166,27 @@ export default function NotificationPreferencesPage() {
             {prefsLoading ? (
               <p className="text-sm text-muted-foreground">Loading preferences...</p>
             ) : (
-              Object.entries(EVENT_LABELS).map(([eventType, { label, description }]) => {
-                const pref = preferences.find((p) => p.eventType === eventType);
-                return (
-                  <div key={eventType} className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-sm font-medium">{label}</Label>
-                      <p className="text-xs text-muted-foreground">{description}</p>
-                    </div>
-                    <Switch
-                      checked={pref?.enabled ?? true}
-                      onCheckedChange={(v) => togglePreference(eventType, v)}
-                    />
-                  </div>
-                );
-              })
+              EVENT_SECTIONS.map((section, i) => (
+                <div key={section.title} className="space-y-3">
+                  {i > 0 && <Separator />}
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{section.title}</p>
+                  {Object.entries(section.events).map(([eventType, { label, description }]) => {
+                    const pref = preferences.find((p) => p.eventType === eventType);
+                    return (
+                      <div key={eventType} className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-sm font-medium">{label}</Label>
+                          <p className="text-xs text-muted-foreground">{description}</p>
+                        </div>
+                        <Switch
+                          checked={pref?.enabled ?? true}
+                          onCheckedChange={(v) => togglePreference(eventType, v)}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
             )}
 
             <Separator />

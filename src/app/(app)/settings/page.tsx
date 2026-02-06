@@ -74,6 +74,9 @@ export default function SettingsPage() {
 
   const [pollingInterval, setPollingInterval] = useState('30');
   const [upcomingAlertHours, setUpcomingAlertHours] = useState('24');
+  const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
+  const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
+  const [upcomingDailyNotifyHour, setUpcomingDailyNotifyHour] = useState('9');
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
@@ -104,6 +107,9 @@ export default function SettingsPage() {
           const settings = await settingsRes.value.json();
           setPollingInterval(String(settings.pollingIntervalSecs));
           setUpcomingAlertHours(String(settings.upcomingAlertHours));
+          if (settings.upcomingNotifyMode) setUpcomingNotifyMode(settings.upcomingNotifyMode);
+          if (settings.upcomingNotifyBeforeMins != null) setUpcomingNotifyBeforeMins(String(settings.upcomingNotifyBeforeMins));
+          if (settings.upcomingDailyNotifyHour != null) setUpcomingDailyNotifyHour(String(settings.upcomingDailyNotifyHour));
           if (settings.theme) {
             setTheme(settings.theme);
           }
@@ -212,6 +218,9 @@ export default function SettingsPage() {
           pollingIntervalSecs: parseInt(pollingInterval, 10),
           theme,
           upcomingAlertHours: parseInt(upcomingAlertHours, 10),
+          upcomingNotifyMode,
+          upcomingNotifyBeforeMins: parseInt(upcomingNotifyBeforeMins, 10),
+          upcomingDailyNotifyHour: parseInt(upcomingDailyNotifyHour, 10),
         }),
       });
 
@@ -367,8 +376,12 @@ export default function SettingsPage() {
               </Select>
             </div>
 
+            <Separator />
+            <p className="text-sm font-semibold text-muted-foreground">Upcoming Notifications</p>
+
             <div className="space-y-2">
-              <Label>Upcoming Alert Hours</Label>
+              <Label>Upcoming Alert Window</Label>
+              <p className="text-xs text-muted-foreground">How far ahead to look for upcoming episodes/movies</p>
               <Select value={upcomingAlertHours} onValueChange={setUpcomingAlertHours}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select hours" />
@@ -382,6 +395,59 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label>Notification Timing</Label>
+              <p className="text-xs text-muted-foreground">When to send upcoming episode/movie notifications</p>
+              <Select value={upcomingNotifyMode} onValueChange={setUpcomingNotifyMode}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="before_air">Before air time</SelectItem>
+                  <SelectItem value="once_in_window">Once when entering alert window</SelectItem>
+                  <SelectItem value="daily_digest">Daily digest at a set time</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {upcomingNotifyMode === 'before_air' && (
+              <div className="space-y-2">
+                <Label>Notify Before Air Time</Label>
+                <Select value={upcomingNotifyBeforeMins} onValueChange={setUpcomingNotifyBeforeMins}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15">15 minutes before</SelectItem>
+                    <SelectItem value="30">30 minutes before</SelectItem>
+                    <SelectItem value="60">1 hour before</SelectItem>
+                    <SelectItem value="120">2 hours before</SelectItem>
+                    <SelectItem value="360">6 hours before</SelectItem>
+                    <SelectItem value="720">12 hours before</SelectItem>
+                    <SelectItem value="1440">24 hours before</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {upcomingNotifyMode === 'daily_digest' && (
+              <div className="space-y-2">
+                <Label>Daily Digest Time</Label>
+                <Select value={upcomingDailyNotifyHour} onValueChange={setUpcomingDailyNotifyHour}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select hour" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 24 }, (_, i) => (
+                      <SelectItem key={i} value={String(i)}>
+                        {i === 0 ? '12:00 AM' : i < 12 ? `${i}:00 AM` : i === 12 ? '12:00 PM' : `${i - 12}:00 PM`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <Button
               onClick={saveGeneralSettings}

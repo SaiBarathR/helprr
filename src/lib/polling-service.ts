@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getQBittorrentClient } from '@/lib/service-helpers';
 import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
@@ -28,6 +28,7 @@ export class PollingService {
       await Promise.allSettled([
         this.pollSonarr(),
         this.pollRadarr(),
+        this.pollQBittorrent(),
         this.checkUpcoming(),
       ]);
     } catch (e) {
@@ -203,12 +204,94 @@ export class PollingService {
     });
   }
 
+  private async pollQBittorrent() {
+    let client;
+    try { client = await getQBittorrentClient(); } catch { return; }
+
+    const state = await prisma.pollingState.upsert({
+      where: { serviceType: 'QBITTORRENT' },
+      update: {},
+      create: { serviceType: 'QBITTORRENT', lastQueueIds: [] },
+    });
+
+    const torrents = await client.getTorrents();
+    const currentMap = new Map(torrents.map((t) => [t.hash, t]));
+
+    // Previous state: array of {hash, progress, name}
+    const prevEntries = (state.lastQueueIds as { hash: string; progress: number; name: string }[]) || [];
+    const prevMap = new Map(prevEntries.map((e) => [e.hash, e]));
+
+    // Detect new torrents (added)
+    for (const torrent of torrents) {
+      const prev = prevMap.get(torrent.hash);
+      if (!prev) {
+        await notifyEvent({
+          eventType: 'torrentAdded',
+          title: 'Torrent Added',
+          body: torrent.name,
+          metadata: { source: 'qbittorrent', hash: torrent.hash },
+          url: '/torrents',
+        });
+      }
+
+      // Detect completed (progress went from <1 to 1)
+      if (torrent.progress >= 1 && prev && prev.progress < 1) {
+        await notifyEvent({
+          eventType: 'torrentCompleted',
+          title: 'Download Complete',
+          body: torrent.name,
+          metadata: { source: 'qbittorrent', hash: torrent.hash },
+          url: '/torrents',
+        });
+      }
+    }
+
+    // Detect deleted (was in previous state but gone now)
+    for (const prev of prevEntries) {
+      if (!currentMap.has(prev.hash)) {
+        await notifyEvent({
+          eventType: 'torrentDeleted',
+          title: 'Torrent Removed',
+          body: prev.name,
+          metadata: { source: 'qbittorrent', hash: prev.hash },
+          url: '/torrents',
+        });
+      }
+    }
+
+    // Update state
+    await prisma.pollingState.update({
+      where: { serviceType: 'QBITTORRENT' },
+      data: {
+        lastQueueIds: torrents.map((t) => ({ hash: t.hash, progress: t.progress, name: t.name })),
+      },
+    });
+  }
+
   private async checkUpcoming() {
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
       update: {},
       create: {},
     });
+
+    const mode = settings.upcomingNotifyMode || 'before_air';
+
+    // Daily digest: only run at the configured hour, once per day
+    if (mode === 'daily_digest') {
+      const now = new Date();
+      if (now.getHours() !== settings.upcomingDailyNotifyHour) return;
+
+      const todayStart = new Date(now);
+      todayStart.setHours(0, 0, 0, 0);
+      const alreadySentToday = await prisma.notificationHistory.findFirst({
+        where: {
+          eventType: 'upcomingPremiere',
+          createdAt: { gte: todayStart },
+        },
+      });
+      if (alreadySentToday) return;
+    }
 
     const now = new Date();
     const alertEnd = addHours(now, settings.upcomingAlertHours);
@@ -220,18 +303,28 @@ export class PollingService {
       const client = await getSonarrClient();
       const calendar = await client.getCalendar(start, end);
       for (const ep of calendar) {
+        if (!ep.series) continue;
+
+        // For before_air mode, only notify within the configured window before air time
+        if (mode === 'before_air' && ep.airDateUtc) {
+          const airTime = new Date(ep.airDateUtc);
+          const minsUntilAir = (airTime.getTime() - now.getTime()) / 60000;
+          if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) continue;
+        }
+
+        const body = `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
         const already = await prisma.notificationHistory.findFirst({
           where: {
             eventType: 'upcomingPremiere',
-            title: { contains: ep.series?.title || '' },
+            body,
             createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
           },
         });
-        if (!already && ep.series) {
+        if (!already) {
           await notifyEvent({
             eventType: 'upcomingPremiere',
             title: 'Upcoming Episode',
-            body: `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`,
+            body,
             url: `/series/${ep.seriesId}`,
           });
         }
@@ -243,10 +336,20 @@ export class PollingService {
       const client = await getRadarrClient();
       const calendar = await client.getCalendar(start, end);
       for (const movie of calendar) {
+        if (mode === 'before_air') {
+          const releaseDate = movie.digitalRelease || movie.physicalRelease || movie.inCinemas;
+          if (releaseDate) {
+            const airTime = new Date(releaseDate);
+            const minsUntilAir = (airTime.getTime() - now.getTime()) / 60000;
+            if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) continue;
+          }
+        }
+
+        const body = `${movie.title} (${movie.year})`;
         const already = await prisma.notificationHistory.findFirst({
           where: {
             eventType: 'upcomingPremiere',
-            title: { contains: movie.title },
+            body,
             createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
           },
         });
@@ -254,7 +357,7 @@ export class PollingService {
           await notifyEvent({
             eventType: 'upcomingPremiere',
             title: 'Upcoming Movie',
-            body: `${movie.title} (${movie.year})`,
+            body,
             url: `/movies/${movie.id}`,
           });
         }

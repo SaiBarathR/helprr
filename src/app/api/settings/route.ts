@@ -27,7 +27,10 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { pollingIntervalSecs, theme, upcomingAlertHours } = body;
+    const {
+      pollingIntervalSecs, theme, upcomingAlertHours,
+      upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
+    } = body;
 
     const data: Record<string, unknown> = {};
     if (pollingIntervalSecs !== undefined)
@@ -35,6 +38,12 @@ export async function PUT(request: NextRequest) {
     if (theme !== undefined) data.theme = theme;
     if (upcomingAlertHours !== undefined)
       data.upcomingAlertHours = upcomingAlertHours;
+    if (upcomingNotifyMode !== undefined)
+      data.upcomingNotifyMode = upcomingNotifyMode;
+    if (upcomingNotifyBeforeMins !== undefined)
+      data.upcomingNotifyBeforeMins = upcomingNotifyBeforeMins;
+    if (upcomingDailyNotifyHour !== undefined)
+      data.upcomingDailyNotifyHour = upcomingDailyNotifyHour;
 
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -44,6 +53,9 @@ export async function PUT(request: NextRequest) {
         pollingIntervalSecs: pollingIntervalSecs ?? 30,
         theme: theme ?? 'dark',
         upcomingAlertHours: upcomingAlertHours ?? 24,
+        upcomingNotifyMode: upcomingNotifyMode ?? 'before_air',
+        upcomingNotifyBeforeMins: upcomingNotifyBeforeMins ?? 60,
+        upcomingDailyNotifyHour: upcomingDailyNotifyHour ?? 9,
       },
     });
 

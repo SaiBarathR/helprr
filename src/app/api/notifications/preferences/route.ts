@@ -5,8 +5,20 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl;
     const subscriptionId = searchParams.get('subscriptionId');
+    const endpoint = searchParams.get('endpoint');
 
-    const where = subscriptionId ? { subscriptionId } : {};
+    let where = {};
+    if (subscriptionId) {
+      where = { subscriptionId };
+    } else if (endpoint) {
+      const sub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
+      if (sub) {
+        where = { subscriptionId: sub.id };
+      } else {
+        return NextResponse.json([]);
+      }
+    }
+
     const preferences = await prisma.notificationPreference.findMany({
       where,
       include: { subscription: true },

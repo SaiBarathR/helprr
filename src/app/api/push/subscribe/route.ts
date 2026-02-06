@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-const EVENT_TYPES = ['grabbed', 'imported', 'downloadFailed', 'importFailed', 'upcomingPremiere', 'healthWarning'];
+const EVENT_TYPES = [
+  'grabbed', 'imported', 'downloadFailed', 'importFailed',
+  'upcomingPremiere', 'healthWarning',
+  'torrentAdded', 'torrentCompleted', 'torrentDeleted',
+];
 
 export async function POST(request: NextRequest) {
   try {

@@ -60,7 +60,7 @@ export async function notifyEvent(event: {
 
   for (const sub of subscriptions) {
     const pref = sub.preferences.find((p) => p.eventType === event.eventType);
-    if (!pref || !pref.enabled) continue;
+    if (pref && !pref.enabled) continue;
 
     const success = await sendPushNotification(
       { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
