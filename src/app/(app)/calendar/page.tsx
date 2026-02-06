@@ -33,8 +33,8 @@ function FilterBar({
   monitoredOnly,
   setMonitoredOnly,
 }: {
-  typeFilter: string;
-  setTypeFilter: (v: string) => void;
+  typeFilter: 'all' | 'episode' | 'movie';
+  setTypeFilter: (v: 'all' | 'episode' | 'movie') => void;
   monitoredOnly: boolean;
   setMonitoredOnly: (v: boolean) => void;
 }) {
@@ -401,8 +401,7 @@ function CalendarSkeleton() {
 export default function CalendarPage() {
   const { calendarView, setCalendarView } = useUIStore();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [monitoredOnly, setMonitoredOnly] = useState(false);
+  const { calendarTypeFilter: typeFilter, setCalendarTypeFilter: setTypeFilter, calendarMonitoredOnly: monitoredOnly, setCalendarMonitoredOnly: setMonitoredOnly } = useUIStore();
 
   // Calculate date range based on view
   const { start, end } = useMemo(() => {

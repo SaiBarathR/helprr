@@ -344,7 +344,7 @@ export default function TorrentsPage() {
 
       {/* Bulk Actions */}
       {selectedTorrents.size > 0 && (
-        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+        <div className="flex items-center gap-2 p-2 bg-muted rounded-md flex-wrap">
           <span className="text-sm text-muted-foreground mr-2">
             {selectedTorrents.size} selected
           </span>
@@ -457,7 +457,7 @@ export default function TorrentsPage() {
                         {formatBytes(torrent.size)}
                       </span>
                       {torrent.category && (
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="outline" className="text-xs truncate max-w-[120px]">
                           {torrent.category}
                         </Badge>
                       )}
@@ -465,16 +465,16 @@ export default function TorrentsPage() {
 
                     {/* Progress */}
                     <div className="mt-2">
-                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                      <div className="flex justify-between text-xs text-muted-foreground mb-1 flex-wrap gap-x-2">
                         <span>{(torrent.progress * 100).toFixed(1)}%</span>
-                        <span>
+                        <span className="flex items-center flex-wrap gap-x-2">
                           {torrent.dlspeed > 0 && (
-                            <span className="text-green-500 mr-2">
+                            <span className="text-green-500">
                               <ArrowDown className="inline h-3 w-3" /> {formatSpeed(torrent.dlspeed)}
                             </span>
                           )}
                           {torrent.upspeed > 0 && (
-                            <span className="text-blue-500 mr-2">
+                            <span className="text-blue-500">
                               <ArrowUp className="inline h-3 w-3" /> {formatSpeed(torrent.upspeed)}
                             </span>
                           )}

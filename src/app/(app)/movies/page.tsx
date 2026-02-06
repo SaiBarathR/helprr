@@ -16,9 +16,7 @@ export default function MoviesPage() {
   const [movies, setMovies] = useState<RadarrMovie[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('title');
-  const [filter, setFilter] = useState('all');
-  const { mediaView, setMediaView } = useUIStore();
+  const { mediaView, setMediaView, moviesSort: sort, setMoviesSort: setSort, moviesFilter: filter, setMoviesFilter: setFilter } = useUIStore();
 
   useEffect(() => {
     fetch('/api/radarr')

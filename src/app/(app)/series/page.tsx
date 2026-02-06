@@ -16,9 +16,7 @@ export default function SeriesPage() {
   const [series, setSeries] = useState<SonarrSeries[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('title');
-  const [filter, setFilter] = useState('all');
-  const { mediaView, setMediaView } = useUIStore();
+  const { mediaView, setMediaView, seriesSort: sort, setSeriesSort: setSort, seriesFilter: filter, setSeriesFilter: setFilter } = useUIStore();
 
   useEffect(() => {
     fetch('/api/sonarr')

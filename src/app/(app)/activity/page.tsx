@@ -97,7 +97,7 @@ function QueueTab() {
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{item.title}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                     <Badge variant="secondary" className={statusColor(item.status, item.trackedDownloadStatus)}>
                       {item.trackedDownloadState || item.status}
                     </Badge>
@@ -172,8 +172,8 @@ function HistoryTab() {
                 <div className={`p-1.5 rounded ${statusColor(item.eventType)}`}>{eventIcon(item.eventType)}</div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm truncate">{item.sourceTitle}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{item.quality?.quality?.name}</span>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                    <span className="truncate">{item.quality?.quality?.name}</span>
                     <Badge variant="outline" className="text-[10px]">{item.source}</Badge>
                   </div>
                 </div>
@@ -265,10 +265,10 @@ function FailedImportsTab() {
                   <AlertTriangle className="h-3 w-3 mr-1" /> Import Failed
                 </Badge>
                 {item.statusMessages?.map((msg, i) => (
-                  <p key={i} className="text-xs text-muted-foreground mt-1">{msg.title}: {msg.messages?.join(', ')}</p>
+                  <p key={i} className="text-xs text-muted-foreground mt-1 break-words">{msg.title}: {msg.messages?.join(', ')}</p>
                 ))}
               </div>
-              <Button size="sm" onClick={() => openManualImport(item)}>
+              <Button size="sm" className="shrink-0" onClick={() => openManualImport(item)}>
                 <Upload className="mr-2 h-3.5 w-3.5" /> Manual Import
               </Button>
             </div>

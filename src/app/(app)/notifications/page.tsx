@@ -61,7 +61,7 @@ export default function NotificationsPage() {
         else setNotifications((prev) => [...prev, ...data.records]);
         setTotal(data.totalRecords);
       }
-    } catch {} finally { setLoading(false); }
+    } catch { } finally { setLoading(false); }
   }
 
   useEffect(() => { fetchNotifications(1); }, []);
@@ -70,7 +70,7 @@ export default function NotificationsPage() {
     try {
       await fetch(`/api/notifications/${id}`, { method: 'PUT' });
       setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
-    } catch {}
+    } catch { }
   }
 
   async function markAllRead() {
@@ -87,9 +87,9 @@ export default function NotificationsPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Notifications</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/notifications/preferences"><Settings2 className="mr-2 h-4 w-4" /> Preferences</Link>
+            <Link href="/notifications/preferences"><Settings2 className="h-4 w-4" /> </Link>
           </Button>
           <Button variant="ghost" size="sm" onClick={markAllRead} disabled={markingAll}>
             {markingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
@@ -112,15 +112,14 @@ export default function NotificationsPage() {
               <button
                 key={n.id}
                 onClick={() => !n.read && markAsRead(n.id)}
-                className={`w-full text-left flex items-start gap-3 py-3 px-3 rounded-lg transition-colors hover:bg-muted/50 ${
-                  !n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
-                }`}
+                className={`w-full text-left flex items-start gap-3 py-3 px-3 rounded-lg transition-colors hover:bg-muted/50 ${!n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
+                  }`}
               >
                 <div className={`p-1.5 rounded mt-0.5 ${eventColor(n.eventType)}`}>
                   {eventIcon(n.eventType)}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${!n.read ? 'font-semibold' : ''}`}>{n.title}</p>
+                  <p className={`text-sm ${!n.read ? 'font-semibold' : ''} truncate`}>{n.title}</p>
                   <p className="text-xs text-muted-foreground truncate">{n.body}</p>
                 </div>
                 <span className="text-xs text-muted-foreground shrink-0">
