@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ServiceType {
+  SONARR
+  RADARR
+  QBITTORRENT
+}
+
+model ServiceConnection {
+  id        String      @id @default(cuid())
+  type      ServiceType @unique
+  url       String
+  apiKey    String
+  username  String?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model PushSubscription {
+  id           String                   @id @default(cuid())
+  endpoint     String                   @unique
+  p256dh       String
+  auth         String
+  deviceName   String?
+  createdAt    DateTime                 @default(now())
+  preferences  NotificationPreference[]
+}
+
+model NotificationPreference {
+  id             String           @id @default(cuid())
+  subscriptionId String
+  subscription   PushSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  eventType      String
+  enabled        Boolean          @default(true)
+  tagFilter      String?
+  qualityFilter  String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([subscriptionId, eventType])
+}
+
+model NotificationHistory {
+  id        String   @id @default(cuid())
+  eventType String
+  title     String
+  body      String
+  metadata  Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PollingState {
+  id              String   @id @default(cuid())
+  serviceType     ServiceType @unique
+  lastQueueIds    Json     @default("[]")
+  lastHistoryDate DateTime?
+  lastHealthHash  String?
+  updatedAt       DateTime @updatedAt
+}
+
+model AppSettings {
+  id                  String  @id @default("singleton")
+  pollingIntervalSecs Int     @default(30)
+  theme               String  @default("dark")
+  upcomingAlertHours  Int     @default(24)
+}

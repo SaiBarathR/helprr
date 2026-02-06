@@ -1,0 +1,22 @@
+services:
+  helprr:
+    build: .
+    container_name: helprr
+    restart: unless-stopped
+    ports:
+      - "3050:3050"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - APP_PASSWORD=${APP_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+      - VAPID_SUBJECT=${VAPID_SUBJECT}
+    env_file:
+      - .env
+    networks:
+      - helprr-net
+
+networks:
+  helprr-net:
+    driver: bridge

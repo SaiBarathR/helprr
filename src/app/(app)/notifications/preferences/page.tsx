@@ -1,0 +1,170 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { Bell, BellOff, Smartphone, ArrowLeft, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
+
+const EVENT_LABELS: Record<string, { label: string; description: string }> = {
+  grabbed: { label: 'Download Started', description: 'When a download is grabbed' },
+  imported: { label: 'Download Imported', description: 'When a download is imported' },
+  downloadFailed: { label: 'Download Failed', description: 'When a download fails' },
+  importFailed: { label: 'Import Failed', description: 'When an import fails' },
+  upcomingPremiere: { label: 'Upcoming Premiere', description: 'When a premiere is approaching' },
+  healthWarning: { label: 'Health Warning', description: 'When a service has health issues' },
+};
+
+interface Preference {
+  id: string;
+  subscriptionId: string;
+  eventType: string;
+  enabled: boolean;
+}
+
+export default function NotificationPreferencesPage() {
+  const router = useRouter();
+  const { isSupported, isSubscribed, isStandalone, subscribe, unsubscribe, loading, subscriptionEndpoint } = usePushNotifications();
+  const [preferences, setPreferences] = useState<Preference[]>([]);
+  const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
+  const [prefsLoading, setPrefsLoading] = useState(false);
+
+  useEffect(() => {
+    if (isSubscribed && subscriptionEndpoint) {
+      loadPreferences();
+    }
+  }, [isSubscribed, subscriptionEndpoint]);
+
+  async function loadPreferences() {
+    setPrefsLoading(true);
+    try {
+      const res = await fetch('/api/notifications/preferences');
+      if (res.ok) {
+        const prefs = await res.json();
+        setPreferences(prefs);
+        if (prefs.length > 0) setSubscriptionId(prefs[0].subscriptionId);
+      }
+    } catch {} finally { setPrefsLoading(false); }
+  }
+
+  async function handleSubscribe() {
+    const success = await subscribe();
+    if (success) {
+      toast.success('Push notifications enabled');
+      loadPreferences();
+    } else {
+      toast.error('Could not enable push notifications');
+    }
+  }
+
+  async function handleUnsubscribe() {
+    await unsubscribe();
+    toast.success('Push notifications disabled');
+    setPreferences([]);
+  }
+
+  async function togglePreference(eventType: string, enabled: boolean) {
+    if (!subscriptionId) return;
+    setPreferences((prev) =>
+      prev.map((p) => p.eventType === eventType ? { ...p, enabled } : p)
+    );
+    try {
+      await fetch('/api/notifications/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionId, eventType, enabled }),
+      });
+    } catch {
+      toast.error('Failed to update preference');
+      setPreferences((prev) =>
+        prev.map((p) => p.eventType === eventType ? { ...p, enabled: !enabled } : p)
+      );
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Button variant="ghost" size="sm" onClick={() => router.back()}>
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back
+      </Button>
+      <h1 className="text-2xl font-bold">Notification Preferences</h1>
+
+      {!isSupported && (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            <BellOff className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>Push notifications are not supported in this browser.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isSupported && !isStandalone && (
+        <Card className="border-orange-500/30">
+          <CardContent className="py-6 text-center space-y-2">
+            <Smartphone className="h-8 w-8 mx-auto text-orange-500" />
+            <p className="font-medium">Install Helprr as a PWA</p>
+            <p className="text-sm text-muted-foreground">
+              On iOS: tap the share button in Safari, then &ldquo;Add to Home Screen&rdquo;.
+              Push notifications require standalone PWA mode.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isSupported && !isSubscribed && (
+        <Card>
+          <CardContent className="py-6 text-center space-y-3">
+            <Bell className="h-8 w-8 mx-auto text-primary" />
+            <p className="font-medium">Enable Push Notifications</p>
+            <p className="text-sm text-muted-foreground">
+              Get notified about downloads, imports, and upcoming releases.
+            </p>
+            <Button onClick={handleSubscribe} disabled={loading}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />}
+              Enable Notifications
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {isSubscribed && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Event Types</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {prefsLoading ? (
+              <p className="text-sm text-muted-foreground">Loading preferences...</p>
+            ) : (
+              Object.entries(EVENT_LABELS).map(([eventType, { label, description }]) => {
+                const pref = preferences.find((p) => p.eventType === eventType);
+                return (
+                  <div key={eventType} className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-sm font-medium">{label}</Label>
+                      <p className="text-xs text-muted-foreground">{description}</p>
+                    </div>
+                    <Switch
+                      checked={pref?.enabled ?? true}
+                      onCheckedChange={(v) => togglePreference(eventType, v)}
+                    />
+                  </div>
+                );
+              })
+            )}
+
+            <Separator />
+            <Button variant="destructive" size="sm" onClick={handleUnsubscribe} disabled={loading}>
+              <BellOff className="mr-2 h-4 w-4" /> Disable Push Notifications
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
