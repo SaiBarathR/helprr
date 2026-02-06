@@ -196,6 +196,37 @@ export interface ManualImportItem {
   rejections: { type: string; reason: string }[];
 }
 
+// Release (Interactive Search)
+export interface Release {
+  guid: string;
+  quality: { quality: { id: number; name: string }; revision?: { version: number } };
+  qualityWeight: number;
+  age: number;
+  ageHours: number;
+  ageMinutes: number;
+  size: number;
+  indexerId: number;
+  indexer: string;
+  releaseGroup: string;
+  title: string;
+  approved: boolean;
+  rejected: boolean;
+  rejections: string[];
+  seeders: number;
+  leechers: number;
+  protocol: string;
+  downloadUrl: string;
+  infoUrl: string;
+  indexerFlags: number;
+  // Sonarr-specific
+  seriesId?: number;
+  episodeId?: number;
+  seasonNumber?: number;
+  fullSeason?: boolean;
+  // Radarr-specific
+  movieId?: number;
+}
+
 export interface DiskSpace {
   path: string;
   label: string;
@@ -266,6 +297,39 @@ export interface NotificationEvent {
   body: string;
   metadata?: Record<string, unknown>;
   url?: string;
+}
+
+// Wanted Responses
+export interface WantedMissingRecord {
+  source: 'sonarr' | 'radarr';
+  mediaType: 'episode' | 'movie';
+  id: number;
+  title?: string;
+  // Sonarr episode fields
+  seriesId?: number;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  airDateUtc?: string;
+  series?: SonarrSeries;
+  // Radarr movie fields
+  year?: number;
+  added?: string;
+  monitored?: boolean;
+  hasFile?: boolean;
+  images?: MediaImage[];
+}
+
+export interface WantedResponse {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: WantedMissingRecord[];
+}
+
+// Tag type
+export interface Tag {
+  id: number;
+  label: string;
 }
 
 // Quality Profiles

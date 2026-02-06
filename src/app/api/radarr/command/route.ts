@@ -14,6 +14,12 @@ export async function POST(request: Request) {
       case 'RefreshMovie':
         result = await client.refreshMovie(body.movieId);
         break;
+      case 'RefreshMonitoredDownloads':
+        result = await client.refreshMonitoredDownloads();
+        break;
+      case 'RenameFiles':
+        result = await client.renameMovie(body.movieId);
+        break;
       case 'ManualImport':
         result = await client.submitManualImport(body.files);
         break;

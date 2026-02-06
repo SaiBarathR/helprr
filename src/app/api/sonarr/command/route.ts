@@ -14,8 +14,17 @@ export async function POST(request: Request) {
       case 'SeasonSearch':
         result = await client.searchSeason(body.seriesId, body.seasonNumber);
         break;
+      case 'SeriesSearch':
+        result = await client.searchSeries(body.seriesId);
+        break;
       case 'RefreshSeries':
         result = await client.refreshSeries(body.seriesId);
+        break;
+      case 'RefreshMonitoredDownloads':
+        result = await client.refreshMonitoredDownloads();
+        break;
+      case 'RenameSeries':
+        result = await client.renameSeries(body.seriesId);
         break;
       case 'ManualImport':
         result = await client.submitManualImport(body.files);

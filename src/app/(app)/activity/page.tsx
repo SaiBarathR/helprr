@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Download, Check, X, ArrowUp, Trash2, Pause, Play, AlertTriangle,
-  Upload, Loader2, RefreshCw, FileWarning,
+  Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -38,19 +38,62 @@ function eventIcon(type: string) {
 
 export default function ActivityPage() {
   const [tab, setTab] = useState('queue');
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefreshActivity() {
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([
+        fetch('/api/sonarr/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'RefreshMonitoredDownloads' }),
+        }),
+        fetch('/api/radarr/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'RefreshMonitoredDownloads' }),
+        }),
+      ]);
+      toast.success('Activity refresh triggered');
+    } catch {
+      toast.error('Failed to refresh activity');
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Activity</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Activity</h1>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleRefreshActivity}
+          disabled={refreshing}
+        >
+          {refreshing ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="mr-2 h-4 w-4" />
+          )}
+          Refresh
+        </Button>
+      </div>
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="queue">Queue</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="failed">Failed Imports</TabsTrigger>
+          <TabsTrigger value="failed">Failed</TabsTrigger>
+          <TabsTrigger value="missing">Missing</TabsTrigger>
+          <TabsTrigger value="cutoff">Cutoff</TabsTrigger>
         </TabsList>
         <TabsContent value="queue"><QueueTab /></TabsContent>
         <TabsContent value="history"><HistoryTab /></TabsContent>
         <TabsContent value="failed"><FailedImportsTab /></TabsContent>
+        <TabsContent value="missing"><WantedTab type="missing" /></TabsContent>
+        <TabsContent value="cutoff"><WantedTab type="cutoff" /></TabsContent>
       </Tabs>
     </div>
   );
@@ -311,6 +354,142 @@ function FailedImportsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface WantedRecord {
+  id: number;
+  source: 'sonarr' | 'radarr';
+  mediaType: 'episode' | 'movie';
+  // Sonarr episode fields
+  title?: string;
+  seriesId?: number;
+  seasonNumber?: number;
+  episodeNumber?: number;
+  airDateUtc?: string;
+  airDate?: string;
+  series?: { id: number; title: string };
+  // Radarr movie fields
+  year?: number;
+  added?: string;
+  monitored?: boolean;
+}
+
+function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
+  const [records, setRecords] = useState<WantedRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [searching, setSearching] = useState<string | null>(null);
+
+  const fetchWanted = useCallback(async (p: number) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ type, page: String(p), pageSize: '20' });
+      const res = await fetch(`/api/activity/wanted?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (p === 1) setRecords(data.records || []);
+        else setRecords((prev) => [...prev, ...(data.records || [])]);
+        setTotal(data.totalRecords || 0);
+      }
+    } catch {} finally { setLoading(false); }
+  }, [type]);
+
+  useEffect(() => { setPage(1); fetchWanted(1); }, [fetchWanted]);
+
+  async function handleSearch(record: WantedRecord) {
+    const key = `${record.source}-${record.id}`;
+    setSearching(key);
+    try {
+      if (record.source === 'sonarr') {
+        await fetch('/api/sonarr/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [record.id] }),
+        });
+      } else {
+        await fetch('/api/radarr/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'MoviesSearch', movieIds: [record.id] }),
+        });
+      }
+      toast.success('Search started');
+    } catch { toast.error('Search failed'); }
+    finally { setSearching(null); }
+  }
+
+  if (loading && page === 1) {
+    return <div className="space-y-2 mt-4">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>;
+  }
+
+  if (records.length === 0) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        {type === 'missing' ? (
+          <>
+            <Download className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>No missing items</p>
+          </>
+        ) : (
+          <>
+            <Scissors className="h-8 w-8 mx-auto mb-2 opacity-50" />
+            <p>No cutoff unmet items</p>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1 mt-4">
+      {records.map((record) => {
+        const key = `${record.source}-${record.id}`;
+        const isEpisode = record.mediaType === 'episode';
+        const displayTitle = isEpisode
+          ? `${record.series?.title || 'Unknown'} - S${String(record.seasonNumber ?? 0).padStart(2, '0')}E${String(record.episodeNumber ?? 0).padStart(2, '0')} - ${record.title || 'TBA'}`
+          : `${record.title || 'Unknown'} (${record.year || '?'})`;
+        const dateStr = isEpisode ? record.airDateUtc || record.airDate : record.added;
+
+        return (
+          <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50">
+            <div className="p-1.5 rounded bg-muted">
+              {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm truncate">{displayTitle}</p>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline" className="text-[10px]">{record.source}</Badge>
+                {dateStr && (
+                  <span>{formatDistanceToNow(new Date(dateStr), { addSuffix: true })}</span>
+                )}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 shrink-0"
+              onClick={() => handleSearch(record)}
+              disabled={searching === key}
+            >
+              {searching === key ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
+        );
+      })}
+      {records.length < total && (
+        <Button variant="ghost" className="w-full" onClick={() => { const next = page + 1; setPage(next); fetchWanted(next); }} disabled={loading}>
+          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Load more
+        </Button>
+      )}
     </div>
   );
 }

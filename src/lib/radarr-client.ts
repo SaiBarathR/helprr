@@ -10,6 +10,7 @@ import type {
   DiskSpace,
   HealthCheck,
   RadarrLookupResult,
+  Release,
 } from '@/types';
 
 interface SystemStatus {
@@ -108,6 +109,24 @@ export class RadarrClient {
     await this.delete(`/api/v3/movie/${id}`, { deleteFiles, addImportExclusion });
   }
 
+  // Release (Interactive Search)
+  async getReleases(movieId: number): Promise<Release[]> {
+    return this.get<Release[]>('/api/v3/release', { movieId });
+  }
+
+  async grabRelease(guid: string, indexerId: number): Promise<void> {
+    await this.post('/api/v3/release', { guid, indexerId });
+  }
+
+  // Wanted
+  async getWantedMissing(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'date', sortDirection: 'descending' });
+  }
+
+  async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
+    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'date', sortDirection: 'descending' });
+  }
+
   // Calendar
   async getCalendar(start: string, end: string): Promise<RadarrCalendarEntry[]> {
     return this.get<RadarrCalendarEntry[]>('/api/v3/calendar', { start, end });
@@ -173,6 +192,19 @@ export class RadarrClient {
   async refreshMovie(movieId: number): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RefreshMovie',
+      movieId,
+    });
+  }
+
+  async refreshMonitoredDownloads(): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'RefreshMonitoredDownloads',
+    });
+  }
+
+  async renameMovie(movieId: number): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'RenameFiles',
       movieId,
     });
   }

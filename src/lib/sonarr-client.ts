@@ -11,6 +11,7 @@ import type {
   DiskSpace,
   HealthCheck,
   SonarrLookupResult,
+  Release,
 } from '@/types';
 
 interface SystemStatus {
@@ -137,11 +138,49 @@ export class SonarrClient {
     });
   }
 
+  async searchSeries(seriesId: number): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'SeriesSearch',
+      seriesId,
+    });
+  }
+
   async refreshSeries(seriesId: number): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RefreshSeries',
       seriesId,
     });
+  }
+
+  async refreshMonitoredDownloads(): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'RefreshMonitoredDownloads',
+    });
+  }
+
+  async renameSeries(seriesId: number): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'RenameSeries',
+      seriesId,
+    });
+  }
+
+  // Release (Interactive Search)
+  async getReleases(params: { episodeId?: number; seriesId?: number; seasonNumber?: number }): Promise<Release[]> {
+    return this.get<Release[]>('/api/v3/release', params);
+  }
+
+  async grabRelease(guid: string, indexerId: number): Promise<void> {
+    await this.post('/api/v3/release', { guid, indexerId });
+  }
+
+  // Wanted
+  async getWantedMissing(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'airDateUtc', sortDirection: 'descending', includeSeries: true });
+  }
+
+  async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
+    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'airDateUtc', sortDirection: 'descending', includeSeries: true });
   }
 
   // Calendar
