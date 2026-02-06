@@ -21,7 +21,7 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm pt-[env(safe-area-inset-top)]">
       <div className="flex items-center justify-between h-14 px-4">
         <div className="flex items-center gap-2 md:hidden">
           <Clapperboard className="h-5 w-5 text-primary" />
