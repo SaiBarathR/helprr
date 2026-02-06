@@ -47,4 +47,7 @@ EXPOSE 3050
 ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# Copy full node_modules from deps for Prisma CLI (migrate deploy needs it)
+COPY --from=deps /app/node_modules ./node_modules
+
+CMD ["sh", "-c", "npx prisma db push && node server.js"]
