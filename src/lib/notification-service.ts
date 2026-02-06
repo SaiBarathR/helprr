@@ -39,7 +39,7 @@ export async function sendPushNotification(
     if (statusCode === 410 || statusCode === 404) {
       await prisma.pushSubscription.delete({
         where: { endpoint: subscription.endpoint },
-      }).catch(() => {});
+      }).catch(() => { });
     }
     return false;
   }
@@ -60,7 +60,8 @@ export async function notifyEvent(event: {
 
   for (const sub of subscriptions) {
     const pref = sub.preferences.find((p) => p.eventType === event.eventType);
-    if (!pref || !pref.enabled) continue;
+    // If no preference exists for this event type, default to sending (enabled)
+    if (pref && !pref.enabled) continue;
 
     const success = await sendPushNotification(
       { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },

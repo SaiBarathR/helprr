@@ -33,6 +33,7 @@ export default function NotificationPreferencesPage() {
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [prefsLoading, setPrefsLoading] = useState(false);
+  const [testingNotification, setTestingNotification] = useState(false);
 
   useEffect(() => {
     if (isSubscribed && subscriptionEndpoint) {
@@ -49,7 +50,7 @@ export default function NotificationPreferencesPage() {
         setPreferences(prefs);
         if (prefs.length > 0) setSubscriptionId(prefs[0].subscriptionId);
       }
-    } catch {} finally { setPrefsLoading(false); }
+    } catch { } finally { setPrefsLoading(false); }
   }
 
   async function handleSubscribe() {
@@ -66,6 +67,23 @@ export default function NotificationPreferencesPage() {
     await unsubscribe();
     toast.success('Push notifications disabled');
     setPreferences([]);
+  }
+
+  async function handleTestNotification() {
+    setTestingNotification(true);
+    try {
+      const res = await fetch('/api/push/subscribe/test', { method: 'POST' });
+      if (res.ok) {
+        toast.success('Test notification sent! You should receive it shortly.');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Failed to send test notification');
+      }
+    } catch {
+      toast.error('Failed to send test notification');
+    } finally {
+      setTestingNotification(false);
+    }
   }
 
   async function togglePreference(eventType: string, enabled: boolean) {
@@ -94,76 +112,93 @@ export default function NotificationPreferencesPage() {
       </Button>
       <h1 className="text-2xl font-bold">Notification Preferences</h1>
 
-      {!isSupported && (
+      {loading ? (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            <Loader2 className="h-8 w-8 mx-auto mb-2 animate-spin" />
+            <p>Checking notification status...</p>
+          </CardContent>
+        </Card>
+      ) : !isSupported ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             <BellOff className="h-8 w-8 mx-auto mb-2 opacity-50" />
             <p>Push notifications are not supported in this browser.</p>
           </CardContent>
         </Card>
+      ) : (
+        <>
+          {!isStandalone && (
+            <Card className="border-orange-500/30">
+              <CardContent className="py-6 text-center space-y-2">
+                <Smartphone className="h-8 w-8 mx-auto text-orange-500" />
+                <p className="font-medium">Install Helprr as a PWA</p>
+                <p className="text-sm text-muted-foreground">
+                  On iOS: tap the share button in Safari, then &ldquo;Add to Home Screen&rdquo;.
+                  Push notifications require standalone PWA mode.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {!isSubscribed && (
+            <Card>
+              <CardContent className="py-6 text-center space-y-3">
+                <Bell className="h-8 w-8 mx-auto text-primary" />
+                <p className="font-medium">Enable Push Notifications</p>
+                <p className="text-sm text-muted-foreground">
+                  Get notified about downloads, imports, and upcoming releases.
+                </p>
+                <Button onClick={handleSubscribe}>
+                  <Bell className="mr-2 h-4 w-4" />
+                  Enable Notifications
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </>
       )}
 
-      {isSupported && !isStandalone && (
-        <Card className="border-orange-500/30">
-          <CardContent className="py-6 text-center space-y-2">
-            <Smartphone className="h-8 w-8 mx-auto text-orange-500" />
-            <p className="font-medium">Install Helprr as a PWA</p>
-            <p className="text-sm text-muted-foreground">
-              On iOS: tap the share button in Safari, then &ldquo;Add to Home Screen&rdquo;.
-              Push notifications require standalone PWA mode.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {isSupported && !isSubscribed && (
-        <Card>
-          <CardContent className="py-6 text-center space-y-3">
-            <Bell className="h-8 w-8 mx-auto text-primary" />
-            <p className="font-medium">Enable Push Notifications</p>
-            <p className="text-sm text-muted-foreground">
-              Get notified about downloads, imports, and upcoming releases.
-            </p>
-            <Button onClick={handleSubscribe} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />}
-              Enable Notifications
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {isSubscribed && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Event Types</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {prefsLoading ? (
-              <p className="text-sm text-muted-foreground">Loading preferences...</p>
-            ) : (
-              Object.entries(EVENT_LABELS).map(([eventType, { label, description }]) => {
-                const pref = preferences.find((p) => p.eventType === eventType);
-                return (
-                  <div key={eventType} className="flex items-center justify-between">
-                    <div>
-                      <Label className="text-sm font-medium">{label}</Label>
-                      <p className="text-xs text-muted-foreground">{description}</p>
+      {isSubscribed && !loading && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Event Types</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {prefsLoading ? (
+                <p className="text-sm text-muted-foreground">Loading preferences...</p>
+              ) : (
+                Object.entries(EVENT_LABELS).map(([eventType, { label, description }]) => {
+                  const pref = preferences.find((p) => p.eventType === eventType);
+                  return (
+                    <div key={eventType} className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm font-medium">{label}</Label>
+                        <p className="text-xs text-muted-foreground">{description}</p>
+                      </div>
+                      <Switch
+                        checked={pref?.enabled ?? true}
+                        onCheckedChange={(v) => togglePreference(eventType, v)}
+                      />
                     </div>
-                    <Switch
-                      checked={pref?.enabled ?? true}
-                      onCheckedChange={(v) => togglePreference(eventType, v)}
-                    />
-                  </div>
-                );
-              })
-            )}
+                  );
+                })
+              )}
 
-            <Separator />
-            <Button variant="destructive" size="sm" onClick={handleUnsubscribe} disabled={loading}>
-              <BellOff className="mr-2 h-4 w-4" /> Disable Push Notifications
-            </Button>
-          </CardContent>
-        </Card>
+              <Separator />
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleTestNotification} disabled={testingNotification}>
+                  {testingNotification ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Bell className="mr-2 h-4 w-4" />}
+                  Send Test Notification
+                </Button>
+                <Button variant="destructive" size="sm" onClick={handleUnsubscribe} disabled={loading}>
+                  <BellOff className="mr-2 h-4 w-4" /> Disable Push Notifications
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

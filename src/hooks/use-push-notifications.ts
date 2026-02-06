@@ -13,37 +13,76 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+/**
+ * Ensure a service worker is registered (Serwist may be disabled in dev mode).
+ * Returns the active registration or null.
+ */
+async function ensureServiceWorkerRegistration(timeoutMs = 5000): Promise<ServiceWorkerRegistration | null> {
+  let registration = await navigator.serviceWorker.getRegistration();
+  if (registration) return registration;
+
+  // Serwist is disabled in dev — register the pre-built sw.js manually
+  try {
+    registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+  } catch {
+    return null;
+  }
+
+  // Wait for the SW to become active (with timeout)
+  if (registration.active) return registration;
+
+  return new Promise<ServiceWorkerRegistration | null>((resolve) => {
+    const timeout = setTimeout(() => resolve(null), timeoutMs);
+    const sw = registration!.installing || registration!.waiting;
+    if (!sw) {
+      clearTimeout(timeout);
+      resolve(null);
+      return;
+    }
+    sw.addEventListener('statechange', () => {
+      if (sw.state === 'activated') {
+        clearTimeout(timeout);
+        resolve(registration!);
+      }
+    });
+  });
+}
+
 export function usePushNotifications() {
-  const [isSupported, setIsSupported] = useState(false);
+  const isBrowser = typeof window !== 'undefined';
+  const supported = isBrowser && 'serviceWorker' in navigator && 'PushManager' in window;
+  const standalone = isBrowser && (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true
+  );
+
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(supported);
   const [subscriptionEndpoint, setSubscriptionEndpoint] = useState<string | null>(null);
 
   useEffect(() => {
-    const supported = 'serviceWorker' in navigator && 'PushManager' in window;
-    setIsSupported(supported);
-    setIsStandalone(
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true
-    );
+    if (!supported) return;
+    let cancelled = false;
 
-    if (supported) {
-      checkSubscription();
-    } else {
-      setLoading(false);
-    }
-  }, []);
+    (async () => {
+      try {
+        const registration = await ensureServiceWorkerRegistration();
+        if (cancelled) return;
+        if (!registration) {
+          setLoading(false);
+          return;
+        }
+        const sub = await registration.pushManager.getSubscription();
+        console.log("sub", sub)
+        if (cancelled) return;
+        setIsSubscribed(!!sub);
+        setSubscriptionEndpoint(sub?.endpoint || null);
+      } catch { }
+      if (!cancelled) setLoading(false);
+    })();
 
-  async function checkSubscription() {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const sub = await registration.pushManager.getSubscription();
-      setIsSubscribed(!!sub);
-      setSubscriptionEndpoint(sub?.endpoint || null);
-    } catch {}
-    setLoading(false);
-  }
+    return () => { cancelled = true; }; 
+  }, [supported]);
 
   const subscribe = useCallback(async () => {
     setLoading(true);
@@ -54,7 +93,14 @@ export function usePushNotifications() {
         return false;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      // Ensure SW is registered (handles Serwist disabled in dev)
+      const registration = await ensureServiceWorkerRegistration();
+      if (!registration) {
+        console.error('[Helprr] No service worker available for push notifications');
+        setLoading(false);
+        return false;
+      }
+
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
       if (!vapidKey) {
         setLoading(false);
@@ -67,7 +113,7 @@ export function usePushNotifications() {
       });
 
       const json = sub.toJSON();
-      await fetch('/api/push/subscribe', {
+      const res = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -78,6 +124,13 @@ export function usePushNotifications() {
           },
         }),
       });
+
+      if (!res.ok) {
+        // Server failed to save subscription, unsubscribe the push manager
+        await sub.unsubscribe();
+        setLoading(false);
+        return false;
+      }
 
       setIsSubscribed(true);
       setSubscriptionEndpoint(sub.endpoint);
@@ -104,9 +157,9 @@ export function usePushNotifications() {
       }
       setIsSubscribed(false);
       setSubscriptionEndpoint(null);
-    } catch {}
+    } catch { }
     setLoading(false);
   }, []);
 
-  return { isSupported, isSubscribed, isStandalone, subscribe, unsubscribe, loading, subscriptionEndpoint };
+  return { isSupported: supported, isSubscribed, isStandalone: standalone, subscribe, unsubscribe, loading, subscriptionEndpoint };
 }
