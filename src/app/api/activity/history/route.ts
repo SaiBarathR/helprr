@@ -10,23 +10,30 @@ export async function GET(request: NextRequest) {
     const sortKey = searchParams.get('sortKey') || 'date';
     const sortDirection = searchParams.get('sortDirection') || 'descending';
     const eventType = searchParams.get('eventType') || undefined;
+    const episodeId = searchParams.get('episodeId') ? parseInt(searchParams.get('episodeId')!, 10) : undefined;
+    const seriesId = searchParams.get('seriesId') ? parseInt(searchParams.get('seriesId')!, 10) : undefined;
+    const movieId = searchParams.get('movieId') ? parseInt(searchParams.get('movieId')!, 10) : undefined;
 
     // Fetch large batches from both services so we can merge and re-sort
     const fetchSize = 500;
 
     const [sonarrResult, radarrResult] = await Promise.allSettled([
       (async () => {
+        // Skip Sonarr fetch if filtering by movieId only
+        if (movieId && !episodeId && !seriesId) return null;
         try {
           const sonarr = await getSonarrClient();
-          return await sonarr.getHistory(1, fetchSize, sortKey, sortDirection);
+          return await sonarr.getHistory(1, fetchSize, sortKey, sortDirection, { episodeId, seriesId });
         } catch {
           return null;
         }
       })(),
       (async () => {
+        // Skip Radarr fetch if filtering by episodeId/seriesId only
+        if ((episodeId || seriesId) && !movieId) return null;
         try {
           const radarr = await getRadarrClient();
-          return await radarr.getHistory(1, fetchSize, sortKey, sortDirection);
+          return await radarr.getHistory(1, fetchSize, sortKey, sortDirection, { movieId });
         } catch {
           return null;
         }

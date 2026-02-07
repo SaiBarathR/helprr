@@ -153,15 +153,18 @@ export class RadarrClient {
     page: number = 1,
     pageSize: number = 20,
     sortKey: string = 'date',
-    sortDirection: string = 'descending'
+    sortDirection: string = 'descending',
+    filters?: { movieId?: number }
   ): Promise<HistoryResponse> {
-    return this.get<HistoryResponse>('/api/v3/history', {
+    const params: Record<string, unknown> = {
       page,
       pageSize,
       sortKey,
       sortDirection,
       includeMovie: true,
-    });
+    };
+    if (filters?.movieId) params.movieId = filters.movieId;
+    return this.get<HistoryResponse>('/api/v3/history', params);
   }
 
   // Manual Import

@@ -2,34 +2,28 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from '@/components/ui/dialog';
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerClose,
+} from '@/components/ui/drawer';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   HardDrive,
   Play,
@@ -45,6 +39,7 @@ import {
   ArrowUp,
   RefreshCw,
   Search,
+  Filter,
 } from 'lucide-react';
 import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
 
@@ -108,10 +103,19 @@ function getStateBadge(state: string) {
   };
 
   const s = stateMap[state] || { label: state, variant: 'secondary' as const };
-  return <Badge variant={s.variant}>{s.label}</Badge>;
+  return <Badge variant={s.variant} className="text-[10px] px-1.5 py-0">{s.label}</Badge>;
 }
 
 type FilterType = 'all' | 'downloading' | 'seeding' | 'completed' | 'paused' | 'active';
+
+const filterOptions: { value: FilterType; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'downloading', label: 'Downloading' },
+  { value: 'seeding', label: 'Seeding' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'paused', label: 'Paused' },
+  { value: 'active', label: 'Active' },
+];
 
 export default function TorrentsPage() {
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
@@ -122,15 +126,15 @@ export default function TorrentsPage() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
 
-  // Add torrent dialog
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  // Add torrent drawer
+  const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [addMode, setAddMode] = useState<'magnet' | 'file'>('magnet');
   const [magnetLink, setMagnetLink] = useState('');
   const [torrentFile, setTorrentFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
 
-  // Delete dialog
-  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; hash: string; name: string; deleteFiles: boolean }>({
+  // Delete drawer
+  const [deleteDrawer, setDeleteDrawer] = useState<{ open: boolean; hash: string; name: string; deleteFiles: boolean }>({
     open: false,
     hash: '',
     name: '',
@@ -238,7 +242,7 @@ export default function TorrentsPage() {
         }
       }
       toast.success('Torrent added');
-      setAddDialogOpen(false);
+      setAddDrawerOpen(false);
       setMagnetLink('');
       setTorrentFile(null);
       setTimeout(fetchTorrents, 1000);
@@ -252,8 +256,8 @@ export default function TorrentsPage() {
   async function handleDelete() {
     setDeleting(true);
     try {
-      await torrentAction(deleteDialog.hash, 'delete', { deleteFiles: deleteDialog.deleteFiles });
-      setDeleteDialog({ open: false, hash: '', name: '', deleteFiles: false });
+      await torrentAction(deleteDrawer.hash, 'delete', { deleteFiles: deleteDrawer.deleteFiles });
+      setDeleteDrawer({ open: false, hash: '', name: '', deleteFiles: false });
     } catch {
       // Error handled in torrentAction
     } finally {
@@ -285,89 +289,111 @@ export default function TorrentsPage() {
     t.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
+
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <HardDrive className="h-6 w-6 text-green-500" />
-          <h1 className="text-2xl font-bold">Torrents</h1>
-        </div>
-        <Button onClick={() => setAddDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Torrent
-        </Button>
+    <div className="space-y-3">
+      {/* Top action bar */}
+      <div className="flex items-center gap-2">
+        {/* Filter dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+              aria-label={`Filter: ${activeFilterLabel}`}
+            >
+              <Filter className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuLabel>Filter</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {filterOptions.map((opt) => (
+              <DropdownMenuCheckboxItem
+                key={opt.value}
+                checked={filter === opt.value}
+                onCheckedChange={() => setFilter(opt.value)}
+              >
+                {opt.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Refresh */}
+        <button
+          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+          onClick={() => { setLoading(true); fetchTorrents(); }}
+          aria-label="Refresh"
+        >
+          <RefreshCw className="h-5 w-5" />
+        </button>
+
+        {/* Transfer stats (inline) */}
+        {transferInfo && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground ml-1">
+            <span className="flex items-center gap-1">
+              <ArrowDown className="h-3 w-3 text-green-500" />
+              {formatSpeed(transferInfo.dl_info_speed)}
+            </span>
+            <span className="flex items-center gap-1">
+              <ArrowUp className="h-3 w-3 text-blue-500" />
+              {formatSpeed(transferInfo.up_info_speed)}
+            </span>
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Add torrent button */}
+        <button
+          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+          onClick={() => setAddDrawerOpen(true)}
+          aria-label="Add Torrent"
+        >
+          <Plus className="h-5 w-5" />
+        </button>
       </div>
 
-      {/* Transfer Stats */}
-      {transferInfo && (
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <ArrowDown className="h-3.5 w-3.5 text-green-500" />
-            {formatSpeed(transferInfo.dl_info_speed)}
-          </span>
-          <span className="flex items-center gap-1">
-            <ArrowUp className="h-3.5 w-3.5 text-blue-500" />
-            {formatSpeed(transferInfo.up_info_speed)}
-          </span>
-        </div>
-      )}
-
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search torrents..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Select value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="downloading">Downloading</SelectItem>
-            <SelectItem value="seeding">Seeding</SelectItem>
-            <SelectItem value="completed">Completed</SelectItem>
-            <SelectItem value="paused">Paused</SelectItem>
-            <SelectItem value="active">Active</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="icon" onClick={() => { setLoading(true); fetchTorrents(); }}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+      {/* Search bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search torrents..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {/* Bulk Actions */}
       {selectedTorrents.size > 0 && (
-        <div className="flex items-center gap-2 p-2 bg-muted rounded-md flex-wrap">
-          <span className="text-sm text-muted-foreground mr-2">
+        <div className="flex items-center gap-1.5 px-3 py-2 bg-muted/60 rounded-xl">
+          <span className="text-xs text-muted-foreground mr-1">
             {selectedTorrents.size} selected
           </span>
-          <Button variant="outline" size="sm" onClick={() => bulkAction('resume')}>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => bulkAction('resume')}>
             <Play className="mr-1 h-3 w-3" /> Resume
           </Button>
-          <Button variant="outline" size="sm" onClick={() => bulkAction('pause')}>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => bulkAction('pause')}>
             <Pause className="mr-1 h-3 w-3" /> Pause
           </Button>
-          <Button variant="outline" size="sm" onClick={() => bulkAction('forceStart')}>
-            <Zap className="mr-1 h-3 w-3" /> Force Start
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => bulkAction('forceStart')}>
+            <Zap className="mr-1 h-3 w-3" /> Force
           </Button>
           <Button
-            variant="destructive"
+            variant="ghost"
             size="sm"
+            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
             onClick={() => {
               const hashes = Array.from(selectedTorrents).join('|');
-              setDeleteDialog({ open: true, hash: hashes, name: `${selectedTorrents.size} torrents`, deleteFiles: false });
+              setDeleteDrawer({ open: true, hash: hashes, name: `${selectedTorrents.size} torrents`, deleteFiles: false });
             }}
           >
             <Trash2 className="mr-1 h-3 w-3" /> Delete
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSelectedTorrents(new Set())}>
+          <div className="flex-1" />
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setSelectedTorrents(new Set())}>
             Clear
           </Button>
         </div>
@@ -379,22 +405,18 @@ export default function TorrentsPage() {
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       ) : error ? (
-        <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            <p>{error}</p>
-            <p className="text-sm mt-2">Make sure qBittorrent is configured in Settings.</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
+          <p>{error}</p>
+          <p className="text-sm mt-2">Make sure qBittorrent is configured in Settings.</p>
+        </div>
       ) : filteredTorrents.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            {search ? 'No torrents match your search.' : 'No torrents found.'}
-          </CardContent>
-        </Card>
+        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
+          {search ? 'No torrents match your search.' : 'No torrents found.'}
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-0">
           {/* Select All */}
-          <div className="flex items-center gap-2 px-2">
+          <div className="flex items-center gap-2 px-3 pb-2">
             <input
               type="checkbox"
               checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
@@ -406,9 +428,9 @@ export default function TorrentsPage() {
             </span>
           </div>
 
-          {filteredTorrents.map((torrent) => (
-            <Card key={torrent.hash} className="overflow-hidden">
-              <CardContent className="p-3 sm:p-4">
+          <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
+            {filteredTorrents.map((torrent) => (
+              <div key={torrent.hash} className="px-3 py-3 sm:px-4">
                 <div className="flex items-start gap-3">
                   <input
                     type="checkbox"
@@ -421,7 +443,7 @@ export default function TorrentsPage() {
                       <h3 className="text-sm font-medium truncate">{torrent.name}</h3>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-0.5">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -437,13 +459,13 @@ export default function TorrentsPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            onClick={() => setDeleteDialog({ open: true, hash: torrent.hash, name: torrent.name, deleteFiles: false })}
+                            onClick={() => setDeleteDrawer({ open: true, hash: torrent.hash, name: torrent.name, deleteFiles: false })}
                           >
                             <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
-                            onClick={() => setDeleteDialog({ open: true, hash: torrent.hash, name: torrent.name, deleteFiles: true })}
+                            onClick={() => setDeleteDrawer({ open: true, hash: torrent.hash, name: torrent.name, deleteFiles: true })}
                           >
                             <Trash2 className="mr-2 h-4 w-4" /> Delete with files
                           </DropdownMenuItem>
@@ -451,13 +473,13 @@ export default function TorrentsPage() {
                       </DropdownMenu>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
                       {getStateBadge(torrent.state)}
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         {formatBytes(torrent.size)}
                       </span>
                       {torrent.category && (
-                        <Badge variant="outline" className="text-xs truncate max-w-[120px]">
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
                           {torrent.category}
                         </Badge>
                       )}
@@ -465,7 +487,7 @@ export default function TorrentsPage() {
 
                     {/* Progress */}
                     <div className="mt-2">
-                      <div className="flex justify-between text-xs text-muted-foreground mb-1 flex-wrap gap-x-2">
+                      <div className="flex justify-between text-[11px] text-muted-foreground mb-1 flex-wrap gap-x-2">
                         <span>{(torrent.progress * 100).toFixed(1)}%</span>
                         <span className="flex items-center flex-wrap gap-x-2">
                           {torrent.dlspeed > 0 && (
@@ -483,129 +505,128 @@ export default function TorrentsPage() {
                           )}
                         </span>
                       </div>
-                      <Progress value={torrent.progress * 100} className="h-1.5" />
+                      <Progress value={torrent.progress * 100} className="h-1" />
                     </div>
 
-                    <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
                       <span>Seeds: {torrent.num_seeds}</span>
                       <span>Peers: {torrent.num_leechs}</span>
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* Add Torrent Dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Torrent</DialogTitle>
-            <DialogDescription>Add a torrent via magnet link or .torrent file.</DialogDescription>
-          </DialogHeader>
+      {/* Add Torrent Drawer */}
+      <Drawer open={addDrawerOpen} onOpenChange={setAddDrawerOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Add Torrent</DrawerTitle>
+            <DrawerDescription>Add a torrent via magnet link or .torrent file.</DrawerDescription>
+          </DrawerHeader>
 
-          <div className="flex gap-2 mb-4">
-            <Button
-              variant={addMode === 'magnet' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setAddMode('magnet')}
-            >
-              <Link className="mr-2 h-4 w-4" />
-              Magnet Link
-            </Button>
-            <Button
-              variant={addMode === 'file' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setAddMode('file')}
-            >
-              <FileUp className="mr-2 h-4 w-4" />
-              Torrent File
-            </Button>
-          </div>
+          <div className="px-4 space-y-4">
+            <div className="flex gap-2">
+              <Button
+                variant={addMode === 'magnet' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setAddMode('magnet')}
+                className="flex-1"
+              >
+                <Link className="mr-2 h-4 w-4" />
+                Magnet Link
+              </Button>
+              <Button
+                variant={addMode === 'file' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setAddMode('file')}
+                className="flex-1"
+              >
+                <FileUp className="mr-2 h-4 w-4" />
+                Torrent File
+              </Button>
+            </div>
 
-          {addMode === 'magnet' ? (
-            <div className="space-y-2">
+            {addMode === 'magnet' ? (
               <Input
                 placeholder="magnet:?xt=urn:btih:..."
                 value={magnetLink}
                 onChange={(e) => setMagnetLink(e.target.value)}
               />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".torrent"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) setTorrentFile(file);
-                }}
-              />
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <FileUp className="mr-2 h-4 w-4" />
-                {torrentFile ? torrentFile.name : 'Choose .torrent file'}
-              </Button>
-            </div>
-          )}
+            ) : (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".torrent"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) setTorrentFile(file);
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  {torrentFile ? torrentFile.name : 'Choose .torrent file'}
+                </Button>
+              </>
+            )}
+          </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddTorrent} disabled={adding}>
+          <DrawerFooter>
+            <Button onClick={handleAddTorrent} disabled={adding} className="w-full">
               {adding ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Adding...
                 </>
               ) : (
-                'Add'
+                'Add Torrent'
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DrawerClose asChild>
+              <Button variant="outline" className="w-full">Cancel</Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialog.open} onOpenChange={(open) => !open && setDeleteDialog({ ...deleteDialog, open: false })}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Torrent</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &ldquo;{deleteDialog.name}&rdquo;?
-            </DialogDescription>
-          </DialogHeader>
+      {/* Delete Confirmation Drawer */}
+      <Drawer open={deleteDrawer.open} onOpenChange={(open) => !open && setDeleteDrawer({ ...deleteDrawer, open: false })}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Delete Torrent</DrawerTitle>
+            <DrawerDescription>
+              Are you sure you want to delete &ldquo;{deleteDrawer.name}&rdquo;?
+            </DrawerDescription>
+          </DrawerHeader>
 
-          <div className="space-y-3">
+          <div className="px-4 space-y-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={deleteDialog.deleteFiles}
-                onChange={(e) => setDeleteDialog({ ...deleteDialog, deleteFiles: e.target.checked })}
+                checked={deleteDrawer.deleteFiles}
+                onChange={(e) => setDeleteDrawer({ ...deleteDrawer, deleteFiles: e.target.checked })}
                 className="rounded border-border"
               />
               <span className="text-sm">Also delete downloaded files</span>
             </label>
-            {deleteDialog.deleteFiles && (
+            {deleteDrawer.deleteFiles && (
               <p className="text-xs text-destructive">
                 Warning: This will permanently delete the downloaded files from disk.
               </p>
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialog({ ...deleteDialog, open: false })}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+          <DrawerFooter>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting} className="w-full">
               {deleting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -615,9 +636,12 @@ export default function TorrentsPage() {
                 'Delete'
               )}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DrawerClose asChild>
+              <Button variant="outline" className="w-full">Cancel</Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

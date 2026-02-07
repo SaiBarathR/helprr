@@ -1,44 +1,104 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
+import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  Download, Check, X, ArrowUp, Trash2, Pause, Play, AlertTriangle,
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerClose,
+} from '@/components/ui/drawer';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Download, Check, X, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
+  Clock, Filter, ArrowUpDown,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
-import type { QueueItem, HistoryItem, ManualImportItem } from '@/types';
+import type { QueueItem, ManualImportItem } from '@/types';
+
+// --- Status helpers ---
 
 function statusColor(status: string, tracked?: string) {
-  if (tracked === 'warning' || status === 'warning') return 'bg-orange-500/10 text-orange-500';
-  if (tracked === 'error' || status === 'failed') return 'bg-red-500/10 text-red-500';
-  if (status === 'completed' || status === 'imported') return 'bg-green-500/10 text-green-500';
-  if (status === 'downloading') return 'bg-blue-500/10 text-blue-500';
-  return 'bg-muted text-muted-foreground';
+  if (tracked === 'warning' || status === 'warning') return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
+  if (tracked === 'error' || status === 'failed') return 'bg-red-500/10 text-red-500 border-red-500/20';
+  if (status === 'completed' || status === 'imported') return 'bg-green-500/10 text-green-500 border-green-500/20';
+  if (status === 'downloading') return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+  if (status === 'queued' || status === 'delay') return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
+  return 'bg-muted text-muted-foreground border-muted';
 }
 
-function eventIcon(type: string) {
-  switch (type) {
-    case 'grabbed': return <Download className="h-3.5 w-3.5" />;
-    case 'downloadFolderImported': case 'episodeFileImported': case 'movieFileImported': return <Check className="h-3.5 w-3.5" />;
-    case 'downloadFailed': return <X className="h-3.5 w-3.5" />;
-    case 'episodeFileDeleted': case 'movieFileDeleted': return <Trash2 className="h-3.5 w-3.5" />;
-    case 'downloadIgnored': return <X className="h-3.5 w-3.5" />;
-    default: return <ArrowUp className="h-3.5 w-3.5" />;
-  }
+function statusLabel(item: QueueItem & { source?: string }) {
+  if (item.trackedDownloadState === 'importFailed') return 'IMPORT FAILED';
+  if (item.trackedDownloadState === 'importPending') return 'IMPORT PENDING';
+  if (item.trackedDownloadState === 'downloading') return 'DOWNLOADING';
+  if (item.status === 'completed') return 'COMPLETED';
+  if (item.status === 'queued') return 'QUEUED';
+  if (item.status === 'delay') return 'DELAYED';
+  if (item.status === 'paused') return 'PAUSED';
+  return (item.trackedDownloadState || item.status || 'UNKNOWN').toUpperCase();
 }
+
+function formatBytes(bytes: number) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// --- Tabs definition ---
+
+type TabKey = 'queue' | 'failed' | 'missing' | 'cutoff';
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'queue', label: 'Queue' },
+  { key: 'failed', label: 'Failed' },
+  { key: 'missing', label: 'Missing' },
+  { key: 'cutoff', label: 'Cutoff' },
+];
+
+// --- Sort options ---
+
+type SortKey = 'title' | 'progress' | 'timeleft' | 'size';
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'title', label: 'Title' },
+  { key: 'progress', label: 'Progress' },
+  { key: 'timeleft', label: 'Time Left' },
+  { key: 'size', label: 'Size' },
+];
+
+// --- Filter options ---
+
+type FilterKey = 'all' | 'sonarr' | 'radarr';
+
+const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'sonarr', label: 'Sonarr' },
+  { key: 'radarr', label: 'Radarr' },
+];
+
+// --- Main page ---
 
 export default function ActivityPage() {
-  const [tab, setTab] = useState('queue');
+  const router = useRouter();
+  const [tab, setTab] = useState<TabKey>('queue');
   const [refreshing, setRefreshing] = useState(false);
+  const [sortBy, setSortBy] = useState<SortKey>('progress');
+  const [filterBy, setFilterBy] = useState<FilterKey>('all');
+  const [queueCount, setQueueCount] = useState(0);
 
   async function handleRefreshActivity() {
     setRefreshing(true);
@@ -64,44 +124,136 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Activity</h1>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleRefreshActivity}
-          disabled={refreshing}
-        >
-          {refreshing ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
-          )}
-          Refresh
-        </Button>
+    <div className="flex flex-col min-h-0">
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-2">
+        <h1 className="text-xl font-bold">Activity</h1>
+        <div className="flex items-center gap-1">
+          {/* Filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Filter className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {FILTER_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.key}
+                  onClick={() => setFilterBy(opt.key)}
+                  className={filterBy === opt.key ? 'bg-accent' : ''}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Sort */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <ArrowUpDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {SORT_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.key}
+                  onClick={() => setSortBy(opt.key)}
+                  className={sortBy === opt.key ? 'bg-accent' : ''}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* History */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => router.push('/activity/history')}
+          >
+            <Clock className="h-4 w-4" />
+          </Button>
+
+          {/* Refresh */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={handleRefreshActivity}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="queue">Queue</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
-          <TabsTrigger value="failed">Failed</TabsTrigger>
-          <TabsTrigger value="missing">Missing</TabsTrigger>
-          <TabsTrigger value="cutoff">Cutoff</TabsTrigger>
-        </TabsList>
-        <TabsContent value="queue"><QueueTab /></TabsContent>
-        <TabsContent value="history"><HistoryTab /></TabsContent>
-        <TabsContent value="failed"><FailedImportsTab /></TabsContent>
-        <TabsContent value="missing"><WantedTab type="missing" /></TabsContent>
-        <TabsContent value="cutoff"><WantedTab type="cutoff" /></TabsContent>
-      </Tabs>
+
+      {/* Queue count */}
+      {tab === 'queue' && queueCount > 0 && (
+        <p className="px-4 text-xs text-muted-foreground mb-1">
+          {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
+        </p>
+      )}
+
+      {/* Segmented control tabs */}
+      <div className="px-4 pb-3">
+        <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
+                tab === t.key
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+        {tab === 'queue' && (
+          <QueueTab
+            sortBy={sortBy}
+            filterBy={filterBy}
+            onCountChange={setQueueCount}
+          />
+        )}
+        {tab === 'failed' && <FailedImportsTab />}
+        {tab === 'missing' && <WantedTab type="missing" />}
+        {tab === 'cutoff' && <WantedTab type="cutoff" />}
+      </div>
     </div>
   );
 }
 
-function QueueTab() {
+// --- Queue Tab ---
+
+function QueueTab({
+  sortBy,
+  filterBy,
+  onCountChange,
+}: {
+  sortBy: SortKey;
+  filterBy: FilterKey;
+  onCountChange: (count: number) => void;
+}) {
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   async function fetchQueue() {
     try {
@@ -119,124 +271,220 @@ function QueueTab() {
     return () => clearInterval(i);
   }, []);
 
+  // Apply filter
+  const filtered = filterBy === 'all'
+    ? queue
+    : queue.filter((item) => item.source === filterBy);
+
+  // Apply sort
+  const sorted = [...filtered].sort((a, b) => {
+    switch (sortBy) {
+      case 'title':
+        return (a.title || '').localeCompare(b.title || '');
+      case 'progress': {
+        const pA = a.size > 0 ? (a.size - a.sizeleft) / a.size : 0;
+        const pB = b.size > 0 ? (b.size - b.sizeleft) / b.size : 0;
+        return pB - pA;
+      }
+      case 'timeleft':
+        return (a.timeleft || 'zz').localeCompare(b.timeleft || 'zz');
+      case 'size':
+        return b.size - a.size;
+      default:
+        return 0;
+    }
+  });
+
+  useEffect(() => {
+    onCountChange(sorted.length);
+  }, [sorted.length, onCountChange]);
+
   async function handleRemove(id: number, source: string) {
+    setRemoving(true);
     try {
       await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false`, { method: 'DELETE' });
       toast.success('Removed from queue');
+      setSelectedItem(null);
       fetchQueue();
     } catch { toast.error('Failed to remove'); }
+    finally { setRemoving(false); }
   }
 
-  if (loading) return <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>;
-  if (queue.length === 0) return <div className="text-center py-12 text-muted-foreground">No items in queue</div>;
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {[...Array(3)].map((_, i) => (
+          <Skeleton key={i} className="h-20 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (sorted.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <Download className="h-8 w-8 mx-auto mb-2 opacity-40" />
+        <p className="text-sm">No items in queue</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-2 mt-4">
-      {queue.map((item) => {
-        const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
-        return (
-          <Card key={`${item.source}-${item.id}`}>
-            <CardContent className="p-3 space-y-2">
+    <>
+      <div className="space-y-2">
+        {sorted.map((item) => {
+          const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
+          return (
+            <button
+              key={`${item.source}-${item.id}`}
+              onClick={() => setSelectedItem(item)}
+              className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{item.title}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <Badge variant="secondary" className={statusColor(item.status, item.trackedDownloadStatus)}>
-                      {item.trackedDownloadState || item.status}
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <Badge
+                      variant="secondary"
+                      className={`text-[10px] px-1.5 py-0 ${statusColor(item.status, item.trackedDownloadStatus)}`}
+                    >
+                      {statusLabel(item)}
                     </Badge>
-                    <Badge variant="outline" className="text-[10px]">{item.source}</Badge>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                      {item.source}
+                    </Badge>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleRemove(item.id, item.source || 'sonarr')}>
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                {item.timeleft && (
+                  <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                    {item.timeleft}
+                  </span>
+                )}
               </div>
-              <Progress value={progress} className="h-1.5" />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{progress.toFixed(0)}%</span>
-                {item.timeleft && <span>{item.timeleft} remaining</span>}
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </div>
-  );
-}
-
-function HistoryTab() {
-  const [history, setHistory] = useState<(HistoryItem & { source?: string })[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [eventFilter, setEventFilter] = useState('all');
-
-  async function fetchHistory(p: number) {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: String(p), pageSize: '20' });
-      if (eventFilter !== 'all') params.set('eventType', eventFilter);
-      const res = await fetch(`/api/activity/history?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (p === 1) setHistory(data.records || []);
-        else setHistory((prev) => [...prev, ...(data.records || [])]);
-        setTotal(data.totalRecords || 0);
-      }
-    } catch {} finally { setLoading(false); }
-  }
-
-  useEffect(() => { setPage(1); fetchHistory(1); }, [eventFilter]);
-
-  return (
-    <div className="space-y-3 mt-4">
-      <Select value={eventFilter} onValueChange={setEventFilter}>
-        <SelectTrigger className="w-[160px]"><SelectValue placeholder="Filter..." /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All Events</SelectItem>
-          <SelectItem value="grabbed">Grabbed</SelectItem>
-          <SelectItem value="downloadFolderImported">Imported</SelectItem>
-          <SelectItem value="downloadFailed">Failed</SelectItem>
-          <SelectItem value="episodeFileDeleted">Deleted</SelectItem>
-        </SelectContent>
-      </Select>
-
-      {loading && page === 1 ? (
-        <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>
-      ) : history.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">No history</div>
-      ) : (
-        <>
-          <div className="space-y-1">
-            {history.map((item, i) => (
-              <div key={`${item.source}-${item.id}-${i}`} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50">
-                <div className={`p-1.5 rounded ${statusColor(item.eventType)}`}>{eventIcon(item.eventType)}</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate">{item.sourceTitle}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                    <span className="truncate">{item.quality?.quality?.name}</span>
-                    <Badge variant="outline" className="text-[10px]">{item.source}</Badge>
-                  </div>
-                </div>
-                <span className="text-xs text-muted-foreground shrink-0">
-                  {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
+              <div className="flex items-center gap-2">
+                <Progress value={progress} className="h-1.5 flex-1" />
+                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                  {progress.toFixed(0)}%
                 </span>
               </div>
-            ))}
-          </div>
-          {history.length < total && (
-            <Button variant="ghost" className="w-full" onClick={() => { const next = page + 1; setPage(next); fetchHistory(next); }} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Load more
-            </Button>
-          )}
-        </>
-      )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Queue item detail drawer */}
+      <Drawer open={!!selectedItem} onOpenChange={(open) => { if (!open) setSelectedItem(null); }}>
+        <DrawerContent>
+          {selectedItem && (() => {
+            const progress = selectedItem.size > 0
+              ? ((selectedItem.size - selectedItem.sizeleft) / selectedItem.size) * 100
+              : 0;
+            const qualityName = selectedItem.episode
+              ? undefined
+              : selectedItem.movie?.movieFile?.quality?.quality?.name;
+
+            return (
+              <>
+                <DrawerHeader className="text-left">
+                  <Badge
+                    variant="secondary"
+                    className={`w-fit text-[10px] px-2 py-0.5 ${statusColor(selectedItem.status, selectedItem.trackedDownloadStatus)}`}
+                  >
+                    {statusLabel(selectedItem)}
+                  </Badge>
+                  <DrawerTitle className="text-sm break-all leading-snug mt-1">
+                    {selectedItem.title}
+                  </DrawerTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {qualityName && `${qualityName} · `}
+                    {formatBytes(selectedItem.size)}
+                  </p>
+                </DrawerHeader>
+
+                <div className="px-4 space-y-4 pb-6">
+                  {/* Tags row */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {selectedItem.source && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {selectedItem.source?.toUpperCase()}
+                      </Badge>
+                    )}
+                    {selectedItem.indexer && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {selectedItem.indexer}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Progress bar */}
+                  <div>
+                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                      <span>{progress.toFixed(1)}%</span>
+                      {selectedItem.timeleft && <span>{selectedItem.timeleft}</span>}
+                    </div>
+                    <Progress value={progress} className="h-2" />
+                  </div>
+
+                  {/* Remove button */}
+                  <Button
+                    variant="outline"
+                    className="w-full border-destructive text-destructive hover:bg-destructive/10"
+                    onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr')}
+                    disabled={removing}
+                  >
+                    {removing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
+                    Remove
+                  </Button>
+
+                  {/* Information section */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2">Information</h3>
+                    <div className="space-y-0 rounded-lg border divide-y">
+                      <InfoRow label="Protocol" value={selectedItem.protocol || '-'} />
+                      <InfoRow label="Client" value={selectedItem.downloadClient || '-'} />
+                      <InfoRow label="Indexer" value={selectedItem.indexer || '-'} />
+                      <InfoRow label="Size" value={formatBytes(selectedItem.size)} />
+                      <InfoRow label="Remaining" value={formatBytes(selectedItem.sizeleft)} />
+                      {selectedItem.estimatedCompletionTime && (
+                        <InfoRow
+                          label="ETA"
+                          value={formatDistanceToNow(new Date(selectedItem.estimatedCompletionTime), { addSuffix: true })}
+                        />
+                      )}
+                      {selectedItem.statusMessages?.length > 0 && (
+                        <InfoRow
+                          label="Messages"
+                          value={selectedItem.statusMessages.map((m) => m.title).join(', ')}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DrawerContent>
+      </Drawer>
+    </>
+  );
+}
+
+// --- Info row helper ---
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-right max-w-[60%] break-words">{value}</span>
     </div>
   );
 }
+
+// --- Failed Imports Tab ---
 
 function FailedImportsTab() {
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
@@ -293,77 +541,106 @@ function FailedImportsTab() {
     finally { setSubmitting(false); }
   }
 
-  if (loading) return <div className="space-y-2">{[...Array(2)].map((_, i) => <Skeleton key={i} className="h-20 rounded-lg" />)}</div>;
-  if (queue.length === 0) return <div className="text-center py-12 text-muted-foreground"><FileWarning className="h-8 w-8 mx-auto mb-2 opacity-50" /><p>No failed imports</p></div>;
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {[...Array(2)].map((_, i) => (
+          <Skeleton key={i} className="h-20 rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  if (queue.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground">
+        <FileWarning className="h-8 w-8 mx-auto mb-2 opacity-40" />
+        <p className="text-sm">No failed imports</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-2 mt-4">
+    <div className="space-y-2">
       {queue.map((item) => (
-        <Card key={`${item.source}-${item.id}`}>
-          <CardContent className="p-3 space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium truncate">{item.title}</p>
-                <Badge variant="secondary" className="bg-red-500/10 text-red-500 mt-1">
-                  <AlertTriangle className="h-3 w-3 mr-1" /> Import Failed
-                </Badge>
-                {item.statusMessages?.map((msg, i) => (
-                  <p key={i} className="text-xs text-muted-foreground mt-1 break-words">{msg.title}: {msg.messages?.join(', ')}</p>
-                ))}
-              </div>
-              <Button size="sm" className="shrink-0" onClick={() => openManualImport(item)}>
-                <Upload className="mr-2 h-3.5 w-3.5" /> Manual Import
-              </Button>
+        <div key={`${item.source}-${item.id}`} className="rounded-xl bg-muted/30 p-3 space-y-2">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium truncate">{item.title}</p>
+              <Badge
+                variant="secondary"
+                className="bg-red-500/10 text-red-500 border-red-500/20 mt-1 text-[10px]"
+              >
+                <AlertTriangle className="h-3 w-3 mr-1" /> Import Failed
+              </Badge>
+              {item.statusMessages?.map((msg, i) => (
+                <p key={i} className="text-xs text-muted-foreground mt-1 break-words">
+                  {msg.title}: {msg.messages?.join(', ')}
+                </p>
+              ))}
             </div>
-          </CardContent>
-        </Card>
+            <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => openManualImport(item)}>
+              <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
+            </Button>
+          </div>
+        </div>
       ))}
 
-      <Dialog open={!!importDialog} onOpenChange={() => setImportDialog(null)}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Manual Import</DialogTitle>
-          </DialogHeader>
-          {importLoading ? (
-            <div className="space-y-2 py-4">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
-          ) : (
-            <div className="max-h-80 overflow-y-auto space-y-2">
-              {importDialog?.files.map((f, i) => (
-                <div key={i} className="p-2 rounded-lg bg-muted/50 text-sm space-y-1">
-                  <p className="font-medium truncate">{f.name || f.relativePath}</p>
-                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    <span>{f.quality?.quality?.name}</span>
-                    {f.series && <span>{f.series.title}</span>}
-                    {f.movie && <span>{f.movie.title}</span>}
-                    {f.episodes?.length ? <span>Ep {f.episodes.map(e => e.episodeNumber).join(', ')}</span> : null}
+      <Drawer open={!!importDialog} onOpenChange={(open) => !open && setImportDialog(null)}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Manual Import</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-4">
+            {importLoading ? (
+              <div className="space-y-2 py-4">
+                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12" />)}
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto space-y-2">
+                {importDialog?.files.map((f, i) => (
+                  <div key={i} className="p-3 rounded-lg bg-muted/50 text-sm space-y-1">
+                    <p className="font-medium truncate">{f.name || f.relativePath}</p>
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>{f.quality?.quality?.name}</span>
+                      {f.series && <span>{f.series.title}</span>}
+                      {f.movie && <span>{f.movie.title}</span>}
+                      {f.episodes?.length ? <span>Ep {f.episodes.map(e => e.episodeNumber).join(', ')}</span> : null}
+                    </div>
+                    {f.rejections?.length > 0 && (
+                      <div className="text-xs text-destructive">
+                        {f.rejections.map((r, ri) => <p key={ri}>{r.reason}</p>)}
+                      </div>
+                    )}
                   </div>
-                  {f.rejections?.length > 0 && (
-                    <div className="text-xs text-destructive">{f.rejections.map((r, ri) => <p key={ri}>{r.reason}</p>)}</div>
-                  )}
-                </div>
-              ))}
-              {importDialog?.files.length === 0 && <p className="text-center py-4 text-muted-foreground">No files detected</p>}
+                ))}
+                {importDialog?.files.length === 0 && (
+                  <p className="text-center py-4 text-muted-foreground">No files detected</p>
+                )}
+              </div>
+            )}
+            <div className="flex flex-col gap-2 mt-4">
+              <Button onClick={submitImport} disabled={submitting || !importDialog?.files.length} className="w-full">
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Import
+              </Button>
+              <DrawerClose asChild>
+                <Button variant="ghost" className="w-full">Cancel</Button>
+              </DrawerClose>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setImportDialog(null)}>Cancel</Button>
-            <Button onClick={submitImport} disabled={submitting || !importDialog?.files.length}>
-              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Import
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// --- Wanted Tab ---
+
 interface WantedRecord {
   id: number;
   source: 'sonarr' | 'radarr';
   mediaType: 'episode' | 'movie';
-  // Sonarr episode fields
   title?: string;
   seriesId?: number;
   seasonNumber?: number;
@@ -371,7 +648,6 @@ interface WantedRecord {
   airDateUtc?: string;
   airDate?: string;
   series?: { id: number; title: string };
-  // Radarr movie fields
   year?: number;
   added?: string;
   monitored?: boolean;
@@ -423,21 +699,27 @@ function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
   }
 
   if (loading && page === 1) {
-    return <div className="space-y-2 mt-4">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}</div>;
+    return (
+      <div className="space-y-2">
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} className="h-14 rounded-xl" />
+        ))}
+      </div>
+    );
   }
 
   if (records.length === 0) {
     return (
-      <div className="text-center py-12 text-muted-foreground">
+      <div className="text-center py-16 text-muted-foreground">
         {type === 'missing' ? (
           <>
-            <Download className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No missing items</p>
+            <Download className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No missing items</p>
           </>
         ) : (
           <>
-            <Scissors className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No cutoff unmet items</p>
+            <Scissors className="h-8 w-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No cutoff unmet items</p>
           </>
         )}
       </div>
@@ -445,7 +727,7 @@ function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
   }
 
   return (
-    <div className="space-y-1 mt-4">
+    <div className="space-y-1">
       {records.map((record) => {
         const key = `${record.source}-${record.id}`;
         const isEpisode = record.mediaType === 'episode';
@@ -455,14 +737,14 @@ function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
         const dateStr = isEpisode ? record.airDateUtc || record.airDate : record.added;
 
         return (
-          <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50">
+          <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
             <div className="p-1.5 rounded bg-muted">
               {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm truncate">{displayTitle}</p>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline" className="text-[10px]">{record.source}</Badge>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
                 {dateStr && (
                   <span>{formatDistanceToNow(new Date(dateStr), { addSuffix: true })}</span>
                 )}
@@ -485,7 +767,12 @@ function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
         );
       })}
       {records.length < total && (
-        <Button variant="ghost" className="w-full" onClick={() => { const next = page + 1; setPage(next); fetchWanted(next); }} disabled={loading}>
+        <Button
+          variant="ghost"
+          className="w-full"
+          onClick={() => { const next = page + 1; setPage(next); fetchWanted(next); }}
+          disabled={loading}
+        >
           {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Load more
         </Button>

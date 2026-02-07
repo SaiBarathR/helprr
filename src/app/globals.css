@@ -142,3 +142,124 @@ html {
     scrollbar-width: none;
   }
 }
+
+/* Status colors */
+.status-downloaded { color: oklch(0.72 0.17 152); }
+.status-missing { color: oklch(0.70 0.19 22); }
+.status-downloading { color: oklch(0.62 0.21 265); }
+.status-warning { color: oklch(0.75 0.18 65); }
+.status-upcoming { color: oklch(0.65 0.22 310); }
+
+/* Native-style key-value rows (borderless) */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid oklch(1 0 0 / 6%);
+  font-size: 14px;
+}
+.info-row:last-child {
+  border-bottom: none;
+}
+.info-row-label {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  flex-shrink: 0;
+  margin-right: 16px;
+}
+.info-row-value {
+  text-align: right;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* iOS-style grouped section */
+.grouped-section {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.grouped-section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  padding: 8px 16px 6px;
+  letter-spacing: 0.02em;
+}
+.grouped-section-content {
+  background: var(--card);
+  border-radius: 12px;
+}
+.grouped-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  min-height: 44px;
+  border-bottom: 1px solid oklch(1 0 0 / 6%);
+}
+.grouped-row:last-child {
+  border-bottom: none;
+}
+
+/* Pill button style (used for Automatic / Interactive) */
+.pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border-radius: 9999px;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  min-height: 44px;
+}
+.pill-btn:active {
+  opacity: 0.7;
+  transform: scale(0.97);
+}
+
+/* Page transitions */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root) {
+  animation: fade-out 0.15s ease-out;
+}
+::view-transition-new(root) {
+  animation: fade-in 0.15s ease-in;
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Touch target helper - apply to interactive nav/action elements */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Active press feedback */
+.press-feedback:active {
+  opacity: 0.7;
+  transform: scale(0.98);
+  transition: all 0.1s ease;
+}

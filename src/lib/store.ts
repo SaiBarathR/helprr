@@ -36,7 +36,7 @@ export const useUIStore = create<UIState>()(
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       mediaView: 'grid',
       setMediaView: (view) => set({ mediaView: view }),
-      calendarView: 'month',
+      calendarView: 'agenda',
       setCalendarView: (view) => set({ calendarView: view }),
       // Movies
       moviesSort: 'title',

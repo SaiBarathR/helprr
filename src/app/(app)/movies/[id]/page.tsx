@@ -1,23 +1,45 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
+import { PageHeader } from '@/components/layout/page-header';
+import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
-  Search, RefreshCw, Trash2, Eye, EyeOff, ArrowLeft, HardDrive, Film,
-  Loader2, Star, Pencil, FolderSync, Info, Calendar, Tag, List,
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerClose,
+} from '@/components/ui/drawer';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Bookmark,
+  BookmarkCheck,
+  MoreHorizontal,
+  Search,
+  RefreshCw,
+  Trash2,
+  Pencil,
+  Loader2,
+  Star,
+  Film,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
-import { format } from 'date-fns';
-import type { RadarrMovie, QualityProfile, RootFolder, Tag as TagType } from '@/types';
+import { format, formatDistanceToNow } from 'date-fns';
+import type { RadarrMovie, QualityProfile, RootFolder, Tag, HistoryItem } from '@/types';
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -26,21 +48,16 @@ export default function MovieDetailPage() {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
-  const [showEdit, setShowEdit] = useState(false);
-  const [showInteractiveSearch, setShowInteractiveSearch] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
+  const [overviewExpanded, setOverviewExpanded] = useState(false);
+  const [interactiveSearch, setInteractiveSearch] = useState(false);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
-  // Reference data for edit dialog
+  // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
-  const [tags, setTags] = useState<TagType[]>([]);
-
-  // Edit form state
-  const [editQualityProfileId, setEditQualityProfileId] = useState<number>(0);
-  const [editMinAvailability, setEditMinAvailability] = useState('');
-  const [editTags, setEditTags] = useState<number[]>([]);
-  const [editRootFolder, setEditRootFolder] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [tags, setTags] = useState<Tag[]>([]);
 
   useEffect(() => {
     Promise.all([
@@ -59,46 +76,24 @@ export default function MovieDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  function openEditDialog() {
-    if (!movie) return;
-    setEditQualityProfileId(movie.qualityProfileId);
-    setEditMinAvailability(movie.minimumAvailability);
-    setEditTags([...movie.tags]);
-    setEditRootFolder(movie.path ? movie.path.split('/').slice(0, -1).join('/') : '');
-    setShowEdit(true);
-  }
-
-  async function handleSaveEdit() {
-    if (!movie) return;
-    setSaving(true);
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
     try {
-      const updatedMovie = {
-        ...movie,
-        qualityProfileId: editQualityProfileId,
-        minimumAvailability: editMinAvailability,
-        tags: editTags,
-      };
-      // Update root folder path if changed
-      if (editRootFolder && movie.path) {
-        const movieFolder = movie.path.split('/').pop();
-        updatedMovie.path = `${editRootFolder}/${movieFolder}`;
-      }
-      const res = await fetch(`/api/radarr/${movie.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedMovie),
-      });
+      const res = await fetch(`/api/activity/history?movieId=${id}&pageSize=50`);
       if (res.ok) {
-        const updated = await res.json();
-        setMovie(updated);
-        setShowEdit(false);
-        toast.success('Movie updated');
-      } else {
-        toast.error('Failed to update movie');
+        const data = await res.json();
+        setHistory(data.records || []);
       }
-    } catch { toast.error('Failed to update movie'); }
-    finally { setSaving(false); }
-  }
+    } catch {
+      // History is non-critical
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
 
   async function handleSearch() {
     if (!movie) return;
@@ -125,20 +120,6 @@ export default function MovieDetailPage() {
       });
       toast.success('Refresh started');
     } catch { toast.error('Refresh failed'); }
-    finally { setActionLoading(''); }
-  }
-
-  async function handleRename() {
-    if (!movie) return;
-    setActionLoading('rename');
-    try {
-      await fetch('/api/radarr/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'RenameFiles', movieId: movie.id }),
-      });
-      toast.success('Rename started');
-    } catch { toast.error('Rename failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -179,18 +160,23 @@ export default function MovieDetailPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
-  function toggleTag(tagId: number) {
-    setEditTags((prev) =>
-      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
-    );
-  }
-
   if (loading) {
     return (
       <div className="space-y-4">
-        <Skeleton className="h-48 w-full rounded-lg" />
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-11 w-full" />
+        <div className="flex gap-4 px-4">
+          <Skeleton className="h-[180px] w-[120px] rounded-lg shrink-0" />
+          <div className="flex-1 space-y-2 pt-2">
+            <Skeleton className="h-5 w-20" />
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-4 w-1/2" />
+          </div>
+        </div>
+        <div className="px-4 space-y-3">
+          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-full" />
+        </div>
       </div>
     );
   }
@@ -199,274 +185,425 @@ export default function MovieDetailPage() {
     return <div className="text-center py-12 text-muted-foreground">Movie not found</div>;
   }
 
-  const fanart = getImageUrl(movie.images, 'fanart');
+  const poster = getImageUrl(movie.images, 'poster');
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
+  const rootFolder = movie.path ? movie.path.split('/').slice(0, -1).join('/') : '';
+
+  // Extract media info from movie file if available
+  const mediaInfo = movie.movieFile as (RadarrMovie['movieFile'] & {
+    mediaInfo?: {
+      videoCodec?: string;
+      audioCodec?: string;
+      audioChannels?: number;
+      subtitles?: string;
+      videoDynamicRange?: string;
+      resolution?: string;
+    };
+  }) | undefined;
+
+  const metadataRows: { label: string; value: string }[] = [];
+
+  metadataRows.push({
+    label: 'STATUS',
+    value: movie.status.charAt(0).toUpperCase() + movie.status.slice(1),
+  });
+
+  if (movie.studio) {
+    metadataRows.push({ label: 'STUDIO', value: movie.studio });
+  }
+
+  if (movie.genres?.length) {
+    metadataRows.push({ label: 'GENRE', value: movie.genres.join(', ') });
+  }
+
+  if (mediaInfo?.mediaInfo?.videoCodec) {
+    const vidParts = [mediaInfo.mediaInfo.videoCodec];
+    if (mediaInfo.mediaInfo.resolution) vidParts.push(mediaInfo.mediaInfo.resolution);
+    if (mediaInfo.mediaInfo.videoDynamicRange) vidParts.push(mediaInfo.mediaInfo.videoDynamicRange);
+    metadataRows.push({ label: 'VIDEO', value: vidParts.join(' - ') });
+  }
+
+  if (mediaInfo?.mediaInfo?.audioCodec) {
+    const audioParts = [mediaInfo.mediaInfo.audioCodec];
+    if (mediaInfo.mediaInfo.audioChannels) audioParts.push(`${mediaInfo.mediaInfo.audioChannels}ch`);
+    metadataRows.push({ label: 'AUDIO', value: audioParts.join(' ') });
+  }
+
+  if (mediaInfo?.mediaInfo?.subtitles) {
+    metadataRows.push({ label: 'SUBTITLES', value: mediaInfo.mediaInfo.subtitles });
+  }
+
+  const infoRows: { label: string; value: string }[] = [
+    { label: 'Quality Profile', value: qualityProfile?.name || 'Unknown' },
+    {
+      label: 'Min. Availability',
+      value: movie.minimumAvailability.charAt(0).toUpperCase() + movie.minimumAvailability.slice(1),
+    },
+    ...(movieTags.length > 0
+      ? [{ label: 'Tags', value: movieTags.map((t) => t.label).join(', ') }]
+      : []),
+    ...(rootFolder ? [{ label: 'Root Folder', value: rootFolder }] : []),
+    ...(movie.inCinemas
+      ? [{ label: 'In Cinemas', value: format(new Date(movie.inCinemas), 'MMM d, yyyy') }]
+      : []),
+    ...(movie.digitalRelease
+      ? [{ label: 'Digital Release', value: format(new Date(movie.digitalRelease), 'MMM d, yyyy') }]
+      : []),
+    ...(movie.physicalRelease
+      ? [{ label: 'Physical Release', value: format(new Date(movie.physicalRelease), 'MMM d, yyyy') }]
+      : []),
+    {
+      label: 'Added',
+      value: movie.added ? format(new Date(movie.added), 'MMM d, yyyy') : 'Unknown',
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <Button variant="ghost" size="sm" onClick={() => router.back()}>
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back
-      </Button>
+    <>
+      {/* Header */}
+      <PageHeader
+        title={movie.title}
+        rightContent={
+          <>
+            {/* Bookmark / Monitored toggle */}
+            <button
+              onClick={handleToggleMonitored}
+              disabled={actionLoading === 'monitor'}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+            >
+              {actionLoading === 'monitor' ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : movie.monitored ? (
+                <BookmarkCheck className="h-5 w-5 fill-primary" />
+              ) : (
+                <Bookmark className="h-5 w-5" />
+              )}
+            </button>
 
-      {/* Fanart Banner */}
-      {fanart && (
-        <div className="relative h-48 md:h-64 rounded-lg overflow-hidden">
-          <img src={fanart} alt="" className="absolute inset-0 w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-        </div>
-      )}
+            {/* 3-dot menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                  <MoreHorizontal className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={handleRefresh}
+                  disabled={!!actionLoading}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={handleSearch}
+                  disabled={!!actionLoading}
+                >
+                  <Search className="h-4 w-4" />
+                  Automatic Search
+                </DropdownMenuItem>
+                {movie.imdbId && (
+                  <DropdownMenuItem
+                    onClick={() => window.open(`https://www.imdb.com/title/${movie.imdbId}`, '_blank')}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open in IMDb
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onClick={() => router.push(`/movies/${movie.id}/edit`)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setShowDelete(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
-      {/* Title & Meta */}
-      <div>
-        <h1 className="text-2xl font-bold">{movie.title}</h1>
-        <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-muted-foreground">
-          <span>{movie.year}</span>
-          {movie.runtime > 0 && <span>{movie.runtime} min</span>}
-          {movie.certification && <Badge variant="outline">{movie.certification}</Badge>}
-          {movie.studio && <span>{movie.studio}</span>}
-        </div>
-        <div className="flex flex-wrap gap-1 mt-2">
-          {movie.genres?.map((g) => (
-            <Badge key={g} variant="secondary" className="text-xs">{g}</Badge>
-          ))}
-        </div>
-      </div>
-
-      {/* Ratings */}
-      {(movie.ratings?.imdb || movie.ratings?.tmdb) && (
-        <div className="flex items-center gap-4">
-          {movie.ratings.imdb && movie.ratings.imdb.value > 0 && (
-            <div className="flex items-center gap-1.5 text-sm">
-              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-              <span className="font-medium">{movie.ratings.imdb.value.toFixed(1)}</span>
-              <span className="text-muted-foreground text-xs">IMDB ({movie.ratings.imdb.votes.toLocaleString()})</span>
-            </div>
-          )}
-          {movie.ratings.tmdb && movie.ratings.tmdb.value > 0 && (
-            <div className="flex items-center gap-1.5 text-sm">
-              <Star className="h-4 w-4 text-green-500 fill-green-500" />
-              <span className="font-medium">{movie.ratings.tmdb.value.toFixed(1)}</span>
-              <span className="text-muted-foreground text-xs">TMDB ({movie.ratings.tmdb.votes.toLocaleString()})</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={handleSearch} disabled={!!actionLoading}>
-          {actionLoading === 'search' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-          Search
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => setShowInteractiveSearch(true)}>
-          <List className="mr-2 h-4 w-4" /> Interactive
-        </Button>
-        <Button size="sm" variant="secondary" onClick={handleRefresh} disabled={!!actionLoading}>
-          {actionLoading === 'refresh' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          Refresh
-        </Button>
-        <Button size="sm" variant="secondary" onClick={handleRename} disabled={!!actionLoading}>
-          {actionLoading === 'rename' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FolderSync className="mr-2 h-4 w-4" />}
-          Rename
-        </Button>
-        <Button size="sm" variant="secondary" onClick={handleToggleMonitored} disabled={!!actionLoading}>
-          {movie.monitored ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
-          {movie.monitored ? 'Unmonitor' : 'Monitor'}
-        </Button>
-        <Button size="sm" variant="secondary" onClick={openEditDialog}>
-          <Pencil className="mr-2 h-4 w-4" /> Edit
-        </Button>
-        <Button size="sm" variant="destructive" onClick={() => setShowDelete(true)}>
-          <Trash2 className="mr-2 h-4 w-4" /> Delete
-        </Button>
-      </div>
-
-      {/* Overview */}
-      {movie.overview && (
-        <Card>
-          <CardContent className="pt-4">
-            <p className="text-sm text-muted-foreground leading-relaxed">{movie.overview}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Details Card */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Info className="h-4 w-4" /> Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Status</span>
-            <Badge variant={movie.status === 'released' ? 'default' : 'secondary'}>{movie.status}</Badge>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Quality Profile</span>
-            <span>{qualityProfile?.name || 'Unknown'}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Min. Availability</span>
-            <span className="capitalize">{movie.minimumAvailability}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Path</span>
-            <span className="text-xs truncate max-w-[200px]">{movie.path}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Size on Disk</span>
-            <span>{formatBytes(movie.sizeOnDisk)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Added</span>
-            <span>{movie.added ? format(new Date(movie.added), 'MMM d, yyyy') : 'Unknown'}</span>
-          </div>
-          {movieTags.length > 0 && (
-            <div className="flex justify-between items-start">
-              <span className="text-muted-foreground">Tags</span>
-              <div className="flex flex-wrap gap-1 justify-end">
-                {movieTags.map((t) => (
-                  <Badge key={t.id} variant="outline" className="text-[10px]">{t.label}</Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* File Info */}
-      {movie.hasFile && movie.movieFile && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <HardDrive className="h-4 w-4" /> File Info
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Quality</span>
-              <span>{movie.movieFile.quality?.quality?.name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Size</span>
-              <span>{formatBytes(movie.movieFile.size)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Path</span>
-              <span className="text-xs truncate max-w-[200px]">{movie.movieFile.relativePath}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!movie.hasFile && (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            <Film className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No file on disk</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Interactive Search Dialog */}
-      {movie && (
-        <InteractiveSearchDialog
-          open={showInteractiveSearch}
-          onOpenChange={setShowInteractiveSearch}
-          title={movie.title}
-          service="radarr"
-          searchParams={{ movieId: movie.id }}
-        />
-      )}
-
-      {/* Edit Dialog */}
-      <Dialog open={showEdit} onOpenChange={setShowEdit}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit {movie.title}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Quality Profile</Label>
-              <Select value={String(editQualityProfileId)} onValueChange={(v) => setEditQualityProfileId(Number(v))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {qualityProfiles.map((qp) => (
-                    <SelectItem key={qp.id} value={String(qp.id)}>{qp.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Minimum Availability</Label>
-              <Select value={editMinAvailability} onValueChange={setEditMinAvailability}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="announced">Announced</SelectItem>
-                  <SelectItem value="inCinemas">In Cinemas</SelectItem>
-                  <SelectItem value="released">Released</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {rootFolders.length > 0 && (
-              <div className="space-y-2">
-                <Label>Root Folder</Label>
-                <Select value={editRootFolder} onValueChange={setEditRootFolder}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {rootFolders.map((rf) => (
-                      <SelectItem key={rf.id} value={rf.path}>{rf.path}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {tags.length > 0 && (
-              <div className="space-y-2">
-                <Label>Tags</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((t) => (
-                    <Badge
-                      key={t.id}
-                      variant={editTags.includes(t.id) ? 'default' : 'outline'}
-                      className="cursor-pointer"
-                      onClick={() => toggleTag(t.id)}
-                    >
-                      {t.label}
-                    </Badge>
-                  ))}
+      <div className="space-y-6 px-0">
+        {/* Hero: Poster + Title block */}
+        <div className="flex gap-4 px-4">
+          {/* Poster */}
+          <div className="w-[120px] shrink-0">
+            <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+              {poster ? (
+                <img
+                  src={poster}
+                  alt={movie.title}
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                  <Film className="h-10 w-10" />
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Title area */}
+          <div className="flex-1 min-w-0 pt-1">
+            {/* Status badge */}
+            <Badge
+              className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
+                movie.hasFile
+                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                  : 'bg-red-500/20 text-red-400 border-red-500/30'
+              }`}
+              variant="outline"
+            >
+              {movie.hasFile ? 'Downloaded' : 'Missing'}
+            </Badge>
+
+            {/* Title */}
+            <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
+
+            {/* Year, runtime, certification */}
+            <p className="text-sm text-muted-foreground mt-1">
+              {[
+                movie.year,
+                movie.runtime > 0 ? `${movie.runtime} min` : null,
+                movie.certification || null,
+              ]
+                .filter(Boolean)
+                .join(' \u00B7 ')}
+            </p>
+
+            {/* Ratings row */}
+            {(movie.ratings?.imdb || movie.ratings?.tmdb) && (
+              <div className="flex items-center gap-3 mt-2">
+                {movie.ratings.imdb && movie.ratings.imdb.value > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+                    <span className="text-sm font-semibold">{movie.ratings.imdb.value.toFixed(1)}</span>
+                    <span className="text-[10px] text-muted-foreground">IMDb</span>
+                  </div>
+                )}
+                {movie.ratings.tmdb && movie.ratings.tmdb.value > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Star className="h-3.5 w-3.5 text-blue-500 fill-blue-500" />
+                    <span className="text-sm font-semibold">{(movie.ratings.tmdb.value * 10).toFixed(0)}%</span>
+                    <span className="text-[10px] text-muted-foreground">TMDb</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowEdit(false)}>Cancel</Button>
-            <Button onClick={handleSaveEdit} disabled={saving}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
 
-      {/* Delete Dialog */}
-      <Dialog open={showDelete} onOpenChange={setShowDelete}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {movie.title}?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">This will remove the movie from Radarr and delete all files from disk.</p>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setShowDelete(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete
+        {/* Metadata rows - borderless key-value */}
+        {metadataRows.length > 0 && (
+          <div className="px-4">
+            {metadataRows.map((row) => (
+              <div
+                key={row.label}
+                className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+              >
+                <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase shrink-0">
+                  {row.label}
+                </span>
+                <span className="text-sm text-right ml-4 truncate">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Overview - collapsible */}
+        {movie.overview && (
+          <div className="px-4">
+            <div className="relative">
+              <p
+                className={`text-sm text-muted-foreground leading-relaxed ${
+                  !overviewExpanded ? 'line-clamp-3' : ''
+                }`}
+              >
+                {movie.overview}
+              </p>
+              <button
+                onClick={() => setOverviewExpanded(!overviewExpanded)}
+                className="text-sm text-primary font-medium mt-1"
+              >
+                {overviewExpanded ? 'less' : 'more...'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Pill buttons */}
+        <div className="flex gap-3 px-4">
+          <Button
+            onClick={handleSearch}
+            disabled={!!actionLoading}
+            className="flex-1 rounded-full h-10"
+            variant="secondary"
+          >
+            {actionLoading === 'search' ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Search className="h-4 w-4 mr-2" />
+            )}
+            Automatic
+          </Button>
+          <Button
+            onClick={() => setInteractiveSearch(true)}
+            className="flex-1 rounded-full h-10"
+            variant="secondary"
+          >
+            <Search className="h-4 w-4 mr-2" />
+            Interactive
+          </Button>
+        </div>
+
+        {/* Information section */}
+        <div className="px-4">
+          <h2 className="text-base font-semibold mb-2">Information</h2>
+          <div>
+            {infoRows.map((row) => (
+              <div
+                key={row.label}
+                className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+              >
+                <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
+                <span className="text-sm text-right ml-4 truncate max-w-[60%]">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* File section */}
+        {movie.hasFile && movie.movieFile && (
+          <div className="px-4 pb-8">
+            <h2 className="text-base font-semibold mb-2">File</h2>
+            <div>
+              <div className="flex justify-between items-start py-2.5 border-b border-border/40">
+                <span className="text-sm text-muted-foreground shrink-0">Filename</span>
+                <span className="text-sm text-right ml-4 truncate max-w-[60%]">
+                  {movie.movieFile.relativePath}
+                </span>
+              </div>
+              <div className="flex justify-between items-start py-2.5 border-b border-border/40">
+                <span className="text-sm text-muted-foreground shrink-0">Quality</span>
+                <span className="text-sm text-right ml-4">
+                  {movie.movieFile.quality?.quality?.name}
+                </span>
+              </div>
+              <div className="flex justify-between items-start py-2.5">
+                <span className="text-sm text-muted-foreground shrink-0">Size</span>
+                <span className="text-sm text-right ml-4">
+                  {formatBytes(movie.movieFile.size)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!movie.hasFile && (
+          <div className="px-4">
+            <div className="py-8 text-center text-muted-foreground">
+              <Film className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">No file on disk</p>
+            </div>
+          </div>
+        )}
+
+        {/* History section */}
+        <div className="px-4 pb-8">
+          <h2 className="text-base font-semibold mb-2">History</h2>
+          {historyLoading ? (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : history.length === 0 ? (
+            <div className="rounded-lg border px-4 py-6 text-center text-sm text-muted-foreground">
+              No history available
+            </div>
+          ) : (
+            <div className="rounded-lg border overflow-hidden divide-y">
+              {history.map((item) => (
+                <div
+                  key={item.id}
+                  className="px-4 py-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge
+                      variant={
+                        item.eventType === 'grabbed' ? 'secondary' :
+                        item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported' ? 'default' :
+                        item.eventType === 'downloadFailed' || item.eventType === 'movieFileDeleted' ? 'destructive' :
+                        'outline'
+                      }
+                      className="text-[10px]"
+                    >
+                      {item.eventType === 'grabbed' ? 'GRABBED' :
+                       item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported' ? 'IMPORTED' :
+                       item.eventType === 'downloadFailed' ? 'FAILED' :
+                       item.eventType === 'movieFileDeleted' ? 'DELETED' :
+                       item.eventType === 'movieFileRenamed' ? 'RENAMED' :
+                       item.eventType.toUpperCase()}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1 truncate">
+                    {item.sourceTitle}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Interactive Search */}
+      <InteractiveSearchDialog
+        open={interactiveSearch}
+        onOpenChange={setInteractiveSearch}
+        title={movie.title}
+        service="radarr"
+        searchParams={{ movieId: movie.id }}
+      />
+
+      {/* Delete Drawer (bottom sheet) */}
+      <Drawer open={showDelete} onOpenChange={setShowDelete}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Delete {movie.title}?</DrawerTitle>
+            <DrawerDescription>
+              This will remove the movie from Radarr and delete all files from disk. This action
+              cannot be undone.
+            </DrawerDescription>
+          </DrawerHeader>
+          <DrawerFooter>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="w-full"
+            >
+              {deleting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Delete Movie
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+            <DrawerClose asChild>
+              <Button variant="outline" className="w-full">
+                Cancel
+              </Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    </>
   );
 }

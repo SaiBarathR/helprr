@@ -2,15 +2,50 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { MediaCard } from '@/components/media/media-card';
-import { MediaGrid } from '@/components/media/media-grid';
 import { SearchBar } from '@/components/media/search-bar';
-import { Plus, LayoutGrid, List, ArrowUp, ArrowDown } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { SonarrSeries } from '@/types';
+
+const filterOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'monitored', label: 'Monitored' },
+  { value: 'unmonitored', label: 'Unmonitored' },
+  { value: 'continuing', label: 'Continuing' },
+  { value: 'ended', label: 'Ended' },
+  { value: 'missing', label: 'Missing' },
+  { value: 'upcoming', label: 'Upcoming' },
+] as const;
+
+const sortOptions = [
+  { value: 'title', label: 'Title' },
+  { value: 'year', label: 'Year' },
+  { value: 'dateAdded', label: 'Added' },
+  { value: 'rating', label: 'Rating' },
+  { value: 'sizeOnDisk', label: 'Size on Disk' },
+  { value: 'nextAiring', label: 'Next Airing' },
+  { value: 'previousAiring', label: 'Previous Airing' },
+  { value: 'network', label: 'Network' },
+  { value: 'runtime', label: 'Runtime' },
+  { value: 'qualityProfile', label: 'Quality Profile' },
+  { value: 'monitored', label: 'Monitored/Status' },
+  { value: 'originalLanguage', label: 'Original Language' },
+  { value: 'seasons', label: 'Seasons' },
+  { value: 'episodes', label: 'Episodes' },
+  { value: 'episodeCount', label: 'Episode Count' },
+  { value: 'path', label: 'Path' },
+  { value: 'tags', label: 'Tags' },
+] as const;
 
 export default function SeriesPage() {
   const [series, setSeries] = useState<SonarrSeries[]>([]);
@@ -18,15 +53,13 @@ export default function SeriesPage() {
   const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const { 
-    mediaView, 
-    setMediaView, 
-    seriesSort: sort, 
-    setSeriesSort: setSort, 
+  const {
+    seriesSort: sort,
+    setSeriesSort: setSort,
     seriesSortDirection: sortDir,
     setSeriesSortDirection: setSortDir,
-    seriesFilter: filter, 
-    setSeriesFilter: setFilter 
+    seriesFilter: filter,
+    setSeriesFilter: setFilter,
   } = useUIStore();
 
   useEffect(() => {
@@ -53,8 +86,10 @@ export default function SeriesPage() {
 
     // Filters
     if (filter === 'monitored') list = list.filter((s) => s.monitored);
+    else if (filter === 'unmonitored') list = list.filter((s) => !s.monitored);
     else if (filter === 'continuing') list = list.filter((s) => s.status === 'continuing');
     else if (filter === 'ended') list = list.filter((s) => s.status === 'ended');
+    else if (filter === 'missing') list = list.filter((s) => s.monitored && s.statistics.episodeCount < s.statistics.totalEpisodeCount);
     else if (filter === 'upcoming') list = list.filter((s) => s.status === 'upcoming');
 
     // Sorting
@@ -125,81 +160,106 @@ export default function SeriesPage() {
     return list;
   }, [series, search, sort, sortDir, filter, qualityProfiles, tags]);
 
+  const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
+  const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">TV Series</h1>
-        <Button asChild>
-          <Link href="/series/add"><Plus className="mr-2 h-4 w-4" /> Add Series</Link>
-        </Button>
+    <div className="space-y-3">
+      {/* Top action bar */}
+      <div className="flex items-center gap-2">
+        {/* Filter dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+              aria-label={`Filter: ${activeFilterLabel}`}
+            >
+              <Filter className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuLabel>Filter</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {filterOptions.map((opt) => (
+              <DropdownMenuCheckboxItem
+                key={opt.value}
+                checked={filter === opt.value}
+                onCheckedChange={() => setFilter(opt.value)}
+              >
+                {opt.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Sort dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+              aria-label={`Sort: ${activeSortLabel} ${sortDir === 'asc' ? 'Ascending' : 'Descending'}`}
+            >
+              <ArrowUpDown className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {sortOptions.map((opt) => (
+              <DropdownMenuCheckboxItem
+                key={opt.value}
+                checked={sort === opt.value}
+                onCheckedChange={() => setSort(opt.value)}
+              >
+                {opt.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={sortDir === 'asc'}
+              onCheckedChange={() => setSortDir('asc')}
+            >
+              Ascending
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={sortDir === 'desc'}
+              onCheckedChange={() => setSortDir('desc')}
+            >
+              Descending
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="flex-1" />
+
+        {/* Add series button */}
+        <Link
+          href="/series/add"
+          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+          aria-label="Add Series"
+        >
+          <Plus className="h-5 w-5" />
+        </Link>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="flex-1">
-          <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." />
-        </div>
-        <div className="flex gap-2">
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="title">Title</SelectItem>
-              <SelectItem value="year">Year</SelectItem>
-              <SelectItem value="dateAdded">Added</SelectItem>
-              <SelectItem value="monitored">Monitored/Status</SelectItem>
-              <SelectItem value="network">Network</SelectItem>
-              <SelectItem value="qualityProfile">Quality Profile</SelectItem>
-              <SelectItem value="originalLanguage">Original Language</SelectItem>
-              <SelectItem value="nextAiring">Next Airing</SelectItem>
-              <SelectItem value="previousAiring">Previous Airing</SelectItem>
-              <SelectItem value="seasons">Seasons</SelectItem>
-              <SelectItem value="episodes">Episodes</SelectItem>
-              <SelectItem value="episodeCount">Episode Count</SelectItem>
-              <SelectItem value="path">Path</SelectItem>
-              <SelectItem value="sizeOnDisk">Size on Disk</SelectItem>
-              <SelectItem value="runtime">Runtime</SelectItem>
-              <SelectItem value="rating">Rating</SelectItem>
-              <SelectItem value="tags">Tags</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-            title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
-          >
-            {sortDir === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-          </Button>
-        </div>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="monitored">Monitored</SelectItem>
-            <SelectItem value="continuing">Continuing</SelectItem>
-            <SelectItem value="ended">Ended</SelectItem>
-            <SelectItem value="upcoming">Upcoming</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex gap-1">
-          <Button variant={mediaView === 'grid' ? 'secondary' : 'ghost'} size="icon" onClick={() => setMediaView('grid')}>
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button variant={mediaView === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setMediaView('list')}>
-            <List className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      {/* Search bar */}
+      <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." />
 
+      {/* Content */}
       {loading ? (
-        <MediaGrid>
-          {[...Array(12)].map((_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-lg" />)}
-        </MediaGrid>
+        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          {[...Array(12)].map((_, i) => (
+            <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
+          ))}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          {series.length === 0 ? 'No series found. Add your Sonarr connection in Settings.' : 'No series match your filters.'}
+          {series.length === 0
+            ? 'No series found. Add your Sonarr connection in Settings.'
+            : 'No series match your filters.'}
         </div>
       ) : (
-        <MediaGrid view={mediaView}>
+        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {filtered.map((s) => (
             <MediaCard
               key={s.id}
@@ -212,7 +272,7 @@ export default function SeriesPage() {
               href={`/series/${s.id}`}
             />
           ))}
-        </MediaGrid>
+        </div>
       )}
     </div>
   );

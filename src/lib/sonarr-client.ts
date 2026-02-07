@@ -107,8 +107,8 @@ export class SonarrClient {
   }
 
   // Episodes
-  async getEpisodes(seriesId: number): Promise<SonarrEpisode[]> {
-    return this.get<SonarrEpisode[]>('/api/v3/episode', { seriesId });
+  async getEpisodes(seriesId: number, includeEpisodeFile: boolean = false): Promise<SonarrEpisode[]> {
+    return this.get<SonarrEpisode[]>('/api/v3/episode', { seriesId, includeEpisodeFile });
   }
 
   async getEpisodeById(id: number): Promise<SonarrEpisode> {
@@ -214,16 +214,20 @@ export class SonarrClient {
     page: number = 1,
     pageSize: number = 20,
     sortKey: string = 'date',
-    sortDirection: string = 'descending'
+    sortDirection: string = 'descending',
+    filters?: { episodeId?: number; seriesId?: number }
   ): Promise<HistoryResponse> {
-    return this.get<HistoryResponse>('/api/v3/history', {
+    const params: Record<string, unknown> = {
       page,
       pageSize,
       sortKey,
       sortDirection,
       includeSeries: true,
       includeEpisode: true,
-    });
+    };
+    if (filters?.episodeId) params.episodeId = filters.episodeId;
+    if (filters?.seriesId) params.seriesId = filters.seriesId;
+    return this.get<HistoryResponse>('/api/v3/history', params);
   }
 
   // Manual Import

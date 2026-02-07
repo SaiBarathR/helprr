@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
-import { Film, Tv, Eye, EyeOff } from 'lucide-react';
+import { Film, Tv } from 'lucide-react';
 import type { MediaImage } from '@/types';
 
 interface MediaCardProps {
@@ -26,7 +25,7 @@ export function MediaCard({ title, year, images, hasFile, monitored, type, href 
 
   return (
     <Link href={href} className="group block">
-      <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm">
         {poster ? (
           <img
             src={poster}
@@ -36,31 +35,28 @@ export function MediaCard({ title, year, images, hasFile, monitored, type, href 
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            {type === 'movie' ? <Film className="h-12 w-12" /> : <Tv className="h-12 w-12" />}
+            {type === 'movie' ? <Film className="h-10 w-10" /> : <Tv className="h-10 w-10" />}
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-3">
-          <p className="text-sm font-semibold text-white truncate">{title}</p>
-          <p className="text-xs text-white/70">{year}</p>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 p-2">
+          <p className="text-xs font-semibold text-white truncate leading-tight">{title}</p>
+          <p className="text-[10px] text-white/70">{year}</p>
         </div>
-        <div className="absolute top-2 right-2 flex gap-1">
-          {monitored !== undefined && (
-            <Badge variant="secondary" className="h-5 px-1 bg-black/60 text-white border-0">
-              {monitored ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-            </Badge>
-          )}
-          {hasFile !== undefined && (
-            <Badge
-              variant="secondary"
-              className={`h-5 px-1.5 text-[10px] border-0 ${
-                hasFile ? 'bg-green-500/80 text-white' : 'bg-red-500/80 text-white'
+        {/* Status badge - bottom right */}
+        {hasFile !== undefined && (
+          <div className="absolute bottom-1.5 right-1.5">
+            <span
+              className={`inline-block h-2 w-2 rounded-full ${
+                hasFile ? 'bg-green-500' : monitored ? 'bg-red-500' : 'bg-zinc-500'
               }`}
-            >
-              {hasFile ? 'On Disk' : 'Missing'}
-            </Badge>
-          )}
-        </div>
+            />
+          </div>
+        )}
+        {/* Unmonitored overlay */}
+        {monitored === false && (
+          <div className="absolute inset-0 bg-black/40" />
+        )}
       </div>
     </Link>
   );

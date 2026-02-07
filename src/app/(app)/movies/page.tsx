@@ -2,15 +2,55 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { MediaCard } from '@/components/media/media-card';
-import { MediaGrid } from '@/components/media/media-grid';
 import { SearchBar } from '@/components/media/search-bar';
-import { Plus, LayoutGrid, List, ArrowUp, ArrowDown } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { RadarrMovie } from '@/types';
+
+const filterOptions = [
+  { value: 'all', label: 'All' },
+  { value: 'monitored', label: 'Monitored' },
+  { value: 'unmonitored', label: 'Unmonitored' },
+  { value: 'missing', label: 'Missing' },
+  { value: 'hasFile', label: 'On Disk' },
+  { value: 'released', label: 'Released' },
+  { value: 'inCinemas', label: 'In Cinemas' },
+  { value: 'announced', label: 'Announced' },
+] as const;
+
+const sortOptions = [
+  { value: 'title', label: 'Title' },
+  { value: 'originalTitle', label: 'Original Title' },
+  { value: 'year', label: 'Year' },
+  { value: 'dateAdded', label: 'Added' },
+  { value: 'imdbRating', label: 'IMDb Rating' },
+  { value: 'tmdbRating', label: 'TMDb Rating' },
+  { value: 'tomatoRating', label: 'Tomato Rating' },
+  { value: 'traktRating', label: 'Trakt Rating' },
+  { value: 'popularity', label: 'Popularity' },
+  { value: 'sizeOnDisk', label: 'Size on Disk' },
+  { value: 'runtime', label: 'Runtime' },
+  { value: 'inCinemas', label: 'In Cinemas' },
+  { value: 'digitalRelease', label: 'Digital Release' },
+  { value: 'physicalRelease', label: 'Physical Release' },
+  { value: 'studio', label: 'Studio' },
+  { value: 'qualityProfile', label: 'Quality Profile' },
+  { value: 'monitored', label: 'Monitored/Status' },
+  { value: 'path', label: 'Path' },
+  { value: 'certification', label: 'Certification' },
+  { value: 'originalLanguage', label: 'Original Language' },
+  { value: 'tags', label: 'Tags' },
+] as const;
 
 export default function MoviesPage() {
   const [movies, setMovies] = useState<RadarrMovie[]>([]);
@@ -18,15 +58,13 @@ export default function MoviesPage() {
   const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const { 
-    mediaView, 
-    setMediaView, 
-    moviesSort: sort, 
-    setMoviesSort: setSort, 
+  const {
+    moviesSort: sort,
+    setMoviesSort: setSort,
     moviesSortDirection: sortDir,
     setMoviesSortDirection: setSortDir,
-    moviesFilter: filter, 
-    setMoviesFilter: setFilter 
+    moviesFilter: filter,
+    setMoviesFilter: setFilter,
   } = useUIStore();
 
   useEffect(() => {
@@ -64,7 +102,7 @@ export default function MoviesPage() {
     // Sorting
     list = [...list].sort((a, b) => {
       let result = 0;
-      
+
       switch (sort) {
         case 'title':
           result = a.sortTitle.localeCompare(b.sortTitle);
@@ -143,92 +181,106 @@ export default function MoviesPage() {
     return list;
   }, [movies, search, sort, sortDir, filter, qualityProfiles, tags]);
 
+  const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
+  const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Movies</h1>
-        <Button asChild>
-          <Link href="/movies/add">
-            <Plus className="mr-2 h-4 w-4" /> Add Movie
-          </Link>
-        </Button>
+    <div className="space-y-3">
+      {/* Top action bar */}
+      <div className="flex items-center gap-2">
+        {/* Filter dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+              aria-label={`Filter: ${activeFilterLabel}`}
+            >
+              <Filter className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuLabel>Filter</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {filterOptions.map((opt) => (
+              <DropdownMenuCheckboxItem
+                key={opt.value}
+                checked={filter === opt.value}
+                onCheckedChange={() => setFilter(opt.value)}
+              >
+                {opt.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Sort dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+              aria-label={`Sort: ${activeSortLabel} ${sortDir === 'asc' ? 'Ascending' : 'Descending'}`}
+            >
+              <ArrowUpDown className="h-5 w-5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {sortOptions.map((opt) => (
+              <DropdownMenuCheckboxItem
+                key={opt.value}
+                checked={sort === opt.value}
+                onCheckedChange={() => setSort(opt.value)}
+              >
+                {opt.label}
+              </DropdownMenuCheckboxItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuCheckboxItem
+              checked={sortDir === 'asc'}
+              onCheckedChange={() => setSortDir('asc')}
+            >
+              Ascending
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={sortDir === 'desc'}
+              onCheckedChange={() => setSortDir('desc')}
+            >
+              Descending
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="flex-1" />
+
+        {/* Add movie button */}
+        <Link
+          href="/movies/add"
+          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+          aria-label="Add Movie"
+        >
+          <Plus className="h-5 w-5" />
+        </Link>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="flex-1">
-          <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." />
-        </div>
-        <div className="flex gap-2">
-          <Select value={sort} onValueChange={setSort}>
-            <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="title">Title</SelectItem>
-              <SelectItem value="originalTitle">Original Title</SelectItem>
-              <SelectItem value="year">Year</SelectItem>
-              <SelectItem value="dateAdded">Added</SelectItem>
-              <SelectItem value="monitored">Monitored/Status</SelectItem>
-              <SelectItem value="studio">Studio</SelectItem>
-              <SelectItem value="qualityProfile">Quality Profile</SelectItem>
-              <SelectItem value="inCinemas">In Cinemas</SelectItem>
-              <SelectItem value="digitalRelease">Digital Release</SelectItem>
-              <SelectItem value="physicalRelease">Physical Release</SelectItem>
-              <SelectItem value="popularity">Popularity</SelectItem>
-              <SelectItem value="imdbRating">IMDb Rating</SelectItem>
-              <SelectItem value="tmdbRating">TMDb Rating</SelectItem>
-              <SelectItem value="tomatoRating">Tomato Rating</SelectItem>
-              <SelectItem value="traktRating">Trakt Rating</SelectItem>
-              <SelectItem value="sizeOnDisk">Size on Disk</SelectItem>
-              <SelectItem value="runtime">Runtime</SelectItem>
-              <SelectItem value="path">Path</SelectItem>
-              <SelectItem value="certification">Certification</SelectItem>
-              <SelectItem value="originalLanguage">Original Language</SelectItem>
-              <SelectItem value="tags">Tags</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button 
-            variant="outline" 
-            size="icon" 
-            onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-            title={sortDir === 'asc' ? 'Ascending' : 'Descending'}
-          >
-            {sortDir === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-          </Button>
-        </div>
-        <Select value={filter} onValueChange={setFilter}>
-          <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All</SelectItem>
-            <SelectItem value="monitored">Monitored</SelectItem>
-            <SelectItem value="unmonitored">Unmonitored</SelectItem>
-            <SelectItem value="missing">Missing</SelectItem>
-            <SelectItem value="hasFile">On Disk</SelectItem>
-            <SelectItem value="released">Released</SelectItem>
-            <SelectItem value="inCinemas">In Cinemas</SelectItem>
-            <SelectItem value="announced">Announced</SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="flex gap-1">
-          <Button variant={mediaView === 'grid' ? 'secondary' : 'ghost'} size="icon" onClick={() => setMediaView('grid')}>
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button variant={mediaView === 'list' ? 'secondary' : 'ghost'} size="icon" onClick={() => setMediaView('list')}>
-            <List className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
+      {/* Search bar */}
+      <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." />
 
+      {/* Content */}
       {loading ? (
-        <MediaGrid>
+        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {[...Array(12)].map((_, i) => (
-            <Skeleton key={i} className="aspect-[2/3] rounded-lg" />
+            <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
           ))}
-        </MediaGrid>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
-          {movies.length === 0 ? 'No movies found. Add your Radarr connection in Settings.' : 'No movies match your filters.'}
+          {movies.length === 0
+            ? 'No movies found. Add your Radarr connection in Settings.'
+            : 'No movies match your filters.'}
         </div>
       ) : (
-        <MediaGrid view={mediaView}>
+        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {filtered.map((movie) => (
             <MediaCard
               key={movie.id}
@@ -241,7 +293,7 @@ export default function MoviesPage() {
               href={`/movies/${movie.id}`}
             />
           ))}
-        </MediaGrid>
+        </div>
       )}
     </div>
   );

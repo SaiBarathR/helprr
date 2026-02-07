@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bell, Check, Download, X, AlertTriangle, Clock, Settings2, Loader2, Trash2 } from 'lucide-react';
@@ -84,19 +85,27 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Notifications</h1>
-        <div className="flex flex-wrap">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/notifications/preferences"><Settings2 className="h-4 w-4" /> </Link>
-          </Button>
-          <Button variant="ghost" size="sm" onClick={markAllRead} disabled={markingAll}>
-            {markingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-            Mark all read
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-4 pb-20">
+      <PageHeader
+        title="Notifications"
+        rightContent={
+          <div className="flex items-center gap-1">
+            <Link
+              href="/notifications/preferences"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+            >
+              <Settings2 className="h-5 w-5" />
+            </Link>
+            <button
+              onClick={markAllRead}
+              disabled={markingAll}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+            >
+              {markingAll ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+            </button>
+          </div>
+        }
+      />
 
       {loading ? (
         <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>
@@ -107,22 +116,23 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <>
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {notifications.map((n) => (
               <button
                 key={n.id}
                 onClick={() => !n.read && markAsRead(n.id)}
-                className={`w-full text-left flex items-start gap-3 py-3 px-3 rounded-lg transition-colors hover:bg-muted/50 ${!n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
-                  }`}
+                className={`w-full text-left flex items-start gap-3 py-3 px-4 transition-colors active:bg-muted/50 ${
+                  !n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
+                }`}
               >
-                <div className={`p-1.5 rounded mt-0.5 ${eventColor(n.eventType)}`}>
+                <div className={`p-1.5 rounded-lg mt-0.5 ${eventColor(n.eventType)}`}>
                   {eventIcon(n.eventType)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm ${!n.read ? 'font-semibold' : ''} truncate`}>{n.title}</p>
                   <p className="text-xs text-muted-foreground truncate">{n.body}</p>
                 </div>
-                <span className="text-xs text-muted-foreground shrink-0">
+                <span className="text-[11px] text-muted-foreground shrink-0">
                   {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                 </span>
               </button>

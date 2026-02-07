@@ -1,15 +1,20 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Drawer, DrawerContent, DrawerHeader, DrawerTitle,
+} from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Download, Loader2, AlertTriangle, ArrowUpDown, Users, HardDrive,
-  Clock, ShieldAlert, Search, Filter,
+  Clock, ShieldAlert, Search, Filter, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Release } from '@/types';
@@ -182,190 +187,211 @@ export function InteractiveSearchDialog({
   const hasActiveFilters = textFilter || indexerFilter !== 'all' || qualityFilter !== 'all' || seasonPackFilter !== 'any';
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="text-base truncate">Interactive Search: {title}</DialogTitle>
-        </DialogHeader>
+    <Drawer open={open} onOpenChange={handleOpenChange}>
+      <DrawerContent className="max-h-[92vh] flex flex-col">
+        <DrawerHeader className="flex items-center justify-between pb-2">
+          <DrawerTitle className="text-base truncate pr-2">{title}</DrawerTitle>
+          <button
+            onClick={() => handleOpenChange(false)}
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full hover:bg-muted shrink-0"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </DrawerHeader>
 
-        {!searched ? (
-          <div className="flex flex-col items-center py-8 gap-4">
-            <p className="text-sm text-muted-foreground text-center">
-              Search indexers for available releases. This may take a moment.
-            </p>
-            <Button onClick={doSearch} disabled={loading}>
-              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-              Search Indexers
-            </Button>
-          </div>
-        ) : loading ? (
-          <div className="space-y-2 py-4">
-            {[...Array(6)].map((_, i) => (
-              <Skeleton key={i} className="h-16 rounded-lg" />
-            ))}
-          </div>
-        ) : releases.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No releases found</p>
-            <Button variant="ghost" className="mt-2" onClick={doSearch}>
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <>
-            {/* Filters */}
-            <div className="space-y-2 border-b pb-2">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Filter releases..."
-                    value={textFilter}
-                    onChange={(e) => setTextFilter(e.target.value)}
-                    className="h-8 pl-8 text-xs"
-                  />
+        <div className="flex-1 overflow-hidden flex flex-col px-4 pb-4">
+          {!searched ? (
+            <div className="flex flex-col items-center py-8 gap-4">
+              <p className="text-sm text-muted-foreground text-center">
+                Search indexers for available releases.
+              </p>
+              <Button onClick={doSearch} disabled={loading} className="rounded-full">
+                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                Search Indexers
+              </Button>
+            </div>
+          ) : loading ? (
+            <div className="space-y-2 py-4">
+              {[...Array(6)].map((_, i) => (
+                <Skeleton key={i} className="h-16 rounded-lg" />
+              ))}
+            </div>
+          ) : releases.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+              <p>No releases found</p>
+              <Button variant="ghost" className="mt-2" onClick={doSearch}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Filters */}
+              <div className="space-y-2 border-b pb-2 mb-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Filter releases..."
+                      value={textFilter}
+                      onChange={(e) => setTextFilter(e.target.value)}
+                      className="h-9 pl-8 text-sm"
+                    />
+                  </div>
+                  {/* Filter dropdowns */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent">
+                        <ArrowUpDown className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuLabel>Indexer</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuCheckboxItem checked={indexerFilter === 'all'} onCheckedChange={() => setIndexerFilter('all')}>
+                        All Indexers
+                      </DropdownMenuCheckboxItem>
+                      {indexers.map((idx) => (
+                        <DropdownMenuCheckboxItem key={idx} checked={indexerFilter === idx} onCheckedChange={() => setIndexerFilter(idx)}>
+                          {idx}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel>Quality</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuCheckboxItem checked={qualityFilter === 'all'} onCheckedChange={() => setQualityFilter('all')}>
+                        All Qualities
+                      </DropdownMenuCheckboxItem>
+                      {qualities.map((q) => (
+                        <DropdownMenuCheckboxItem key={q} checked={qualityFilter === q} onCheckedChange={() => setQualityFilter(q)}>
+                          {q}
+                        </DropdownMenuCheckboxItem>
+                      ))}
+                      {showSeasonPackFilter && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>Type</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuCheckboxItem checked={seasonPackFilter === 'any'} onCheckedChange={() => setSeasonPackFilter('any')}>
+                            Any
+                          </DropdownMenuCheckboxItem>
+                          <DropdownMenuCheckboxItem checked={seasonPackFilter === 'seasonPack'} onCheckedChange={() => setSeasonPackFilter('seasonPack')}>
+                            Season Pack
+                          </DropdownMenuCheckboxItem>
+                          <DropdownMenuCheckboxItem checked={seasonPackFilter === 'singleEpisode'} onCheckedChange={() => setSeasonPackFilter('singleEpisode')}>
+                            Single Episode
+                          </DropdownMenuCheckboxItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <Select value={indexerFilter} onValueChange={setIndexerFilter}>
-                  <SelectTrigger className="h-8 w-[140px] text-xs">
-                    <SelectValue placeholder="Indexer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Indexers</SelectItem>
-                    {indexers.map((idx) => (
-                      <SelectItem key={idx} value={idx}>{idx}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={qualityFilter} onValueChange={setQualityFilter}>
-                  <SelectTrigger className="h-8 w-[130px] text-xs">
-                    <SelectValue placeholder="Quality" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Qualities</SelectItem>
-                    {qualities.map((q) => (
-                      <SelectItem key={q} value={q}>{q}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {showSeasonPackFilter && (
-                  <Select value={seasonPackFilter} onValueChange={(v) => setSeasonPackFilter(v as 'any' | 'seasonPack' | 'singleEpisode')}>
-                    <SelectTrigger className="h-8 w-[140px] text-xs">
-                      <SelectValue placeholder="Type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="any">Any</SelectItem>
-                      <SelectItem value="seasonPack">Season Pack</SelectItem>
-                      <SelectItem value="singleEpisode">Single Episode</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+                {/* Sort controls + count */}
+                <div className="flex items-center gap-1 flex-wrap text-xs">
+                  <span className="text-muted-foreground mr-1">Sort:</span>
+                  {(['quality', 'size', 'seeders', 'age'] as SortKey[]).map((key) => (
+                    <Button
+                      key={key}
+                      variant={sortKey === key ? 'secondary' : 'ghost'}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => handleSort(key)}
+                    >
+                      {key.charAt(0).toUpperCase() + key.slice(1)}
+                      {sortKey === key && (
+                        <ArrowUpDown className="ml-1 h-3 w-3" />
+                      )}
+                    </Button>
+                  ))}
+                  <span className="ml-auto text-muted-foreground">
+                    {hasActiveFilters
+                      ? `${filteredAndSorted.length} / ${releases.length}`
+                      : `${releases.length} results`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Release list */}
+              <div className="overflow-y-auto flex-1 space-y-1.5">
+                {filteredAndSorted.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm">
+                    No releases match filters
+                  </div>
+                ) : (
+                  filteredAndSorted.map((release) => {
+                    const isRejected = release.rejected;
+                    return (
+                      <div
+                        key={release.guid}
+                        className={`rounded-lg border p-2.5 text-sm space-y-1.5 ${
+                          isRejected ? 'opacity-60 border-destructive/30' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium leading-tight break-all line-clamp-2">
+                              {release.title}
+                            </p>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant={isRejected ? 'outline' : 'default'}
+                            className="h-7 px-2 shrink-0"
+                            onClick={() => handleGrab(release)}
+                            disabled={grabbing === release.guid}
+                          >
+                            {grabbing === release.guid ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Download className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge
+                            variant={isRejected ? 'destructive' : 'default'}
+                            className="text-[10px]"
+                          >
+                            {release.quality?.quality?.name || 'Unknown'}
+                          </Badge>
+                          {protocolBadge(release.protocol)}
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                            <HardDrive className="h-3 w-3" />
+                            {formatBytes(release.size)}
+                          </span>
+                          {release.protocol === 'torrent' && (
+                            <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                              <Users className="h-3 w-3" />
+                              {release.seeders ?? 0}/{release.leechers ?? 0}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            {release.age}d
+                          </span>
+                          {release.indexer && (
+                            <span className="text-xs text-muted-foreground">{release.indexer}</span>
+                          )}
+                          {release.releaseGroup && (
+                            <Badge variant="outline" className="text-[10px]">{release.releaseGroup}</Badge>
+                          )}
+                        </div>
+                        {isRejected && release.rejections?.length > 0 && (
+                          <div className="flex items-start gap-1 text-xs text-destructive">
+                            <ShieldAlert className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span className="line-clamp-2">{release.rejections.join('; ')}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
-
-              {/* Sort controls + count */}
-              <div className="flex items-center gap-1 flex-wrap text-xs">
-                <span className="text-muted-foreground mr-1">Sort:</span>
-                {(['quality', 'size', 'seeders', 'age'] as SortKey[]).map((key) => (
-                  <Button
-                    key={key}
-                    variant={sortKey === key ? 'secondary' : 'ghost'}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => handleSort(key)}
-                  >
-                    {key.charAt(0).toUpperCase() + key.slice(1)}
-                    {sortKey === key && (
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
-                    )}
-                  </Button>
-                ))}
-                <span className="ml-auto text-muted-foreground">
-                  {hasActiveFilters
-                    ? `${filteredAndSorted.length} / ${releases.length}`
-                    : `${releases.length} results`}
-                </span>
-              </div>
-            </div>
-
-            {/* Release list */}
-            <div className="overflow-y-auto flex-1 space-y-1.5 -mx-1 px-1">
-              {filteredAndSorted.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  No releases match filters
-                </div>
-              ) : (
-                filteredAndSorted.map((release) => {
-                  const isRejected = release.rejected;
-                  return (
-                    <div
-                      key={release.guid}
-                      className={`rounded-lg border p-2.5 text-sm space-y-1.5 ${
-                        isRejected ? 'opacity-60 border-destructive/30' : ''
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium leading-tight break-all line-clamp-2">
-                            {release.title}
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant={isRejected ? 'outline' : 'default'}
-                          className="h-7 px-2 shrink-0"
-                          onClick={() => handleGrab(release)}
-                          disabled={grabbing === release.guid}
-                        >
-                          {grabbing === release.guid ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Download className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge
-                          variant={isRejected ? 'destructive' : 'default'}
-                          className="text-[10px]"
-                        >
-                          {release.quality?.quality?.name || 'Unknown'}
-                        </Badge>
-                        {protocolBadge(release.protocol)}
-                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                          <HardDrive className="h-3 w-3" />
-                          {formatBytes(release.size)}
-                        </span>
-                        {release.protocol === 'torrent' && (
-                          <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                            <Users className="h-3 w-3" />
-                            {release.seeders ?? 0}/{release.leechers ?? 0}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {release.age}d
-                        </span>
-                        {release.indexer && (
-                          <span className="text-xs text-muted-foreground">{release.indexer}</span>
-                        )}
-                        {release.releaseGroup && (
-                          <Badge variant="outline" className="text-[10px]">{release.releaseGroup}</Badge>
-                        )}
-                      </div>
-                      {isRejected && release.rejections?.length > 0 && (
-                        <div className="flex items-start gap-1 text-xs text-destructive">
-                          <ShieldAlert className="h-3 w-3 mt-0.5 shrink-0" />
-                          <span className="line-clamp-2">{release.rejections.join('; ')}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+            </>
+          )}
+        </div>
+      </DrawerContent>
+    </Drawer>
   );
 }

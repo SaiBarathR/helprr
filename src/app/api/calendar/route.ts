@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
           type: 'movie',
           title: m.title,
           subtitle: `${m.year} - ${m.studio}`,
-          date: m.digitalRelease || m.physicalRelease || m.inCinemas,
+          date: m.digitalRelease || m.physicalRelease || m.inCinemas || '',
           hasFile: m.hasFile,
           monitored: m.monitored,
           movieId: m.id,
