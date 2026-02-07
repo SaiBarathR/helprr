@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,8 +38,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
-import { format, formatDistanceToNow } from 'date-fns';
-import type { RadarrMovie, QualityProfile, RootFolder, Tag, HistoryItem } from '@/types';
+import { format } from 'date-fns';
+import type { RadarrMovie, QualityProfile, RootFolder, Tag } from '@/types';
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -51,8 +51,6 @@ export default function MovieDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
 
   // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
@@ -76,24 +74,6 @@ export default function MovieDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const fetchHistory = useCallback(async () => {
-    setHistoryLoading(true);
-    try {
-      const res = await fetch(`/api/activity/history?movieId=${id}&pageSize=50`);
-      if (res.ok) {
-        const data = await res.json();
-        setHistory(data.records || []);
-      }
-    } catch {
-      // History is non-critical
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
 
   async function handleSearch() {
     if (!movie) return;
@@ -516,55 +496,6 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        {/* History section */}
-        <div className="px-4 pb-8">
-          <h2 className="text-base font-semibold mb-2">History</h2>
-          {historyLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full rounded-lg" />
-              ))}
-            </div>
-          ) : history.length === 0 ? (
-            <div className="rounded-lg border px-4 py-6 text-center text-sm text-muted-foreground">
-              No history available
-            </div>
-          ) : (
-            <div className="rounded-lg border overflow-hidden divide-y">
-              {history.map((item) => (
-                <div
-                  key={item.id}
-                  className="px-4 py-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge
-                      variant={
-                        item.eventType === 'grabbed' ? 'secondary' :
-                        item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported' ? 'default' :
-                        item.eventType === 'downloadFailed' || item.eventType === 'movieFileDeleted' ? 'destructive' :
-                        'outline'
-                      }
-                      className="text-[10px]"
-                    >
-                      {item.eventType === 'grabbed' ? 'GRABBED' :
-                       item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported' ? 'IMPORTED' :
-                       item.eventType === 'downloadFailed' ? 'FAILED' :
-                       item.eventType === 'movieFileDeleted' ? 'DELETED' :
-                       item.eventType === 'movieFileRenamed' ? 'RENAMED' :
-                       item.eventType.toUpperCase()}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">
-                    {item.sourceTitle}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Interactive Search */}

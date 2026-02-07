@@ -18,7 +18,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { getImageUrl } from '@/components/media/media-card';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Loader2, Tv, ChevronRight, Heart,
+  Pencil, Trash2, Loader2, Tv, ChevronRight, Heart, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -31,9 +31,25 @@ export default function SeriesDetailPage() {
   const [episodes, setEpisodes] = useState<SonarrEpisode[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDelete, setShowDelete] = useState(false);
+  const [showMonitorEdit, setShowMonitorEdit] = useState(false);
+  const [monitorOption, setMonitorOption] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
+
+  const MONITOR_OPTIONS = [
+    { value: 'all', label: 'All Episodes' },
+    { value: 'future', label: 'Future Episodes' },
+    { value: 'missing', label: 'Missing Episodes' },
+    { value: 'existing', label: 'Existing Episodes' },
+    { value: 'recent', label: 'Recent Episodes' },
+    { value: 'pilot', label: 'Pilot Episode' },
+    { value: 'firstSeason', label: 'First Season' },
+    { value: 'lastSeason', label: 'Last Season' },
+    { value: 'monitorSpecials', label: 'Monitor Specials' },
+    { value: 'unmonitorSpecials', label: 'Unmonitor Specials' },
+    { value: 'none', label: 'None' },
+  ];
 
   // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
@@ -113,6 +129,63 @@ export default function SeriesDetailPage() {
         toast.success(`Season ${seasonNumber} ${monitored ? 'monitored' : 'unmonitored'}`);
       }
     } catch { toast.error('Failed to update season'); }
+  }
+
+  async function handleApplyMonitor() {
+    if (!series || !monitorOption) return;
+    setActionLoading('applyMonitor');
+    try {
+      const res = await fetch('/api/sonarr/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'MonitoredEpisodeCommand' in {} ? 'MonitoredEpisodeCommand' : 'RefreshSeries',
+          seriesId: series.id,
+        }),
+      });
+      // Update series monitored state via PUT
+      const monitorUpdate = {
+        ...series,
+        monitored: monitorOption !== 'none',
+        seasons: series.seasons.map((s) => {
+          switch (monitorOption) {
+            case 'all':
+              return { ...s, monitored: true };
+            case 'future':
+              return { ...s, monitored: true };
+            case 'none':
+              return { ...s, monitored: false };
+            case 'firstSeason':
+              return { ...s, monitored: s.seasonNumber === 1 };
+            case 'lastSeason': {
+              const maxSeason = Math.max(...series.seasons.filter((ss) => ss.seasonNumber > 0).map((ss) => ss.seasonNumber));
+              return { ...s, monitored: s.seasonNumber === maxSeason };
+            }
+            case 'monitorSpecials':
+              return { ...s, monitored: true };
+            case 'unmonitorSpecials':
+              return { ...s, monitored: s.seasonNumber !== 0 ? s.monitored : false };
+            default:
+              return { ...s, monitored: true };
+          }
+        }),
+        addOptions: { monitor: monitorOption },
+      };
+      const updateRes = await fetch(`/api/sonarr/${series.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(monitorUpdate),
+      });
+      if (updateRes.ok) {
+        const updated = await updateRes.json();
+        setSeries(updated);
+        toast.success(`Monitor set to: ${MONITOR_OPTIONS.find((o) => o.value === monitorOption)?.label}`);
+        setShowMonitorEdit(false);
+      } else {
+        toast.error('Failed to update monitor');
+      }
+    } catch { toast.error('Failed to update monitor'); }
+    finally { setActionLoading(''); }
   }
 
   async function handleRefresh() {
@@ -257,6 +330,10 @@ export default function SeriesDetailPage() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowMonitorEdit(true)}>
+                  <Eye className="h-4 w-4" />
+                  Monitor
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => router.push(`/series/${id}/edit`)}>
                   <Pencil className="h-4 w-4" />
                   Edit
@@ -438,6 +515,51 @@ export default function SeriesDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Monitor edit drawer */}
+      <Drawer open={showMonitorEdit} onOpenChange={setShowMonitorEdit}>
+        <DrawerContent>
+          <DrawerHeader className="text-center">
+            <DrawerTitle>Monitor</DrawerTitle>
+            <DrawerDescription>
+              Choose which episodes to monitor for {series.title}.
+            </DrawerDescription>
+          </DrawerHeader>
+          <div className="px-4 pb-2">
+            <div className="grouped-section">
+              <div className="grouped-section-content">
+                {MONITOR_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setMonitorOption(option.value)}
+                    className={`grouped-row w-full text-left active:bg-white/5 transition-colors ${
+                      monitorOption === option.value ? 'text-primary' : ''
+                    }`}
+                  >
+                    <span className="text-sm">{option.label}</span>
+                    {monitorOption === option.value && (
+                      <span className="text-primary text-sm font-medium">&#10003;</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DrawerFooter>
+            <Button
+              onClick={handleApplyMonitor}
+              disabled={!monitorOption || actionLoading === 'applyMonitor'}
+              className="w-full"
+            >
+              {actionLoading === 'applyMonitor' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Apply
+            </Button>
+            <DrawerClose asChild>
+              <Button variant="outline" className="w-full">Cancel</Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
 
       {/* Delete confirmation drawer */}
       <Drawer open={showDelete} onOpenChange={setShowDelete}>

@@ -29,7 +29,7 @@ export default function AddSeriesPage() {
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [profileId, setProfileId] = useState('');
   const [rootFolder, setRootFolder] = useState('');
-  const [monitored, setMonitored] = useState(true);
+  const [monitorOption, setMonitorOption] = useState('all');
   const [seriesType, setSeriesType] = useState('standard');
   const [seasonFolder, setSeasonFolder] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -69,14 +69,14 @@ export default function AddSeriesPage() {
           tvdbId: selected.tvdbId,
           qualityProfileId: Number(profileId),
           rootFolderPath: rootFolder,
-          monitored,
+          monitored: monitorOption !== 'none',
           seriesType,
           seasonFolder,
           titleSlug: selected.titleSlug,
           images: selected.images,
           seasons: selected.seasons,
           year: selected.year,
-          addOptions: { monitor: 'all', searchForMissingEpisodes: true, searchForCutoffUnmetEpisodes: false },
+          addOptions: { monitor: monitorOption, searchForMissingEpisodes: true, searchForCutoffUnmetEpisodes: false },
         }),
       });
       if (res.ok) {
@@ -94,11 +94,29 @@ export default function AddSeriesPage() {
   const posterUrl = (images: { coverType: string; remoteUrl: string }[]) =>
     images.find((i) => i.coverType === 'poster')?.remoteUrl;
 
+  const MONITOR_OPTIONS = [
+    { value: 'all', label: 'All Episodes' },
+    { value: 'future', label: 'Future Episodes' },
+    { value: 'missing', label: 'Missing Episodes' },
+    { value: 'existing', label: 'Existing Episodes' },
+    { value: 'recent', label: 'Recent Episodes' },
+    { value: 'pilot', label: 'Pilot Episode' },
+    { value: 'firstSeason', label: 'First Season' },
+    { value: 'lastSeason', label: 'Last Season' },
+    { value: 'monitorSpecials', label: 'Monitor Specials' },
+    { value: 'unmonitorSpecials', label: 'Unmonitor Specials' },
+    { value: 'none', label: 'None' },
+  ];
+
   const SERIES_TYPE_OPTIONS = [
     { value: 'standard', label: 'Standard' },
     { value: 'daily', label: 'Daily' },
     { value: 'anime', label: 'Anime' },
   ];
+
+  function getMonitorLabel(value: string) {
+    return MONITOR_OPTIONS.find((o) => o.value === value)?.label ?? value;
+  }
 
   function getSeriesTypeLabel(value: string) {
     return SERIES_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
@@ -165,7 +183,7 @@ export default function AddSeriesPage() {
                 <div className="grouped-row">
                   <Label className="text-sm shrink-0">Quality Profile</Label>
                   <Select value={profileId} onValueChange={setProfileId}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                       <SelectValue>{getProfileLabel(profileId)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -179,7 +197,7 @@ export default function AddSeriesPage() {
                 <div className="grouped-row">
                   <Label className="text-sm shrink-0">Root Folder</Label>
                   <Select value={rootFolder} onValueChange={setRootFolder}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 max-w-[180px]">
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 max-w-[180px]">
                       <SelectValue>{getRootFolderLabel(rootFolder)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -193,7 +211,7 @@ export default function AddSeriesPage() {
                 <div className="grouped-row">
                   <Label className="text-sm shrink-0">Series Type</Label>
                   <Select value={seriesType} onValueChange={setSeriesType}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                       <SelectValue>{getSeriesTypeLabel(seriesType)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -205,8 +223,17 @@ export default function AddSeriesPage() {
                 </div>
 
                 <div className="grouped-row">
-                  <Label className="text-sm shrink-0">Monitored</Label>
-                  <Switch checked={monitored} onCheckedChange={setMonitored} />
+                  <Label className="text-sm shrink-0">Monitor</Label>
+                  <Select value={monitorOption} onValueChange={setMonitorOption}>
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                      <SelectValue>{getMonitorLabel(monitorOption)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONITOR_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grouped-row" style={{ borderBottom: 'none' }}>

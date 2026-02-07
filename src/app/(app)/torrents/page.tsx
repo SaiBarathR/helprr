@@ -368,34 +368,48 @@ export default function TorrentsPage() {
 
       {/* Bulk Actions */}
       {selectedTorrents.size > 0 && (
-        <div className="flex items-center gap-1.5 px-3 py-2 bg-muted/60 rounded-xl">
-          <span className="text-xs text-muted-foreground mr-1">
-            {selectedTorrents.size} selected
+        <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">
+          <span className="text-xs text-muted-foreground mx-1 shrink-0">
+            {selectedTorrents.size}
           </span>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => bulkAction('resume')}>
-            <Play className="mr-1 h-3 w-3" /> Resume
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => bulkAction('pause')}>
-            <Pause className="mr-1 h-3 w-3" /> Pause
-          </Button>
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => bulkAction('forceStart')}>
-            <Zap className="mr-1 h-3 w-3" /> Force
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+          <button
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+            onClick={() => bulkAction('resume')}
+            aria-label="Resume"
+          >
+            <Play className="h-4 w-4" />
+          </button>
+          <button
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+            onClick={() => bulkAction('pause')}
+            aria-label="Stop"
+          >
+            <Pause className="h-4 w-4" />
+          </button>
+          <button
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+            onClick={() => bulkAction('forceStart')}
+            aria-label="Force Start"
+          >
+            <Zap className="h-4 w-4" />
+          </button>
+          <button
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-destructive"
             onClick={() => {
               const hashes = Array.from(selectedTorrents).join('|');
               setDeleteDrawer({ open: true, hash: hashes, name: `${selectedTorrents.size} torrents`, deleteFiles: false });
             }}
+            aria-label="Delete"
           >
-            <Trash2 className="mr-1 h-3 w-3" /> Delete
-          </Button>
+            <Trash2 className="h-4 w-4" />
+          </button>
           <div className="flex-1" />
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setSelectedTorrents(new Set())}>
+          <button
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-xs text-muted-foreground"
+            onClick={() => setSelectedTorrents(new Set())}
+          >
             Clear
-          </Button>
+          </button>
         </div>
       )}
 
@@ -452,7 +466,7 @@ export default function TorrentsPage() {
                             <Play className="mr-2 h-4 w-4" /> Resume
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => torrentAction(torrent.hash, 'pause')}>
-                            <Pause className="mr-2 h-4 w-4" /> Pause
+                            <Pause className="mr-2 h-4 w-4" /> Stop
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => torrentAction(torrent.hash, 'forceStart')}>
                             <Zap className="mr-2 h-4 w-4" /> Force Start

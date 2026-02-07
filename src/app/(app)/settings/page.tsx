@@ -451,7 +451,7 @@ export default function SettingsPage() {
           <div className="grouped-row">
             <span className="text-sm">Polling</span>
             <Select value={pollingInterval} onValueChange={(v) => { setPollingInterval(v); }}>
-              <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                 <SelectValue>{getPollingLabel(pollingInterval)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -471,7 +471,7 @@ export default function SettingsPage() {
           <div className="grouped-row">
             <span className="text-sm">Appearance</span>
             <Select value={mounted ? theme : undefined} onValueChange={setTheme}>
-              <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                 <SelectValue>{mounted ? getThemeLabel(theme) : 'System'}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -491,7 +491,7 @@ export default function SettingsPage() {
           <div className="grouped-row">
             <span className="text-sm">Alert Window</span>
             <Select value={upcomingAlertHours} onValueChange={setUpcomingAlertHours}>
-              <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                 <SelectValue>{getAlertWindowLabel(upcomingAlertHours)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -505,7 +505,7 @@ export default function SettingsPage() {
           <div className="grouped-row">
             <span className="text-sm">Timing</span>
             <Select value={upcomingNotifyMode} onValueChange={setUpcomingNotifyMode}>
-              <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                 <SelectValue>{getTimingLabel(upcomingNotifyMode)}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -520,7 +520,7 @@ export default function SettingsPage() {
             <div className="grouped-row">
               <span className="text-sm">Notify Before</span>
               <Select value={upcomingNotifyBeforeMins} onValueChange={setUpcomingNotifyBeforeMins}>
-                <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                   <SelectValue>{getNotifyBeforeLabel(upcomingNotifyBeforeMins)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -536,7 +536,7 @@ export default function SettingsPage() {
             <div className="grouped-row">
               <span className="text-sm">Digest Time</span>
               <Select value={upcomingDailyNotifyHour} onValueChange={setUpcomingDailyNotifyHour}>
-                <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                   <SelectValue>{getDailyDigestLabel(upcomingDailyNotifyHour)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>

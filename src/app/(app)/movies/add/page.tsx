@@ -13,7 +13,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Plus, Loader2, Film } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,7 +28,7 @@ export default function AddMoviePage() {
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [profileId, setProfileId] = useState('');
   const [rootFolder, setRootFolder] = useState('');
-  const [monitored, setMonitored] = useState(true);
+  const [monitor, setMonitor] = useState<'movieOnly' | 'movieAndCollection' | 'none'>('movieOnly');
   const [minAvailability, setMinAvailability] = useState('released');
   const [adding, setAdding] = useState(false);
 
@@ -68,12 +67,12 @@ export default function AddMoviePage() {
           tmdbId: selected.tmdbId,
           qualityProfileId: Number(profileId),
           rootFolderPath: rootFolder,
-          monitored,
+          monitored: monitor !== 'none',
           minimumAvailability: minAvailability,
+          addOptions: { searchForMovie: true, monitor: monitor },
           titleSlug: selected.titleSlug,
           images: selected.images,
           year: selected.year,
-          addOptions: { searchForMovie: true },
         }),
       });
       if (res.ok) {
@@ -91,11 +90,21 @@ export default function AddMoviePage() {
   const posterUrl = (images: { coverType: string; remoteUrl: string }[]) =>
     images.find((i) => i.coverType === 'poster')?.remoteUrl;
 
+  const MONITOR_OPTIONS = [
+    { value: 'movieOnly', label: 'Movie Only' },
+    { value: 'movieAndCollection', label: 'Movie and Collection' },
+    { value: 'none', label: 'None' },
+  ];
+
   const MIN_AVAILABILITY_OPTIONS = [
     { value: 'announced', label: 'Announced' },
     { value: 'inCinemas', label: 'In Cinemas' },
     { value: 'released', label: 'Released' },
   ];
+
+  function getMonitorLabel(value: string) {
+    return MONITOR_OPTIONS.find((o) => o.value === value)?.label ?? value;
+  }
 
   function getMinAvailLabel(value: string) {
     return MIN_AVAILABILITY_OPTIONS.find((o) => o.value === value)?.label ?? value;
@@ -160,7 +169,7 @@ export default function AddMoviePage() {
                 <div className="grouped-row">
                   <Label className="text-sm shrink-0">Quality Profile</Label>
                   <Select value={profileId} onValueChange={setProfileId}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                       <SelectValue>{getProfileLabel(profileId)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -174,7 +183,7 @@ export default function AddMoviePage() {
                 <div className="grouped-row">
                   <Label className="text-sm shrink-0">Root Folder</Label>
                   <Select value={rootFolder} onValueChange={setRootFolder}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 max-w-[180px]">
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 max-w-[180px]">
                       <SelectValue>{getRootFolderLabel(rootFolder)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -188,7 +197,7 @@ export default function AddMoviePage() {
                 <div className="grouped-row">
                   <Label className="text-sm shrink-0">Minimum Availability</Label>
                   <Select value={minAvailability} onValueChange={setMinAvailability}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent p-0 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
                       <SelectValue>{getMinAvailLabel(minAvailability)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -200,8 +209,17 @@ export default function AddMoviePage() {
                 </div>
 
                 <div className="grouped-row" style={{ borderBottom: 'none' }}>
-                  <Label className="text-sm shrink-0">Monitored</Label>
-                  <Switch checked={monitored} onCheckedChange={setMonitored} />
+                  <Label className="text-sm shrink-0">Monitor</Label>
+                  <Select value={monitor} onValueChange={(v) => setMonitor(v as 'movieOnly' | 'movieAndCollection' | 'none')}>
+                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                      <SelectValue>{getMonitorLabel(monitor)}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONITOR_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>

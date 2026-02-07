@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import {
-  Drawer, DrawerContent, DrawerHeader, DrawerTitle,
+  Drawer, DrawerContent,
 } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -189,15 +189,15 @@ export function InteractiveSearchDialog({
   return (
     <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent className="max-h-[92vh] flex flex-col">
-        <DrawerHeader className="flex items-center justify-between pb-2">
-          <DrawerTitle className="text-base truncate pr-2">{title}</DrawerTitle>
+        <div className="flex items-center justify-between px-4 pt-4 pb-2">
+          <h2 className="text-base font-semibold truncate pr-2">{title}</h2>
           <button
             onClick={() => handleOpenChange(false)}
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full hover:bg-muted shrink-0"
           >
             <X className="h-5 w-5" />
           </button>
-        </DrawerHeader>
+        </div>
 
         <div className="flex-1 overflow-hidden flex flex-col px-4 pb-4">
           {!searched ? (
