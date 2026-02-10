@@ -1,7 +1,28 @@
 # Helprr
 
+Entire site was built using Claude code with Opus and Gemini. Using it daily, I haven’t found any issues in functionality so far, but I’ll update the README if I come across any bugs that I’m unable to fix. The UI is mobile-first, as I needed an Iphone app to control radarr, sonarr and qbittorrent with push notifications. I have only added features which I wanted to use myself to use from mobile, not all the options and features present in arr stack and qbittorrent is added.
+
 Helprr is a self-hosted web dashboard (PWA) that connects to **Sonarr**, **Radarr**, and **qBittorrent**.
 It polls those services on an interval and can send **Web Push** notifications for common events (downloads starting/completing/failing, health warnings, upcoming releases, etc.).
+
+<details>
+<summary>📱 App Screenshots</summary>
+<div style="display:flex; overflow-x:auto; gap:10px;">
+<img src="https://github.com/user-attachments/assets/4a0a2686-cd36-4772-9e4b-f1ca7e0b0ca1"  width="200"/>
+<img src="https://github.com/user-attachments/assets/9ec671c7-1b9c-4592-afba-c2425e28144f" width="200"/>
+<img src="https://github.com/user-attachments/assets/36f9f800-87c1-4e37-8b44-fc3642338629" width="200"/>
+  <img width="200"  alt="image" src="https://github.com/user-attachments/assets/f6d7ebc2-76c9-4b8e-85e4-74e7080b87cb" />
+  <img width="200" alt="image" src="https://github.com/user-attachments/assets/0678d9cc-9384-4858-8925-a69b85cbd006" />
+<img width="200"  alt="image" src="https://github.com/user-attachments/assets/f72210f5-f5d4-4846-8098-fa04c7a84fd0" />
+<img src="https://github.com/user-attachments/assets/921c6184-afb6-453b-9896-83cf67551fb6" width="200"/>
+<img src="https://github.com/user-attachments/assets/778f2e34-efb0-4119-b9b9-a14b3b5e4bcc"  width="200"/>
+<img width="200"  alt="image" src="https://github.com/user-attachments/assets/333fcc8d-4ace-46d4-a17d-e299fc9cfc42" />
+<img width="200" alt="image" src="https://github.com/user-attachments/assets/1c938422-9ca6-4d76-a145-bcab9ee93384" />
+<img src="https://github.com/user-attachments/assets/4a89a06d-8fdf-4001-b4d1-a58effc73922" width="200"/>
+<img width="200" alt="image" src="https://github.com/user-attachments/assets/df8a3500-f6ad-417d-b32b-bee9df630d0b" />
+
+</div>
+</details>
 
 ## Features
 
