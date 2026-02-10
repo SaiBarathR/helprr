@@ -1,22 +1,47 @@
 services:
+  helprr-db:
+    image: postgres:16-alpine
+    container_name: helprr-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=helprr
+    volumes:
+      - helprr-db-data:/var/lib/postgresql/data
+    networks:
+      - helprr-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   helprr:
-    build: .
+    build:
+      context: .
+      args:
+        - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
     container_name: helprr
     restart: unless-stopped
     ports:
       - "3050:3050"
+    depends_on:
+      helprr-db:
+        condition: service_healthy
     environment:
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@helprr-db:5432/helprr}
       - APP_PASSWORD=${APP_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
       - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
-    env_file:
-      - .env
     networks:
       - helprr-net
 
 networks:
   helprr-net:
     driver: bridge
+
+volumes:
+  helprr-db-data:

@@ -8,8 +8,6 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 RUN npm ci
-
-# Generate Prisma client
 RUN npx prisma generate
 
 # Rebuild the source code only when needed
@@ -21,9 +19,13 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# NEXT_PUBLIC_ vars must be available at build time
+ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
+ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
+
 RUN npm run build
 
-# Production image, copy all the files and run next
+# Production image
 FROM base AS runner
 WORKDIR /app
 
@@ -36,18 +38,17 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
-# Automatically leverage output traces to reduce image size
+# Standalone output + static assets
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Prisma CLI needs full node_modules for db push
+COPY --from=deps /app/node_modules ./node_modules
 
 USER nextjs
 
 EXPOSE 3050
-
 ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 
-# Copy full node_modules from deps for Prisma CLI (migrate deploy needs it)
-COPY --from=deps /app/node_modules ./node_modules
-
-CMD ["sh", "-c", "npx prisma db push && node server.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]
