@@ -12,10 +12,29 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaCard } from '@/components/media/media-card';
+import { MediaOverviewItem } from '@/components/media/media-overview';
+import { MediaTable } from '@/components/media/media-table';
+import { ViewSelector } from '@/components/media/view-selector';
+import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { SonarrSeries } from '@/types';
+
+const SERIES_FIELD_OPTIONS = [
+  { value: 'qualityProfile', label: 'Quality Profile' },
+  { value: 'rating', label: 'Rating' },
+  { value: 'network', label: 'Network' },
+  { value: 'sizeOnDisk', label: 'Size on Disk' },
+  { value: 'runtime', label: 'Runtime' },
+  { value: 'monitored', label: 'Monitored' },
+  { value: 'year', label: 'Year' },
+  { value: 'episodeProgress', label: 'Episode Progress' },
+  { value: 'genres', label: 'Genres' },
+  { value: 'overview', label: 'Overview' },
+  { value: 'images', label: 'Poster' },
+];
 
 const filterOptions = [
   { value: 'all', label: 'All' },
@@ -54,12 +73,18 @@ export default function SeriesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const {
+    seriesView: viewMode,
+    setSeriesView: setViewMode,
+    seriesPosterSize: posterSize,
+    setSeriesPosterSize: setPosterSize,
     seriesSort: sort,
     setSeriesSort: setSort,
     seriesSortDirection: sortDir,
     setSeriesSortDirection: setSortDir,
     seriesFilter: filter,
     setSeriesFilter: setFilter,
+    seriesVisibleFields: visibleFields,
+    setSeriesVisibleFields: setVisibleFields,
   } = useUIStore();
 
   useEffect(() => {
@@ -230,50 +255,165 @@ export default function SeriesPage() {
           </DropdownMenuContent>
         </DropdownMenu>
 
+        {/* View selector */}
+        <ViewSelector value={viewMode} onChange={setViewMode} />
+        <FieldToggles
+          available={SERIES_FIELD_OPTIONS}
+          selected={visibleFields}
+          onChange={setVisibleFields}
+          posterSize={viewMode !== 'table' ? posterSize : undefined}
+          onPosterSizeChange={viewMode !== 'table' ? setPosterSize : undefined}
+        />
+
         <div className="flex-1" />
 
         {/* Add series button */}
-        <Link
-          href="/series/add"
-          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-          aria-label="Add Series"
-        >
-          <Plus className="h-5 w-5" />
-        </Link>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              href="/series/add"
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+              aria-label="Add Series"
+            >
+              <Plus className="h-5 w-5" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>Add Series</TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Search bar */}
       <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." />
 
       {/* Content */}
-      {loading ? (
-        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {[...Array(12)].map((_, i) => (
-            <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          {series.length === 0
-            ? 'No series found. Add your Sonarr connection in Settings.'
-            : 'No series match your filters.'}
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {filtered.map((s) => (
-            <MediaCard
-              key={s.id}
-              title={s.title}
-              year={s.year}
-              images={s.images}
-              status={s.status}
-              monitored={s.monitored}
-              type="series"
-              href={`/series/${s.id}`}
-            />
-          ))}
-        </div>
-      )}
+      {(() => {
+        const effectiveView = viewMode === 'table' ? 'table' : viewMode;
+
+        const posterGridClass = posterSize === 'small'
+          ? 'grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2'
+          : posterSize === 'large'
+            ? 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3'
+            : 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3';
+
+        if (loading) {
+          return effectiveView === 'posters' ? (
+            <div className={posterGridClass}>
+              {[...Array(12)].map((_, i) => (
+                <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
+              ))}
+            </div>
+          ) : effectiveView === 'overview' ? (
+            <div className="space-y-2">
+              {[...Array(6)].map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="hidden md:block"><Skeleton className="h-96 rounded-xl" /></div>
+              <div className="md:hidden space-y-2">
+                {[...Array(6)].map((_, i) => (
+                  <Skeleton key={i} className="h-24 rounded-xl" />
+                ))}
+              </div>
+            </>
+          );
+        }
+
+        if (filtered.length === 0) {
+          return (
+            <div className="text-center py-12 text-muted-foreground">
+              {series.length === 0
+                ? 'No series found. Add your Sonarr connection in Settings.'
+                : 'No series match your filters.'}
+            </div>
+          );
+        }
+
+        const seriesQuality = (s: SonarrSeries) => qualityProfiles.find((q) => q.id === s.qualityProfileId)?.name;
+        const seriesEpProgress = (s: SonarrSeries) => `${s.statistics.episodeCount}/${s.statistics.totalEpisodeCount}`;
+
+        if (effectiveView === 'posters') {
+          return (
+            <div className={posterGridClass}>
+              {filtered.map((s) => (
+                <MediaCard
+                  key={s.id}
+                  title={s.title}
+                  year={s.year}
+                  images={s.images}
+                  status={s.status}
+                  monitored={s.monitored}
+                  type="series"
+                  href={`/series/${s.id}`}
+                  visibleFields={visibleFields}
+                  rating={s.ratings?.value}
+                />
+              ))}
+            </div>
+          );
+        }
+
+        const renderOverview = (items: SonarrSeries[]) => (
+          <div className="space-y-2">
+            {items.map((s) => (
+              <MediaOverviewItem
+                key={s.id}
+                title={s.title}
+                year={s.year}
+                images={s.images}
+                href={`/series/${s.id}`}
+                type="series"
+                monitored={s.monitored}
+                status={s.status}
+                visibleFields={visibleFields}
+                posterSize={posterSize}
+                qualityProfile={seriesQuality(s)}
+                network={s.network}
+                overview={s.overview}
+                rating={s.ratings?.value}
+                sizeOnDisk={s.statistics.sizeOnDisk}
+                runtime={s.runtime}
+                episodeProgress={seriesEpProgress(s)}
+                genres={s.genres}
+              />
+            ))}
+          </div>
+        );
+
+        if (effectiveView === 'overview') {
+          return renderOverview(filtered);
+        }
+
+        // Table view - table on md+, overview fallback on mobile
+        const tableRows = filtered.map((s) => ({
+          id: s.id,
+          title: s.title,
+          year: s.year,
+          href: `/series/${s.id}`,
+          monitored: s.monitored,
+          status: s.status,
+          images: s.images,
+          qualityProfile: seriesQuality(s),
+          network: s.network,
+          rating: s.ratings?.value,
+          sizeOnDisk: s.statistics.sizeOnDisk,
+          episodeProgress: seriesEpProgress(s),
+          runtime: s.runtime,
+          genres: s.genres,
+        }));
+
+        return (
+          <>
+            <div className="hidden md:block">
+              <MediaTable type="series" visibleFields={visibleFields} rows={tableRows} />
+            </div>
+            <div className="md:hidden">
+              {renderOverview(filtered)}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

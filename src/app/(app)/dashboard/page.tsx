@@ -176,7 +176,11 @@ export default function DashboardPage() {
           ) : (
             <div className="divide-y divide-border/50">
               {upcoming.slice(0, 8).map((event) => (
-                <div key={event.id} className="flex items-center gap-3 px-4 py-3">
+                <Link
+                  key={event.id}
+                  href={event.type === 'episode' ? `/series/${event.seriesId}` : `/movies/${event.movieId}`}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 active:bg-muted/50 transition-colors"
+                >
                   <Badge
                     variant="secondary"
                     className={event.type === 'episode' ? 'bg-blue-500/10 text-blue-500' : 'bg-orange-500/10 text-orange-500'}
@@ -191,7 +195,7 @@ export default function DashboardPage() {
                     <Clock className="h-3 w-3" />
                     {formatDistanceToNow(new Date(event.date), { addSuffix: true })}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

@@ -1,6 +1,27 @@
 import axios, { AxiosInstance } from 'axios';
 import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
 
+export interface TorrentFile {
+  index: number;
+  name: string;
+  size: number;
+  progress: number;
+  priority: number;
+  is_seed: boolean;
+  availability: number;
+}
+
+export interface TorrentTracker {
+  url: string;
+  status: number;
+  tier: number;
+  num_peers: number;
+  num_seeds: number;
+  num_leeches: number;
+  num_downloaded: number;
+  msg: string;
+}
+
 interface TorrentProperties {
   save_path: string;
   creation_date: number;
@@ -173,6 +194,14 @@ export class QBittorrentClient {
 
   async getTorrentProperties(hash: string): Promise<TorrentProperties> {
     return this.get<TorrentProperties>('/api/v2/torrents/properties', { hash });
+  }
+
+  async getTorrentFiles(hash: string): Promise<TorrentFile[]> {
+    return this.get<TorrentFile[]>('/api/v2/torrents/files', { hash });
+  }
+
+  async getTorrentTrackers(hash: string): Promise<TorrentTracker[]> {
+    return this.get<TorrentTracker[]>('/api/v2/torrents/trackers', { hash });
   }
 
   async pauseTorrent(hashes: string): Promise<void> {

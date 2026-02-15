@@ -24,6 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
   HardDrive,
   Play,
@@ -42,6 +43,7 @@ import {
   Filter,
 } from 'lucide-react';
 import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
+import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -133,6 +135,15 @@ export default function TorrentsPage() {
   const [torrentFile, setTorrentFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
 
+  // Detail drawer
+  const [detailHash, setDetailHash] = useState<string | null>(null);
+  const [detailData, setDetailData] = useState<{
+    properties: Record<string, unknown>;
+    files: TorrentFile[];
+    trackers: TorrentTracker[];
+  } | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   // Delete drawer
   const [deleteDrawer, setDeleteDrawer] = useState<{ open: boolean; hash: string; name: string; deleteFiles: boolean }>({
     open: false,
@@ -172,6 +183,24 @@ export default function TorrentsPage() {
       // Non-critical
     }
   }, []);
+
+  async function fetchDetail(hash: string) {
+    setDetailHash(hash);
+    setDetailLoading(true);
+    setDetailData(null);
+    try {
+      const res = await fetch(`/api/qbittorrent/${hash}/details`);
+      if (res.ok) {
+        setDetailData(await res.json());
+      } else {
+        toast.error('Failed to load torrent details');
+      }
+    } catch {
+      toast.error('Failed to load torrent details');
+    } finally {
+      setDetailLoading(false);
+    }
+  }
 
   useEffect(() => {
     fetchTorrents();
@@ -321,13 +350,18 @@ export default function TorrentsPage() {
         </DropdownMenu>
 
         {/* Refresh */}
-        <button
-          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-          onClick={() => { setLoading(true); fetchTorrents(); }}
-          aria-label="Refresh"
-        >
-          <RefreshCw className="h-5 w-5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+              onClick={() => { setLoading(true); fetchTorrents(); }}
+              aria-label="Refresh"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh</TooltipContent>
+        </Tooltip>
 
         {/* Transfer stats (inline) */}
         {transferInfo && (
@@ -346,13 +380,18 @@ export default function TorrentsPage() {
         <div className="flex-1" />
 
         {/* Add torrent button */}
-        <button
-          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-          onClick={() => setAddDrawerOpen(true)}
-          aria-label="Add Torrent"
-        >
-          <Plus className="h-5 w-5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+              onClick={() => setAddDrawerOpen(true)}
+              aria-label="Add Torrent"
+            >
+              <Plus className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Add Torrent</TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Search bar */}
@@ -454,7 +493,12 @@ export default function TorrentsPage() {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-medium truncate">{torrent.name}</h3>
+                      <button
+                        className="text-sm font-medium truncate text-left hover:underline"
+                        onClick={() => fetchDetail(torrent.hash)}
+                      >
+                        {torrent.name}
+                      </button>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-0.5">
@@ -533,6 +577,92 @@ export default function TorrentsPage() {
           </div>
         </div>
       )}
+
+      {/* Torrent Detail Drawer */}
+      <Drawer open={!!detailHash} onOpenChange={(open) => { if (!open) { setDetailHash(null); setDetailData(null); } }}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle className="text-sm break-all leading-snug">
+              {torrents.find((t) => t.hash === detailHash)?.name || 'Torrent Details'}
+            </DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-6 max-h-[70vh] overflow-y-auto space-y-4">
+            {detailLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : detailData ? (
+              <>
+                {/* General Info */}
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">General</h3>
+                  <div className="rounded-lg border divide-y">
+                    <DetailRow label="Save Path" value={String(detailData.properties.save_path || '-')} />
+                    <DetailRow label="Total Size" value={formatBytes(Number(detailData.properties.total_size) || 0)} />
+                    <DetailRow label="Downloaded" value={formatBytes(Number(detailData.properties.total_downloaded) || 0)} />
+                    <DetailRow label="Uploaded" value={formatBytes(Number(detailData.properties.total_uploaded) || 0)} />
+                    <DetailRow label="Ratio" value={Number(detailData.properties.share_ratio || 0).toFixed(2)} />
+                    <DetailRow label="Seeds" value={`${detailData.properties.seeds} (${detailData.properties.seeds_total} total)`} />
+                    <DetailRow label="Peers" value={`${detailData.properties.peers} (${detailData.properties.peers_total} total)`} />
+                    <DetailRow label="Connections" value={String(detailData.properties.nb_connections || 0)} />
+                    {Number(detailData.properties.addition_date) > 0 && (
+                      <DetailRow label="Added" value={new Date(Number(detailData.properties.addition_date) * 1000).toLocaleDateString()} />
+                    )}
+                    {Number(detailData.properties.completion_date) > 0 && (
+                      <DetailRow label="Completed" value={new Date(Number(detailData.properties.completion_date) * 1000).toLocaleDateString()} />
+                    )}
+                  </div>
+                </div>
+
+                {/* Files */}
+                {detailData.files.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Files ({detailData.files.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {detailData.files.map((file) => (
+                        <div key={file.index} className="rounded-lg bg-muted/40 p-2.5 space-y-1">
+                          <p className="text-xs font-medium break-all leading-snug">{file.name}</p>
+                          <div className="flex items-center gap-2">
+                            <Progress value={file.progress * 100} className="h-1 flex-1" />
+                            <span className="text-[10px] text-muted-foreground shrink-0">
+                              {(file.progress * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">{formatBytes(file.size)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Trackers */}
+                {detailData.trackers.length > 0 && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                      Trackers ({detailData.trackers.filter((t) => t.url.startsWith('http')).length})
+                    </h3>
+                    <div className="rounded-lg border divide-y">
+                      {detailData.trackers
+                        .filter((t) => t.url.startsWith('http'))
+                        .map((tracker, i) => (
+                          <div key={i} className="px-3 py-2 space-y-0.5">
+                            <p className="text-xs break-all">{tracker.url}</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              Seeds: {tracker.num_seeds} &middot; Peers: {tracker.num_leeches}
+                              {tracker.msg && ` &middot; ${tracker.msg}`}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       {/* Add Torrent Drawer */}
       <Drawer open={addDrawerOpen} onOpenChange={setAddDrawerOpen}>
@@ -656,6 +786,15 @@ export default function TorrentsPage() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between px-3 py-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-right max-w-[60%] break-words">{value}</span>
     </div>
   );
 }

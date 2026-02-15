@@ -124,6 +124,9 @@
     -webkit-tap-highlight-color: transparent;
     overflow-x: clip;
   }
+  button, [role="button"], a, select, summary, [tabindex]:not([tabindex="-1"]) {
+    cursor: pointer;
+  }
 }
 
 /* Smooth scrolling */
