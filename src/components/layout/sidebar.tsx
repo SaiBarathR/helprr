@@ -17,6 +17,7 @@ import {
   HardDrive,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useState } from 'react';
 
 const navItems = [
@@ -49,7 +50,7 @@ export function Sidebar() {
       <nav className="flex-1 py-2 space-y-1 px-2">
         {navItems.map(({ href, icon: Icon, label }) => {
           const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
-          return (
+          const link = (
             <Link
               key={href}
               href={href}
@@ -60,12 +61,22 @@ export function Sidebar() {
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                 collapsed && 'justify-center px-2'
               )}
-              title={collapsed ? label : undefined}
             >
               <Icon className="h-4 w-4 shrink-0" />
               {!collapsed && label}
             </Link>
           );
+
+          if (collapsed) {
+            return (
+              <Tooltip key={href}>
+                <TooltipTrigger asChild>{link}</TooltipTrigger>
+                <TooltipContent side="right">{label}</TooltipContent>
+              </Tooltip>
+            );
+          }
+
+          return link;
         })}
       </nav>
 

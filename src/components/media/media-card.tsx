@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Film, Tv } from 'lucide-react';
+import { Film, Tv, Star } from 'lucide-react';
 import type { MediaImage } from '@/types';
 
 interface MediaCardProps {
@@ -13,6 +13,8 @@ interface MediaCardProps {
   monitored?: boolean;
   type: 'movie' | 'series';
   href: string;
+  visibleFields?: string[];
+  rating?: number;
 }
 
 function getImageUrl(images: MediaImage[], coverType: string): string | null {
@@ -20,8 +22,19 @@ function getImageUrl(images: MediaImage[], coverType: string): string | null {
   return img?.remoteUrl || img?.url || null;
 }
 
-export function MediaCard({ title, year, images, hasFile, monitored, type, href }: MediaCardProps) {
+export function MediaCard({
+  title,
+  year,
+  images,
+  hasFile,
+  monitored,
+  type,
+  href,
+  visibleFields,
+  rating,
+}: MediaCardProps) {
   const poster = getImageUrl(images, 'poster');
+  const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
   return (
     <Link href={href} className="group block">
@@ -41,10 +54,17 @@ export function MediaCard({ title, year, images, hasFile, monitored, type, href 
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 p-2">
           <p className="text-xs font-semibold text-white truncate leading-tight">{title}</p>
-          <p className="text-[10px] text-white/70">{year}</p>
+          {show('year') && <p className="text-[10px] text-white/70">{year}</p>}
         </div>
-        {/* Status badge - bottom right */}
-        {hasFile !== undefined && (
+        {/* Rating badge - top right */}
+        {show('rating') && rating !== undefined && rating > 0 && (
+          <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-black/60 rounded px-1 py-0.5">
+            <Star className="h-2.5 w-2.5 text-yellow-400 fill-yellow-400" />
+            <span className="text-[9px] text-white font-medium">{rating.toFixed(1)}</span>
+          </div>
+        )}
+        {/* Status dot - bottom right */}
+        {show('monitored') && hasFile !== undefined && (
           <div className="absolute bottom-1.5 right-1.5">
             <span
               className={`inline-block h-2 w-2 rounded-full ${
@@ -54,7 +74,7 @@ export function MediaCard({ title, year, images, hasFile, monitored, type, href 
           </div>
         )}
         {/* Unmonitored overlay */}
-        {monitored === false && (
+        {show('monitored') && monitored === false && (
           <div className="absolute inset-0 bg-black/40" />
         )}
       </div>

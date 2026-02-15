@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
   Download, Check, X, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
@@ -26,7 +27,12 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
-import type { QueueItem, ManualImportItem } from '@/types';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
+import type { QueueItem, ManualImportItem, SonarrEpisode } from '@/types';
 
 // --- Status helpers ---
 
@@ -180,19 +186,24 @@ export default function ActivityPage() {
           </Button>
 
           {/* Refresh */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={handleRefreshActivity}
-            disabled={refreshing}
-          >
-            {refreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleRefreshActivity}
+                disabled={refreshing}
+              >
+                {refreshing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -492,6 +503,8 @@ function FailedImportsTab() {
   const [importDialog, setImportDialog] = useState<{ item: QueueItem & { source?: string }; files: ManualImportItem[] } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [allEpisodes, setAllEpisodes] = useState<SonarrEpisode[]>([]);
+  const [fileOverrides, setFileOverrides] = useState<Map<number, SonarrEpisode[]>>(new Map());
 
   async function fetchFailed() {
     try {
@@ -511,35 +524,81 @@ function FailedImportsTab() {
   async function openManualImport(item: QueueItem & { source?: string }) {
     setImportLoading(true);
     setImportDialog({ item, files: [] });
+    setAllEpisodes([]);
+    setFileOverrides(new Map());
     try {
       const params = new URLSearchParams({ downloadId: item.downloadId, source: item.source || 'sonarr' });
       if (item.seriesId) params.set('seriesId', String(item.seriesId));
-      const res = await fetch(`/api/activity/manualimport?${params}`);
-      if (res.ok) {
-        const files = await res.json();
-        setImportDialog({ item, files });
+
+      const fetches: Promise<unknown>[] = [
+        fetch(`/api/activity/manualimport?${params}`).then((r) => r.ok ? r.json() : []),
+      ];
+
+      // Fetch all episodes for Sonarr items so user can reassign
+      if (item.source === 'sonarr' && item.seriesId) {
+        fetches.push(
+          fetch(`/api/sonarr/${item.seriesId}/episodes`).then((r) => r.ok ? r.json() : [])
+        );
       }
+
+      const [files, episodes] = await Promise.all(fetches);
+      setImportDialog({ item, files: files as ManualImportItem[] });
+      if (episodes) setAllEpisodes(episodes as SonarrEpisode[]);
     } catch { toast.error('Failed to scan files'); }
     finally { setImportLoading(false); }
+  }
+
+  function setEpisodeOverride(fileIndex: number, episode: SonarrEpisode) {
+    setFileOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(fileIndex, [episode]);
+      return next;
+    });
   }
 
   async function submitImport() {
     if (!importDialog) return;
     setSubmitting(true);
     try {
+      // Merge overrides into files
+      const files = importDialog.files.map((f, i) => {
+        const override = fileOverrides.get(i);
+        if (override && override.length > 0) {
+          return {
+            ...f,
+            episodes: override,
+            seasonNumber: override[0].seasonNumber,
+          };
+        }
+        return f;
+      });
+
       const res = await fetch('/api/activity/manualimport', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: importDialog.item.source, files: importDialog.files, name: 'ManualImport' }),
+        body: JSON.stringify({ source: importDialog.item.source, files, name: 'ManualImport' }),
       });
       if (res.ok) {
         toast.success('Manual import submitted');
         setImportDialog(null);
+        setFileOverrides(new Map());
+        setAllEpisodes([]);
         fetchFailed();
       } else { toast.error('Import failed'); }
     } catch { toast.error('Import failed'); }
     finally { setSubmitting(false); }
   }
+
+  // Group episodes by season for the picker
+  const episodesBySeason = useMemo(() => {
+    const grouped = new Map<number, SonarrEpisode[]>();
+    for (const ep of allEpisodes) {
+      const list = grouped.get(ep.seasonNumber) || [];
+      list.push(ep);
+      grouped.set(ep.seasonNumber, list);
+    }
+    return Array.from(grouped.entries()).sort(([a], [b]) => a - b);
+  }, [allEpisodes]);
 
   if (loading) {
     return (
@@ -586,7 +645,7 @@ function FailedImportsTab() {
         </div>
       ))}
 
-      <Drawer open={!!importDialog} onOpenChange={(open) => !open && setImportDialog(null)}>
+      <Drawer open={!!importDialog} onOpenChange={(open) => { if (!open) { setImportDialog(null); setFileOverrides(new Map()); setAllEpisodes([]); } }}>
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>Manual Import</DrawerTitle>
@@ -598,22 +657,41 @@ function FailedImportsTab() {
               </div>
             ) : (
               <div className="max-h-80 overflow-y-auto space-y-2">
-                {importDialog?.files.map((f, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-muted/50 text-sm space-y-1">
-                    <p className="font-medium truncate">{f.name || f.relativePath}</p>
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{f.quality?.quality?.name}</span>
-                      {f.series && <span>{f.series.title}</span>}
-                      {f.movie && <span>{f.movie.title}</span>}
-                      {f.episodes?.length ? <span>Ep {f.episodes.map(e => e.episodeNumber).join(', ')}</span> : null}
-                    </div>
-                    {f.rejections?.length > 0 && (
-                      <div className="text-xs text-destructive">
-                        {f.rejections.map((r, ri) => <p key={ri}>{r.reason}</p>)}
+                {importDialog?.files.map((f, i) => {
+                  const override = fileOverrides.get(i);
+                  const currentEpisodes = override || f.episodes || [];
+                  const isSonarr = importDialog.item.source === 'sonarr';
+
+                  return (
+                    <div key={i} className="p-3 rounded-lg bg-muted/50 text-sm space-y-1.5">
+                      <p className="font-medium truncate">{f.name || f.relativePath}</p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{f.quality?.quality?.name}</span>
+                        {f.series && <span>{f.series.title}</span>}
+                        {f.movie && <span>{f.movie.title}</span>}
+                        {currentEpisodes.length > 0 ? (
+                          <Badge variant="secondary" className="text-[10px]">
+                            S{String(currentEpisodes[0].seasonNumber).padStart(2, '0')}E{currentEpisodes.map(e => String(e.episodeNumber).padStart(2, '0')).join(', E')}
+                            {currentEpisodes[0].title ? ` - ${currentEpisodes[0].title}` : ''}
+                          </Badge>
+                        ) : isSonarr ? (
+                          <Badge variant="destructive" className="text-[10px]">No episode assigned</Badge>
+                        ) : null}
+                        {isSonarr && allEpisodes.length > 0 && (
+                          <EpisodePickerButton
+                            episodesBySeason={episodesBySeason}
+                            onSelect={(ep) => setEpisodeOverride(i, ep)}
+                          />
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {f.rejections?.length > 0 && (
+                        <div className="text-xs text-destructive">
+                          {f.rejections.map((r, ri) => <p key={ri}>{r.reason}</p>)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 {importDialog?.files.length === 0 && (
                   <p className="text-center py-4 text-muted-foreground">No files detected</p>
                 )}
@@ -632,6 +710,50 @@ function FailedImportsTab() {
         </DrawerContent>
       </Drawer>
     </div>
+  );
+}
+
+function EpisodePickerButton({
+  episodesBySeason,
+  onSelect,
+}: {
+  episodesBySeason: [number, SonarrEpisode[]][];
+  onSelect: (ep: SonarrEpisode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="text-[10px] text-primary hover:underline font-medium">
+          Change
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-0 max-h-64 overflow-y-auto" align="start">
+        {episodesBySeason.map(([season, episodes]) => (
+          <div key={season}>
+            <div className="sticky top-0 bg-popover px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase border-b">
+              {season === 0 ? 'Specials' : `Season ${season}`}
+            </div>
+            {episodes.map((ep) => (
+              <button
+                key={ep.id}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors flex items-center gap-2"
+                onClick={() => {
+                  onSelect(ep);
+                  setOpen(false);
+                }}
+              >
+                <span className="text-muted-foreground shrink-0 tabular-nums w-8">
+                  E{String(ep.episodeNumber).padStart(2, '0')}
+                </span>
+                <span className="truncate">{ep.title || 'TBA'}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 }
 

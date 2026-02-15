@@ -12,10 +12,29 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaCard } from '@/components/media/media-card';
+import { MediaOverviewItem } from '@/components/media/media-overview';
+import { MediaTable } from '@/components/media/media-table';
+import { ViewSelector } from '@/components/media/view-selector';
+import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { RadarrMovie } from '@/types';
+
+const MOVIE_FIELD_OPTIONS = [
+  { value: 'qualityProfile', label: 'Quality Profile' },
+  { value: 'rating', label: 'Rating' },
+  { value: 'studio', label: 'Studio' },
+  { value: 'certification', label: 'Certification' },
+  { value: 'sizeOnDisk', label: 'Size on Disk' },
+  { value: 'runtime', label: 'Runtime' },
+  { value: 'monitored', label: 'Monitored' },
+  { value: 'year', label: 'Year' },
+  { value: 'genres', label: 'Genres' },
+  { value: 'overview', label: 'Overview' },
+  { value: 'images', label: 'Poster' },
+];
 
 const filterOptions = [
   { value: 'all', label: 'All' },
@@ -59,12 +78,18 @@ export default function MoviesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const {
+    moviesView: viewMode,
+    setMoviesView: setViewMode,
+    moviesPosterSize: posterSize,
+    setMoviesPosterSize: setPosterSize,
     moviesSort: sort,
     setMoviesSort: setSort,
     moviesSortDirection: sortDir,
     setMoviesSortDirection: setSortDir,
     moviesFilter: filter,
     setMoviesFilter: setFilter,
+    moviesVisibleFields: visibleFields,
+    setMoviesVisibleFields: setVisibleFields,
   } = useUIStore();
 
   useEffect(() => {
@@ -251,50 +276,190 @@ export default function MoviesPage() {
           </DropdownMenuContent>
         </DropdownMenu>
 
+        {/* View selector */}
+        <ViewSelector value={viewMode} onChange={setViewMode} />
+        <FieldToggles
+          available={MOVIE_FIELD_OPTIONS}
+          selected={visibleFields}
+          onChange={setVisibleFields}
+          posterSize={viewMode !== 'table' ? posterSize : undefined}
+          onPosterSizeChange={viewMode !== 'table' ? setPosterSize : undefined}
+        />
+
         <div className="flex-1" />
 
         {/* Add movie button */}
-        <Link
-          href="/movies/add"
-          className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-          aria-label="Add Movie"
-        >
-          <Plus className="h-5 w-5" />
-        </Link>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              href="/movies/add"
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+              aria-label="Add Movie"
+            >
+              <Plus className="h-5 w-5" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>Add Movie</TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Search bar */}
       <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." />
 
       {/* Content */}
-      {loading ? (
-        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {[...Array(12)].map((_, i) => (
-            <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
-          {movies.length === 0
-            ? 'No movies found. Add your Radarr connection in Settings.'
-            : 'No movies match your filters.'}
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {filtered.map((movie) => (
-            <MediaCard
-              key={movie.id}
-              title={movie.title}
-              year={movie.year}
-              images={movie.images}
-              hasFile={movie.hasFile}
-              monitored={movie.monitored}
-              type="movie"
-              href={`/movies/${movie.id}`}
-            />
-          ))}
-        </div>
-      )}
+      {(() => {
+        // On mobile, table isn't available — fall back to overview for rendering
+        const effectiveView = viewMode === 'table' ? 'table' : viewMode;
+
+        const posterGridClass = posterSize === 'small'
+          ? 'grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2'
+          : posterSize === 'large'
+            ? 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3'
+            : 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3';
+
+        if (loading) {
+          return effectiveView === 'posters' ? (
+            <div className={posterGridClass}>
+              {[...Array(12)].map((_, i) => (
+                <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
+              ))}
+            </div>
+          ) : effectiveView === 'overview' ? (
+            <div className="space-y-2">
+              {[...Array(6)].map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <>
+              {/* Table skeleton on desktop, overview skeleton on mobile */}
+              <div className="hidden md:block"><Skeleton className="h-96 rounded-xl" /></div>
+              <div className="md:hidden space-y-2">
+                {[...Array(6)].map((_, i) => (
+                  <Skeleton key={i} className="h-24 rounded-xl" />
+                ))}
+              </div>
+            </>
+          );
+        }
+
+        if (filtered.length === 0) {
+          return (
+            <div className="text-center py-12 text-muted-foreground">
+              {movies.length === 0
+                ? 'No movies found. Add your Radarr connection in Settings.'
+                : 'No movies match your filters.'}
+            </div>
+          );
+        }
+
+        const movieRating = (m: RadarrMovie) => m.ratings?.imdb?.value || m.ratings?.tmdb?.value;
+        const movieQuality = (m: RadarrMovie) => qualityProfiles.find((q) => q.id === m.qualityProfileId)?.name;
+
+        if (effectiveView === 'posters') {
+          return (
+            <div className={posterGridClass}>
+              {filtered.map((movie) => (
+                <MediaCard
+                  key={movie.id}
+                  title={movie.title}
+                  year={movie.year}
+                  images={movie.images}
+                  hasFile={movie.hasFile}
+                  monitored={movie.monitored}
+                  type="movie"
+                  href={`/movies/${movie.id}`}
+                  visibleFields={visibleFields}
+                  rating={movieRating(movie)}
+                />
+              ))}
+            </div>
+          );
+        }
+
+        if (effectiveView === 'overview') {
+          return (
+            <div className="space-y-2">
+              {filtered.map((movie) => (
+                <MediaOverviewItem
+                  key={movie.id}
+                  title={movie.title}
+                  year={movie.year}
+                  images={movie.images}
+                  href={`/movies/${movie.id}`}
+                  type="movie"
+                  monitored={movie.monitored}
+                  hasFile={movie.hasFile}
+                  status={movie.status}
+                  visibleFields={visibleFields}
+                  posterSize={posterSize}
+                  qualityProfile={movieQuality(movie)}
+                  studio={movie.studio}
+                  certification={movie.certification}
+                  overview={movie.overview}
+                  rating={movieRating(movie)}
+                  sizeOnDisk={movie.sizeOnDisk}
+                  runtime={movie.runtime}
+                  genres={movie.genres}
+                />
+              ))}
+            </div>
+          );
+        }
+
+        // Table view - show table on md+, overview fallback on mobile
+        const tableRows = filtered.map((movie) => ({
+          id: movie.id,
+          title: movie.title,
+          year: movie.year,
+          href: `/movies/${movie.id}`,
+          monitored: movie.monitored,
+          hasFile: movie.hasFile,
+          status: movie.status,
+          images: movie.images,
+          qualityProfile: movieQuality(movie),
+          studio: movie.studio,
+          rating: movieRating(movie),
+          sizeOnDisk: movie.sizeOnDisk,
+          runtime: movie.runtime,
+          certification: movie.certification,
+          genres: movie.genres,
+        }));
+
+        return (
+          <>
+            <div className="hidden md:block">
+              <MediaTable type="movie" visibleFields={visibleFields} rows={tableRows} />
+            </div>
+            {/* Mobile fallback: overview */}
+            <div className="md:hidden space-y-2">
+              {filtered.map((movie) => (
+                <MediaOverviewItem
+                  key={movie.id}
+                  title={movie.title}
+                  year={movie.year}
+                  images={movie.images}
+                  href={`/movies/${movie.id}`}
+                  type="movie"
+                  monitored={movie.monitored}
+                  hasFile={movie.hasFile}
+                  status={movie.status}
+                  visibleFields={visibleFields}
+                  posterSize={posterSize}
+                  qualityProfile={movieQuality(movie)}
+                  studio={movie.studio}
+                  certification={movie.certification}
+                  overview={movie.overview}
+                  rating={movieRating(movie)}
+                  sizeOnDisk={movie.sizeOnDisk}
+                  runtime={movie.runtime}
+                  genres={movie.genres}
+                />
+              ))}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
