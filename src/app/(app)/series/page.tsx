@@ -22,19 +22,37 @@ import { Filter, ArrowUpDown, Plus } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { SonarrSeries } from '@/types';
 
-const SERIES_FIELD_OPTIONS = [
-  { value: 'qualityProfile', label: 'Quality Profile' },
-  { value: 'rating', label: 'Rating' },
-  { value: 'network', label: 'Network' },
-  { value: 'sizeOnDisk', label: 'Size on Disk' },
-  { value: 'runtime', label: 'Runtime' },
-  { value: 'monitored', label: 'Monitored' },
-  { value: 'year', label: 'Year' },
-  { value: 'episodeProgress', label: 'Episode Progress' },
-  { value: 'genres', label: 'Genres' },
-  { value: 'overview', label: 'Overview' },
-  { value: 'images', label: 'Poster' },
-];
+import type { MediaViewMode } from '@/lib/store';
+
+const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
+  posters: [
+    { value: 'year', label: 'Year' },
+    { value: 'rating', label: 'Rating' },
+    { value: 'monitored', label: 'Monitored' },
+  ],
+  overview: [
+    { value: 'qualityProfile', label: 'Quality Profile' },
+    { value: 'rating', label: 'Rating' },
+    { value: 'network', label: 'Network' },
+    { value: 'sizeOnDisk', label: 'Size on Disk' },
+    { value: 'runtime', label: 'Runtime' },
+    { value: 'monitored', label: 'Monitored' },
+    { value: 'year', label: 'Year' },
+    { value: 'episodeProgress', label: 'Episode Progress' },
+    { value: 'genres', label: 'Genres' },
+    { value: 'overview', label: 'Overview' },
+    { value: 'images', label: 'Poster' },
+  ],
+  table: [
+    { value: 'monitored', label: 'Monitored' },
+    { value: 'year', label: 'Year' },
+    { value: 'qualityProfile', label: 'Quality Profile' },
+    { value: 'network', label: 'Network' },
+    { value: 'episodeProgress', label: 'Episode Progress' },
+    { value: 'rating', label: 'Rating' },
+    { value: 'sizeOnDisk', label: 'Size on Disk' },
+  ],
+};
 
 const filterOptions = [
   { value: 'all', label: 'All' },
@@ -83,9 +101,15 @@ export default function SeriesPage() {
     setSeriesSortDirection: setSortDir,
     seriesFilter: filter,
     setSeriesFilter: setFilter,
-    seriesVisibleFields: visibleFields,
-    setSeriesVisibleFields: setVisibleFields,
+    seriesVisibleFields: visibleFieldsByMode,
+    setSeriesVisibleFields: setVisibleFieldsForMode,
   } = useUIStore();
+
+  const visibleFields = visibleFieldsByMode[viewMode];
+  const setVisibleFields = useCallback(
+    (fields: string[]) => setVisibleFieldsForMode(viewMode, fields),
+    [viewMode, setVisibleFieldsForMode]
+  );
 
   useEffect(() => {
     Promise.all([
@@ -258,7 +282,7 @@ export default function SeriesPage() {
         {/* View selector */}
         <ViewSelector value={viewMode} onChange={setViewMode} />
         <FieldToggles
-          available={SERIES_FIELD_OPTIONS}
+          available={FIELD_OPTIONS_BY_MODE[viewMode]}
           selected={visibleFields}
           onChange={setVisibleFields}
           posterSize={viewMode !== 'table' ? posterSize : undefined}
@@ -403,13 +427,37 @@ export default function SeriesPage() {
           genres: s.genres,
         }));
 
+        const mobileOverviewFields = visibleFieldsByMode.overview;
         return (
           <>
             <div className="hidden md:block">
               <MediaTable type="series" visibleFields={visibleFields} rows={tableRows} />
             </div>
             <div className="md:hidden">
-              {renderOverview(filtered)}
+              <div className="space-y-2">
+                {filtered.map((s) => (
+                  <MediaOverviewItem
+                    key={s.id}
+                    title={s.title}
+                    year={s.year}
+                    images={s.images}
+                    href={`/series/${s.id}`}
+                    type="series"
+                    monitored={s.monitored}
+                    status={s.status}
+                    visibleFields={mobileOverviewFields}
+                    posterSize={posterSize}
+                    qualityProfile={seriesQuality(s)}
+                    network={s.network}
+                    overview={s.overview}
+                    rating={s.ratings?.value}
+                    sizeOnDisk={s.statistics.sizeOnDisk}
+                    runtime={s.runtime}
+                    episodeProgress={seriesEpProgress(s)}
+                    genres={s.genres}
+                  />
+                ))}
+              </div>
             </div>
           </>
         );

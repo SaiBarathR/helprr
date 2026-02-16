@@ -22,19 +22,36 @@ import { Filter, ArrowUpDown, Plus } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { RadarrMovie } from '@/types';
 
-const MOVIE_FIELD_OPTIONS = [
-  { value: 'qualityProfile', label: 'Quality Profile' },
-  { value: 'rating', label: 'Rating' },
-  { value: 'studio', label: 'Studio' },
-  { value: 'certification', label: 'Certification' },
-  { value: 'sizeOnDisk', label: 'Size on Disk' },
-  { value: 'runtime', label: 'Runtime' },
-  { value: 'monitored', label: 'Monitored' },
-  { value: 'year', label: 'Year' },
-  { value: 'genres', label: 'Genres' },
-  { value: 'overview', label: 'Overview' },
-  { value: 'images', label: 'Poster' },
-];
+import type { MediaViewMode } from '@/lib/store';
+
+const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
+  posters: [
+    { value: 'year', label: 'Year' },
+    { value: 'rating', label: 'Rating' },
+    { value: 'monitored', label: 'Monitored' },
+  ],
+  overview: [
+    { value: 'qualityProfile', label: 'Quality Profile' },
+    { value: 'rating', label: 'Rating' },
+    { value: 'studio', label: 'Studio' },
+    { value: 'certification', label: 'Certification' },
+    { value: 'sizeOnDisk', label: 'Size on Disk' },
+    { value: 'runtime', label: 'Runtime' },
+    { value: 'monitored', label: 'Monitored' },
+    { value: 'year', label: 'Year' },
+    { value: 'genres', label: 'Genres' },
+    { value: 'overview', label: 'Overview' },
+    { value: 'images', label: 'Poster' },
+  ],
+  table: [
+    { value: 'monitored', label: 'Monitored' },
+    { value: 'year', label: 'Year' },
+    { value: 'qualityProfile', label: 'Quality Profile' },
+    { value: 'studio', label: 'Studio' },
+    { value: 'rating', label: 'Rating' },
+    { value: 'sizeOnDisk', label: 'Size on Disk' },
+  ],
+};
 
 const filterOptions = [
   { value: 'all', label: 'All' },
@@ -88,9 +105,15 @@ export default function MoviesPage() {
     setMoviesSortDirection: setSortDir,
     moviesFilter: filter,
     setMoviesFilter: setFilter,
-    moviesVisibleFields: visibleFields,
-    setMoviesVisibleFields: setVisibleFields,
+    moviesVisibleFields: visibleFieldsByMode,
+    setMoviesVisibleFields: setVisibleFieldsForMode,
   } = useUIStore();
+
+  const visibleFields = visibleFieldsByMode[viewMode];
+  const setVisibleFields = useCallback(
+    (fields: string[]) => setVisibleFieldsForMode(viewMode, fields),
+    [viewMode, setVisibleFieldsForMode]
+  );
 
   useEffect(() => {
     Promise.all([
@@ -279,7 +302,7 @@ export default function MoviesPage() {
         {/* View selector */}
         <ViewSelector value={viewMode} onChange={setViewMode} />
         <FieldToggles
-          available={MOVIE_FIELD_OPTIONS}
+          available={FIELD_OPTIONS_BY_MODE[viewMode]}
           selected={visibleFields}
           onChange={setVisibleFields}
           posterSize={viewMode !== 'table' ? posterSize : undefined}
@@ -426,6 +449,7 @@ export default function MoviesPage() {
           genres: movie.genres,
         }));
 
+        const mobileOverviewFields = visibleFieldsByMode.overview;
         return (
           <>
             <div className="hidden md:block">
@@ -444,7 +468,7 @@ export default function MoviesPage() {
                   monitored={movie.monitored}
                   hasFile={movie.hasFile}
                   status={movie.status}
-                  visibleFields={visibleFields}
+                  visibleFields={mobileOverviewFields}
                   posterSize={posterSize}
                   qualityProfile={movieQuality(movie)}
                   studio={movie.studio}
