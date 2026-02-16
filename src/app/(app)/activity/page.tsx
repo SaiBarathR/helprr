@@ -505,6 +505,7 @@ function FailedImportsTab() {
   const [submitting, setSubmitting] = useState(false);
   const [allEpisodes, setAllEpisodes] = useState<SonarrEpisode[]>([]);
   const [fileOverrides, setFileOverrides] = useState<Map<number, SonarrEpisode[]>>(new Map());
+  const [refreshingEpisodes, setRefreshingEpisodes] = useState(false);
 
   async function fetchFailed() {
     try {
@@ -554,6 +555,30 @@ function FailedImportsTab() {
       next.set(fileIndex, [episode]);
       return next;
     });
+  }
+
+  async function handleRefreshEpisodes() {
+    if (!importDialog?.item.seriesId) return;
+    setRefreshingEpisodes(true);
+    try {
+      await fetch('/api/sonarr/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'RefreshSeries', seriesId: importDialog.item.seriesId }),
+      });
+      // Wait for Sonarr to process the refresh
+      await new Promise((r) => setTimeout(r, 2000));
+      const res = await fetch(`/api/sonarr/${importDialog.item.seriesId}/episodes`);
+      if (res.ok) {
+        const episodes = await res.json();
+        setAllEpisodes(episodes);
+        toast.success('Episodes refreshed');
+      }
+    } catch {
+      toast.error('Failed to refresh episodes');
+    } finally {
+      setRefreshingEpisodes(false);
+    }
   }
 
   async function submitImport() {
@@ -656,6 +681,23 @@ function FailedImportsTab() {
                 {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12" />)}
               </div>
             ) : (
+              <>
+              {importDialog?.item.source === 'sonarr' && importDialog.item.seriesId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full mb-2"
+                  onClick={handleRefreshEpisodes}
+                  disabled={refreshingEpisodes}
+                >
+                  {refreshingEpisodes ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  Refresh Episodes
+                </Button>
+              )}
               <div className="max-h-80 overflow-y-auto space-y-2">
                 {importDialog?.files.map((f, i) => {
                   const override = fileOverrides.get(i);
@@ -696,6 +738,7 @@ function FailedImportsTab() {
                   <p className="text-center py-4 text-muted-foreground">No files detected</p>
                 )}
               </div>
+              </>
             )}
             <div className="flex flex-col gap-2 mt-4">
               <Button onClick={submitImport} disabled={submitting || !importDialog?.files.length} className="w-full">
@@ -721,37 +764,76 @@ function EpisodePickerButton({
   onSelect: (ep: SonarrEpisode) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredSeasons = useMemo(() => {
+    if (!search) return episodesBySeason;
+    const q = search.toLowerCase();
+    return episodesBySeason
+      .map(([season, episodes]) => {
+        const filtered = episodes.filter((ep) =>
+          String(ep.episodeNumber).includes(q) ||
+          (ep.title || 'TBA').toLowerCase().includes(q) ||
+          `s${String(season).padStart(2, '0')}e${String(ep.episodeNumber).padStart(2, '0')}`.includes(q)
+        );
+        return [season, filtered] as [number, SonarrEpisode[]];
+      })
+      .filter(([, episodes]) => episodes.length > 0);
+  }, [episodesBySeason, search]);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
       <PopoverTrigger asChild>
         <button className="text-[10px] text-primary hover:underline font-medium">
           Change
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0 max-h-64 overflow-y-auto" align="start">
-        {episodesBySeason.map(([season, episodes]) => (
-          <div key={season}>
-            <div className="sticky top-0 bg-popover px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase border-b">
-              {season === 0 ? 'Specials' : `Season ${season}`}
+      <PopoverContent className="w-72 p-0 max-h-64 overflow-hidden flex flex-col" align="start">
+        <div className="p-2 border-b shrink-0">
+          <input
+            type="text"
+            placeholder="Search episodes..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full text-xs bg-muted/50 rounded px-2 py-1.5 outline-none placeholder:text-muted-foreground"
+            autoFocus
+          />
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {filteredSeasons.map(([season, episodes]) => (
+            <div key={season}>
+              <div className="sticky top-0 bg-popover px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase border-b">
+                {season === 0 ? 'Specials' : `Season ${season}`}
+              </div>
+              {episodes.map((ep) => (
+                <button
+                  key={ep.id}
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors flex items-center gap-2"
+                  onClick={() => {
+                    onSelect(ep);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                >
+                  <span className="text-muted-foreground shrink-0 tabular-nums w-8">
+                    E{String(ep.episodeNumber).padStart(2, '0')}
+                  </span>
+                  <span className="truncate flex-1">
+                    {ep.title || 'TBA'}
+                  </span>
+                  {(!ep.title || ep.title === 'TBA') && ep.airDate && (
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      {ep.airDate}
+                    </span>
+                  )}
+                </button>
+              ))}
             </div>
-            {episodes.map((ep) => (
-              <button
-                key={ep.id}
-                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors flex items-center gap-2"
-                onClick={() => {
-                  onSelect(ep);
-                  setOpen(false);
-                }}
-              >
-                <span className="text-muted-foreground shrink-0 tabular-nums w-8">
-                  E{String(ep.episodeNumber).padStart(2, '0')}
-                </span>
-                <span className="truncate">{ep.title || 'TBA'}</span>
-              </button>
-            ))}
-          </div>
-        ))}
+          ))}
+          {filteredSeasons.length === 0 && (
+            <p className="text-center py-3 text-xs text-muted-foreground">No episodes match</p>
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   );

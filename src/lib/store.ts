@@ -3,6 +3,19 @@ import { persist } from 'zustand/middleware';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
+export type VisibleFieldsByMode = Record<MediaViewMode, string[]>;
+
+const DEFAULT_MOVIES_FIELDS: VisibleFieldsByMode = {
+  posters: ['year', 'rating', 'monitored'],
+  overview: ['qualityProfile', 'rating', 'studio', 'certification', 'sizeOnDisk', 'runtime', 'monitored', 'year', 'genres', 'overview', 'images'],
+  table: ['monitored', 'year', 'qualityProfile', 'studio', 'rating', 'sizeOnDisk'],
+};
+
+const DEFAULT_SERIES_FIELDS: VisibleFieldsByMode = {
+  posters: ['year', 'rating', 'monitored'],
+  overview: ['qualityProfile', 'rating', 'network', 'sizeOnDisk', 'runtime', 'monitored', 'year', 'episodeProgress', 'genres', 'overview', 'images'],
+  table: ['monitored', 'year', 'qualityProfile', 'network', 'episodeProgress', 'rating', 'sizeOnDisk'],
+};
 
 interface UIState {
   sidebarCollapsed: boolean;
@@ -22,8 +35,8 @@ interface UIState {
   setMoviesSortDirection: (dir: 'asc' | 'desc') => void;
   moviesFilter: string;
   setMoviesFilter: (filter: string) => void;
-  moviesVisibleFields: string[];
-  setMoviesVisibleFields: (fields: string[]) => void;
+  moviesVisibleFields: VisibleFieldsByMode;
+  setMoviesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Series preferences
   seriesView: MediaViewMode;
   setSeriesView: (view: MediaViewMode) => void;
@@ -35,8 +48,8 @@ interface UIState {
   setSeriesSortDirection: (dir: 'asc' | 'desc') => void;
   seriesFilter: string;
   setSeriesFilter: (filter: string) => void;
-  seriesVisibleFields: string[];
-  setSeriesVisibleFields: (fields: string[]) => void;
+  seriesVisibleFields: VisibleFieldsByMode;
+  setSeriesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
@@ -64,8 +77,10 @@ export const useUIStore = create<UIState>()(
       setMoviesSortDirection: (dir) => set({ moviesSortDirection: dir }),
       moviesFilter: 'all',
       setMoviesFilter: (filter) => set({ moviesFilter: filter }),
-      moviesVisibleFields: ['qualityProfile', 'rating', 'studio', 'sizeOnDisk', 'monitored', 'year'],
-      setMoviesVisibleFields: (fields) => set({ moviesVisibleFields: fields }),
+      moviesVisibleFields: { ...DEFAULT_MOVIES_FIELDS },
+      setMoviesVisibleFields: (mode, fields) => set((state) => ({
+        moviesVisibleFields: { ...state.moviesVisibleFields, [mode]: fields },
+      })),
       // Series
       seriesView: 'posters',
       setSeriesView: (view) => set({ seriesView: view }),
@@ -77,8 +92,10 @@ export const useUIStore = create<UIState>()(
       setSeriesSortDirection: (dir) => set({ seriesSortDirection: dir }),
       seriesFilter: 'all',
       setSeriesFilter: (filter) => set({ seriesFilter: filter }),
-      seriesVisibleFields: ['qualityProfile', 'rating', 'network', 'sizeOnDisk', 'monitored', 'episodeProgress', 'year'],
-      setSeriesVisibleFields: (fields) => set({ seriesVisibleFields: fields }),
+      seriesVisibleFields: { ...DEFAULT_SERIES_FIELDS },
+      setSeriesVisibleFields: (mode, fields) => set((state) => ({
+        seriesVisibleFields: { ...state.seriesVisibleFields, [mode]: fields },
+      })),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
@@ -87,6 +104,30 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version === 0) {
+          const state = persisted as Record<string, unknown>;
+          // Migrate flat string[] to per-mode VisibleFieldsByMode
+          const oldMovies = state.moviesVisibleFields;
+          if (Array.isArray(oldMovies)) {
+            state.moviesVisibleFields = {
+              posters: DEFAULT_MOVIES_FIELDS.posters,
+              overview: oldMovies,
+              table: DEFAULT_MOVIES_FIELDS.table,
+            };
+          }
+          const oldSeries = state.seriesVisibleFields;
+          if (Array.isArray(oldSeries)) {
+            state.seriesVisibleFields = {
+              posters: DEFAULT_SERIES_FIELDS.posters,
+              overview: oldSeries,
+              table: DEFAULT_SERIES_FIELDS.table,
+            };
+          }
+        }
+        return persisted as UIState;
+      },
       partialize: (state) => ({
         mediaView: state.mediaView,
         calendarView: state.calendarView,

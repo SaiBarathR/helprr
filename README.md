@@ -55,6 +55,7 @@ Copy `.env.example` to `.env.local` (for local dev), or set these in your deploy
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | optional | Public VAPID key (enables push notifications; must be available at build time for Docker builds) |
 | `VAPID_PRIVATE_KEY` | optional | Private VAPID key (server-side) |
 | `VAPID_SUBJECT` | optional | VAPID subject, e.g. `mailto:you@example.com` |
+| `TZ` | optional | Timezone for displaying dates/times (defaults to UTC) |
 
 If VAPID vars are not set, Helprr will still run, but **push notifications are disabled**.
 
@@ -81,6 +82,7 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/helprr
 
 APP_PASSWORD=change-me
 JWT_SECRET=change-me-too
+TZ=Asia/Kolkata
 
 # Optional: enable push notifications
 VAPID_SUBJECT=mailto:you@example.com
@@ -112,6 +114,7 @@ The repository includes a `docker-compose.yml` with a Postgres container and the
 - `POSTGRES_PASSWORD` (optional override; defaults to `postgres`)
 - `DATABASE_URL` (optional override; defaults to the internal compose URL)
 - `APP_PASSWORD`
+- `TZ` (optional override; defaults to `UTC`)
 - `JWT_SECRET`
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (build-time)
 - `VAPID_PRIVATE_KEY`

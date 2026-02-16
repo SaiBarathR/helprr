@@ -30,6 +30,7 @@ services:
       helprr-db:
         condition: service_healthy
     environment:
+      - TZ=${TZ:-Asia/Kolkata}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@helprr-db:5432/helprr}
       - APP_PASSWORD=${APP_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
