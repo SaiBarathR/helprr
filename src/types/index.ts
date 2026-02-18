@@ -239,6 +239,15 @@ export interface Release {
   movieId?: number;
 }
 
+export interface DownloadClient {
+  id: number;
+  name: string;
+  enable: boolean;
+  protocol: string;
+  priority: number;
+  implementation: string;
+}
+
 export interface DiskSpace {
   path: string;
   label: string;

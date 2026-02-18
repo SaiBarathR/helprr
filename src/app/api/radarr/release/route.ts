@@ -22,14 +22,14 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { guid, indexerId } = body;
+    const { guid, indexerId, downloadClientId } = body;
 
     if (!guid || indexerId === undefined) {
       return NextResponse.json({ error: 'guid and indexerId are required' }, { status: 400 });
     }
 
     const client = await getRadarrClient();
-    await client.grabRelease(guid, indexerId);
+    await client.grabRelease(guid, indexerId, downloadClientId);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to grab release';

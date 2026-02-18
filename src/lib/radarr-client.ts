@@ -11,6 +11,7 @@ import type {
   HealthCheck,
   RadarrLookupResult,
   Release,
+  DownloadClient,
 } from '@/types';
 
 interface SystemStatus {
@@ -114,8 +115,14 @@ export class RadarrClient {
     return this.get<Release[]>('/api/v3/release', { movieId });
   }
 
-  async grabRelease(guid: string, indexerId: number): Promise<void> {
-    await this.post('/api/v3/release', { guid, indexerId });
+  async grabRelease(guid: string, indexerId: number, downloadClientId?: number): Promise<void> {
+    const body: Record<string, unknown> = { guid, indexerId };
+    if (downloadClientId !== undefined) body.downloadClientId = downloadClientId;
+    await this.post('/api/v3/release', body);
+  }
+
+  async getDownloadClients(): Promise<DownloadClient[]> {
+    return this.get<DownloadClient[]>('/api/v3/downloadclient');
   }
 
   // Wanted
