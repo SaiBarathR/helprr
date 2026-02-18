@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   Film, Tv, CalendarDays, Activity, MoreHorizontal,
-  LayoutDashboard, HardDrive, Bell, Settings,
+  LayoutDashboard, HardDrive, Bell, Settings, Search,
 } from 'lucide-react';
 import {
   Popover,
@@ -24,6 +24,7 @@ const tabs = [
 const moreItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/torrents', icon: HardDrive, label: 'Torrents' },
+  { href: '/prowlarr', icon: Search, label: 'Prowlarr' },
   { href: '/notifications', icon: Bell, label: 'Notifications' },
   { href: '/settings', icon: Settings, label: 'Settings' },
 ];
