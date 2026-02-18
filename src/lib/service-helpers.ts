@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
+import { ProwlarrClient } from '@/lib/prowlarr-client';
 
 export async function getSonarrClient(): Promise<SonarrClient> {
   const connection = await prisma.serviceConnection.findUnique({
@@ -43,4 +44,18 @@ export async function getQBittorrentClient(): Promise<QBittorrentClient> {
   }
 
   return new QBittorrentClient(connection.url, connection.apiKey, connection.username || 'admin');
+}
+
+export async function getProwlarrClient(): Promise<ProwlarrClient> {
+  const connection = await prisma.serviceConnection.findUnique({
+    where: { type: 'PROWLARR' },
+  });
+
+  if (!connection) {
+    throw new Error(
+      'Prowlarr is not configured. Please add a Prowlarr connection in Settings.'
+    );
+  }
+
+  return new ProwlarrClient(connection.url, connection.apiKey);
 }

@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronRight, Loader2, LogOut, Film, Tv, Download, CheckCircle, XCircle } from 'lucide-react';
+import { ChevronRight, Loader2, LogOut, Film, Tv, Download, Search, CheckCircle, XCircle } from 'lucide-react';
 
 interface ServiceForm {
   url: string;
@@ -53,6 +53,13 @@ const SERVICE_CONFIG = [
     icon: Download,
     dotColor: 'bg-green-500',
     placeholder: 'http://localhost:8080',
+  },
+  {
+    type: 'PROWLARR' as const,
+    label: 'Prowlarr',
+    icon: Search,
+    dotColor: 'bg-orange-500',
+    placeholder: 'http://localhost:9696',
   },
 ] as const;
 
@@ -104,6 +111,7 @@ export default function SettingsPage() {
     SONARR: { ...defaultServiceForm },
     RADARR: { ...defaultServiceForm },
     QBITTORRENT: { ...defaultServiceForm },
+    PROWLARR: { ...defaultServiceForm },
   });
 
   const [expandedService, setExpandedService] = useState<string | null>(null);

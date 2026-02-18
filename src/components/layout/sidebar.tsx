@@ -15,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   HardDrive,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/series', icon: Tv, label: 'TV Series' },
   { href: '/calendar', icon: CalendarDays, label: 'Calendar' },
   { href: '/torrents', icon: HardDrive, label: 'Torrents' },
+  { href: '/prowlarr', icon: Search, label: 'Prowlarr' },
   { href: '/activity', icon: Activity, label: 'Activity' },
   { href: '/notifications', icon: Bell, label: 'Notifications' },
   { href: '/settings', icon: Settings, label: 'Settings' },
