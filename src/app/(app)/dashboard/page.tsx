@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Film, Tv, Download, HardDrive, Clock, ArrowRight } from 'lucide-react';
+import { Film, Tv, Download, HardDrive, Clock, ArrowRight, Layers } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { QueueItem, CalendarEvent } from '@/types';
 
@@ -16,19 +16,29 @@ interface DashboardStats {
   diskSpace: { freeSpace: number; totalSpace: number }[];
 }
 
+interface ProwlarrSummary {
+  total: number;
+  enabled: number;
+  disabled: number;
+  blocked: number;
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [upcoming, setUpcoming] = useState<CalendarEvent[]>([]);
+  const [prowlarr, setProwlarr] = useState<ProwlarrSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchDashboard() {
       try {
-        const [statsRes, queueRes, calendarRes] = await Promise.allSettled([
+        const [statsRes, queueRes, calendarRes, indexersRes, statusRes] = await Promise.allSettled([
           fetch('/api/services/stats'),
           fetch('/api/activity/queue'),
           fetch('/api/calendar?days=7'),
+          fetch('/api/prowlarr/indexers'),
+          fetch('/api/prowlarr/status'),
         ]);
 
         if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
@@ -40,6 +50,19 @@ export default function DashboardPage() {
         }
         if (calendarRes.status === 'fulfilled' && calendarRes.value.ok) {
           setUpcoming(await calendarRes.value.json());
+        }
+        if (indexersRes.status === 'fulfilled' && indexersRes.value.ok) {
+          const indexers: { id: number; enable: boolean }[] = await indexersRes.value.json();
+          if (Array.isArray(indexers)) {
+            const statuses: { providerId: number; disabledTill?: string }[] =
+              statusRes.status === 'fulfilled' && statusRes.value.ok
+                ? await statusRes.value.json()
+                : [];
+            const blockedIds = new Set(statuses.filter((s) => s.disabledTill).map((s) => s.providerId));
+            const enabled = indexers.filter((i) => i.enable).length;
+            const blocked = indexers.filter((i) => blockedIds.has(i.id)).length;
+            setProwlarr({ total: indexers.length, enabled, disabled: indexers.length - enabled, blocked });
+          }
         }
       } catch {
         // Services may not be configured yet
@@ -126,6 +149,43 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Prowlarr Indexers */}
+      {prowlarr && (
+        <Link
+          href="/prowlarr"
+          className="rounded-xl bg-card p-4 flex items-center gap-4 hover:bg-muted/30 active:bg-muted/50 transition-colors"
+        >
+          <div className="rounded-lg bg-violet-500/10 p-2.5 shrink-0">
+            <Layers className="h-5 w-5 text-violet-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-muted-foreground mb-1">Prowlarr Indexers</p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-2xl font-bold tabular-nums">{prowlarr.total}</span>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                  <span className="text-muted-foreground">{prowlarr.enabled} enabled</span>
+                </span>
+                {prowlarr.disabled > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                    <span className="text-muted-foreground">{prowlarr.disabled} disabled</span>
+                  </span>
+                )}
+                {prowlarr.blocked > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                    <span className="text-rose-400">{prowlarr.blocked} blocked</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+        </Link>
+      )}
 
       {/* Active Downloads */}
       <div>

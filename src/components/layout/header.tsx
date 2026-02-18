@@ -12,6 +12,7 @@ const routeTitles: Record<string, string> = {
   '/activity': 'Activity',
   '/dashboard': 'Dashboard',
   '/torrents': 'Torrents',
+  '/prowlarr': 'Prowlarr',
   '/notifications': 'Notifications',
   '/settings': 'Settings',
 };

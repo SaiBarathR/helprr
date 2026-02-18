@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
+import { ProwlarrClient } from '@/lib/prowlarr-client';
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,6 +43,15 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           version,
+        });
+      }
+
+      case 'PROWLARR': {
+        const client = new ProwlarrClient(cleanUrl, apiKey);
+        const status = await client.getSystemStatus();
+        return NextResponse.json({
+          success: true,
+          version: status.version,
         });
       }
 

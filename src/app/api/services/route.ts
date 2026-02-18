@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['SONARR', 'RADARR', 'QBITTORRENT'].includes(type)) {
+    if (!['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR'].includes(type)) {
       return NextResponse.json(
         { error: 'Invalid service type' },
         { status: 400 }
