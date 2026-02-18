@@ -238,12 +238,8 @@ export class SonarrClient {
   }
 
   // Manual Import
-  async getManualImport(downloadId: string, seriesId?: number): Promise<ManualImportItem[]> {
-    const params: Record<string, unknown> = { downloadId };
-    if (seriesId !== undefined) {
-      params.seriesId = seriesId;
-    }
-    return this.get<ManualImportItem[]>('/api/v3/manualimport', params);
+  async getManualImport(downloadId: string): Promise<ManualImportItem[]> {
+    return this.get<ManualImportItem[]>('/api/v3/manualimport', { downloadId });
   }
 
   async submitManualImport(body: ManualImportItem[]): Promise<CommandResponse> {
