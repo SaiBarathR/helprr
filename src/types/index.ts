@@ -201,6 +201,7 @@ export interface ManualImportItem {
   name: string;
   size: number;
   quality: { quality: { id: number; name: string } };
+  languages?: { id: number; name: string }[];
   series?: SonarrSeries;
   seasonNumber?: number;
   episodes?: SonarrEpisode[];
