@@ -529,7 +529,6 @@ function FailedImportsTab() {
     setFileOverrides(new Map());
     try {
       const params = new URLSearchParams({ downloadId: item.downloadId, source: item.source || 'sonarr' });
-      if (item.seriesId) params.set('seriesId', String(item.seriesId));
 
       const fetches: Promise<unknown>[] = [
         fetch(`/api/activity/manualimport?${params}`).then((r) => r.ok ? r.json() : []),
@@ -585,23 +584,40 @@ function FailedImportsTab() {
     if (!importDialog) return;
     setSubmitting(true);
     try {
-      // Merge overrides into files
+      const { item } = importDialog;
+      const isSonarr = item.source === 'sonarr';
+
       const files = importDialog.files.map((f, i) => {
         const override = fileOverrides.get(i);
-        if (override && override.length > 0) {
+        const episodes = override && override.length > 0 ? override : (f.episodes || []);
+
+        if (isSonarr) {
           return {
-            ...f,
-            episodes: override,
-            seasonNumber: override[0].seasonNumber,
+            path: f.path,
+            seriesId: item.seriesId,
+            episodeIds: episodes.map((ep) => ep.id),
+            seasonNumber: episodes.length > 0 ? episodes[0].seasonNumber : f.seasonNumber,
+            quality: f.quality,
+            languages: f.languages,
+            downloadId: item.downloadId,
+            importMode: 'move' as const,
           };
         }
-        return f;
+        // Radarr
+        return {
+          path: f.path,
+          movieId: item.movieId,
+          quality: f.quality,
+          languages: f.languages,
+          downloadId: item.downloadId,
+          importMode: 'move' as const,
+        };
       });
 
       const res = await fetch('/api/activity/manualimport', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: importDialog.item.source, files, name: 'ManualImport' }),
+        body: JSON.stringify({ source: item.source, files }),
       });
       if (res.ok) {
         toast.success('Manual import submitted');

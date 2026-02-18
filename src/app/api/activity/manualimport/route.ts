@@ -6,7 +6,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const downloadId = searchParams.get('downloadId');
     const source = searchParams.get('source') as 'sonarr' | 'radarr';
-    const seriesId = searchParams.get('seriesId');
 
     if (!downloadId) {
       return NextResponse.json(
@@ -24,10 +23,7 @@ export async function GET(request: NextRequest) {
 
     if (source === 'sonarr') {
       const sonarr = await getSonarrClient();
-      const result = await sonarr.getManualImport(
-        downloadId,
-        seriesId ? parseInt(seriesId, 10) : undefined
-      );
+      const result = await sonarr.getManualImport(downloadId);
       return NextResponse.json(result);
     } else {
       const radarr = await getRadarrClient();
