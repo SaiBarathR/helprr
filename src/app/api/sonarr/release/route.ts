@@ -31,6 +31,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Initiates a grab of a Sonarr release using parameters supplied in the request body.
+ *
+ * Expects a JSON body with `guid` (release identifier) and `indexerId` (indexer identifier); `downloadClientId` may be provided to select a specific download client.
+ *
+ * @param request - HTTP request whose JSON body must contain:
+ *   - `guid`: the release GUID to grab
+ *   - `indexerId`: the indexer ID to use for the grab
+ *   - `downloadClientId` (optional): the download client ID to route the grab through
+ * @returns A NextResponse with `{ success: true }` on success, or `{ error: string }` on failure. Responses use status 400 for missing required fields and 500 for server errors.
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();

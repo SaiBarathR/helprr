@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 
+/**
+ * Handle GET requests to retrieve Prowlarr history.
+ *
+ * Accepts query parameters: `page` (default 1), `pageSize` (default 50), `indexerId` (optional), `eventType` (optional), and `successful` (optional, `'true'` or `'false'`). Obtains a Prowlarr client, fetches history using the parsed parameters, and returns the result as JSON.
+ *
+ * @param request - Incoming Next.js request containing the query parameters described above
+ * @returns A JSON response containing the fetched history on success. On error, a JSON object `{ error: string }` is returned with HTTP status 500.
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

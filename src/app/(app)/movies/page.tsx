@@ -88,6 +88,17 @@ const sortOptions = [
   { value: 'tags', label: 'Tags' },
 ] as const;
 
+/**
+ * Render the Movies management page with client-side data loading, filtering, sorting, and multiple view modes (posters, overview, table).
+ *
+ * Fetches movies, quality profiles, and tags on mount and maintains local state for search, filters, sort, poster size, and visible fields per view mode.
+ * The component derives a filtered, sorted list from the loaded movies and renders one of:
+ * - a poster grid,
+ * - an overview list,
+ * - or a table with a mobile overview fallback.
+ *
+ * @returns The Movies page JSX element.
+ */
 export default function MoviesPage() {
   const [movies, setMovies] = useState<RadarrMovie[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);

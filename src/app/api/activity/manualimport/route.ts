@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 
+/**
+ * Retrieve manual import data for a download from Sonarr or Radarr.
+ *
+ * Reads `downloadId` and `source` from the request query string, validates them,
+ * and returns the manual import data from the corresponding service.
+ *
+ * @param request - Incoming HTTP request; expects query params:
+ *   - `downloadId`: identifier of the download to look up (required)
+ *   - `source`: either `"sonarr"` or `"radarr"` (required)
+ * @returns The JSON HTTP response containing the manual import data on success;
+ *   a JSON error message with status 400 when parameters are invalid;
+ *   or a JSON error message with status 500 on internal failure.
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

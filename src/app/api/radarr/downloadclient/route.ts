@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 
+/**
+ * Handle GET requests to fetch Radarr download clients.
+ *
+ * @returns A JSON HTTP response containing the array of download clients on success, or a JSON object with an `error` message and HTTP status 500 on failure.
+ */
 export async function GET() {
   try {
     const client = await getRadarrClient();

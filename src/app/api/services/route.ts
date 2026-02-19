@@ -27,6 +27,14 @@ export async function GET() {
   }
 }
 
+/**
+ * Create or update a service connection from the request body and return the stored connection with its `apiKey` masked.
+ *
+ * Validates that `type`, `url`, and `apiKey` are present and that `type` is one of `SONARR`, `RADARR`, `QBITTORRENT`, or `PROWLARR`.
+ * For `QBITTORRENT`, `username` is set to the provided value or defaults to `"admin"`. Trailing slashes are removed from `url`.
+ *
+ * @returns The saved service connection object with `apiKey` obscured, or an error object `{ error: string }` when validation or saving fails (returned with an appropriate HTTP status).
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

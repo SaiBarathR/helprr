@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import type { HistoryItem } from '@/types';
 
+/**
+ * Retrieve merged and optionally filtered history records from Sonarr and Radarr and return a paginated JSON response.
+ *
+ * Accepts the following query parameters on the provided request URL:
+ * - `page` (default 1) — 1-based page number.
+ * - `pageSize` (default 50) — number of records per page.
+ * - `sortKey` (default "date") — field to sort by.
+ * - `sortDirection` (default "descending") — "ascending" or "descending".
+ * - `eventType` — if provided, only records with this eventType are returned.
+ * - `episodeId`, `seriesId`, `movieId` — numeric IDs used to narrow the fetch to relevant records.
+ * - `source` — "sonarr" or "radarr" to restrict fetching to a single service.
+ *
+ * @param request - NextRequest whose URL search params control filtering, sorting, and pagination.
+ * @returns An object with `page`, `pageSize`, `totalRecords`, and `records` (the page of merged history items).
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

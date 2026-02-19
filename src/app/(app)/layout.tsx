@@ -1,6 +1,14 @@
 import { Sidebar } from '@/components/layout/sidebar';
 import { BottomNav } from '@/components/layout/bottom-nav';
 
+/**
+ * Page layout that renders a sidebar, a main content region, and a bottom navigation bar.
+ *
+ * The main content area applies a top padding that respects the device safe-area inset.
+ *
+ * @param children - Content to render inside the main content area
+ * @returns The composed layout element containing the sidebar, main region, and bottom navigation
+ */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen bg-background">

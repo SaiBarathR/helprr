@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 
+/**
+ * Handles GET requests for Sonarr download clients.
+ *
+ * @returns The JSON response containing the list of download clients on success, or an error object `{ error: string }` with HTTP status 500 on failure.
+ */
 export async function GET() {
   try {
     const client = await getSonarrClient();

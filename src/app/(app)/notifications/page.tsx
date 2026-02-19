@@ -46,6 +46,14 @@ function eventColor(type: string) {
   }
 }
 
+/**
+ * Renders the History (notifications) page and manages loading, pagination, and read state for notifications.
+ *
+ * The component fetches notifications on mount, displays loading and empty states, supports loading additional
+ * pages, allows marking individual notifications as read, and provides a control to mark all notifications as read.
+ *
+ * @returns The Notifications (History) page JSX element
+ */
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);

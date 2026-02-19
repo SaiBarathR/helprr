@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 
+/**
+ * Retrieve the list of indexers from the Prowlarr client and return them as JSON.
+ *
+ * @returns The fetched indexers as a JSON response; on failure returns a JSON object with an `error` message and HTTP status 500.
+ */
 export async function GET() {
   try {
     const client = await getProwlarrClient();
@@ -12,6 +17,12 @@ export async function GET() {
   }
 }
 
+/**
+ * Handle POST requests to either test all Prowlarr indexers or add a new indexer.
+ *
+ * @param request - Incoming HTTP request whose JSON body should be either `{ action: "testall" }` to run tests for all indexers, or an indexer configuration object to be added.
+ * @returns A JSON HTTP response containing the test results or the added indexer on success; on error, a JSON object with an `error` message and HTTP status 500.
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

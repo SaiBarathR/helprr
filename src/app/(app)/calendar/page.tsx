@@ -31,7 +31,15 @@ import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
 import type { CalendarEvent } from '@/types';
 
-// ─── Compact Filter Icons ──────────────────────────────────────────────────
+/**
+ * Render a compact set of filter controls used by the calendar header.
+ *
+ * @param typeFilter - Currently selected content type: `'all'`, `'episode'`, or `'movie'`.
+ * @param setTypeFilter - Callback invoked with a new content type when the user selects a type button.
+ * @param monitoredOnly - When true, the UI shows only monitored items.
+ * @param setMonitoredOnly - Callback invoked with the new monitored-only state when the user toggles the monitored control.
+ * @returns The compact filter bar element containing type buttons and a monitored toggle.
+ */
 
 function CompactFilters({
   typeFilter,
@@ -99,7 +107,18 @@ function CompactFilters({
   );
 }
 
-// ─── Agenda View (LunaSea-style) ───────────────────────────────────────────
+/**
+ * Render an agenda-style list of calendar events grouped by day.
+ *
+ * Groups the provided events by their calendar date and renders each day with a
+ * compact date header (weekday, day, month) and a list of event rows. Each row
+ * links to the event's detail page (series or movie), shows an icon for type,
+ * title, subtitle, time, and a monitored indicator. Events that are not
+ * monitored or that have a file are visually muted.
+ *
+ * @param events - Array of CalendarEvent objects to display; events are grouped by date (`yyyy-MM-dd`) for rendering.
+ * @returns A JSX element containing the grouped agenda view.
+ */
 
 function AgendaView({ events }: { events: CalendarEvent[] }) {
   const grouped = useMemo(() => {
@@ -200,7 +219,15 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
   );
 }
 
-// ─── Month View ─────────────────────────────────────────────────────────────
+/**
+ * Render a month calendar grid showing each day of the month (with surrounding week padding) and up to three events per day.
+ *
+ * Days outside the current month are visually muted; the current day is highlighted. Each event is rendered as a link (series or movie) with styling that reflects its type, monitored state, and whether a file exists. If a day has more than three events, a “+N more” indicator is shown.
+ *
+ * @param currentDate - Reference date used to determine which month is displayed.
+ * @param events - Array of calendar events to display; events are shown on their respective calendar day.
+ * @returns A React element containing the month view grid.
+ */
 
 function MonthView({
   currentDate,
@@ -300,7 +327,13 @@ function MonthView({
   );
 }
 
-// ─── Week View ──────────────────────────────────────────────────────────────
+/**
+ * Render a seven-day week view anchored to a given date, listing events grouped by day.
+ *
+ * @param currentDate - A date within the week to display (week starts on Monday).
+ * @param events - Array of CalendarEvent objects to show; events are grouped by their calendar day.
+ * @returns The React element representing the week view with one card per day and event rows or a "No events" placeholder.
+ */
 
 function WeekView({
   currentDate,
@@ -428,6 +461,12 @@ function CalendarSkeleton() {
 
 type ViewType = 'agenda' | 'month' | 'week';
 
+/**
+ * Renders a compact tab control for selecting the calendar view.
+ *
+ * @param value - The currently selected view (`'agenda' | 'week' | 'month'`).
+ * @param onChange - Callback invoked with the newly selected view when a tab is clicked.
+ */
 function ViewTabs({
   value,
   onChange,
@@ -459,7 +498,15 @@ function ViewTabs({
   );
 }
 
-// ─── Main Page ──────────────────────────────────────────────────────────────
+/**
+ * Render the calendar page with controls, navigation, and three view modes: agenda, month, and week.
+ *
+ * Fetches events for the currently selected date range and type filter, applies an optional monitored-only
+ * client-side filter, and displays loading and error states. Provides navigation (back, forward, today)
+ * and UI controls for switching views and filters.
+ *
+ * @returns The rendered calendar page element
+ */
 
 export default function CalendarPage() {
   const {
