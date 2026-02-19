@@ -16,6 +16,7 @@ import type { HistoryItem } from '@/types';
  *
  * @param request - NextRequest whose URL search params control filtering, sorting, and pagination.
  * @returns An object with `page`, `pageSize`, `totalRecords`, and `records` (the page of merged history items).
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
