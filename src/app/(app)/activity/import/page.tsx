@@ -64,7 +64,10 @@ function ManualImportContent() {
   // ── Data fetching ─────────────────────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
-    if (!downloadId) return;
+    if (!downloadId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const params = new URLSearchParams({ downloadId, source });

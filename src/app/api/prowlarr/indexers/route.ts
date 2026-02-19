@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     if (body.action === 'testall') {
       const result = await client.testAllIndexers();
-      return NextResponse.json(result);
+      return NextResponse.json(result ?? { success: true });
     }
 
     // Otherwise treat as add indexer
