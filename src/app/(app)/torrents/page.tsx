@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import {
   Drawer,
   DrawerContent,
@@ -124,6 +125,7 @@ export default function TorrentsPage() {
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
@@ -203,14 +205,22 @@ export default function TorrentsPage() {
   }
 
   useEffect(() => {
+    async function loadRefreshInterval() {
+      const intervalMs = await getRefreshIntervalMs('torrentsRefreshIntervalSecs', 5);
+      setRefreshIntervalMs(intervalMs);
+    }
+    loadRefreshInterval();
+  }, []);
+
+  useEffect(() => {
     fetchTorrents();
     fetchTransferInfo();
     const interval = setInterval(() => {
       fetchTorrents();
       fetchTransferInfo();
-    }, 5000);
+    }, refreshIntervalMs);
     return () => clearInterval(interval);
-  }, [fetchTorrents, fetchTransferInfo]);
+  }, [fetchTorrents, fetchTransferInfo, refreshIntervalMs]);
 
   async function torrentAction(hash: string, action: string, extra?: Record<string, unknown>) {
     try {

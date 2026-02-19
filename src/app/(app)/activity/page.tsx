@@ -27,6 +27,7 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
+import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 
 // --- Status helpers ---
 
@@ -269,8 +270,9 @@ function QueueTab({
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
 
-  async function fetchQueue() {
+  const fetchQueue = useCallback(async () => {
     try {
       const res = await fetch('/api/activity/queue');
       if (res.ok) {
@@ -278,13 +280,21 @@ function QueueTab({
         setQueue(data.records || []);
       }
     } catch {} finally { setLoading(false); }
-  }
+  }, []);
+
+  useEffect(() => {
+    async function loadRefreshInterval() {
+      const intervalMs = await getRefreshIntervalMs('activityRefreshIntervalSecs', 5);
+      setRefreshIntervalMs(intervalMs);
+    }
+    loadRefreshInterval();
+  }, []);
 
   useEffect(() => {
     fetchQueue();
-    const i = setInterval(fetchQueue, 5000);
+    const i = setInterval(fetchQueue, refreshIntervalMs);
     return () => clearInterval(i);
-  }, []);
+  }, [fetchQueue, refreshIntervalMs]);
 
   // Apply filter
   const filtered = filterBy === 'all'

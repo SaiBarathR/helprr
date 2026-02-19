@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Film, Tv, Download, HardDrive, Clock, ArrowRight, Layers } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { QueueItem, CalendarEvent } from '@/types';
+import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 
 interface DashboardStats {
   totalMovies: number;
@@ -29,52 +30,61 @@ export default function DashboardPage() {
   const [upcoming, setUpcoming] = useState<CalendarEvent[]>([]);
   const [prowlarr, setProwlarr] = useState<ProwlarrSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
+
+  const fetchDashboard = useCallback(async () => {
+    try {
+      const [statsRes, queueRes, calendarRes, indexersRes, statusRes] = await Promise.allSettled([
+        fetch('/api/services/stats'),
+        fetch('/api/activity/queue'),
+        fetch('/api/calendar?days=7'),
+        fetch('/api/prowlarr/indexers'),
+        fetch('/api/prowlarr/status'),
+      ]);
+
+      if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
+        setStats(await statsRes.value.json());
+      }
+      if (queueRes.status === 'fulfilled' && queueRes.value.ok) {
+        const data = await queueRes.value.json();
+        setQueue(data.records || []);
+      }
+      if (calendarRes.status === 'fulfilled' && calendarRes.value.ok) {
+        setUpcoming(await calendarRes.value.json());
+      }
+      if (indexersRes.status === 'fulfilled' && indexersRes.value.ok) {
+        const indexers: { id: number; enable: boolean }[] = await indexersRes.value.json();
+        if (Array.isArray(indexers)) {
+          const statuses: { providerId: number; disabledTill?: string }[] =
+            statusRes.status === 'fulfilled' && statusRes.value.ok
+              ? await statusRes.value.json()
+              : [];
+          const blockedIds = new Set(statuses.filter((s) => s.disabledTill).map((s) => s.providerId));
+          const enabled = indexers.filter((i) => i.enable).length;
+          const blocked = indexers.filter((i) => blockedIds.has(i.id)).length;
+          setProwlarr({ total: indexers.length, enabled, disabled: indexers.length - enabled, blocked });
+        }
+      }
+    } catch {
+      // Services may not be configured yet
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        const [statsRes, queueRes, calendarRes, indexersRes, statusRes] = await Promise.allSettled([
-          fetch('/api/services/stats'),
-          fetch('/api/activity/queue'),
-          fetch('/api/calendar?days=7'),
-          fetch('/api/prowlarr/indexers'),
-          fetch('/api/prowlarr/status'),
-        ]);
-
-        if (statsRes.status === 'fulfilled' && statsRes.value.ok) {
-          setStats(await statsRes.value.json());
-        }
-        if (queueRes.status === 'fulfilled' && queueRes.value.ok) {
-          const data = await queueRes.value.json();
-          setQueue(data.records || []);
-        }
-        if (calendarRes.status === 'fulfilled' && calendarRes.value.ok) {
-          setUpcoming(await calendarRes.value.json());
-        }
-        if (indexersRes.status === 'fulfilled' && indexersRes.value.ok) {
-          const indexers: { id: number; enable: boolean }[] = await indexersRes.value.json();
-          if (Array.isArray(indexers)) {
-            const statuses: { providerId: number; disabledTill?: string }[] =
-              statusRes.status === 'fulfilled' && statusRes.value.ok
-                ? await statusRes.value.json()
-                : [];
-            const blockedIds = new Set(statuses.filter((s) => s.disabledTill).map((s) => s.providerId));
-            const enabled = indexers.filter((i) => i.enable).length;
-            const blocked = indexers.filter((i) => blockedIds.has(i.id)).length;
-            setProwlarr({ total: indexers.length, enabled, disabled: indexers.length - enabled, blocked });
-          }
-        }
-      } catch {
-        // Services may not be configured yet
-      } finally {
-        setLoading(false);
-      }
+    async function loadRefreshInterval() {
+      const intervalMs = await getRefreshIntervalMs('dashboardRefreshIntervalSecs', 5);
+      setRefreshIntervalMs(intervalMs);
     }
-
-    fetchDashboard();
-    const interval = setInterval(fetchDashboard, 5000);
-    return () => clearInterval(interval);
+    loadRefreshInterval();
   }, []);
+
+  useEffect(() => {
+    fetchDashboard();
+    const interval = setInterval(fetchDashboard, refreshIntervalMs);
+    return () => clearInterval(interval);
+  }, [fetchDashboard, refreshIntervalMs]);
 
   function formatBytes(bytes: number) {
     if (bytes === 0) return '0 B';
