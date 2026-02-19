@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { type NavItemId, DEFAULT_NAV_ORDER, NAV_ITEM_MAP } from '@/lib/nav-config';
+import {
+  type NavItemId, DEFAULT_NAV_ORDER, NAV_ITEM_MAP, reconcileNavOrder,
+} from '@/lib/nav-config';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -117,22 +119,29 @@ export const useUIStore = create<UIState>()(
       setNavOrder: (order) => set({ navOrder: order }),
       toggleNavItem: (id) =>
         set((state) => {
+          const reconciledOrder = reconcileNavOrder(state.navOrder);
           // Refuse to disable pinned items
-          if (NAV_ITEM_MAP[id]?.pinned) return state;
+          if (NAV_ITEM_MAP[id]?.pinned) return { navOrder: reconciledOrder };
           const isDisabled = state.disabledNavItems.includes(id);
           if (isDisabled) {
             // Re-enable
-            return { disabledNavItems: state.disabledNavItems.filter((i) => i !== id) };
+            return {
+              navOrder: reconciledOrder,
+              disabledNavItems: state.disabledNavItems.filter((i) => i !== id),
+            };
           }
           // Check: at least 1 non-Settings item must remain enabled
           const disabledSet = new Set(state.disabledNavItems);
           disabledSet.add(id);
-          const enabledNonPinned = state.navOrder.filter(
+          const enabledNonPinned = reconciledOrder.filter(
             (i) => !disabledSet.has(i) && !NAV_ITEM_MAP[i]?.pinned
           );
-          if (enabledNonPinned.length === 0) return state;
+          if (enabledNonPinned.length === 0) return { navOrder: reconciledOrder };
           // If disabling the current default page, reset default to first enabled non-pinned item
-          const updates: Partial<UIState> = { disabledNavItems: [...state.disabledNavItems, id] };
+          const updates: Partial<UIState> = {
+            navOrder: reconciledOrder,
+            disabledNavItems: [...state.disabledNavItems, id],
+          };
           if (state.defaultPage === id) {
             updates.defaultPage = enabledNonPinned[0];
           }

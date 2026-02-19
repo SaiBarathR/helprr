@@ -7,8 +7,12 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const parsedId = Number.parseInt(id, 10);
+    if (!/^\d+$/.test(id) || Number.isNaN(parsedId)) {
+      return NextResponse.json({ error: 'Invalid indexer id' }, { status: 400 });
+    }
     const client = await getProwlarrClient();
-    await client.deleteIndexer(parseInt(id, 10));
+    await client.deleteIndexer(parsedId);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete indexer';
