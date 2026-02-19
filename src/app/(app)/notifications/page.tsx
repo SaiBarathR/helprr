@@ -87,7 +87,8 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-4 pb-20">
       <PageHeader
-        title="Notifications"
+        showBack={false}
+        title="History"
         rightContent={
           <div className="flex items-center gap-1">
             <Link
