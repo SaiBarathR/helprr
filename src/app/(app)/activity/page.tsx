@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
-  DrawerClose,
 } from '@/components/ui/drawer';
 import {
   DropdownMenu,
@@ -21,18 +20,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
-  Download, Check, X, Trash2, AlertTriangle,
+  Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
   Clock, Filter, ArrowUpDown,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from '@/components/ui/popover';
-import type { QueueItem, ManualImportItem, SonarrEpisode } from '@/types';
+import type { QueueItem } from '@/types';
 
 // --- Status helpers ---
 
@@ -498,14 +492,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 // --- Failed Imports Tab ---
 
 function FailedImportsTab() {
+  const router = useRouter();
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
   const [loading, setLoading] = useState(true);
-  const [importDialog, setImportDialog] = useState<{ item: QueueItem & { source?: string }; files: ManualImportItem[] } | null>(null);
-  const [importLoading, setImportLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [allEpisodes, setAllEpisodes] = useState<SonarrEpisode[]>([]);
-  const [fileOverrides, setFileOverrides] = useState<Map<number, SonarrEpisode[]>>(new Map());
-  const [refreshingEpisodes, setRefreshingEpisodes] = useState(false);
 
   async function fetchFailed() {
     try {
@@ -522,124 +511,16 @@ function FailedImportsTab() {
 
   useEffect(() => { fetchFailed(); }, []);
 
-  async function openManualImport(item: QueueItem & { source?: string }) {
-    setImportLoading(true);
-    setImportDialog({ item, files: [] });
-    setAllEpisodes([]);
-    setFileOverrides(new Map());
-    try {
-      const params = new URLSearchParams({ downloadId: item.downloadId, source: item.source || 'sonarr' });
-
-      const fetches: Promise<unknown>[] = [
-        fetch(`/api/activity/manualimport?${params}`).then((r) => r.ok ? r.json() : []),
-      ];
-
-      // Fetch all episodes for Sonarr items so user can reassign
-      if (item.source === 'sonarr' && item.seriesId) {
-        fetches.push(
-          fetch(`/api/sonarr/${item.seriesId}/episodes`).then((r) => r.ok ? r.json() : [])
-        );
-      }
-
-      const [files, episodes] = await Promise.all(fetches);
-      setImportDialog({ item, files: files as ManualImportItem[] });
-      if (episodes) setAllEpisodes(episodes as SonarrEpisode[]);
-    } catch { toast.error('Failed to scan files'); }
-    finally { setImportLoading(false); }
-  }
-
-  function setEpisodeOverride(fileIndex: number, episode: SonarrEpisode) {
-    setFileOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(fileIndex, [episode]);
-      return next;
+  function openManualImport(item: QueueItem & { source?: string }) {
+    const params = new URLSearchParams({
+      downloadId: item.downloadId,
+      source: item.source || 'sonarr',
+      title: item.title || '',
     });
+    if (item.seriesId) params.set('seriesId', String(item.seriesId));
+    if (item.movieId) params.set('movieId', String(item.movieId));
+    router.push(`/activity/import?${params}`);
   }
-
-  async function handleRefreshEpisodes() {
-    if (!importDialog?.item.seriesId) return;
-    setRefreshingEpisodes(true);
-    try {
-      await fetch('/api/sonarr/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'RefreshSeries', seriesId: importDialog.item.seriesId }),
-      });
-      // Wait for Sonarr to process the refresh
-      await new Promise((r) => setTimeout(r, 2000));
-      const res = await fetch(`/api/sonarr/${importDialog.item.seriesId}/episodes`);
-      if (res.ok) {
-        const episodes = await res.json();
-        setAllEpisodes(episodes);
-        toast.success('Episodes refreshed');
-      }
-    } catch {
-      toast.error('Failed to refresh episodes');
-    } finally {
-      setRefreshingEpisodes(false);
-    }
-  }
-
-  async function submitImport() {
-    if (!importDialog) return;
-    setSubmitting(true);
-    try {
-      const { item } = importDialog;
-      const isSonarr = item.source === 'sonarr';
-
-      const files = importDialog.files.map((f, i) => {
-        const override = fileOverrides.get(i);
-        const episodes = override && override.length > 0 ? override : (f.episodes || []);
-
-        if (isSonarr) {
-          return {
-            path: f.path,
-            seriesId: item.seriesId,
-            episodeIds: episodes.map((ep) => ep.id),
-            seasonNumber: episodes.length > 0 ? episodes[0].seasonNumber : f.seasonNumber,
-            quality: f.quality,
-            languages: f.languages,
-            downloadId: item.downloadId,
-            importMode: 'move' as const,
-          };
-        }
-        // Radarr
-        return {
-          path: f.path,
-          movieId: item.movieId,
-          quality: f.quality,
-          languages: f.languages,
-          downloadId: item.downloadId,
-          importMode: 'move' as const,
-        };
-      });
-
-      const res = await fetch('/api/activity/manualimport', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: item.source, files }),
-      });
-      if (res.ok) {
-        toast.success('Manual import submitted');
-        setImportDialog(null);
-        setFileOverrides(new Map());
-        setAllEpisodes([]);
-        fetchFailed();
-      } else { toast.error('Import failed'); }
-    } catch { toast.error('Import failed'); }
-    finally { setSubmitting(false); }
-  }
-
-  // Group episodes by season for the picker
-  const episodesBySeason = useMemo(() => {
-    const grouped = new Map<number, SonarrEpisode[]>();
-    for (const ep of allEpisodes) {
-      const list = grouped.get(ep.seasonNumber) || [];
-      list.push(ep);
-      grouped.set(ep.seasonNumber, list);
-    }
-    return Array.from(grouped.entries()).sort(([a], [b]) => a - b);
-  }, [allEpisodes]);
 
   if (loading) {
     return (
@@ -685,173 +566,7 @@ function FailedImportsTab() {
           </div>
         </div>
       ))}
-
-      <Drawer open={!!importDialog} onOpenChange={(open) => { if (!open) { setImportDialog(null); setFileOverrides(new Map()); setAllEpisodes([]); } }}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Manual Import</DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-4">
-            {importLoading ? (
-              <div className="space-y-2 py-4">
-                {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12" />)}
-              </div>
-            ) : (
-              <>
-              {importDialog?.item.source === 'sonarr' && importDialog.item.seriesId && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full mb-2"
-                  onClick={handleRefreshEpisodes}
-                  disabled={refreshingEpisodes}
-                >
-                  {refreshingEpisodes ? (
-                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                  )}
-                  Refresh Episodes
-                </Button>
-              )}
-              <div className="max-h-80 overflow-y-auto space-y-2">
-                {importDialog?.files.map((f, i) => {
-                  const override = fileOverrides.get(i);
-                  const currentEpisodes = override || f.episodes || [];
-                  const isSonarr = importDialog.item.source === 'sonarr';
-
-                  return (
-                    <div key={i} className="p-3 rounded-lg bg-muted/50 text-sm space-y-1.5">
-                      <p className="font-medium truncate">{f.name || f.relativePath}</p>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>{f.quality?.quality?.name}</span>
-                        {f.series && <span>{f.series.title}</span>}
-                        {f.movie && <span>{f.movie.title}</span>}
-                        {currentEpisodes.length > 0 ? (
-                          <Badge variant="secondary" className="text-[10px]">
-                            S{String(currentEpisodes[0].seasonNumber).padStart(2, '0')}E{currentEpisodes.map(e => String(e.episodeNumber).padStart(2, '0')).join(', E')}
-                            {currentEpisodes[0].title ? ` - ${currentEpisodes[0].title}` : ''}
-                          </Badge>
-                        ) : isSonarr ? (
-                          <Badge variant="destructive" className="text-[10px]">No episode assigned</Badge>
-                        ) : null}
-                        {isSonarr && allEpisodes.length > 0 && (
-                          <EpisodePickerButton
-                            episodesBySeason={episodesBySeason}
-                            onSelect={(ep) => setEpisodeOverride(i, ep)}
-                          />
-                        )}
-                      </div>
-                      {f.rejections?.length > 0 && (
-                        <div className="text-xs text-destructive">
-                          {f.rejections.map((r, ri) => <p key={ri}>{r.reason}</p>)}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {importDialog?.files.length === 0 && (
-                  <p className="text-center py-4 text-muted-foreground">No files detected</p>
-                )}
-              </div>
-              </>
-            )}
-            <div className="flex flex-col gap-2 mt-4">
-              <Button onClick={submitImport} disabled={submitting || !importDialog?.files.length} className="w-full">
-                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Import
-              </Button>
-              <DrawerClose asChild>
-                <Button variant="ghost" className="w-full">Cancel</Button>
-              </DrawerClose>
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
     </div>
-  );
-}
-
-function EpisodePickerButton({
-  episodesBySeason,
-  onSelect,
-}: {
-  episodesBySeason: [number, SonarrEpisode[]][];
-  onSelect: (ep: SonarrEpisode) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-
-  const filteredSeasons = useMemo(() => {
-    if (!search) return episodesBySeason;
-    const q = search.toLowerCase();
-    return episodesBySeason
-      .map(([season, episodes]) => {
-        const filtered = episodes.filter((ep) =>
-          String(ep.episodeNumber).includes(q) ||
-          (ep.title || 'TBA').toLowerCase().includes(q) ||
-          `s${String(season).padStart(2, '0')}e${String(ep.episodeNumber).padStart(2, '0')}`.includes(q)
-        );
-        return [season, filtered] as [number, SonarrEpisode[]];
-      })
-      .filter(([, episodes]) => episodes.length > 0);
-  }, [episodesBySeason, search]);
-
-  return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(''); }}>
-      <PopoverTrigger asChild>
-        <button className="text-[10px] text-primary hover:underline font-medium">
-          Change
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 p-0 max-h-64 overflow-hidden flex flex-col" align="start">
-        <div className="p-2 border-b shrink-0">
-          <input
-            type="text"
-            placeholder="Search episodes..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full text-xs bg-muted/50 rounded px-2 py-1.5 outline-none placeholder:text-muted-foreground"
-            autoFocus
-          />
-        </div>
-        <div className="overflow-y-auto flex-1">
-          {filteredSeasons.map(([season, episodes]) => (
-            <div key={season}>
-              <div className="sticky top-0 bg-popover px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase border-b">
-                {season === 0 ? 'Specials' : `Season ${season}`}
-              </div>
-              {episodes.map((ep) => (
-                <button
-                  key={ep.id}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent transition-colors flex items-center gap-2"
-                  onClick={() => {
-                    onSelect(ep);
-                    setOpen(false);
-                    setSearch('');
-                  }}
-                >
-                  <span className="text-muted-foreground shrink-0 tabular-nums w-8">
-                    E{String(ep.episodeNumber).padStart(2, '0')}
-                  </span>
-                  <span className="truncate flex-1">
-                    {ep.title || 'TBA'}
-                  </span>
-                  {(!ep.title || ep.title === 'TBA') && ep.airDate && (
-                    <span className="text-[10px] text-muted-foreground shrink-0">
-                      {ep.airDate}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-          {filteredSeasons.length === 0 && (
-            <p className="text-center py-3 text-xs text-muted-foreground">No episodes match</p>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
 
