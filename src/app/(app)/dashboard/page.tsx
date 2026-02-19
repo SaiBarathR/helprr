@@ -96,8 +96,8 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+      <div className="space-y-6 pt-2">
+        {/* <h1 className="text-2xl font-bold">Dashboard</h1> */}
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="rounded-xl bg-card p-4">
@@ -111,8 +111,8 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+    <div className="space-y-6 pt-2">
+      {/* <h1 className="text-2xl font-bold">Dashboard</h1> */}
 
       {/* Stats */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
