@@ -80,6 +80,13 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'size', label: 'Size' },
 ];
 
+const SORT_OPTIONS_BY_TAB: Record<TabKey, { key: SortKey; label: string }[]> = {
+  queue: SORT_OPTIONS,
+  failed: [],
+  missing: [],
+  cutoff: [],
+};
+
 // --- Filter options ---
 
 type FilterKey = 'all' | 'sonarr' | 'radarr';
@@ -99,6 +106,7 @@ export default function ActivityPage() {
   const [sortBy, setSortBy] = useState<SortKey>('progress');
   const [filterBy, setFilterBy] = useState<FilterKey>('all');
   const [queueCount, setQueueCount] = useState(0);
+  const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
   async function handleRefreshActivity() {
     setRefreshing(true);
@@ -150,24 +158,26 @@ export default function ActivityPage() {
           </DropdownMenu>
 
           {/* Sort */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <ArrowUpDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {SORT_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.key}
-                  onClick={() => setSortBy(opt.key)}
-                  className={sortBy === opt.key ? 'bg-accent' : ''}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {availableSortOptions.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {availableSortOptions.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.key}
+                    onClick={() => setSortBy(opt.key)}
+                    className={sortBy === opt.key ? 'bg-accent' : ''}
+                  >
+                    {opt.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* History */}
           <Button
@@ -236,9 +246,9 @@ export default function ActivityPage() {
             onCountChange={setQueueCount}
           />
         )}
-        {tab === 'failed' && <FailedImportsTab />}
-        {tab === 'missing' && <WantedTab type="missing" />}
-        {tab === 'cutoff' && <WantedTab type="cutoff" />}
+        {tab === 'failed' && <FailedImportsTab filterBy={filterBy} />}
+        {tab === 'missing' && <WantedTab type="missing" filterBy={filterBy} />}
+        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={filterBy} />}
       </div>
     </div>
   );
@@ -491,7 +501,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 // --- Failed Imports Tab ---
 
-function FailedImportsTab() {
+function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
   const router = useRouter();
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -501,15 +511,18 @@ function FailedImportsTab() {
       const res = await fetch('/api/activity/queue');
       if (res.ok) {
         const data = await res.json();
-        const failed = (data.records || []).filter(
+        let failed = (data.records || []).filter(
           (r: QueueItem) => r.trackedDownloadState === 'importFailed' || r.trackedDownloadStatus === 'warning'
         );
+        if (filterBy !== 'all') {
+          failed = failed.filter((r: QueueItem & { source?: string }) => r.source === filterBy);
+        }
         setQueue(failed);
       }
     } catch {} finally { setLoading(false); }
   }
 
-  useEffect(() => { fetchFailed(); }, []);
+  useEffect(() => { fetchFailed(); }, [filterBy]);
 
   function openManualImport(item: QueueItem & { source?: string }) {
     const params = new URLSearchParams({
@@ -588,7 +601,7 @@ interface WantedRecord {
   monitored?: boolean;
 }
 
-function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
+function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: FilterKey }) {
   const [records, setRecords] = useState<WantedRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -599,6 +612,7 @@ function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
     setLoading(true);
     try {
       const params = new URLSearchParams({ type, page: String(p), pageSize: '20' });
+      if (filterBy !== 'all') params.set('source', filterBy);
       const res = await fetch(`/api/activity/wanted?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -607,7 +621,7 @@ function WantedTab({ type }: { type: 'missing' | 'cutoff' }) {
         setTotal(data.totalRecords || 0);
       }
     } catch {} finally { setLoading(false); }
-  }, [type]);
+  }, [filterBy, type]);
 
   useEffect(() => { setPage(1); fetchWanted(1); }, [fetchWanted]);
 

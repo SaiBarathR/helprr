@@ -13,12 +13,15 @@ export async function GET(request: NextRequest) {
     const episodeId = searchParams.get('episodeId') ? parseInt(searchParams.get('episodeId')!, 10) : undefined;
     const seriesId = searchParams.get('seriesId') ? parseInt(searchParams.get('seriesId')!, 10) : undefined;
     const movieId = searchParams.get('movieId') ? parseInt(searchParams.get('movieId')!, 10) : undefined;
+    const source = searchParams.get('source');
+    const sourceFilter = source === 'sonarr' || source === 'radarr' ? source : undefined;
 
     // Fetch large batches from both services so we can merge and re-sort
     const fetchSize = 500;
 
     const [sonarrResult, radarrResult] = await Promise.allSettled([
       (async () => {
+        if (sourceFilter === 'radarr') return null;
         // Skip Sonarr fetch if filtering by movieId only
         if (movieId && !episodeId && !seriesId) return null;
         try {
@@ -29,6 +32,7 @@ export async function GET(request: NextRequest) {
         }
       })(),
       (async () => {
+        if (sourceFilter === 'sonarr') return null;
         // Skip Radarr fetch if filtering by episodeId/seriesId only
         if ((episodeId || seriesId) && !movieId) return null;
         try {

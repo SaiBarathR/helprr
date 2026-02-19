@@ -111,6 +111,7 @@ export default function HistoryPage() {
     try {
       const params = new URLSearchParams({ page: String(p), pageSize: '20' });
       if (eventFilter !== 'all') params.set('eventType', eventFilter);
+      if (instanceFilter !== 'all') params.set('source', instanceFilter);
       const res = await fetch(`/api/activity/history?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -133,18 +134,13 @@ export default function HistoryPage() {
     setPage(1);
     fetchHistory(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventFilter]);
+  }, [eventFilter, instanceFilter]);
 
   function handleLoadMore() {
     const next = page + 1;
     setPage(next);
     fetchHistory(next, true);
   }
-
-  // Apply instance filter client-side
-  const filtered = instanceFilter === 'all'
-    ? history
-    : history.filter((item) => item.source === instanceFilter);
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
 
@@ -210,13 +206,13 @@ export default function HistoryPage() {
               <Skeleton key={i} className="h-16 rounded-xl" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : history.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-sm">No history events</p>
           </div>
         ) : (
           <div className="space-y-1">
-            {filtered.map((item, i) => (
+            {history.map((item, i) => (
               <button
                 key={`${item.source}-${item.id}-${i}`}
                 onClick={() => setSelectedItem(item)}
@@ -267,7 +263,7 @@ export default function HistoryPage() {
             ))}
 
             {/* Load more */}
-            {filtered.length < total && (
+            {history.length < total && (
               <Button
                 variant="ghost"
                 className="w-full mt-2"
