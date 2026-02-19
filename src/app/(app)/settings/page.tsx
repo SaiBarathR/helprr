@@ -113,6 +113,13 @@ const NOTIFY_BEFORE_OPTIONS = [
   { value: '1440', label: '24 hours' },
 ];
 
+/**
+ * Renders the Settings page for managing service instances, application preferences, display theme, notification settings, and account actions.
+ *
+ * The component loads existing service connections and user settings on mount, exposes controls to test/save service connections, adjust polling and refresh intervals, set appearance and notification options, reorder navigation, and sign out.
+ *
+ * @returns A React element representing the full Settings UI.
+ */
 export default function SettingsPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();

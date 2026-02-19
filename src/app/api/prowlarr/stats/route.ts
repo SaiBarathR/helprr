@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 
+/**
+ * Handle GET requests and return indexer statistics from a Prowlarr client.
+ *
+ * Reads an optional `startDate` query parameter from the request URL and uses it to filter the stats returned by the Prowlarr client.
+ *
+ * @param request - Incoming request whose URL may include an optional `startDate` query parameter used to filter returned statistics
+ * @returns The indexer statistics as a JSON payload on success; on failure, a JSON object `{ error: string }` with HTTP status 500
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

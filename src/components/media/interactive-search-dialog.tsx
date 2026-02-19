@@ -47,6 +47,21 @@ function protocolBadge(protocol: string) {
 
 type SortKey = 'quality' | 'size' | 'seeders' | 'age';
 
+/**
+ * Renders a dialog UI for searching, filtering, sorting, and grabbing releases from Sonarr or Radarr.
+ *
+ * The component performs searches using the provided search parameters, displays results with filtering
+ * and sorting controls, and supports adding releases to the download queue or overriding the download
+ * client for a specific release.
+ *
+ * @param open - Whether the dialog is open
+ * @param onOpenChange - Callback invoked when the dialog open state changes
+ * @param title - Dialog title shown in the header
+ * @param service - Service to query; either `'sonarr'` or `'radarr'`
+ * @param searchParams - Key/value map of query parameters used when performing the indexer search
+ * @param showSeasonPackFilter - When true, exposes controls to filter between season packs and single episodes
+ * @returns A React element rendering the interactive search dialog UI
+ */
 export function InteractiveSearchDialog({
   open,
   onOpenChange,

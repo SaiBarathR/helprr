@@ -51,19 +51,43 @@ import type {
   ProwlarrUserAgentStat,
 } from '@/lib/prowlarr-client';
 
+/**
+ * Format a duration given in milliseconds into a compact human-readable string.
+ *
+ * @param ms - Duration in milliseconds
+ * @returns A string formatted as milliseconds (e.g. `123ms`) for values less than 1000, or seconds with one decimal place (e.g. `1.2s`) for 1000 ms or more
+ */
 function formatMs(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+/**
+ * Format an ISO date-time string into a locale-aware date and time representation.
+ *
+ * @param iso - An ISO 8601 date-time string (e.g., "2023-08-15T13:45:30Z")
+ * @returns The input date formatted using the runtime's locale and conventions
+ */
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
 }
 
+/**
+ * Format an ISO 8601 timestamp into a localized short time string.
+ *
+ * @param iso - The ISO 8601 timestamp string to format.
+ * @returns The time portion formatted according to the user's locale with hour and two-digit minute (e.g., "3:05 PM").
+ */
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+/**
+ * Map a Prowlarr category id to a human-readable category label.
+ *
+ * @param id - Category id as a number or numeric string
+ * @returns `Movies`, `Audio`, `TV`, `XXX`, `Books`, or `Other` for known category groups; otherwise the numeric id as a string
+ */
 function categoryLabel(id: number | string): string {
   const num = typeof id === 'string' ? parseInt(id, 10) : id;
   const first = Math.floor(num / 1000);
@@ -71,6 +95,12 @@ function categoryLabel(id: number | string): string {
   return map[first] ?? String(num);
 }
 
+/**
+ * Map a category identifier to a Tailwind CSS utility string representing its color and background.
+ *
+ * @param id - Category identifier (number or numeric string); the function groups identifiers by their thousand-place (e.g., 2000, "3001")
+ * @returns A space-separated string of CSS utility classes for background and text color corresponding to the category, or muted styles when the category is unknown
+ */
 function categoryColor(id: number | string): string {
   const num = typeof id === 'string' ? parseInt(id, 10) : id;
   const first = Math.floor(num / 1000);
@@ -85,6 +115,13 @@ function categoryColor(id: number | string): string {
   return map[first] ?? 'bg-muted text-muted-foreground';
 }
 
+/**
+ * Render a small colored status dot representing an indexer's current state.
+ *
+ * @param indexer - The indexer whose enabled state is used to determine the dot.
+ * @param statuses - Array of indexer status objects; used to determine if the indexer is currently blocked.
+ * @returns A JSX element: a small colored dot indicating the indexer state — amber for "Disabled", red for "Blocked" (disabledTill present), or green for "Enabled".
+ */
 function IndexerStatusDot({ indexer, statuses }: { indexer: ProwlarrIndexer; statuses: ProwlarrIndexerStatus[] }) {
   if (!indexer.enable) {
     return <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Disabled" />;
@@ -104,6 +141,18 @@ interface AddIndexerModalProps {
   onAdded: () => void;
 }
 
+/**
+ * Modal dialog to search, preview, configure, and add a Prowlarr indexer.
+ *
+ * Renders a two-step UI: a searchable/filterable list of available indexer schemas,
+ * and a detail view for configuring non-advanced fields for the selected schema,
+ * including an enable toggle and submission flow that posts the configured indexer.
+ *
+ * @param open - Whether the modal is open
+ * @param onClose - Callback invoked when the modal is closed or dismissed
+ * @param onAdded - Callback invoked after an indexer has been added successfully
+ * @returns The dialog UI for selecting, configuring, and submitting a new indexer
+ */
 function AddIndexerModal({ open, onClose, onAdded }: AddIndexerModalProps) {
   const [schemas, setSchemas] = useState<ProwlarrIndexer[]>([]);
   const [schemasLoading, setSchemasLoading] = useState(false);
@@ -411,7 +460,16 @@ function AddIndexerModal({ open, onClose, onAdded }: AddIndexerModalProps) {
   );
 }
 
-// ── Indexers Tab ─────────────────────────────────────────────────────────────
+/**
+ * Render the Indexers tab UI for viewing, testing, and deleting Prowlarr indexers.
+ *
+ * Renders a loading state, error message, or a list of configured indexers with status,
+ * protocol/priority/privacy metadata, and per-indexer Test and Delete actions. Includes
+ * a confirmation dialog for deletion and handles API interactions for fetching indexers/status,
+ * testing an indexer, and deleting an indexer.
+ *
+ * @returns A JSX element representing the Indexers tab UI.
+ */
 
 function IndexersTab() {
   const [indexers, setIndexers] = useState<ProwlarrIndexer[]>([]);
@@ -450,6 +508,11 @@ function IndexersTab() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  /**
+   * Initiates a test for the indexer with the given id, displays a success or error toast, and manages the testing state while the request is in progress.
+   *
+   * @param id - The indexer's numeric id to test
+   */
   async function handleTest(id: number) {
     setTestingId(id);
     try {
@@ -467,6 +530,11 @@ function IndexersTab() {
     }
   }
 
+  /**
+   * Deletes the indexer identified by `id` via the server API, removes it from the local indexer list on success, shows a success or error toast based on the response, and clears deletion-related UI state.
+   *
+   * @param id - The numeric ID of the indexer to delete
+   */
   async function handleDelete(id: number) {
     setDeletingId(id);
     try {
@@ -600,6 +668,12 @@ function IndexersTab() {
 
 type DateRange = '7d' | '30d' | '90d' | 'all';
 
+/**
+ * Compute the ISO 8601 start date corresponding to a selected date-range option.
+ *
+ * @param range - One of '7d', '30d', '90d', or 'all'
+ * @returns An ISO 8601 date string representing the current date minus the selected number of days, or `undefined` when `range` is `'all'`
+ */
 function getStartDate(range: DateRange): string | undefined {
   if (range === 'all') return undefined;
   const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
@@ -615,13 +689,28 @@ const DATE_RANGES: { label: string; value: DateRange }[] = [
   { label: 'All', value: 'all' },
 ];
 
+/**
+ * Formats a number into a compact, human-readable string using `K` and `M` suffixes.
+ *
+ * @param n - The number to format
+ * @returns The formatted string: values >= 1,000 use one decimal and a `K` suffix (e.g., `1.2K`), values >= 1,000,000 use one decimal and an `M` suffix (e.g., `1.2M`), otherwise the integer as a string
+ */
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/**
+ * Renders a custom chart tooltip showing a header label and a list of entries with colored indicators and formatted values.
+ *
+ * Displays nothing when `active` is false or `payload` is empty.
+ *
+ * @param active - Whether the tooltip should be shown.
+ * @param payload - Array of tooltip entries. Each entry should include `name` (label), `value` (numeric value), and `color` (hex or CSS color) — values are formatted as milliseconds, percentages, or compact numbers depending on the entry name.
+ * @param label - Header text shown at the top of the tooltip.
+ * @returns The tooltip JSX element, or `null` when not active or when there is no payload.
+ */
 function ChartTooltipContent({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
@@ -644,7 +733,14 @@ function ChartTooltipContent({ active, payload, label }: any) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/**
+ * Render a Y-axis tick label for charts, truncating labels longer than 16 characters.
+ *
+ * @param x - X coordinate where the label should be rendered.
+ * @param y - Y coordinate where the label should be rendered.
+ * @param payload - Tick payload object; the label is taken from `payload.value`.
+ * @returns An SVG `text` element containing the tick label truncated to 16 characters with an ellipsis when needed.
+ */
 function YTick({ x, y, payload }: any) {
   const text = String(payload?.value ?? '');
   const maxLen = 16;
@@ -663,6 +759,15 @@ interface StatCardProps {
   iconBg: string;
 }
 
+/**
+ * Renders a compact statistic card with an icon, label, and value.
+ *
+ * @param label - Short uppercase label describing the metric
+ * @param value - Primary value to display (formatted string or number)
+ * @param icon - Visual icon or element shown in the left icon area
+ * @param iconBg - CSS class(es) applied to the icon container for background styling
+ * @returns A JSX element representing the statistic card
+ */
 function StatCard({ label, value, icon, iconBg }: StatCardProps) {
   return (
     <div className="rounded-xl bg-card border border-border p-3 sm:p-4 flex items-center gap-3">
@@ -681,6 +786,15 @@ const BAR_H = 34;
 const Y_WIDTH = 108;
 const CHART_MARGIN = { top: 2, right: 12, left: 0, bottom: 2 };
 
+/**
+ * Render the Stats tab showing Prowlarr metrics, controls, and visualizations.
+ *
+ * Displays a date-range selector, summary stat cards, and multiple charts (response time, failure rate,
+ * queries by indexer, grabs by indexer, and user-agent metrics). Shows loading placeholders while data
+ * is being fetched and an error or empty-state card when appropriate.
+ *
+ * @returns A React element containing the stats UI and charts for the selected date range.
+ */
 function StatsTab() {
   const [stats, setStats] = useState<ProwlarrStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1047,6 +1161,12 @@ const HISTORY_FILTERS = [
 
 type HistoryFilterValue = typeof HISTORY_FILTERS[number]['value'];
 
+/**
+ * Render an icon corresponding to a history event type.
+ *
+ * @param eventType - The event type string (e.g., "indexerRss", "grab", or values containing "fail") used to determine which icon to render.
+ * @returns The icon React element that visually represents the provided event type.
+ */
 function EventIcon({ eventType }: { eventType: string }) {
   if (eventType === 'indexerRss') return <Rss className="h-3.5 w-3.5 text-amber-400 shrink-0" />;
   if (eventType === 'grab') return <Download className="h-3.5 w-3.5 text-green-400 shrink-0" />;
@@ -1054,11 +1174,28 @@ function EventIcon({ eventType }: { eventType: string }) {
   return <Search className="h-3.5 w-3.5 text-blue-400 shrink-0" />;
 }
 
+/**
+ * Parses a comma-separated string of category IDs into an array of integers.
+ *
+ * @param raw - A comma-separated list of category IDs (e.g., "1,2,3"); may be `undefined` or empty.
+ * @returns An array of integers parsed from `raw`; invalid or non-numeric entries are omitted.
+ */
 function parseCategoryIds(raw: string | undefined): number[] {
   if (!raw) return [];
   return raw.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
 }
 
+/**
+ * Shows a drawer with detailed information for a selected Prowlarr history record.
+ *
+ * Renders a Drawer containing the record's event type, success state, top-level fields
+ * (Indexer, Indexer ID, Date) and all key/value data fields; renders URL values as links.
+ *
+ * @param record - The history record to display; when `null` the drawer is closed.
+ * @param onClose - Callback invoked when the drawer is dismissed.
+ * @param indexerMap - Map of indexer IDs to human-readable indexer names used to resolve the record's indexer.
+ * @returns A Drawer element presenting the provided history record's details (or a closed Drawer when `record` is `null`).
+ */
 function HistoryDrawer({
   record,
   onClose,
@@ -1141,6 +1278,13 @@ function HistoryDrawer({
   );
 }
 
+/**
+ * Renders the History tab UI for Prowlarr, showing a filterable, paginated list of history records and a detail drawer.
+ *
+ * Fetches indexer names and history records, supports filter pills, incremental "Load More" pagination, loading and error states, and opens a drawer with record details when an item is selected.
+ *
+ * @returns The History tab as a React element
+ */
 function HistoryTab() {
   const [records, setRecords] = useState<ProwlarrHistoryRecord[]>([]);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -1333,13 +1477,30 @@ function HistoryTab() {
   );
 }
 
-// ── Main Page ────────────────────────────────────────────────────────────────
+/**
+ * Renders the Prowlarr management page with top-level actions and tabs for Indexers, Stats, and History.
+ *
+ * Provides action buttons to Refresh All, Sync All, and Test All indexers, and renders the IndexersTab,
+ * StatsTab, and HistoryTab within a tabbed interface.
+ *
+ * @returns The Prowlarr management page React element.
+ */
 
 export default function ProwlarrPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
 
+  /**
+   * Send a named Prowlarr command to the API and update a loading flag during the request.
+   *
+   * Shows a success toast when the server responds OK, or an error toast when the request fails
+   * or the server returns an error payload.
+   *
+   * @param name - The command name to send to the Prowlarr API
+   * @param label - Human-readable label used in toast messages
+   * @param setter - Callback to set a boolean loading state while the request is in progress
+   */
   async function sendCommand(name: string, label: string, setter: (v: boolean) => void) {
     setter(true);
     try {
@@ -1361,6 +1522,13 @@ export default function ProwlarrPage() {
     }
   }
 
+  /**
+   * Initiates a "test all indexers" request for Prowlarr and manages UI feedback.
+   *
+   * Sends a POST to /api/prowlarr/indexers/testall, shows a success toast when the request succeeds,
+   * shows the server-provided error message or a generic error toast when it fails, and ensures the
+   * testing-all state is set while the operation is in progress and cleared when complete.
+   */
   async function handleTestAll() {
     setTestingAll(true);
     try {

@@ -4,6 +4,15 @@ import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 
+/**
+ * Handle POST requests to check connectivity and retrieve version information from supported services.
+ *
+ * Expects the request body to be JSON with fields: `type` (one of `"SONARR"|"RADARR"|"QBITTORRENT"|"PROWLARR"`),
+ * `url` (service base URL), `apiKey` (API key or password), and optional `username` (used for qBittorrent).
+ *
+ * @param request - Incoming NextRequest whose JSON body contains the service check parameters
+ * @returns An object with `success` boolean and, on success, `version` (string); on failure, `error` (string)
+ */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

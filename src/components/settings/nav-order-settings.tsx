@@ -29,6 +29,13 @@ import {
   reconcileNavOrder,
 } from '@/lib/nav-config';
 
+/**
+ * Renders a draggable navigation item row with icon, label, a control to mark the item as the default page, and either a pin indicator or an enable/disable switch for use in the navigation order settings.
+ *
+ * @param onToggle - Invoked to toggle the item's enabled/disabled state.
+ * @param onSetDefault - Invoked to set this item as the default page.
+ * @returns The JSX element for the sortable navigation item.
+ */
 function SortableNavItem({
   id,
   isDisabled,
@@ -104,6 +111,13 @@ function SortableNavItem({
   );
 }
 
+/**
+ * Renders a draggable, reorderable navigation settings UI for configuring nav items.
+ *
+ * Displays the reconciled navigation order as a sortable list where each item can be enabled/disabled, pinned, or marked as the default page. Drag-and-drop updates the persisted nav order; a dashed "More menu" divider is inserted after the fourth enabled item when applicable. Includes a "Reset to Default" control to restore the original configuration.
+ *
+ * @returns The React element for the navigation order settings panel.
+ */
 export function NavOrderSettings() {
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);

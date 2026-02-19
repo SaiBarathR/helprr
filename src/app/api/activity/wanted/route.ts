@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 
+/**
+ * Fetches and returns combined wanted or cutoff-unmet records from Sonarr and Radarr, with optional source filtering and pagination.
+ *
+ * Supports these query parameters on the request URL:
+ * - `type`: "missing" (default) or "cutoff"
+ * - `page`: 1-based page number (default 1)
+ * - `pageSize`: number of items per page (default 20)
+ * - `source`: optional; when set to "sonarr" or "radarr" restricts results to that backend
+ *
+ * The response merges records from both services, adds `source` ("sonarr" | "radarr") and `mediaType` ("episode" | "movie") to each record, and returns the requested page slice.
+ *
+ * @returns A JSON object with `page`, `pageSize`, `totalRecords`, and `records` (the paginated merged records). On failure returns a 500 JSON error object.
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

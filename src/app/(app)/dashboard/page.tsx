@@ -24,6 +24,13 @@ interface ProwlarrSummary {
   blocked: number;
 }
 
+/**
+ * Render the dashboard page showing system stats, active downloads, upcoming calendar events, and Prowlarr indexer summary.
+ *
+ * The component fetches dashboard data and updates periodically using the configured refresh interval.
+ *
+ * @returns The JSX element for the dashboard page.
+ */
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);

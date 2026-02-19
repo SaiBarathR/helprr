@@ -19,6 +19,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Trigger grabbing a Radarr release using identifiers supplied in the request body.
+ *
+ * Expects the request body to be JSON with `guid` (string) and `indexerId` (number) — `downloadClientId` (number) may be provided to select a download client.
+ *
+ * @param request - The incoming HTTP request whose JSON body contains `{ guid, indexerId, downloadClientId? }`
+ * @returns A JSON response: `{ success: true }` on success; otherwise `{ error: string }` with status `400` for missing/invalid input or `500` for internal failures.
+ */
 export async function POST(request: Request) {
   try {
     const body = await request.json();

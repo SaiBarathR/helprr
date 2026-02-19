@@ -52,7 +52,16 @@ export const NAV_ITEM_MAP: Record<NavItemId, NavItemDef> = Object.fromEntries(
   NAV_ITEMS.map((item) => [item.id, item])
 ) as Record<NavItemId, NavItemDef>;
 
-/** Returns ordered, filtered nav items based on user preferences */
+/**
+ * Produce the enabled navigation items in the user's reconciled order.
+ *
+ * Reconciles the provided `navOrder` with current known navigation items, filters out any IDs present
+ * in `disabledNavItems`, and returns the resulting list of NavItemDef objects in the reconciled order.
+ *
+ * @param navOrder - Persisted or preferred ordering of navigation item IDs to reconcile against the current set
+ * @param disabledNavItems - Navigation item IDs to exclude from the result
+ * @returns The enabled NavItemDef objects in the reconciled order
+ */
 export function getEnabledNavItems(
   navOrder: NavItemId[],
   disabledNavItems: NavItemId[]
@@ -67,7 +76,12 @@ export function getEnabledNavItems(
   }, []);
 }
 
-/** Splits enabled items into bottom nav tabs (first 4) and more menu (rest) */
+/**
+ * Produce a bottom navigation layout from enabled navigation items.
+ *
+ * @param enabledItems - Enabled navigation items in the order they should appear
+ * @returns An object with `tabs` containing the first four items and `moreItems` containing the remaining items
+ */
 export function getBottomNavLayout(enabledItems: NavItemDef[]) {
   return {
     tabs: enabledItems.slice(0, 4),
@@ -75,7 +89,12 @@ export function getBottomNavLayout(enabledItems: NavItemDef[]) {
   };
 }
 
-/** Reconciles persisted order with current NAV_ITEMS — handles additions/removals */
+/**
+ * Reconciles a persisted navigation order with the current set of navigation items.
+ *
+ * @param persisted - Persisted navigation item IDs in the user's preferred order.
+ * @returns The reconciled order: persisted IDs that still exist first, followed by any new IDs appended in the current NAV_ITEMS order.
+ */
 export function reconcileNavOrder(persisted: NavItemId[]): NavItemId[] {
   const allIds = new Set<NavItemId>(NAV_ITEMS.map((i) => i.id));
   // Keep persisted items that still exist

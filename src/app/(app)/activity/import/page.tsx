@@ -16,7 +16,11 @@ import type { ManualImportItem, SonarrEpisode } from '@/types';
 
 type View = 'files' | 'episodes';
 
-// ── Page wrapper (Suspense boundary for useSearchParams) ────────────────────
+/**
+ * Top-level page component that renders ManualImportContent inside a Suspense boundary with a skeleton fallback.
+ *
+ * @returns A JSX element containing a Suspense boundary that displays skeleton placeholders while ManualImportContent resolves.
+ */
 
 export default function ManualImportPage() {
   return (
@@ -30,7 +34,14 @@ export default function ManualImportPage() {
   );
 }
 
-// ── Main content ────────────────────────────────────────────────────────────
+/**
+ * Render the manual import interface for inspecting detected files, assigning Sonarr episodes, and submitting imports.
+ *
+ * Reads relevant URL search parameters (downloadId, source, seriesId, movieId, title), fetches import and episode data,
+ * provides an episode picker with search and refresh capabilities (Sonarr), and submits the selected import payload.
+ *
+ * @returns The rendered manual import UI component for selecting files/episodes and submitting imports.
+ */
 
 function ManualImportContent() {
   const router = useRouter();
@@ -117,6 +128,14 @@ function ManualImportContent() {
       .filter(([, episodes]) => episodes.length > 0);
   }, [episodesBySeason, episodeSearch]);
 
+  /**
+   * Refreshes Sonarr for the current series and updates the local episode list.
+   *
+   * If no `seriesId` is available, the function returns without performing any action.
+   * While running, it marks the UI as refreshing, sends a Sonarr RefreshSeries command,
+   * refetches the series' episodes, updates local episode state on success, and displays
+   * a success or error toast. The refreshing state is cleared when the operation completes.
+   */
   async function handleRefreshEpisodes() {
     if (!seriesId) return;
     setRefreshingEpisodes(true);
@@ -140,12 +159,24 @@ function ManualImportContent() {
     }
   }
 
+  /**
+   * Open the episode picker for a specific file.
+   *
+   * Resets the episode search, sets the file index that the picker will operate on, and switches the UI to the episodes view.
+   *
+   * @param fileIndex - Index of the file whose episodes should be selected
+   */
   function openEpisodePicker(fileIndex: number) {
     setPickerFileIndex(fileIndex);
     setEpisodeSearch('');
     setView('episodes');
   }
 
+  /**
+   * Assigns the given Sonarr episode to the file currently being edited in the episode picker and switches back to the files view.
+   *
+   * @param ep - The Sonarr episode to assign to the currently selected file
+   */
   function selectEpisode(ep: SonarrEpisode) {
     setFileOverrides((prev) => {
       const next = new Map(prev);
@@ -155,7 +186,11 @@ function ManualImportContent() {
     setView('files');
   }
 
-  // ── Submit ────────────────────────────────────────────────────────────────
+  /**
+   * Submits the current manual-import selection to the server.
+   *
+   * Builds a payload from the detected files (respecting any per-file episode overrides), posts it to the manual-import API, and on success shows a success toast and navigates back; on failure shows an error toast. Sets the submitting state while the request is in progress.
+   */
 
   async function submitImport() {
     setSubmitting(true);

@@ -13,6 +13,14 @@ import {
 import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems, getBottomNavLayout } from '@/lib/nav-config';
 
+/**
+ * Render a responsive bottom navigation bar with primary tabs and an optional "More" popover.
+ *
+ * The navigation derives visible tabs and overflow items from the UI store, highlights the active
+ * route based on the current pathname, and closes the "More" popover when a menu item is selected.
+ *
+ * @returns The JSX element for the bottom navigation bar
+ */
 export function BottomNav() {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);

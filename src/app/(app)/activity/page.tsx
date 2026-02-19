@@ -98,7 +98,13 @@ const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
   { key: 'radarr', label: 'Radarr' },
 ];
 
-// --- Main page ---
+/**
+ * Renders the Activity page with header controls (filter, sort, history, refresh) and tabbed views for Queue, Failed imports, Missing, and Cutoff items.
+ *
+ * The component manages local UI state for the active tab, refresh state, sort and filter selection, and queue count. It triggers background refresh commands for Sonarr and Radarr, navigates to history and import routes, and passes sorting/filtering props to the tab panels.
+ *
+ * @returns The Activity page React element
+ */
 
 export default function ActivityPage() {
   const router = useRouter();
@@ -109,6 +115,12 @@ export default function ActivityPage() {
   const [queueCount, setQueueCount] = useState(0);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
+  /**
+   * Trigger a refresh of monitored downloads in Sonarr and Radarr and notify the user of the outcome.
+   *
+   * While running, the component's refreshing state is set to true; it resets to false when finished.
+   * On success (when the requests complete or settle) a success toast is shown; on error a failure toast is shown.
+   */
   async function handleRefreshActivity() {
     setRefreshing(true);
     try {
@@ -254,7 +266,17 @@ export default function ActivityPage() {
   );
 }
 
-// --- Queue Tab ---
+/**
+ * Renders the Queue tab UI for activity, showing current download/import queue items.
+ *
+ * Polls the server for queue records at a configurable interval, applies the provided filter and sort,
+ * reports the visible item count via `onCountChange`, and exposes per-item details and removal from the queue.
+ *
+ * @param sortBy - Key used to sort visible queue items (title, progress, timeleft, or size)
+ * @param filterBy - Source filter to limit items (e.g., 'all', 'sonarr', 'radarr')
+ * @param onCountChange - Callback invoked with the current number of visible items after filtering and sorting
+ * @returns The rendered Queue tab content as a JSX element
+ */
 
 function QueueTab({
   sortBy,
@@ -282,6 +304,11 @@ function QueueTab({
   }, []);
 
   useEffect(() => {
+    /**
+     * Load the configured activity refresh interval (in milliseconds) and update the component's refreshIntervalMs state.
+     *
+     * Falls back to 5 seconds if no setting is present.
+     */
     async function loadRefreshInterval() {
       const intervalMs = await getRefreshIntervalMs('activityRefreshIntervalSecs', 5);
       setRefreshIntervalMs(intervalMs);
@@ -508,13 +535,30 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-// --- Failed Imports Tab ---
+/**
+ * Render the Failed Imports tab: list queue items that failed import and offer a manual import action.
+ *
+ * Shows loading skeletons while fetching; if no failed imports are found it renders an empty-state message;
+ * otherwise it renders each failed item with its messages and an Import button that navigates to the manual import page.
+ *
+ * @param filterBy - Source filter to apply (`'all'`, `'sonarr'`, or `'radarr'`)
+ * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
+ */
 
 function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
   const router = useRouter();
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * Load failed import entries from the activity queue and update component state.
+   *
+   * Fetches /api/activity/queue, selects records whose `trackedDownloadState` is
+   * `"importFailed"` or whose `trackedDownloadStatus` is `"warning"`, applies the
+   * `filterBy` source filter when it is not `"all"`, and stores the resulting list
+   * via `setQueue`. Always calls `setLoading(false)` when finished; errors are
+   * ignored.
+   */
   async function fetchFailed() {
     try {
       const res = await fetch('/api/activity/queue');
@@ -533,6 +577,11 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
 
   useEffect(() => { fetchFailed(); }, [filterBy]);
 
+  /**
+   * Navigate to the manual import page for a queue item, embedding its identifiers in the query string.
+   *
+   * @param item - The queue item whose import page should be opened. Uses `downloadId`, `title`, and `source` (defaults to `"sonarr"`), and adds `seriesId` or `movieId` when present.
+   */
   function openManualImport(item: QueueItem & { source?: string }) {
     const params = new URLSearchParams({
       downloadId: item.downloadId,
@@ -610,6 +659,13 @@ interface WantedRecord {
   monitored?: boolean;
 }
 
+/**
+ * Render the Wanted tab showing either missing or cutoff items with per-item search and pagination.
+ *
+ * @param type - Specifies which set of wanted items to display: `'missing'` or `'cutoff'`.
+ * @param filterBy - Source filter for results (`'all'`, `'sonarr'`, or `'radarr'`); when not `'all'` the list is limited to that source.
+ * @returns The tab content element that lists records, shows loading and empty states, provides a per-record search action, and supports "Load more" pagination.
+ */
 function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: FilterKey }) {
   const [records, setRecords] = useState<WantedRecord[]>([]);
   const [loading, setLoading] = useState(true);

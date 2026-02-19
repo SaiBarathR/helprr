@@ -10,6 +10,13 @@ const routeTitles: Record<string, string> = Object.fromEntries(
   NAV_ITEMS.map((item) => [item.href, item.label])
 );
 
+/**
+ * Site header component that displays the brand on desktop and an adaptive title or brand link on mobile.
+ *
+ * On mobile devices, shows the current page title when the pathname matches a top-level route; otherwise shows a compact brand link to the movies page. On medium and larger screens the brand logo and name are always shown.
+ *
+ * @returns The header JSX element containing branding and conditional mobile title or link.
+ */
 export function Header() {
   const pathname = usePathname();
 
