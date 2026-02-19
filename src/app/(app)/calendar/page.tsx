@@ -581,7 +581,7 @@ export default function CalendarPage() {
           </button>
           <span className="text-sm font-semibold truncate">{headerLabel}</span>
         </div>
-        <div className="flex items-center justify-between hidden md:flex gap-2">
+        <div className="items-center justify-between hidden md:flex gap-2">
           <ViewTabs
             value={calendarView}
             onChange={(v) => setCalendarView(v)}

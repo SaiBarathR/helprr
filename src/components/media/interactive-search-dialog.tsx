@@ -264,6 +264,7 @@ export function InteractiveSearchDialog({
             <button
               onClick={() => handleOpenChange(false)}
               className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-full hover:bg-muted shrink-0"
+              aria-label="Close"
             >
               <X className="h-5 w-5" />
             </button>
@@ -396,9 +397,8 @@ export function InteractiveSearchDialog({
                       return (
                         <div
                           key={release.guid}
-                          className={`rounded-lg border p-2.5 text-sm space-y-1.5 ${
-                            isRejected ? 'opacity-60 border-destructive/30' : ''
-                          }`}
+                          className={`rounded-lg border p-2.5 text-sm space-y-1.5 ${isRejected ? 'opacity-60 border-destructive/30' : ''
+                            }`}
                         >
                           <div className="flex items-start gap-2">
                             <div className="flex-1 min-w-0">
@@ -426,6 +426,7 @@ export function InteractiveSearchDialog({
                                   rel="noopener noreferrer"
                                   className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground"
                                   title="Open indexer page in new tab"
+                                  aria-label='Open indexer page in new tab'
                                 >
                                   <ExternalLink className="h-3.5 w-3.5" />
                                 </a>
@@ -436,6 +437,7 @@ export function InteractiveSearchDialog({
                                 title="Add to download queue"
                                 onClick={() => handleGrab(release)}
                                 disabled={grabbing === release.guid}
+                                aria-label="Add to download queue"
                               >
                                 {grabbing === release.guid ? (
                                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -447,6 +449,7 @@ export function InteractiveSearchDialog({
                               <button
                                 className="min-w-[28px] min-h-[28px] flex items-center justify-center rounded hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50"
                                 title="Override and add to download queue"
+                                aria-label="Override and add to download queue"
                                 onClick={() => openOverride(release)}
                                 disabled={grabbing === release.guid}
                               >
@@ -524,11 +527,10 @@ export function InteractiveSearchDialog({
                   <button
                     key={client.id}
                     onClick={() => setSelectedClientId(client.id)}
-                    className={`w-full flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-                      selectedClientId === client.id
-                        ? 'border-primary bg-primary/10'
-                        : 'hover:bg-accent'
-                    }`}
+                    className={`w-full flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${selectedClientId === client.id
+                      ? 'border-primary bg-primary/10'
+                      : 'hover:bg-accent'
+                      }`}
                   >
                     <span className="font-medium">{client.name}</span>
                     <div className="flex items-center gap-2">
