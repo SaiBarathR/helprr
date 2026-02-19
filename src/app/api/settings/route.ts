@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { validateNavConfigInput } from '@/lib/navigation-config';
 
 export async function GET() {
   try {
@@ -34,9 +36,11 @@ export async function PUT(request: NextRequest) {
       pollingIntervalSecs, theme, upcomingAlertHours,
       dashboardRefreshIntervalSecs, activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
+      navConfig,
     } = body;
 
     const data: Record<string, unknown> = {};
+    let normalizedNavConfig: Prisma.InputJsonValue | undefined;
     if (pollingIntervalSecs !== undefined)
       data.pollingIntervalSecs = pollingIntervalSecs;
     if (dashboardRefreshIntervalSecs !== undefined)
@@ -54,6 +58,17 @@ export async function PUT(request: NextRequest) {
       data.upcomingNotifyBeforeMins = upcomingNotifyBeforeMins;
     if (upcomingDailyNotifyHour !== undefined)
       data.upcomingDailyNotifyHour = upcomingDailyNotifyHour;
+    if (navConfig !== undefined) {
+      const validation = validateNavConfigInput(navConfig);
+      if (!validation.valid) {
+        return NextResponse.json(
+          { error: validation.error },
+          { status: 400 }
+        );
+      }
+      normalizedNavConfig = validation.config as unknown as Prisma.InputJsonValue;
+      data.navConfig = normalizedNavConfig;
+    }
 
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -69,6 +84,7 @@ export async function PUT(request: NextRequest) {
         upcomingNotifyMode: upcomingNotifyMode ?? 'before_air',
         upcomingNotifyBeforeMins: upcomingNotifyBeforeMins ?? 60,
         upcomingDailyNotifyHour: upcomingDailyNotifyHour ?? 9,
+        ...(normalizedNavConfig !== undefined ? { navConfig: normalizedNavConfig } : {}),
       },
     });
 

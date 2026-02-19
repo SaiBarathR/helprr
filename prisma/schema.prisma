@@ -78,4 +78,5 @@ model AppSettings {
   upcomingNotifyMode       String  @default("before_air") // "once_in_window" | "before_air" | "daily_digest"
   upcomingNotifyBeforeMins Int     @default(60)
   upcomingDailyNotifyHour  Int     @default(9)            // 0-23, for daily_digest mode
+  navConfig                Json?
 }

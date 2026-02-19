@@ -1,8 +1,32 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
+  CheckCircle,
+  ChevronRight,
+  GripVertical,
+  Loader2,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +38,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronRight, Loader2, LogOut, Film, Tv, Download, Search, CheckCircle, XCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { useNavConfig } from '@/components/layout/nav-config-provider';
+import { NAV_ICON_MAP } from '@/components/layout/nav-icons';
+import { cn } from '@/lib/utils';
+import {
+  buildEffectiveNav,
+  CONFIGURABLE_NAV_PAGE_IDS,
+  getNavItem,
+  normalizeNavConfig,
+  resolveConfigurableNavPageForPath,
+  type NavConfigV1,
+  type NavPageId,
+} from '@/lib/navigation-config';
 
 interface ServiceForm {
   url: string;
@@ -22,6 +58,58 @@ interface ServiceForm {
   username: string;
   testing: boolean;
   saving: boolean;
+}
+
+interface SortableNavRowProps {
+  id: NavPageId;
+  enabled: boolean;
+  disableToggle: boolean;
+  onToggle: (id: NavPageId, enabled: boolean) => void;
+}
+
+function SortableNavRow({ id, enabled, disableToggle, onToggle }: SortableNavRowProps) {
+  const item = getNavItem(id);
+  const Icon = NAV_ICON_MAP[item.iconKey];
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(
+        'flex min-h-11 items-center gap-3 rounded-md border border-border/70 bg-card px-3 py-2',
+        isDragging && 'border-primary/60 bg-accent shadow-sm'
+      )}
+    >
+      <button
+        type="button"
+        className="touch-target h-9 w-9 rounded-md text-muted-foreground hover:bg-accent"
+        aria-label={`Reorder ${item.label}`}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <span className="flex-1 text-sm font-medium">{item.label}</span>
+      <Switch
+        checked={enabled}
+        onCheckedChange={(checked) => onToggle(id, checked)}
+        disabled={disableToggle && enabled}
+        aria-label={`Toggle ${item.label}`}
+      />
+    </div>
+  );
 }
 
 const defaultServiceForm: ServiceForm = {
@@ -36,28 +124,24 @@ const SERVICE_CONFIG = [
   {
     type: 'RADARR' as const,
     label: 'Radarr',
-    icon: Film,
     dotColor: 'bg-purple-500',
     placeholder: 'http://localhost:7878',
   },
   {
     type: 'SONARR' as const,
     label: 'Sonarr',
-    icon: Tv,
     dotColor: 'bg-blue-500',
     placeholder: 'http://localhost:8989',
   },
   {
     type: 'QBITTORRENT' as const,
     label: 'qBittorrent',
-    icon: Download,
     dotColor: 'bg-green-500',
     placeholder: 'http://localhost:8080',
   },
   {
     type: 'PROWLARR' as const,
     label: 'Prowlarr',
-    icon: Search,
     dotColor: 'bg-orange-500',
     placeholder: 'http://localhost:9696',
   },
@@ -114,7 +198,9 @@ const NOTIFY_BEFORE_OPTIONS = [
 
 export default function SettingsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { navConfig: sharedNavConfig, setNavConfig: setSharedNavConfig } = useNavConfig();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -135,8 +221,29 @@ export default function SettingsPage() {
   const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
   const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
   const [upcomingDailyNotifyHour, setUpcomingDailyNotifyHour] = useState('9');
+  const [navConfig, setNavConfig] = useState<NavConfigV1>(sharedNavConfig);
   const [savingSettings, setSavingSettings] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const enabledConfigurableCount = useMemo(
+    () => CONFIGURABLE_NAV_PAGE_IDS.filter((id) => navConfig.enabled[id]).length,
+    [navConfig]
+  );
+
+  const navPreview = useMemo(() => buildEffectiveNav(navConfig), [navConfig]);
+
+  useEffect(() => {
+    setNavConfig(sharedNavConfig);
+  }, [sharedNavConfig]);
 
   useEffect(() => {
     async function loadData() {
@@ -175,6 +282,10 @@ export default function SettingsPage() {
           if (settings.theme) {
             setTheme(settings.theme);
           }
+
+          const normalized = normalizeNavConfig(settings.navConfig);
+          setNavConfig(normalized);
+          setSharedNavConfig(normalized);
         }
       } catch {
         // Settings may not exist yet
@@ -195,6 +306,43 @@ export default function SettingsPage() {
   function isConfigured(type: string) {
     const svc = services[type];
     return !!(svc.url && svc.apiKey);
+  }
+
+  function handleNavToggle(id: NavPageId, enabled: boolean) {
+    if (!enabled && enabledConfigurableCount <= 1) {
+      toast.error('At least one page must remain enabled');
+      return;
+    }
+
+    setNavConfig((prev) => ({
+      ...prev,
+      enabled: {
+        ...prev.enabled,
+        [id]: enabled,
+      },
+    }));
+  }
+
+  function handleNavDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const activeId = String(active.id) as NavPageId;
+    const overId = String(over.id) as NavPageId;
+
+    setNavConfig((prev) => {
+      const oldIndex = prev.order.indexOf(activeId);
+      const newIndex = prev.order.indexOf(overId);
+
+      if (oldIndex < 0 || newIndex < 0) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        order: arrayMove(prev.order, oldIndex, newIndex),
+      };
+    });
   }
 
   async function testConnection(type: string) {
@@ -275,6 +423,11 @@ export default function SettingsPage() {
   }
 
   async function saveGeneralSettings() {
+    if (enabledConfigurableCount < 1) {
+      toast.error('At least one page must remain enabled');
+      return;
+    }
+
     setSavingSettings(true);
 
     try {
@@ -291,13 +444,24 @@ export default function SettingsPage() {
           upcomingNotifyMode,
           upcomingNotifyBeforeMins: parseInt(upcomingNotifyBeforeMins, 10),
           upcomingDailyNotifyHour: parseInt(upcomingDailyNotifyHour, 10),
+          navConfig,
         }),
       });
 
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
+        const nextNavConfig = normalizeNavConfig(data?.navConfig ?? navConfig);
+        setNavConfig(nextNavConfig);
+        setSharedNavConfig(nextNavConfig);
+
+        const currentPage = resolveConfigurableNavPageForPath(pathname);
+        if (currentPage && !nextNavConfig.enabled[currentPage]) {
+          router.replace(buildEffectiveNav(nextNavConfig).fallbackHref);
+        }
+
         toast.success('Settings saved');
       } else {
-        const data = await res.json();
         toast.error(data.error || 'Failed to save settings');
       }
     } catch {
@@ -358,8 +522,6 @@ export default function SettingsPage() {
 
   return (
     <div className="pb-8">
-      {/* <h1 className="text-[28px] font-bold px-4 pt-2 pb-4">Settings</h1> */}
-
       {/* ── Instances ── */}
       <div className="grouped-section px-4 mb-6">
         <div className="grouped-section-title">Instances</div>
@@ -535,6 +697,104 @@ export default function SettingsPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Navigation ── */}
+      <div className="grouped-section px-4 mb-6">
+        <div className="grouped-section-title">Navigation</div>
+        <div className="grouped-section-content p-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-border/70 bg-background/40 p-3">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Order and visibility</p>
+                  <p className="text-xs text-muted-foreground">Drag rows to reorder. Toggle pages to show or hide.</p>
+                </div>
+                <span className="text-[11px] text-muted-foreground">Settings is always visible</span>
+              </div>
+
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleNavDragEnd}
+              >
+                <SortableContext
+                  items={navConfig.order}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {navConfig.order.map((id) => (
+                      <SortableNavRow
+                        key={id}
+                        id={id}
+                        enabled={navConfig.enabled[id]}
+                        disableToggle={enabledConfigurableCount === 1}
+                        onToggle={handleNavToggle}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-background/40 p-3">
+              <p className="text-sm font-medium">Preview</p>
+              <p className="text-xs text-muted-foreground">This order is used for both sidebar and bottom navigation.</p>
+
+              <div className="mt-3 space-y-3">
+                <div className="rounded-md border border-border/60 bg-card p-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Sidebar order</p>
+                  <div className="mt-2 space-y-1">
+                    {navPreview.sidebarItems.map((item) => {
+                      const Icon = NAV_ICON_MAP[item.iconKey];
+                      return (
+                        <div key={`sidebar-preview-${item.id}`} className="flex min-h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground">
+                          <Icon className="h-3.5 w-3.5" />
+                          <span>{item.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-border/60 bg-card p-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bottom navigation</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {navPreview.bottomItems.map((item) => (
+                      <span key={`bottom-preview-${item.id}`} className="inline-flex min-h-7 items-center rounded-md bg-accent px-2.5 text-xs font-medium text-foreground">
+                        {item.label}
+                      </span>
+                    ))}
+                    {navPreview.moreItems.length > 0 ? (
+                      <span className="inline-flex min-h-7 items-center rounded-md bg-primary/10 px-2.5 text-xs font-medium text-primary">More</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Direct tabs: {navPreview.bottomItems.length}/4.
+                    {navPreview.moreItems.length > 0
+                      ? ` ${navPreview.moreItems.length} item${navPreview.moreItems.length > 1 ? 's' : ''} inside More.`
+                      : ' No overflow items.'}
+                  </p>
+
+                  {navPreview.moreItems.length > 0 ? (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground">More menu</p>
+                      {navPreview.moreItems.map((item) => {
+                        const Icon = NAV_ICON_MAP[item.iconKey];
+                        return (
+                          <div key={`more-preview-${item.id}`} className="flex min-h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground">
+                            <Icon className="h-3.5 w-3.5" />
+                            <span>{item.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

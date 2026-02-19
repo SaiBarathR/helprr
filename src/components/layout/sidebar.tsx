@@ -4,38 +4,21 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
-  LayoutDashboard,
-  Film,
-  Tv,
-  CalendarDays,
-  Activity,
-  Bell,
-  Settings,
   Clapperboard,
   PanelLeftClose,
   PanelLeft,
-  HardDrive,
-  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useState } from 'react';
-
-const navItems = [
-  { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/movies', icon: Film, label: 'Movies' },
-  { href: '/series', icon: Tv, label: 'TV Series' },
-  { href: '/calendar', icon: CalendarDays, label: 'Calendar' },
-  { href: '/torrents', icon: HardDrive, label: 'Torrents' },
-  { href: '/prowlarr', icon: Search, label: 'Prowlarr' },
-  { href: '/activity', icon: Activity, label: 'Activity' },
-  { href: '/notifications', icon: Bell, label: 'Notifications' },
-  { href: '/settings', icon: Settings, label: 'Settings' },
-];
+import { useNavConfig } from '@/components/layout/nav-config-provider';
+import { NAV_ICON_MAP } from '@/components/layout/nav-icons';
+import { isNavItemActive } from '@/lib/navigation-config';
 
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { effectiveNav } = useNavConfig();
 
   return (
     <aside
@@ -50,12 +33,13 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 py-2 space-y-1 px-2">
-        {navItems.map(({ href, icon: Icon, label }) => {
-          const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+        {effectiveNav.sidebarItems.map((item) => {
+          const Icon = NAV_ICON_MAP[item.iconKey];
+          const isActive = isNavItemActive(pathname, item);
           const link = (
             <Link
-              key={href}
-              href={href}
+              key={item.id}
+              href={item.href}
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -65,15 +49,15 @@ export function Sidebar() {
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {!collapsed && label}
+              {!collapsed && item.label}
             </Link>
           );
 
           if (collapsed) {
             return (
-              <Tooltip key={href}>
+              <Tooltip key={item.id}>
                 <TooltipTrigger asChild>{link}</TooltipTrigger>
-                <TooltipContent side="right">{label}</TooltipContent>
+                <TooltipContent side="right">{item.label}</TooltipContent>
               </Tooltip>
             );
           }
