@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ChevronRight, Loader2, LogOut, Film, Tv, Download, Search, CheckCircle, XCircle } from 'lucide-react';
+import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 
 interface ServiceForm {
   url: string;
@@ -558,6 +559,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Navigation ── */}
+      <NavOrderSettings />
 
       {/* ── Notifications ── */}
       <div className="grouped-section px-4 mb-6">

@@ -3,19 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Clapperboard } from 'lucide-react';
+import { NAV_ITEMS } from '@/lib/nav-config';
 
-// Maps top-level routes to their display titles
-const routeTitles: Record<string, string> = {
-  '/movies': 'Movies',
-  '/series': 'Series',
-  '/calendar': 'Calendar',
-  '/activity': 'Activity',
-  '/dashboard': 'Dashboard',
-  '/torrents': 'Torrents',
-  '/prowlarr': 'Prowlarr',
-  '/notifications': 'Notifications',
-  '/settings': 'Settings',
-};
+// Derive route titles from the centralized nav config
+const routeTitles: Record<string, string> = Object.fromEntries(
+  NAV_ITEMS.map((item) => [item.href, item.label])
+);
 
 export function Header() {
   const pathname = usePathname();

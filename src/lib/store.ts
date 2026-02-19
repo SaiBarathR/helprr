@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { type NavItemId, DEFAULT_NAV_ORDER, NAV_ITEM_MAP } from '@/lib/nav-config';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -55,6 +56,14 @@ interface UIState {
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
   calendarMonitoredOnly: boolean;
   setCalendarMonitoredOnly: (v: boolean) => void;
+  // Navigation preferences
+  navOrder: NavItemId[];
+  disabledNavItems: NavItemId[];
+  defaultPage: NavItemId;
+  setNavOrder: (order: NavItemId[]) => void;
+  toggleNavItem: (id: NavItemId) => void;
+  setDefaultPage: (id: NavItemId) => void;
+  resetNavConfig: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -101,13 +110,43 @@ export const useUIStore = create<UIState>()(
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
       calendarMonitoredOnly: false,
       setCalendarMonitoredOnly: (v) => set({ calendarMonitoredOnly: v }),
+      // Navigation
+      navOrder: [...DEFAULT_NAV_ORDER],
+      disabledNavItems: [],
+      defaultPage: 'dashboard' as NavItemId,
+      setNavOrder: (order) => set({ navOrder: order }),
+      toggleNavItem: (id) =>
+        set((state) => {
+          // Refuse to disable pinned items
+          if (NAV_ITEM_MAP[id]?.pinned) return state;
+          const isDisabled = state.disabledNavItems.includes(id);
+          if (isDisabled) {
+            // Re-enable
+            return { disabledNavItems: state.disabledNavItems.filter((i) => i !== id) };
+          }
+          // Check: at least 1 non-Settings item must remain enabled
+          const disabledSet = new Set(state.disabledNavItems);
+          disabledSet.add(id);
+          const enabledNonPinned = state.navOrder.filter(
+            (i) => !disabledSet.has(i) && !NAV_ITEM_MAP[i]?.pinned
+          );
+          if (enabledNonPinned.length === 0) return state;
+          // If disabling the current default page, reset default to first enabled non-pinned item
+          const updates: Partial<UIState> = { disabledNavItems: [...state.disabledNavItems, id] };
+          if (state.defaultPage === id) {
+            updates.defaultPage = enabledNonPinned[0];
+          }
+          return updates;
+        }),
+      setDefaultPage: (id) => set({ defaultPage: id }),
+      resetNavConfig: () => set({ navOrder: [...DEFAULT_NAV_ORDER], disabledNavItems: [], defaultPage: 'dashboard' as NavItemId }),
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 1,
+      version: 3,
       migrate: (persisted, version) => {
+        const state = persisted as Record<string, unknown>;
         if (version === 0) {
-          const state = persisted as Record<string, unknown>;
           // Migrate flat string[] to per-mode VisibleFieldsByMode
           const oldMovies = state.moviesVisibleFields;
           if (Array.isArray(oldMovies)) {
@@ -126,7 +165,15 @@ export const useUIStore = create<UIState>()(
             };
           }
         }
-        return persisted as UIState;
+        if (version < 2) {
+          // Add navigation preferences
+          state.navOrder = [...DEFAULT_NAV_ORDER];
+          state.disabledNavItems = [];
+        }
+        if (version < 3) {
+          state.defaultPage = 'dashboard';
+        }
+        return state as unknown as UIState;
       },
       partialize: (state) => ({
         mediaView: state.mediaView,
@@ -145,6 +192,9 @@ export const useUIStore = create<UIState>()(
         seriesVisibleFields: state.seriesVisibleFields,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
+        navOrder: state.navOrder,
+        disabledNavItems: state.disabledNavItems,
+        defaultPage: state.defaultPage,
       }),
     }
   )
