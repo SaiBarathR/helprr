@@ -84,6 +84,13 @@ const sortOptions = [
   { value: 'tags', label: 'Tags' },
 ] as const;
 
+/**
+ * Render the Sonarr series management page with client-side search, filtering, sorting, view selection, and field visibility controls.
+ *
+ * Fetches series, quality profiles, and tags on mount, and provides posters, overview, and table presentations with responsive behavior and skeleton loading states.
+ *
+ * @returns The page's JSX element that displays and manages Sonarr series. 
+ */
 export default function SeriesPage() {
   const [series, setSeries] = useState<SonarrSeries[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);

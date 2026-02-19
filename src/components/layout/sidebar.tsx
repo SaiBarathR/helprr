@@ -10,6 +10,14 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems } from '@/lib/nav-config';
 
+/**
+ * Render the application's responsive, collapsible navigation sidebar.
+ *
+ * Reads collapse state and navigation configuration from the UI store to display
+ * navigation links with icons, active-state highlighting, and a toggle control.
+ *
+ * @returns The sidebar React element containing navigation links, icons, a collapse/expand control, and tooltips for labels when collapsed.
+ */
 export function Sidebar() {
   const pathname = usePathname();
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);

@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 
+/**
+ * Handle GET requests to fetch Prowlarr application profiles.
+ *
+ * Returns a JSON response containing the list of application profiles retrieved from the Prowlarr client.
+ *
+ * @returns A NextResponse with the application profiles as JSON, or a NextResponse with a JSON object `{ error: string }` and HTTP status 500 when retrieval fails.
+ */
 export async function GET() {
   try {
     const client = await getProwlarrClient();

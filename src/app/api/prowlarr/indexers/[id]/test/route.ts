@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 
+/**
+ * Handle POST requests to trigger a Prowlarr indexer test for the route `.../indexers/[id]/test`.
+ *
+ * @param _request - The incoming NextRequest (unused).
+ * @param params - A promise resolving to route parameters; must include `id` (the indexer id).
+ * @returns On success, a JSON response containing the indexer test result (or `{ success: true }` when the result is falsy). On failure, a JSON response `{ error: string }` with HTTP status 500.
+ */
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

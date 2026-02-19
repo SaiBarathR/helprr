@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
+/**
+ * Retrieve the singleton application settings, creating a record with defaults if none exists.
+ *
+ * @returns The app settings record (singleton) as persisted in the database.
+ */
 export async function GET() {
   try {
     const settings = await prisma.appSettings.upsert({
@@ -27,6 +32,16 @@ export async function GET() {
   }
 }
 
+/**
+ * Update or create the singleton application settings using values from the request body.
+ *
+ * Accepts a JSON body with any of the following optional fields to update the singleton settings:
+ * `pollingIntervalSecs`, `dashboardRefreshIntervalSecs`, `activityRefreshIntervalSecs`, `torrentsRefreshIntervalSecs`,
+ * `theme`, `upcomingAlertHours`, `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
+ *
+ * @param request - Incoming Next.js request whose JSON body supplies the settings to set or update.
+ * @returns The resulting settings object as JSON on success; on failure returns `{ error: 'Failed to update settings' }` with HTTP status 500.
+ */
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();

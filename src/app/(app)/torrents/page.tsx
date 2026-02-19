@@ -120,6 +120,13 @@ const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'active', label: 'Active' },
 ];
 
+/**
+ * Renders the Torrents page UI including list, search and filter controls, bulk actions, and drawers for adding, inspecting, and deleting torrents.
+ *
+ * The component periodically refreshes torrent and transfer data using a configurable refresh interval loaded from user settings.
+ *
+ * @returns The React element for the Torrents management page.
+ */
 export default function TorrentsPage() {
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);

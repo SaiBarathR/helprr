@@ -92,7 +92,13 @@ function eventLabel(eventType: string) {
   }
 }
 
-// --- Main page ---
+/**
+ * Renders the History page UI including event and instance filters, a paginated list of history events, and a detail drawer for a selected event.
+ *
+ * The page supports server-side filtering by event type and instance, infinite "Load more" pagination, and displays event metadata and contextual information in a drawer when an item is selected.
+ *
+ * @returns The React element for the History page.
+ */
 
 export default function HistoryPage() {
   const [history, setHistory] = useState<(HistoryItem & { source?: string })[]>([]);
@@ -104,6 +110,14 @@ export default function HistoryPage() {
   const [instanceFilter, setInstanceFilter] = useState<InstanceFilter>('all');
   const [selectedItem, setSelectedItem] = useState<(HistoryItem & { source?: string }) | null>(null);
 
+  /**
+   * Fetches a page of history events from the server and updates component state (history list, total count, and loading flags).
+   *
+   * Uses the current event and instance filters when querying the API. On network or parsing failure, displays a toast error and clears loading indicators.
+   *
+   * @param p - The 1-based page number to fetch
+   * @param append - If `true`, append fetched records to the current history; otherwise replace the history
+   */
   async function fetchHistory(p: number, append = false) {
     if (append) setLoadingMore(true);
     else setLoading(true);
@@ -136,6 +150,9 @@ export default function HistoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventFilter, instanceFilter]);
 
+  /**
+   * Advance to the next history page and append the newly fetched records to the existing list.
+   */
   function handleLoadMore() {
     const next = page + 1;
     setPage(next);
