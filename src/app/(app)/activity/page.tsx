@@ -136,7 +136,7 @@ export default function ActivityPage() {
     <div className="flex flex-col min-h-0">
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h1 className="text-xl font-bold">Activity</h1>
+        <h1 className="text-xl font-bold"> </h1>
         <div className="flex items-center gap-1">
           {/* Filter */}
           <DropdownMenu>
@@ -226,11 +226,10 @@ export default function ActivityPage() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                tab === t.key
+              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
-              }`}
+                }`}
             >
               {t.label}
             </button>
@@ -279,7 +278,7 @@ function QueueTab({
         const data = await res.json();
         setQueue(data.records || []);
       }
-    } catch {} finally { setLoading(false); }
+    } catch { } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -529,7 +528,7 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
         }
         setQueue(failed);
       }
-    } catch {} finally { setLoading(false); }
+    } catch { } finally { setLoading(false); }
   }
 
   useEffect(() => { fetchFailed(); }, [filterBy]);
@@ -630,7 +629,7 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
         else setRecords((prev) => [...prev, ...(data.records || [])]);
         setTotal(data.totalRecords || 0);
       }
-    } catch {} finally { setLoading(false); }
+    } catch { } finally { setLoading(false); }
   }, [filterBy, type]);
 
   useEffect(() => { setPage(1); fetchWanted(1); }, [fetchWanted]);

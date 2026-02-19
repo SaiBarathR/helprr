@@ -358,7 +358,7 @@ export default function SettingsPage() {
 
   return (
     <div className="pb-8">
-      <h1 className="text-[28px] font-bold px-4 pt-2 pb-4">Settings</h1>
+      {/* <h1 className="text-[28px] font-bold px-4 pt-2 pb-4">Settings</h1> */}
 
       {/* ── Instances ── */}
       <div className="grouped-section px-4 mb-6">

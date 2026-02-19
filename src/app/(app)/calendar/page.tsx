@@ -49,33 +49,30 @@ function CompactFilters({
       {/* Type filter icons */}
       <button
         onClick={() => setTypeFilter('all')}
-        className={`p-1.5 rounded-md transition-colors ${
-          typeFilter === 'all'
-            ? 'bg-primary/15 text-primary'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        }`}
+        className={`p-1.5 rounded-md transition-colors ${typeFilter === 'all'
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
         title="All"
       >
         <span className="text-[10px] font-bold leading-none">ALL</span>
       </button>
       <button
         onClick={() => setTypeFilter('episode')}
-        className={`p-1.5 rounded-md transition-colors ${
-          typeFilter === 'episode'
-            ? 'bg-blue-500/15 text-blue-400'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        }`}
+        className={`p-1.5 rounded-md transition-colors ${typeFilter === 'episode'
+          ? 'bg-blue-500/15 text-blue-400'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
         title="Episodes"
       >
         <Tv className="h-3.5 w-3.5" />
       </button>
       <button
         onClick={() => setTypeFilter('movie')}
-        className={`p-1.5 rounded-md transition-colors ${
-          typeFilter === 'movie'
-            ? 'bg-orange-500/15 text-orange-400'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        }`}
+        className={`p-1.5 rounded-md transition-colors ${typeFilter === 'movie'
+          ? 'bg-orange-500/15 text-orange-400'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
         title="Movies"
       >
         <Film className="h-3.5 w-3.5" />
@@ -86,11 +83,10 @@ function CompactFilters({
       {/* Monitored toggle */}
       <button
         onClick={() => setMonitoredOnly(!monitoredOnly)}
-        className={`p-1.5 rounded-md transition-colors ${
-          monitoredOnly
-            ? 'bg-primary/15 text-primary'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        }`}
+        className={`p-1.5 rounded-md transition-colors ${monitoredOnly
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
         title={monitoredOnly ? 'Showing monitored only' : 'Showing all'}
       >
         {monitoredOnly ? (
@@ -141,9 +137,8 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
           return (
             <Link key={event.id} href={href} className="block active:bg-muted/30">
               <div
-                className={`flex items-start gap-4 py-3 px-1 border-b border-border/30 ${
-                  !event.monitored ? 'opacity-50' : ''
-                } ${event.hasFile ? 'opacity-60' : ''}`}
+                className={`flex items-start gap-4 py-3 px-1 border-b border-border/30 ${!event.monitored ? 'opacity-50' : ''
+                  } ${event.hasFile ? 'opacity-60' : ''}`}
               >
                 {/* Date column - only show for first event of the day */}
                 <div className="w-10 shrink-0 text-center">
@@ -153,9 +148,8 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
                         {format(date, 'EEE')}
                       </p>
                       <p
-                        className={`text-2xl font-bold leading-tight ${
-                          today ? 'text-primary' : 'text-foreground'
-                        }`}
+                        className={`text-2xl font-bold leading-tight ${today ? 'text-primary' : 'text-foreground'
+                          }`}
                       >
                         {format(date, 'd')}
                       </p>
@@ -176,11 +170,10 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
                         <Film className="h-3 w-3 text-orange-400 shrink-0" />
                       )}
                       <p
-                        className={`text-sm font-semibold truncate ${
-                          event.hasFile
-                            ? 'line-through text-muted-foreground'
-                            : 'text-foreground'
-                        }`}
+                        className={`text-sm font-semibold truncate ${event.hasFile
+                          ? 'line-through text-muted-foreground'
+                          : 'text-foreground'
+                          }`}
                       >
                         {event.title}
                       </p>
@@ -248,25 +241,22 @@ function MonthView({
           return (
             <div
               key={day.toISOString()}
-              className={`min-h-[72px] md:min-h-[100px] border-r border-b border-border/40 p-1 transition-colors ${
-                !inMonth ? 'bg-muted/20' : ''
-              } ${today ? 'bg-primary/5' : ''}`}
+              className={`min-h-[72px] md:min-h-[100px] border-r border-b border-border/40 p-1 transition-colors ${!inMonth ? 'bg-muted/20' : ''
+                } ${today ? 'bg-primary/5' : ''}`}
             >
               <div
-                className={`text-xs font-medium mb-0.5 ${
-                  today
-                    ? 'text-primary font-bold'
-                    : inMonth
-                      ? 'text-foreground'
-                      : 'text-muted-foreground/40'
-                }`}
+                className={`text-xs font-medium mb-0.5 ${today
+                  ? 'text-primary font-bold'
+                  : inMonth
+                    ? 'text-foreground'
+                    : 'text-muted-foreground/40'
+                  }`}
               >
                 <span
-                  className={`inline-flex items-center justify-center ${
-                    today
-                      ? 'bg-primary text-primary-foreground rounded-full w-5 h-5 text-[10px]'
-                      : ''
-                  }`}
+                  className={`inline-flex items-center justify-center ${today
+                    ? 'bg-primary text-primary-foreground rounded-full w-5 h-5 text-[10px]'
+                    : ''
+                    }`}
                 >
                   {format(day, 'd')}
                 </span>
@@ -280,13 +270,11 @@ function MonthView({
                   return (
                     <Link key={event.id} href={href} className="block">
                       <div
-                        className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] leading-tight font-medium truncate transition-opacity hover:opacity-80 ${
-                          event.type === 'episode'
-                            ? 'bg-blue-500/15 text-blue-400'
-                            : 'bg-orange-500/15 text-orange-400'
-                        } ${!event.monitored ? 'opacity-50' : ''} ${
-                          event.hasFile ? 'line-through decoration-1' : ''
-                        }`}
+                        className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] leading-tight font-medium truncate transition-opacity hover:opacity-80 ${event.type === 'episode'
+                          ? 'bg-blue-500/15 text-blue-400'
+                          : 'bg-orange-500/15 text-orange-400'
+                          } ${!event.monitored ? 'opacity-50' : ''} ${event.hasFile ? 'line-through decoration-1' : ''
+                          }`}
                       >
                         {event.type === 'episode' ? (
                           <Tv className="h-2 w-2 shrink-0" />
@@ -336,22 +324,19 @@ function WeekView({
         return (
           <div
             key={day.toISOString()}
-            className={`rounded-lg border transition-colors ${
-              today ? 'border-primary/40 bg-primary/5' : 'border-border/40'
-            }`}
+            className={`rounded-lg border transition-colors ${today ? 'border-primary/40 bg-primary/5' : 'border-border/40'
+              }`}
           >
             <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
               <span
-                className={`text-xs font-medium uppercase ${
-                  today ? 'text-primary' : 'text-muted-foreground'
-                }`}
+                className={`text-xs font-medium uppercase ${today ? 'text-primary' : 'text-muted-foreground'
+                  }`}
               >
                 {format(day, 'EEE')}
               </span>
               <span
-                className={`text-sm font-semibold ${
-                  today ? 'text-primary' : 'text-foreground'
-                }`}
+                className={`text-sm font-semibold ${today ? 'text-primary' : 'text-foreground'
+                  }`}
               >
                 {format(day, 'd MMM')}
               </span>
@@ -377,9 +362,8 @@ function WeekView({
                   return (
                     <Link key={event.id} href={href} className="block">
                       <div
-                        className={`flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/30 active:bg-muted/50 ${
-                          !event.monitored ? 'opacity-50' : ''
-                        }`}
+                        className={`flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/30 active:bg-muted/50 ${!event.monitored ? 'opacity-50' : ''
+                          }`}
                       >
                         {event.type === 'episode' ? (
                           <Tv className="h-3 w-3 text-blue-400 shrink-0" />
@@ -388,11 +372,10 @@ function WeekView({
                         )}
                         <div className="flex-1 min-w-0">
                           <p
-                            className={`text-sm font-medium truncate ${
-                              event.hasFile
-                                ? 'line-through text-muted-foreground'
-                                : ''
-                            }`}
+                            className={`text-sm font-medium truncate ${event.hasFile
+                              ? 'line-through text-muted-foreground'
+                              : ''
+                              }`}
                           >
                             {event.title}
                           </p>
@@ -464,11 +447,10 @@ function ViewTabs({
         <button
           key={v.key}
           onClick={() => onChange(v.key)}
-          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${
-            value === v.key
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
+          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${value === v.key
+            ? 'bg-background text-foreground shadow-sm'
+            : 'text-muted-foreground hover:text-foreground'
+            }`}
         >
           {v.label}
         </button>
@@ -559,11 +541,16 @@ export default function CalendarPage() {
   return (
     <div className="space-y-3">
       {/* Top bar: title + view tabs */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">Calendar</h1>
+      <div className="flex items-center justify-between md:hidden">
         <ViewTabs
           value={calendarView}
           onChange={(v) => setCalendarView(v)}
+        />
+        <CompactFilters
+          typeFilter={typeFilter}
+          setTypeFilter={setTypeFilter}
+          monitoredOnly={monitoredOnly}
+          setMonitoredOnly={setMonitoredOnly}
         />
       </div>
 
@@ -594,13 +581,19 @@ export default function CalendarPage() {
           </button>
           <span className="text-sm font-semibold truncate">{headerLabel}</span>
         </div>
+        <div className="flex items-center justify-between hidden md:flex gap-2">
+          <ViewTabs
+            value={calendarView}
+            onChange={(v) => setCalendarView(v)}
+          />
+          <CompactFilters
+            typeFilter={typeFilter}
+            setTypeFilter={setTypeFilter}
+            monitoredOnly={monitoredOnly}
+            setMonitoredOnly={setMonitoredOnly}
+          />
+        </div>
 
-        <CompactFilters
-          typeFilter={typeFilter}
-          setTypeFilter={setTypeFilter}
-          monitoredOnly={monitoredOnly}
-          setMonitoredOnly={setMonitoredOnly}
-        />
       </div>
 
       {/* Error state */}
