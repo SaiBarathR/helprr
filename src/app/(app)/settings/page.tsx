@@ -70,6 +70,18 @@ const POLLING_OPTIONS = [
   { value: '120', label: '120 seconds' },
 ];
 
+const REFRESH_OPTIONS = [
+  { value: '2', label: '2 seconds' },
+  { value: '5', label: '5 seconds' },
+  { value: '10', label: '10 seconds' },
+  { value: '15', label: '15 seconds' },
+  { value: '30', label: '30 seconds' },
+  { value: '60', label: '1 minute' },
+  { value: '120', label: '2 minutes' },
+  { value: '300', label: '5 minutes' },
+  { value: '600', label: '10 minutes' },
+];
+
 const THEME_OPTIONS = [
   { value: 'dark', label: 'Dark' },
   { value: 'light', label: 'Light' },
@@ -116,6 +128,9 @@ export default function SettingsPage() {
 
   const [expandedService, setExpandedService] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState('30');
+  const [dashboardRefreshInterval, setDashboardRefreshInterval] = useState('5');
+  const [activityRefreshInterval, setActivityRefreshInterval] = useState('5');
+  const [torrentsRefreshInterval, setTorrentsRefreshInterval] = useState('5');
   const [upcomingAlertHours, setUpcomingAlertHours] = useState('24');
   const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
   const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
@@ -150,6 +165,9 @@ export default function SettingsPage() {
         if (settingsRes.status === 'fulfilled' && settingsRes.value.ok) {
           const settings = await settingsRes.value.json();
           setPollingInterval(String(settings.pollingIntervalSecs));
+          setDashboardRefreshInterval(String(settings.dashboardRefreshIntervalSecs ?? 5));
+          setActivityRefreshInterval(String(settings.activityRefreshIntervalSecs ?? 5));
+          setTorrentsRefreshInterval(String(settings.torrentsRefreshIntervalSecs ?? 5));
           setUpcomingAlertHours(String(settings.upcomingAlertHours));
           if (settings.upcomingNotifyMode) setUpcomingNotifyMode(settings.upcomingNotifyMode);
           if (settings.upcomingNotifyBeforeMins != null) setUpcomingNotifyBeforeMins(String(settings.upcomingNotifyBeforeMins));
@@ -265,6 +283,9 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pollingIntervalSecs: parseInt(pollingInterval, 10),
+          dashboardRefreshIntervalSecs: parseInt(dashboardRefreshInterval, 10),
+          activityRefreshIntervalSecs: parseInt(activityRefreshInterval, 10),
+          torrentsRefreshIntervalSecs: parseInt(torrentsRefreshInterval, 10),
           theme,
           upcomingAlertHours: parseInt(upcomingAlertHours, 10),
           upcomingNotifyMode,
@@ -304,6 +325,10 @@ export default function SettingsPage() {
 
   function getPollingLabel(value: string) {
     return POLLING_OPTIONS.find((o) => o.value === value)?.label ?? value;
+  }
+
+  function getRefreshLabel(value: string) {
+    return REFRESH_OPTIONS.find((o) => o.value === value)?.label ?? value;
   }
 
   function getThemeLabel(value: string | undefined) {
@@ -464,6 +489,48 @@ export default function SettingsPage() {
               </SelectTrigger>
               <SelectContent>
                 {POLLING_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grouped-row">
+            <span className="text-sm">Dashboard Refresh</span>
+            <Select value={dashboardRefreshInterval} onValueChange={setDashboardRefreshInterval}>
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue>{getRefreshLabel(dashboardRefreshInterval)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {REFRESH_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grouped-row">
+            <span className="text-sm">Activity Refresh</span>
+            <Select value={activityRefreshInterval} onValueChange={setActivityRefreshInterval}>
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue>{getRefreshLabel(activityRefreshInterval)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {REFRESH_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grouped-row">
+            <span className="text-sm">Torrents Refresh</span>
+            <Select value={torrentsRefreshInterval} onValueChange={setTorrentsRefreshInterval}>
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue>{getRefreshLabel(torrentsRefreshInterval)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {REFRESH_OPTIONS.map((o) => (
                   <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                 ))}
               </SelectContent>

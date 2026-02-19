@@ -9,6 +9,9 @@ export async function GET() {
       create: {
         id: 'singleton',
         pollingIntervalSecs: 30,
+        dashboardRefreshIntervalSecs: 5,
+        activityRefreshIntervalSecs: 5,
+        torrentsRefreshIntervalSecs: 5,
         theme: 'dark',
         upcomingAlertHours: 24,
       },
@@ -29,12 +32,19 @@ export async function PUT(request: NextRequest) {
     const body = await request.json();
     const {
       pollingIntervalSecs, theme, upcomingAlertHours,
+      dashboardRefreshIntervalSecs, activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
     } = body;
 
     const data: Record<string, unknown> = {};
     if (pollingIntervalSecs !== undefined)
       data.pollingIntervalSecs = pollingIntervalSecs;
+    if (dashboardRefreshIntervalSecs !== undefined)
+      data.dashboardRefreshIntervalSecs = dashboardRefreshIntervalSecs;
+    if (activityRefreshIntervalSecs !== undefined)
+      data.activityRefreshIntervalSecs = activityRefreshIntervalSecs;
+    if (torrentsRefreshIntervalSecs !== undefined)
+      data.torrentsRefreshIntervalSecs = torrentsRefreshIntervalSecs;
     if (theme !== undefined) data.theme = theme;
     if (upcomingAlertHours !== undefined)
       data.upcomingAlertHours = upcomingAlertHours;
@@ -51,6 +61,9 @@ export async function PUT(request: NextRequest) {
       create: {
         id: 'singleton',
         pollingIntervalSecs: pollingIntervalSecs ?? 30,
+        dashboardRefreshIntervalSecs: dashboardRefreshIntervalSecs ?? 5,
+        activityRefreshIntervalSecs: activityRefreshIntervalSecs ?? 5,
+        torrentsRefreshIntervalSecs: torrentsRefreshIntervalSecs ?? 5,
         theme: theme ?? 'dark',
         upcomingAlertHours: upcomingAlertHours ?? 24,
         upcomingNotifyMode: upcomingNotifyMode ?? 'before_air',
