@@ -7,9 +7,12 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type') || 'missing'; // 'missing' | 'cutoff'
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
+    const source = searchParams.get('source');
+    const sourceFilter = source === 'sonarr' || source === 'radarr' ? source : undefined;
 
     const [sonarrResult, radarrResult] = await Promise.allSettled([
       (async () => {
+        if (sourceFilter === 'radarr') return null;
         try {
           const client = await getSonarrClient();
           return type === 'cutoff'
@@ -20,6 +23,7 @@ export async function GET(request: NextRequest) {
         }
       })(),
       (async () => {
+        if (sourceFilter === 'sonarr') return null;
         try {
           const client = await getRadarrClient();
           return type === 'cutoff'
