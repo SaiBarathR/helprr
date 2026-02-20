@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { ChevronRight, Loader2, LogOut, Film, Tv, Download, Search, CheckCircle, XCircle } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
+import { InstallAppSection } from '@/components/settings/install-app-section';
 
 interface ServiceForm {
   url: string;
@@ -566,6 +567,9 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* ── App Install ── */}
+      <InstallAppSection />
 
       {/* ── Navigation ── */}
       <NavOrderSettings />
