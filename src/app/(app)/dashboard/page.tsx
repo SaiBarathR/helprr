@@ -80,7 +80,7 @@ function getPoster(images: MediaImage[]): string | null {
   return img?.remoteUrl || img?.url || null;
 }
 
-function formatBytes(bytes: number) {
+function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   if (bytes < 0) return `-${formatBytes(Math.abs(bytes))}`;
   const k = 1024;
