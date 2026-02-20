@@ -24,13 +24,14 @@ export class JellyfinClient {
   constructor(url: string, token: string, userId: string) {
     this.serverUrl = url.replace(/\/+$/, '');
     this.userId = userId;
-    this.client = axios.create({
-      baseURL: this.serverUrl,
-      headers: {
-        'Authorization': `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
-        'Content-Type': 'application/json',
-      },
-    });
+      this.client = axios.create({
+        baseURL: this.serverUrl,
+        headers: {
+          'Authorization': `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 30000, // 30 second timeout
+      });
   }
 
   static async authenticate(
