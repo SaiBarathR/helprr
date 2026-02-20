@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-function maskApiKey(key: string): string {
-  if (key.length <= 8) return '****';
-  return key.slice(0, 4) + '****' + key.slice(-4);
-}
+// function maskApiKey(key: string): string {
+//   if (key.length <= 8) return '****';
+//   return key.slice(0, 4) + '****' + key.slice(-4);
+// }
 
 export async function GET() {
   try {
@@ -14,7 +14,7 @@ export async function GET() {
 
     const masked = connections.map((conn) => ({
       ...conn,
-      apiKey: maskApiKey(conn.apiKey),
+      apiKey: (conn.apiKey),
     }));
 
     return NextResponse.json(masked);
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       ...connection,
-      apiKey: maskApiKey(connection.apiKey),
+      apiKey: (connection.apiKey),
     });
   } catch (error) {
     console.error('Failed to save service connection:', error);
