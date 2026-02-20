@@ -82,6 +82,7 @@ function getPoster(images: MediaImage[]): string | null {
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return '0 B';
+  if (bytes < 0) return `-${formatBytes(Math.abs(bytes))}`;
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -323,7 +324,9 @@ export default function DashboardPage() {
               const progress = item?.RunTimeTicks && playState?.PositionTicks
                 ? ticksToProgress(playState.PositionTicks, item.RunTimeTicks)
                 : 0;
-              const isTranscoding = session.TranscodingInfo && !session.TranscodingInfo.IsVideoDirect;
+              const transcodingInfo = session.TranscodingInfo;
+              const isTranscoding = Boolean(transcodingInfo && !transcodingInfo.IsVideoDirect);
+              const isHardwareTranscoding = Boolean(transcodingInfo?.HardwareAccelerationType?.trim());
               const imageId = item?.Type === 'Episode' && item?.SeriesId ? item.SeriesId : item?.Id;
 
               return (
@@ -372,8 +375,12 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between text-[11px] text-muted-foreground">
                       <span className="truncate">{session.UserName} &middot; {session.DeviceName}</span>
                       {isTranscoding ? (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 text-amber-500 border-amber-500/30 shrink-0 ml-2">
-                          <Zap className="h-2 w-2 mr-0.5" />HW
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] px-1 py-0 h-3.5 shrink-0 ml-2 ${isHardwareTranscoding ? 'text-amber-500 border-amber-500/30' : 'text-orange-500 border-orange-500/30'}`}
+                        >
+                          <Zap className="h-2 w-2 mr-0.5" />
+                          {isHardwareTranscoding ? 'HW' : 'Transcode'}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 text-green-500 border-green-500/30 shrink-0 ml-2">

@@ -73,6 +73,7 @@ export interface JellyfinTranscodingInfo {
   AudioCodec?: string;
   VideoCodec?: string;
   Container?: string;
+  HardwareAccelerationType?: string;
   IsVideoDirect: boolean;
   IsAudioDirect: boolean;
   TranscodeReasons?: string[];
