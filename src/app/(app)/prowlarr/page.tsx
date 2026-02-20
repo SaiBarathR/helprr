@@ -799,7 +799,7 @@ function StatsTab() {
   const [stats, setStats] = useState<ProwlarrStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<DateRange>('30d');
+  const [dateRange, setDateRange] = useState<DateRange>('7d');
 
   const fetchStats = useCallback(async (range: DateRange) => {
     setLoading(true);
