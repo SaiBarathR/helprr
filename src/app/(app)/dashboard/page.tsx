@@ -89,6 +89,12 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+function formatDistanceToNowSafe(input: string, fallback = 'unknown'): string {
+  const date = new Date(input);
+  if (!Number.isFinite(date.getTime())) return fallback;
+  return formatDistanceToNow(date, { addSuffix: true });
+}
+
 /* ─── Carousel wrapper with fade edge hint ─── */
 function Carousel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -513,7 +519,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <p className="text-[11px] font-medium truncate leading-tight">{item.title}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{item.subtitle || formatDistanceToNow(new Date(item.date), { addSuffix: true })}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{item.subtitle || formatDistanceToNowSafe(item.date)}</p>
               </Link>
             ))}
           </Carousel>
@@ -557,7 +563,7 @@ export default function DashboardPage() {
                     <div className="absolute bottom-1.5 left-1.5 right-1.5">
                       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[9px] text-white/90">
                         <Clock className="h-2 w-2" />
-                        {formatDistanceToNow(new Date(event.date), { addSuffix: true })}
+                        {formatDistanceToNowSafe(event.date)}
                       </span>
                     </div>
                     {/* Type badge */}
