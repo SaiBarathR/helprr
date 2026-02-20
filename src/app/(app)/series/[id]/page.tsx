@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
@@ -354,10 +355,12 @@ export default function SeriesDetailPage() {
           {/* Poster */}
           <div className="w-28 shrink-0">
             {poster ? (
-              <img
+              <Image
                 src={poster}
                 alt={series.title}
-                className="w-full aspect-[2/3] object-cover rounded-lg"
+                width={112}
+                height={168}
+                className="w-full h-auto aspect-[2/3] object-cover rounded-lg"
               />
             ) : (
               <div className="w-full aspect-[2/3] rounded-lg bg-muted flex items-center justify-center">

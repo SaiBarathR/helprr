@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Film, Tv, Star } from 'lucide-react';
 import type { MediaImage } from '@/types';
 
@@ -40,11 +41,12 @@ export function MediaCard({
     <Link href={href} className="group block">
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm">
         {poster ? (
-          <img
+          <Image
             src={poster}
             alt={title}
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            loading="lazy"
+            fill
+            sizes="(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 16vw"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
