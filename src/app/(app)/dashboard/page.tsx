@@ -555,7 +555,7 @@ export default function DashboardPage() {
                     </div>
                     {/* Type badge */}
                     <div className="absolute top-1.5 left-1.5">
-                      <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${event.type === 'episode' ? 'bg-blue-500/80' : 'bg-orange-500/80'}`}>
+                      <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${event.type === 'episode' ? 'bg-purple-500/80' : 'bg-blue-500/80'}`}>
                         {event.type === 'episode' ? <Tv className="h-2.5 w-2.5 text-white" /> : <Film className="h-2.5 w-2.5 text-white" />}
                       </span>
                     </div>
