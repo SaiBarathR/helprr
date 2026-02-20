@@ -77,11 +77,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Sort by date descending, deduplicate by title, take limit
+    // Sort by date descending, deduplicate by unique item id, take limit
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const seen = new Set<string>();
     const deduplicated = items.filter((item) => {
-      const key = `${item.type}-${item.title}`;
+      const key = item.id;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
