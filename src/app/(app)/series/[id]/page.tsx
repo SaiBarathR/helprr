@@ -19,7 +19,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { getImageUrl } from '@/components/media/media-card';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Loader2, Tv, ChevronRight, Heart, Eye,
+  Pencil, Trash2, Loader2, Tv, ChevronRight, Heart, Eye, PlayCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -77,6 +77,12 @@ export default function SeriesDetailPage() {
   }, [id]);
 
   const seasonNumbers = [...new Set(episodes.map((e) => e.seasonNumber))].sort((a, b) => b - a);
+  const latestPlayableEpisode = [...episodes]
+    .filter((episode) => episode.hasFile)
+    .sort((a, b) => {
+      if (a.seasonNumber !== b.seasonNumber) return b.seasonNumber - a.seasonNumber;
+      return b.episodeNumber - a.episodeNumber;
+    })[0];
 
   async function handleSearchAll() {
     if (!series) return;
@@ -266,6 +272,18 @@ export default function SeriesDetailPage() {
   const nextAiring = series.nextAiring
     ? format(new Date(series.nextAiring), "MMM d, yyyy 'at' h:mm a")
     : null;
+  const watchHref = latestPlayableEpisode
+    ? `/watch?${new URLSearchParams({
+      type: 'episode',
+      seriesTitle: series.title,
+      ...(series.year ? { year: String(series.year) } : {}),
+      ...(series.tvdbId ? { tvdbId: String(series.tvdbId) } : {}),
+      ...(series.imdbId ? { imdbId: series.imdbId } : {}),
+      seasonNumber: String(latestPlayableEpisode.seasonNumber),
+      episodeNumber: String(latestPlayableEpisode.episodeNumber),
+      episodeTitle: latestPlayableEpisode.title,
+    }).toString()}`
+    : null;
 
   return (
     <div className="flex flex-col min-h-0">
@@ -433,6 +451,17 @@ export default function SeriesDetailPage() {
                 {overviewExpanded ? 'Show less' : 'More...'}
               </button>
             )}
+          </div>
+        )}
+
+        {watchHref && (
+          <div className="px-4 pt-2">
+            <Button asChild className="w-full rounded-full h-10">
+              <Link href={watchHref}>
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Play Latest Episode
+              </Link>
+            </Button>
           </div>
         )}
 

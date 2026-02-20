@@ -120,7 +120,7 @@ export interface RadarrMovie {
   studio: string;
 }
 
-export interface RadarrCalendarEntry extends RadarrMovie {}
+export type RadarrCalendarEntry = RadarrMovie;
 
 // Shared Types
 export interface MediaImage {
@@ -308,7 +308,7 @@ export interface CalendarEvent {
 
 // App Types
 export interface ServiceConnectionConfig {
-  type: 'SONARR' | 'RADARR' | 'QBITTORRENT';
+  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN';
   url: string;
   apiKey: string;
 }

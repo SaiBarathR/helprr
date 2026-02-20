@@ -342,6 +342,7 @@ export default function DashboardPage() {
               const jellyfinPrimarySrc = imageId
                 ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=520&quality=80`
                 : '';
+              const watchHref = item?.Id ? `/watch?itemId=${encodeURIComponent(item.Id)}` : null;
 
               return (
                 <div
@@ -406,6 +407,14 @@ export default function DashboardPage() {
                         </Badge>
                       )}
                     </div>
+                    {watchHref && (
+                      <Link
+                        href={watchHref}
+                        className="inline-flex text-[10px] text-primary font-medium"
+                      >
+                        Watch in Helprr
+                      </Link>
+                    )}
                     {item?.RunTimeTicks && (
                       <div className="flex items-center gap-2">
                         <Progress value={progress} className="h-[3px] flex-1" />
@@ -432,9 +441,10 @@ export default function DashboardPage() {
               const imageId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
               const hasImage = item.ImageTags?.Primary || (item.Type === 'Episode' && item.SeriesId);
               const jellyfinPosterSrc = `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`;
+              const watchHref = `/watch?itemId=${encodeURIComponent(item.Id)}`;
 
               return (
-                <div key={item.Id} className="snap-start shrink-0 w-[110px]">
+                <Link key={item.Id} href={watchHref} className="snap-start shrink-0 w-[110px]">
                   <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
                     {hasImage ? (
                       <Image
@@ -461,7 +471,7 @@ export default function DashboardPage() {
                       S{item.ParentIndexNumber}E{item.IndexNumber}
                     </p>
                   )}
-                </div>
+                </Link>
               );
             })}
           </Carousel>

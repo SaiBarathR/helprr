@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +36,7 @@ import {
   Loader2,
   Star,
   Film,
+  PlayCircle,
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -170,6 +172,14 @@ export default function MovieDetailPage() {
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
   const rootFolder = movie.path ? movie.path.split('/').slice(0, -1).join('/') : '';
+  const watchSearch = new URLSearchParams({
+    type: 'movie',
+    title: movie.title,
+    ...(movie.year ? { year: String(movie.year) } : {}),
+    ...(movie.tmdbId ? { tmdbId: String(movie.tmdbId) } : {}),
+    ...(movie.imdbId ? { imdbId: movie.imdbId } : {}),
+  }).toString();
+  const watchHref = `/watch?${watchSearch}`;
 
   // Extract media info from movie file if available
   const mediaInfo = movie.movieFile as (RadarrMovie['movieFile'] & {
@@ -445,6 +455,14 @@ export default function MovieDetailPage() {
             <Search className="h-4 w-4 mr-2" />
             Interactive
           </Button>
+          {movie.hasFile && (
+            <Button asChild className="flex-1 rounded-full h-10">
+              <Link href={watchHref}>
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Watch
+              </Link>
+            </Button>
+          )}
         </div>
 
         {/* Information section */}

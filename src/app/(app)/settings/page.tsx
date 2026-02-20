@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -149,6 +150,7 @@ export default function SettingsPage() {
   const [dashboardRefreshInterval, setDashboardRefreshInterval] = useState('5');
   const [activityRefreshInterval, setActivityRefreshInterval] = useState('5');
   const [torrentsRefreshInterval, setTorrentsRefreshInterval] = useState('5');
+  const [autoplayNextEpisode, setAutoplayNextEpisode] = useState(true);
   const [upcomingAlertHours, setUpcomingAlertHours] = useState('24');
   const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
   const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
@@ -186,6 +188,7 @@ export default function SettingsPage() {
           setDashboardRefreshInterval(String(settings.dashboardRefreshIntervalSecs ?? 5));
           setActivityRefreshInterval(String(settings.activityRefreshIntervalSecs ?? 5));
           setTorrentsRefreshInterval(String(settings.torrentsRefreshIntervalSecs ?? 5));
+          setAutoplayNextEpisode(settings.autoplayNextEpisode ?? true);
           setUpcomingAlertHours(String(settings.upcomingAlertHours));
           if (settings.upcomingNotifyMode) setUpcomingNotifyMode(settings.upcomingNotifyMode);
           if (settings.upcomingNotifyBeforeMins != null) setUpcomingNotifyBeforeMins(String(settings.upcomingNotifyBeforeMins));
@@ -321,6 +324,7 @@ export default function SettingsPage() {
           dashboardRefreshIntervalSecs: parseInt(dashboardRefreshInterval, 10),
           activityRefreshIntervalSecs: parseInt(activityRefreshInterval, 10),
           torrentsRefreshIntervalSecs: parseInt(torrentsRefreshInterval, 10),
+          autoplayNextEpisode,
           theme,
           upcomingAlertHours: parseInt(upcomingAlertHours, 10),
           upcomingNotifyMode,
@@ -581,6 +585,11 @@ export default function SettingsPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="grouped-row">
+            <span className="text-sm">Auto-play Next Episode</span>
+            <Switch checked={autoplayNextEpisode} onCheckedChange={setAutoplayNextEpisode} />
           </div>
         </div>
       </div>

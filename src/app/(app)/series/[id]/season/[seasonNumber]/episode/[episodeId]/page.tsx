@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
@@ -15,7 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, X,
-  ExternalLink, Film, Tv, Clock, Calendar, HardDrive, FileText, Globe, Volume2, Subtitles,
+  ExternalLink, Film, Tv, Clock, Calendar, HardDrive, FileText, Globe, Volume2, Subtitles, PlayCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -225,6 +226,16 @@ export default function EpisodeDetailPage() {
   const episodeFile = episode.episodeFile;
   const mediaInfo = episodeFile?.mediaInfo;
   const epCode = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
+  const watchHref = `/watch?${new URLSearchParams({
+    type: 'episode',
+    seriesTitle: series.title,
+    ...(series.year ? { year: String(series.year) } : {}),
+    ...(series.tvdbId ? { tvdbId: String(series.tvdbId) } : {}),
+    ...(series.imdbId ? { imdbId: series.imdbId } : {}),
+    seasonNumber: String(episode.seasonNumber),
+    episodeNumber: String(episode.episodeNumber),
+    episodeTitle: episode.title || 'TBA',
+  }).toString()}`;
 
   return (
     <div className="space-y-4 pb-20">
@@ -408,6 +419,14 @@ export default function EpisodeDetailPage() {
           <Search className="mr-2 h-4 w-4" />
           Interactive
         </Button>
+        {episode.hasFile && (
+          <Button asChild className="rounded-full flex-1">
+            <Link href={watchHref}>
+              <PlayCircle className="mr-2 h-4 w-4" />
+              Watch
+            </Link>
+          </Button>
+        )}
       </div>
 
       {/* File section */}

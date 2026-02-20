@@ -17,6 +17,7 @@ export async function GET() {
         dashboardRefreshIntervalSecs: 5,
         activityRefreshIntervalSecs: 5,
         torrentsRefreshIntervalSecs: 5,
+        autoplayNextEpisode: true,
         theme: 'dark',
         upcomingAlertHours: 24,
       },
@@ -37,7 +38,7 @@ export async function GET() {
  *
  * Accepts a JSON body with any of the following optional fields to update the singleton settings:
  * `pollingIntervalSecs`, `dashboardRefreshIntervalSecs`, `activityRefreshIntervalSecs`, `torrentsRefreshIntervalSecs`,
- * `theme`, `upcomingAlertHours`, `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
+ * `autoplayNextEpisode`, `theme`, `upcomingAlertHours`, `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
  *
  * @param request - Incoming Next.js request whose JSON body supplies the settings to set or update.
  * @returns The resulting settings object as JSON on success; on failure returns `{ error: 'Failed to update settings' }` with HTTP status 500.
@@ -48,6 +49,7 @@ export async function PUT(request: NextRequest) {
     const {
       pollingIntervalSecs, theme, upcomingAlertHours,
       dashboardRefreshIntervalSecs, activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
+      autoplayNextEpisode,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
     } = body;
 
@@ -60,6 +62,8 @@ export async function PUT(request: NextRequest) {
       data.activityRefreshIntervalSecs = activityRefreshIntervalSecs;
     if (torrentsRefreshIntervalSecs !== undefined)
       data.torrentsRefreshIntervalSecs = torrentsRefreshIntervalSecs;
+    if (autoplayNextEpisode !== undefined)
+      data.autoplayNextEpisode = autoplayNextEpisode;
     if (theme !== undefined) data.theme = theme;
     if (upcomingAlertHours !== undefined)
       data.upcomingAlertHours = upcomingAlertHours;
@@ -79,6 +83,7 @@ export async function PUT(request: NextRequest) {
         dashboardRefreshIntervalSecs: dashboardRefreshIntervalSecs ?? 5,
         activityRefreshIntervalSecs: activityRefreshIntervalSecs ?? 5,
         torrentsRefreshIntervalSecs: torrentsRefreshIntervalSecs ?? 5,
+        autoplayNextEpisode: autoplayNextEpisode ?? true,
         theme: theme ?? 'dark',
         upcomingAlertHours: upcomingAlertHours ?? 24,
         upcomingNotifyMode: upcomingNotifyMode ?? 'before_air',
