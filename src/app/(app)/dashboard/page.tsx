@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -22,6 +23,7 @@ import { formatDistanceToNow } from 'date-fns';
 import type { QueueItem, CalendarEvent, MediaImage } from '@/types';
 import type { JellyfinSession, JellyfinItem } from '@/types/jellyfin';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { isProtectedApiImageSrc } from '@/lib/image';
 
 interface DashboardStats {
   totalMovies: number;
@@ -334,6 +336,12 @@ export default function DashboardPage() {
               const isTranscoding = Boolean(transcodingInfo && !transcodingInfo.IsVideoDirect);
               const isHardwareTranscoding = Boolean(transcodingInfo?.HardwareAccelerationType?.trim());
               const imageId = item?.Type === 'Episode' && item?.SeriesId ? item.SeriesId : item?.Id;
+              const jellyfinBackdropSrc = item?.Id
+                ? `/api/jellyfin/image?itemId=${item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id}&type=Backdrop&maxWidth=520&quality=80`
+                : '';
+              const jellyfinPrimarySrc = imageId
+                ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=520&quality=80`
+                : '';
 
               return (
                 <div
@@ -343,18 +351,22 @@ export default function DashboardPage() {
                   {/* Backdrop area */}
                   <div className="relative h-20 bg-muted overflow-hidden">
                     {item?.BackdropImageTags?.[0] && item.Id ? (
-                      <img
-                        src={`/api/jellyfin/image?itemId=${item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id}&type=Backdrop&maxWidth=520&quality=80`}
+                      <Image
+                        src={jellyfinBackdropSrc}
                         alt=""
-                        className="w-full h-full object-cover"
-                        loading="lazy"
+                        fill
+                        sizes="260px"
+                        className="object-cover"
+                        unoptimized={isProtectedApiImageSrc(jellyfinBackdropSrc)}
                       />
                     ) : imageId && item?.ImageTags?.Primary ? (
-                      <img
-                        src={`/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=520&quality=80`}
+                      <Image
+                        src={jellyfinPrimarySrc}
                         alt=""
-                        className="w-full h-full object-cover blur-sm scale-110"
-                        loading="lazy"
+                        fill
+                        sizes="260px"
+                        className="object-cover blur-sm scale-110"
+                        unoptimized={isProtectedApiImageSrc(jellyfinPrimarySrc)}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
@@ -419,16 +431,19 @@ export default function DashboardPage() {
               const progress = item.UserData?.PlayedPercentage ?? 0;
               const imageId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
               const hasImage = item.ImageTags?.Primary || (item.Type === 'Episode' && item.SeriesId);
+              const jellyfinPosterSrc = `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`;
 
               return (
                 <div key={item.Id} className="snap-start shrink-0 w-[110px]">
                   <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
                     {hasImage ? (
-                      <img
-                        src={`/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`}
+                      <Image
+                        src={jellyfinPosterSrc}
                         alt={item.Name}
-                        className="w-full h-full object-cover"
-                        loading="lazy"
+                        fill
+                        sizes="110px"
+                        className="object-cover"
+                        unoptimized={isProtectedApiImageSrc(jellyfinPosterSrc)}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
@@ -497,11 +512,13 @@ export default function DashboardPage() {
               >
                 <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
                   {item.poster ? (
-                    <img
+                    <Image
                       src={item.poster}
                       alt={item.title}
-                      className="w-full h-full object-cover transition-transform duration-300 group-active:scale-105"
-                      loading="lazy"
+                      fill
+                      sizes="110px"
+                      className="object-cover transition-transform duration-300 group-active:scale-105"
+                      unoptimized={isProtectedApiImageSrc(item.poster)}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -545,11 +562,13 @@ export default function DashboardPage() {
                 >
                   <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
                     {poster ? (
-                      <img
+                      <Image
                         src={poster}
                         alt={event.title}
-                        className="w-full h-full object-cover transition-transform duration-300 group-active:scale-105"
-                        loading="lazy"
+                        fill
+                        sizes="110px"
+                        className="object-cover transition-transform duration-300 group-active:scale-105"
+                        unoptimized={isProtectedApiImageSrc(poster)}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
@@ -141,10 +142,12 @@ export default function AddMoviePage() {
             {/* Movie info */}
             <div className="flex gap-4">
               {posterUrl(selected.images as { coverType: string; remoteUrl: string }[]) ? (
-                <img
+                <Image
                   src={posterUrl(selected.images as { coverType: string; remoteUrl: string }[])!}
                   alt=""
-                  className="w-24 aspect-[2/3] object-cover rounded-lg shrink-0"
+                  width={96}
+                  height={144}
+                  className="w-24 h-auto aspect-[2/3] object-cover rounded-lg shrink-0"
                 />
               ) : (
                 <div className="w-24 aspect-[2/3] bg-muted rounded-lg flex items-center justify-center shrink-0">
@@ -251,11 +254,12 @@ export default function AddMoviePage() {
                   >
                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                       {posterUrl(r.images as { coverType: string; remoteUrl: string }[]) ? (
-                        <img
+                        <Image
                           src={posterUrl(r.images as { coverType: string; remoteUrl: string }[])!}
                           alt=""
-                          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          loading="lazy"
+                          fill
+                          sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                          className="object-cover group-hover:scale-105 transition-transform"
                         />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center">

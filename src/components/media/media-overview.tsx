@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { Film, Tv, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -81,7 +82,7 @@ export function MediaOverviewItem({
       {show('images') ? (
         <div className={cn('relative shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-muted', posterSizeClasses[posterSize])}>
           {poster ? (
-            <img src={poster} alt={title} className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+            <Image src={poster} alt={title} fill sizes="(max-width: 640px) 80px, 112px" className="object-cover" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
               {type === 'movie' ? <Film className="h-6 w-6" /> : <Tv className="h-6 w-6" />}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -318,10 +319,12 @@ export default function MovieDetailPage() {
           <div className="w-[120px] shrink-0">
             <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
               {poster ? (
-                <img
+                <Image
                   src={poster}
                   alt={movie.title}
-                  className="absolute inset-0 w-full h-full object-cover"
+                  fill
+                  sizes="120px"
+                  className="object-cover"
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
