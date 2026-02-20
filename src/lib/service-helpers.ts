@@ -3,6 +3,7 @@ import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
+import { JellyfinClient } from '@/lib/jellyfin-client';
 
 /**
  * Create a SonarrClient configured from the stored SONARR service connection.
@@ -76,4 +77,18 @@ export async function getProwlarrClient(): Promise<ProwlarrClient> {
   }
 
   return new ProwlarrClient(connection.url, connection.apiKey);
+}
+
+export async function getJellyfinClient(): Promise<JellyfinClient> {
+  const connection = await prisma.serviceConnection.findUnique({
+    where: { type: 'JELLYFIN' },
+  });
+
+  if (!connection) {
+    throw new Error(
+      'Jellyfin is not configured. Please add a Jellyfin connection in Settings.'
+    );
+  }
+
+  return new JellyfinClient(connection.url, connection.apiKey, connection.username || '');
 }

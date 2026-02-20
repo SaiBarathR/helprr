@@ -3,6 +3,7 @@ import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
+import { JellyfinClient } from '@/lib/jellyfin-client';
 
 /**
  * Handle POST requests to check connectivity and retrieve version information from supported services.
@@ -61,6 +62,21 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           success: true,
           version: status.version,
+        });
+      }
+
+      case 'JELLYFIN': {
+        const authResult = await JellyfinClient.authenticate(cleanUrl, username || '', apiKey);
+        const token = authResult.AccessToken;
+        const userId = authResult.User.Id;
+        const client = new JellyfinClient(cleanUrl, token, userId);
+        const sysInfo = await client.getSystemInfo();
+        return NextResponse.json({
+          success: true,
+          version: sysInfo.Version,
+          serverName: sysInfo.ServerName,
+          token,
+          userId,
         });
       }
 

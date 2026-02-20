@@ -135,15 +135,15 @@ html {
   -webkit-overflow-scrolling: touch;
 }
 
-/* Hide scrollbar on mobile */
-@media (max-width: 768px) {
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
+/* Hide scrollbar everywhere */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar,
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Status colors */
