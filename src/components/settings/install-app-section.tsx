@@ -18,11 +18,22 @@ export function InstallAppSection() {
   const { isStandalone, platform, canPrompt, triggerInstall } = useInstallPrompt();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  function handleInstallTap() {
+  async function handleInstallTap() {
     if (platform === 'ios') {
       setDrawerOpen(true);
     } else if (canPrompt) {
-      triggerInstall();
+      try {
+        const accepted = await triggerInstall();
+        setDrawerOpen(false);
+
+        if (accepted) {
+          toast.success('Install prompt accepted.');
+        } else {
+          toast.info('Install prompt dismissed.');
+        }
+      } catch {
+        toast.error('Unable to show install prompt. Please try again.');
+      }
     } else {
       toast.info('Use your browser menu to add this app to your home screen.');
     }
