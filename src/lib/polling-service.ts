@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { getSonarrClient, getRadarrClient, getQBittorrentClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getQBittorrentClient, getJellyfinClient } from '@/lib/service-helpers';
 import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
@@ -29,6 +29,7 @@ export class PollingService {
         this.pollSonarr(),
         this.pollRadarr(),
         this.pollQBittorrent(),
+        this.pollJellyfin(),
         this.checkUpcoming(),
       ]);
     } catch (e) {
@@ -266,6 +267,86 @@ export class PollingService {
         lastQueueIds: torrents.map((t) => ({ hash: t.hash, progress: t.progress, name: t.name })),
       },
     });
+  }
+
+  private async pollJellyfin() {
+    let client;
+    try { client = await getJellyfinClient(); } catch { return; }
+
+    const state = await prisma.pollingState.upsert({
+      where: { serviceType: 'JELLYFIN' },
+      update: {},
+      create: { serviceType: 'JELLYFIN', lastQueueIds: [] },
+    });
+
+    // Activity log polling (new library items)
+    try {
+      const minDate = state.lastHistoryDate?.toISOString();
+      const activity = await client.getActivityLog({ limit: 50, minDate });
+      const lastDate = state.lastHistoryDate;
+      const newEntries = lastDate
+        ? activity.Items.filter((a) => new Date(a.Date) > new Date(lastDate))
+        : [];
+
+      for (const entry of newEntries) {
+        if (entry.Type === 'ItemAdded' || entry.Name.includes('added to library')) {
+          await notifyEvent({
+            eventType: 'jellyfinItemAdded',
+            title: 'Media Added to Jellyfin',
+            body: entry.Overview || entry.Name,
+            metadata: { source: 'jellyfin', id: entry.Id },
+            url: '/dashboard',
+          });
+        }
+      }
+
+      const latestDate = activity.Items.length > 0
+        ? new Date(activity.Items[0].Date)
+        : state.lastHistoryDate;
+
+      await prisma.pollingState.update({
+        where: { serviceType: 'JELLYFIN' },
+        data: {
+          lastHistoryDate: latestDate,
+        },
+      });
+    } catch (e) {
+      console.error('[Polling] Jellyfin activity error:', e);
+    }
+
+    // Session polling (new playback)
+    try {
+      const sessions = await client.getActiveSessions();
+      const currentSessionIds = sessions.map((s) => s.Id);
+      const prevSessionIds = (state.lastQueueIds as string[]) || [];
+
+      const newSessions = sessions.filter((s) => !prevSessionIds.includes(s.Id));
+
+      for (const session of newSessions) {
+        const item = session.NowPlayingItem;
+        if (item) {
+          const title = item.SeriesName
+            ? `${item.SeriesName} - ${item.Name}`
+            : item.Name;
+          await notifyEvent({
+            eventType: 'jellyfinPlaybackStart',
+            title: 'Playback Started',
+            body: `${session.UserName} is watching ${title}`,
+            metadata: { source: 'jellyfin', sessionId: session.Id },
+            url: '/dashboard',
+          });
+        }
+      }
+
+      await prisma.pollingState.update({
+        where: { serviceType: 'JELLYFIN' },
+        data: {
+          lastQueueIds: currentSessionIds,
+        },
+      });
+    } catch (e) {
+      console.error('[Polling] Jellyfin sessions error:', e);
+    }
   }
 
   private async checkUpcoming() {

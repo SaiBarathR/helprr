@@ -12,6 +12,7 @@ enum ServiceType {
   RADARR
   QBITTORRENT
   PROWLARR
+  JELLYFIN
 }
 
 model ServiceConnection {

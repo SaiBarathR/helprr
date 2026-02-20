@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR'].includes(type)) {
+    if (!['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN'].includes(type)) {
       return NextResponse.json(
         { error: 'Invalid service type' },
         { status: 400 }
@@ -59,13 +59,13 @@ export async function POST(request: NextRequest) {
       update: {
         url: url.replace(/\/+$/, ''),
         apiKey,
-        username: type === 'QBITTORRENT' ? (username || 'admin') : null,
+        username: type === 'QBITTORRENT' ? (username || 'admin') : type === 'JELLYFIN' ? username : null,
       },
       create: {
         type,
         url: url.replace(/\/+$/, ''),
         apiKey,
-        username: type === 'QBITTORRENT' ? (username || 'admin') : null,
+        username: type === 'QBITTORRENT' ? (username || 'admin') : type === 'JELLYFIN' ? username : null,
       },
     });
 

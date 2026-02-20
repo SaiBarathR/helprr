@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getJellyfinClient } from '@/lib/service-helpers';
 
 interface StatsResponse {
   totalMovies?: number;
   totalSeries?: number;
   activeDownloads?: number;
   diskSpace?: { freeSpace: number; totalSpace: number }[];
+  jellyfin?: {
+    movieCount: number;
+    seriesCount: number;
+    episodeCount: number;
+    activeStreams: number;
+  };
 }
 
 export async function GET() {
@@ -56,6 +62,21 @@ export async function GET() {
   if (hasDownloadCount) {
     stats.activeDownloads = activeDownloads;
   }
+
+  // Fetch Jellyfin stats
+  try {
+    const jellyfin = await getJellyfinClient();
+    const [counts, sessions] = await Promise.all([
+      jellyfin.getItemCounts(),
+      jellyfin.getActiveSessions(),
+    ]);
+    stats.jellyfin = {
+      movieCount: counts.MovieCount,
+      seriesCount: counts.SeriesCount,
+      episodeCount: counts.EpisodeCount,
+      activeStreams: sessions.length,
+    };
+  } catch {}
 
   return NextResponse.json(stats);
 }

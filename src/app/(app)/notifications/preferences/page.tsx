@@ -34,6 +34,13 @@ const EVENT_SECTIONS: {
       torrentDeleted: { label: 'Torrent Removed', description: 'When a torrent is removed' },
     },
   },
+  {
+    title: 'Jellyfin',
+    events: {
+      jellyfinItemAdded: { label: 'Media Added', description: 'New media added to Jellyfin library' },
+      jellyfinPlaybackStart: { label: 'Playback Started', description: 'Someone started streaming' },
+    },
+  },
 ];
 
 interface Preference {

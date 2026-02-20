@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronRight, Loader2, LogOut, Film, Tv, Download, Search, CheckCircle, XCircle } from 'lucide-react';
+import { ChevronRight, Loader2, LogOut, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 
@@ -62,6 +62,13 @@ const SERVICE_CONFIG = [
     icon: Search,
     dotColor: 'bg-orange-500',
     placeholder: 'http://localhost:9696',
+  },
+  {
+    type: 'JELLYFIN' as const,
+    label: 'Jellyfin',
+    icon: MonitorPlay,
+    dotColor: 'bg-[#00a4dc]',
+    placeholder: 'http://localhost:8096',
   },
 ] as const;
 
@@ -133,7 +140,9 @@ export default function SettingsPage() {
     RADARR: { ...defaultServiceForm },
     QBITTORRENT: { ...defaultServiceForm },
     PROWLARR: { ...defaultServiceForm },
+    JELLYFIN: { ...defaultServiceForm },
   });
+  const [jellyfinAuth, setJellyfinAuth] = useState<{ token: string; userId: string } | null>(null);
 
   const [expandedService, setExpandedService] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState('30');
@@ -208,10 +217,15 @@ export default function SettingsPage() {
 
   async function testConnection(type: string) {
     const svc = services[type];
-    const isQbt = type === 'QBITTORRENT';
+    const needsUsername = type === 'QBITTORRENT' || type === 'JELLYFIN';
 
     if (!svc.url || !svc.apiKey) {
-      toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
+      toast.error(needsUsername ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
+      return;
+    }
+
+    if (type === 'JELLYFIN' && !svc.username) {
+      toast.error('Please enter Username and Password');
       return;
     }
 
@@ -225,14 +239,18 @@ export default function SettingsPage() {
           type,
           url: svc.url,
           apiKey: svc.apiKey,
-          ...(isQbt && { username: svc.username || 'admin' }),
+          ...(type === 'QBITTORRENT' && { username: svc.username || 'admin' }),
+          ...(type === 'JELLYFIN' && { username: svc.username }),
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        toast.success(`Connection successful${data.version ? ` (v${data.version})` : ''}`, {
+        if (type === 'JELLYFIN' && data.token && data.userId) {
+          setJellyfinAuth({ token: data.token, userId: data.userId });
+        }
+        toast.success(`Connection successful${data.version ? ` (v${data.version})` : ''}${data.serverName ? ` - ${data.serverName}` : ''}`, {
           icon: <CheckCircle className="h-4 w-4 text-green-500" />,
         });
       } else {
@@ -249,25 +267,33 @@ export default function SettingsPage() {
 
   async function saveConnection(type: string) {
     const svc = services[type];
-    const isQbt = type === 'QBITTORRENT';
+    const needsUsername = type === 'QBITTORRENT' || type === 'JELLYFIN';
 
     if (!svc.url || !svc.apiKey) {
-      toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
+      toast.error(needsUsername ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
+      return;
+    }
+
+    if (type === 'JELLYFIN' && !jellyfinAuth) {
+      toast.error('Please test the connection first to authenticate');
       return;
     }
 
     updateService(type, 'saving', true);
 
     try {
+      const body: Record<string, string> = { type, url: svc.url, apiKey: svc.apiKey };
+      if (type === 'QBITTORRENT') {
+        body.username = svc.username || 'admin';
+      } else if (type === 'JELLYFIN' && jellyfinAuth) {
+        body.apiKey = jellyfinAuth.token;
+        body.username = jellyfinAuth.userId;
+      }
+
       const res = await fetch('/api/services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          url: svc.url,
-          apiKey: svc.apiKey,
-          ...(isQbt && { username: svc.username || 'admin' }),
-        }),
+        body: JSON.stringify(body),
       });
 
       if (res.ok) {
@@ -376,6 +402,8 @@ export default function SettingsPage() {
           {SERVICE_CONFIG.map((config, idx) => {
             const svc = services[config.type];
             const isQbt = config.type === 'QBITTORRENT';
+            const isJellyfin = config.type === 'JELLYFIN';
+            const showUsernamePassword = isQbt || isJellyfin;
             const configured = isConfigured(config.type);
             const expanded = expandedService === config.type;
 
@@ -411,12 +439,12 @@ export default function SettingsPage() {
                         className="h-10"
                       />
                     </div>
-                    {isQbt ? (
+                    {showUsernamePassword ? (
                       <>
                         <div className="space-y-1.5">
                           <Label className="text-xs text-muted-foreground">Username</Label>
                           <Input
-                            placeholder="admin"
+                            placeholder={isQbt ? 'admin' : 'Enter username'}
                             value={svc.username}
                             onChange={(e) => updateService(config.type, 'username', e.target.value)}
                             className="h-10"
@@ -428,10 +456,19 @@ export default function SettingsPage() {
                             type="password"
                             placeholder="Enter password"
                             value={svc.apiKey}
-                            onChange={(e) => updateService(config.type, 'apiKey', e.target.value)}
+                            onChange={(e) => {
+                              updateService(config.type, 'apiKey', e.target.value);
+                              if (isJellyfin) setJellyfinAuth(null);
+                            }}
                             className="h-10"
                           />
                         </div>
+                        {isJellyfin && jellyfinAuth && (
+                          <p className="text-xs text-green-500">Authenticated - ready to save</p>
+                        )}
+                        {isJellyfin && !jellyfinAuth && svc.apiKey && svc.username && (
+                          <p className="text-xs text-muted-foreground">Test connection to authenticate before saving</p>
+                        )}
                       </>
                     ) : (
                       <div className="space-y-1.5">
