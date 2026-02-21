@@ -4,11 +4,12 @@ import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
+import { TmdbClient } from '@/lib/tmdb-client';
 
 /**
  * Handle POST requests to check connectivity and retrieve version information from supported services.
  *
- * Expects the request body to be JSON with fields: `type` (one of `"SONARR"|"RADARR"|"QBITTORRENT"|"PROWLARR"`),
+ * Expects the request body to be JSON with fields: `type` (one of `"SONARR"|"RADARR"|"QBITTORRENT"|"PROWLARR"|"JELLYFIN"|"TMDB"`),
  * `url` (service base URL), `apiKey` (API key or password), and optional `username` (used for qBittorrent).
  *
  * @param request - Incoming NextRequest whose JSON body contains the service check parameters
@@ -77,6 +78,15 @@ export async function POST(request: NextRequest) {
           serverName: sysInfo.ServerName,
           token,
           userId,
+        });
+      }
+
+      case 'TMDB': {
+        const client = new TmdbClient(cleanUrl, apiKey);
+        await client.validateConnection();
+        return NextResponse.json({
+          success: true,
+          version: 'API reachable',
         });
       }
 
