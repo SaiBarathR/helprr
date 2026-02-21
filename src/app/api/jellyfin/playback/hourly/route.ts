@@ -1,0 +1,26 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getJellyfinClient } from '@/lib/service-helpers';
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const days = parseInt(searchParams.get('days') || '7', 10);
+    const d = new Date();
+    const endDate = searchParams.get('endDate') ||
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    const client = await getJellyfinClient();
+
+    let filter = searchParams.get('filter');
+    if (!filter) {
+      const types = await client.getTypeFilterList();
+      filter = types ? types.join(',') : 'Movie,Episode,Audio';
+    }
+
+    const data = await client.getHourlyReport(days, endDate, filter);
+    return NextResponse.json({ data: data ?? {}, pluginAvailable: data !== null });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch hourly report';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
