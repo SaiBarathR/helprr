@@ -120,7 +120,7 @@ export interface RadarrMovie {
   studio: string;
 }
 
-export interface RadarrCalendarEntry extends RadarrMovie {}
+export type RadarrCalendarEntry = RadarrMovie;
 
 // Shared Types
 export interface MediaImage {
@@ -308,7 +308,7 @@ export interface CalendarEvent {
 
 // App Types
 export interface ServiceConnectionConfig {
-  type: 'SONARR' | 'RADARR' | 'QBITTORRENT';
+  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB';
   url: string;
   apiKey: string;
 }
@@ -400,4 +400,112 @@ export interface RadarrLookupResult {
   ratings: { imdb?: { votes: number; value: number }; tmdb?: { votes: number; value: number } };
   runtime: number;
   studio: string;
+}
+
+export type DiscoverMediaType = 'movie' | 'tv';
+export type DiscoverContentType = 'all' | 'movie' | 'show' | 'anime';
+export type DiscoverMode = 'sections' | 'browse' | 'search';
+
+export interface DiscoverGenre {
+  id: number;
+  name: string;
+  type: DiscoverMediaType;
+}
+
+export interface DiscoverProvider {
+  id: number;
+  name: string;
+  logoPath: string | null;
+  displayPriority: number;
+  type: DiscoverMediaType;
+}
+
+export interface DiscoverNetwork {
+  id: number;
+  name: string;
+  logoPath: string | null;
+}
+
+export interface DiscoverLibraryStatus {
+  exists: boolean;
+  type?: 'movie' | 'series';
+  id?: number;
+}
+
+export interface DiscoverItem {
+  id: number;
+  tmdbId: number;
+  mediaType: DiscoverMediaType;
+  title: string;
+  originalTitle?: string;
+  overview: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  releaseDate: string | null;
+  year: number | null;
+  rating: number;
+  voteCount: number;
+  popularity: number;
+  genres: number[];
+  genreNames?: string[];
+  originalLanguage?: string;
+  originCountry?: string[];
+  isAnime?: boolean;
+  library?: DiscoverLibraryStatus;
+}
+
+export interface DiscoverSection {
+  key: string;
+  title: string;
+  type: 'media' | 'genre' | 'provider' | 'network';
+  mediaType?: DiscoverMediaType | 'all';
+  items: DiscoverItem[] | DiscoverGenre[] | DiscoverProvider[] | DiscoverNetwork[];
+}
+
+export interface DiscoverFilters {
+  genres?: number[];
+  yearFrom?: number;
+  yearTo?: number;
+  runtimeMin?: number;
+  runtimeMax?: number;
+  language?: string;
+  region?: string;
+  ratingMin?: number;
+  ratingMax?: number;
+  voteCountMin?: number;
+  providers?: number[];
+  networks?: number[];
+  releaseState?: 'released' | 'upcoming' | 'airing' | 'ended';
+}
+
+export interface DiscoverFiltersResponse {
+  genres: DiscoverGenre[];
+  providers: DiscoverProvider[];
+  networks: DiscoverNetwork[];
+  regions: Array<{ code: string; name: string }>;
+  languages: Array<{ code: string; name: string }>;
+  releaseStates: Array<{ value: string; label: string }>;
+}
+
+export interface DiscoverResponse {
+  mode: DiscoverMode;
+  page?: number;
+  totalPages?: number;
+  totalResults?: number;
+  items?: DiscoverItem[];
+  sections?: DiscoverSection[];
+}
+
+export interface DiscoverDetail extends DiscoverItem {
+  runtime: number | null;
+  status: string | null;
+  imdbId?: string | null;
+  tvdbId?: number | null;
+  productionCompanies: Array<{ id: number; name: string; logoPath: string | null }>;
+  networks: Array<{ id: number; name: string; logoPath: string | null }>;
+  addTarget: {
+    service: 'radarr' | 'sonarr';
+    exists: boolean;
+    id?: number;
+  };
 }
