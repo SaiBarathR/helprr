@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,8 +19,9 @@ import { Search, Plus, Loader2, Film } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RadarrLookupResult, QualityProfile, RootFolder } from '@/types';
 
-export default function AddMoviePage() {
+function AddMoviePageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [term, setTerm] = useState('');
   const [results, setResults] = useState<RadarrLookupResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -32,6 +33,7 @@ export default function AddMoviePage() {
   const [monitor, setMonitor] = useState<'movieOnly' | 'movieAndCollection' | 'none'>('movieOnly');
   const [minAvailability, setMinAvailability] = useState('released');
   const [adding, setAdding] = useState(false);
+  const [autoSearched, setAutoSearched] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -45,15 +47,27 @@ export default function AddMoviePage() {
     });
   }, []);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!term.trim()) return;
+  const runSearch = useCallback(async (searchTerm: string, targetTmdbId?: number) => {
+    if (!searchTerm.trim()) return;
     setSearching(true);
     try {
-      const res = await fetch(`/api/radarr/lookup?term=${encodeURIComponent(term)}`);
-      if (res.ok) setResults(await res.json());
+      const res = await fetch(`/api/radarr/lookup?term=${encodeURIComponent(searchTerm)}`);
+      if (res.ok) {
+        const data: RadarrLookupResult[] = await res.json();
+        setResults(data);
+
+        if (targetTmdbId) {
+          const matched = data.find((item) => item.tmdbId === targetTmdbId);
+          if (matched) setSelected(matched);
+        }
+      }
     } catch { toast.error('Search failed'); }
     finally { setSearching(false); }
+  }, []);
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    await runSearch(term);
   }
 
   async function handleAdd() {
@@ -118,6 +132,22 @@ export default function AddMoviePage() {
   function getRootFolderLabel(path: string) {
     return path || 'Select folder';
   }
+
+  useEffect(() => {
+    const prefillTerm = searchParams.get('term');
+    if (prefillTerm) setTerm(prefillTerm);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (autoSearched) return;
+
+    const prefillTerm = searchParams.get('term');
+    if (!prefillTerm) return;
+
+    const targetTmdbId = Number(searchParams.get('tmdbId'));
+    setAutoSearched(true);
+    runSearch(prefillTerm, Number.isFinite(targetTmdbId) ? targetTmdbId : undefined);
+  }, [searchParams, autoSearched, runSearch]);
 
   return (
     <div>
@@ -278,5 +308,13 @@ export default function AddMoviePage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AddMoviePage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-6 text-sm text-muted-foreground">Loading add movie...</div>}>
+      <AddMoviePageContent />
+    </Suspense>
   );
 }

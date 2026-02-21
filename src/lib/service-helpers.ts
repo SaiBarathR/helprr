@@ -4,6 +4,7 @@ import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
+import { TmdbClient } from '@/lib/tmdb-client';
 
 /**
  * Create a SonarrClient configured from the stored SONARR service connection.
@@ -91,4 +92,16 @@ export async function getJellyfinClient(): Promise<JellyfinClient> {
   }
 
   return new JellyfinClient(connection.url, connection.apiKey, connection.username || '');
+}
+
+export async function getTMDBClient(): Promise<TmdbClient> {
+  const connection = await prisma.serviceConnection.findUnique({
+    where: { type: 'TMDB' },
+  });
+
+  if (!connection) {
+    throw new Error('TMDB is not configured. Please add a TMDB connection in Settings.');
+  }
+
+  return new TmdbClient(connection.url, connection.apiKey);
 }

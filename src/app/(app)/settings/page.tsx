@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronRight, Loader2, LogOut, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle } from 'lucide-react';
+import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle, Compass } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 
@@ -69,6 +69,13 @@ const SERVICE_CONFIG = [
     icon: MonitorPlay,
     dotColor: 'bg-[#00a4dc]',
     placeholder: 'http://localhost:8096',
+  },
+  {
+    type: 'TMDB' as const,
+    label: 'TMDB',
+    icon: Compass,
+    dotColor: 'bg-cyan-500',
+    placeholder: 'https://api.themoviedb.org/3',
   },
 ] as const;
 
@@ -141,6 +148,7 @@ export default function SettingsPage() {
     QBITTORRENT: { ...defaultServiceForm },
     PROWLARR: { ...defaultServiceForm },
     JELLYFIN: { ...defaultServiceForm },
+    TMDB: { ...defaultServiceForm },
   });
   const [jellyfinAuth, setJellyfinAuth] = useState<{ token: string; userId: string } | null>(null);
 

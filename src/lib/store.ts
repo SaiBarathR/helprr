@@ -7,6 +7,23 @@ import {
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
 export type VisibleFieldsByMode = Record<MediaViewMode, string[]>;
+export type DiscoverContentType = 'all' | 'movie' | 'show' | 'anime';
+
+export interface DiscoverFiltersState {
+  genres: number[];
+  yearFrom: string;
+  yearTo: string;
+  runtimeMin: string;
+  runtimeMax: string;
+  language: string;
+  region: string;
+  ratingMin: string;
+  ratingMax: string;
+  voteCountMin: string;
+  providers: number[];
+  networks: number[];
+  releaseState: '' | 'released' | 'upcoming' | 'airing' | 'ended';
+}
 
 const DEFAULT_MOVIES_FIELDS: VisibleFieldsByMode = {
   posters: ['year', 'rating', 'monitored'],
@@ -18,6 +35,22 @@ const DEFAULT_SERIES_FIELDS: VisibleFieldsByMode = {
   posters: ['year', 'rating', 'monitored'],
   overview: ['qualityProfile', 'rating', 'network', 'sizeOnDisk', 'runtime', 'monitored', 'year', 'episodeProgress', 'genres', 'overview', 'images'],
   table: ['monitored', 'year', 'qualityProfile', 'network', 'episodeProgress', 'rating', 'sizeOnDisk'],
+};
+
+const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
+  genres: [],
+  yearFrom: '',
+  yearTo: '',
+  runtimeMin: '',
+  runtimeMax: '',
+  language: '',
+  region: 'US',
+  ratingMin: '',
+  ratingMax: '',
+  voteCountMin: '',
+  providers: [],
+  networks: [],
+  releaseState: '',
 };
 
 interface UIState {
@@ -53,6 +86,15 @@ interface UIState {
   setSeriesFilter: (filter: string) => void;
   seriesVisibleFields: VisibleFieldsByMode;
   setSeriesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
+  // Discover preferences
+  discoverContentType: DiscoverContentType;
+  setDiscoverContentType: (type: DiscoverContentType) => void;
+  discoverSort: string;
+  setDiscoverSort: (sort: string) => void;
+  discoverSortDirection: 'asc' | 'desc';
+  setDiscoverSortDirection: (dir: 'asc' | 'desc') => void;
+  discoverFilters: DiscoverFiltersState;
+  setDiscoverFilters: (filters: DiscoverFiltersState) => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
@@ -107,6 +149,15 @@ export const useUIStore = create<UIState>()(
       setSeriesVisibleFields: (mode, fields) => set((state) => ({
         seriesVisibleFields: { ...state.seriesVisibleFields, [mode]: fields },
       })),
+      // Discover
+      discoverContentType: 'all',
+      setDiscoverContentType: (type) => set({ discoverContentType: type }),
+      discoverSort: 'trending',
+      setDiscoverSort: (sort) => set({ discoverSort: sort }),
+      discoverSortDirection: 'desc',
+      setDiscoverSortDirection: (dir) => set({ discoverSortDirection: dir }),
+      discoverFilters: { ...DEFAULT_DISCOVER_FILTERS },
+      setDiscoverFilters: (filters) => set({ discoverFilters: { ...filters } }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
@@ -152,7 +203,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 3,
+      version: 4,
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version === 0) {
@@ -182,6 +233,12 @@ export const useUIStore = create<UIState>()(
         if (version < 3) {
           state.defaultPage = 'dashboard';
         }
+        if (version < 4) {
+          state.discoverContentType = 'all';
+          state.discoverSort = 'trending';
+          state.discoverSortDirection = 'desc';
+          state.discoverFilters = { ...DEFAULT_DISCOVER_FILTERS };
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -199,6 +256,10 @@ export const useUIStore = create<UIState>()(
         seriesSortDirection: state.seriesSortDirection,
         seriesFilter: state.seriesFilter,
         seriesVisibleFields: state.seriesVisibleFields,
+        discoverContentType: state.discoverContentType,
+        discoverSort: state.discoverSort,
+        discoverSortDirection: state.discoverSortDirection,
+        discoverFilters: state.discoverFilters,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
         navOrder: state.navOrder,

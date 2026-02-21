@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,8 +20,9 @@ import { Search, Plus, Loader2, Tv } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SonarrLookupResult, QualityProfile, RootFolder } from '@/types';
 
-export default function AddSeriesPage() {
+function AddSeriesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [term, setTerm] = useState('');
   const [results, setResults] = useState<SonarrLookupResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -34,6 +35,7 @@ export default function AddSeriesPage() {
   const [seriesType, setSeriesType] = useState('standard');
   const [seasonFolder, setSeasonFolder] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [autoSearched, setAutoSearched] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -47,15 +49,34 @@ export default function AddSeriesPage() {
     });
   }, []);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!term.trim()) return;
+  const runSearch = useCallback(async (searchTerm: string, targetTvdbId?: number, targetTmdbId?: number) => {
+    if (!searchTerm.trim()) return;
     setSearching(true);
     try {
-      const res = await fetch(`/api/sonarr/lookup?term=${encodeURIComponent(term)}`);
-      if (res.ok) setResults(await res.json());
+      const res = await fetch(`/api/sonarr/lookup?term=${encodeURIComponent(searchTerm)}`);
+      if (res.ok) {
+        const data: SonarrLookupResult[] = await res.json();
+        setResults(data);
+
+        if (targetTvdbId || targetTmdbId) {
+          const matched = data.find((item) => {
+            if (targetTvdbId && item.tvdbId === targetTvdbId) return true;
+            if (targetTmdbId) {
+              const maybeTmdb = (item as SonarrLookupResult & { tmdbId?: number }).tmdbId;
+              return maybeTmdb === targetTmdbId;
+            }
+            return false;
+          });
+          if (matched) setSelected(matched);
+        }
+      }
     } catch { toast.error('Search failed'); }
     finally { setSearching(false); }
+  }, []);
+
+  async function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    await runSearch(term);
   }
 
   async function handleAdd() {
@@ -130,6 +151,32 @@ export default function AddSeriesPage() {
   function getRootFolderLabel(path: string) {
     return path || 'Select folder';
   }
+
+  useEffect(() => {
+    const prefillTerm = searchParams.get('term');
+    if (prefillTerm) setTerm(prefillTerm);
+
+    const prefillSeriesType = searchParams.get('seriesType');
+    if (prefillSeriesType === 'anime' || prefillSeriesType === 'daily' || prefillSeriesType === 'standard') {
+      setSeriesType(prefillSeriesType);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (autoSearched) return;
+
+    const prefillTerm = searchParams.get('term');
+    if (!prefillTerm) return;
+
+    const targetTvdbId = Number(searchParams.get('tvdbId'));
+    const targetTmdbId = Number(searchParams.get('tmdbId'));
+    setAutoSearched(true);
+    runSearch(
+      prefillTerm,
+      Number.isFinite(targetTvdbId) ? targetTvdbId : undefined,
+      Number.isFinite(targetTmdbId) ? targetTmdbId : undefined
+    );
+  }, [searchParams, autoSearched, runSearch]);
 
   return (
     <div>
@@ -297,5 +344,13 @@ export default function AddSeriesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AddSeriesPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-6 text-sm text-muted-foreground">Loading add series...</div>}>
+      <AddSeriesPageContent />
+    </Suspense>
   );
 }

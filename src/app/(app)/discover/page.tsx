@@ -1,0 +1,1031 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { SearchBar } from '@/components/media/search-bar';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+} from '@/components/ui/sheet';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useUIStore } from '@/lib/store';
+import type {
+  DiscoverDetail,
+  DiscoverFiltersResponse,
+  DiscoverItem,
+  DiscoverSection,
+} from '@/types';
+import {
+  Filter,
+  Flame,
+  Heart,
+  Loader2,
+  Search,
+  Star,
+  Tv,
+  Film,
+  Compass,
+  ChevronRight,
+  Sparkles,
+} from 'lucide-react';
+
+const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' | 'anime' }> = {
+  trending: { sort: 'trending', contentType: 'all' },
+  popular_movies: { sort: 'popular', contentType: 'movie' },
+  popular_series: { sort: 'popular', contentType: 'show' },
+  popular_anime: { sort: 'popular', contentType: 'anime' },
+  upcoming_movies: { sort: 'upcoming', contentType: 'movie' },
+  upcoming_series: { sort: 'upcoming', contentType: 'show' },
+};
+
+const SORT_OPTIONS = [
+  { value: 'trending', label: 'Trending', icon: Flame },
+  { value: 'highlyRated', label: 'Highly Rated', icon: Star },
+  { value: 'mostLoved', label: 'Most Loved', icon: Heart },
+  { value: 'popular', label: 'Popular', icon: Sparkles },
+  { value: 'upcoming', label: 'Upcoming', icon: ChevronRight },
+] as const;
+
+interface RateLimitInfo {
+  message: string;
+  retryAfterSeconds: number | null;
+  retryAt: string | null;
+}
+
+function formatYear(value: string | null) {
+  if (!value) return 'Unknown';
+  return value.slice(0, 4);
+}
+
+function cardTypeBadge(type: 'movie' | 'tv') {
+  if (type === 'movie') return <Badge className="bg-blue-600/80 text-white text-[10px]">MOVIE</Badge>;
+  return <Badge className="bg-violet-600/80 text-white text-[10px]">SERIES</Badge>;
+}
+
+function parsePositiveInt(value: string) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+}
+
+function parsePositiveFloat(value: string) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+function isDefaultFilters(filters: ReturnType<typeof useUIStore.getState>['discoverFilters']) {
+  return !filters.genres.length
+    && !filters.yearFrom
+    && !filters.yearTo
+    && !filters.runtimeMin
+    && !filters.runtimeMax
+    && !filters.language
+    && (!filters.region || filters.region === 'US')
+    && !filters.ratingMin
+    && !filters.ratingMax
+    && !filters.voteCountMin
+    && !filters.providers.length
+    && !filters.networks.length
+    && !filters.releaseState;
+}
+
+function formatWait(seconds: number) {
+  const clamped = Math.max(0, Math.floor(seconds));
+  const mins = Math.floor(clamped / 60);
+  const secs = clamped % 60;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+}
+
+function MediaPoster({ item, onClick }: { item: DiscoverItem; onClick: (item: DiscoverItem) => void }) {
+  return (
+    <button
+      onClick={() => onClick(item)}
+      className="group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] text-left"
+    >
+      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
+        {item.posterPath ? (
+          <Image
+            src={item.posterPath}
+            alt={item.title}
+            fill
+            sizes="(max-width: 640px) 35vw, 140px"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+            {item.mediaType === 'movie' ? <Film className="h-7 w-7" /> : <Tv className="h-7 w-7" />}
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+        <div className="absolute top-1.5 left-1.5">{cardTypeBadge(item.mediaType)}</div>
+        {item.library?.exists && (
+          <div className="absolute top-1.5 right-1.5">
+            <Badge className="bg-green-600/90 text-[10px] text-white">Added</Badge>
+          </div>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 p-2">
+          <p className="text-xs text-white font-medium line-clamp-2 leading-tight">{item.title}</p>
+          <div className="mt-1 flex items-center justify-between text-[10px] text-white/80">
+            <span>{item.year ?? '----'}</span>
+            <span className="inline-flex items-center gap-1">
+              <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+              {item.rating.toFixed(1)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function SectionRow({
+  section,
+  onOpenItem,
+  onSeeAll,
+  onPickGenre,
+  onPickProvider,
+}: {
+  section: DiscoverSection;
+  onOpenItem: (item: DiscoverItem) => void;
+  onSeeAll: (section: DiscoverSection) => void;
+  onPickGenre: (genreId: number, type: 'movie' | 'show') => void;
+  onPickProvider: (providerId: number) => void;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between px-0.5">
+        <h2 className="text-base font-semibold">{section.title}</h2>
+        {section.type === 'media' && (
+          <button
+            onClick={() => onSeeAll(section)}
+            className="text-xs text-primary font-medium inline-flex items-center gap-1"
+          >
+            See all
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      {section.type === 'media' && (
+        <div className="flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+          {(section.items as DiscoverItem[]).map((item) => (
+            <div key={`${item.mediaType}-${item.tmdbId}`} className="snap-start">
+              <MediaPoster item={item} onClick={onOpenItem} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {section.type === 'genre' && (
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {(section.items as Array<{ id: number; name: string; type: 'movie' | 'tv' }>).map((genre) => (
+            <button
+              key={`${genre.type}-${genre.id}`}
+              onClick={() => onPickGenre(genre.id, genre.type === 'movie' ? 'movie' : 'show')}
+              className="px-4 py-3 rounded-xl border border-border/50 bg-accent/40 min-w-[150px] text-left"
+            >
+              <p className="text-sm font-semibold truncate">{genre.name}</p>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {section.type === 'provider' && (
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {(section.items as Array<{ id: number; name: string; logoPath: string | null; type: 'movie' | 'tv' }>).map((provider) => (
+            <button
+              key={`${provider.type}-${provider.id}`}
+              onClick={() => onPickProvider(provider.id)}
+              className="min-w-[160px] rounded-xl border border-border/50 bg-accent/40 p-3 flex items-center gap-3"
+            >
+              <div className="relative h-8 w-8 rounded bg-background/70 overflow-hidden shrink-0">
+                {provider.logoPath ? (
+                  <Image
+                    src={`https://image.tmdb.org/t/p/w185${provider.logoPath}`}
+                    alt={provider.name}
+                    fill
+                    sizes="32px"
+                    className="object-contain"
+                  />
+                ) : null}
+              </div>
+              <p className="text-sm font-semibold text-left truncate">{provider.name}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function DiscoverPage() {
+  const {
+    discoverContentType,
+    setDiscoverContentType,
+    discoverSort,
+    setDiscoverSort,
+    discoverSortDirection,
+    setDiscoverSortDirection,
+    discoverFilters,
+    setDiscoverFilters,
+  } = useUIStore();
+
+  const [query, setQuery] = useState('');
+  const [sections, setSections] = useState<DiscoverSection[]>([]);
+  const [items, setItems] = useState<DiscoverItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loadingSections, setLoadingSections] = useState(true);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersMeta, setFiltersMeta] = useState<DiscoverFiltersResponse | null>(null);
+  const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
+  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
+  const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
+
+  const [selectedItem, setSelectedItem] = useState<{ id: number; mediaType: 'movie' | 'tv' } | null>(null);
+  const [itemDetail, setItemDetail] = useState<DiscoverDetail | null>(null);
+  const [itemLoading, setItemLoading] = useState(false);
+
+  const applyRateLimit = useCallback((payload: unknown) => {
+    const data = payload as {
+      error?: string;
+      code?: string;
+      retryAfterSeconds?: number | null;
+      retryAt?: string | null;
+    } | null;
+
+    setRateLimitInfo({
+      message: data?.error || 'TMDB rate limit reached',
+      retryAfterSeconds: Number.isFinite(data?.retryAfterSeconds as number)
+        ? Math.max(1, Number(data?.retryAfterSeconds))
+        : null,
+      retryAt: data?.retryAt || null,
+    });
+  }, []);
+
+  const hasAdvancedFilters = useMemo(() => !isDefaultFilters(discoverFilters), [discoverFilters]);
+
+  const gridMode = useMemo(() => {
+    return Boolean(
+      query.trim()
+      || hasAdvancedFilters
+      || activeSectionKey
+      || discoverSort !== 'trending'
+      || discoverContentType !== 'all'
+    );
+  }, [query, hasAdvancedFilters, activeSectionKey, discoverSort, discoverContentType]);
+
+  const visibleSections = useMemo(() => {
+    if (discoverContentType === 'all') return sections;
+
+    return sections.filter((section) => {
+      if (!section.mediaType || section.mediaType === 'all') {
+        return section.key === 'providers' || discoverContentType === 'anime';
+      }
+
+      if (discoverContentType === 'movie') return section.mediaType === 'movie';
+      if (discoverContentType === 'show') return section.mediaType === 'tv';
+      if (discoverContentType === 'anime') return section.key === 'popular_anime';
+      return true;
+    });
+  }, [sections, discoverContentType]);
+
+  const fetchSections = useCallback(async () => {
+    setLoadingSections(true);
+    try {
+      const res = await fetch('/api/discover?mode=sections');
+      const data = await res.json();
+      if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
+        applyRateLimit(data);
+        return;
+      }
+      if (res.ok) {
+        setRateLimitInfo(null);
+        setSections(data.sections || []);
+      }
+    } finally {
+      setLoadingSections(false);
+    }
+  }, [applyRateLimit]);
+
+  const fetchFiltersMeta = useCallback(async () => {
+    try {
+      const res = await fetch('/api/discover/filters');
+      const data = await res.json();
+      if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
+        applyRateLimit(data);
+        return;
+      }
+      if (!res.ok) return;
+      setRateLimitInfo(null);
+      setFiltersMeta(data);
+    } catch {
+      // no-op
+    }
+  }, [applyRateLimit]);
+
+  const buildQueryString = useCallback((pageValue: number) => {
+    const params = new URLSearchParams();
+    const mode = query.trim() ? 'search' : 'browse';
+    params.set('mode', mode);
+    params.set('page', String(pageValue));
+    params.set('contentType', discoverContentType);
+    params.set('sortBy', discoverSort);
+    params.set('sortOrder', discoverSortDirection);
+    if (query.trim()) params.set('q', query.trim());
+    if (activeSectionKey) params.set('section', activeSectionKey);
+
+    if (discoverFilters.genres.length) params.set('genres', discoverFilters.genres.join(','));
+    if (discoverFilters.yearFrom) params.set('yearFrom', discoverFilters.yearFrom);
+    if (discoverFilters.yearTo) params.set('yearTo', discoverFilters.yearTo);
+    if (discoverFilters.runtimeMin) params.set('runtimeMin', discoverFilters.runtimeMin);
+    if (discoverFilters.runtimeMax) params.set('runtimeMax', discoverFilters.runtimeMax);
+    if (discoverFilters.language) params.set('language', discoverFilters.language);
+    if (discoverFilters.region) params.set('region', discoverFilters.region);
+    if (discoverFilters.ratingMin) params.set('ratingMin', discoverFilters.ratingMin);
+    if (discoverFilters.ratingMax) params.set('ratingMax', discoverFilters.ratingMax);
+    if (discoverFilters.voteCountMin) params.set('voteCountMin', discoverFilters.voteCountMin);
+    if (discoverFilters.providers.length) params.set('providers', discoverFilters.providers.join(','));
+    if (discoverFilters.networks.length) params.set('networks', discoverFilters.networks.join(','));
+    if (discoverFilters.releaseState) params.set('releaseState', discoverFilters.releaseState);
+
+    return params.toString();
+  }, [
+    query,
+    discoverContentType,
+    discoverSort,
+    discoverSortDirection,
+    discoverFilters,
+    activeSectionKey,
+  ]);
+
+  const fetchGridItems = useCallback(async (pageValue: number, append = false) => {
+    if (append) setLoadingMore(true);
+    else setLoadingItems(true);
+
+    try {
+      const res = await fetch(`/api/discover?${buildQueryString(pageValue)}`);
+      const data = await res.json();
+      if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
+        applyRateLimit(data);
+        return;
+      }
+      if (!res.ok) return;
+
+      setRateLimitInfo(null);
+      const nextItems = data.items || [];
+      setItems((prev) => append ? [...prev, ...nextItems] : nextItems);
+      setPage(data.page || 1);
+      setTotalPages(data.totalPages || 1);
+    } finally {
+      setLoadingItems(false);
+      setLoadingMore(false);
+    }
+  }, [buildQueryString, applyRateLimit]);
+
+  useEffect(() => {
+    fetchSections();
+    fetchFiltersMeta();
+  }, [fetchSections, fetchFiltersMeta]);
+
+  useEffect(() => {
+    if (!gridMode) return;
+    fetchGridItems(1, false);
+  }, [gridMode, fetchGridItems]);
+
+  useEffect(() => {
+    if (!selectedItem) {
+      setItemDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+    setItemLoading(true);
+    fetch(`/api/discover/item?mediaType=${selectedItem.mediaType}&id=${selectedItem.id}`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => null);
+        if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
+          applyRateLimit(data);
+          return null;
+        }
+        if (res.ok) {
+          setRateLimitInfo(null);
+          return data;
+        }
+        return null;
+      })
+      .then((data) => {
+        if (!cancelled) setItemDetail(data);
+      })
+      .finally(() => {
+        if (!cancelled) setItemLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedItem, applyRateLimit]);
+
+  useEffect(() => {
+    if (!rateLimitInfo?.retryAfterSeconds) {
+      setRateLimitCountdown(null);
+      return;
+    }
+
+    setRateLimitCountdown(rateLimitInfo.retryAfterSeconds);
+    const timer = setInterval(() => {
+      setRateLimitCountdown((current) => {
+        if (current == null) return null;
+        return current <= 0 ? 0 : current - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [rateLimitInfo?.retryAfterSeconds]);
+
+  useEffect(() => {
+    if (query.trim()) {
+      setActiveSectionKey(null);
+    }
+  }, [query]);
+
+  const handleOpenItem = useCallback((item: DiscoverItem) => {
+    setSelectedItem({ id: item.tmdbId, mediaType: item.mediaType });
+  }, []);
+
+  const handleSeeAll = useCallback((section: DiscoverSection) => {
+    setActiveSectionKey(section.key);
+    const mapped = SECTION_TO_BROWSE[section.key];
+    if (mapped) {
+      setDiscoverSort(mapped.sort);
+      setDiscoverContentType(mapped.contentType);
+      if (mapped.sort === 'upcoming') setDiscoverSortDirection('asc');
+      else setDiscoverSortDirection('desc');
+    }
+  }, [setDiscoverSort, setDiscoverContentType, setDiscoverSortDirection]);
+
+  const pickGenre = useCallback((genreId: number, type: 'movie' | 'show') => {
+    setDiscoverFilters({
+      ...discoverFilters,
+      genres: discoverFilters.genres.includes(genreId)
+        ? discoverFilters.genres
+        : [...discoverFilters.genres, genreId],
+    });
+    setDiscoverContentType(type);
+    setActiveSectionKey(null);
+  }, [discoverFilters, setDiscoverFilters, setDiscoverContentType]);
+
+  const pickProvider = useCallback((providerId: number) => {
+    setDiscoverFilters({
+      ...discoverFilters,
+      providers: discoverFilters.providers.includes(providerId)
+        ? discoverFilters.providers
+        : [...discoverFilters.providers, providerId],
+    });
+    setActiveSectionKey(null);
+  }, [discoverFilters, setDiscoverFilters]);
+
+  const resetFilters = useCallback(() => {
+    setDiscoverFilters({
+      genres: [],
+      yearFrom: '',
+      yearTo: '',
+      runtimeMin: '',
+      runtimeMax: '',
+      language: '',
+      region: 'US',
+      ratingMin: '',
+      ratingMax: '',
+      voteCountMin: '',
+      providers: [],
+      networks: [],
+      releaseState: '',
+    });
+    setDiscoverSort('trending');
+    setDiscoverSortDirection('desc');
+    setDiscoverContentType('all');
+    setActiveSectionKey(null);
+    setQuery('');
+  }, [setDiscoverFilters, setDiscoverSort, setDiscoverSortDirection, setDiscoverContentType]);
+
+  const genreChoices = useMemo(() => {
+    if (!filtersMeta) return [];
+    if (discoverContentType === 'movie') return filtersMeta.genres.filter((genre) => genre.type === 'movie');
+    if (discoverContentType === 'show') return filtersMeta.genres.filter((genre) => genre.type === 'tv');
+    return filtersMeta.genres;
+  }, [filtersMeta, discoverContentType]);
+
+  const providerChoices = useMemo(() => {
+    if (!filtersMeta) return [];
+    if (discoverContentType === 'movie') return filtersMeta.providers.filter((provider) => provider.type === 'movie');
+    if (discoverContentType === 'show') return filtersMeta.providers.filter((provider) => provider.type === 'tv');
+    return filtersMeta.providers;
+  }, [filtersMeta, discoverContentType]);
+
+  const detailAddHref = useMemo(() => {
+    if (!itemDetail) return null;
+    if (itemDetail.addTarget.exists && itemDetail.addTarget.id) {
+      return itemDetail.addTarget.service === 'radarr'
+        ? `/movies/${itemDetail.addTarget.id}`
+        : `/series/${itemDetail.addTarget.id}`;
+    }
+
+    if (itemDetail.mediaType === 'movie') {
+      const params = new URLSearchParams();
+      params.set('term', itemDetail.title);
+      params.set('tmdbId', String(itemDetail.tmdbId));
+      return `/movies/add?${params.toString()}`;
+    }
+
+    const params = new URLSearchParams();
+    params.set('term', itemDetail.title);
+    params.set('tmdbId', String(itemDetail.tmdbId));
+    if (itemDetail.tvdbId) params.set('tvdbId', String(itemDetail.tvdbId));
+    params.set('seriesType', itemDetail.isAnime ? 'anime' : 'standard');
+    return `/series/add?${params.toString()}`;
+  }, [itemDetail]);
+
+  return (
+    <div className="space-y-4">
+      <div className="sticky top-0 z-30 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex items-center gap-2">
+          <div className="flex-1">
+            <SearchBar
+              value={query}
+              onChange={setQuery}
+              placeholder="Search movies, shows, anime"
+            />
+          </div>
+          <button
+            onClick={() => setFiltersOpen(true)}
+            className="h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
+            aria-label="Advanced filters"
+          >
+            <Filter className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-2 flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          {[
+            { value: 'all', label: 'All', icon: Compass },
+            { value: 'movie', label: 'Movies', icon: Film },
+            { value: 'show', label: 'Shows', icon: Tv },
+            { value: 'anime', label: 'Anime', icon: Sparkles },
+          ].map((option) => {
+            const Icon = option.icon;
+            const active = discoverContentType === option.value;
+            return (
+              <button
+                key={option.value}
+                onClick={() => {
+                  setDiscoverContentType(option.value as 'all' | 'movie' | 'show' | 'anime');
+                  setActiveSectionKey(null);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
+                  active ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {option.label}
+              </button>
+            );
+          })}
+
+          {SORT_OPTIONS.map((option) => {
+            const active = discoverSort === option.value;
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.value}
+                onClick={() => {
+                  setDiscoverSort(option.value);
+                  setActiveSectionKey(null);
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
+                  active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {rateLimitInfo && (
+          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">TMDB rate limit reached</p>
+            <p className="text-xs text-amber-800/90 dark:text-amber-200/90">
+              {rateLimitCountdown != null
+                ? `Please wait ${formatWait(rateLimitCountdown)} before retrying.`
+                : rateLimitInfo.retryAt
+                  ? `Please retry around ${new Date(rateLimitInfo.retryAt).toLocaleTimeString()}.`
+                  : `${rateLimitInfo.message}. Please wait and try again.`}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {!gridMode && (
+        <div className="space-y-5">
+          {loadingSections ? (
+            <div className="space-y-4">
+              {[...Array(4)].map((_, idx) => (
+                <div key={idx} className="space-y-2">
+                  <Skeleton className="h-5 w-40" />
+                  <div className="flex gap-2">
+                    {[...Array(5)].map((__, i) => (
+                      <Skeleton key={i} className="h-40 w-[110px] rounded-xl" />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            visibleSections.map((section) => (
+              <SectionRow
+                key={section.key}
+                section={section}
+                onOpenItem={handleOpenItem}
+                onSeeAll={handleSeeAll}
+                onPickGenre={pickGenre}
+                onPickProvider={pickProvider}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {gridMode && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Discover Results</p>
+              <p className="text-xs text-muted-foreground">
+                {activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
+              </p>
+            </div>
+            <button
+              onClick={() => setActiveSectionKey(null)}
+              className="text-xs text-primary font-medium"
+            >
+              Clear section
+            </button>
+          </div>
+
+          {loadingItems ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+              {[...Array(18)].map((_, idx) => (
+                <Skeleton key={idx} className="aspect-[2/3] rounded-xl" />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <div className="rounded-xl border border-border/60 bg-card p-8 text-center space-y-2">
+              <Search className="h-6 w-6 mx-auto text-muted-foreground" />
+              <p className="font-semibold">No matches found</p>
+              <p className="text-sm text-muted-foreground">Try adjusting filters or search query.</p>
+              <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+                {items.map((item) => (
+                  <MediaPoster key={`${item.mediaType}-${item.tmdbId}`} item={item} onClick={handleOpenItem} />
+                ))}
+              </div>
+
+              {page < totalPages && (
+                <div className="flex justify-center pt-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchGridItems(page + 1, true)}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load more'}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <SheetContent side="right" className="w-[92vw] sm:max-w-md p-0">
+          <SheetHeader>
+            <SheetTitle>Advanced Filters</SheetTitle>
+          </SheetHeader>
+
+          <div className="px-4 pb-4 overflow-y-auto space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Sort</label>
+              <div className="grid grid-cols-2 gap-2">
+                {SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      setDiscoverSort(option.value);
+                      setActiveSectionKey(null);
+                    }}
+                    className={`px-3 py-2 rounded-lg border text-sm ${discoverSort === option.value ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Sort Direction</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['desc', 'asc'].map((dir) => (
+                  <button
+                    key={dir}
+                    onClick={() => setDiscoverSortDirection(dir as 'asc' | 'desc')}
+                    className={`px-3 py-2 rounded-lg border text-sm uppercase ${discoverSortDirection === dir ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                  >
+                    {dir}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Year From</label>
+                <Input
+                  value={discoverFilters.yearFrom}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, yearFrom: e.target.value })}
+                  placeholder="1995"
+                  inputMode="numeric"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Year To</label>
+                <Input
+                  value={discoverFilters.yearTo}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, yearTo: e.target.value })}
+                  placeholder="2026"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Runtime Min</label>
+                <Input
+                  value={discoverFilters.runtimeMin}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, runtimeMin: e.target.value })}
+                  placeholder="45"
+                  inputMode="numeric"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Runtime Max</label>
+                <Input
+                  value={discoverFilters.runtimeMax}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, runtimeMax: e.target.value })}
+                  placeholder="180"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Rating Min</label>
+                <Input
+                  value={discoverFilters.ratingMin}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, ratingMin: e.target.value })}
+                  placeholder="7.5"
+                  inputMode="decimal"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Rating Max</label>
+                <Input
+                  value={discoverFilters.ratingMax}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, ratingMax: e.target.value })}
+                  placeholder="10"
+                  inputMode="decimal"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Vote Count Min</label>
+              <Input
+                value={discoverFilters.voteCountMin}
+                onChange={(e) => setDiscoverFilters({ ...discoverFilters, voteCountMin: e.target.value })}
+                placeholder="500"
+                inputMode="numeric"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Language</label>
+                <Input
+                  value={discoverFilters.language}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, language: e.target.value.toLowerCase() })}
+                  placeholder="en"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Region</label>
+                <Input
+                  value={discoverFilters.region}
+                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, region: e.target.value.toUpperCase() })}
+                  placeholder="US"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Release State</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['', 'released', 'upcoming', 'airing', 'ended'].map((state) => (
+                  <button
+                    key={state || 'all'}
+                    onClick={() => setDiscoverFilters({ ...discoverFilters, releaseState: state as '' | 'released' | 'upcoming' | 'airing' | 'ended' })}
+                    className={`px-3 py-2 rounded-lg border text-sm ${discoverFilters.releaseState === state ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                  >
+                    {state || 'Any'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Genres</label>
+              <div className="flex flex-wrap gap-1.5">
+                {genreChoices.slice(0, 28).map((genre) => {
+                  const active = discoverFilters.genres.includes(genre.id);
+                  return (
+                    <button
+                      key={`${genre.type}-${genre.id}`}
+                      onClick={() => {
+                        const set = new Set(discoverFilters.genres);
+                        if (set.has(genre.id)) set.delete(genre.id);
+                        else set.add(genre.id);
+                        setDiscoverFilters({ ...discoverFilters, genres: [...set] });
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs border ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    >
+                      {genre.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Providers</label>
+              <div className="flex flex-wrap gap-1.5">
+                {providerChoices.slice(0, 28).map((provider) => {
+                  const active = discoverFilters.providers.includes(provider.id);
+                  return (
+                    <button
+                      key={`${provider.type}-${provider.id}`}
+                      onClick={() => {
+                        const set = new Set(discoverFilters.providers);
+                        if (set.has(provider.id)) set.delete(provider.id);
+                        else set.add(provider.id);
+                        setDiscoverFilters({ ...discoverFilters, providers: [...set] });
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs border ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    >
+                      {provider.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Networks</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(filtersMeta?.networks || []).slice(0, 24).map((network) => {
+                  const active = discoverFilters.networks.includes(network.id);
+                  return (
+                    <button
+                      key={network.id}
+                      onClick={() => {
+                        const set = new Set(discoverFilters.networks);
+                        if (set.has(network.id)) set.delete(network.id);
+                        else set.add(network.id);
+                        setDiscoverFilters({ ...discoverFilters, networks: [...set] });
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs border ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    >
+                      {network.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <SheetFooter className="border-t">
+            <div className="grid grid-cols-2 gap-2 w-full">
+              <Button variant="outline" onClick={resetFilters}>Reset</Button>
+              <Button onClick={() => {
+                const normalized = {
+                  ...discoverFilters,
+                  yearFrom: parsePositiveInt(discoverFilters.yearFrom)?.toString() || '',
+                  yearTo: parsePositiveInt(discoverFilters.yearTo)?.toString() || '',
+                  runtimeMin: parsePositiveInt(discoverFilters.runtimeMin)?.toString() || '',
+                  runtimeMax: parsePositiveInt(discoverFilters.runtimeMax)?.toString() || '',
+                  ratingMin: parsePositiveFloat(discoverFilters.ratingMin)?.toString() || '',
+                  ratingMax: parsePositiveFloat(discoverFilters.ratingMax)?.toString() || '',
+                  voteCountMin: parsePositiveInt(discoverFilters.voteCountMin)?.toString() || '',
+                };
+                setDiscoverFilters(normalized);
+                setFiltersOpen(false);
+              }}>
+                Apply
+              </Button>
+            </div>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Drawer open={!!selectedItem} onOpenChange={(open) => !open && setSelectedItem(null)}>
+        <DrawerContent className="max-h-[94vh]">
+          <DrawerTitle className="sr-only">Discover detail</DrawerTitle>
+          <DrawerDescription className="sr-only">Media details and add action</DrawerDescription>
+          <div className="overflow-y-auto pb-6">
+            {itemLoading || !itemDetail ? (
+              <div className="p-4 space-y-3">
+                <Skeleton className="h-52 w-full rounded-xl" />
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="relative h-52 w-full bg-muted">
+                  {itemDetail.backdropPath ? (
+                    <Image
+                      src={itemDetail.backdropPath}
+                      alt={itemDetail.title}
+                      fill
+                      sizes="100vw"
+                      className="object-cover"
+                    />
+                  ) : null}
+                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/35 to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 p-4">
+                    <div className="flex items-center gap-2 text-xs text-white/90">
+                      {cardTypeBadge(itemDetail.mediaType)}
+                      {itemDetail.isAnime && <Badge className="bg-pink-600/90 text-[10px] text-white">ANIME</Badge>}
+                    </div>
+                    <h3 className="mt-2 text-lg font-semibold text-white line-clamp-2">{itemDetail.title}</h3>
+                    <p className="text-xs text-white/80">
+                      {formatYear(itemDetail.releaseDate)} • {itemDetail.runtime ? `${itemDetail.runtime} min` : 'Runtime N/A'} • {itemDetail.rating.toFixed(1)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="px-4 space-y-3">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {itemDetail.overview || 'No overview available.'}
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {(itemDetail.genreNames || []).map((genre) => (
+                      <Badge key={genre} variant="outline" className="text-xs">{genre}</Badge>
+                    ))}
+                  </div>
+
+                  {detailAddHref && (
+                    <Button asChild className="w-full h-11">
+                      <Link href={detailAddHref} onClick={() => setSelectedItem(null)}>
+                        {itemDetail.addTarget.exists ? 'Open in Library' : (itemDetail.mediaType === 'movie' ? 'Add to Radarr' : 'Add to Sonarr')}
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
+    </div>
+  );
+}
