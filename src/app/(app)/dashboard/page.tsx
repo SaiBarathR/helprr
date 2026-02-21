@@ -24,6 +24,7 @@ import type { QueueItem, CalendarEvent, MediaImage } from '@/types';
 import type { JellyfinSession, JellyfinItem } from '@/types/jellyfin';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { isProtectedApiImageSrc } from '@/lib/image';
+import { ticksToMinutes, ticksToProgress, getSessionTitle } from '@/lib/jellyfin-helpers';
 
 interface DashboardStats {
   totalMovies: number;
@@ -53,28 +54,6 @@ interface RecentItem {
   date: string;
   poster: string | null;
   href: string;
-}
-
-function ticksToMinutes(ticks: number): string {
-  const totalMinutes = Math.floor(ticks / 600000000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
-
-function ticksToProgress(position: number, runtime: number): number {
-  if (!runtime || runtime === 0) return 0;
-  return Math.min(100, (position / runtime) * 100);
-}
-
-function getSessionTitle(item: JellyfinItem): string {
-  if (item.Type === 'Episode' && item.SeriesName) {
-    const s = item.ParentIndexNumber != null ? `S${item.ParentIndexNumber}` : '';
-    const e = item.IndexNumber != null ? `E${item.IndexNumber}` : '';
-    return `${item.SeriesName} ${s}${e}`;
-  }
-  return item.Name;
 }
 
 function getPoster(images: MediaImage[]): string | null {
@@ -143,12 +122,12 @@ export default function DashboardPage() {
       const [statsRes, queueRes, calendarRes, indexersRes, statusRes, sessionsRes, resumeRes, recentRes] = await Promise.allSettled([
         fetch('/api/services/stats'),
         fetch('/api/activity/queue'),
-        fetch('/api/calendar?days=7'),
+        fetch('/api/calendar?days=14'),
         fetch('/api/prowlarr/indexers'),
         fetch('/api/prowlarr/status'),
         fetch('/api/jellyfin/sessions'),
         fetch('/api/jellyfin/resume'),
-        fetch('/api/activity/recent?limit=15'),
+        fetch('/api/activity/recent?limit=30'),
       ]);
 
       if (statsRes.status === 'fulfilled' && statsRes.value.ok) setStats(await statsRes.value.json());
@@ -180,8 +159,8 @@ export default function DashboardPage() {
         const data = await recentRes.value.json();
         if (Array.isArray(data)) setRecentlyAdded(data);
       }
-    } catch {
-      // Services may not be configured yet
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }

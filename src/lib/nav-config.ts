@@ -1,11 +1,13 @@
 import {
   LayoutDashboard,
+  Compass,
   Film,
   Tv,
   CalendarDays,
   HardDrive,
   Search,
   Activity,
+  MonitorPlay,
   Bell,
   Settings,
   type LucideIcon,
@@ -18,6 +20,7 @@ export type NavItemId =
   | 'calendar'
   | 'torrents'
   | 'prowlarr'
+  | 'jellyfin'
   | 'activity'
   | 'notifications'
   | 'settings';
@@ -39,6 +42,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar' },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents' },
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr' },
+  { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },

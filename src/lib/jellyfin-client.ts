@@ -9,6 +9,11 @@ import type {
   JellyfinItemCounts,
   JellyfinSearchResult,
   JellyfinActivityResponse,
+  JellyfinUser,
+  JellyfinScheduledTask,
+  PlaybackUserActivity,
+  PlaybackActivityItem,
+  PlaybackBreakdownEntry,
 } from '@/types/jellyfin';
 
 const CLIENT_NAME = 'Helprr';
@@ -134,5 +139,181 @@ export class JellyfinClient {
       Limit: params.limit ?? 50,
       ...(params.minDate && { MinDate: params.minDate }),
     });
+  }
+
+  // --- Native API: Users & Tasks ---
+
+  async getUsers(): Promise<JellyfinUser[]> {
+    return this.get<JellyfinUser[]>('/Users');
+  }
+
+  async getScheduledTasks(): Promise<JellyfinScheduledTask[]> {
+    return this.get<JellyfinScheduledTask[]>('/ScheduledTasks');
+  }
+
+  // --- Playback Reporting Plugin methods ---
+  // All under /user_usage_stats/ — returns null if plugin not installed (404)
+  // Param conventions from HAR:
+  //   stamp: Date.now() (ms cache-buster)
+  //   timezoneOffset: positive UTC offset (e.g. 5.5 for UTC+5:30)
+  //   endDate: YYYY-MM-DD
+  //   filter: comma-separated type names e.g. "Movie,Episode,Audio" (REQUIRED for data)
+  //   days: integer lookback
+
+  /** UTC offset as positive number (e.g. 5.5 for UTC+5:30). Server TZ based. */
+  private getTzOffset(): number {
+    return -(new Date().getTimezoneOffset() / 60);
+  }
+
+  private todayStr(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  // --- user_activity: no timezoneOffset per HAR ---
+  async getPlaybackUserActivity(days: number, endDate?: string): Promise<PlaybackUserActivity[] | null> {
+    try {
+      return await this.get<PlaybackUserActivity[]>('/user_usage_stats/user_activity', {
+        days,
+        endDate: endDate || this.todayStr(),
+        stamp: Date.now(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  // --- GetItems: filter is REQUIRED or returns [] ---
+  async getPlaybackHistory(
+    userId: string,
+    date: string,
+    filter: string
+  ): Promise<PlaybackActivityItem[] | null> {
+    try {
+      return await this.get<PlaybackActivityItem[]>(`/user_usage_stats/${userId}/${date}/GetItems`, {
+        filter,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  // --- PlayActivity: returns [{user_id, user_name, user_usage: {date: val}}] ---
+  async getPlayActivity(
+    days: number,
+    endDate: string,
+    filter: string,
+    dataType: string = 'count'
+  ): Promise<Array<{ user_id: string; user_name: string; user_usage: Record<string, number> }> | null> {
+    try {
+      return await this.get('/user_usage_stats/PlayActivity', {
+        days,
+        endDate,
+        filter,
+        dataType,
+        stamp: Date.now(),
+        timezoneOffset: this.getTzOffset(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  // --- HourlyReport: returns {"dayIdx-hour": minutes} ---
+  async getHourlyReport(
+    days: number,
+    endDate: string,
+    filter: string
+  ): Promise<Record<string, number> | null> {
+    try {
+      return await this.get<Record<string, number>>('/user_usage_stats/HourlyReport', {
+        days,
+        endDate,
+        filter,
+        stamp: Date.now(),
+        timezoneOffset: this.getTzOffset(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getBreakdownReport(
+    type: string,
+    days: number,
+    endDate: string
+  ): Promise<PlaybackBreakdownEntry[] | null> {
+    try {
+      return await this.get<PlaybackBreakdownEntry[]>(`/user_usage_stats/${type}/BreakdownReport`, {
+        days,
+        endDate,
+        stamp: Date.now(),
+        timezoneOffset: this.getTzOffset(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getTvShowsReport(
+    days: number,
+    endDate: string
+  ): Promise<PlaybackBreakdownEntry[] | null> {
+    try {
+      return await this.get<PlaybackBreakdownEntry[]>('/user_usage_stats/GetTvShowsReport', {
+        days,
+        endDate,
+        stamp: Date.now(),
+        timezoneOffset: this.getTzOffset(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getMoviesReport(
+    days: number,
+    endDate: string
+  ): Promise<PlaybackBreakdownEntry[] | null> {
+    try {
+      return await this.get<PlaybackBreakdownEntry[]>('/user_usage_stats/MoviesReport', {
+        days,
+        endDate,
+        stamp: Date.now(),
+        timezoneOffset: this.getTzOffset(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async getTypeFilterList(): Promise<string[] | null> {
+    try {
+      return await this.get<string[]>('/user_usage_stats/type_filter_list');
+    } catch {
+      return null;
+    }
+  }
+
+  async getUserList(): Promise<Array<{ name: string; id: string }> | null> {
+    try {
+      return await this.get<Array<{ name: string; id: string }>>('/user_usage_stats/user_list', {
+        stamp: Date.now(),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /** Runs a raw SQL query against the plugin's PlaybackActivity table. */
+  async submitCustomQuery(sql: string): Promise<{ colums: string[]; results: string[][] } | null> {
+    try {
+      const response = await this.client.post('/user_usage_stats/submit_custom_query', {
+        CustomQueryString: sql,
+      });
+      return response.data;
+    } catch {
+      return null;
+    }
   }
 }

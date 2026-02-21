@@ -132,3 +132,79 @@ export interface JellyfinActivityResponse {
   Items: JellyfinActivityEntry[];
   TotalRecordCount: number;
 }
+
+// Native Jellyfin API types
+export interface JellyfinUser {
+  Id: string;
+  Name: string;
+  PrimaryImageTag?: string;
+  LastLoginDate?: string;
+  LastActivityDate?: string;
+  Policy?: { IsAdministrator?: boolean; IsHidden?: boolean; IsDisabled?: boolean };
+}
+
+export interface JellyfinScheduledTask {
+  Id: string;
+  Name: string;
+  Description?: string;
+  Category?: string;
+  State: 'Idle' | 'Running' | 'Cancelling';
+  CurrentProgressPercentage?: number;
+  LastExecutionResult?: { EndTimeUtc?: string; Status?: string };
+}
+
+// Playback Reporting Plugin types
+export interface PlaybackUserActivity {
+  user_id: string;
+  user_name: string;
+  has_image: boolean;
+  latest_date: string;
+  last_seen: string;
+  item_name: string;
+  client_name: string;
+  total_count: number;
+  total_time: number;
+  total_play_time: string;
+}
+
+export interface PlayActivityUser {
+  user_id: string;
+  user_name: string;
+  user_usage: Record<string, number>;
+}
+
+export interface PlaybackActivityItem {
+  Time: string;
+  Id: string;
+  Name: string;
+  Type: string;
+  Client: string;
+  Method: string;
+  Device: string;
+  Duration: number;
+  RowId: number;
+}
+
+export interface PlaybackBreakdownEntry {
+  label: string;
+  count: number;
+  time: number;
+}
+
+export interface PlaybackDailyData {
+  [date: string]: number;
+}
+
+/** Row from submit_custom_query against PlaybackActivity table */
+export interface CustomHistoryItem {
+  RowId: number;
+  DateCreated: string;
+  UserId: string;
+  ItemId: string;
+  ItemType: string;
+  ItemName: string;
+  PlaybackMethod: string;
+  ClientName: string;
+  DeviceName: string;
+  PlayDuration: number;
+}
