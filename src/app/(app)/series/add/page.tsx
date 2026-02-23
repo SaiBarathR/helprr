@@ -61,10 +61,7 @@ function AddSeriesPageContent() {
         if (targetTvdbId || targetTmdbId) {
           const matched = data.find((item) => {
             if (targetTvdbId && item.tvdbId === targetTvdbId) return true;
-            if (targetTmdbId) {
-              const maybeTmdb = (item as SonarrLookupResult & { tmdbId?: number }).tmdbId;
-              return maybeTmdb === targetTmdbId;
-            }
+            if (targetTmdbId) return item.tmdbId === targetTmdbId;
             return false;
           });
           if (matched) setSelected(matched);

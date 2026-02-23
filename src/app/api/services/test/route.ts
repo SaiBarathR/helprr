@@ -10,6 +10,10 @@ import { prisma } from '@/lib/db';
 const SERVICE_TYPES = ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB'] as const;
 type ServiceType = typeof SERVICE_TYPES[number];
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 function maskApiKey(key: string): string {
   if (key.length <= 8) return '****';
   return key.slice(0, 4) + '****' + key.slice(-4);
@@ -38,22 +42,37 @@ async function resolveApiKeyForTest(type: ServiceType, providedApiKey: string): 
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { type, url, apiKey, username } = body;
+    const rawBody: unknown = await request.json();
+    if (!rawBody || typeof rawBody !== 'object') {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+    const body = rawBody as Record<string, unknown>;
+    const typeValue = body.type;
+    const urlValue = body.url;
+    const apiKeyValue = body.apiKey;
+    const usernameValue = body.username;
 
-    if (!type || !url || !apiKey) {
+    if (!isNonEmptyString(typeValue) || !isNonEmptyString(urlValue) || !isNonEmptyString(apiKeyValue)) {
       return NextResponse.json(
         { success: false, error: 'type, url, and apiKey/password are required' },
         { status: 400 }
       );
     }
 
-    if (!SERVICE_TYPES.includes(type)) {
+    if (!SERVICE_TYPES.includes(typeValue as ServiceType)) {
       return NextResponse.json(
         { success: false, error: 'Invalid service type' },
         { status: 400 }
       );
     }
+
+    const type = typeValue as ServiceType;
+    const url = urlValue.trim();
+    const apiKey = apiKeyValue.trim();
+    const username = typeof usernameValue === 'string' ? usernameValue : undefined;
 
     const resolvedApiKey = await resolveApiKeyForTest(type, apiKey);
     const cleanUrl = url.replace(/\/+$/, '');

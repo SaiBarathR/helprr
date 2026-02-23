@@ -89,7 +89,21 @@ export async function PUT(request: NextRequest) {
     });
 
     if (pollingIntervalSecs !== undefined) {
-      pollingService.restart(settings.pollingIntervalSecs * 1000);
+      const validatedPollingIntervalSecs = Number(pollingIntervalSecs);
+      if (Number.isFinite(validatedPollingIntervalSecs) && validatedPollingIntervalSecs > 0) {
+        try {
+          pollingService.restart(validatedPollingIntervalSecs * 1000);
+        } catch (restartError) {
+          console.warn('Failed to restart polling service after settings update', {
+            pollingIntervalSecs: validatedPollingIntervalSecs,
+            error: restartError,
+          });
+        }
+      } else {
+        console.warn('Skipping polling restart due to invalid pollingIntervalSecs', {
+          pollingIntervalSecs,
+        });
+      }
     }
 
     return NextResponse.json(settings);

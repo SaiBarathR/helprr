@@ -144,7 +144,7 @@ export class TmdbRateLimitError extends Error {
   }
 }
 
-let tmdbCooldownUntil: number | null = null;
+const tmdbCooldowns = new Map<string, number>();
 const TMDB_REQUEST_TIMEOUT_MS = 10000;
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -226,12 +226,16 @@ export class TmdbClient {
   }
 
   private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
-    if (tmdbCooldownUntil && Date.now() < tmdbCooldownUntil) {
-      const remainingSeconds = Math.max(1, Math.ceil((tmdbCooldownUntil - Date.now()) / 1000));
+    const cooldownUntil = tmdbCooldowns.get(this.apiKey);
+    if (cooldownUntil && Date.now() >= cooldownUntil) {
+      tmdbCooldowns.delete(this.apiKey);
+    }
+    if (cooldownUntil && Date.now() < cooldownUntil) {
+      const remainingSeconds = Math.max(1, Math.ceil((cooldownUntil - Date.now()) / 1000));
       throw new TmdbRateLimitError(
         'TMDB rate limit reached',
         remainingSeconds,
-        new Date(tmdbCooldownUntil).toISOString()
+        new Date(cooldownUntil).toISOString()
       );
     }
 
@@ -250,8 +254,11 @@ export class TmdbClient {
       if (axios.isAxiosError(error) && error.response?.status === 429) {
         const parsed = parseRetryAfter(error.response.headers);
         const retryAfterSeconds = parsed.retryAfterSeconds ?? 60;
-        const retryAtMs = Date.now() + retryAfterSeconds * 1000;
-        tmdbCooldownUntil = retryAtMs;
+        const parsedRetryAtMs = parsed.retryAt ? Date.parse(parsed.retryAt) : Number.NaN;
+        const retryAtMs = Number.isFinite(parsedRetryAtMs)
+          ? parsedRetryAtMs
+          : Date.now() + retryAfterSeconds * 1000;
+        tmdbCooldowns.set(this.apiKey, retryAtMs);
         throw new TmdbRateLimitError(
           'TMDB rate limit reached',
           retryAfterSeconds,

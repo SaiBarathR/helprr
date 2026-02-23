@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   try {
     const client = await getJellyfinClient();
     const counts = await client.getItemCounts();

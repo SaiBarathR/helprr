@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-
-const EVENT_TYPES = [
-  'grabbed', 'imported', 'downloadFailed', 'importFailed',
-  'upcomingPremiere', 'healthWarning',
-  'torrentAdded', 'torrentCompleted', 'torrentDeleted',
-  'jellyfinItemAdded', 'jellyfinPlaybackStart',
-];
+import { ensureNotificationPreferences } from '@/lib/notification-events';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,14 +17,7 @@ export async function POST(request: NextRequest) {
       create: { endpoint, p256dh: keys.p256dh, auth: keys.auth, deviceName },
     });
 
-    // Create default preferences
-    for (const eventType of EVENT_TYPES) {
-      await prisma.notificationPreference.upsert({
-        where: { subscriptionId_eventType: { subscriptionId: subscription.id, eventType } },
-        update: {},
-        create: { subscriptionId: subscription.id, eventType, enabled: true },
-      });
-    }
+    await ensureNotificationPreferences(subscription.id);
 
     return NextResponse.json(subscription);
   } catch (error) {

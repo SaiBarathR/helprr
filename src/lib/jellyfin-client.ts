@@ -306,12 +306,21 @@ export class JellyfinClient {
   }
 
   /** Runs a raw SQL query against the plugin's PlaybackActivity table. */
-  async submitCustomQuery(sql: string): Promise<{ colums: string[]; results: string[][] } | null> {
+  async submitCustomQuery(sql: string): Promise<{ columns: string[]; results: string[][] } | null> {
     try {
       const response = await this.client.post('/user_usage_stats/submit_custom_query', {
         CustomQueryString: sql,
       });
-      return response.data;
+      const data = response.data as { columns?: unknown; results?: unknown } | null;
+      const columns = data?.columns;
+      const results = data?.results;
+      if (!Array.isArray(columns) || !columns.every((column) => typeof column === 'string')) {
+        return null;
+      }
+      if (!Array.isArray(results) || !results.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === 'string'))) {
+        return null;
+      }
+      return { columns, results };
     } catch {
       return null;
     }

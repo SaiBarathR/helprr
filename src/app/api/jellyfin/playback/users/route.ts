@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
+import { sanitizeDays } from '@/lib/jellyfin-playback-query';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get('days') || '30', 10);
+    const days = sanitizeDays(searchParams.get('days'), 30);
     const endDate = searchParams.get('endDate') || undefined;
     const client = await getJellyfinClient();
     const users = await client.getPlaybackUserActivity(days, endDate);

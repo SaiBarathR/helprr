@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { EVENT_TYPES, ensureNotificationPreferences } from '@/lib/notification-events';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,10 +10,12 @@ export async function GET(request: NextRequest) {
 
     let where = {};
     if (subscriptionId) {
+      await ensureNotificationPreferences(subscriptionId);
       where = { subscriptionId };
     } else if (endpoint) {
       const sub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
       if (sub) {
+        await ensureNotificationPreferences(sub.id);
         where = { subscriptionId: sub.id };
       } else {
         return NextResponse.json([]);
@@ -34,6 +37,21 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { subscriptionId, eventType, enabled, tagFilter, qualityFilter } = body;
+    if (typeof subscriptionId !== 'string' || !subscriptionId.trim()) {
+      return NextResponse.json({ error: 'subscriptionId is required' }, { status: 400 });
+    }
+    if (
+      typeof eventType !== 'string'
+      || !eventType.trim()
+      || !EVENT_TYPES.includes(eventType as (typeof EVENT_TYPES)[number])
+    ) {
+      return NextResponse.json({ error: 'Invalid event type' }, { status: 400 });
+    }
+    if (typeof enabled !== 'boolean') {
+      return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
+    }
+
+    await ensureNotificationPreferences(subscriptionId);
 
     const preference = await prisma.notificationPreference.upsert({
       where: { subscriptionId_eventType: { subscriptionId, eventType } },

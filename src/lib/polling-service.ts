@@ -8,7 +8,7 @@ export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
 
-  start(intervalMs: number) {
+  start(intervalMs: number): void {
     if (this.intervalId) {
       if (this.currentIntervalMs !== intervalMs) {
         this.restart(intervalMs);
@@ -22,12 +22,12 @@ export class PollingService {
     void this.poll();
   }
 
-  restart(intervalMs: number) {
+  restart(intervalMs: number): void {
     this.stop();
     this.start(intervalMs);
   }
 
-  stop() {
+  stop(): void {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -36,7 +36,7 @@ export class PollingService {
     }
   }
 
-  private async poll() {
+  private async poll(): Promise<void> {
     try {
       const results = await Promise.allSettled([
         this.pollSonarr(),
