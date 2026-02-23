@@ -11,6 +11,7 @@ import type {
   SonarrSeries,
 } from '@/types';
 import type { TmdbDiscoverParams, TmdbListItem } from '@/lib/tmdb-client';
+type DiscoverSections = NonNullable<DiscoverResponse['sections']>;
 
 const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder: 'asc' | 'desc'; contentType: DiscoverContentType }>> = {
   trending: { sortBy: 'trending', contentType: 'all' },
@@ -29,6 +30,14 @@ const EMPTY_LIST_RESPONSE = {
   total_results: 0,
   results: [] as TmdbListItem[],
 };
+const SECTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let sectionsCache:
+  | {
+      data: DiscoverSections;
+      expiresAt: number;
+    }
+  | null = null;
 
 function parseNumber(value: string | null): number | undefined {
   if (!value) return undefined;
@@ -58,12 +67,17 @@ function asContentType(contentType: string | null): DiscoverContentType {
   return 'all';
 }
 
-async function safeTmdb<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+async function safeTmdb<T>(
+  label: string,
+  partialFailures: Set<string>,
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<T> {
   try {
     return await fn();
   } catch (error) {
     if (error instanceof TmdbRateLimitError) throw error;
-    console.warn('[Discover] TMDB partial failure:', error);
+    partialFailures.add(label);
     return fallback;
   }
 }
@@ -194,6 +208,7 @@ async function getLibraries() {
 
 async function buildSections() {
   const tmdb = await getTMDBClient();
+  const partialFailures = new Set<string>();
 
   const [
     trending,
@@ -208,17 +223,17 @@ async function buildSections() {
     movieProviders,
     tvProviders,
   ] = await Promise.all([
-    safeTmdb(() => tmdb.trending('all', 1), EMPTY_LIST_RESPONSE),
-    safeTmdb(() => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
-    safeTmdb(() => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
-    safeTmdb(() => tmdb.discoverMovie({ page: 1, sortBy: 'primary_release_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
-    safeTmdb(() => tmdb.discoverTv({ page: 1, sortBy: 'first_air_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
-    safeTmdb(() => tmdb.movieGenres(), []),
-    safeTmdb(() => tmdb.tvGenres(), []),
-    safeTmdb(() => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
-    safeTmdb(() => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
-    safeTmdb(() => tmdb.movieWatchProviders('US'), []),
-    safeTmdb(() => tmdb.tvWatchProviders('US'), []),
+    safeTmdb('trending', partialFailures, () => tmdb.trending('all', 1), EMPTY_LIST_RESPONSE),
+    safeTmdb('popular_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
+    safeTmdb('popular_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
+    safeTmdb('upcoming_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'primary_release_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
+    safeTmdb('upcoming_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'first_air_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
+    safeTmdb('movie_genres', partialFailures, () => tmdb.movieGenres(), []),
+    safeTmdb('series_genres', partialFailures, () => tmdb.tvGenres(), []),
+    safeTmdb('anime_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
+    safeTmdb('anime_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
+    safeTmdb('movie_providers', partialFailures, () => tmdb.movieWatchProviders('US'), []),
+    safeTmdb('tv_providers', partialFailures, () => tmdb.tvWatchProviders('US'), []),
   ]);
 
   const anime = dedupeDiscoverItems([
@@ -256,7 +271,7 @@ async function buildSections() {
     })),
   ];
 
-  const sections: DiscoverResponse['sections'] = [
+  const sections: DiscoverSections = [
     {
       key: 'trending',
       title: 'Trending',
@@ -324,7 +339,7 @@ async function buildSections() {
 
   const { movies, series } = await getLibraries();
 
-  return sections?.map((section) => {
+  const normalizedSections: DiscoverSections = sections.map((section) => {
     if (section?.type !== 'media') return section;
 
     return {
@@ -332,6 +347,17 @@ async function buildSections() {
       items: annotateDiscoverItems(section.items as DiscoverItem[], movies, series),
     };
   });
+
+  return {
+    sections: normalizedSections,
+    partialFailures: [...partialFailures],
+  };
+}
+
+function hasMediaItems(sections: DiscoverSections): boolean {
+  return sections.some(
+    (section) => section.type === 'media' && (section.items as DiscoverItem[]).length > 0
+  );
 }
 
 async function searchItems(params: {
@@ -503,8 +529,29 @@ export async function GET(request: NextRequest) {
     const mode = (searchParams.get('mode') || 'sections') as 'sections' | 'browse' | 'search';
 
     if (mode === 'sections') {
-      const sections = await buildSections();
-      const body: DiscoverResponse = { mode: 'sections', sections: sections || [] };
+      const now = Date.now();
+      if (sectionsCache && now < sectionsCache.expiresAt) {
+        return NextResponse.json({ mode: 'sections', sections: sectionsCache.data } satisfies DiscoverResponse);
+      }
+
+      const { sections, partialFailures } = await buildSections();
+      const freshHasMedia = hasMediaItems(sections);
+
+      if (freshHasMedia) {
+        sectionsCache = {
+          data: sections,
+          expiresAt: now + SECTIONS_CACHE_TTL_MS,
+        };
+      }
+
+      if (partialFailures.length > 0) {
+        console.warn(
+          `[Discover] TMDB partial failures (${partialFailures.length}): ${partialFailures.join(', ')}`
+        );
+      }
+
+      const fallbackSections = (!freshHasMedia && sectionsCache?.data) ? sectionsCache.data : sections;
+      const body: DiscoverResponse = { mode: 'sections', sections: fallbackSections || [] };
       return NextResponse.json(body);
     }
 

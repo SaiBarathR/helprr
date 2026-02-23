@@ -29,12 +29,26 @@ const LANGUAGE_OPTIONS = [
   { code: 'zh', name: 'Chinese' },
 ];
 
-async function safeTmdb<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+const FILTERS_CACHE_TTL_MS = 10 * 60 * 1000;
+let filtersCache:
+  | {
+      region: string;
+      data: DiscoverFiltersResponse;
+      expiresAt: number;
+    }
+  | null = null;
+
+async function safeTmdb<T>(
+  label: string,
+  partialFailures: Set<string>,
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<T> {
   try {
     return await fn();
   } catch (error) {
     if (error instanceof TmdbRateLimitError) throw error;
-    console.warn('[DiscoverFilters] TMDB partial failure:', error);
+    partialFailures.add(label);
     return fallback;
   }
 }
@@ -43,15 +57,23 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const region = searchParams.get('region') || 'US';
+    const now = Date.now();
+
+    if (filtersCache && filtersCache.region === region && now < filtersCache.expiresAt) {
+      return NextResponse.json(filtersCache.data);
+    }
 
     const tmdb = await getTMDBClient();
+    const partialFailures = new Set<string>();
 
     const [movieGenres, tvGenres, movieProviders, tvProviders, popularTv] = await Promise.all([
-      safeTmdb(() => tmdb.movieGenres(), []),
-      safeTmdb(() => tmdb.tvGenres(), []),
-      safeTmdb(() => tmdb.movieWatchProviders(region), []),
-      safeTmdb(() => tmdb.tvWatchProviders(region), []),
+      safeTmdb('movie_genres', partialFailures, () => tmdb.movieGenres(), []),
+      safeTmdb('tv_genres', partialFailures, () => tmdb.tvGenres(), []),
+      safeTmdb('movie_providers', partialFailures, () => tmdb.movieWatchProviders(region), []),
+      safeTmdb('tv_providers', partialFailures, () => tmdb.tvWatchProviders(region), []),
       safeTmdb(
+        'popular_tv',
+        partialFailures,
         () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }),
         { page: 1, total_pages: 1, total_results: 0, results: [] }
       ),
@@ -117,6 +139,27 @@ export async function GET(request: NextRequest) {
         { value: 'ended', label: 'Ended' },
       ],
     };
+
+    const hasUsableData = response.genres.length > 0 || response.providers.length > 0 || response.networks.length > 0;
+
+    if (partialFailures.size > 0) {
+      console.warn(
+        `[DiscoverFilters] TMDB partial failures (${partialFailures.size}): ${[...partialFailures].join(', ')}`
+      );
+    }
+
+    if (hasUsableData) {
+      filtersCache = {
+        region,
+        data: response,
+        expiresAt: now + FILTERS_CACHE_TTL_MS,
+      };
+      return NextResponse.json(response);
+    }
+
+    if (filtersCache && filtersCache.region === region) {
+      return NextResponse.json(filtersCache.data);
+    }
 
     return NextResponse.json(response);
   } catch (error) {

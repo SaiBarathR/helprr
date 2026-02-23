@@ -145,6 +145,7 @@ export class TmdbRateLimitError extends Error {
 }
 
 let tmdbCooldownUntil: number | null = null;
+const TMDB_REQUEST_TIMEOUT_MS = 10000;
 
 function toRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object') return {};
@@ -217,6 +218,7 @@ export class TmdbClient {
     this.useBearerAuth = apiKey.includes('.') || apiKey.startsWith('eyJ');
     this.client = axios.create({
       baseURL: url.replace(/\/+$/, ''),
+      timeout: TMDB_REQUEST_TIMEOUT_MS,
       headers: {
         Accept: 'application/json',
       },
