@@ -29,6 +29,16 @@ const LANGUAGE_OPTIONS = [
   { code: 'zh', name: 'Chinese' },
 ];
 
+async function safeTmdb<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof TmdbRateLimitError) throw error;
+    console.warn('[DiscoverFilters] TMDB partial failure:', error);
+    return fallback;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -37,11 +47,14 @@ export async function GET(request: NextRequest) {
     const tmdb = await getTMDBClient();
 
     const [movieGenres, tvGenres, movieProviders, tvProviders, popularTv] = await Promise.all([
-      tmdb.movieGenres(),
-      tmdb.tvGenres(),
-      tmdb.movieWatchProviders(region),
-      tmdb.tvWatchProviders(region),
-      tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }),
+      safeTmdb(() => tmdb.movieGenres(), []),
+      safeTmdb(() => tmdb.tvGenres(), []),
+      safeTmdb(() => tmdb.movieWatchProviders(region), []),
+      safeTmdb(() => tmdb.tvWatchProviders(region), []),
+      safeTmdb(
+        () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }),
+        { page: 1, total_pages: 1, total_results: 0, results: [] }
+      ),
     ]);
 
     const genres: DiscoverFiltersResponse['genres'] = [
