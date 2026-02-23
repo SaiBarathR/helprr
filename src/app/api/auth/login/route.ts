@@ -3,6 +3,7 @@ import { createSession, verifyPassword, COOKIE_NAME, SESSION_DURATION } from '@/
 
 const LOGIN_WINDOW_MS = 60_000;
 const LOGIN_MAX_ATTEMPTS = 5;
+const CLEANUP_INTERVAL_MS = LOGIN_WINDOW_MS * 5;
 const loginAttemptsByIp = new Map<string, number[]>();
 
 function getClientIp(request: NextRequest): string {
@@ -14,11 +15,34 @@ function getClientIp(request: NextRequest): string {
   return request.headers.get('x-real-ip') || 'unknown';
 }
 
+function pruneOldAttempts(attempts: number[], now: number): number[] {
+  return attempts.filter((timestamp) => now - timestamp < LOGIN_WINDOW_MS);
+}
+
 function getRecentAttempts(ip: string, now: number): number[] {
   const attempts = loginAttemptsByIp.get(ip) || [];
-  const recentAttempts = attempts.filter((timestamp) => now - timestamp < LOGIN_WINDOW_MS);
+  const recentAttempts = pruneOldAttempts(attempts, now);
   loginAttemptsByIp.set(ip, recentAttempts);
   return recentAttempts;
+}
+
+function cleanupStaleAttempts(now: number): void {
+  for (const [ip, attempts] of loginAttemptsByIp.entries()) {
+    const recentAttempts = pruneOldAttempts(attempts, now);
+    if (recentAttempts.length === 0) {
+      loginAttemptsByIp.delete(ip);
+    } else {
+      loginAttemptsByIp.set(ip, recentAttempts);
+    }
+  }
+}
+
+const cleanupTimer = setInterval(() => {
+  cleanupStaleAttempts(Date.now());
+}, CLEANUP_INTERVAL_MS);
+
+if (typeof cleanupTimer === 'object' && cleanupTimer && 'unref' in cleanupTimer && typeof cleanupTimer.unref === 'function') {
+  cleanupTimer.unref();
 }
 
 export async function POST(request: NextRequest) {

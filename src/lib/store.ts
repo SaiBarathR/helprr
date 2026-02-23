@@ -3,11 +3,11 @@ import { persist } from 'zustand/middleware';
 import {
   type NavItemId, DEFAULT_NAV_ORDER, NAV_ITEM_MAP, reconcileNavOrder,
 } from '@/lib/nav-config';
+import type { DiscoverContentType } from '@/types';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
 export type VisibleFieldsByMode = Record<MediaViewMode, string[]>;
-export type DiscoverContentType = 'all' | 'movie' | 'show' | 'anime';
 
 export interface DiscoverFiltersState {
   genres: number[];
@@ -37,7 +37,7 @@ const DEFAULT_SERIES_FIELDS: VisibleFieldsByMode = {
   table: ['monitored', 'year', 'qualityProfile', 'network', 'episodeProgress', 'rating', 'sizeOnDisk'],
 };
 
-const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
+export const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
   genres: [],
   yearFrom: '',
   yearTo: '',

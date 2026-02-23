@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
+import { getDefaultEndDate, sanitizeDays } from '@/lib/jellyfin-playback-query';
 
 export async function GET(
   request: NextRequest,
@@ -8,10 +9,8 @@ export async function GET(
   try {
     const { type } = await params;
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get('days') || '30', 10);
-    const d = new Date();
-    const endDate = searchParams.get('endDate') ||
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const days = sanitizeDays(searchParams.get('days'), 30);
+    const endDate = searchParams.get('endDate') || getDefaultEndDate();
 
     const validTypes = ['UserId', 'ItemType', 'PlaybackMethod', 'ClientName', 'DeviceName'];
     if (!validTypes.includes(type)) {

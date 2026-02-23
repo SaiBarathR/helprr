@@ -79,6 +79,7 @@ export function normalizeTmdbItem(
 
 interface LibraryLookups {
   movieByTmdbId: Map<number, RadarrMovie>;
+  movieByImdbId: Map<string, RadarrMovie>;
   movieByTitleYear: Map<string, RadarrMovie>;
   seriesByTvdbId: Map<number, SonarrSeries>;
   seriesByImdbId: Map<string, SonarrSeries>;
@@ -88,6 +89,7 @@ interface LibraryLookups {
 
 export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[]): LibraryLookups {
   const movieByTmdbId = new Map<number, RadarrMovie>();
+  const movieByImdbId = new Map<string, RadarrMovie>();
   const movieByTitleYear = new Map<string, RadarrMovie>();
   const seriesByTvdbId = new Map<number, SonarrSeries>();
   const seriesByImdbId = new Map<string, SonarrSeries>();
@@ -96,6 +98,7 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
 
   for (const movie of movies) {
     movieByTmdbId.set(movie.tmdbId, movie);
+    if (movie.imdbId) movieByImdbId.set(movie.imdbId.toLowerCase(), movie);
     movieByTitleYear.set(normalizeTitleKey(movie.title, movie.year ?? null), movie);
   }
 
@@ -109,6 +112,7 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
 
   return {
     movieByTmdbId,
+    movieByImdbId,
     movieByTitleYear,
     seriesByTvdbId,
     seriesByImdbId,
@@ -127,7 +131,7 @@ export function matchMovieInLibrary(
   }
 
   if (item.imdbId) {
-    const byImdb = [...lookups.movieByTmdbId.values()].find((m) => m.imdbId === item.imdbId);
+    const byImdb = lookups.movieByImdbId.get(item.imdbId.toLowerCase());
     if (byImdb) return { exists: true, type: 'movie', id: byImdb.id };
   }
 

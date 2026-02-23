@@ -37,9 +37,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const mediaType = searchParams.get('mediaType');
-    const id = Number(searchParams.get('id'));
+    const idStr = searchParams.get('id');
+    const id = idStr ? Number.parseInt(idStr, 10) : Number.NaN;
 
-    if (!mediaType || !['movie', 'tv'].includes(mediaType) || !Number.isFinite(id)) {
+    if (!mediaType || !['movie', 'tv'].includes(mediaType) || !Number.isInteger(id) || id <= 0) {
       return NextResponse.json({ error: 'Invalid mediaType or id' }, { status: 400 });
     }
 

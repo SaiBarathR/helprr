@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,13 +57,7 @@ export default function NotificationPreferencesPage() {
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [prefsLoading, setPrefsLoading] = useState(false);
 
-  useEffect(() => {
-    if (isSubscribed && subscriptionEndpoint) {
-      loadPreferences();
-    }
-  }, [isSubscribed, subscriptionEndpoint]);
-
-  async function loadPreferences() {
+  const loadPreferences = useCallback(async () => {
     setPrefsLoading(true);
     try {
       const params = subscriptionEndpoint ? `?endpoint=${encodeURIComponent(subscriptionEndpoint)}` : '';
@@ -73,8 +67,16 @@ export default function NotificationPreferencesPage() {
         setPreferences(prefs);
         if (prefs.length > 0) setSubscriptionId(prefs[0].subscriptionId);
       }
-    } catch {} finally { setPrefsLoading(false); }
-  }
+    } catch (err) {
+      console.error('loadPreferences failed:', err);
+    } finally { setPrefsLoading(false); }
+  }, [subscriptionEndpoint]);
+
+  useEffect(() => {
+    if (isSubscribed && subscriptionEndpoint) {
+      void loadPreferences();
+    }
+  }, [isSubscribed, subscriptionEndpoint, loadPreferences]);
 
   async function handleSubscribe() {
     const result = await subscribe();

@@ -21,7 +21,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { Skeleton } from '@/components/ui/skeleton';
-import { type DiscoverFiltersState, useUIStore } from '@/lib/store';
+import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import type {
   DiscoverDetail,
   DiscoverFiltersResponse,
@@ -65,22 +65,6 @@ interface RateLimitInfo {
   retryAt: string | null;
 }
 
-const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
-  genres: [],
-  yearFrom: '',
-  yearTo: '',
-  runtimeMin: '',
-  runtimeMax: '',
-  language: '',
-  region: 'US',
-  ratingMin: '',
-  ratingMax: '',
-  voteCountMin: '',
-  providers: [],
-  networks: [],
-  releaseState: '',
-};
-
 function formatYear(value: string | null) {
   if (!value) return 'Unknown';
   return value.slice(0, 4);
@@ -116,24 +100,24 @@ function normalizeFilterValues(filters: DiscoverFiltersState): DiscoverFiltersSt
     ratingMax: parsePositiveFloat(filters.ratingMax)?.toString() || '',
     voteCountMin: parsePositiveInt(filters.voteCountMin)?.toString() || '',
     language: filters.language.trim().toLowerCase(),
-    region: (filters.region || 'US').trim().toUpperCase().slice(0, 2),
+    region: (filters.region || DEFAULT_DISCOVER_FILTERS.region).trim().toUpperCase().slice(0, 2),
   };
 }
 
 function isDefaultFilters(filters: ReturnType<typeof useUIStore.getState>['discoverFilters']) {
-  return !filters.genres.length
-    && !filters.yearFrom
-    && !filters.yearTo
-    && !filters.runtimeMin
-    && !filters.runtimeMax
-    && !filters.language
-    && (!filters.region || filters.region === 'US')
-    && !filters.ratingMin
-    && !filters.ratingMax
-    && !filters.voteCountMin
-    && !filters.providers.length
-    && !filters.networks.length
-    && !filters.releaseState;
+  return filters.genres.length === DEFAULT_DISCOVER_FILTERS.genres.length
+    && filters.yearFrom === DEFAULT_DISCOVER_FILTERS.yearFrom
+    && filters.yearTo === DEFAULT_DISCOVER_FILTERS.yearTo
+    && filters.runtimeMin === DEFAULT_DISCOVER_FILTERS.runtimeMin
+    && filters.runtimeMax === DEFAULT_DISCOVER_FILTERS.runtimeMax
+    && filters.language === DEFAULT_DISCOVER_FILTERS.language
+    && (!filters.region || filters.region === DEFAULT_DISCOVER_FILTERS.region)
+    && filters.ratingMin === DEFAULT_DISCOVER_FILTERS.ratingMin
+    && filters.ratingMax === DEFAULT_DISCOVER_FILTERS.ratingMax
+    && filters.voteCountMin === DEFAULT_DISCOVER_FILTERS.voteCountMin
+    && filters.providers.length === DEFAULT_DISCOVER_FILTERS.providers.length
+    && filters.networks.length === DEFAULT_DISCOVER_FILTERS.networks.length
+    && filters.releaseState === DEFAULT_DISCOVER_FILTERS.releaseState;
 }
 
 function formatWait(seconds: number) {
@@ -152,7 +136,7 @@ function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
   if (filters.ratingMin || filters.ratingMax) count += 1;
   if (filters.voteCountMin) count += 1;
   if (filters.language) count += 1;
-  if (filters.region && filters.region !== 'US') count += 1;
+  if (filters.region && filters.region !== DEFAULT_DISCOVER_FILTERS.region) count += 1;
   if (filters.providers.length > 0) count += 1;
   if (filters.networks.length > 0) count += 1;
   if (filters.releaseState) count += 1;

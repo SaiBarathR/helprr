@@ -378,6 +378,7 @@ export interface SonarrLookupResult {
   seasons: SonarrSeason[];
   year: number;
   tvdbId: number;
+  tmdbId?: number;
   imdbId: string;
   titleSlug: string;
   certification: string;
