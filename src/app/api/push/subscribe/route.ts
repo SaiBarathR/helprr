@@ -5,6 +5,7 @@ const EVENT_TYPES = [
   'grabbed', 'imported', 'downloadFailed', 'importFailed',
   'upcomingPremiere', 'healthWarning',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
+  'jellyfinItemAdded', 'jellyfinPlaybackStart',
 ];
 
 export async function POST(request: NextRequest) {
@@ -33,7 +34,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(subscription);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    console.error('Failed to save push subscription:', error);
+    return NextResponse.json({ error: 'Failed to save push subscription' }, { status: 500 });
   }
 }
 
