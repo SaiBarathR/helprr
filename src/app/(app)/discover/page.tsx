@@ -223,7 +223,7 @@ function SectionRow({
   onOpenItem: (item: DiscoverItem) => void;
   onSeeAll: (section: DiscoverSection) => void;
   onPickGenre: (genreId: number, type: 'movie' | 'show') => void;
-  onPickProvider: (providerId: number) => void;
+  onPickProvider: (providerId: number, type: 'movie' | 'show') => void;
 }) {
   return (
     <section className="space-y-2">
@@ -269,7 +269,7 @@ function SectionRow({
           {(section.items as Array<{ id: number; name: string; logoPath: string | null; type: 'movie' | 'tv' }>).map((provider) => (
             <button
               key={`${provider.type}-${provider.id}`}
-              onClick={() => onPickProvider(provider.id)}
+              onClick={() => onPickProvider(provider.id, provider.type === 'movie' ? 'movie' : 'show')}
               className="min-w-[160px] rounded-xl border border-border/50 bg-accent/40 p-3 flex items-center gap-3"
             >
               <div className="relative h-8 w-8 rounded bg-background/70 overflow-hidden shrink-0">
@@ -612,16 +612,17 @@ export default function DiscoverPage() {
     setManualBrowseMode(true);
   }, [discoverFilters, setDiscoverFilters, setDiscoverContentType]);
 
-  const pickProvider = useCallback((providerId: number) => {
+  const pickProvider = useCallback((providerId: number, type: 'movie' | 'show') => {
     setDiscoverFilters({
       ...discoverFilters,
       providers: discoverFilters.providers.includes(providerId)
         ? discoverFilters.providers
         : [...discoverFilters.providers, providerId],
     });
+    setDiscoverContentType(type);
     setActiveSectionKey(null);
     setManualBrowseMode(true);
-  }, [discoverFilters, setDiscoverFilters]);
+  }, [discoverFilters, setDiscoverFilters, setDiscoverContentType]);
 
   const resetFilters = useCallback(() => {
     goToDiscoverHome();
@@ -690,7 +691,7 @@ export default function DiscoverPage() {
         </div>
 
         <div className="mt-2 space-y-2">
-          <p className="text-[11px] font-medium text-muted-foreground">Type</p>
+          {/* <p className="text-[11px] font-medium text-muted-foreground">Type</p> */}
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {[
               { value: 'all', label: 'All', icon: Compass },
@@ -714,7 +715,7 @@ export default function DiscoverPage() {
               );
             })}
           </div>
-          <p className="text-[11px] font-medium text-muted-foreground">Sort</p>
+          {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {SORT_OPTIONS.map((option) => {
               const active = discoverSort === option.value;
