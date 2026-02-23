@@ -1,74 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSession, verifyPassword, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
+import { getRedisClient } from '@/lib/redis';
 
 const LOGIN_WINDOW_MS = 60_000;
 const LOGIN_MAX_ATTEMPTS = 5;
-const CLEANUP_INTERVAL_MS = LOGIN_WINDOW_MS * 5;
-const loginAttemptsByIp = new Map<string, number[]>();
+const LOGIN_ATTEMPTS_KEY_PREFIX = 'login:attempts:';
 
-function getClientIp(request: NextRequest): string {
+function getClientIp(request: NextRequest): string | null {
+  // Only trust x-forwarded-for when traffic passes through a sanitized reverse proxy.
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
     const [firstIp] = forwardedFor.split(',');
-    if (firstIp) return firstIp.trim();
+    const trimmed = firstIp?.trim();
+    if (trimmed) return trimmed;
   }
-  return request.headers.get('x-real-ip') || 'unknown';
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  return realIp || null;
 }
 
-function pruneOldAttempts(attempts: number[], now: number): number[] {
-  return attempts.filter((timestamp) => now - timestamp < LOGIN_WINDOW_MS);
+function attemptsKey(ip: string): string {
+  return `${LOGIN_ATTEMPTS_KEY_PREFIX}${ip}`;
 }
 
-function getRecentAttempts(ip: string, now: number): number[] {
-  const attempts = loginAttemptsByIp.get(ip) || [];
-  const recentAttempts = pruneOldAttempts(attempts, now);
-  loginAttemptsByIp.set(ip, recentAttempts);
-  return recentAttempts;
-}
+async function incrementAttempts(ip: string): Promise<number> {
+  const redis = await getRedisClient();
+  const key = attemptsKey(ip);
+  const attempts = await redis.incr(key);
 
-function cleanupStaleAttempts(now: number): void {
-  for (const [ip, attempts] of loginAttemptsByIp.entries()) {
-    const recentAttempts = pruneOldAttempts(attempts, now);
-    if (recentAttempts.length === 0) {
-      loginAttemptsByIp.delete(ip);
-    } else {
-      loginAttemptsByIp.set(ip, recentAttempts);
-    }
+  if (attempts === 1) {
+    await redis.pExpire(key, LOGIN_WINDOW_MS);
   }
+
+  return attempts;
 }
 
-const cleanupTimer = setInterval(() => {
-  cleanupStaleAttempts(Date.now());
-}, CLEANUP_INTERVAL_MS);
-
-if (typeof cleanupTimer === 'object' && cleanupTimer && 'unref' in cleanupTimer && typeof cleanupTimer.unref === 'function') {
-  cleanupTimer.unref();
+async function clearAttempts(ip: string): Promise<void> {
+  const redis = await getRedisClient();
+  await redis.del(attemptsKey(ip));
 }
 
-export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const { password } = body as { password?: string };
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(request);
-  const now = Date.now();
+  if (!ip) {
+    return NextResponse.json({ error: 'Unable to determine client IP' }, { status: 400 });
+  }
 
-  if (getRecentAttempts(ip, now).length >= LOGIN_MAX_ATTEMPTS) {
+  let attempts: number;
+  try {
+    attempts = await incrementAttempts(ip);
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  }
+
+  if (attempts > LOGIN_MAX_ATTEMPTS) {
     return NextResponse.json(
       { error: 'Too many login attempts. Try again in 1 minute.' },
       { status: 429 }
     );
   }
 
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const password = (body as { password?: unknown })?.password;
+
   if (typeof password !== 'string') {
     return NextResponse.json({ error: 'Password is required' }, { status: 400 });
   }
 
   if (!verifyPassword(password)) {
-    const recentAttempts = getRecentAttempts(ip, now);
-    loginAttemptsByIp.set(ip, [...recentAttempts, now]);
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
   }
 
-  loginAttemptsByIp.delete(ip);
+  try {
+    await clearAttempts(ip);
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  }
 
   const token = await createSession();
 

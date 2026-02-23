@@ -53,6 +53,15 @@ export const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
   releaseState: '',
 };
 
+function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersState {
+  return {
+    ...filters,
+    genres: [...filters.genres],
+    providers: [...filters.providers],
+    networks: [...filters.networks],
+  };
+}
+
 interface UIState {
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -156,8 +165,8 @@ export const useUIStore = create<UIState>()(
       setDiscoverSort: (sort) => set({ discoverSort: sort }),
       discoverSortDirection: 'desc',
       setDiscoverSortDirection: (dir) => set({ discoverSortDirection: dir }),
-      discoverFilters: { ...DEFAULT_DISCOVER_FILTERS },
-      setDiscoverFilters: (filters) => set({ discoverFilters: { ...filters } }),
+      discoverFilters: cloneDiscoverFilters(DEFAULT_DISCOVER_FILTERS),
+      setDiscoverFilters: (filters) => set({ discoverFilters: cloneDiscoverFilters(filters) }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
@@ -237,7 +246,7 @@ export const useUIStore = create<UIState>()(
           state.discoverContentType = 'all';
           state.discoverSort = 'trending';
           state.discoverSortDirection = 'desc';
-          state.discoverFilters = { ...DEFAULT_DISCOVER_FILTERS };
+          state.discoverFilters = cloneDiscoverFilters(DEFAULT_DISCOVER_FILTERS);
         }
         return state as unknown as UIState;
       },

@@ -8,19 +8,28 @@ export async function GET(request: NextRequest) {
     const subscriptionId = searchParams.get('subscriptionId');
     const endpoint = searchParams.get('endpoint');
 
-    let where = {};
+    let resolvedSubscriptionId: string | null = null;
     if (subscriptionId) {
-      await ensureNotificationPreferences(subscriptionId);
-      where = { subscriptionId };
+      resolvedSubscriptionId = subscriptionId;
     } else if (endpoint) {
       const sub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
       if (sub) {
-        await ensureNotificationPreferences(sub.id);
-        where = { subscriptionId: sub.id };
+        resolvedSubscriptionId = sub.id;
       } else {
         return NextResponse.json([]);
       }
     }
+
+    if (resolvedSubscriptionId) {
+      const existingCount = await prisma.notificationPreference.count({
+        where: { subscriptionId: resolvedSubscriptionId },
+      });
+      if (existingCount === 0) {
+        await ensureNotificationPreferences(resolvedSubscriptionId);
+      }
+    }
+
+    const where = resolvedSubscriptionId ? { subscriptionId: resolvedSubscriptionId } : {};
 
     const preferences = await prisma.notificationPreference.findMany({
       where,

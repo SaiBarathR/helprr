@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     let filter = searchParams.get('filter');
     if (!filter) {
       const types = await client.getTypeFilterList();
-      filter = types ? types.join(',') : 'Movie,Episode,Audio';
+      filter = !types || types.length === 0 ? 'Movie,Episode,Audio' : types.join(',');
     }
 
     const data = await client.getHourlyReport(days, endDate, filter);

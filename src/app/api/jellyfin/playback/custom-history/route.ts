@@ -15,7 +15,6 @@ import { getJellyfinClient } from '@/lib/service-helpers';
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const HEX_RE = /^[a-f0-9]+$/i;
 const ALLOWED_TYPES = ['Movie', 'Episode', 'Audio', 'MusicVideo', 'Book'];
 
 function escapeSQL(val: string): string {
@@ -36,18 +35,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'from and to (YYYY-MM-DD) are required' }, { status: 400 });
     }
 
-    if (userId && !HEX_RE.test(userId)) {
-      return NextResponse.json({ error: 'Invalid userId' }, { status: 400 });
-    }
-
     if (type && !ALLOWED_TYPES.includes(type)) {
       return NextResponse.json({ error: `Invalid type. Must be one of: ${ALLOWED_TYPES.join(', ')}` }, { status: 400 });
     }
 
     // Build WHERE clauses
     const conditions: string[] = [
-      `DateCreated >= '${escapeSQL(from)}'`,
-      `DateCreated < date('${escapeSQL(to)}', '+1 day')`,
+      `date(DateCreated) >= date('${escapeSQL(from)}')`,
+      `date(DateCreated) <= date('${escapeSQL(to)}')`,
     ];
     if (userId) conditions.push(`UserId = '${escapeSQL(userId)}'`);
     if (type) conditions.push(`ItemType = '${escapeSQL(type)}'`);

@@ -40,7 +40,7 @@ async function resolveApiKeyForTest(type: ServiceType, providedApiKey: string): 
  * @param request - Incoming NextRequest whose JSON body contains the service check parameters
  * @returns An object with `success` boolean and, on success, `version` (string); on failure, `error` (string)
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const rawBody: unknown = await request.json();
     if (!rawBody || typeof rawBody !== 'object') {
@@ -145,7 +145,14 @@ export async function POST(request: NextRequest) {
         );
     }
   } catch (error) {
-    console.error('Service connection test failed:', error);
+    const message = (error as { message?: string })?.message;
+    const code = (error as { code?: string | number })?.code;
+    const responseStatus = (error as { response?: { status?: number } })?.response?.status;
+    console.error('Service connection test failed:', {
+      message,
+      code,
+      responseStatus,
+    });
     return NextResponse.json(
       { success: false, error: 'Connection test failed' },
       { status: 502 }

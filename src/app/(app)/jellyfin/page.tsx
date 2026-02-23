@@ -847,14 +847,14 @@ function StatsTab() {
       {topTv.length > 0 && (
         <div>
           <SectionHeader title="Top TV Shows" trailing={<SortToggle value={tvSort} onChange={setTvSort} />} />
-          <RankedList entries={topTv.slice(0, 10)} sortBy={tvSort} />
+          <RankedList entries={topTv} sortBy={tvSort} limit={10} />
         </div>
       )}
 
       {topMovies.length > 0 && (
         <div>
           <SectionHeader title="Top Movies" trailing={<SortToggle value={movieSort} onChange={setMovieSort} />} />
-          <RankedList entries={topMovies.slice(0, 10)} sortBy={movieSort} />
+          <RankedList entries={topMovies} sortBy={movieSort} limit={10} />
         </div>
       )}
 
@@ -868,7 +868,7 @@ function StatsTab() {
       {clientBreakdown.length > 0 && (
         <div>
           <SectionHeader title="Top Clients" />
-          <RankedList entries={clientBreakdown.slice(0, 8)} sortBy="plays" />
+          <RankedList entries={clientBreakdown} sortBy="plays" limit={8} />
         </div>
       )}
 
@@ -1100,12 +1100,13 @@ const USER_COLORS = ['#00a4dc', '#e5a00d', '#00c853', '#ff5252', '#7c4dff', '#ff
 
 // ─── Ranked List (with sort toggle) ───
 
-function RankedList({ entries, sortBy }: { entries: PlaybackBreakdownEntry[]; sortBy: SortMode }) {
+function RankedList({ entries, sortBy, limit }: { entries: PlaybackBreakdownEntry[]; sortBy: SortMode; limit?: number }) {
   const sorted = useMemo(() => {
     return [...entries]
       .map((e) => ({ ...e, count: Number(e.count) || 0, time: Number(e.time) || 0 }))
-      .sort((a, b) => sortBy === 'duration' ? b.time - a.time : b.count - a.count);
-  }, [entries, sortBy]);
+      .sort((a, b) => sortBy === 'duration' ? b.time - a.time : b.count - a.count)
+      .slice(0, limit ?? entries.length);
+  }, [entries, sortBy, limit]);
 
   const maxVal = Math.max(...sorted.map((e) => sortBy === 'duration' ? e.time : e.count), 1);
 

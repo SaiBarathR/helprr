@@ -165,13 +165,15 @@ function AddSeriesPageContent() {
     const prefillTerm = searchParams.get('term');
     if (!prefillTerm) return;
 
-    const targetTvdbId = Number(searchParams.get('tvdbId'));
-    const targetTmdbId = Number(searchParams.get('tmdbId'));
+    const tvdbIdParam = searchParams.get('tvdbId');
+    const tmdbIdParam = searchParams.get('tmdbId');
+    const targetTvdbId = tvdbIdParam ? Number(tvdbIdParam) : undefined;
+    const targetTmdbId = tmdbIdParam ? Number(tmdbIdParam) : undefined;
     setAutoSearched(true);
     runSearch(
       prefillTerm,
-      Number.isFinite(targetTvdbId) ? targetTvdbId : undefined,
-      Number.isFinite(targetTmdbId) ? targetTmdbId : undefined
+      typeof targetTvdbId === 'number' && Number.isFinite(targetTvdbId) ? targetTvdbId : undefined,
+      typeof targetTmdbId === 'number' && Number.isFinite(targetTmdbId) ? targetTmdbId : undefined
     );
   }, [searchParams, autoSearched, runSearch]);
 

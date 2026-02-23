@@ -9,7 +9,7 @@ import type { TmdbListItem } from '@/lib/tmdb-client';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
-export function tmdbImageUrl(path: string | null | undefined, size: 'w300' | 'w500' | 'w780' | 'original' = 'w500') {
+export function tmdbImageUrl(path: string | null | undefined, size: 'w300' | 'w500' | 'w780' | 'original' = 'w500'): string | null {
   if (!path) return null;
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }

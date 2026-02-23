@@ -42,6 +42,7 @@ It polls those services on an interval and can send **Web Push** notifications f
 
 - Node.js 20+
 - PostgreSQL 16+ (or Docker)
+- Redis 7+ (or Docker)
 
 ## Environment variables
 
@@ -50,6 +51,7 @@ Copy `.env.example` to `.env.local` (for local dev), or set these in your deploy
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | PostgreSQL connection string used by Prisma |
+| `REDIS_URL` | yes | Redis connection string used for login rate limiting |
 | `APP_PASSWORD` | yes | Password used on the `/login` screen |
 | `JWT_SECRET` | recommended | Signs the auth cookie (set this in production) |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | optional | Public VAPID key (enables push notifications; must be available at build time for Docker builds) |
@@ -67,10 +69,10 @@ If VAPID vars are not set, Helprr will still run, but **push notifications are d
 npm ci
 ```
 
-2) Start PostgreSQL (example using docker-compose)
+2) Start PostgreSQL and Redis (example using docker-compose)
 
 ```bash
-docker compose up -d helprr-db
+docker compose up -d helprr-db helprr-redis
 ```
 
 3) Configure `.env.local`
@@ -79,6 +81,7 @@ Example (adjust credentials/host to match your Postgres setup):
 
 ```bash
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/helprr
+REDIS_URL=redis://localhost:6379
 
 APP_PASSWORD=change-me
 JWT_SECRET=change-me-too
@@ -113,6 +116,7 @@ The repository includes a `docker-compose.yml` with a Postgres container and the
 
 - `POSTGRES_PASSWORD` (optional override; defaults to `postgres`)
 - `DATABASE_URL` (optional override; defaults to the internal compose URL)
+- `REDIS_URL` (optional override; defaults to `redis://helprr-redis:6379`)
 - `APP_PASSWORD`
 - `TZ` (optional override; defaults to `UTC`)
 - `JWT_SECRET`

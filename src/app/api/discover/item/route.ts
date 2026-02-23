@@ -33,7 +33,7 @@ async function getLibraries() {
   return { movies, series };
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
     const mediaType = searchParams.get('mediaType');
