@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { pollingService } from '@/lib/polling-service';
 
 /**
  * Retrieve the singleton application settings, creating a record with defaults if none exists.
@@ -86,6 +87,10 @@ export async function PUT(request: NextRequest) {
         upcomingDailyNotifyHour: upcomingDailyNotifyHour ?? 9,
       },
     });
+
+    if (pollingIntervalSecs !== undefined) {
+      pollingService.restart(settings.pollingIntervalSecs * 1000);
+    }
 
     return NextResponse.json(settings);
   } catch (error) {

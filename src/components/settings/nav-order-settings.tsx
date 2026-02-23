@@ -172,6 +172,7 @@ export function NavOrderSettings() {
       <div className="grouped-section-title">Navigation</div>
       <div className="grouped-section-content">
         <DndContext
+          id="nav-order-settings-dnd"
           sensors={sensors}
           collisionDetection={closestCenter}
           onDragEnd={handleDragEnd}

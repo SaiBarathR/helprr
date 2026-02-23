@@ -60,7 +60,7 @@ export async function notifyEvent(event: {
 
   for (const sub of subscriptions) {
     const pref = sub.preferences.find((p) => p.eventType === event.eventType);
-    if (pref && !pref.enabled) continue;
+    if (!pref || !pref.enabled) continue;
 
     const success = await sendPushNotification(
       { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
@@ -69,14 +69,16 @@ export async function notifyEvent(event: {
     if (success) sent++;
   }
 
-  await prisma.notificationHistory.create({
-    data: {
-      eventType: event.eventType,
-      title: event.title,
-      body: event.body,
-      metadata: event.metadata ? JSON.parse(JSON.stringify(event.metadata)) : undefined,
-    },
-  });
+  if (sent > 0) {
+    await prisma.notificationHistory.create({
+      data: {
+        eventType: event.eventType,
+        title: event.title,
+        body: event.body,
+        metadata: JSON.parse(JSON.stringify({ ...(event.metadata ?? {}), sentCount: sent })),
+      },
+    });
+  }
 
   return sent;
 }

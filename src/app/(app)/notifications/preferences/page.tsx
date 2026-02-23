@@ -186,7 +186,7 @@ export default function NotificationPreferencesPage() {
                           <p className="text-xs text-muted-foreground">{description}</p>
                         </div>
                         <Switch
-                          checked={pref?.enabled ?? true}
+                          checked={pref?.enabled ?? false}
                           onCheckedChange={(v) => togglePreference(eventType, v)}
                         />
                       </div>

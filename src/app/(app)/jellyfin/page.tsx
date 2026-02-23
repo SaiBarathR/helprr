@@ -114,7 +114,7 @@ export default function JellyfinPage() {
   return (
     <div className="flex flex-col min-h-0">
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h1 className="text-xl font-bold"> </h1>
+        <h1 className="text-xl font-bold">Jellyfin</h1>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh} disabled={refreshing}>
           {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
