@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-// function maskApiKey(key: string): string {
-//   if (key.length <= 8) return '****';
-//   return key.slice(0, 4) + '****' + key.slice(-4);
-// }
+function maskApiKey(key: string): string {
+  if (key.length <= 8) return '****';
+  return key.slice(0, 4) + '****' + key.slice(-4);
+}
 
 export async function GET() {
   try {
@@ -14,7 +14,7 @@ export async function GET() {
 
     const masked = connections.map((conn) => ({
       ...conn,
-      apiKey: (conn.apiKey),
+      apiKey: maskApiKey(conn.apiKey),
     }));
 
     return NextResponse.json(masked);
@@ -54,24 +54,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const existingConnection = await prisma.serviceConnection.findUnique({
+      where: { type },
+    });
+    const apiKeyToStore = existingConnection && apiKey === maskApiKey(existingConnection.apiKey)
+      ? existingConnection.apiKey
+      : apiKey;
+
     const connection = await prisma.serviceConnection.upsert({
       where: { type },
       update: {
         url: url.replace(/\/+$/, ''),
-        apiKey,
+        apiKey: apiKeyToStore,
         username: type === 'QBITTORRENT' ? (username || 'admin') : type === 'JELLYFIN' ? username : null,
       },
       create: {
         type,
         url: url.replace(/\/+$/, ''),
-        apiKey,
+        apiKey: apiKeyToStore,
         username: type === 'QBITTORRENT' ? (username || 'admin') : type === 'JELLYFIN' ? username : null,
       },
     });
 
     return NextResponse.json({
       ...connection,
-      apiKey: (connection.apiKey),
+      apiKey: maskApiKey(connection.apiKey),
     });
   } catch (error) {
     console.error('Failed to save service connection:', error);

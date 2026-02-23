@@ -6,32 +6,52 @@ import crypto from 'crypto';
 
 export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
+  private currentIntervalMs: number | null = null;
 
   start(intervalMs: number) {
-    if (this.intervalId) return;
+    if (this.intervalId) {
+      if (this.currentIntervalMs !== intervalMs) {
+        this.restart(intervalMs);
+      }
+      return;
+    }
     initVapid();
     console.log(`[Polling] Starting with interval ${intervalMs}ms`);
-    this.intervalId = setInterval(() => this.poll(), intervalMs);
-    this.poll();
+    this.currentIntervalMs = intervalMs;
+    this.intervalId = setInterval(() => void this.poll(), intervalMs);
+    void this.poll();
+  }
+
+  restart(intervalMs: number) {
+    this.stop();
+    this.start(intervalMs);
   }
 
   stop() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+      this.currentIntervalMs = null;
       console.log('[Polling] Stopped');
     }
   }
 
   private async poll() {
     try {
-      await Promise.allSettled([
+      const results = await Promise.allSettled([
         this.pollSonarr(),
         this.pollRadarr(),
         this.pollQBittorrent(),
         this.pollJellyfin(),
         this.checkUpcoming(),
       ]);
+
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (rejected.length > 0) {
+        console.error('[Polling] Failures:', rejected.map((result) => result.reason));
+      }
     } catch (e) {
       console.error('[Polling] Error:', e);
     }

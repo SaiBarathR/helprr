@@ -7,8 +7,8 @@ export async function GET() {
     const series = await client.getSeries();
     return NextResponse.json(series);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch series';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('Failed to fetch series:', error);
+    return NextResponse.json({ error: 'Failed to fetch series' }, { status: 500 });
   }
 }
 
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const result = await client.addSeries(body);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to add series';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('Failed to add series:', error);
+    return NextResponse.json({ error: 'Failed to add series' }, { status: 500 });
   }
 }
