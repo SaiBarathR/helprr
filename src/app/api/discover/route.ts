@@ -145,6 +145,24 @@ function parseFilters(searchParams: URLSearchParams): DiscoverFilters {
   };
 }
 
+function hasDiscoverFilters(filters: DiscoverFilters): boolean {
+  return Boolean(
+    (filters.genres && filters.genres.length > 0)
+    || filters.yearFrom
+    || filters.yearTo
+    || filters.runtimeMin
+    || filters.runtimeMax
+    || filters.language
+    || (filters.region && filters.region !== 'US')
+    || filters.ratingMin !== undefined
+    || filters.ratingMax !== undefined
+    || filters.voteCountMin !== undefined
+    || (filters.providers && filters.providers.length > 0)
+    || (filters.networks && filters.networks.length > 0)
+    || filters.releaseState
+  );
+}
+
 function normalizeItems(results: TmdbListItem[], mediaType: 'all' | 'movie' | 'tv'): DiscoverItem[] {
   return results
     .map((item) => normalizeTmdbItem(item, mediaType))
@@ -364,8 +382,10 @@ async function discoverItems(params: {
   filters: DiscoverFilters;
 }) {
   const tmdb = await getTMDBClient();
+  const hasFilters = hasDiscoverFilters(params.filters);
+  const effectiveSortBy = params.sortBy === 'trending' && hasFilters ? 'popular' : params.sortBy;
 
-  if (params.sortBy === 'trending') {
+  if (effectiveSortBy === 'trending') {
     if (params.contentType === 'movie') {
       return { data: await tmdb.trending('movie', params.page), mediaType: 'movie' as const };
     }
@@ -398,7 +418,7 @@ async function discoverItems(params: {
 
   const baseParams: TmdbDiscoverParams = {
     page: params.page,
-    sortBy: params.sortBy,
+    sortBy: effectiveSortBy,
     sortOrder: params.sortOrder,
     genres: params.filters.genres,
     yearFrom: params.filters.yearFrom,
@@ -415,7 +435,7 @@ async function discoverItems(params: {
     releaseState: params.filters.releaseState,
   };
 
-  const preset = applySortPreset(params.sortBy, baseParams);
+  const preset = applySortPreset(effectiveSortBy, baseParams);
 
   if (params.contentType === 'movie') {
     return { data: await tmdb.discoverMovie(preset), mediaType: 'movie' as const };
