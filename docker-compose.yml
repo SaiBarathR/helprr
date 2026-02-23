@@ -22,6 +22,7 @@ services:
       context: .
       args:
         - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+        - JWT_SECRET=${JWT_SECRET}
     container_name: helprr
     restart: unless-stopped
     ports:

@@ -23,6 +23,10 @@ ENV NODE_ENV=production
 ARG NEXT_PUBLIC_VAPID_PUBLIC_KEY
 ENV NEXT_PUBLIC_VAPID_PUBLIC_KEY=$NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
+# JWT_SECRET needed at build time for page data collection
+ARG JWT_SECRET
+ENV JWT_SECRET=$JWT_SECRET
+
 RUN npm run build
 
 # Production image
