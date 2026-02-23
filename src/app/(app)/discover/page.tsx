@@ -144,11 +144,37 @@ function formatWait(seconds: number) {
   return `${secs}s`;
 }
 
-function MediaPoster({ item, onClick }: { item: DiscoverItem; onClick: (item: DiscoverItem) => void }) {
+function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
+  let count = 0;
+  if (filters.genres.length > 0) count += 1;
+  if (filters.yearFrom || filters.yearTo) count += 1;
+  if (filters.runtimeMin || filters.runtimeMax) count += 1;
+  if (filters.ratingMin || filters.ratingMax) count += 1;
+  if (filters.voteCountMin) count += 1;
+  if (filters.language) count += 1;
+  if (filters.region && filters.region !== 'US') count += 1;
+  if (filters.providers.length > 0) count += 1;
+  if (filters.networks.length > 0) count += 1;
+  if (filters.releaseState) count += 1;
+  return count;
+}
+
+function MediaPoster({
+  item,
+  onClick,
+  variant = 'rail',
+}: {
+  item: DiscoverItem;
+  onClick: (item: DiscoverItem) => void;
+  variant?: 'rail' | 'grid';
+}) {
+  const isGrid = variant === 'grid';
   return (
     <button
       onClick={() => onClick(item)}
-      className="group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] text-left"
+      className={isGrid
+        ? 'group relative w-full min-w-0 text-left'
+        : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] text-left'}
     >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
         {item.posterPath ? (
@@ -156,7 +182,7 @@ function MediaPoster({ item, onClick }: { item: DiscoverItem; onClick: (item: Di
             src={item.posterPath}
             alt={item.title}
             fill
-            sizes="(max-width: 640px) 35vw, 140px"
+            sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, 140px'}
             className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
@@ -318,6 +344,15 @@ export default function DiscoverPage() {
   }, []);
 
   const hasAdvancedFilters = useMemo(() => !isDefaultFilters(discoverFilters), [discoverFilters]);
+  const activeAdvancedFilterCount = useMemo(
+    () => countActiveAdvancedFilters(discoverFilters),
+    [discoverFilters]
+  );
+
+  const gridClassName = useMemo(
+    () => 'grid grid-cols-[repeat(auto-fill,minmax(122px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(138px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(154px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-2.5 sm:gap-3.5 md:gap-4',
+    []
+  );
 
   const gridMode = useMemo(() => {
     return Boolean(
@@ -642,14 +677,20 @@ export default function DiscoverPage() {
           </div>
           <button
             onClick={handleOpenFilters}
-            className="h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
+            className="relative h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
             aria-label="Advanced filters"
           >
             <Filter className="h-4 w-4" />
+            {activeAdvancedFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+                {activeAdvancedFilterCount > 9 ? '9+' : activeAdvancedFilterCount}
+              </span>
+            )}
           </button>
         </div>
 
         <div className="mt-2 space-y-2">
+          <p className="text-[11px] font-medium text-muted-foreground">Type</p>
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {[
               { value: 'all', label: 'All', icon: Compass },
@@ -673,6 +714,7 @@ export default function DiscoverPage() {
               );
             })}
           </div>
+          <p className="text-[11px] font-medium text-muted-foreground">Sort</p>
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {SORT_OPTIONS.map((option) => {
               const active = discoverSort === option.value;
@@ -764,9 +806,9 @@ export default function DiscoverPage() {
           </div>
 
           {loadingItems ? (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+            <div className={gridClassName}>
               {[...Array(24)].map((_, idx) => (
-                <Skeleton key={idx} className="aspect-[2/3] rounded-xl" />
+                <Skeleton key={idx} className="w-full aspect-[2/3] rounded-xl" />
               ))}
             </div>
           ) : items.length === 0 ? (
@@ -778,9 +820,9 @@ export default function DiscoverPage() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+              <div className={gridClassName}>
                 {items.map((item) => (
-                  <MediaPoster key={`${item.mediaType}-${item.tmdbId}`} item={item} onClick={handleOpenItem} />
+                  <MediaPoster key={`${item.mediaType}-${item.tmdbId}`} item={item} onClick={handleOpenItem} variant="grid" />
                 ))}
               </div>
 
