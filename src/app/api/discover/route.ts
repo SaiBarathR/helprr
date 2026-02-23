@@ -23,6 +23,13 @@ const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder
   most_loved: { sortBy: 'mostLoved', contentType: 'all' },
 };
 
+const EMPTY_LIST_RESPONSE = {
+  page: 1,
+  total_pages: 1,
+  total_results: 0,
+  results: [] as TmdbListItem[],
+};
+
 function parseNumber(value: string | null): number | undefined {
   if (!value) return undefined;
   const n = Number(value);
@@ -40,6 +47,25 @@ function parseNumberList(value: string | null): number[] | undefined {
 
 function asSort(sortBy: string | null): string {
   return sortBy || 'trending';
+}
+
+function asSortOrder(sortOrder: string | null): 'asc' | 'desc' {
+  return sortOrder === 'asc' ? 'asc' : 'desc';
+}
+
+function asContentType(contentType: string | null): DiscoverContentType {
+  if (contentType === 'movie' || contentType === 'show' || contentType === 'anime') return contentType;
+  return 'all';
+}
+
+async function safeTmdb<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof TmdbRateLimitError) throw error;
+    console.warn('[Discover] TMDB partial failure:', error);
+    return fallback;
+  }
 }
 
 function applySortPreset(sortBy: string, input: TmdbDiscoverParams): TmdbDiscoverParams {
@@ -164,17 +190,17 @@ async function buildSections() {
     movieProviders,
     tvProviders,
   ] = await Promise.all([
-    tmdb.trending('all', 1),
-    tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }),
-    tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }),
-    tmdb.discoverMovie({ page: 1, sortBy: 'primary_release_date', sortOrder: 'asc', releaseState: 'upcoming' }),
-    tmdb.discoverTv({ page: 1, sortBy: 'first_air_date', sortOrder: 'asc', releaseState: 'upcoming' }),
-    tmdb.movieGenres(),
-    tmdb.tvGenres(),
-    tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }),
-    tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }),
-    tmdb.movieWatchProviders('US'),
-    tmdb.tvWatchProviders('US'),
+    safeTmdb(() => tmdb.trending('all', 1), EMPTY_LIST_RESPONSE),
+    safeTmdb(() => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
+    safeTmdb(() => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
+    safeTmdb(() => tmdb.discoverMovie({ page: 1, sortBy: 'primary_release_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
+    safeTmdb(() => tmdb.discoverTv({ page: 1, sortBy: 'first_air_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
+    safeTmdb(() => tmdb.movieGenres(), []),
+    safeTmdb(() => tmdb.tvGenres(), []),
+    safeTmdb(() => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
+    safeTmdb(() => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
+    safeTmdb(() => tmdb.movieWatchProviders('US'), []),
+    safeTmdb(() => tmdb.tvWatchProviders('US'), []),
   ]);
 
   const anime = dedupeDiscoverItems([
@@ -467,9 +493,9 @@ export async function GET(request: NextRequest) {
     const section = searchParams.get('section');
 
     const sectionOverride = section ? SECTION_SORT_OVERRIDES[section] : undefined;
-    const contentType = (sectionOverride?.contentType || searchParams.get('contentType') || 'all') as DiscoverContentType;
+    const contentType = sectionOverride?.contentType || asContentType(searchParams.get('contentType'));
     const sortBy = sectionOverride?.sortBy || asSort(searchParams.get('sortBy'));
-    const sortOrder = (sectionOverride?.sortOrder || searchParams.get('sortOrder') || 'desc') as 'asc' | 'desc';
+    const sortOrder = sectionOverride?.sortOrder || asSortOrder(searchParams.get('sortOrder'));
     const filters = parseFilters(searchParams);
 
     const result = mode === 'search' || query.trim()

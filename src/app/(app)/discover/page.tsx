@@ -21,7 +21,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useUIStore } from '@/lib/store';
+import { type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import type {
   DiscoverDetail,
   DiscoverFiltersResponse,
@@ -65,6 +65,22 @@ interface RateLimitInfo {
   retryAt: string | null;
 }
 
+const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
+  genres: [],
+  yearFrom: '',
+  yearTo: '',
+  runtimeMin: '',
+  runtimeMax: '',
+  language: '',
+  region: 'US',
+  ratingMin: '',
+  ratingMax: '',
+  voteCountMin: '',
+  providers: [],
+  networks: [],
+  releaseState: '',
+};
+
 function formatYear(value: string | null) {
   if (!value) return 'Unknown';
   return value.slice(0, 4);
@@ -76,13 +92,32 @@ function cardTypeBadge(type: 'movie' | 'tv') {
 }
 
 function parsePositiveInt(value: string) {
-  const n = Number(value);
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  const n = Number(normalized);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 }
 
 function parsePositiveFloat(value: string) {
-  const n = Number(value);
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  const n = Number(normalized);
   return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
+function normalizeFilterValues(filters: DiscoverFiltersState): DiscoverFiltersState {
+  return {
+    ...filters,
+    yearFrom: parsePositiveInt(filters.yearFrom)?.toString() || '',
+    yearTo: parsePositiveInt(filters.yearTo)?.toString() || '',
+    runtimeMin: parsePositiveInt(filters.runtimeMin)?.toString() || '',
+    runtimeMax: parsePositiveInt(filters.runtimeMax)?.toString() || '',
+    ratingMin: parsePositiveFloat(filters.ratingMin)?.toString() || '',
+    ratingMax: parsePositiveFloat(filters.ratingMax)?.toString() || '',
+    voteCountMin: parsePositiveInt(filters.voteCountMin)?.toString() || '',
+    language: filters.language.trim().toLowerCase(),
+    region: (filters.region || 'US').trim().toUpperCase().slice(0, 2),
+  };
 }
 
 function isDefaultFilters(filters: ReturnType<typeof useUIStore.getState>['discoverFilters']) {
@@ -252,7 +287,11 @@ export default function DiscoverPage() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [manualBrowseMode, setManualBrowseMode] = useState(false);
   const [filtersMeta, setFiltersMeta] = useState<DiscoverFiltersResponse | null>(null);
+  const [draftFilters, setDraftFilters] = useState<DiscoverFiltersState>(discoverFilters);
+  const [draftSort, setDraftSort] = useState(discoverSort);
+  const [draftSortDirection, setDraftSortDirection] = useState(discoverSortDirection);
   const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
   const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
@@ -282,13 +321,14 @@ export default function DiscoverPage() {
 
   const gridMode = useMemo(() => {
     return Boolean(
+      manualBrowseMode ||
       query.trim()
       || hasAdvancedFilters
       || activeSectionKey
       || discoverSort !== 'trending'
       || discoverContentType !== 'all'
     );
-  }, [query, hasAdvancedFilters, activeSectionKey, discoverSort, discoverContentType]);
+  }, [manualBrowseMode, query, hasAdvancedFilters, activeSectionKey, discoverSort, discoverContentType]);
 
   const visibleSections = useMemo(() => {
     if (discoverContentType === 'all') return sections;
@@ -459,8 +499,16 @@ export default function DiscoverPage() {
   }, [rateLimitInfo?.retryAfterSeconds]);
 
   useEffect(() => {
+    if (!filtersOpen) return;
+    setDraftFilters(discoverFilters);
+    setDraftSort(discoverSort);
+    setDraftSortDirection(discoverSortDirection);
+  }, [filtersOpen, discoverFilters, discoverSort, discoverSortDirection]);
+
+  useEffect(() => {
     if (query.trim()) {
       setActiveSectionKey(null);
+      setManualBrowseMode(true);
     }
   }, [query]);
 
@@ -468,8 +516,46 @@ export default function DiscoverPage() {
     setSelectedItem({ id: item.tmdbId, mediaType: item.mediaType });
   }, []);
 
+  const handleOpenFilters = useCallback(() => {
+    setDraftFilters(discoverFilters);
+    setDraftSort(discoverSort);
+    setDraftSortDirection(discoverSortDirection);
+    setFiltersOpen(true);
+  }, [discoverFilters, discoverSort, discoverSortDirection]);
+
+  const handleSelectContentType = useCallback((type: 'all' | 'movie' | 'show' | 'anime') => {
+    if (discoverContentType === type && gridMode) {
+      void fetchGridItems(1, false);
+      return;
+    }
+    setDiscoverContentType(type);
+    setActiveSectionKey(null);
+    setManualBrowseMode(true);
+  }, [discoverContentType, gridMode, fetchGridItems, setDiscoverContentType]);
+
+  const handleSelectSort = useCallback((sort: string) => {
+    if (discoverSort === sort && gridMode) {
+      void fetchGridItems(1, false);
+      return;
+    }
+    setDiscoverSort(sort);
+    setActiveSectionKey(null);
+    setManualBrowseMode(true);
+  }, [discoverSort, gridMode, fetchGridItems, setDiscoverSort]);
+
+  const goToDiscoverHome = useCallback(() => {
+    setDiscoverFilters({ ...DEFAULT_DISCOVER_FILTERS });
+    setDiscoverSort('trending');
+    setDiscoverSortDirection('desc');
+    setDiscoverContentType('all');
+    setActiveSectionKey(null);
+    setQuery('');
+    setManualBrowseMode(false);
+  }, [setDiscoverFilters, setDiscoverSort, setDiscoverSortDirection, setDiscoverContentType]);
+
   const handleSeeAll = useCallback((section: DiscoverSection) => {
     setActiveSectionKey(section.key);
+    setManualBrowseMode(true);
     const mapped = SECTION_TO_BROWSE[section.key];
     if (mapped) {
       setDiscoverSort(mapped.sort);
@@ -488,6 +574,7 @@ export default function DiscoverPage() {
     });
     setDiscoverContentType(type);
     setActiveSectionKey(null);
+    setManualBrowseMode(true);
   }, [discoverFilters, setDiscoverFilters, setDiscoverContentType]);
 
   const pickProvider = useCallback((providerId: number) => {
@@ -498,30 +585,12 @@ export default function DiscoverPage() {
         : [...discoverFilters.providers, providerId],
     });
     setActiveSectionKey(null);
+    setManualBrowseMode(true);
   }, [discoverFilters, setDiscoverFilters]);
 
   const resetFilters = useCallback(() => {
-    setDiscoverFilters({
-      genres: [],
-      yearFrom: '',
-      yearTo: '',
-      runtimeMin: '',
-      runtimeMax: '',
-      language: '',
-      region: 'US',
-      ratingMin: '',
-      ratingMax: '',
-      voteCountMin: '',
-      providers: [],
-      networks: [],
-      releaseState: '',
-    });
-    setDiscoverSort('trending');
-    setDiscoverSortDirection('desc');
-    setDiscoverContentType('all');
-    setActiveSectionKey(null);
-    setQuery('');
-  }, [setDiscoverFilters, setDiscoverSort, setDiscoverSortDirection, setDiscoverContentType]);
+    goToDiscoverHome();
+  }, [goToDiscoverHome]);
 
   const genreChoices = useMemo(() => {
     if (!filtersMeta) return [];
@@ -572,7 +641,7 @@ export default function DiscoverPage() {
             />
           </div>
           <button
-            onClick={() => setFiltersOpen(true)}
+            onClick={handleOpenFilters}
             className="h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
             aria-label="Advanced filters"
           >
@@ -580,51 +649,48 @@ export default function DiscoverPage() {
           </button>
         </div>
 
-        <div className="mt-2 flex items-center gap-2 overflow-x-auto scrollbar-hide">
-          {[
-            { value: 'all', label: 'All', icon: Compass },
-            { value: 'movie', label: 'Movies', icon: Film },
-            { value: 'show', label: 'Shows', icon: Tv },
-            { value: 'anime', label: 'Anime', icon: Sparkles },
-          ].map((option) => {
-            const Icon = option.icon;
-            const active = discoverContentType === option.value;
-            return (
-              <button
-                key={option.value}
-                onClick={() => {
-                  setDiscoverContentType(option.value as 'all' | 'movie' | 'show' | 'anime');
-                  setActiveSectionKey(null);
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
-                  active ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {option.label}
-              </button>
-            );
-          })}
-
-          {SORT_OPTIONS.map((option) => {
-            const active = discoverSort === option.value;
-            const Icon = option.icon;
-            return (
-              <button
-                key={option.value}
-                onClick={() => {
-                  setDiscoverSort(option.value);
-                  setActiveSectionKey(null);
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
-                  active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {option.label}
-              </button>
-            );
-          })}
+        <div className="mt-2 space-y-2">
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            {[
+              { value: 'all', label: 'All', icon: Compass },
+              { value: 'movie', label: 'Movies', icon: Film },
+              { value: 'show', label: 'Shows', icon: Tv },
+              { value: 'anime', label: 'Anime', icon: Sparkles },
+            ].map((option) => {
+              const Icon = option.icon;
+              const active = discoverContentType === option.value;
+              return (
+                <button
+                  key={option.value}
+                  onClick={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show' | 'anime')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
+                    active ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            {SORT_OPTIONS.map((option) => {
+              const active = discoverSort === option.value;
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.value}
+                  onClick={() => handleSelectSort(option.value)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
+                    active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {rateLimitInfo && (
@@ -644,13 +710,13 @@ export default function DiscoverPage() {
       {!gridMode && (
         <div className="space-y-5">
           {loadingSections ? (
-            <div className="space-y-4">
-              {[...Array(4)].map((_, idx) => (
+            <div className="space-y-5">
+              {[...Array(6)].map((_, idx) => (
                 <div key={idx} className="space-y-2">
                   <Skeleton className="h-5 w-40" />
-                  <div className="flex gap-2">
-                    {[...Array(5)].map((__, i) => (
-                      <Skeleton key={i} className="h-40 w-[110px] rounded-xl" />
+                  <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
+                    {[...Array(8)].map((__, i) => (
+                      <Skeleton key={i} className="h-[165px] w-[110px] sm:h-[210px] sm:w-[140px] rounded-xl shrink-0" />
                     ))}
                   </div>
                 </div>
@@ -673,24 +739,33 @@ export default function DiscoverPage() {
 
       {gridMode && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm text-muted-foreground">Discover Results</p>
               <p className="text-xs text-muted-foreground">
                 {activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
               </p>
             </div>
-            <button
-              onClick={() => setActiveSectionKey(null)}
-              className="text-xs text-primary font-medium"
-            >
-              Clear section
-            </button>
+            <div className="flex items-center gap-2">
+              {activeSectionKey && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setActiveSectionKey(null)}
+                  className="h-8 px-2 text-xs"
+                >
+                  Clear section
+                </Button>
+              )}
+              <Button variant="outline" size="sm" onClick={goToDiscoverHome} className="h-8 px-2 text-xs">
+                Back to Discover
+              </Button>
+            </div>
           </div>
 
           {loadingItems ? (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
-              {[...Array(18)].map((_, idx) => (
+              {[...Array(24)].map((_, idx) => (
                 <Skeleton key={idx} className="aspect-[2/3] rounded-xl" />
               ))}
             </div>
@@ -739,10 +814,9 @@ export default function DiscoverPage() {
                   <button
                     key={option.value}
                     onClick={() => {
-                      setDiscoverSort(option.value);
-                      setActiveSectionKey(null);
+                      setDraftSort(option.value);
                     }}
-                    className={`px-3 py-2 rounded-lg border text-sm ${discoverSort === option.value ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    className={`px-3 py-2 rounded-lg border text-sm ${draftSort === option.value ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
                   >
                     {option.label}
                   </button>
@@ -756,8 +830,8 @@ export default function DiscoverPage() {
                 {['desc', 'asc'].map((dir) => (
                   <button
                     key={dir}
-                    onClick={() => setDiscoverSortDirection(dir as 'asc' | 'desc')}
-                    className={`px-3 py-2 rounded-lg border text-sm uppercase ${discoverSortDirection === dir ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    onClick={() => setDraftSortDirection(dir as 'asc' | 'desc')}
+                    className={`px-3 py-2 rounded-lg border text-sm uppercase ${draftSortDirection === dir ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
                   >
                     {dir}
                   </button>
@@ -769,8 +843,8 @@ export default function DiscoverPage() {
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Year From</label>
                 <Input
-                  value={discoverFilters.yearFrom}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, yearFrom: e.target.value })}
+                  value={draftFilters.yearFrom}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, yearFrom: e.target.value })}
                   placeholder="1995"
                   inputMode="numeric"
                 />
@@ -778,8 +852,8 @@ export default function DiscoverPage() {
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Year To</label>
                 <Input
-                  value={discoverFilters.yearTo}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, yearTo: e.target.value })}
+                  value={draftFilters.yearTo}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, yearTo: e.target.value })}
                   placeholder="2026"
                   inputMode="numeric"
                 />
@@ -790,8 +864,8 @@ export default function DiscoverPage() {
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Runtime Min</label>
                 <Input
-                  value={discoverFilters.runtimeMin}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, runtimeMin: e.target.value })}
+                  value={draftFilters.runtimeMin}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, runtimeMin: e.target.value })}
                   placeholder="45"
                   inputMode="numeric"
                 />
@@ -799,8 +873,8 @@ export default function DiscoverPage() {
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Runtime Max</label>
                 <Input
-                  value={discoverFilters.runtimeMax}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, runtimeMax: e.target.value })}
+                  value={draftFilters.runtimeMax}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, runtimeMax: e.target.value })}
                   placeholder="180"
                   inputMode="numeric"
                 />
@@ -811,8 +885,8 @@ export default function DiscoverPage() {
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Rating Min</label>
                 <Input
-                  value={discoverFilters.ratingMin}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, ratingMin: e.target.value })}
+                  value={draftFilters.ratingMin}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, ratingMin: e.target.value })}
                   placeholder="7.5"
                   inputMode="decimal"
                 />
@@ -820,8 +894,8 @@ export default function DiscoverPage() {
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Rating Max</label>
                 <Input
-                  value={discoverFilters.ratingMax}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, ratingMax: e.target.value })}
+                  value={draftFilters.ratingMax}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, ratingMax: e.target.value })}
                   placeholder="10"
                   inputMode="decimal"
                 />
@@ -831,8 +905,8 @@ export default function DiscoverPage() {
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Vote Count Min</label>
               <Input
-                value={discoverFilters.voteCountMin}
-                onChange={(e) => setDiscoverFilters({ ...discoverFilters, voteCountMin: e.target.value })}
+                value={draftFilters.voteCountMin}
+                onChange={(e) => setDraftFilters({ ...draftFilters, voteCountMin: e.target.value })}
                 placeholder="500"
                 inputMode="numeric"
               />
@@ -842,16 +916,16 @@ export default function DiscoverPage() {
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Language</label>
                 <Input
-                  value={discoverFilters.language}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, language: e.target.value.toLowerCase() })}
+                  value={draftFilters.language}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, language: e.target.value })}
                   placeholder="en"
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Region</label>
                 <Input
-                  value={discoverFilters.region}
-                  onChange={(e) => setDiscoverFilters({ ...discoverFilters, region: e.target.value.toUpperCase() })}
+                  value={draftFilters.region}
+                  onChange={(e) => setDraftFilters({ ...draftFilters, region: e.target.value })}
                   placeholder="US"
                 />
               </div>
@@ -863,8 +937,8 @@ export default function DiscoverPage() {
                 {['', 'released', 'upcoming', 'airing', 'ended'].map((state) => (
                   <button
                     key={state || 'all'}
-                    onClick={() => setDiscoverFilters({ ...discoverFilters, releaseState: state as '' | 'released' | 'upcoming' | 'airing' | 'ended' })}
-                    className={`px-3 py-2 rounded-lg border text-sm ${discoverFilters.releaseState === state ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    onClick={() => setDraftFilters({ ...draftFilters, releaseState: state as '' | 'released' | 'upcoming' | 'airing' | 'ended' })}
+                    className={`px-3 py-2 rounded-lg border text-sm ${draftFilters.releaseState === state ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
                   >
                     {state || 'Any'}
                   </button>
@@ -874,89 +948,106 @@ export default function DiscoverPage() {
 
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Genres</label>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
+                <div className="flex flex-wrap gap-2">
                 {genreChoices.slice(0, 28).map((genre) => {
-                  const active = discoverFilters.genres.includes(genre.id);
+                  const active = draftFilters.genres.includes(genre.id);
                   return (
                     <button
                       key={`${genre.type}-${genre.id}`}
                       onClick={() => {
-                        const set = new Set(discoverFilters.genres);
+                        const set = new Set(draftFilters.genres);
                         if (set.has(genre.id)) set.delete(genre.id);
                         else set.add(genre.id);
-                        setDiscoverFilters({ ...discoverFilters, genres: [...set] });
+                        setDraftFilters({ ...draftFilters, genres: [...set] });
                       }}
-                      className={`px-2.5 py-1 rounded-full text-xs border ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
                     >
                       {genre.name}
                     </button>
                   );
                 })}
+                </div>
               </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Providers</label>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
+                <div className="flex flex-wrap gap-2">
                 {providerChoices.slice(0, 28).map((provider) => {
-                  const active = discoverFilters.providers.includes(provider.id);
+                  const active = draftFilters.providers.includes(provider.id);
                   return (
                     <button
                       key={`${provider.type}-${provider.id}`}
                       onClick={() => {
-                        const set = new Set(discoverFilters.providers);
+                        const set = new Set(draftFilters.providers);
                         if (set.has(provider.id)) set.delete(provider.id);
                         else set.add(provider.id);
-                        setDiscoverFilters({ ...discoverFilters, providers: [...set] });
+                        setDraftFilters({ ...draftFilters, providers: [...set] });
                       }}
-                      className={`px-2.5 py-1 rounded-full text-xs border ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
                     >
                       {provider.name}
                     </button>
                   );
                 })}
+                </div>
               </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Networks</label>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
+                <div className="flex flex-wrap gap-2">
                 {(filtersMeta?.networks || []).slice(0, 24).map((network) => {
-                  const active = discoverFilters.networks.includes(network.id);
+                  const active = draftFilters.networks.includes(network.id);
                   return (
                     <button
                       key={network.id}
                       onClick={() => {
-                        const set = new Set(discoverFilters.networks);
+                        const set = new Set(draftFilters.networks);
                         if (set.has(network.id)) set.delete(network.id);
                         else set.add(network.id);
-                        setDiscoverFilters({ ...discoverFilters, networks: [...set] });
+                        setDraftFilters({ ...draftFilters, networks: [...set] });
                       }}
-                      className={`px-2.5 py-1 rounded-full text-xs border ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
                     >
                       {network.name}
                     </button>
                   );
                 })}
+                </div>
               </div>
             </div>
           </div>
 
           <SheetFooter className="border-t">
             <div className="grid grid-cols-2 gap-2 w-full">
-              <Button variant="outline" onClick={resetFilters}>Reset</Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDraftFilters({ ...DEFAULT_DISCOVER_FILTERS });
+                  setDraftSort('trending');
+                  setDraftSortDirection('desc');
+                }}
+              >
+                Reset
+              </Button>
               <Button onClick={() => {
-                const normalized = {
-                  ...discoverFilters,
-                  yearFrom: parsePositiveInt(discoverFilters.yearFrom)?.toString() || '',
-                  yearTo: parsePositiveInt(discoverFilters.yearTo)?.toString() || '',
-                  runtimeMin: parsePositiveInt(discoverFilters.runtimeMin)?.toString() || '',
-                  runtimeMax: parsePositiveInt(discoverFilters.runtimeMax)?.toString() || '',
-                  ratingMin: parsePositiveFloat(discoverFilters.ratingMin)?.toString() || '',
-                  ratingMax: parsePositiveFloat(discoverFilters.ratingMax)?.toString() || '',
-                  voteCountMin: parsePositiveInt(discoverFilters.voteCountMin)?.toString() || '',
-                };
+                const normalized = normalizeFilterValues(draftFilters);
                 setDiscoverFilters(normalized);
+                setDiscoverSort(draftSort);
+                setDiscoverSortDirection(draftSortDirection);
+                setActiveSectionKey(null);
+                setManualBrowseMode(
+                  Boolean(
+                    query.trim()
+                    || !isDefaultFilters(normalized)
+                    || draftSort !== 'trending'
+                    || discoverContentType !== 'all'
+                  )
+                );
                 setFiltersOpen(false);
               }}>
                 Apply
