@@ -9,6 +9,10 @@ export class PollingService {
   private currentIntervalMs: number | null = null;
 
   start(intervalMs: number): void {
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      throw new Error('Invalid polling interval');
+    }
+
     if (this.intervalId) {
       if (this.currentIntervalMs !== intervalMs) {
         this.restart(intervalMs);
@@ -38,6 +42,13 @@ export class PollingService {
 
   private async poll(): Promise<void> {
     try {
+      const pollSources = [
+        'pollSonarr',
+        'pollRadarr',
+        'pollQBittorrent',
+        'pollJellyfin',
+        'checkUpcoming',
+      ] as const;
       const results = await Promise.allSettled([
         this.pollSonarr(),
         this.pollRadarr(),
@@ -46,11 +57,15 @@ export class PollingService {
         this.checkUpcoming(),
       ]);
 
-      const rejected = results.filter(
-        (result): result is PromiseRejectedResult => result.status === 'rejected'
-      );
+      const rejected = results.flatMap((result, index) => {
+        if (result.status !== 'rejected') return [];
+        const reason = result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+        return [{ source: pollSources[index], reason }];
+      });
       if (rejected.length > 0) {
-        console.error('[Polling] Failures:', rejected.map((result) => result.reason));
+        console.error('[Polling] Failures:', rejected);
       }
     } catch (e) {
       console.error('[Polling] Error:', e);

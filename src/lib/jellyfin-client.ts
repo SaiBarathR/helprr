@@ -80,6 +80,10 @@ export class JellyfinClient {
     return response.data;
   }
 
+  private isPluginMissingError(error: unknown): boolean {
+    return axios.isAxiosError(error) && error.response?.status === 404;
+  }
+
   async getSystemInfo(): Promise<JellyfinSystemInfo> {
     return this.get<JellyfinSystemInfo>('/System/Info');
   }
@@ -178,8 +182,9 @@ export class JellyfinClient {
         endDate: endDate || this.todayStr(),
         stamp: Date.now(),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -193,8 +198,9 @@ export class JellyfinClient {
       return await this.get<PlaybackActivityItem[]>(`/user_usage_stats/${userId}/${date}/GetItems`, {
         filter,
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -214,8 +220,9 @@ export class JellyfinClient {
         stamp: Date.now(),
         timezoneOffset: this.getTzOffset(),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -233,8 +240,9 @@ export class JellyfinClient {
         stamp: Date.now(),
         timezoneOffset: this.getTzOffset(),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -250,8 +258,9 @@ export class JellyfinClient {
         stamp: Date.now(),
         timezoneOffset: this.getTzOffset(),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -266,8 +275,9 @@ export class JellyfinClient {
         stamp: Date.now(),
         timezoneOffset: this.getTzOffset(),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -282,16 +292,18 @@ export class JellyfinClient {
         stamp: Date.now(),
         timezoneOffset: this.getTzOffset(),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
   async getTypeFilterList(): Promise<string[] | null> {
     try {
       return await this.get<string[]>('/user_usage_stats/type_filter_list');
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -300,8 +312,9 @@ export class JellyfinClient {
       return await this.get<Array<{ name: string; id: string }>>('/user_usage_stats/user_list', {
         stamp: Date.now(),
       });
-    } catch {
-      return null;
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 
@@ -311,18 +324,36 @@ export class JellyfinClient {
       const response = await this.client.post('/user_usage_stats/submit_custom_query', {
         CustomQueryString: sql,
       });
-      const data = response.data as { columns?: unknown; results?: unknown } | null;
-      const columns = data?.columns;
+      const data = response.data as { columns?: unknown; colums?: unknown; results?: unknown } | null;
+      const columns = data?.columns ?? data?.colums;
       const results = data?.results;
-      if (!Array.isArray(columns) || !columns.every((column) => typeof column === 'string')) {
-        return null;
+
+      if (!Array.isArray(columns) || !Array.isArray(results)) {
+        throw new Error('Unexpected submit_custom_query response format');
       }
-      if (!Array.isArray(results) || !results.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === 'string'))) {
-        return null;
-      }
-      return { columns, results };
-    } catch {
-      return null;
+
+      const normalizedColumns = columns.map((column) => String(column ?? ''));
+      const normalizedResults = results.map((row) => {
+        if (!Array.isArray(row)) {
+          throw new Error('Unexpected submit_custom_query row format');
+        }
+        return row.map((cell) => {
+          if (cell == null) return '';
+          if (typeof cell === 'string') return cell;
+          if (typeof cell === 'number' || typeof cell === 'boolean' || typeof cell === 'bigint') {
+            return String(cell);
+          }
+          return JSON.stringify(cell);
+        });
+      });
+
+      return {
+        columns: normalizedColumns,
+        results: normalizedResults,
+      };
+    } catch (error) {
+      if (this.isPluginMissingError(error)) return null;
+      throw error;
     }
   }
 }

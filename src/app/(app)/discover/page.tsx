@@ -105,7 +105,19 @@ function normalizeFilterValues(filters: DiscoverFiltersState): DiscoverFiltersSt
 }
 
 function isDefaultFilters(filters: ReturnType<typeof useUIStore.getState>['discoverFilters']) {
+  const hasSameNumberSet = (a: number[], b: number[]) => {
+    if (a.length !== b.length) return false;
+    const uniqueA = new Set(a);
+    const uniqueB = new Set(b);
+    if (uniqueA.size !== uniqueB.size) return false;
+    for (const value of uniqueA) {
+      if (!uniqueB.has(value)) return false;
+    }
+    return true;
+  };
+
   return filters.genres.length === DEFAULT_DISCOVER_FILTERS.genres.length
+    && hasSameNumberSet(filters.genres, DEFAULT_DISCOVER_FILTERS.genres)
     && filters.yearFrom === DEFAULT_DISCOVER_FILTERS.yearFrom
     && filters.yearTo === DEFAULT_DISCOVER_FILTERS.yearTo
     && filters.runtimeMin === DEFAULT_DISCOVER_FILTERS.runtimeMin
@@ -115,8 +127,8 @@ function isDefaultFilters(filters: ReturnType<typeof useUIStore.getState>['disco
     && filters.ratingMin === DEFAULT_DISCOVER_FILTERS.ratingMin
     && filters.ratingMax === DEFAULT_DISCOVER_FILTERS.ratingMax
     && filters.voteCountMin === DEFAULT_DISCOVER_FILTERS.voteCountMin
-    && filters.providers.length === DEFAULT_DISCOVER_FILTERS.providers.length
-    && filters.networks.length === DEFAULT_DISCOVER_FILTERS.networks.length
+    && hasSameNumberSet(filters.providers, DEFAULT_DISCOVER_FILTERS.providers)
+    && hasSameNumberSet(filters.networks, DEFAULT_DISCOVER_FILTERS.networks)
     && filters.releaseState === DEFAULT_DISCOVER_FILTERS.releaseState;
 }
 

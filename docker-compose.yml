@@ -17,6 +17,18 @@ services:
       timeout: 5s
       retries: 5
 
+  helprr-redis:
+    image: redis:7-alpine
+    container_name: helprr-redis
+    restart: unless-stopped
+    networks:
+      - helprr-net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   helprr:
     build:
       context: .
@@ -30,9 +42,12 @@ services:
     depends_on:
       helprr-db:
         condition: service_healthy
+      helprr-redis:
+        condition: service_healthy
     environment:
       - TZ=${TZ:-UTC}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@helprr-db:5432/helprr}
+      - REDIS_URL=redis://helprr-redis:6379
       - APP_PASSWORD=${APP_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
       - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
