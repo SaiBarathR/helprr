@@ -64,14 +64,13 @@ async function clearAttempts(ip: string): Promise<void> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(request);
+  const rateLimitKey = ip ?? 'unknown';
 
-  let attempts = 0;
-  if (ip) {
-    try {
-      attempts = await incrementAttempts(ip);
-    } catch {
-      return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
-    }
+  let attempts: number;
+  try {
+    attempts = await incrementAttempts(rateLimitKey);
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
   }
 
   if (attempts > LOGIN_MAX_ATTEMPTS) {
@@ -101,12 +100,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
   }
 
-  if (ip) {
-    try {
-      await clearAttempts(ip);
-    } catch (error) {
-      console.error('[Auth] Failed to clear login attempts:', error);
-    }
+  try {
+    await clearAttempts(rateLimitKey);
+  } catch (error) {
+    console.error('[Auth] Failed to clear login attempts:', error);
   }
 
   const token = await createSession();
