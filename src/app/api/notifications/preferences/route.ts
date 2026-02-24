@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { EVENT_TYPES, ensureNotificationPreferences } from '@/lib/notification-events';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -11,6 +11,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const subscriptionId = searchParams.get('subscriptionId');
     const endpoint = searchParams.get('endpoint');
+
+    if (!subscriptionId && !endpoint) {
+      return NextResponse.json({ error: 'subscriptionId or endpoint is required' }, { status: 400 });
+    }
 
     let resolvedSubscriptionId: string | null = null;
     if (subscriptionId) {
@@ -31,22 +35,16 @@ export async function GET(request: NextRequest) {
       const sub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
       if (sub) {
         resolvedSubscriptionId = sub.id;
-      } else {
-        return NextResponse.json([]);
       }
     }
 
-    if (!resolvedSubscriptionId && !endpoint) {
-      return NextResponse.json({ error: 'subscriptionId or endpoint is required' }, { status: 400 });
+    if (!resolvedSubscriptionId) {
+      return NextResponse.json([]);
     }
 
-    if (resolvedSubscriptionId) {
-      await ensureNotificationPreferences(resolvedSubscriptionId);
-    }
+    await ensureNotificationPreferences(resolvedSubscriptionId);
 
-    const where = resolvedSubscriptionId
-      ? { subscriptionId: resolvedSubscriptionId }
-      : { subscription: { endpoint: endpoint as string } };
+    const where = { subscriptionId: resolvedSubscriptionId };
 
     const preferences = await prisma.notificationPreference.findMany({
       where,
@@ -59,7 +57,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

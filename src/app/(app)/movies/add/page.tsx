@@ -36,6 +36,7 @@ function AddMoviePageContent() {
   const [autoSearched, setAutoSearched] = useState(false);
   const lastPrefillTermRef = useRef<string | null>(null);
   const lastPrefillTmdbIdRef = useRef<number | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -49,16 +50,32 @@ function AddMoviePageContent() {
     });
   }, []);
 
+  useEffect(() => {
+    return () => {
+      searchAbortRef.current?.abort();
+    };
+  }, []);
+
   const runSearch = useCallback(async (searchTerm: string, targetTmdbId?: number) => {
+    searchAbortRef.current?.abort();
+
     if (!searchTerm.trim()) {
+      searchAbortRef.current = null;
       setResults([]);
       setSelected(null);
       setSearching(false);
       return;
     }
+
+    const controller = new AbortController();
+    const { signal } = controller;
+    searchAbortRef.current = controller;
+
     setSearching(true);
     try {
-      const res = await fetch(`/api/radarr/lookup?term=${encodeURIComponent(searchTerm)}`);
+      const res = await fetch(`/api/radarr/lookup?term=${encodeURIComponent(searchTerm)}`, { signal });
+      if (signal.aborted || searchAbortRef.current !== controller) return;
+
       if (!res.ok) {
         setResults([]);
         setSelected(null);
@@ -67,18 +84,26 @@ function AddMoviePageContent() {
       }
 
       const data: RadarrLookupResult[] = await res.json();
+      if (signal.aborted || searchAbortRef.current !== controller) return;
       setResults(data);
 
       if (targetTmdbId) {
         const matched = data.find((item) => item.tmdbId === targetTmdbId);
         setSelected(matched ?? null);
       }
-    } catch {
+    } catch (error) {
+      if ((error as { name?: string })?.name === 'AbortError' || signal.aborted) {
+        return;
+      }
       setResults([]);
       setSelected(null);
       toast.error('Search failed');
+    } finally {
+      if (!signal.aborted && searchAbortRef.current === controller) {
+        setSearching(false);
+        searchAbortRef.current = null;
+      }
     }
-    finally { setSearching(false); }
   }, []);
 
   async function handleSearch(e: React.FormEvent) {
