@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

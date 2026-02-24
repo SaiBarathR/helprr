@@ -14,7 +14,19 @@ export async function GET(request: NextRequest) {
 
     let resolvedSubscriptionId: string | null = null;
     if (subscriptionId) {
-      resolvedSubscriptionId = subscriptionId;
+      const sub = await prisma.pushSubscription.findUnique({ where: { id: subscriptionId } });
+      if (sub) {
+        resolvedSubscriptionId = sub.id;
+      } else if (endpoint) {
+        const endpointSub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
+        if (endpointSub) {
+          resolvedSubscriptionId = endpointSub.id;
+        } else {
+          return NextResponse.json([]);
+        }
+      } else {
+        return NextResponse.json([]);
+      }
     } else if (endpoint) {
       const sub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
       if (sub) {
@@ -66,6 +78,14 @@ export async function POST(request: NextRequest) {
     }
     if (typeof enabled !== 'boolean') {
       return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
+    }
+
+    const subscription = await prisma.pushSubscription.findUnique({
+      where: { id: subscriptionId },
+      select: { id: true },
+    });
+    if (!subscription) {
+      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
     }
 
     await ensureNotificationPreferences(subscriptionId);

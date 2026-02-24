@@ -68,6 +68,13 @@ function asContentType(contentType: string | null): DiscoverContentType {
   return 'all';
 }
 
+function asReleaseState(value: string | null): DiscoverFilters['releaseState'] | undefined {
+  if (value === 'released' || value === 'upcoming' || value === 'airing' || value === 'ended') {
+    return value;
+  }
+  return undefined;
+}
+
 async function safeTmdb<T>(
   label: string,
   partialFailures: Set<string>,
@@ -156,7 +163,7 @@ function parseFilters(searchParams: URLSearchParams): DiscoverFilters {
     voteCountMin: parseNumber(searchParams.get('voteCountMin')),
     providers: parseNumberList(searchParams.get('providers')),
     networks: parseNumberList(searchParams.get('networks')),
-    releaseState: (searchParams.get('releaseState') as DiscoverFilters['releaseState']) || undefined,
+    releaseState: asReleaseState(searchParams.get('releaseState')),
   };
 }
 

@@ -3,7 +3,7 @@ import { getJellyfinClient } from '@/lib/service-helpers';
 import { getDefaultEndDate, sanitizeDays } from '@/lib/jellyfin-playback-query';
 import { requireAuth } from '@/lib/auth';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

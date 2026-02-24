@@ -312,8 +312,17 @@ export class TmdbClient {
       params.watch_region = input.region || 'US';
     }
     if (input.anime) {
-      params.with_genres = [16, ...(input.genres ?? [])].join(',');
-      params.with_original_language = 'ja';
+      const existingGenres = typeof params.with_genres === 'string'
+        ? params.with_genres
+          .split(',')
+          .map((genreId) => Number(genreId.trim()))
+          .filter((genreId) => Number.isFinite(genreId))
+        : [];
+      const mergedGenres = [...new Set([16, ...existingGenres, ...(input.genres ?? [])])];
+      params.with_genres = mergedGenres.join(',');
+      if (!input.language) {
+        params.with_original_language = 'ja';
+      }
     }
 
     const today = new Date().toISOString().slice(0, 10);

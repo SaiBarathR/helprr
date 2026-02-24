@@ -50,20 +50,34 @@ function AddMoviePageContent() {
   }, []);
 
   const runSearch = useCallback(async (searchTerm: string, targetTmdbId?: number) => {
-    if (!searchTerm.trim()) return;
+    if (!searchTerm.trim()) {
+      setResults([]);
+      setSelected(null);
+      setSearching(false);
+      return;
+    }
     setSearching(true);
     try {
       const res = await fetch(`/api/radarr/lookup?term=${encodeURIComponent(searchTerm)}`);
-      if (res.ok) {
-        const data: RadarrLookupResult[] = await res.json();
-        setResults(data);
-
-        if (targetTmdbId) {
-          const matched = data.find((item) => item.tmdbId === targetTmdbId);
-          if (matched) setSelected(matched);
-        }
+      if (!res.ok) {
+        setResults([]);
+        setSelected(null);
+        toast.error(`Search failed (${res.status}${res.statusText ? ` ${res.statusText}` : ''})`);
+        return;
       }
-    } catch { toast.error('Search failed'); }
+
+      const data: RadarrLookupResult[] = await res.json();
+      setResults(data);
+
+      if (targetTmdbId) {
+        const matched = data.find((item) => item.tmdbId === targetTmdbId);
+        setSelected(matched ?? null);
+      }
+    } catch {
+      setResults([]);
+      setSelected(null);
+      toast.error('Search failed');
+    }
     finally { setSearching(false); }
   }, []);
 

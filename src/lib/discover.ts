@@ -28,7 +28,9 @@ function asYear(value?: string) {
   return Number.isFinite(year) ? year : null;
 }
 
-export function isJapaneseAnime(item: TmdbListItem, mediaType: DiscoverMediaType): boolean {
+type AnimeCandidate = Pick<TmdbListItem, 'genre_ids' | 'original_language' | 'origin_country'>;
+
+export function isJapaneseAnime(item: AnimeCandidate, mediaType: DiscoverMediaType): boolean {
   const genres = item.genre_ids || [];
   if (!genres.includes(16)) return false;
 
