@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 
-export async function GET() {
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+export async function GET(): Promise<NextResponse> {
   try {
     const connections = await prisma.serviceConnection.findMany({
       orderBy: { type: 'asc' },
@@ -31,39 +35,62 @@ export async function GET() {
  *
  * @returns The saved service connection object with `apiKey` obscured, or an error object `{ error: string }` when validation or saving fails (returned with an appropriate HTTP status).
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const body = await request.json();
-    const { type, url, apiKey, username } = body;
+    const rawBody: unknown = await request.json();
+    if (!rawBody || typeof rawBody !== 'object') {
+      return NextResponse.json(
+        { error: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
 
-    if (!type || !url || !apiKey) {
+    const body = rawBody as Record<string, unknown>;
+    const typeValue = body.type;
+    const urlValue = body.url;
+    const apiKeyValue = body.apiKey;
+    const usernameValue = body.username;
+
+    if (!isNonEmptyString(typeValue) || !isNonEmptyString(urlValue) || !isNonEmptyString(apiKeyValue)) {
       return NextResponse.json(
         { error: 'type, url, and apiKey/password are required' },
         { status: 400 }
       );
     }
 
-    if (typeof type !== 'string' || !isServiceType(type)) {
+    if (!isServiceType(typeValue)) {
       return NextResponse.json(
         { error: 'Invalid service type' },
         { status: 400 }
       );
     }
 
+    const type = typeValue;
+    const url = urlValue.trim().replace(/\/+$/, '');
+    const apiKey = apiKeyValue.trim();
+    const normalizedUsername = typeof usernameValue === 'string'
+      ? usernameValue.trim()
+      : '';
+    const username = type === 'QBITTORRENT'
+      ? (normalizedUsername || 'admin')
+      : type === 'JELLYFIN'
+        ? (normalizedUsername || null)
+        : null;
+
     const apiKeyToStore = await resolveApiKeyForService(type, apiKey);
 
     const connection = await prisma.serviceConnection.upsert({
       where: { type },
       update: {
-        url: url.replace(/\/+$/, ''),
+        url,
         apiKey: apiKeyToStore,
-        username: type === 'QBITTORRENT' ? (username || 'admin') : type === 'JELLYFIN' ? username : null,
+        username,
       },
       create: {
         type,
-        url: url.replace(/\/+$/, ''),
+        url,
         apiKey: apiKeyToStore,
-        username: type === 'QBITTORRENT' ? (username || 'admin') : type === 'JELLYFIN' ? username : null,
+        username,
       },
     });
 

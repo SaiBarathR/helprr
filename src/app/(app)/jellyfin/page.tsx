@@ -771,6 +771,7 @@ function StatsTab() {
   const [hourlyData, setHourlyData] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<JellyfinScheduledTask[]>([]);
   const [tvSort, setTvSort] = useState<SortMode>('plays');
+  const [clientSort, setClientSort] = useState<SortMode>('plays');
   const [movieSort, setMovieSort] = useState<SortMode>('plays');
 
   useEffect(() => {
@@ -867,8 +868,8 @@ function StatsTab() {
 
       {clientBreakdown.length > 0 && (
         <div>
-          <SectionHeader title="Top Clients" />
-          <RankedList entries={clientBreakdown} sortBy="plays" limit={8} />
+          <SectionHeader title="Top Clients" trailing={<SortToggle value={clientSort} onChange={setClientSort} />} />
+          <RankedList entries={clientBreakdown} sortBy={clientSort} limit={10} />
         </div>
       )}
 
