@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -34,6 +34,8 @@ function AddMoviePageContent() {
   const [minAvailability, setMinAvailability] = useState('released');
   const [adding, setAdding] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
+  const lastPrefillTermRef = useRef<string | null>(null);
+  const lastPrefillTmdbIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -136,6 +138,23 @@ function AddMoviePageContent() {
   useEffect(() => {
     const prefillTerm = searchParams.get('term');
     if (prefillTerm) setTerm(prefillTerm);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const prefillTerm = searchParams.get('term');
+    const parsedTmdbId = Number(searchParams.get('tmdbId'));
+    const targetTmdbId = Number.isFinite(parsedTmdbId) ? parsedTmdbId : null;
+
+    const hasPrefillChanged = (
+      prefillTerm !== lastPrefillTermRef.current
+      || targetTmdbId !== lastPrefillTmdbIdRef.current
+    );
+
+    if (!hasPrefillChanged) return;
+
+    lastPrefillTermRef.current = prefillTerm;
+    lastPrefillTmdbIdRef.current = targetTmdbId;
+    setAutoSearched(false);
   }, [searchParams]);
 
   useEffect(() => {

@@ -18,7 +18,7 @@ function formatWindowDuration(ms: number): string {
 
 const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
 
-function getClientIp(request: NextRequest): string | null {
+function getClientIp(request: NextRequest): string {
   // Only trust x-forwarded-for when traffic passes through a sanitized reverse proxy.
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
@@ -27,7 +27,7 @@ function getClientIp(request: NextRequest): string | null {
     if (trimmed) return trimmed;
   }
   const realIp = request.headers.get('x-real-ip')?.trim();
-  return realIp || null;
+  return realIp || '127.0.0.1';
 }
 
 function attemptsKey(ip: string): string {
@@ -64,9 +64,6 @@ async function clearAttempts(ip: string): Promise<void> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(request);
-  if (!ip) {
-    return NextResponse.json({ error: 'Unable to determine client IP' }, { status: 400 });
-  }
 
   let attempts: number;
   try {

@@ -60,17 +60,17 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }
-    return NextResponse.redirect(new URL('/login', request.url));
+    return addSecurityHeaders(NextResponse.redirect(new URL('/login', request.url)));
   }
 
   try {
-    await jwtVerify(token, getJwtSecret());
+    await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
     return addSecurityHeaders(NextResponse.next());
   } catch {
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }
-    return NextResponse.redirect(new URL('/login', request.url));
+    return addSecurityHeaders(NextResponse.redirect(new URL('/login', request.url)));
   }
 }
 
