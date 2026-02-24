@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverDetail, RadarrMovie, SonarrSeries } from '@/types';
@@ -34,6 +35,9 @@ async function getLibraries() {
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const mediaType = searchParams.get('mediaType');

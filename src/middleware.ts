@@ -20,39 +20,55 @@ const COOKIE_NAME = 'helprr-session';
 
 const PUBLIC_PATHS = ['/login', '/api/auth/login'];
 
+const SECURITY_HEADERS: Record<string, string> = {
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-DNS-Prefetch-Control': 'off',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+};
+
+function addSecurityHeaders(response: NextResponse): NextResponse {
+  for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
+    response.headers.set(key, value);
+  }
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
-    return NextResponse.next();
+    return addSecurityHeaders(NextResponse.next());
   }
 
   // Allow service worker and manifest
   if (pathname === '/sw.js' || pathname === '/sw-push.js' || pathname === '/manifest.json' || pathname.startsWith('/_next')) {
-    return NextResponse.next();
+    return addSecurityHeaders(NextResponse.next());
   }
 
   // Allow static assets
   if (pathname.startsWith('/icons') || pathname.startsWith('/images')) {
-    return NextResponse.next();
+    return addSecurityHeaders(NextResponse.next());
   }
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
 
   if (!token) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
   try {
     await jwtVerify(token, getJwtSecret());
-    return NextResponse.next();
+    return addSecurityHeaders(NextResponse.next());
   } catch {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }
     return NextResponse.redirect(new URL('/login', request.url));
   }

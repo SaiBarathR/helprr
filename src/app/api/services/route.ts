@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 
 function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
@@ -11,6 +12,9 @@ function getErrorInfo(error: unknown): { message?: string; code?: string | numbe
 }
 
 export async function GET(): Promise<NextResponse> {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const connections = await prisma.serviceConnection.findMany({
       orderBy: { type: 'asc' },
@@ -40,6 +44,9 @@ export async function GET(): Promise<NextResponse> {
  * @returns The saved service connection object with `apiKey` obscured, or an error object `{ error: string }` when validation or saving fails (returned with an appropriate HTTP status).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     let rawBody: unknown;
     try {

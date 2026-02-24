@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Handle POST requests to trigger a Prowlarr indexer test for the route `.../indexers/[id]/test`.
@@ -12,6 +13,9 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { id } = await params;
     const client = await getProwlarrClient();

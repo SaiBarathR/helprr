@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Handle GET requests to retrieve Prowlarr history.
@@ -10,6 +11,9 @@ import { getProwlarrClient } from '@/lib/service-helpers';
  * @returns A JSON response containing the fetched history on success. On error, a JSON object `{ error: string }` is returned with HTTP status 500.
  */
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') ?? '1', 10);

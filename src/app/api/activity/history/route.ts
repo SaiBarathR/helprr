@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 import type { HistoryItem } from '@/types';
 
 /**
@@ -18,6 +19,9 @@ import type { HistoryItem } from '@/types';
  * @returns An object with `page`, `pageSize`, `totalRecords`, and `records` (the page of merged history items).
  */
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);

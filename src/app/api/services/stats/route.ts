@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient, getJellyfinClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 interface StatsResponse {
   totalMovies?: number;
@@ -15,6 +16,9 @@ interface StatsResponse {
 }
 
 export async function GET() {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   const stats: StatsResponse = {};
   let activeDownloads = 0;
   let hasDownloadCount = false;

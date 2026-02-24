@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 import { annotateDiscoverItems, dedupeDiscoverItems, normalizeTmdbItem, isJapaneseAnime } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type {
@@ -524,6 +525,9 @@ async function discoverItems(params: {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const mode = (searchParams.get('mode') || 'sections') as 'sections' | 'browse' | 'search';

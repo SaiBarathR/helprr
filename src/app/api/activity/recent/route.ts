@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 interface RecentItem {
   id: string;
@@ -12,6 +13,9 @@ interface RecentItem {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') ?? '10', 10);

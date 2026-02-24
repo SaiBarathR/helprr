@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 import { pollingService } from '@/lib/polling-service';
 
 /**
@@ -8,6 +9,9 @@ import { pollingService } from '@/lib/polling-service';
  * @returns The app settings record (singleton) as persisted in the database.
  */
 export async function GET() {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -44,6 +48,9 @@ export async function GET() {
  * @returns The resulting settings object as JSON on success; on failure returns `{ error: 'Failed to update settings' }` with HTTP status 500.
  */
 export async function PUT(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const {
