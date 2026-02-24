@@ -70,24 +70,32 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       ),
     ]);
 
-    if (!countResult || !dataResult) {
+    if (
+      !countResult
+      || !dataResult
+      || !Array.isArray(countResult.results)
+      || !Array.isArray(dataResult.results)
+    ) {
       return NextResponse.json({ items: [], total: 0, pluginAvailable: false });
     }
 
-    const total = parseInt(countResult.results[0]?.[0] || '0', 10);
+    const countRow = Array.isArray(countResult.results[0]) ? countResult.results[0] : [];
+    const total = parseInt(String(countRow[0] ?? '0'), 10) || 0;
 
-    const items = dataResult.results.map((row) => ({
-      RowId: parseInt(row[0], 10),
-      DateCreated: row[1],
-      UserId: row[2],
-      ItemId: row[3],
-      ItemType: row[4],
-      ItemName: row[5],
-      PlaybackMethod: row[6],
-      ClientName: row[7],
-      DeviceName: row[8],
-      PlayDuration: parseInt(row[9], 10) || 0,
-    }));
+    const items = dataResult.results
+      .filter((row): row is string[] => Array.isArray(row))
+      .map((row) => ({
+        RowId: parseInt(String(row[0] ?? '0'), 10) || 0,
+        DateCreated: String(row[1] ?? ''),
+        UserId: String(row[2] ?? ''),
+        ItemId: String(row[3] ?? ''),
+        ItemType: String(row[4] ?? ''),
+        ItemName: String(row[5] ?? ''),
+        PlaybackMethod: String(row[6] ?? ''),
+        ClientName: String(row[7] ?? ''),
+        DeviceName: String(row[8] ?? ''),
+        PlayDuration: parseInt(String(row[9] ?? '0'), 10) || 0,
+      }));
 
     return NextResponse.json({ items, total, limit, offset, pluginAvailable: true });
   } catch (error) {

@@ -1,6 +1,10 @@
 import type { ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
+export function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 export function maskApiKey(key: string): string {
   if (key.length <= 8) return '****';
   return key.slice(0, 4) + '****' + key.slice(-4);
