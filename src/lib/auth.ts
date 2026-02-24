@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 
 let jwtSecretBytes: Uint8Array | null = null;
@@ -43,6 +44,20 @@ export async function getSession(): Promise<boolean> {
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return false;
   return verifySession(token);
+}
+
+export async function requireAuth(): Promise<NextResponse | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
+  if (!token) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  try {
+    await jwtVerify(token, getJwtSecret());
+    return null;
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 }
 
 export function verifyPassword(password: string): boolean {

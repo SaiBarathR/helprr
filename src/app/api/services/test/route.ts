@@ -5,6 +5,7 @@ import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
+import { requireAuth } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import type { ServiceType } from '@prisma/client';
 
@@ -18,6 +19,9 @@ import type { ServiceType } from '@prisma/client';
  * @returns An object with `success` boolean and, on success, `version` (string); on failure, `error` (string)
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     let rawBody: unknown;
     try {

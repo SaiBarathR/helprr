@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { requireAuth } from '@/lib/auth';
 
 export async function POST() {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     await prisma.notificationHistory.updateMany({
       where: { read: false },

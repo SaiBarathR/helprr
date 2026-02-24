@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Handle GET requests to fetch Prowlarr indexer schemas.
@@ -9,6 +10,9 @@ import { getProwlarrClient } from '@/lib/service-helpers';
  * @returns A NextResponse containing the indexer schemas as JSON on success, or a JSON object `{ error: string }` with HTTP status 500 on failure.
  */
 export async function GET() {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const client = await getProwlarrClient();
     const schemas = await client.getIndexerSchemas();

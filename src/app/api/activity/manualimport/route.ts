@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Retrieve manual import data for a download from Sonarr or Radarr.
@@ -15,6 +16,9 @@ import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
  *   or a JSON error message with status 500 on internal failure.
  */
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const downloadId = searchParams.get('downloadId');
@@ -53,6 +57,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const { source, files } = body;

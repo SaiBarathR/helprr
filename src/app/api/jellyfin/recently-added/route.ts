@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const rawLimit = searchParams.get('limit');

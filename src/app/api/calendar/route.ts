@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 import type {
   CalendarEvent,
   SonarrCalendarEntry,
@@ -7,6 +8,9 @@ import type {
 } from '@/types';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     let start = searchParams.get('start');

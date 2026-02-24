@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Fetches and returns combined wanted or cutoff-unmet records from Sonarr and Radarr, with optional source filtering and pagination.
@@ -15,6 +16,9 @@ import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
  * @returns A JSON object with `page`, `pageSize`, `totalRecords`, and `records` (the paginated merged records). On failure returns a 500 JSON error object.
  */
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const type = searchParams.get('type') || 'missing'; // 'missing' | 'cutoff'

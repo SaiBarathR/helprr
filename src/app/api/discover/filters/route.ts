@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverFiltersResponse } from '@/types';
 
@@ -54,6 +55,9 @@ async function safeTmdb<T>(
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const region = searchParams.get('region') || 'US';

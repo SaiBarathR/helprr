@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Handle POST requests to test all Prowlarr indexers and return the test outcome.
@@ -7,6 +8,9 @@ import { getProwlarrClient } from '@/lib/service-helpers';
  * @returns A JSON response containing the indexer test results (the value returned by `testAllIndexers`, or `{ success: true }` when that value is falsy) on success; on failure returns `{ error: string }` with HTTP status 500 describing the error.
  */
 export async function POST() {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const client = await getProwlarrClient();
     const result = await client.testAllIndexers();

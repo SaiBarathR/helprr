@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 /**
  * Retrieve the list of indexers from the Prowlarr client and return them as JSON.
@@ -7,6 +8,9 @@ import { getProwlarrClient } from '@/lib/service-helpers';
  * @returns The fetched indexers as a JSON response; on failure returns a JSON object with an `error` message and HTTP status 500.
  */
 export async function GET() {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const client = await getProwlarrClient();
     const indexers = await client.getIndexers();
@@ -24,6 +28,9 @@ export async function GET() {
  * @returns A JSON HTTP response containing the test results or the added indexer on success; on error, a JSON object with an `error` message and HTTP status 500.
  */
 export async function POST(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const client = await getProwlarrClient();

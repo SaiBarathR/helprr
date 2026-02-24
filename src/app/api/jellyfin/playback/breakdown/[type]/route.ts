@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { getDefaultEndDate, sanitizeDays } from '@/lib/jellyfin-playback-query';
+import { requireAuth } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ type: string }> }
 ) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { type } = await params;
     const { searchParams } = new URL(request.url);

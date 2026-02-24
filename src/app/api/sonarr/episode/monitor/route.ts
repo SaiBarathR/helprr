@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
+import { requireAuth } from '@/lib/auth';
 
 export async function PUT(request: Request) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const { episodeIds, monitored } = body;
