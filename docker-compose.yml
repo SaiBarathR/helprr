@@ -34,7 +34,6 @@ services:
       context: .
       args:
         - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
-        - JWT_SECRET=${JWT_SECRET}
     container_name: helprr
     restart: unless-stopped
     ports:
@@ -47,7 +46,7 @@ services:
     environment:
       - TZ=${TZ:-UTC}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@helprr-db:5432/helprr}
-      - REDIS_URL=redis://helprr-redis:6379
+      - REDIS_URL=${REDIS_URL:-redis://helprr-redis:6379}
       - APP_PASSWORD=${APP_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
       - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}

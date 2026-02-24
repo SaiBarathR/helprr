@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-
-function maskApiKey(key: string): string {
-  if (key.length <= 8) return '****';
-  return key.slice(0, 4) + '****' + key.slice(-4);
-}
+import { isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 
 export async function GET() {
   try {
@@ -47,19 +43,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB'].includes(type)) {
+    if (typeof type !== 'string' || !isServiceType(type)) {
       return NextResponse.json(
         { error: 'Invalid service type' },
         { status: 400 }
       );
     }
 
-    const existingConnection = await prisma.serviceConnection.findUnique({
-      where: { type },
-    });
-    const apiKeyToStore = existingConnection && apiKey === maskApiKey(existingConnection.apiKey)
-      ? existingConnection.apiKey
-      : apiKey;
+    const apiKeyToStore = await resolveApiKeyForService(type, apiKey);
 
     const connection = await prisma.serviceConnection.upsert({
       where: { type },
