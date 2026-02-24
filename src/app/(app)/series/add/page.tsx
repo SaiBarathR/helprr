@@ -173,6 +173,8 @@ function AddSeriesPageContent() {
       || previousParams.tmdbId !== tmdbId
     ) {
       setAutoSearched(false);
+      setSelected(null);
+      setResults([]);
       lastAutoSearchParamsRef.current = { term: nextTerm, tvdbId, tmdbId };
     }
 

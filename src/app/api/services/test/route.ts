@@ -65,7 +65,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const type: ServiceType = typeValue;
     const url = urlValue.trim();
     const apiKey = apiKeyValue.trim();
-    const username = typeof usernameValue === 'string' ? usernameValue : undefined;
+    const username = typeof usernameValue === 'string'
+      ? (usernameValue.trim() || undefined)
+      : undefined;
 
     const resolvedApiKey = await resolveApiKeyForService(type, apiKey);
     const cleanUrl = url.replace(/\/+$/, '');

@@ -15,6 +15,7 @@ import { getJellyfinClient } from '@/lib/service-helpers';
  */
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const USER_ID_RE = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const ALLOWED_TYPES = ['Movie', 'Episode', 'Audio', 'MusicVideo', 'Book'];
 
 function escapeSQL(val: string): string {
@@ -28,11 +29,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const to = searchParams.get('to');
     const userId = searchParams.get('userId');
     const type = searchParams.get('type');
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '50', 10) || 50, 1), 200);
+    const rawLimit = searchParams.get('limit');
+    const parsedLimit = rawLimit === null ? Number.NaN : parseInt(rawLimit, 10);
+    const limit = Math.min(Math.max(Number.isNaN(parsedLimit) ? 50 : parsedLimit, 1), 200);
     const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0);
 
     if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {
       return NextResponse.json({ error: 'from and to (YYYY-MM-DD) are required' }, { status: 400 });
+    }
+
+    if (from > to) {
+      return NextResponse.json({ error: "'from' must be on or before 'to' (YYYY-MM-DD)" }, { status: 400 });
+    }
+
+    if (userId && !USER_ID_RE.test(userId)) {
+      return NextResponse.json({ error: 'userId must be a valid Jellyfin user ID' }, { status: 400 });
     }
 
     if (type && !ALLOWED_TYPES.includes(type)) {

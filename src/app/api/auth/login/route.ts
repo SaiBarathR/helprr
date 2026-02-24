@@ -6,6 +6,17 @@ const LOGIN_WINDOW_MS = 60_000;
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_ATTEMPTS_KEY_PREFIX = 'login:attempts:';
 
+function formatWindowDuration(ms: number): string {
+  const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
+  if (totalSeconds % 60 === 0) {
+    const minutes = totalSeconds / 60;
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+  return `${totalSeconds} second${totalSeconds === 1 ? '' : 's'}`;
+}
+
+const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
+
 function getClientIp(request: NextRequest): string | null {
   // Only trust x-forwarded-for when traffic passes through a sanitized reverse proxy.
   const forwardedFor = request.headers.get('x-forwarded-for');
@@ -65,7 +76,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   if (attempts > LOGIN_MAX_ATTEMPTS) {
     return NextResponse.json(
-      { error: 'Too many login attempts. Try again in 1 minute.' },
+      { error: `Too many login attempts. Try again in ${LOGIN_WINDOW_TEXT}.` },
       { status: 429 }
     );
   }
