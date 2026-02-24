@@ -19,18 +19,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     let resolvedSubscriptionId: string | null = null;
     if (subscriptionId) {
       const sub = await prisma.pushSubscription.findUnique({ where: { id: subscriptionId } });
-      if (sub) {
-        resolvedSubscriptionId = sub.id;
-      } else if (endpoint) {
-        const endpointSub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
-        if (endpointSub) {
-          resolvedSubscriptionId = endpointSub.id;
-        } else {
-          return NextResponse.json([]);
-        }
-      } else {
-        return NextResponse.json([]);
+      if (!sub) {
+        return NextResponse.json({ error: 'subscription not found' }, { status: 404 });
       }
+      resolvedSubscriptionId = sub.id;
     } else if (endpoint) {
       const sub = await prisma.pushSubscription.findUnique({ where: { endpoint } });
       if (sub) {
@@ -78,6 +70,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
     }
 
+    const normalizeOptionalString = (value: unknown, fieldName: string): { value?: string | null; error?: NextResponse } => {
+      if (value == null) return { value: null };
+      if (typeof value !== 'string') {
+        return {
+          error: NextResponse.json({ error: `${fieldName} must be a string` }, { status: 400 }),
+        };
+      }
+      const trimmed = value.trim();
+      return { value: trimmed ? trimmed : null };
+    };
+
+    const normalizedTag = normalizeOptionalString(tagFilter, 'tagFilter');
+    if (normalizedTag.error) return normalizedTag.error;
+
+    const normalizedQuality = normalizeOptionalString(qualityFilter, 'qualityFilter');
+    if (normalizedQuality.error) return normalizedQuality.error;
+
     const subscription = await prisma.pushSubscription.findUnique({
       where: { id: subscriptionId },
       select: { id: true },
@@ -90,8 +99,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const preference = await prisma.notificationPreference.upsert({
       where: { subscriptionId_eventType: { subscriptionId, eventType } },
-      update: { enabled, tagFilter, qualityFilter },
-      create: { subscriptionId, eventType, enabled, tagFilter, qualityFilter },
+      update: { enabled, tagFilter: normalizedTag.value, qualityFilter: normalizedQuality.value },
+      create: { subscriptionId, eventType, enabled, tagFilter: normalizedTag.value, qualityFilter: normalizedQuality.value },
     });
 
     return NextResponse.json(preference);

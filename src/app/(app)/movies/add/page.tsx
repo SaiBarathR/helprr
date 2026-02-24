@@ -181,8 +181,9 @@ function AddMoviePageContent() {
 
   useEffect(() => {
     const prefillTerm = searchParams.get('term');
-    const parsedTmdbId = Number(searchParams.get('tmdbId'));
-    const targetTmdbId = Number.isFinite(parsedTmdbId) ? parsedTmdbId : null;
+    const tmdbIdRaw = searchParams.get('tmdbId');
+    const parsedTmdbId = tmdbIdRaw !== null ? Number(tmdbIdRaw) : null;
+    const targetTmdbId = parsedTmdbId !== null && Number.isFinite(parsedTmdbId) ? parsedTmdbId : null;
 
     const hasPrefillChanged = (
       prefillTerm !== lastPrefillTermRef.current
@@ -202,9 +203,11 @@ function AddMoviePageContent() {
     const prefillTerm = searchParams.get('term');
     if (!prefillTerm) return;
 
-    const targetTmdbId = Number(searchParams.get('tmdbId'));
+    const tmdbIdRaw = searchParams.get('tmdbId');
+    const parsedTmdbId = tmdbIdRaw !== null ? Number(tmdbIdRaw) : null;
+    const targetTmdbId = parsedTmdbId !== null && Number.isFinite(parsedTmdbId) ? parsedTmdbId : undefined;
     setAutoSearched(true);
-    runSearch(prefillTerm, Number.isFinite(targetTmdbId) ? targetTmdbId : undefined);
+    runSearch(prefillTerm, targetTmdbId);
   }, [searchParams, autoSearched, runSearch]);
 
   return (
