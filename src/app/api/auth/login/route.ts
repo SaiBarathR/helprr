@@ -18,7 +18,7 @@ function formatWindowDuration(ms: number): string {
 
 const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
 
-function getClientIp(request: NextRequest): string {
+function getClientIp(request: NextRequest): string | null {
   // Only trust x-forwarded-for when traffic passes through a sanitized reverse proxy.
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
@@ -27,7 +27,7 @@ function getClientIp(request: NextRequest): string {
     if (trimmed) return trimmed;
   }
   const realIp = request.headers.get('x-real-ip')?.trim();
-  return realIp || '127.0.0.1';
+  return realIp || null;
 }
 
 function attemptsKey(ip: string): string {
@@ -65,11 +65,13 @@ async function clearAttempts(ip: string): Promise<void> {
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(request);
 
-  let attempts: number;
-  try {
-    attempts = await incrementAttempts(ip);
-  } catch {
-    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  let attempts = 0;
+  if (ip) {
+    try {
+      attempts = await incrementAttempts(ip);
+    } catch {
+      return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+    }
   }
 
   if (attempts > LOGIN_MAX_ATTEMPTS) {
@@ -99,10 +101,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
   }
 
-  try {
-    await clearAttempts(ip);
-  } catch (error) {
-    console.error('[Auth] Failed to clear login attempts:', error);
+  if (ip) {
+    try {
+      await clearAttempts(ip);
+    } catch (error) {
+      console.error('[Auth] Failed to clear login attempts:', error);
+    }
   }
 
   const token = await createSession();

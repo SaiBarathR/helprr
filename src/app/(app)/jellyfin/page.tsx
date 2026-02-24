@@ -471,24 +471,47 @@ function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [historyLoading, setHistoryLoading] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    let active = true;
+
     async function fetch_() {
       const [pbRes, jfRes] = await Promise.allSettled([
-        fetch(`/api/jellyfin/playback/users?days=${MAX_DAYS}`),
-        fetch('/api/jellyfin/users'),
+        fetch(`/api/jellyfin/playback/users?days=${MAX_DAYS}`, { signal }),
+        fetch('/api/jellyfin/users', { signal }),
       ]);
+      if (signal.aborted || !active) return;
+
       if (pbRes.status === 'fulfilled' && pbRes.value.ok) {
         const d = await pbRes.value.json();
+        if (signal.aborted || !active) return;
         setUsers(d.users || []);
         setPluginAvailable(d.pluginAvailable !== false);
       }
       if (jfRes.status === 'fulfilled' && jfRes.value.ok) {
         const d = await jfRes.value.json();
+        if (signal.aborted || !active) return;
         setJellyfinUsers(d.users || []);
       }
       setLoading(false);
     }
+
     onLoadStart?.();
-    fetch_().finally(() => onLoadEnd?.());
+    void fetch_()
+      .catch((error) => {
+        if (isAbortError(error) || signal.aborted || !active) return;
+        setLoading(false);
+      })
+      .finally(() => {
+        if (!signal.aborted && active) {
+          onLoadEnd?.();
+        }
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [onLoadStart, onLoadEnd]);
 
   async function openUserHistory(user: PlaybackUserActivity) {

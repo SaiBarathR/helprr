@@ -359,8 +359,18 @@ export class TmdbClient {
     if (input.releaseState === 'upcoming') params.with_status = '1|2|5';
 
     if (input.anime) {
-      params.with_genres = [16, ...(input.genres ?? [])].join(',');
+      const existingGenres = typeof params.with_genres === 'string'
+        ? params.with_genres
+          .split(',')
+          .map((genreId) => Number(genreId.trim()))
+          .filter((genreId) => Number.isFinite(genreId))
+        : [];
+      const mergedGenres = [...new Set([16, ...existingGenres, ...(input.genres ?? [])])];
+      params.with_genres = mergedGenres.join(',');
       params.with_origin_country = 'JP';
+      if (!input.language) {
+        params.with_original_language = 'ja';
+      }
     }
 
     return this.get<TmdbListResponse>('/discover/tv', params);
