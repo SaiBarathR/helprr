@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     let resolvedFilter = filter;
     if (!resolvedFilter) {
       const types = await client.getTypeFilterList();
-      resolvedFilter = types ? types.join(',') : 'Movie,Episode,Audio';
+      resolvedFilter = types && types?.length > 0 ? types.join(',') : 'Movie,Episode,Audio';
     }
 
     const items = await client.getPlaybackHistory(userId, date, resolvedFilter);

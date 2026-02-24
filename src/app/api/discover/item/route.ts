@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
-import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, tmdbImageUrl } from '@/lib/discover';
+import { buildLibraryLookups, isJapaneseAnime, matchMovieInLibrary, matchSeriesInLibrary, tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverDetail, RadarrMovie, SonarrSeries } from '@/types';
 
@@ -82,8 +82,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         genres: details.genres.map((genre) => genre.id),
         genreNames: details.genres.map((genre) => genre.name),
         originalLanguage: details.original_language,
-        isAnime: details.genres.some((genre) => genre.id === 16)
-          && (details.original_language === 'ja' || details.production_countries.some((country) => country.iso_3166_1 === 'JP')),
+        isAnime: isJapaneseAnime(
+          {
+            genre_ids: details.genres.map((genre) => genre.id),
+            original_language: details.original_language,
+            origin_country: details.production_countries.map((country) => country.iso_3166_1),
+          },
+          'movie'
+        ),
         runtime: details.runtime,
         status: details.status,
         imdbId: externalIds.imdb_id || details.imdb_id || null,
@@ -136,8 +142,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       genreNames: details.genres.map((genre) => genre.name),
       originalLanguage: details.original_language,
       originCountry: details.origin_country || [],
-      isAnime: details.genres.some((genre) => genre.id === 16)
-        && (details.origin_country || []).includes('JP'),
+      isAnime: isJapaneseAnime(
+        {
+          genre_ids: details.genres.map((genre) => genre.id),
+          original_language: details.original_language,
+          origin_country: details.origin_country || [],
+        },
+        'tv'
+      ),
       runtime: details.episode_run_time?.[0] ?? null,
       status: details.status || null,
       imdbId: externalIds.imdb_id || null,

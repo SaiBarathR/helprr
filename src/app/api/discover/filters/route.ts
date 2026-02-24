@@ -111,7 +111,8 @@ export async function GET(request: NextRequest) {
         try {
           const details = await tmdb.tvDetails(item.id);
           return details.networks || [];
-        } catch {
+        } catch (error) {
+          if (error instanceof TmdbRateLimitError) throw error;
           return [];
         }
       })

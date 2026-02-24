@@ -670,8 +670,8 @@ function HistoryTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       .finally(() => {
         if (!signal.aborted) {
           setLoading(false);
+          onLoadEnd?.();
         }
-        onLoadEnd?.();
       });
 
     return () => controller.abort();
@@ -898,8 +898,8 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       } finally {
         if (!signal.aborted) {
           setLoading(false);
+          onLoadEnd?.();
         }
-        onLoadEnd?.();
       }
     }
     fetchStats();
