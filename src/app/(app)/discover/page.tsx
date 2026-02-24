@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { SearchBar } from '@/components/media/search-bar';
@@ -317,6 +317,8 @@ export default function DiscoverPage() {
   const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
   const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
+  const gridFetchControllerRef = useRef<AbortController | null>(null);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
 
   const [selectedItem, setSelectedItem] = useState<{ id: number; mediaType: 'movie' | 'tv' } | null>(null);
   const [itemDetail, setItemDetail] = useState<DiscoverDetail | null>(null);
@@ -445,27 +447,51 @@ export default function DiscoverPage() {
     activeSectionKey,
   ]);
 
-  const fetchGridItems = useCallback(async (pageValue: number, append = false) => {
+  const fetchGridItems = useCallback(async (pageValue: number, append = false, signal?: AbortSignal) => {
     if (append) setLoadingMore(true);
     else setLoadingItems(true);
 
+    let aborted = false;
+
     try {
-      const res = await fetch(`/api/discover?${buildQueryString(pageValue)}`);
+      const res = await fetch(`/api/discover?${buildQueryString(pageValue)}`, { signal });
+      if (signal?.aborted) {
+        aborted = true;
+        return;
+      }
       const data = await res.json();
+      if (signal?.aborted) {
+        aborted = true;
+        return;
+      }
       if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
+        if (signal?.aborted) {
+          aborted = true;
+          return;
+        }
         applyRateLimit(data);
         return;
       }
       if (!res.ok) return;
+      if (signal?.aborted) {
+        aborted = true;
+        return;
+      }
 
       setRateLimitInfo(null);
       const nextItems = data.items || [];
       setItems((prev) => append ? [...prev, ...nextItems] : nextItems);
       setPage(data.page || 1);
       setTotalPages(data.totalPages || 1);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        aborted = true;
+      }
     } finally {
-      setLoadingItems(false);
-      setLoadingMore(false);
+      if (!aborted) {
+        setLoadingItems(false);
+        setLoadingMore(false);
+      }
     }
   }, [buildQueryString, applyRateLimit]);
 
@@ -476,8 +502,29 @@ export default function DiscoverPage() {
 
   useEffect(() => {
     if (!gridMode) return;
-    fetchGridItems(1, false);
+    const controller = new AbortController();
+    gridFetchControllerRef.current?.abort();
+    gridFetchControllerRef.current = controller;
+    void fetchGridItems(1, false, controller.signal);
+    return () => {
+      controller.abort();
+      if (gridFetchControllerRef.current === controller) {
+        gridFetchControllerRef.current = null;
+      }
+    };
   }, [gridMode, fetchGridItems]);
+
+  useEffect(() => {
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = null;
+  }, [buildQueryString]);
+
+  useEffect(() => {
+    return () => {
+      gridFetchControllerRef.current?.abort();
+      loadMoreControllerRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedItem) {
@@ -556,7 +603,10 @@ export default function DiscoverPage() {
 
   const handleSelectContentType = useCallback((type: 'all' | 'movie' | 'show' | 'anime') => {
     if (discoverContentType === type && gridMode) {
-      void fetchGridItems(1, false);
+      const controller = new AbortController();
+      gridFetchControllerRef.current?.abort();
+      gridFetchControllerRef.current = controller;
+      void fetchGridItems(1, false, controller.signal);
       return;
     }
     setDiscoverContentType(type);
@@ -566,13 +616,24 @@ export default function DiscoverPage() {
 
   const handleSelectSort = useCallback((sort: string) => {
     if (discoverSort === sort && gridMode) {
-      void fetchGridItems(1, false);
+      const controller = new AbortController();
+      gridFetchControllerRef.current?.abort();
+      gridFetchControllerRef.current = controller;
+      void fetchGridItems(1, false, controller.signal);
       return;
     }
     setDiscoverSort(sort);
     setActiveSectionKey(null);
     setManualBrowseMode(true);
   }, [discoverSort, gridMode, fetchGridItems, setDiscoverSort]);
+
+  const handleLoadMore = useCallback(() => {
+    if (loadingMore || page >= totalPages) return;
+    const controller = new AbortController();
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = controller;
+    void fetchGridItems(page + 1, true, controller.signal);
+  }, [fetchGridItems, loadingMore, page, totalPages]);
 
   const goToDiscoverHome = useCallback(() => {
     setDiscoverFilters({ ...DEFAULT_DISCOVER_FILTERS });
@@ -827,7 +888,7 @@ export default function DiscoverPage() {
                 <div className="flex justify-center pt-2">
                   <Button
                     variant="outline"
-                    onClick={() => fetchGridItems(page + 1, true)}
+                    onClick={handleLoadMore}
                     disabled={loadingMore}
                   >
                     {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load more'}
