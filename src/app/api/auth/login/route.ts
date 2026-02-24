@@ -3,6 +3,7 @@ import { createSession, verifyPassword, COOKIE_NAME, SESSION_DURATION } from '@/
 import { getRedisClient } from '@/lib/redis';
 
 const LOGIN_WINDOW_MS = 60_000;
+const LOGIN_WINDOW_SECONDS = Math.max(1, Math.ceil(LOGIN_WINDOW_MS / 1000));
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_ATTEMPTS_KEY_PREFIX = 'login:attempts:';
 
@@ -77,7 +78,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (attempts > LOGIN_MAX_ATTEMPTS) {
     return NextResponse.json(
       { error: `Too many login attempts. Try again in ${LOGIN_WINDOW_TEXT}.` },
-      { status: 429 }
+      {
+        status: 429,
+        headers: { 'Retry-After': String(LOGIN_WINDOW_SECONDS) },
+      }
     );
   }
 

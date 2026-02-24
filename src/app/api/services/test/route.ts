@@ -5,12 +5,8 @@ import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
-import { isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
+import { isNonEmptyString, isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import type { ServiceType } from '@prisma/client';
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
-}
 
 /**
  * Handle POST requests to check connectivity and retrieve version information from supported services.

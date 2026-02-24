@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
+import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
+  return {
+    message: (error as { message?: string })?.message,
+    code: (error as { code?: string | number })?.code,
+    responseStatus: (error as { response?: { status?: number } })?.response?.status,
+  };
 }
 
 export async function GET(): Promise<NextResponse> {
@@ -19,7 +23,7 @@ export async function GET(): Promise<NextResponse> {
 
     return NextResponse.json(masked);
   } catch (error) {
-    console.error('Failed to fetch service connections:', error);
+    console.error('Failed to fetch service connections:', getErrorInfo(error));
     return NextResponse.json(
       { error: 'Failed to fetch service connections' },
       { status: 500 }
@@ -37,7 +41,19 @@ export async function GET(): Promise<NextResponse> {
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const rawBody: unknown = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        return NextResponse.json(
+          { error: 'Invalid JSON' },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
+
     if (!rawBody || typeof rawBody !== 'object') {
       return NextResponse.json(
         { error: 'Invalid request body' },
@@ -99,7 +115,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       apiKey: maskApiKey(connection.apiKey),
     });
   } catch (error) {
-    console.error('Failed to save service connection:', error);
+    console.error('Failed to save service connection:', getErrorInfo(error));
     return NextResponse.json(
       { error: 'Failed to save service connection' },
       { status: 500 }

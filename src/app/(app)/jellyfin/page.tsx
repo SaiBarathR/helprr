@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +72,10 @@ function todayStr(): string {
   return toDateStr(new Date());
 }
 
+function isAbortError(error: unknown): boolean {
+  return (error as { name?: string })?.name === 'AbortError';
+}
+
 function formatDateCreated(dateStr: string): string {
   // DateCreated is UTC e.g. "2026-02-20 19:11:07.0338097"
   try {
@@ -97,6 +101,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ];
 
 const DAY_RANGES = [7, 14, 30, 90, 0]; // 0 = All Time
+const MAX_DAYS = 18250;
 
 // ─── Main Page ───
 
@@ -104,11 +109,33 @@ export default function JellyfinPage() {
   const [tab, setTab] = useState<TabKey>('overview');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [, setPendingLoads] = useState(0);
+  const refreshingRef = useRef(refreshing);
+  const refreshObservedLoadRef = useRef(false);
+
+  useEffect(() => {
+    refreshingRef.current = refreshing;
+  }, [refreshing]);
+
+  const incrementPending = useCallback(() => {
+    refreshObservedLoadRef.current = true;
+    setPendingLoads((count) => count + 1);
+  }, []);
+
+  const decrementPending = useCallback(() => {
+    setPendingLoads((count) => {
+      const next = Math.max(0, count - 1);
+      if (next === 0 && refreshingRef.current && refreshObservedLoadRef.current) {
+        setRefreshing(false);
+      }
+      return next;
+    });
+  }, []);
 
   function handleRefresh() {
     setRefreshing(true);
+    refreshObservedLoadRef.current = false;
     setRefreshKey((k) => k + 1);
-    setTimeout(() => setRefreshing(false), 500);
   }
 
   return (
@@ -121,14 +148,19 @@ export default function JellyfinPage() {
       </div>
 
       <div className="px-4 pb-3">
-        <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
+        <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {TABS.map((t) => (
             <button
               key={t.key}
+              id={`tab-${t.key}`}
+              role="tab"
+              type="button"
+              aria-selected={tab === t.key}
+              aria-controls={`panel-${t.key}`}
+              tabIndex={tab === t.key ? 0 : -1}
               onClick={() => setTab(t.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-              }`}
+              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                }`}
             >
               {t.label}
             </button>
@@ -137,10 +169,12 @@ export default function JellyfinPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {tab === 'overview' && <OverviewTab key={`o-${refreshKey}`} />}
-        {tab === 'users' && <UsersTab key={`u-${refreshKey}`} />}
-        {tab === 'history' && <HistoryTab key={`h-${refreshKey}`} />}
-        {tab === 'stats' && <StatsTab key={`s-${refreshKey}`} />}
+        <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
+          {tab === 'overview' && <OverviewTab key={`o-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
+          {tab === 'users' && <UsersTab key={`u-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
+          {tab === 'history' && <HistoryTab key={`h-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
+          {tab === 'stats' && <StatsTab key={`s-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
+        </div>
       </div>
     </div>
   );
@@ -185,7 +219,12 @@ function PluginNotice() {
 // Tab 1: OVERVIEW
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function OverviewTab() {
+type TabLoadCallbacks = {
+  onLoadStart?: () => void;
+  onLoadEnd?: () => void;
+};
+
+function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [system, setSystem] = useState<JellyfinSystemInfo | null>(null);
   const [sessions, setSessions] = useState<JellyfinSession[]>([]);
   const [resumeItems, setResumeItems] = useState<JellyfinItem[]>([]);
@@ -213,10 +252,21 @@ function OverviewTab() {
   }, []);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    let active = true;
+    onLoadStart?.();
+    void Promise.resolve()
+      .then(fetchData)
+      .finally(() => {
+        if (active) onLoadEnd?.();
+      });
+    const interval = setInterval(() => {
+      void fetchData();
+    }, 15000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [fetchData, onLoadStart, onLoadEnd]);
 
   if (loading) {
     return (
@@ -302,7 +352,7 @@ function SessionCard({ session }: { session: JellyfinSession }) {
   const isTranscoding = Boolean(ti && !ti.IsVideoDirect);
   const isHW = Boolean(ti?.HardwareAccelerationType?.trim());
   const imageId = item?.Type === 'Episode' && item?.SeriesId ? item.SeriesId : item?.Id;
-  const backdropSrc = item?.Id ? `/api/jellyfin/image?itemId=${item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id}&type=Backdrop&maxWidth=520&quality=80` : '';
+  const backdropSrc = imageId ? `/api/jellyfin/image?itemId=${imageId}&type=Backdrop&maxWidth=520&quality=80` : '';
   const primarySrc = imageId ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=520&quality=80` : '';
 
   return (
@@ -411,7 +461,7 @@ function LibraryCard({ library }: { library: JellyfinLibrary }) {
 // Tab 2: USERS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function UsersTab() {
+function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [users, setUsers] = useState<PlaybackUserActivity[]>([]);
   const [jellyfinUsers, setJellyfinUsers] = useState<JellyfinUser[]>([]);
   const [pluginAvailable, setPluginAvailable] = useState(true);
@@ -423,7 +473,7 @@ function UsersTab() {
   useEffect(() => {
     async function fetch_() {
       const [pbRes, jfRes] = await Promise.allSettled([
-        fetch('/api/jellyfin/playback/users?days=18250'),
+        fetch(`/api/jellyfin/playback/users?days=${MAX_DAYS}`),
         fetch('/api/jellyfin/users'),
       ]);
       if (pbRes.status === 'fulfilled' && pbRes.value.ok) {
@@ -437,8 +487,9 @@ function UsersTab() {
       }
       setLoading(false);
     }
-    fetch_();
-  }, []);
+    onLoadStart?.();
+    fetch_().finally(() => onLoadEnd?.());
+  }, [onLoadStart, onLoadEnd]);
 
   async function openUserHistory(user: PlaybackUserActivity) {
     setSelectedUser(user);
@@ -534,7 +585,7 @@ const QUICK_RANGES = [
 
 const PAGE_SIZE = 50;
 
-function HistoryTab() {
+function HistoryTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [items, setItems] = useState<CustomHistoryItem[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -592,11 +643,16 @@ function HistoryTab() {
   useEffect(() => {
     const url = buildUrl(0);
     if (!url) { setLoading(false); return; }
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    onLoadStart?.();
     setLoading(true);
     setOffset(0);
-    fetch(url)
+    fetch(url, { signal })
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
+        if (signal.aborted) return;
         if (d) {
           setItems(d.items || []);
           setTotal(d.total || 0);
@@ -606,9 +662,20 @@ function HistoryTab() {
           setTotal(0);
         }
       })
-      .catch(() => { setItems([]); setTotal(0); })
-      .finally(() => setLoading(false));
-  }, [buildUrl]);
+      .catch((error) => {
+        if (isAbortError(error) || signal.aborted) return;
+        setItems([]);
+        setTotal(0);
+      })
+      .finally(() => {
+        if (!signal.aborted) {
+          setLoading(false);
+        }
+        onLoadEnd?.();
+      });
+
+    return () => controller.abort();
+  }, [buildUrl, onLoadStart, onLoadEnd]);
 
   async function loadMore() {
     const nextOffset = offset + PAGE_SIZE;
@@ -736,8 +803,8 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
     <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/30">
       <div className="p-1.5 rounded bg-muted shrink-0">
         {item.ItemType === 'Movie' ? <Film className="h-3.5 w-3.5 text-muted-foreground" /> :
-         item.ItemType === 'Episode' ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> :
-         <MonitorPlay className="h-3.5 w-3.5 text-muted-foreground" />}
+          item.ItemType === 'Episode' ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> :
+            <MonitorPlay className="h-3.5 w-3.5 text-muted-foreground" />}
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate">{item.ItemName}</p>
@@ -759,7 +826,7 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
 
 type SortMode = 'plays' | 'duration';
 
-function StatsTab() {
+function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [days, setDays] = useState(7);
   const [pluginAvailable, setPluginAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -770,59 +837,74 @@ function StatsTab() {
   const [clientBreakdown, setClientBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
   const [hourlyData, setHourlyData] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<JellyfinScheduledTask[]>([]);
-  const [tvSort, setTvSort] = useState<SortMode>('plays');
-  const [clientSort, setClientSort] = useState<SortMode>('plays');
-  const [movieSort, setMovieSort] = useState<SortMode>('plays');
+  const [tvSort, setTvSort] = useState<SortMode>('duration');
+  const [clientSort, setClientSort] = useState<SortMode>('duration');
+  const [movieSort, setMovieSort] = useState<SortMode>('duration');
 
   useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+
     async function fetchStats() {
+      onLoadStart?.();
       setLoading(true);
-      const queryDays = days === 0 ? 18250 : days;
-      const [actRes, tvRes, movRes, methRes, clientRes, hourRes, taskRes] = await Promise.allSettled([
-        fetch(`/api/jellyfin/playback/activity?days=${queryDays}`),
-        fetch(`/api/jellyfin/playback/tv-shows?days=${queryDays}`),
-        fetch(`/api/jellyfin/playback/movies?days=${queryDays}`),
-        fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?days=${queryDays}`),
-        fetch(`/api/jellyfin/playback/breakdown/ClientName?days=${queryDays}`),
-        fetch(`/api/jellyfin/playback/hourly?days=${queryDays}`),
-        fetch('/api/jellyfin/tasks'),
-      ]);
+      try {
+        const queryDays = days === 0 ? MAX_DAYS : days;
+        const [actRes, tvRes, movRes, methRes, clientRes, hourRes, taskRes] = await Promise.allSettled([
+          fetch(`/api/jellyfin/playback/activity?days=${queryDays}`, { signal }),
+          fetch(`/api/jellyfin/playback/tv-shows?days=${queryDays}`, { signal }),
+          fetch(`/api/jellyfin/playback/movies?days=${queryDays}`, { signal }),
+          fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?days=${queryDays}`, { signal }),
+          fetch(`/api/jellyfin/playback/breakdown/ClientName?days=${queryDays}`, { signal }),
+          fetch(`/api/jellyfin/playback/hourly?days=${queryDays}`, { signal }),
+          fetch('/api/jellyfin/tasks', { signal }),
+        ]);
 
-      // Parse all JSON before any setState so updates batch in a single render
-      let newActivity: PlayActivityUser[] = [];
-      let newPluginAvailable = true;
-      let newTopTv: PlaybackBreakdownEntry[] = [];
-      let newTopMovies: PlaybackBreakdownEntry[] = [];
-      let newMethodBreakdown: PlaybackBreakdownEntry[] = [];
-      let newClientBreakdown: PlaybackBreakdownEntry[] = [];
-      let newHourlyData: Record<string, number> = {};
-      let newTasks: JellyfinScheduledTask[] = [];
+        // Parse all JSON before any setState so updates batch in a single render
+        let newActivity: PlayActivityUser[] = [];
+        let newPluginAvailable = true;
+        let newTopTv: PlaybackBreakdownEntry[] = [];
+        let newTopMovies: PlaybackBreakdownEntry[] = [];
+        let newMethodBreakdown: PlaybackBreakdownEntry[] = [];
+        let newClientBreakdown: PlaybackBreakdownEntry[] = [];
+        let newHourlyData: Record<string, number> = {};
+        let newTasks: JellyfinScheduledTask[] = [];
 
-      if (actRes.status === 'fulfilled' && actRes.value.ok) {
-        const d = await actRes.value.json();
-        newActivity = d.data || [];
-        if (d.pluginAvailable === false) newPluginAvailable = false;
+        if (actRes.status === 'fulfilled' && actRes.value.ok) {
+          const d = await actRes.value.json();
+          newActivity = d.data || [];
+          if (d.pluginAvailable === false) newPluginAvailable = false;
+        }
+        if (tvRes.status === 'fulfilled' && tvRes.value.ok) newTopTv = (await tvRes.value.json()).shows || [];
+        if (movRes.status === 'fulfilled' && movRes.value.ok) newTopMovies = (await movRes.value.json()).movies || [];
+        if (methRes.status === 'fulfilled' && methRes.value.ok) newMethodBreakdown = (await methRes.value.json()).entries || [];
+        if (clientRes.status === 'fulfilled' && clientRes.value.ok) newClientBreakdown = (await clientRes.value.json()).entries || [];
+        if (hourRes.status === 'fulfilled' && hourRes.value.ok) newHourlyData = (await hourRes.value.json()).data || {};
+        if (taskRes.status === 'fulfilled' && taskRes.value.ok) newTasks = (await taskRes.value.json()).tasks || [];
+
+        if (signal.aborted) return;
+
+        // All setState calls synchronous — React 18 batches into one render
+        setPlayActivity(newActivity);
+        setPluginAvailable(newPluginAvailable);
+        setTopTv(newTopTv);
+        setTopMovies(newTopMovies);
+        setMethodBreakdown(newMethodBreakdown);
+        setClientBreakdown(newClientBreakdown);
+        setHourlyData(newHourlyData);
+        setTasks(newTasks);
+      } catch (error) {
+        if (isAbortError(error) || signal.aborted) return;
+      } finally {
+        if (!signal.aborted) {
+          setLoading(false);
+        }
+        onLoadEnd?.();
       }
-      if (tvRes.status === 'fulfilled' && tvRes.value.ok) newTopTv = (await tvRes.value.json()).shows || [];
-      if (movRes.status === 'fulfilled' && movRes.value.ok) newTopMovies = (await movRes.value.json()).movies || [];
-      if (methRes.status === 'fulfilled' && methRes.value.ok) newMethodBreakdown = (await methRes.value.json()).entries || [];
-      if (clientRes.status === 'fulfilled' && clientRes.value.ok) newClientBreakdown = (await clientRes.value.json()).entries || [];
-      if (hourRes.status === 'fulfilled' && hourRes.value.ok) newHourlyData = (await hourRes.value.json()).data || {};
-      if (taskRes.status === 'fulfilled' && taskRes.value.ok) newTasks = (await taskRes.value.json()).tasks || [];
-
-      // All setState calls synchronous — React 18 batches into one render
-      setPlayActivity(newActivity);
-      setPluginAvailable(newPluginAvailable);
-      setTopTv(newTopTv);
-      setTopMovies(newTopMovies);
-      setMethodBreakdown(newMethodBreakdown);
-      setClientBreakdown(newClientBreakdown);
-      setHourlyData(newHourlyData);
-      setTasks(newTasks);
-      setLoading(false);
     }
     fetchStats();
-  }, [days]);
+    return () => controller.abort();
+  }, [days, onLoadStart, onLoadEnd]);
 
   if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48 rounded-lg" /><Skeleton className="h-40 rounded-xl" /><Skeleton className="h-40 rounded-xl" /></div>;
 
@@ -841,7 +923,7 @@ function StatsTab() {
       {playActivity.length > 0 && (
         <div>
           <SectionHeader title="Play Activity" />
-          <PlayActivityChart data={playActivity} days={days === 0 ? 18250 : days} />
+          <PlayActivityChart data={playActivity} />
         </div>
       )}
 
@@ -902,7 +984,7 @@ function SortToggle({ value, onChange }: { value: SortMode; onChange: (v: SortMo
 // ─── Play Activity Chart ───
 // Data: [{user_id, user_name, user_usage: {date: count}}]
 
-function PlayActivityChart({ data, days }: { data: PlayActivityUser[]; days: number }) {
+function PlayActivityChart({ data }: { data: PlayActivityUser[] }) {
   const chartData = useMemo(() => {
     const realUsers = data.filter((u) => u.user_id !== 'labels_user');
     if (realUsers.length === 0) return null;
@@ -1016,7 +1098,7 @@ function PlayActivityChart({ data, days }: { data: PlayActivityUser[]; days: num
     }
 
     return { realUsers, aggregated, totalPlays, maxVal, avgPerDay, periodLabel, labelInterval, userBars, isMonthly };
-  }, [data, days]);
+  }, [data]);
 
   if (!chartData) return null;
   const { realUsers, aggregated, totalPlays, maxVal, avgPerDay, periodLabel, labelInterval, userBars, isMonthly } = chartData;
