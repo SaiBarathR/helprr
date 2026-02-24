@@ -25,10 +25,21 @@ function attemptsKey(ip: string): string {
 async function incrementAttempts(ip: string): Promise<number> {
   const redis = await getRedisClient();
   const key = attemptsKey(ip);
-  const attempts = await redis.incr(key);
+  const result = await redis.eval(
+    `local attempts = redis.call('INCR', KEYS[1])
+if attempts == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return attempts`,
+    {
+      keys: [key],
+      arguments: [String(LOGIN_WINDOW_MS)],
+    }
+  );
 
-  if (attempts === 1) {
-    await redis.pExpire(key, LOGIN_WINDOW_MS);
+  const attempts = Number(result);
+  if (!Number.isFinite(attempts)) {
+    throw new Error('Unexpected Redis result for login attempts');
   }
 
   return attempts;
@@ -78,8 +89,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   try {
     await clearAttempts(ip);
-  } catch {
-    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  } catch (error) {
+    console.error('[Auth] Failed to clear login attempts:', error);
   }
 
   const token = await createSession();

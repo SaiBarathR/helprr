@@ -2,11 +2,19 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify } from 'jose';
 
-const jwtSecret = process.env.JWT_SECRET;
-if (!jwtSecret) {
-  throw new Error('JWT_SECRET env var is required');
+let jwtSecretBytes: Uint8Array | null = null;
+
+function getJwtSecret(): Uint8Array {
+  if (jwtSecretBytes) return jwtSecretBytes;
+
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error('JWT_SECRET env var is required');
+  }
+
+  jwtSecretBytes = new TextEncoder().encode(jwtSecret);
+  return jwtSecretBytes;
 }
-const JWT_SECRET = new TextEncoder().encode(jwtSecret);
 
 const COOKIE_NAME = 'helprr-session';
 
@@ -40,7 +48,7 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, JWT_SECRET);
+    await jwtVerify(token, getJwtSecret());
     return NextResponse.next();
   } catch {
     if (pathname.startsWith('/api/')) {

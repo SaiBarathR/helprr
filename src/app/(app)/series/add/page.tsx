@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -36,6 +36,11 @@ function AddSeriesPageContent() {
   const [seasonFolder, setSeasonFolder] = useState(true);
   const [adding, setAdding] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
+  const lastAutoSearchParamsRef = useRef<{ term: string; tvdbId: string | null; tmdbId: string | null }>({
+    term: '',
+    tvdbId: null,
+    tmdbId: null,
+  });
 
   useEffect(() => {
     Promise.all([
@@ -54,18 +59,23 @@ function AddSeriesPageContent() {
     setSearching(true);
     try {
       const res = await fetch(`/api/sonarr/lookup?term=${encodeURIComponent(searchTerm)}`);
-      if (res.ok) {
-        const data: SonarrLookupResult[] = await res.json();
-        setResults(data);
+      if (!res.ok) {
+        setResults([]);
+        setSelected(null);
+        toast.error(`Search failed (${res.status} ${res.statusText || 'Unknown error'})`);
+        return;
+      }
 
-        if (targetTvdbId || targetTmdbId) {
-          const matched = data.find((item) => {
-            if (targetTvdbId && item.tvdbId === targetTvdbId) return true;
-            if (targetTmdbId) return item.tmdbId === targetTmdbId;
-            return false;
-          });
-          if (matched) setSelected(matched);
-        }
+      const data: SonarrLookupResult[] = await res.json();
+      setResults(data);
+
+      if (targetTvdbId || targetTmdbId) {
+        const matched = data.find((item) => {
+          if (targetTvdbId && item.tvdbId === targetTvdbId) return true;
+          if (targetTmdbId) return item.tmdbId === targetTmdbId;
+          return false;
+        });
+        if (matched) setSelected(matched);
       }
     } catch { toast.error('Search failed'); }
     finally { setSearching(false); }
@@ -151,7 +161,20 @@ function AddSeriesPageContent() {
 
   useEffect(() => {
     const prefillTerm = searchParams.get('term');
-    if (prefillTerm) setTerm(prefillTerm);
+    const tvdbId = searchParams.get('tvdbId');
+    const tmdbId = searchParams.get('tmdbId');
+    const nextTerm = prefillTerm ?? '';
+    setTerm(nextTerm);
+
+    const previousParams = lastAutoSearchParamsRef.current;
+    if (
+      previousParams.term !== nextTerm
+      || previousParams.tvdbId !== tvdbId
+      || previousParams.tmdbId !== tmdbId
+    ) {
+      setAutoSearched(false);
+      lastAutoSearchParamsRef.current = { term: nextTerm, tvdbId, tmdbId };
+    }
 
     const prefillSeriesType = searchParams.get('seriesType');
     if (prefillSeriesType === 'anime' || prefillSeriesType === 'daily' || prefillSeriesType === 'standard') {

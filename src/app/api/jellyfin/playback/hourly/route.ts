@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { getDefaultEndDate, sanitizeDays } from '@/lib/jellyfin-playback-query';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
     const days = sanitizeDays(searchParams.get('days'), 7);

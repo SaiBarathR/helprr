@@ -20,16 +20,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    if (resolvedSubscriptionId) {
-      const existingCount = await prisma.notificationPreference.count({
-        where: { subscriptionId: resolvedSubscriptionId },
-      });
-      if (existingCount === 0) {
-        await ensureNotificationPreferences(resolvedSubscriptionId);
-      }
+    if (!resolvedSubscriptionId && !endpoint) {
+      return NextResponse.json({ error: 'subscriptionId or endpoint is required' }, { status: 400 });
     }
 
-    const where = resolvedSubscriptionId ? { subscriptionId: resolvedSubscriptionId } : {};
+    if (resolvedSubscriptionId) {
+      await ensureNotificationPreferences(resolvedSubscriptionId);
+    }
+
+    const where = resolvedSubscriptionId
+      ? { subscriptionId: resolvedSubscriptionId }
+      : { subscription: { endpoint: endpoint as string } };
 
     const preferences = await prisma.notificationPreference.findMany({
       where,

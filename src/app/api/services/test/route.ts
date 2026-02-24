@@ -5,30 +5,11 @@ import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
-import { prisma } from '@/lib/db';
-
-const SERVICE_TYPES = ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB'] as const;
-type ServiceType = typeof SERVICE_TYPES[number];
+import { isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
+import type { ServiceType } from '@prisma/client';
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
-}
-
-function maskApiKey(key: string): string {
-  if (key.length <= 8) return '****';
-  return key.slice(0, 4) + '****' + key.slice(-4);
-}
-
-async function resolveApiKeyForTest(type: ServiceType, providedApiKey: string): Promise<string> {
-  const existing = await prisma.serviceConnection.findUnique({ where: { type } });
-  if (!existing) return providedApiKey;
-
-  // If the UI sent back the masked value from GET /api/services, use the stored secret.
-  if (providedApiKey === maskApiKey(existing.apiKey)) {
-    return existing.apiKey;
-  }
-
-  return providedApiKey;
 }
 
 /**
@@ -42,7 +23,19 @@ async function resolveApiKeyForTest(type: ServiceType, providedApiKey: string): 
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const rawBody: unknown = await request.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await request.json();
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid JSON' },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
+
     if (!rawBody || typeof rawBody !== 'object') {
       return NextResponse.json(
         { success: false, error: 'Invalid request body' },
@@ -62,19 +55,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    if (!SERVICE_TYPES.includes(typeValue as ServiceType)) {
+    if (!isServiceType(typeValue)) {
       return NextResponse.json(
         { success: false, error: 'Invalid service type' },
         { status: 400 }
       );
     }
 
-    const type = typeValue as ServiceType;
+    const type: ServiceType = typeValue;
     const url = urlValue.trim();
     const apiKey = apiKeyValue.trim();
     const username = typeof usernameValue === 'string' ? usernameValue : undefined;
 
-    const resolvedApiKey = await resolveApiKeyForTest(type, apiKey);
+    const resolvedApiKey = await resolveApiKeyForService(type, apiKey);
     const cleanUrl = url.replace(/\/+$/, '');
 
     switch (type) {

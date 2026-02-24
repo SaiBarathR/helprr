@@ -23,9 +23,6 @@ export async function getRedisClient(): Promise<HelprrRedisClient> {
   }
 
   const client = globalForRedis.redisClient;
-  if (!client) {
-    throw new Error('Failed to initialize Redis client');
-  }
   if (client.isOpen) return client;
 
   if (!globalForRedis.redisConnectPromise) {
