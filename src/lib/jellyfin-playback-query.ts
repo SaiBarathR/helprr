@@ -10,16 +10,15 @@ export function sanitizeDays(
   return Math.min(normalized, maxDays);
 }
 
-export function getDefaultEndDate(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const USER_ID_RE = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 
 function toDateStr(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+export function getDefaultEndDate(): string {
+  return toDateStr(new Date());
 }
 
 export function parsePlaybackUserId(input: string | null): string | null {
@@ -56,6 +55,77 @@ export function parsePlaybackDateRange(
   };
 }
 
+/**
+ * Escapes single quotes for SQLite string literals by doubling them.
+ * Callers must still pre-validate untrusted values (for example via USER_ID_RE/DATE_RE).
+ */
 export function escapeSqlLiteral(value: string): string {
   return value.replace(/'/g, "''");
+}
+
+export interface PlaybackQueryEntry {
+  label: string;
+  count: number;
+  time: number;
+}
+
+interface CustomQueryClient {
+  submitCustomQuery: (sql: string) => Promise<{ columns: string[]; results: string[][] } | null>;
+}
+
+interface UserPlaybackQueryOptions {
+  defaultDays: number;
+  itemType: 'Movie' | 'Episode';
+  labelExpr: string;
+}
+
+type UserPlaybackQueryResult =
+  | { kind: 'badRequest'; error: string }
+  | { kind: 'ok'; entries: PlaybackQueryEntry[]; pluginAvailable: boolean };
+
+export async function executeUserPlaybackQuery(
+  client: CustomQueryClient,
+  userId: string,
+  searchParams: URLSearchParams,
+  options: UserPlaybackQueryOptions
+): Promise<UserPlaybackQueryResult> {
+  let range: { days: number; startDate: string; endDate: string };
+  try {
+    range = parsePlaybackDateRange(searchParams.get('days'), searchParams.get('endDate'), options.defaultDays);
+  } catch (error) {
+    return {
+      kind: 'badRequest',
+      error: error instanceof Error ? error.message : 'Invalid date range',
+    };
+  }
+
+  const query = `
+    SELECT
+      ${options.labelExpr} as Label,
+      COUNT(*) as Plays,
+      COALESCE(SUM(PlayDuration), 0) as TotalDuration
+    FROM PlaybackActivity
+    WHERE ItemType = '${options.itemType}'
+      AND date(DateCreated) >= date('${escapeSqlLiteral(range.startDate)}')
+      AND date(DateCreated) <= date('${escapeSqlLiteral(range.endDate)}')
+      AND UserId = '${escapeSqlLiteral(userId)}'
+    GROUP BY Label
+    ORDER BY Plays DESC, TotalDuration DESC
+  `;
+
+  const result = await client.submitCustomQuery(query).catch(() => null);
+  if (!result || !Array.isArray(result.results)) {
+    return { kind: 'ok', entries: [], pluginAvailable: false };
+  }
+
+  const entries = result.results
+    .filter((row): row is string[] => Array.isArray(row))
+    .map((row) => ({
+      label: String(row[0] ?? 'Unknown'),
+      count: Number.parseFloat(String(row[1] ?? '0')) || 0,
+      time: Number.parseFloat(String(row[2] ?? '0')) || 0,
+    }))
+    .filter((row) => row.label && (row.count > 0 || row.time > 0));
+
+  return { kind: 'ok', entries, pluginAvailable: true };
 }

@@ -4,8 +4,7 @@ import {
   getDefaultEndDate,
   sanitizeDays,
   parsePlaybackUserId,
-  parsePlaybackDateRange,
-  escapeSqlLiteral,
+  executeUserPlaybackQuery,
 } from '@/lib/jellyfin-playback-query';
 import { requireAuth } from '@/lib/auth';
 
@@ -25,56 +24,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const days = sanitizeDays(searchParams.get('days'), 30);
-    const endDate = searchParams.get('endDate') || getDefaultEndDate();
-
     const client = await getJellyfinClient();
 
     if (userId) {
-      let range;
-      try {
-        range = parsePlaybackDateRange(searchParams.get('days'), searchParams.get('endDate'), 30);
-      } catch (error) {
-        return NextResponse.json(
-          { error: error instanceof Error ? error.message : 'Invalid date range' },
-          { status: 400 }
-        );
-      }
-
-      const query = `
-        SELECT
+      const result = await executeUserPlaybackQuery(client, userId, searchParams, {
+        defaultDays: 30,
+        itemType: 'Episode',
+        labelExpr: `
           CASE
             WHEN instr(ItemName, ' - ') > 0 THEN substr(ItemName, 1, instr(ItemName, ' - ') - 1)
             ELSE ItemName
-          END as Label,
-          COUNT(*) as Plays,
-          COALESCE(SUM(PlayDuration), 0) as TotalDuration
-        FROM PlaybackActivity
-        WHERE ItemType = 'Episode'
-          AND date(DateCreated) >= date('${escapeSqlLiteral(range.startDate)}')
-          AND date(DateCreated) <= date('${escapeSqlLiteral(range.endDate)}')
-          AND UserId = '${escapeSqlLiteral(userId)}'
-        GROUP BY Label
-        ORDER BY Plays DESC, TotalDuration DESC
-      `;
-
-      const result = await client.submitCustomQuery(query);
-      if (!result || !Array.isArray(result.results)) {
-        return NextResponse.json({ shows: [], pluginAvailable: false });
+          END
+        `,
+      });
+      if (result.kind === 'badRequest') {
+        return NextResponse.json({ error: result.error }, { status: 400 });
       }
-
-      const shows = result.results
-        .filter((row): row is string[] => Array.isArray(row))
-        .map((row) => ({
-          label: String(row[0] ?? 'Unknown'),
-          count: Number.parseFloat(String(row[1] ?? '0')) || 0,
-          time: Number.parseFloat(String(row[2] ?? '0')) || 0,
-        }))
-        .filter((row) => row.label && (row.count > 0 || row.time > 0));
-
-      return NextResponse.json({ shows, pluginAvailable: true });
+      return NextResponse.json({ shows: result.entries, pluginAvailable: result.pluginAvailable });
     }
 
+    const days = sanitizeDays(searchParams.get('days'), 30);
+    const endDate = searchParams.get('endDate') || getDefaultEndDate();
     const shows = await client.getTvShowsReport(days, endDate);
     return NextResponse.json({ shows: shows ?? [], pluginAvailable: shows !== null });
   } catch (error) {

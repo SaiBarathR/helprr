@@ -19,7 +19,7 @@ function getJwtSecret(): Uint8Array {
 const COOKIE_NAME = 'helprr-session';
 
 const PUBLIC_PATHS = ['/login', '/api/auth/login'];
-const IS_DEV = process.env.NODE_ENV !== 'production';
+const IS_DEV = process.env.NODE_ENV === 'development';
 
 const SECURITY_HEADERS: Record<string, string> = {
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',

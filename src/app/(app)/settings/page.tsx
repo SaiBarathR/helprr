@@ -31,6 +31,52 @@ interface JellyfinUserOption {
   name: string;
 }
 
+interface JellyfinApiUser {
+  Id: string;
+  Name: string;
+  Policy?: {
+    IsHidden?: boolean;
+    IsDisabled?: boolean;
+  };
+}
+
+function isJellyfinApiUser(value: unknown): value is JellyfinApiUser {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as { Id?: unknown }).Id === 'string' &&
+    typeof (value as { Name?: unknown }).Name === 'string'
+  );
+}
+
+function isJellyfinUserOption(value: unknown): value is JellyfinUserOption {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    typeof (value as { id?: unknown }).id === 'string' &&
+    typeof (value as { name?: unknown }).name === 'string'
+  );
+}
+
+function mapJellyfinUsers(rawUsers: unknown[]): JellyfinUserOption[] {
+  const mapped = rawUsers.flatMap((value): JellyfinUserOption[] => {
+    if (isJellyfinApiUser(value)) {
+      if (value.Policy?.IsHidden || value.Policy?.IsDisabled) return [];
+      return [{ id: value.Id, name: value.Name }];
+    }
+    if (isJellyfinUserOption(value)) {
+      return [{ id: value.id, name: value.name }];
+    }
+    return [];
+  });
+
+  const unique = new Map<string, JellyfinUserOption>();
+  for (const option of mapped) {
+    if (!unique.has(option.id)) unique.set(option.id, option);
+  }
+  return Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 const defaultServiceForm: ServiceForm = {
   url: '',
   apiKey: '',
@@ -211,16 +257,7 @@ export default function SettingsPage() {
                 const rawUsers: unknown[] = Array.isArray((usersData as { users?: unknown }).users)
                   ? (usersData as { users: unknown[] }).users
                   : [];
-                const options: JellyfinUserOption[] = rawUsers
-                  .filter((u: unknown): u is { Id: string; Name: string; Policy?: { IsHidden?: boolean; IsDisabled?: boolean } } => (
-                    !!u &&
-                    typeof u === 'object' &&
-                    typeof (u as { Id?: unknown }).Id === 'string' &&
-                    typeof (u as { Name?: unknown }).Name === 'string'
-                  ))
-                  .filter((u) => !u.Policy?.IsHidden && !u.Policy?.IsDisabled)
-                  .map((u) => ({ id: u.Id, name: u.Name }))
-                  .sort((a, b) => a.name.localeCompare(b.name));
+                const options = mapJellyfinUsers(rawUsers);
 
                 if (savedJellyfinUserId && !options.some((u) => u.id === savedJellyfinUserId)) {
                   options.unshift({
@@ -307,12 +344,7 @@ export default function SettingsPage() {
           const rawUsers: unknown[] = Array.isArray((data as { users?: unknown }).users)
             ? (data as { users: unknown[] }).users
             : [];
-          const users: JellyfinUserOption[] = rawUsers.filter((u: unknown): u is JellyfinUserOption => (
-            !!u &&
-            typeof u === 'object' &&
-            typeof (u as { id?: unknown }).id === 'string' &&
-            typeof (u as { name?: unknown }).name === 'string'
-          ));
+          const users = mapJellyfinUsers(rawUsers);
           setJellyfinUsers(users);
 
           const selectedUserId = users.find((u) => u.id === svc.username)?.id

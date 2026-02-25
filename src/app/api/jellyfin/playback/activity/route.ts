@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       `;
 
       const [result, users] = await Promise.all([
-        client.submitCustomQuery(query),
+        client.submitCustomQuery(query).catch(() => null),
         client.getUsers().catch(() => []),
       ]);
 

@@ -54,7 +54,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         ORDER BY DayIdx ASC, Hour ASC
       `;
 
-      const result = await client.submitCustomQuery(query);
+      let result: { columns: string[]; results: string[][] } | null;
+      try {
+        result = await client.submitCustomQuery(query);
+      } catch {
+        return NextResponse.json({ data: {}, pluginAvailable: false });
+      }
+
       if (!result || !Array.isArray(result.results)) {
         return NextResponse.json({ data: {}, pluginAvailable: false });
       }
