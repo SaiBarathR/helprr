@@ -8,6 +8,11 @@ export interface JellyfinAuthResponse {
   ServerId: string;
 }
 
+export interface JellyfinAuthKey {
+  AccessToken?: string | null;
+  UserId?: string;
+}
+
 export interface JellyfinSystemInfo {
   ServerName: string;
   Version: string;

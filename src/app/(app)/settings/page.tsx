@@ -26,6 +26,11 @@ interface ServiceForm {
   saving: boolean;
 }
 
+interface JellyfinUserOption {
+  id: string;
+  name: string;
+}
+
 const defaultServiceForm: ServiceForm = {
   url: '',
   apiKey: '',
@@ -150,7 +155,8 @@ export default function SettingsPage() {
     JELLYFIN: { ...defaultServiceForm },
     TMDB: { ...defaultServiceForm },
   });
-  const [jellyfinAuth, setJellyfinAuth] = useState<{ token: string; userId: string } | null>(null);
+  const [jellyfinValidated, setJellyfinValidated] = useState<{ userId: string } | null>(null);
+  const [jellyfinUsers, setJellyfinUsers] = useState<JellyfinUserOption[]>([]);
 
   const [expandedService, setExpandedService] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState('30');
@@ -175,6 +181,7 @@ export default function SettingsPage() {
         if (connectionsRes.status === 'fulfilled' && connectionsRes.value.ok) {
           const connections = await connectionsRes.value.json();
           const updated = { ...services };
+          let savedJellyfinUserId = '';
           for (const conn of connections) {
             if (updated[conn.type]) {
               updated[conn.type] = {
@@ -183,9 +190,55 @@ export default function SettingsPage() {
                 apiKey: conn.apiKey,
                 username: conn.username || '',
               };
+              if (conn.type === 'JELLYFIN') {
+                savedJellyfinUserId = conn.username || '';
+              }
             }
           }
           setServices(updated);
+
+          if (savedJellyfinUserId) {
+            setJellyfinValidated({ userId: savedJellyfinUserId });
+          } else {
+            setJellyfinValidated(null);
+          }
+
+          if (updated.JELLYFIN.url && updated.JELLYFIN.apiKey) {
+            try {
+              const usersRes = await fetch('/api/jellyfin/users');
+              if (usersRes.ok) {
+                const usersData = await usersRes.json();
+                const options: JellyfinUserOption[] = Array.isArray(usersData.users)
+                  ? usersData.users
+                    .filter((u): u is { Id: string; Name: string; Policy?: { IsHidden?: boolean; IsDisabled?: boolean } } => (
+                      !!u &&
+                      typeof u === 'object' &&
+                      typeof (u as { Id?: unknown }).Id === 'string' &&
+                      typeof (u as { Name?: unknown }).Name === 'string'
+                    ))
+                    .filter((u) => !u.Policy?.IsHidden && !u.Policy?.IsDisabled)
+                    .map((u) => ({ id: u.Id, name: u.Name }))
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                  : [];
+
+                if (savedJellyfinUserId && !options.some((u) => u.id === savedJellyfinUserId)) {
+                  options.unshift({
+                    id: savedJellyfinUserId,
+                    name: `Saved User (${savedJellyfinUserId})`,
+                  });
+                }
+                setJellyfinUsers(options);
+              } else if (savedJellyfinUserId) {
+                setJellyfinUsers([{ id: savedJellyfinUserId, name: `Saved User (${savedJellyfinUserId})` }]);
+              }
+            } catch {
+              if (savedJellyfinUserId) {
+                setJellyfinUsers([{ id: savedJellyfinUserId, name: `Saved User (${savedJellyfinUserId})` }]);
+              }
+            }
+          } else {
+            setJellyfinUsers([]);
+          }
         }
 
         if (settingsRes.status === 'fulfilled' && settingsRes.value.ok) {
@@ -225,15 +278,10 @@ export default function SettingsPage() {
 
   async function testConnection(type: string) {
     const svc = services[type];
-    const needsUsername = type === 'QBITTORRENT' || type === 'JELLYFIN';
+    const needsUsername = type === 'QBITTORRENT';
 
     if (!svc.url || !svc.apiKey) {
       toast.error(needsUsername ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
-      return;
-    }
-
-    if (type === 'JELLYFIN' && !svc.username) {
-      toast.error('Please enter Username and Password');
       return;
     }
 
@@ -248,25 +296,51 @@ export default function SettingsPage() {
           url: svc.url,
           apiKey: svc.apiKey,
           ...(type === 'QBITTORRENT' && { username: svc.username || 'admin' }),
-          ...(type === 'JELLYFIN' && { username: svc.username }),
         }),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        if (type === 'JELLYFIN' && data.token && data.userId) {
-          setJellyfinAuth({ token: data.token, userId: data.userId });
+        if (type === 'JELLYFIN' && data.userId) {
+          const users = Array.isArray(data.users)
+            ? data.users.filter((u): u is JellyfinUserOption => (
+              !!u &&
+              typeof u === 'object' &&
+              typeof (u as { id?: unknown }).id === 'string' &&
+              typeof (u as { name?: unknown }).name === 'string'
+            ))
+            : [];
+          setJellyfinUsers(users);
+
+          const selectedUserId = users.find((u) => u.id === svc.username)?.id
+            || users.find((u) => u.id === data.userId)?.id
+            || users[0]?.id
+            || data.userId;
+          if (selectedUserId) {
+            updateService(type, 'username', selectedUserId);
+            setJellyfinValidated({ userId: selectedUserId });
+          } else {
+            setJellyfinValidated({ userId: data.userId });
+          }
         }
         toast.success(`Connection successful${data.version ? ` (v${data.version})` : ''}${data.serverName ? ` - ${data.serverName}` : ''}`, {
           icon: <CheckCircle className="h-4 w-4 text-green-500" />,
         });
       } else {
+        if (type === 'JELLYFIN') {
+          setJellyfinValidated(null);
+          setJellyfinUsers([]);
+        }
         toast.error(data.error || 'Connection failed', {
           icon: <XCircle className="h-4 w-4 text-red-500" />,
         });
       }
     } catch {
+      if (type === 'JELLYFIN') {
+        setJellyfinValidated(null);
+        setJellyfinUsers([]);
+      }
       toast.error('Failed to test connection');
     } finally {
       updateService(type, 'testing', false);
@@ -275,15 +349,20 @@ export default function SettingsPage() {
 
   async function saveConnection(type: string) {
     const svc = services[type];
-    const needsUsername = type === 'QBITTORRENT' || type === 'JELLYFIN';
+    const needsUsername = type === 'QBITTORRENT';
 
     if (!svc.url || !svc.apiKey) {
       toast.error(needsUsername ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
       return;
     }
 
-    if (type === 'JELLYFIN' && !jellyfinAuth) {
-      toast.error('Please test the connection first to authenticate');
+    if (type === 'JELLYFIN' && !jellyfinValidated) {
+      toast.error('Please test Jellyfin with an admin API key before saving');
+      return;
+    }
+
+    if (type === 'JELLYFIN' && !svc.username) {
+      toast.error('Please select a Jellyfin user');
       return;
     }
 
@@ -293,9 +372,8 @@ export default function SettingsPage() {
       const body: Record<string, string> = { type, url: svc.url, apiKey: svc.apiKey };
       if (type === 'QBITTORRENT') {
         body.username = svc.username || 'admin';
-      } else if (type === 'JELLYFIN' && jellyfinAuth) {
-        body.apiKey = jellyfinAuth.token;
-        body.username = jellyfinAuth.userId;
+      } else if (type === 'JELLYFIN' && jellyfinValidated) {
+        body.username = svc.username || jellyfinValidated.userId;
       }
 
       const res = await fetch('/api/services', {
@@ -411,7 +489,7 @@ export default function SettingsPage() {
             const svc = services[config.type];
             const isQbt = config.type === 'QBITTORRENT';
             const isJellyfin = config.type === 'JELLYFIN';
-            const showUsernamePassword = isQbt || isJellyfin;
+            const showUsernamePassword = isQbt;
             const configured = isConfigured(config.type);
             const expanded = expandedService === config.type;
 
@@ -443,7 +521,14 @@ export default function SettingsPage() {
                       <Input
                         placeholder={config.placeholder}
                         value={svc.url}
-                        onChange={(e) => updateService(config.type, 'url', e.target.value)}
+                        onChange={(e) => {
+                          updateService(config.type, 'url', e.target.value);
+                          if (isJellyfin) {
+                            setJellyfinValidated(null);
+                            setJellyfinUsers([]);
+                            updateService(config.type, 'username', '');
+                          }
+                        }}
                         className="h-10"
                       />
                     </div>
@@ -452,7 +537,7 @@ export default function SettingsPage() {
                         <div className="space-y-1.5">
                           <Label className="text-xs text-muted-foreground">Username</Label>
                           <Input
-                            placeholder={isQbt ? 'admin' : 'Enter username'}
+                            placeholder="admin"
                             value={svc.username}
                             onChange={(e) => updateService(config.type, 'username', e.target.value)}
                             className="h-10"
@@ -464,31 +549,58 @@ export default function SettingsPage() {
                             type="password"
                             placeholder="Enter password"
                             value={svc.apiKey}
+                            onChange={(e) => updateService(config.type, 'apiKey', e.target.value)}
+                            className="h-10"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs text-muted-foreground">{isJellyfin ? 'API Key (Admin)' : 'API Key'}</Label>
+                          <Input
+                            type="password"
+                            placeholder={isJellyfin ? 'Enter Jellyfin API key' : 'Enter API key'}
+                            value={svc.apiKey}
                             onChange={(e) => {
                               updateService(config.type, 'apiKey', e.target.value);
-                              if (isJellyfin) setJellyfinAuth(null);
+                              if (isJellyfin) {
+                                setJellyfinValidated(null);
+                                setJellyfinUsers([]);
+                                updateService(config.type, 'username', '');
+                              }
                             }}
                             className="h-10"
                           />
                         </div>
-                        {isJellyfin && jellyfinAuth && (
-                          <p className="text-xs text-green-500">Authenticated - ready to save</p>
+                        {isJellyfin && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Primary Default User</Label>
+                            <Select
+                              value={svc.username || undefined}
+                              onValueChange={(value) => updateService(config.type, 'username', value)}
+                              disabled={!jellyfinValidated || jellyfinUsers.length === 0}
+                            >
+                              <SelectTrigger className="h-10">
+                                <SelectValue placeholder={jellyfinUsers.length > 0 ? 'Select a Jellyfin user' : 'Test connection to load users'} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {jellyfinUsers.map((user) => (
+                                  <SelectItem key={user.id} value={user.id}>
+                                    {user.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         )}
-                        {isJellyfin && !jellyfinAuth && svc.apiKey && svc.username && (
-                          <p className="text-xs text-muted-foreground">Test connection to authenticate before saving</p>
+                        {isJellyfin && jellyfinValidated && (
+                          <p className="text-xs text-green-500">Admin API key validated - ready to save</p>
+                        )}
+                        {isJellyfin && !jellyfinValidated && svc.apiKey && (
+                          <p className="text-xs text-muted-foreground">Test connection to validate your API key before saving</p>
                         )}
                       </>
-                    ) : (
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-muted-foreground">API Key</Label>
-                        <Input
-                          type="password"
-                          placeholder="Enter API key"
-                          value={svc.apiKey}
-                          onChange={(e) => updateService(config.type, 'apiKey', e.target.value)}
-                          className="h-10"
-                        />
-                      </div>
                     )}
                     <div className="flex gap-2 pt-1">
                       <Button

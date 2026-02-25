@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { JellyfinClient } from '@/lib/jellyfin-client';
 import { requireAuth } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 
@@ -39,13 +40,17 @@ export async function GET(): Promise<NextResponse> {
  * Create or update a service connection from the request body and return the stored connection with its `apiKey` masked.
  *
  * Validates that `type`, `url`, and `apiKey` are present and that `type` is one of `SONARR`, `RADARR`, `QBITTORRENT`, `PROWLARR`, `JELLYFIN`, or `TMDB`.
- * For `QBITTORRENT`, `username` is set to the provided value or defaults to `"admin"`. Trailing slashes are removed from `url`.
+ * For `QBITTORRENT`, `username` is set to the provided value or defaults to `"admin"`.
+ * For `JELLYFIN`, an admin API key is required and `username` stores the selected Jellyfin userId for user-scoped data.
+ * Trailing slashes are removed from `url`.
  *
  * @returns The saved service connection object with `apiKey` obscured, or an error object `{ error: string }` when validation or saving fails (returned with an appropriate HTTP status).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+
+  let attemptedType: string | null = null;
 
   try {
     let rawBody: unknown;
@@ -76,7 +81,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!isNonEmptyString(typeValue) || !isNonEmptyString(urlValue) || !isNonEmptyString(apiKeyValue)) {
       return NextResponse.json(
-        { error: 'type, url, and apiKey/password are required' },
+        { error: 'type, url, and apiKey are required' },
         { status: 400 }
       );
     }
@@ -89,18 +94,61 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const type = typeValue;
+    attemptedType = type;
     const url = urlValue.trim().replace(/\/+$/, '');
     const apiKey = apiKeyValue.trim();
     const normalizedUsername = typeof usernameValue === 'string'
       ? usernameValue.trim()
       : '';
-    const username = type === 'QBITTORRENT'
+
+    let username = type === 'QBITTORRENT'
       ? (normalizedUsername || 'admin')
       : type === 'JELLYFIN'
         ? (normalizedUsername || null)
         : null;
 
     const apiKeyToStore = await resolveApiKeyForService(type, apiKey);
+
+    if (type === 'JELLYFIN') {
+      const client = new JellyfinClient(url, apiKeyToStore);
+      const [currentUser, hasAdminAccess] = await Promise.all([
+        client.resolveCurrentUser(apiKeyToStore),
+        client.hasAdminAccess(),
+      ]);
+
+      if (!currentUser) {
+        return NextResponse.json(
+          { error: 'Unable to resolve Jellyfin user for this API key.' },
+          { status: 400 }
+        );
+      }
+
+      if (!hasAdminAccess) {
+        return NextResponse.json(
+          { error: 'Admin Jellyfin API key required' },
+          { status: 403 }
+        );
+      }
+
+      const selectedUserId = normalizedUsername || currentUser.Id;
+
+      try {
+        const users = await client.getUsers();
+        if (users.length > 0 && !users.some((u) => u.Id === selectedUserId)) {
+          return NextResponse.json(
+            { error: 'Selected Jellyfin user was not found.' },
+            { status: 400 }
+          );
+        }
+      } catch (error) {
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status !== 400 && status !== 401 && status !== 403 && status !== 404) {
+          throw error;
+        }
+      }
+
+      username = selectedUserId;
+    }
 
     const connection = await prisma.serviceConnection.upsert({
       where: { type },
@@ -122,6 +170,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       apiKey: maskApiKey(connection.apiKey),
     });
   } catch (error) {
+    const responseStatus = (error as { response?: { status?: number } })?.response?.status;
+    if (typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500) {
+      const jellyfinAuthHint = attemptedType === 'JELLYFIN' && responseStatus === 401
+        ? 'Invalid Jellyfin API key or Jellyfin rejected token auth'
+        : 'Failed to save service connection';
+      return NextResponse.json(
+        { error: jellyfinAuthHint },
+        { status: responseStatus }
+      );
+    }
+
     console.error('Failed to save service connection:', getErrorInfo(error));
     return NextResponse.json(
       { error: 'Failed to save service connection' },

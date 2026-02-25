@@ -1,6 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
-  JellyfinAuthResponse,
   JellyfinSystemInfo,
   JellyfinLibrary,
   JellyfinItem,
@@ -11,6 +10,7 @@ import type {
   JellyfinActivityResponse,
   JellyfinUser,
   JellyfinScheduledTask,
+  JellyfinAuthKey,
   PlaybackUserActivity,
   PlaybackActivityItem,
   PlaybackBreakdownEntry,
@@ -26,36 +26,18 @@ export class JellyfinClient {
   private serverUrl: string;
   private userId: string;
 
-  constructor(url: string, token: string, userId: string) {
+  constructor(url: string, token: string, userId: string = '') {
     this.serverUrl = url.replace(/\/+$/, '');
     this.userId = userId;
-      this.client = axios.create({
-        baseURL: this.serverUrl,
-        headers: {
-          'Authorization': `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 30000, // 30 second timeout
-      });
-  }
-
-  static async authenticate(
-    url: string,
-    username: string,
-    password: string
-  ): Promise<JellyfinAuthResponse> {
-    const cleanUrl = url.replace(/\/+$/, '');
-    const response = await axios.post<JellyfinAuthResponse>(
-      `${cleanUrl}/Users/AuthenticateByName`,
-      { Username: username, Pw: password },
-      {
-        headers: {
-          'Authorization': `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-    return response.data;
+    this.client = axios.create({
+      baseURL: this.serverUrl,
+      headers: {
+        'Authorization': `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
+        'X-Emby-Token': token,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000, // 30 second timeout
+    });
   }
 
   getServerUrl(): string {
@@ -80,25 +62,70 @@ export class JellyfinClient {
     return response.data;
   }
 
+  private requireUserId(): string {
+    if (!this.userId) {
+      throw new Error('Jellyfin userId is not configured. Re-test and save Jellyfin settings.');
+    }
+    return this.userId;
+  }
+
   private isPluginMissingError(error: unknown): boolean {
     return axios.isAxiosError(error) && error.response?.status === 404;
+  }
+
+  private isBadRequestError(error: unknown): boolean {
+    return axios.isAxiosError(error) && error.response?.status === 400;
+  }
+
+  private isUnauthorizedError(error: unknown): boolean {
+    return axios.isAxiosError(error) && error.response?.status === 401;
+  }
+
+  private isForbiddenError(error: unknown): boolean {
+    return axios.isAxiosError(error) && error.response?.status === 403;
+  }
+
+  private isNotFoundError(error: unknown): boolean {
+    return axios.isAxiosError(error) && error.response?.status === 404;
+  }
+
+  private canFallbackUserResolution(error: unknown): boolean {
+    return this.isBadRequestError(error) || this.isUnauthorizedError(error) || this.isForbiddenError(error) || this.isNotFoundError(error);
+  }
+
+  private pickPreferredUser(users: JellyfinUser[]): JellyfinUser | null {
+    if (users.length === 0) return null;
+    const activeUsers = users.filter((user) => !user.Policy?.IsHidden && !user.Policy?.IsDisabled);
+    const pool = activeUsers.length > 0 ? activeUsers : users;
+
+    const adminNamed = pool.find((user) => user.Policy?.IsAdministrator && user.Name.toLowerCase() === 'admin');
+    if (adminNamed) return adminNamed;
+
+    const anyAdmin = pool.find((user) => user.Policy?.IsAdministrator);
+    if (anyAdmin) return anyAdmin;
+
+    return pool[0] ?? null;
   }
 
   async getSystemInfo(): Promise<JellyfinSystemInfo> {
     return this.get<JellyfinSystemInfo>('/System/Info');
   }
 
+  async getCurrentUser(): Promise<JellyfinUser> {
+    return this.get<JellyfinUser>('/Users/Me');
+  }
+
   async getLibraries(): Promise<JellyfinLibrary[]> {
-    const data = await this.get<{ Items: JellyfinLibrary[] }>(`/Users/${this.userId}/Views`);
+    const data = await this.get<{ Items: JellyfinLibrary[] }>(`/Users/${this.requireUserId()}/Views`);
     return data.Items;
   }
 
   async getItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
-    return this.get<JellyfinItemsResponse>(`/Users/${this.userId}/Items`, params);
+    return this.get<JellyfinItemsResponse>(`/Users/${this.requireUserId()}/Items`, params);
   }
 
   async getRecentlyAdded(params: { limit?: number; parentId?: string } = {}): Promise<JellyfinItem[]> {
-    return this.get<JellyfinItem[]>(`/Users/${this.userId}/Items/Latest`, {
+    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/Latest`, {
       Limit: params.limit ?? 15,
       ...(params.parentId && { ParentId: params.parentId }),
       Fields: 'Overview,DateCreated,ImageTags',
@@ -108,7 +135,7 @@ export class JellyfinClient {
 
   async getResumeItems(params: { limit?: number } = {}): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/UserItems/Resume`, {
-      UserId: this.userId,
+      UserId: this.requireUserId(),
       Limit: params.limit ?? 10,
       Fields: 'Overview,ImageTags',
       EnableImageTypes: 'Primary,Backdrop',
@@ -126,14 +153,14 @@ export class JellyfinClient {
   }
 
   async getItemCounts(): Promise<JellyfinItemCounts> {
-    return this.get<JellyfinItemCounts>('/Items/Counts', { UserId: this.userId });
+    return this.get<JellyfinItemCounts>('/Items/Counts', { UserId: this.requireUserId() });
   }
 
   async search(term: string): Promise<JellyfinSearchResult> {
     return this.get<JellyfinSearchResult>('/Search/Hints', {
       searchTerm: term,
       Limit: 20,
-      UserId: this.userId,
+      UserId: this.requireUserId(),
     });
   }
 
@@ -149,6 +176,61 @@ export class JellyfinClient {
 
   async getUsers(): Promise<JellyfinUser[]> {
     return this.get<JellyfinUser[]>('/Users');
+  }
+
+  async getAuthKeys(): Promise<JellyfinAuthKey[]> {
+    const data = await this.get<{ Items?: JellyfinAuthKey[] } | JellyfinAuthKey[]>('/Auth/Keys');
+    if (Array.isArray(data)) return data;
+    return Array.isArray(data.Items) ? data.Items : [];
+  }
+
+  /**
+   * Some Jellyfin API-key flows reject /Users/Me with 400.
+   * In that case, fall back to resolving the key owner through /Auth/Keys + /Users.
+   */
+  async resolveCurrentUser(apiKey: string): Promise<JellyfinUser | null> {
+    let users: JellyfinUser[] | null = null;
+
+    try {
+      return await this.getCurrentUser();
+    } catch (error) {
+      if (!this.canFallbackUserResolution(error)) throw error;
+    }
+
+    try {
+      users = await this.getUsers();
+    } catch (error) {
+      if (!this.canFallbackUserResolution(error)) throw error;
+    }
+
+    try {
+      const keys = await this.getAuthKeys();
+      const matchingKey = keys.find((key) => key.AccessToken === apiKey && typeof key.UserId === 'string');
+      if (matchingKey?.UserId && users) {
+        const resolved = users.find((user) => user.Id === matchingKey.UserId);
+        if (resolved) return resolved;
+      }
+    } catch (error) {
+      if (!this.canFallbackUserResolution(error)) throw error;
+    }
+
+    if (users) {
+      return this.pickPreferredUser(users);
+    }
+
+    return null;
+  }
+
+  async hasAdminAccess(): Promise<boolean> {
+    try {
+      await this.getScheduledTasks();
+      return true;
+    } catch (error) {
+      if (this.isUnauthorizedError(error) || this.isForbiddenError(error)) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   async getScheduledTasks(): Promise<JellyfinScheduledTask[]> {
