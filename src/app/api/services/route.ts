@@ -12,6 +12,33 @@ function getErrorInfo(error: unknown): { message?: string; code?: string | numbe
   };
 }
 
+function getUpstream4xxMessage(error: unknown): string {
+  const response = (error as { response?: { data?: unknown; statusText?: string } })?.response;
+  const responseData = response?.data;
+
+  if (typeof responseData === 'string' && responseData.trim()) {
+    return responseData.trim();
+  }
+
+  if (responseData && typeof responseData === 'object') {
+    const message = (responseData as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) {
+      return message.trim();
+    }
+
+    const errorText = (responseData as { error?: unknown }).error;
+    if (typeof errorText === 'string' && errorText.trim()) {
+      return errorText.trim();
+    }
+  }
+
+  if (typeof response?.statusText === 'string' && response.statusText.trim()) {
+    return response.statusText.trim();
+  }
+
+  return 'Failed to save service connection';
+}
+
 export async function GET(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -172,11 +199,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const responseStatus = (error as { response?: { status?: number } })?.response?.status;
     if (typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500) {
-      const jellyfinAuthHint = attemptedType === 'JELLYFIN' && responseStatus === 401
+      const errorMessage = attemptedType === 'JELLYFIN' && responseStatus === 401
         ? 'Invalid Jellyfin API key or Jellyfin rejected token auth'
-        : 'Failed to save service connection';
+        : attemptedType !== 'JELLYFIN'
+          ? getUpstream4xxMessage(error)
+          : 'Failed to save service connection';
       return NextResponse.json(
-        { error: jellyfinAuthHint },
+        { error: errorMessage },
         { status: responseStatus }
       );
     }

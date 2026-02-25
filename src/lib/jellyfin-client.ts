@@ -188,7 +188,7 @@ export class JellyfinClient {
    * Some Jellyfin API-key flows reject /Users/Me with 400.
    * In that case, fall back to resolving the key owner through /Auth/Keys + /Users.
    */
-  async resolveCurrentUser(apiKey: string): Promise<JellyfinUser | null> {
+  async resolveCurrentUser(tokenToMatch: string): Promise<JellyfinUser | null> {
     let users: JellyfinUser[] | null = null;
 
     try {
@@ -205,7 +205,7 @@ export class JellyfinClient {
 
     try {
       const keys = await this.getAuthKeys();
-      const matchingKey = keys.find((key) => key.AccessToken === apiKey && typeof key.UserId === 'string');
+      const matchingKey = keys.find((key) => key.AccessToken === tokenToMatch && typeof key.UserId === 'string');
       if (matchingKey?.UserId && users) {
         const resolved = users.find((user) => user.Id === matchingKey.UserId);
         if (resolved) return resolved;

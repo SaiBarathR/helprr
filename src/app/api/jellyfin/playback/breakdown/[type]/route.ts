@@ -72,7 +72,13 @@ export async function GET(
         ORDER BY Plays DESC, TotalDuration DESC
       `;
 
-      const result = await client.submitCustomQuery(query);
+      let result: { columns: string[]; results: string[][] } | null;
+      try {
+        result = await client.submitCustomQuery(query);
+      } catch {
+        return NextResponse.json({ entries: [], pluginAvailable: false });
+      }
+
       if (!result || !Array.isArray(result.results)) {
         return NextResponse.json({ entries: [], pluginAvailable: false });
       }

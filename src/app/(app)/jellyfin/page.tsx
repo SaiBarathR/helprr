@@ -858,7 +858,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
         // Parse all JSON before any setState so updates batch in a single render
         let newActivity: PlayActivityUser[] = [];
-        let newPluginAvailable = true;
+        let newPluginAvailable = pluginAvailable;
         let newTopTv: PlaybackBreakdownEntry[] = [];
         let newTopMovies: PlaybackBreakdownEntry[] = [];
         let newMethodBreakdown: PlaybackBreakdownEntry[] = [];
@@ -872,12 +872,36 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           newActivity = d.data || [];
           if (d.pluginAvailable === false) newPluginAvailable = false;
         }
-        if (tvRes.status === 'fulfilled' && tvRes.value.ok) newTopTv = (await tvRes.value.json()).shows || [];
-        if (movRes.status === 'fulfilled' && movRes.value.ok) newTopMovies = (await movRes.value.json()).movies || [];
-        if (methRes.status === 'fulfilled' && methRes.value.ok) newMethodBreakdown = (await methRes.value.json()).entries || [];
-        if (clientRes.status === 'fulfilled' && clientRes.value.ok) newClientBreakdown = (await clientRes.value.json()).entries || [];
-        if (deviceRes.status === 'fulfilled' && deviceRes.value.ok) newDeviceBreakdown = (await deviceRes.value.json()).entries || [];
-        if (hourRes.status === 'fulfilled' && hourRes.value.ok) newHourlyData = (await hourRes.value.json()).data || {};
+        if (tvRes.status === 'fulfilled' && tvRes.value.ok) {
+          const d = await tvRes.value.json();
+          newTopTv = d.shows || [];
+          if (d.pluginAvailable === false) newPluginAvailable = false;
+        }
+        if (movRes.status === 'fulfilled' && movRes.value.ok) {
+          const d = await movRes.value.json();
+          newTopMovies = d.movies || [];
+          if (d.pluginAvailable === false) newPluginAvailable = false;
+        }
+        if (methRes.status === 'fulfilled' && methRes.value.ok) {
+          const d = await methRes.value.json();
+          newMethodBreakdown = d.entries || [];
+          if (d.pluginAvailable === false) newPluginAvailable = false;
+        }
+        if (clientRes.status === 'fulfilled' && clientRes.value.ok) {
+          const d = await clientRes.value.json();
+          newClientBreakdown = d.entries || [];
+          if (d.pluginAvailable === false) newPluginAvailable = false;
+        }
+        if (deviceRes.status === 'fulfilled' && deviceRes.value.ok) {
+          const d = await deviceRes.value.json();
+          newDeviceBreakdown = d.entries || [];
+          if (d.pluginAvailable === false) newPluginAvailable = false;
+        }
+        if (hourRes.status === 'fulfilled' && hourRes.value.ok) {
+          const d = await hourRes.value.json();
+          newHourlyData = d.data || {};
+          if (d.pluginAvailable === false) newPluginAvailable = false;
+        }
         if (taskRes.status === 'fulfilled' && taskRes.value.ok) newTasks = (await taskRes.value.json()).tasks || [];
 
         if (signal.aborted) return;
@@ -903,7 +927,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
     }
     fetchStats();
     return () => controller.abort();
-  }, [days, selectedUserId, onLoadStart, onLoadEnd]);
+  }, [days, selectedUserId, onLoadStart, onLoadEnd, pluginAvailable]);
 
   if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48 rounded-lg" /><Skeleton className="h-40 rounded-xl" /><Skeleton className="h-40 rounded-xl" /></div>;
 
