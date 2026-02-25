@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import type { RadarrLookupResult } from '@/types';
 
 export async function GET(request: NextRequest) {
   const authError = await requireAuth();
@@ -14,7 +15,13 @@ export async function GET(request: NextRequest) {
     }
     const client = await getRadarrClient();
     const results = await client.lookupMovie(term);
-    return NextResponse.json(results);
+    const annotatedResults: RadarrLookupResult[] = results.map((movie) => ({
+      ...movie,
+      library: (typeof movie.id === 'number' && movie.id > 0)
+        ? { exists: true, type: 'movie', id: movie.id }
+        : { exists: false },
+    }));
+    return NextResponse.json(annotatedResults);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to lookup movie';
     return NextResponse.json({ error: message }, { status: 500 });

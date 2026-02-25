@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -16,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Search, Plus, Loader2, Tv } from 'lucide-react';
+import { Search, Plus, Loader2, Tv, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SonarrLookupResult, QualityProfile, RootFolder } from '@/types';
 
@@ -88,6 +89,15 @@ function AddSeriesPageContent() {
 
   async function handleAdd() {
     if (!selected || !profileId || !rootFolder) return;
+    if (selected.library?.exists) {
+      if (selected.library.id) {
+        router.push(`/series/${selected.library.id}`);
+        return;
+      }
+      toast.error('Series is already in library, but detail link is unavailable');
+      return;
+    }
+
     setAdding(true);
     try {
       const res = await fetch('/api/sonarr', {
@@ -158,6 +168,8 @@ function AddSeriesPageContent() {
   function getRootFolderLabel(path: string) {
     return path || 'Select folder';
   }
+
+  const selectedInLibrary = selected?.library?.exists === true;
 
   useEffect(() => {
     const prefillTerm = searchParams.get('term');
@@ -242,6 +254,12 @@ function AddSeriesPageContent() {
                 <p className="text-sm text-muted-foreground mt-0.5">
                   {selected.year}{selected.network ? ` \u00b7 ${selected.network}` : ''}
                 </p>
+                {selectedInLibrary && (
+                  <Badge className="mt-2 bg-green-600/90 text-white">
+                    <Check className="mr-1 h-3.5 w-3.5" />
+                    Added
+                  </Badge>
+                )}
                 {selected.overview && (
                   <p className="text-sm text-muted-foreground mt-2 line-clamp-3 leading-snug">
                     {selected.overview}
@@ -250,83 +268,100 @@ function AddSeriesPageContent() {
               </div>
             </div>
 
-            {/* Options as grouped rows */}
-            <div className="grouped-section">
-              <div className="grouped-section-title">Options</div>
-              <div className="grouped-section-content">
-                <div className="grouped-row">
-                  <Label className="text-sm shrink-0">Quality Profile</Label>
-                  <Select value={profileId} onValueChange={setProfileId}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                      <SelectValue>{getProfileLabel(profileId)}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {profiles.map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            {selectedInLibrary ? (
+              <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-300">
+                This series is already in your library.
+              </div>
+            ) : (
+              <div className="grouped-section">
+                <div className="grouped-section-title">Options</div>
+                <div className="grouped-section-content">
+                  <div className="grouped-row">
+                    <Label className="text-sm shrink-0">Quality Profile</Label>
+                    <Select value={profileId} onValueChange={setProfileId}>
+                      <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                        <SelectValue>{getProfileLabel(profileId)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {profiles.map((p) => (
+                          <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="grouped-row">
-                  <Label className="text-sm shrink-0">Root Folder</Label>
-                  <Select value={rootFolder} onValueChange={setRootFolder}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 max-w-[180px]">
-                      <SelectValue>{getRootFolderLabel(rootFolder)}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rootFolders.map((f) => (
-                        <SelectItem key={f.id} value={f.path}>{f.path}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="grouped-row">
+                    <Label className="text-sm shrink-0">Root Folder</Label>
+                    <Select value={rootFolder} onValueChange={setRootFolder}>
+                      <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5 max-w-[180px]">
+                        <SelectValue>{getRootFolderLabel(rootFolder)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {rootFolders.map((f) => (
+                          <SelectItem key={f.id} value={f.path}>{f.path}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="grouped-row">
-                  <Label className="text-sm shrink-0">Series Type</Label>
-                  <Select value={seriesType} onValueChange={setSeriesType}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                      <SelectValue>{getSeriesTypeLabel(seriesType)}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SERIES_TYPE_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="grouped-row">
+                    <Label className="text-sm shrink-0">Series Type</Label>
+                    <Select value={seriesType} onValueChange={setSeriesType}>
+                      <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                        <SelectValue>{getSeriesTypeLabel(seriesType)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SERIES_TYPE_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="grouped-row">
-                  <Label className="text-sm shrink-0">Monitor</Label>
-                  <Select value={monitorOption} onValueChange={setMonitorOption}>
-                    <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                      <SelectValue>{getMonitorLabel(monitorOption)}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {MONITOR_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  <div className="grouped-row">
+                    <Label className="text-sm shrink-0">Monitor</Label>
+                    <Select value={monitorOption} onValueChange={setMonitorOption}>
+                      <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                        <SelectValue>{getMonitorLabel(monitorOption)}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MONITOR_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="grouped-row" style={{ borderBottom: 'none' }}>
-                  <Label className="text-sm shrink-0">Season Folders</Label>
-                  <Switch checked={seasonFolder} onCheckedChange={setSeasonFolder} />
+                  <div className="grouped-row" style={{ borderBottom: 'none' }}>
+                    <Label className="text-sm shrink-0">Season Folders</Label>
+                    <Switch checked={seasonFolder} onCheckedChange={setSeasonFolder} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Action buttons */}
             <div className="flex gap-3">
-              <Button className="flex-1 h-11" onClick={handleAdd} disabled={adding}>
-                {adding ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="mr-2 h-4 w-4" />
-                )}
-                Add Series
-              </Button>
+              {selectedInLibrary ? (
+                <Button
+                  className="flex-1 h-11"
+                  onClick={() => {
+                    if (selected.library?.id) router.push(`/series/${selected.library.id}`);
+                    else toast.error('Series is already in library, but detail link is unavailable');
+                  }}
+                >
+                  Open in Library
+                </Button>
+              ) : (
+                <Button className="flex-1 h-11" onClick={handleAdd} disabled={adding}>
+                  {adding ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="mr-2 h-4 w-4" />
+                  )}
+                  Add Series
+                </Button>
+              )}
               <Button variant="ghost" className="flex-1 h-11" onClick={() => setSelected(null)}>
                 Cancel
               </Button>
@@ -357,6 +392,14 @@ function AddSeriesPageContent() {
                         </div>
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                      {r.library?.exists && (
+                        <div className="absolute top-1.5 right-1.5">
+                          <Badge className="bg-green-600/90 text-white text-[10px]">
+                            <Check className="mr-1 h-3 w-3" />
+                            Added
+                          </Badge>
+                        </div>
+                      )}
                       <div className="absolute bottom-0 p-1.5">
                         <p className="text-[11px] font-medium text-white truncate leading-tight">{r.title}</p>
                         <p className="text-[10px] text-white/70">{r.year}</p>
