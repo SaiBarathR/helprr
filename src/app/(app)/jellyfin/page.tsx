@@ -109,45 +109,47 @@ export default function JellyfinPage() {
   const [tab, setTab] = useState<TabKey>('overview');
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [, setPendingLoads] = useState(0);
   const refreshingRef = useRef(refreshing);
   const refreshObservedLoadRef = useRef(false);
+  const refreshPendingRef = useRef(0);
 
   useEffect(() => {
     refreshingRef.current = refreshing;
   }, [refreshing]);
 
   const incrementPending = useCallback(() => {
+    if (!refreshingRef.current) return;
     refreshObservedLoadRef.current = true;
-    setPendingLoads((count) => count + 1);
+    refreshPendingRef.current += 1;
   }, []);
 
   const decrementPending = useCallback(() => {
-    setPendingLoads((count) => {
-      const next = Math.max(0, count - 1);
-      if (next === 0 && refreshingRef.current && refreshObservedLoadRef.current) {
-        setRefreshing(false);
-      }
-      return next;
-    });
+    if (!refreshingRef.current || !refreshObservedLoadRef.current) return;
+    refreshPendingRef.current = Math.max(0, refreshPendingRef.current - 1);
+    if (refreshPendingRef.current === 0) {
+      refreshingRef.current = false;
+      setRefreshing(false);
+    }
   }, []);
 
-  function handleRefresh() {
-    setRefreshing(true);
-    refreshObservedLoadRef.current = false;
-    setRefreshKey((k) => k + 1);
-  }
+  // function handleRefresh() {
+  //   refreshingRef.current = true;
+  //   setRefreshing(true);
+  //   refreshObservedLoadRef.current = false;
+  //   refreshPendingRef.current = 0;
+  //   setRefreshKey((k) => k + 1);
+  // }
 
   return (
     <div className="flex flex-col min-h-0">
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
+      {/* <div className="flex items-center justify-between px-2 pt-3 pb-2">
         <h1 className="text-xl font-bold">Jellyfin</h1>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh} disabled={refreshing}>
           {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
-      </div>
+      </div> */}
 
-      <div className="px-4 pb-3">
+      <div className="px-2 pb-3 pt-3">
         <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {TABS.map((t) => (
             <button
@@ -168,7 +170,7 @@ export default function JellyfinPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto px-2 pb-4">
         <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
           {tab === 'overview' && <OverviewTab key={`o-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
           {tab === 'users' && <UsersTab key={`u-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
@@ -230,25 +232,22 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [resumeItems, setResumeItems] = useState<JellyfinItem[]>([]);
   const [counts, setCounts] = useState<JellyfinItemCounts | null>(null);
   const [recentlyAdded, setRecentlyAdded] = useState<JellyfinItem[]>([]);
-  const [libraries, setLibraries] = useState<JellyfinLibrary[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
 
   const fetchData = useCallback(async () => {
-    const [sysRes, sessRes, resumeRes, countsRes, recentRes, libRes] = await Promise.allSettled([
+    const [sysRes, sessRes, resumeRes, countsRes, recentRes] = await Promise.allSettled([
       fetch('/api/jellyfin/system'),
       fetch('/api/jellyfin/sessions'),
       fetch('/api/jellyfin/resume'),
       fetch('/api/jellyfin/counts'),
       fetch('/api/jellyfin/recently-added?limit=20'),
-      fetch('/api/jellyfin/libraries'),
     ]);
     if (sysRes.status === 'fulfilled' && sysRes.value.ok) setSystem((await sysRes.value.json()).system);
     if (sessRes.status === 'fulfilled' && sessRes.value.ok) setSessions((await sessRes.value.json()).sessions || []);
     if (resumeRes.status === 'fulfilled' && resumeRes.value.ok) setResumeItems((await resumeRes.value.json()).items || []);
     if (countsRes.status === 'fulfilled' && countsRes.value.ok) setCounts((await countsRes.value.json()).counts);
     if (recentRes.status === 'fulfilled' && recentRes.value.ok) setRecentlyAdded((await recentRes.value.json()).items || []);
-    if (libRes.status === 'fulfilled' && libRes.value.ok) setLibraries((await libRes.value.json()).libraries || []);
     setLoading(false);
   }, []);
 
@@ -335,14 +334,6 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           <Carousel>{recentlyAdded.map((item) => <PosterCard key={item.Id} item={item} />)}</Carousel>
         </div>
       )}
-
-      {libraries.length > 0 && (
-        <div>
-          <SectionHeader title="Libraries" />
-          <div className="space-y-2">{libraries.map((lib) => <LibraryCard key={lib.Id} library={lib} />)}</div>
-        </div>
-      )}
-
       <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
     </div>
   );
@@ -519,7 +510,7 @@ function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
                 <DrawerTitle className="text-sm">{selectedUser.user_name} — Recent Plays</DrawerTitle>
                 <p className="text-xs text-muted-foreground">{selectedUser.total_count} total plays &middot; {selectedUser.total_play_time}</p>
               </DrawerHeader>
-              <div className="px-4 pb-6 max-h-[60vh] overflow-y-auto">
+              <div className="px-2 pb-6 max-h-[60vh] overflow-y-auto">
                 {historyLoading ? (
                   <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
                 ) : userHistory.length === 0 ? (
