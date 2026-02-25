@@ -91,7 +91,13 @@ export async function getJellyfinClient(): Promise<JellyfinClient> {
     );
   }
 
-  return new JellyfinClient(connection.url, connection.apiKey, connection.username || '');
+  if (!connection.username) {
+    throw new Error(
+      'Jellyfin user context is missing. Re-test and save the Jellyfin connection in Settings.'
+    );
+  }
+
+  return new JellyfinClient(connection.url, connection.apiKey, connection.username);
 }
 
 export async function getTMDBClient(): Promise<TmdbClient> {

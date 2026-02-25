@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, {
       headers: {
         'Authorization': `MediaBrowser Token="${connection.apiKey}"`,
+        'X-Emby-Token': connection.apiKey,
       },
     });
 
