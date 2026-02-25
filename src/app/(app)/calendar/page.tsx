@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import {
   startOfMonth,
@@ -154,7 +154,12 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
           const eventDate = new Date(event.date);
 
           return (
-            <Link key={event.id} href={href} className="block active:bg-muted/30">
+            <Link
+              key={event.id}
+              href={href}
+              data-agenda-date={isFirstOfDay ? dateKey : undefined}
+              className="block active:bg-muted/30"
+            >
               <div
                 className={`flex items-start gap-4 py-3 px-1 border-b border-border/30 ${!event.monitored ? 'opacity-50' : ''
                   } ${event.hasFile ? 'opacity-60' : ''}`}
@@ -357,6 +362,7 @@ function WeekView({
         return (
           <div
             key={day.toISOString()}
+            data-week-date={format(day, 'yyyy-MM-dd')}
             className={`rounded-lg border transition-colors ${today ? 'border-primary/40 bg-primary/5' : 'border-border/40'
               }`}
           >
@@ -470,16 +476,12 @@ type ViewType = 'agenda' | 'month' | 'week';
 function ViewTabs({
   value,
   onChange,
+  views,
 }: {
   value: ViewType;
   onChange: (v: ViewType) => void;
+  views: { key: ViewType; label: string }[];
 }) {
-  const views: { key: ViewType; label: string }[] = [
-    { key: 'agenda', label: 'Agenda' },
-    { key: 'week', label: 'Week' },
-    { key: 'month', label: 'Month' },
-  ];
-
   return (
     <div className="flex items-center rounded-lg bg-muted/60 p-0.5">
       {views.map((v) => (
@@ -519,6 +521,61 @@ export default function CalendarPage() {
   } = useUIStore();
 
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [isMobile, setIsMobile] = useState(false);
+  const autoFocusPendingRef = useRef(true);
+  const autoFocusWaitForLoadRef = useRef(true);
+  const autoFocusSawLoadingRef = useRef(false);
+  const lastViewRef = useRef<ViewType | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(media.matches);
+
+    update();
+
+    if (media.addEventListener) {
+      media.addEventListener('change', update);
+      return () => media.removeEventListener('change', update);
+    }
+
+    media.addListener(update);
+    return () => media.removeListener(update);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile && calendarView === 'month') {
+      autoFocusPendingRef.current = true;
+      autoFocusWaitForLoadRef.current = true;
+      autoFocusSawLoadingRef.current = false;
+      setCalendarView('agenda');
+    }
+  }, [isMobile, calendarView, setCalendarView]);
+
+  useEffect(() => {
+    if (lastViewRef.current !== calendarView) {
+      if (calendarView === 'agenda' || calendarView === 'week') {
+        autoFocusPendingRef.current = true;
+        autoFocusWaitForLoadRef.current = true;
+        autoFocusSawLoadingRef.current = false;
+      }
+      lastViewRef.current = calendarView;
+    }
+  }, [calendarView]);
+
+  const availableViews = useMemo<{ key: ViewType; label: string }[]>(() => {
+    if (isMobile) {
+      return [
+        { key: 'agenda', label: 'Agenda' },
+        { key: 'week', label: 'Week' },
+      ];
+    }
+
+    return [
+      { key: 'agenda', label: 'Agenda' },
+      { key: 'week', label: 'Week' },
+      { key: 'month', label: 'Month' },
+    ];
+  }, [isMobile]);
 
   // Calculate date range based on view
   const { start, end } = useMemo(() => {
@@ -554,6 +611,75 @@ export default function CalendarPage() {
     return events.filter((e) => e.monitored);
   }, [events, monitoredOnly]);
 
+  const agendaTargetDateKey = useMemo(() => {
+    if (filteredEvents.length === 0) return undefined;
+
+    const dayKeys = Array.from(
+      new Set(filteredEvents.map((event) => format(new Date(event.date), 'yyyy-MM-dd')))
+    ).sort((a, b) => a.localeCompare(b));
+
+    const todayKey = format(new Date(), 'yyyy-MM-dd');
+    if (dayKeys.includes(todayKey)) return todayKey;
+
+    return dayKeys.find((key) => key > todayKey);
+  }, [filteredEvents]);
+
+  useEffect(() => {
+    if (!autoFocusPendingRef.current) return;
+
+    if (autoFocusWaitForLoadRef.current) {
+      if (loading) {
+        autoFocusSawLoadingRef.current = true;
+        return;
+      }
+      if (!autoFocusSawLoadingRef.current) return;
+    } else if (loading) {
+      return;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      let done = false;
+
+      if (calendarView === 'agenda') {
+        if (!agendaTargetDateKey) {
+          done = true;
+        } else {
+          const target = document.querySelector<HTMLElement>(
+            `[data-agenda-date="${agendaTargetDateKey}"]`
+          );
+          if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            done = true;
+          }
+        }
+      } else if (calendarView === 'week') {
+        const todayKey = format(new Date(), 'yyyy-MM-dd');
+        const target = document.querySelector<HTMLElement>(
+          `[data-week-date="${todayKey}"]`
+        );
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          done = true;
+        } else {
+          const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+          const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 });
+          const now = new Date();
+          if (now < weekStart || now > weekEnd) {
+            done = true;
+          }
+        }
+      }
+
+      if (done) {
+        autoFocusPendingRef.current = false;
+        autoFocusWaitForLoadRef.current = false;
+        autoFocusSawLoadingRef.current = false;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [loading, calendarView, agendaTargetDateKey, currentDate]);
+
   // Navigation
   function goForward() {
     if (calendarView === 'week') {
@@ -573,6 +699,11 @@ export default function CalendarPage() {
 
   function goToday() {
     setCurrentDate(new Date());
+    if (calendarView === 'agenda' || calendarView === 'week') {
+      autoFocusPendingRef.current = true;
+      autoFocusWaitForLoadRef.current = false;
+      autoFocusSawLoadingRef.current = false;
+    }
   }
 
   // Header label
@@ -591,6 +722,7 @@ export default function CalendarPage() {
       <div className="flex items-center justify-between md:hidden">
         <ViewTabs
           value={calendarView}
+          views={availableViews}
           onChange={(v) => setCalendarView(v)}
         />
         <CompactFilters
@@ -631,6 +763,7 @@ export default function CalendarPage() {
         <div className="items-center justify-between hidden md:flex gap-2">
           <ViewTabs
             value={calendarView}
+            views={availableViews}
             onChange={(v) => setCalendarView(v)}
           />
           <CompactFilters
