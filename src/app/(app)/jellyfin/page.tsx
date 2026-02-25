@@ -79,12 +79,13 @@ function isAbortError(error: unknown): boolean {
 function formatDateCreated(dateStr: string): string {
   // DateCreated is UTC e.g. "2026-02-20 19:11:07.0338097"
   try {
-    const d = new Date(dateStr.replace(' ', 'T') + 'Z');
-    if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleString(undefined, {
-      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    });
-  } catch {
+    const date = new Date(dateStr);
+    return new Intl.DateTimeFormat("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date)
+  } catch (error) {
+    console.error("Failed to parse date:", error);
     return dateStr;
   }
 }
@@ -813,9 +814,9 @@ function HistoryTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
 function getMethodInfo(method: string): { label: string; colorClass: string } {
   const m = method.toLowerCase();
-  if (m.startsWith('directplay')) return { label: 'Direct', colorClass: 'text-green-500 border-green-500/30' };
-  if (m.startsWith('directstream')) return { label: 'Stream', colorClass: 'text-blue-500 border-blue-500/30' };
-  if (m.startsWith('transcode')) return { label: 'Transcode', colorClass: 'text-orange-500 border-orange-500/30' };
+  if (m.startsWith('directplay')) return { label: method, colorClass: 'text-green-500 border-green-500/30' };
+  if (m.startsWith('directstream')) return { label: method, colorClass: 'text-blue-500 border-blue-500/30' };
+  if (m.startsWith('transcode')) return { label: method, colorClass: 'text-orange-500 border-orange-500/30' };
   return { label: method, colorClass: '' };
 }
 
@@ -823,7 +824,7 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
   const { label: methodLabel, colorClass: methodColor } = getMethodInfo(item.PlaybackMethod);
 
   return (
-    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/30">
+    <div className="flex items-center gap-3 py-1 px-0 rounded-lg hover:bg-muted/30">
       <div className="p-1.5 rounded bg-muted shrink-0">
         {item.ItemType === 'Movie' ? <Film className="h-3.5 w-3.5 text-muted-foreground" /> :
           item.ItemType === 'Episode' ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> :
