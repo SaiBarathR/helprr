@@ -208,18 +208,19 @@ export default function SettingsPage() {
               const usersRes = await fetch('/api/jellyfin/users');
               if (usersRes.ok) {
                 const usersData = await usersRes.json();
-                const options: JellyfinUserOption[] = Array.isArray(usersData.users)
-                  ? usersData.users
-                    .filter((u): u is { Id: string; Name: string; Policy?: { IsHidden?: boolean; IsDisabled?: boolean } } => (
-                      !!u &&
-                      typeof u === 'object' &&
-                      typeof (u as { Id?: unknown }).Id === 'string' &&
-                      typeof (u as { Name?: unknown }).Name === 'string'
-                    ))
-                    .filter((u) => !u.Policy?.IsHidden && !u.Policy?.IsDisabled)
-                    .map((u) => ({ id: u.Id, name: u.Name }))
-                    .sort((a, b) => a.name.localeCompare(b.name))
+                const rawUsers: unknown[] = Array.isArray((usersData as { users?: unknown }).users)
+                  ? (usersData as { users: unknown[] }).users
                   : [];
+                const options: JellyfinUserOption[] = rawUsers
+                  .filter((u: unknown): u is { Id: string; Name: string; Policy?: { IsHidden?: boolean; IsDisabled?: boolean } } => (
+                    !!u &&
+                    typeof u === 'object' &&
+                    typeof (u as { Id?: unknown }).Id === 'string' &&
+                    typeof (u as { Name?: unknown }).Name === 'string'
+                  ))
+                  .filter((u) => !u.Policy?.IsHidden && !u.Policy?.IsDisabled)
+                  .map((u) => ({ id: u.Id, name: u.Name }))
+                  .sort((a, b) => a.name.localeCompare(b.name));
 
                 if (savedJellyfinUserId && !options.some((u) => u.id === savedJellyfinUserId)) {
                   options.unshift({
@@ -303,14 +304,15 @@ export default function SettingsPage() {
 
       if (data.success) {
         if (type === 'JELLYFIN' && data.userId) {
-          const users = Array.isArray(data.users)
-            ? data.users.filter((u): u is JellyfinUserOption => (
-              !!u &&
-              typeof u === 'object' &&
-              typeof (u as { id?: unknown }).id === 'string' &&
-              typeof (u as { name?: unknown }).name === 'string'
-            ))
+          const rawUsers: unknown[] = Array.isArray((data as { users?: unknown }).users)
+            ? (data as { users: unknown[] }).users
             : [];
+          const users: JellyfinUserOption[] = rawUsers.filter((u: unknown): u is JellyfinUserOption => (
+            !!u &&
+            typeof u === 'object' &&
+            typeof (u as { id?: unknown }).id === 'string' &&
+            typeof (u as { name?: unknown }).name === 'string'
+          ));
           setJellyfinUsers(users);
 
           const selectedUserId = users.find((u) => u.id === svc.username)?.id

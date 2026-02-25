@@ -801,10 +801,13 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [topMovies, setTopMovies] = useState<PlaybackBreakdownEntry[]>([]);
   const [methodBreakdown, setMethodBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
   const [clientBreakdown, setClientBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
+  const [deviceBreakdown, setDeviceBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
   const [hourlyData, setHourlyData] = useState<Record<string, number>>({});
   const [tasks, setTasks] = useState<JellyfinScheduledTask[]>([]);
+  const [methodSort, setMethodSort] = useState<SortMode>('duration');
   const [tvSort, setTvSort] = useState<SortMode>('duration');
   const [clientSort, setClientSort] = useState<SortMode>('duration');
+  const [deviceSort, setDeviceSort] = useState<SortMode>('duration');
   const [movieSort, setMovieSort] = useState<SortMode>('duration');
 
   useEffect(() => {
@@ -842,12 +845,13 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         if (selectedUserId) params.set('userId', selectedUserId);
         const query = params.toString();
 
-        const [actRes, tvRes, movRes, methRes, clientRes, hourRes, taskRes] = await Promise.allSettled([
+        const [actRes, tvRes, movRes, methRes, clientRes, deviceRes, hourRes, taskRes] = await Promise.allSettled([
           fetch(`/api/jellyfin/playback/activity?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/tv-shows?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/movies?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/breakdown/ClientName?${query}`, { signal }),
+          fetch(`/api/jellyfin/playback/breakdown/DeviceName?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/hourly?${query}`, { signal }),
           fetch('/api/jellyfin/tasks', { signal }),
         ]);
@@ -859,6 +863,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         let newTopMovies: PlaybackBreakdownEntry[] = [];
         let newMethodBreakdown: PlaybackBreakdownEntry[] = [];
         let newClientBreakdown: PlaybackBreakdownEntry[] = [];
+        let newDeviceBreakdown: PlaybackBreakdownEntry[] = [];
         let newHourlyData: Record<string, number> = {};
         let newTasks: JellyfinScheduledTask[] = [];
 
@@ -871,6 +876,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         if (movRes.status === 'fulfilled' && movRes.value.ok) newTopMovies = (await movRes.value.json()).movies || [];
         if (methRes.status === 'fulfilled' && methRes.value.ok) newMethodBreakdown = (await methRes.value.json()).entries || [];
         if (clientRes.status === 'fulfilled' && clientRes.value.ok) newClientBreakdown = (await clientRes.value.json()).entries || [];
+        if (deviceRes.status === 'fulfilled' && deviceRes.value.ok) newDeviceBreakdown = (await deviceRes.value.json()).entries || [];
         if (hourRes.status === 'fulfilled' && hourRes.value.ok) newHourlyData = (await hourRes.value.json()).data || {};
         if (taskRes.status === 'fulfilled' && taskRes.value.ok) newTasks = (await taskRes.value.json()).tasks || [];
 
@@ -883,6 +889,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         setTopMovies(newTopMovies);
         setMethodBreakdown(newMethodBreakdown);
         setClientBreakdown(newClientBreakdown);
+        setDeviceBreakdown(newDeviceBreakdown);
         setHourlyData(newHourlyData);
         setTasks(newTasks);
       } catch (error) {
@@ -965,8 +972,8 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
       {methodBreakdown.length > 0 && (
         <div>
-          <SectionHeader title="Playback Methods" />
-          <PlaybackMethodBar entries={methodBreakdown} />
+          <SectionHeader title="Playback Methods" trailing={<SortToggle value={methodSort} onChange={setMethodSort} />} />
+          <PlaybackMethodBar entries={methodBreakdown} sortBy={methodSort} />
         </div>
       )}
 
@@ -974,6 +981,13 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         <div>
           <SectionHeader title="Top Clients" trailing={<SortToggle value={clientSort} onChange={setClientSort} />} />
           <RankedList entries={clientBreakdown} sortBy={clientSort} limit={10} />
+        </div>
+      )}
+
+      {deviceBreakdown.length > 0 && (
+        <div>
+          <SectionHeader title="Top Devices" trailing={<SortToggle value={deviceSort} onChange={setDeviceSort} />} />
+          <RankedList entries={deviceBreakdown} sortBy={deviceSort} limit={10} />
         </div>
       )}
 
@@ -1238,11 +1252,11 @@ function RankedList({ entries, sortBy, limit }: { entries: PlaybackBreakdownEntr
 
 // ─── Playback Method Bar (detailed — no grouping) ───
 
-function PlaybackMethodBar({ entries }: { entries: PlaybackBreakdownEntry[] }) {
+function PlaybackMethodBar({ entries, sortBy }: { entries: PlaybackBreakdownEntry[]; sortBy: SortMode }) {
   const normalized = entries
     .map((e) => ({ ...e, count: Number(e.count) || 0, time: Number(e.time) || 0 }))
-    .sort((a, b) => b.count - a.count);
-  const total = normalized.reduce((sum, e) => sum + e.count, 0) || 1;
+    .sort((a, b) => sortBy === 'duration' ? b.time - a.time : b.count - a.count);
+  const total = normalized.reduce((sum, e) => sum + (sortBy === 'duration' ? e.time : e.count), 0) || 1;
 
   function getColor(label: string) {
     const m = label.toLowerCase();
@@ -1253,28 +1267,34 @@ function PlaybackMethodBar({ entries }: { entries: PlaybackBreakdownEntry[] }) {
   }
 
   return (
-    <div className="rounded-xl bg-card p-3 space-y-3">
+    <div className="rounded-xl bg-card p-3 px-2 space-y-3">
       {/* Stacked bar */}
       <div className="flex h-5 rounded-full overflow-hidden">
         {normalized.map((e) => {
-          const pct = (e.count / total) * 100;
+          const metric = sortBy === 'duration' ? e.time : e.count;
+          const pct = (metric / total) * 100;
           if (pct < 0.5) return null;
           return <div key={e.label} className={`${getColor(e.label).bar} transition-all`} style={{ width: `${pct}%` }} title={`${e.label}: ${pct.toFixed(1)}%`} />;
         })}
       </div>
 
       {/* Detailed breakdown list */}
-      <div className="space-y-1.5">
+      <div className="space-y-1">
         {normalized.map((e) => {
-          const pct = ((e.count / total) * 100).toFixed(1);
+          const metric = sortBy === 'duration' ? e.time : e.count;
+          const pct = ((metric / total) * 100).toFixed(1);
           const colors = getColor(e.label);
           return (
-            <div key={e.label} className="flex items-center gap-2">
+            <div key={e.label} className="flex items-center gap-1">
               <div className={`w-2 h-2 rounded-full shrink-0 ${colors.dot}`} />
               <span className="text-xs truncate flex-1">{e.label}</span>
-              <span className="text-[11px] font-medium tabular-nums shrink-0">{e.count}</span>
+              <span className="text-[11px] font-medium tabular-nums shrink-0">
+                {sortBy === 'duration' ? formatDurationSeconds(e.time) : e.count}
+              </span>
               <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-right shrink-0">{pct}%</span>
-              {e.time > 0 && <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{formatDurationSeconds(e.time)}</span>}
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                {sortBy === 'duration' ? `${e.count} plays` : formatDurationSeconds(e.time)}
+              </span>
             </div>
           );
         })}
