@@ -369,6 +369,7 @@ export interface RootFolder {
 
 // Lookup results
 export interface SonarrLookupResult {
+  id?: number | null;
   title: string;
   sortTitle: string;
   status: string;
@@ -380,14 +381,18 @@ export interface SonarrLookupResult {
   tvdbId: number;
   tmdbId?: number;
   imdbId: string;
+  path?: string | null;
+  added?: string;
   titleSlug: string;
   certification: string;
   genres: string[];
   ratings: { votes: number; value: number };
   runtime: number;
+  library?: DiscoverLibraryStatus;
 }
 
 export interface RadarrLookupResult {
+  id?: number | null;
   title: string;
   sortTitle: string;
   overview: string;
@@ -395,12 +400,15 @@ export interface RadarrLookupResult {
   year: number;
   tmdbId: number;
   imdbId: string;
+  path?: string | null;
+  added?: string;
   titleSlug: string;
   certification: string;
   genres: string[];
   ratings: { imdb?: { votes: number; value: number }; tmdb?: { votes: number; value: number } };
   runtime: number;
   studio: string;
+  library?: DiscoverLibraryStatus;
 }
 
 export type DiscoverMediaType = 'movie' | 'tv';
