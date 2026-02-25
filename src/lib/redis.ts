@@ -19,6 +19,9 @@ export async function getRedisClient(): Promise<HelprrRedisClient> {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[Redis] Client error:', message);
     });
+    client.on('connect', () => {
+      console.log('[Redis] Client connected');
+    });
     globalForRedis.redisClient = client;
   }
 

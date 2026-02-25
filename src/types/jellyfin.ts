@@ -33,6 +33,23 @@ export interface JellyfinUserData {
   PlayedPercentage?: number;
 }
 
+export interface JellyfinMediaStream {
+  Codec?: string;
+  BitRate?: number;
+  Width?: number;
+  Height?: number;
+  AverageFrameRate?: number;
+  Type: 'Video' | 'Audio' | 'Subtitle' | 'EmbeddedImage';
+  ChannelLayout?: string;
+  Channels?: number;
+  Language?: string;
+  DisplayTitle?: string;
+  IsDefault?: boolean;
+  Profile?: string;
+  VideoRange?: string;
+  BitDepth?: number;
+}
+
 export interface JellyfinItem {
   Id: string;
   Name: string;
@@ -53,6 +70,7 @@ export interface JellyfinItem {
   ParentIndexNumber?: number;
   IndexNumber?: number;
   MediaType?: string;
+  MediaStreams?: JellyfinMediaStream[];
 }
 
 export interface JellyfinItemsResponse {
@@ -77,6 +95,11 @@ export interface JellyfinTranscodingInfo {
   IsVideoDirect: boolean;
   IsAudioDirect: boolean;
   TranscodeReasons?: string[];
+  Bitrate?: number;
+  Width?: number;
+  Height?: number;
+  AudioChannels?: number;
+  Framerate?: number;
 }
 
 export interface JellyfinSession {
