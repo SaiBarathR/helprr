@@ -30,9 +30,6 @@ import {
   Film,
   Tv,
   MonitorPlay,
-  Play,
-  Pause,
-  Zap,
   RefreshCw,
   Loader2,
   Server,
@@ -59,8 +56,10 @@ import type {
   PlayActivityUser,
   CustomHistoryItem,
 } from '@/types/jellyfin';
-import { ticksToMinutes, ticksToProgress, getSessionTitle, formatDurationSeconds } from '@/lib/jellyfin-helpers';
+import { ticksToMinutes, formatDurationSeconds } from '@/lib/jellyfin-helpers';
 import { isProtectedApiImageSrc } from '@/lib/image';
+import { SessionCard } from '@/components/jellyfin/session-card';
+import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
 
 // ─── Helpers ───
 
@@ -233,6 +232,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [recentlyAdded, setRecentlyAdded] = useState<JellyfinItem[]>([]);
   const [libraries, setLibraries] = useState<JellyfinLibrary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
 
   const fetchData = useCallback(async () => {
     const [sysRes, sessRes, resumeRes, countsRes, recentRes, libRes] = await Promise.allSettled([
@@ -308,14 +308,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
               <span className="text-green-400 tabular-nums">{sessions.length}</span>
             </span>
           } />
-          <Carousel>{sessions.map((s) => <SessionCard key={s.Id} session={s} />)}</Carousel>
-        </div>
-      )}
-
-      {resumeItems.length > 0 && (
-        <div>
-          <SectionHeader title="Continue Watching" />
-          <Carousel>{resumeItems.map((item) => <PosterCard key={item.Id} item={item} showProgress />)}</Carousel>
+          <Carousel>{sessions.map((s) => <SessionCard key={s.Id} session={s} variant="full" onInfoClick={setSelectedSession} />)}</Carousel>
         </div>
       )}
 
@@ -325,6 +318,14 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           <StatCard icon={Tv} color="purple" value={counts.SeriesCount} label="Series" />
           <StatCard icon={Clapperboard} color="indigo" value={counts.EpisodeCount} label="Episodes" />
           <StatCard icon={MonitorPlay} color="green" value={sessions.length} label="Streams" />
+        </div>
+      )}
+
+
+      {resumeItems.length > 0 && (
+        <div>
+          <SectionHeader title="Continue Watching" />
+          <Carousel>{resumeItems.map((item) => <PosterCard key={item.Id} item={item} showProgress />)}</Carousel>
         </div>
       )}
 
@@ -341,69 +342,8 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           <div className="space-y-2">{libraries.map((lib) => <LibraryCard key={lib.Id} library={lib} />)}</div>
         </div>
       )}
-    </div>
-  );
-}
 
-function SessionCard({ session }: { session: JellyfinSession }) {
-  const item = session.NowPlayingItem;
-  const playState = session.PlayState;
-  const progress = item?.RunTimeTicks && playState?.PositionTicks ? ticksToProgress(playState.PositionTicks, item.RunTimeTicks) : 0;
-  const ti = session.TranscodingInfo;
-  const isTranscoding = Boolean(ti && !ti.IsVideoDirect);
-  const isHW = Boolean(ti?.HardwareAccelerationType?.trim());
-  const imageId = item?.Type === 'Episode' && item?.SeriesId ? item.SeriesId : item?.Id;
-  const backdropSrc = imageId ? `/api/jellyfin/image?itemId=${imageId}&type=Backdrop&maxWidth=520&quality=80` : '';
-  const primarySrc = imageId ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=520&quality=80` : '';
-
-  return (
-    <div className="snap-start shrink-0 w-[280px] rounded-xl bg-card overflow-hidden">
-      <div className="relative h-24 bg-muted overflow-hidden">
-        {item?.BackdropImageTags?.[0] && item.Id ? (
-          <Image src={backdropSrc} alt="" fill sizes="280px" className="object-cover" unoptimized={isProtectedApiImageSrc(backdropSrc)} />
-        ) : imageId && item?.ImageTags?.Primary ? (
-          <Image src={primarySrc} alt="" fill sizes="280px" className="object-cover blur-sm scale-110" unoptimized={isProtectedApiImageSrc(primarySrc)} />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50"><MonitorPlay className="h-6 w-6 text-muted-foreground/20" /></div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-card via-card/60 to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 px-3 pb-1.5">
-          <div className="flex items-center gap-1.5">
-            {playState?.IsPaused ? <Pause className="h-3 w-3 text-amber-400 shrink-0" /> : <Play className="h-3 w-3 text-green-400 shrink-0" />}
-            <span className="text-[13px] font-semibold truncate text-foreground">{item ? getSessionTitle(item) : 'Unknown'}</span>
-          </div>
-        </div>
-      </div>
-      <div className="px-3 pt-1 pb-2.5 space-y-1.5">
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-          <span className="truncate">{session.UserName} &middot; {session.DeviceName}</span>
-          {isTranscoding ? (
-            <Badge variant="outline" className={`text-[9px] px-1 py-0 h-3.5 shrink-0 ml-2 ${isHW ? 'text-amber-500 border-amber-500/30' : 'text-orange-500 border-orange-500/30'}`}>
-              <Zap className="h-2 w-2 mr-0.5" />{isHW ? 'HW' : 'Transcode'}
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 text-green-500 border-green-500/30 shrink-0 ml-2">Direct</Badge>
-          )}
-        </div>
-        {ti && (
-          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-            {ti.VideoCodec && <span>Video: {ti.VideoCodec}</span>}
-            {ti.AudioCodec && <span>&middot; Audio: {ti.AudioCodec}</span>}
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/70">
-          <span>{session.Client}</span>
-          {session.ApplicationVersion && <span>v{session.ApplicationVersion}</span>}
-        </div>
-        {item?.RunTimeTicks && (
-          <div className="flex items-center gap-2">
-            <Progress value={progress} className="h-[3px] flex-1" />
-            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-              {playState?.PositionTicks ? ticksToMinutes(playState.PositionTicks) : '0m'}/{ticksToMinutes(item.RunTimeTicks)}
-            </span>
-          </div>
-        )}
-      </div>
+      <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
     </div>
   );
 }
