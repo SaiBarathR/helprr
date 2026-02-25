@@ -794,6 +794,8 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [days, setDays] = useState(7);
   const [pluginAvailable, setPluginAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
   const [playActivity, setPlayActivity] = useState<PlayActivityUser[]>([]);
   const [topTv, setTopTv] = useState<PlaybackBreakdownEntry[]>([]);
   const [topMovies, setTopMovies] = useState<PlaybackBreakdownEntry[]>([]);
@@ -809,18 +811,44 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
     const controller = new AbortController();
     const { signal } = controller;
 
+    async function fetchUsers() {
+      try {
+        const res = await fetch('/api/jellyfin/playback/user-list', { signal });
+        if (!res.ok || signal.aborted) return;
+        const data = await res.json();
+        if (signal.aborted) return;
+
+        setUsers(Array.isArray(data.users) ? data.users : []);
+        if (data.pluginAvailable === false) setPluginAvailable(false);
+      } catch (error) {
+        if (isAbortError(error) || signal.aborted) return;
+      }
+    }
+
+    void fetchUsers();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+
     async function fetchStats() {
       onLoadStart?.();
       setLoading(true);
       try {
         const queryDays = days === 0 ? MAX_DAYS : days;
+        const params = new URLSearchParams({ days: String(queryDays) });
+        if (selectedUserId) params.set('userId', selectedUserId);
+        const query = params.toString();
+
         const [actRes, tvRes, movRes, methRes, clientRes, hourRes, taskRes] = await Promise.allSettled([
-          fetch(`/api/jellyfin/playback/activity?days=${queryDays}`, { signal }),
-          fetch(`/api/jellyfin/playback/tv-shows?days=${queryDays}`, { signal }),
-          fetch(`/api/jellyfin/playback/movies?days=${queryDays}`, { signal }),
-          fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?days=${queryDays}`, { signal }),
-          fetch(`/api/jellyfin/playback/breakdown/ClientName?days=${queryDays}`, { signal }),
-          fetch(`/api/jellyfin/playback/hourly?days=${queryDays}`, { signal }),
+          fetch(`/api/jellyfin/playback/activity?${query}`, { signal }),
+          fetch(`/api/jellyfin/playback/tv-shows?${query}`, { signal }),
+          fetch(`/api/jellyfin/playback/movies?${query}`, { signal }),
+          fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?${query}`, { signal }),
+          fetch(`/api/jellyfin/playback/breakdown/ClientName?${query}`, { signal }),
+          fetch(`/api/jellyfin/playback/hourly?${query}`, { signal }),
           fetch('/api/jellyfin/tasks', { signal }),
         ]);
 
@@ -868,7 +896,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
     }
     fetchStats();
     return () => controller.abort();
-  }, [days, onLoadStart, onLoadEnd]);
+  }, [days, selectedUserId, onLoadStart, onLoadEnd]);
 
   if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48 rounded-lg" /><Skeleton className="h-40 rounded-xl" /><Skeleton className="h-40 rounded-xl" /></div>;
 
@@ -876,12 +904,42 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
   return (
     <div className="space-y-5">
-      <div className="flex gap-1.5">
-        {DAY_RANGES.map((d) => (
-          <button key={d} onClick={() => setDays(d)} className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${days === d ? 'bg-[#00a4dc] text-white' : 'bg-muted/50 text-muted-foreground hover:text-foreground'}`}>
-            {d === 0 ? 'All' : `${d}d`}
-          </button>
-        ))}
+      <div className="flex gap-2">
+        <div className="flex-1 min-w-0 max-w-xs">
+          <Select
+            value={String(days)}
+            onValueChange={(value) => {
+              const parsed = Number.parseInt(value, 10);
+              setDays(Number.isNaN(parsed) ? 7 : parsed);
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs w-full">
+              <SelectValue placeholder="Range" />
+            </SelectTrigger>
+            <SelectContent>
+              {DAY_RANGES.map((d) => (
+                <SelectItem key={d} value={String(d)}>
+                  {d === 0 ? 'All time' : `${d} days`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {users.length > 0 && (
+          <div className="flex-1 min-w-0 max-w-xs">
+            <Select value={selectedUserId || 'all'} onValueChange={(v) => setSelectedUserId(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-8 text-xs w-full">
+                <SelectValue placeholder="All users" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All users</SelectItem>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       {playActivity.length > 0 && (
