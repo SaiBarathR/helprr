@@ -363,8 +363,8 @@ function AddIndexerModal({ open, onClose, onAdded }: AddIndexerModalProps) {
                           <Badge
                             variant="outline"
                             className={`text-[10px] px-1.5 py-0 ${schema.privacy === 'public' ? 'border-green-500/50 text-green-400' :
-                                schema.privacy === 'private' ? 'border-red-500/50 text-red-400' :
-                                  'border-amber-500/50 text-amber-400'
+                              schema.privacy === 'private' ? 'border-red-500/50 text-red-400' :
+                                'border-amber-500/50 text-amber-400'
                               }`}
                           >
                             {schema.privacy}
@@ -885,8 +885,8 @@ function StatsTab() {
             key={r.value}
             onClick={() => setDateRange(r.value)}
             className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${dateRange === r.value
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
               }`}
           >
             {r.label}
@@ -1367,8 +1367,8 @@ function HistoryTab() {
             key={f.value}
             onClick={() => setActiveFilter(f.value)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeFilter === f.value
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-card border border-border text-muted-foreground hover:text-foreground'
               }`}
           >
             {f.label}
@@ -1396,8 +1396,8 @@ function HistoryTab() {
           <div className="rounded-xl bg-card border border-border overflow-hidden divide-y divide-border/50">
             {records.map((record) => {
               const d = record.data ?? {};
-              const query = d.query || record.query || '';
-              const queryType = d.queryType;
+              const query = d.query || record.query || d?.grabTitle || '';
+              const queryType = d?.queryType || d?.grabMethod || '';
               const source = d.source;
               const elapsed = d.elapsedTime;
               const categoryIds = parseCategoryIds(d.categories);
