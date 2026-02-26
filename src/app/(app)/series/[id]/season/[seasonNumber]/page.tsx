@@ -20,6 +20,14 @@ import {
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode } from '@/types';
+import {
+  getSeasonDetailSnapshot,
+  getSeriesDetailSnapshot,
+  patchEpisodeAcrossSnapshots,
+  patchSeasonAcrossSnapshots,
+  setSeasonDetailSnapshot,
+  setSeriesDetailSnapshot,
+} from '@/lib/series-route-cache';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -32,41 +40,93 @@ function formatBytes(bytes: number) {
 export default function SeasonDetailPage() {
   const { id, seasonNumber: seasonNumberParam } = useParams();
   const router = useRouter();
+  const seriesId = Number(id);
   const seasonNumber = Number(seasonNumberParam);
 
   const [series, setSeries] = useState<SonarrSeries | null>(null);
   const [episodes, setEpisodes] = useState<SonarrEpisode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const persistSeasonSnapshot = useCallback((next: {
+    series?: SonarrSeries | null;
+    episodes?: SonarrEpisode[];
+  } = {}) => {
+    if (!Number.isFinite(seriesId) || !Number.isFinite(seasonNumber)) return;
+    setSeasonDetailSnapshot(seriesId, seasonNumber, {
+      series: next.series ?? series,
+      episodes: next.episodes ?? episodes,
+    });
+  }, [episodes, seasonNumber, series, seriesId]);
+
+  const fetchData = useCallback(async (hasCachedData: boolean) => {
+    if (!Number.isFinite(seriesId) || !Number.isFinite(seasonNumber)) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       const [seriesRes, episodesRes] = await Promise.all([
-        fetch(`/api/sonarr/${id}`),
-        fetch(`/api/sonarr/${id}/episodes`),
+        fetch(`/api/sonarr/${seriesId}`),
+        fetch(`/api/sonarr/${seriesId}/episodes`),
       ]);
-      if (seriesRes.ok) setSeries(await seriesRes.json());
-      if (episodesRes.ok) {
-        const allEpisodes: SonarrEpisode[] = await episodesRes.json();
-        setEpisodes(
-          allEpisodes
-            .filter((e) => e.seasonNumber === seasonNumber)
-            .sort((a, b) => a.episodeNumber - b.episodeNumber)
-        );
+
+      const nextSeries: SonarrSeries | null = seriesRes.ok ? await seriesRes.json() : null;
+      const allEpisodes: SonarrEpisode[] = episodesRes.ok ? await episodesRes.json() : [];
+      const nextSeasonEpisodes = allEpisodes
+        .filter((e) => e.seasonNumber === seasonNumber)
+        .sort((a, b) => a.episodeNumber - b.episodeNumber);
+
+      setSeries(nextSeries);
+      setEpisodes(nextSeasonEpisodes);
+
+      setSeasonDetailSnapshot(seriesId, seasonNumber, {
+        series: nextSeries,
+        episodes: nextSeasonEpisodes,
+      });
+
+      const seriesSnapshot = getSeriesDetailSnapshot(seriesId);
+      if (seriesSnapshot) {
+        setSeriesDetailSnapshot(seriesId, {
+          series: nextSeries ?? seriesSnapshot.series,
+          episodes: allEpisodes.length ? allEpisodes : seriesSnapshot.episodes,
+          qualityProfiles: seriesSnapshot.qualityProfiles,
+          rootFolders: seriesSnapshot.rootFolders,
+          tags: seriesSnapshot.tags,
+        });
       }
     } catch {
-      toast.error('Failed to load season data');
+      if (!hasCachedData) {
+        toast.error('Failed to load season data');
+      }
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [id, seasonNumber]);
+  }, [seasonNumber, seriesId]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const cached = (
+      Number.isFinite(seriesId) && Number.isFinite(seasonNumber)
+    ) ? getSeasonDetailSnapshot(seriesId, seasonNumber) : null;
+
+    if (cached) {
+      setSeries(cached.series);
+      setEpisodes(cached.episodes);
+      setLoading(false);
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setRefreshing(false);
+    }
+
+    void fetchData(Boolean(cached));
+  }, [fetchData, seasonNumber, seriesId]);
 
   const seasonData = series?.seasons.find((s) => s.seasonNumber === seasonNumber);
   const isSeasonMonitored = seasonData?.monitored ?? true;
@@ -122,8 +182,13 @@ export default function SeasonDetailPage() {
         body: JSON.stringify(updatedSeries),
       });
       if (res.ok) {
-        const updated = await res.json();
+        const updated: SonarrSeries = await res.json();
         setSeries(updated);
+        persistSeasonSnapshot({ series: updated });
+        const updatedSeason = updated.seasons.find((s) => s.seasonNumber === seasonNumber);
+        if (updatedSeason) {
+          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason);
+        }
         toast.success(isSeasonMonitored ? 'Season unmonitored' : 'Season monitored');
       }
     } catch {
@@ -141,9 +206,12 @@ export default function SeasonDetailPage() {
         body: JSON.stringify({ episodeIds: [episodeId], monitored }),
       });
       if (res.ok) {
-        setEpisodes((prev) =>
-          prev.map((e) => (e.id === episodeId ? { ...e, monitored } : e))
-        );
+        setEpisodes((prev) => {
+          const nextEpisodes = prev.map((e) => (e.id === episodeId ? { ...e, monitored } : e));
+          persistSeasonSnapshot({ episodes: nextEpisodes });
+          return nextEpisodes;
+        });
+        patchEpisodeAcrossSnapshots(seriesId, episodeId, (episode) => ({ ...episode, monitored }));
       }
     } catch {
       toast.error('Failed to update');
@@ -170,11 +238,28 @@ export default function SeasonDetailPage() {
           s.seasonNumber === seasonNumber ? { ...s, monitored: false } : s
         ),
       };
-      await fetch(`/api/sonarr/${series.id}`, {
+      const updateSeasonRes = await fetch(`/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
       });
+      const nextEpisodes = episodes.map((episode) => ({ ...episode, monitored: false }));
+      setEpisodes(nextEpisodes);
+      persistSeasonSnapshot({ episodes: nextEpisodes });
+      for (const episode of nextEpisodes) {
+        patchEpisodeAcrossSnapshots(seriesId, episode.id, (existing) => ({ ...existing, monitored: false }));
+      }
+      if (updateSeasonRes.ok) {
+        const updated: SonarrSeries = await updateSeasonRes.json();
+        setSeries(updated);
+        persistSeasonSnapshot({ series: updated, episodes: nextEpisodes });
+        const updatedSeason = updated.seasons.find((s) => s.seasonNumber === seasonNumber);
+        if (updatedSeason) {
+          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason);
+        }
+      } else {
+        patchSeasonAcrossSnapshots(seriesId, seasonNumber, (current) => ({ ...current, monitored: false }));
+      }
       toast.success('Season unmonitored');
       setShowDeleteDrawer(false);
       router.back();
@@ -215,6 +300,9 @@ export default function SeasonDetailPage() {
         title={seasonTitle}
         rightContent={
           <div className="flex items-center gap-1">
+            {refreshing && !loading && (
+              <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
+            )}
             {/* Monitor toggle */}
             <button
               onClick={handleToggleSeasonMonitor}
