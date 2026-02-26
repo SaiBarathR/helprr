@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { useWindowVirtualRange } from '@/hooks/use-window-virtual-range';
 import {
   Drawer,
   DrawerContent,
@@ -27,7 +28,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
-  HardDrive,
   Play,
   Pause,
   Zap,
@@ -43,8 +43,15 @@ import {
   Search,
   Filter,
 } from 'lucide-react';
-import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
+import type {
+  QBittorrentTorrent,
+  QBittorrentSummaryResponse,
+  QBittorrentTransferInfo,
+} from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
+
+const VIRTUALIZE_THRESHOLD = 40;
+const TORRENT_ROW_HEIGHT = 140;
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -67,24 +74,6 @@ function formatEta(seconds: number): string {
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
-
-type TorrentState =
-  | 'downloading'
-  | 'stalledDL'
-  | 'uploading'
-  | 'stalledUP'
-  | 'pausedDL'
-  | 'pausedUP'
-  | 'queuedDL'
-  | 'queuedUP'
-  | 'checkingDL'
-  | 'checkingUP'
-  | 'forcedDL'
-  | 'forcedUP'
-  | 'missingFiles'
-  | 'error'
-  | 'moving'
-  | 'unknown';
 
 function getStateBadge(state: string) {
   const stateMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
@@ -120,31 +109,167 @@ const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'active', label: 'Active' },
 ];
 
-/**
- * Renders the Torrents page UI including list, search and filter controls, bulk actions, and drawers for adding, inspecting, and deleting torrents.
- *
- * The component periodically refreshes torrent and transfer data using a configurable refresh interval loaded from user settings.
- *
- * @returns The React element for the Torrents management page.
- */
+function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
+  return (
+    a.hash === b.hash
+    && a.name === b.name
+    && a.size === b.size
+    && a.progress === b.progress
+    && a.dlspeed === b.dlspeed
+    && a.upspeed === b.upspeed
+    && a.num_seeds === b.num_seeds
+    && a.num_leechs === b.num_leechs
+    && a.state === b.state
+    && a.eta === b.eta
+    && a.category === b.category
+    && a.tags === b.tags
+    && a.added_on === b.added_on
+    && a.completion_on === b.completion_on
+    && a.save_path === b.save_path
+  );
+}
+
+function mergeTorrents(prev: QBittorrentTorrent[], next: QBittorrentTorrent[]): QBittorrentTorrent[] {
+  if (prev.length === 0) return next;
+
+  const prevByHash = new Map(prev.map((torrent) => [torrent.hash, torrent]));
+  let changed = prev.length !== next.length;
+
+  const merged = next.map((torrent) => {
+    const existing = prevByHash.get(torrent.hash);
+    if (existing && sameTorrent(existing, torrent)) {
+      return existing;
+    }
+    changed = true;
+    return torrent;
+  });
+
+  return changed ? merged : prev;
+}
+
+interface TorrentRowProps {
+  torrent: QBittorrentTorrent;
+  selected: boolean;
+  onToggleSelect: (hash: string) => void;
+  onFetchDetail: (hash: string) => void;
+  onTorrentAction: (hash: string, action: string, extra?: Record<string, unknown>) => void;
+  onOpenDeleteDrawer: (hash: string, name: string, deleteFiles: boolean) => void;
+}
+
+const TorrentRow = memo(function TorrentRow({
+  torrent,
+  selected,
+  onToggleSelect,
+  onFetchDetail,
+  onTorrentAction,
+  onOpenDeleteDrawer,
+}: TorrentRowProps) {
+  return (
+    <div className="px-3 py-3 sm:px-4">
+      <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(torrent.hash)}
+          className="mt-1 rounded border-border"
+        />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <button
+              className="text-sm font-medium truncate text-left hover:underline"
+              onClick={() => onFetchDetail(torrent.hash)}
+            >
+              {torrent.name}
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-0.5">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'resume')}>
+                  <Play className="mr-2 h-4 w-4" /> Resume
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'pause')}>
+                  <Pause className="mr-2 h-4 w-4" /> Stop
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'forceStart')}>
+                  <Zap className="mr-2 h-4 w-4" /> Force Start
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, false)}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete with files
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {getStateBadge(torrent.state)}
+            <span className="text-[11px] text-muted-foreground">{formatBytes(torrent.size)}</span>
+            {torrent.category && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
+                {torrent.category}
+              </Badge>
+            )}
+          </div>
+
+          <div className="mt-2">
+            <div className="flex justify-between text-[11px] text-muted-foreground mb-1 flex-wrap gap-x-2">
+              <span>{(torrent.progress * 100).toFixed(1)}%</span>
+              <span className="flex items-center flex-wrap gap-x-2">
+                {torrent.dlspeed > 0 && (
+                  <span className="text-green-500">
+                    <ArrowDown className="inline h-3 w-3" /> {formatSpeed(torrent.dlspeed)}
+                  </span>
+                )}
+                {torrent.upspeed > 0 && (
+                  <span className="text-blue-500">
+                    <ArrowUp className="inline h-3 w-3" /> {formatSpeed(torrent.upspeed)}
+                  </span>
+                )}
+                {torrent.eta > 0 && torrent.eta < 8640000 && (
+                  <span>ETA: {formatEta(torrent.eta)}</span>
+                )}
+              </span>
+            </div>
+            <Progress value={torrent.progress * 100} className="h-1" />
+          </div>
+
+          <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+            <span>Seeds: {torrent.num_seeds}</span>
+            <span>Peers: {torrent.num_leechs}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
+
 export default function TorrentsPage() {
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
 
-  // Add torrent drawer
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [addMode, setAddMode] = useState<'magnet' | 'file'>('magnet');
   const [magnetLink, setMagnetLink] = useState('');
   const [torrentFile, setTorrentFile] = useState<File | null>(null);
   const [adding, setAdding] = useState(false);
 
-  // Detail drawer
   const [detailHash, setDetailHash] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<{
     properties: Record<string, unknown>;
@@ -153,7 +278,6 @@ export default function TorrentsPage() {
   } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // Delete drawer
   const [deleteDrawer, setDeleteDrawer] = useState<{ open: boolean; hash: string; name: string; deleteFiles: boolean }>({
     open: false,
     hash: '',
@@ -163,37 +287,57 @@ export default function TorrentsPage() {
   const [deleting, setDeleting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const filterRef = useRef<FilterType>('all');
+  const pollInFlightRef = useRef(false);
+  const pendingPollRef = useRef(false);
 
-  const fetchTorrents = useCallback(async () => {
+  const fetchSummary = useCallback(async () => {
+    if (pollInFlightRef.current) {
+      pendingPollRef.current = true;
+      return;
+    }
+
+    pollInFlightRef.current = true;
+    const currentFilter = filterRef.current;
+    const startedAt = performance.now();
+
     try {
-      const qbtFilter = filter === 'all' ? undefined : filter;
-      const url = qbtFilter ? `/api/qbittorrent?filter=${qbtFilter}` : '/api/qbittorrent';
+      const qbtFilter = currentFilter === 'all' ? undefined : currentFilter;
+      const url = qbtFilter
+        ? `/api/qbittorrent/summary?filter=${encodeURIComponent(qbtFilter)}`
+        : '/api/qbittorrent/summary';
+
       const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
+
+      const data = await res.json() as QBittorrentSummaryResponse & { error?: string };
       if (data.error) throw new Error(data.error);
-      setTorrents(data);
+
+      setTorrents((prev) => mergeTorrents(prev, data.torrents));
+      setTransferInfo(data.transferInfo);
       setError(null);
+
+      const durationMs = performance.now() - startedAt;
+      console.info(`[perf][client] torrents summary ${durationMs.toFixed(1)}ms`, {
+        filter: currentFilter,
+        torrentCount: data.torrents.length,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch torrents');
     } finally {
       setLoading(false);
-    }
-  }, [filter]);
+      setRefreshing(false);
+      pollInFlightRef.current = false;
 
-  const fetchTransferInfo = useCallback(async () => {
-    try {
-      const res = await fetch('/api/qbittorrent/transfer');
-      if (res.ok) {
-        const data = await res.json();
-        setTransferInfo(data);
+      if (pendingPollRef.current) {
+        pendingPollRef.current = false;
+        void fetchSummary();
       }
-    } catch {
-      // Non-critical
     }
   }, []);
 
-  async function fetchDetail(hash: string) {
+  const fetchDetail = useCallback(async (hash: string) => {
     setDetailHash(hash);
     setDetailLoading(true);
     setDetailData(null);
@@ -209,7 +353,13 @@ export default function TorrentsPage() {
     } finally {
       setDetailLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    filterRef.current = filter;
+    setLoading(true);
+    void fetchSummary();
+  }, [fetchSummary, filter]);
 
   useEffect(() => {
     async function loadRefreshInterval() {
@@ -220,16 +370,22 @@ export default function TorrentsPage() {
   }, []);
 
   useEffect(() => {
-    fetchTorrents();
-    fetchTransferInfo();
     const interval = setInterval(() => {
-      fetchTorrents();
-      fetchTransferInfo();
+      void fetchSummary();
     }, refreshIntervalMs);
     return () => clearInterval(interval);
-  }, [fetchTorrents, fetchTransferInfo, refreshIntervalMs]);
+  }, [fetchSummary, refreshIntervalMs]);
 
-  async function torrentAction(hash: string, action: string, extra?: Record<string, unknown>) {
+  useEffect(() => {
+    setSelectedTorrents((prev) => {
+      if (prev.size === 0) return prev;
+      const availableHashes = new Set(torrents.map((torrent) => torrent.hash));
+      const next = new Set(Array.from(prev).filter((hash) => availableHashes.has(hash)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [torrents]);
+
+  const torrentAction = useCallback(async (hash: string, action: string, extra?: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/qbittorrent/${hash}`, {
         method: 'POST',
@@ -241,20 +397,22 @@ export default function TorrentsPage() {
         throw new Error(data.error || 'Action failed');
       }
       toast.success(`${action} successful`);
-      setTimeout(fetchTorrents, 500);
+      setTimeout(() => {
+        void fetchSummary();
+      }, 500);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Action failed');
     }
-  }
+  }, [fetchSummary]);
 
-  async function bulkAction(action: string) {
+  const bulkAction = useCallback(async (action: string) => {
     if (selectedTorrents.size === 0) return;
     const hashes = Array.from(selectedTorrents).join('|');
     await torrentAction(hashes, action);
     setSelectedTorrents(new Set());
-  }
+  }, [selectedTorrents, torrentAction]);
 
-  async function handleAddTorrent() {
+  const handleAddTorrent = useCallback(async () => {
     setAdding(true);
     try {
       if (addMode === 'magnet') {
@@ -291,15 +449,17 @@ export default function TorrentsPage() {
       setAddDrawerOpen(false);
       setMagnetLink('');
       setTorrentFile(null);
-      setTimeout(fetchTorrents, 1000);
+      setTimeout(() => {
+        void fetchSummary();
+      }, 1000);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add torrent');
     } finally {
       setAdding(false);
     }
-  }
+  }, [addMode, magnetLink, torrentFile, fetchSummary]);
 
-  async function handleDelete() {
+  const handleDelete = useCallback(async () => {
     setDeleting(true);
     try {
       await torrentAction(deleteDrawer.hash, 'delete', { deleteFiles: deleteDrawer.deleteFiles });
@@ -309,9 +469,9 @@ export default function TorrentsPage() {
     } finally {
       setDeleting(false);
     }
-  }
+  }, [deleteDrawer.deleteFiles, deleteDrawer.hash, torrentAction]);
 
-  function toggleSelect(hash: string) {
+  const toggleSelect = useCallback((hash: string) => {
     setSelectedTorrents((prev) => {
       const next = new Set(prev);
       if (next.has(hash)) {
@@ -321,27 +481,50 @@ export default function TorrentsPage() {
       }
       return next;
     });
-  }
+  }, []);
 
-  function selectAll() {
-    if (selectedTorrents.size === filteredTorrents.length) {
-      setSelectedTorrents(new Set());
-    } else {
-      setSelectedTorrents(new Set(filteredTorrents.map((t) => t.hash)));
-    }
-  }
+  const openDeleteDrawer = useCallback((hash: string, name: string, deleteFiles: boolean) => {
+    setDeleteDrawer({ open: true, hash, name, deleteFiles });
+  }, []);
 
-  const filteredTorrents = torrents.filter((t) =>
-    t.name.toLowerCase().includes(search.toLowerCase())
+  const filteredTorrents = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return torrents;
+    return torrents.filter((torrent) => torrent.name.toLowerCase().includes(q));
+  }, [search, torrents]);
+
+  const useVirtualization = filteredTorrents.length > VIRTUALIZE_THRESHOLD;
+  const virtualRange = useWindowVirtualRange({
+    container: listRef.current,
+    itemCount: filteredTorrents.length,
+    itemSize: TORRENT_ROW_HEIGHT,
+    enabled: useVirtualization,
+    overscan: 8,
+  });
+
+  const visibleTorrents = useMemo(() => {
+    if (!useVirtualization) return filteredTorrents;
+    return filteredTorrents.slice(virtualRange.startIndex, virtualRange.endIndex);
+  }, [filteredTorrents, useVirtualization, virtualRange.endIndex, virtualRange.startIndex]);
+
+  const torrentNameByHash = useMemo(
+    () => new Map(torrents.map((torrent) => [torrent.hash, torrent.name])),
+    [torrents]
   );
 
   const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
 
+  const selectAll = useCallback(() => {
+    if (selectedTorrents.size === filteredTorrents.length) {
+      setSelectedTorrents(new Set());
+      return;
+    }
+    setSelectedTorrents(new Set(filteredTorrents.map((torrent) => torrent.hash)));
+  }, [filteredTorrents, selectedTorrents.size]);
+
   return (
     <div className="space-y-3">
-      {/* Top action bar */}
       <div className="flex items-center gap-2">
-        {/* Filter dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -366,21 +549,23 @@ export default function TorrentsPage() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Refresh */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-              onClick={() => { setLoading(true); fetchTorrents(); }}
+              onClick={() => {
+                setRefreshing(true);
+                if (torrents.length === 0) setLoading(true);
+                void fetchSummary();
+              }}
               aria-label="Refresh"
             >
-              <RefreshCw className="h-5 w-5" />
+              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
           </TooltipTrigger>
           <TooltipContent>Refresh</TooltipContent>
         </Tooltip>
 
-        {/* Transfer stats (inline) */}
         {transferInfo && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground ml-1">
             <span className="flex items-center gap-1">
@@ -396,7 +581,6 @@ export default function TorrentsPage() {
 
         <div className="flex-1" />
 
-        {/* Add torrent button */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -411,7 +595,6 @@ export default function TorrentsPage() {
         </Tooltip>
       </div>
 
-      {/* Search bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -422,29 +605,26 @@ export default function TorrentsPage() {
         />
       </div>
 
-      {/* Bulk Actions */}
       {selectedTorrents.size > 0 && (
         <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">
-          <span className="text-xs text-muted-foreground mx-1 shrink-0">
-            {selectedTorrents.size}
-          </span>
+          <span className="text-xs text-muted-foreground mx-1 shrink-0">{selectedTorrents.size}</span>
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => bulkAction('resume')}
+            onClick={() => void bulkAction('resume')}
             aria-label="Resume"
           >
             <Play className="h-4 w-4" />
           </button>
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => bulkAction('pause')}
+            onClick={() => void bulkAction('pause')}
             aria-label="Stop"
           >
             <Pause className="h-4 w-4" />
           </button>
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => bulkAction('forceStart')}
+            onClick={() => void bulkAction('forceStart')}
             aria-label="Force Start"
           >
             <Zap className="h-4 w-4" />
@@ -453,7 +633,12 @@ export default function TorrentsPage() {
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-destructive"
             onClick={() => {
               const hashes = Array.from(selectedTorrents).join('|');
-              setDeleteDrawer({ open: true, hash: hashes, name: `${selectedTorrents.size} torrents`, deleteFiles: false });
+              setDeleteDrawer({
+                open: true,
+                hash: hashes,
+                name: `${selectedTorrents.size} torrents`,
+                deleteFiles: false,
+              });
             }}
             aria-label="Delete"
           >
@@ -469,7 +654,6 @@ export default function TorrentsPage() {
         </div>
       )}
 
-      {/* Content */}
       {loading && torrents.length === 0 ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -484,8 +668,7 @@ export default function TorrentsPage() {
           {search ? 'No torrents match your search.' : 'No torrents found.'}
         </div>
       ) : (
-        <div className="space-y-0">
-          {/* Select All */}
+        <div className="space-y-0" ref={listRef}>
           <div className="flex items-center gap-2 px-3 pb-2">
             <input
               type="checkbox"
@@ -498,109 +681,43 @@ export default function TorrentsPage() {
             </span>
           </div>
 
+          {useVirtualization && virtualRange.topSpacerHeight > 0 && (
+            <div style={{ height: virtualRange.topSpacerHeight }} />
+          )}
+
           <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
-            {filteredTorrents.map((torrent) => (
-              <div key={torrent.hash} className="px-3 py-3 sm:px-4">
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedTorrents.has(torrent.hash)}
-                    onChange={() => toggleSelect(torrent.hash)}
-                    className="mt-1 rounded border-border"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <button
-                        className="text-sm font-medium truncate text-left hover:underline"
-                        onClick={() => fetchDetail(torrent.hash)}
-                      >
-                        {torrent.name}
-                      </button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-0.5">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => torrentAction(torrent.hash, 'resume')}>
-                            <Play className="mr-2 h-4 w-4" /> Resume
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => torrentAction(torrent.hash, 'pause')}>
-                            <Pause className="mr-2 h-4 w-4" /> Stop
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => torrentAction(torrent.hash, 'forceStart')}>
-                            <Zap className="mr-2 h-4 w-4" /> Force Start
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            onClick={() => setDeleteDrawer({ open: true, hash: torrent.hash, name: torrent.name, deleteFiles: false })}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => setDeleteDrawer({ open: true, hash: torrent.hash, name: torrent.name, deleteFiles: true })}
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" /> Delete with files
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                      {getStateBadge(torrent.state)}
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatBytes(torrent.size)}
-                      </span>
-                      {torrent.category && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
-                          {torrent.category}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Progress */}
-                    <div className="mt-2">
-                      <div className="flex justify-between text-[11px] text-muted-foreground mb-1 flex-wrap gap-x-2">
-                        <span>{(torrent.progress * 100).toFixed(1)}%</span>
-                        <span className="flex items-center flex-wrap gap-x-2">
-                          {torrent.dlspeed > 0 && (
-                            <span className="text-green-500">
-                              <ArrowDown className="inline h-3 w-3" /> {formatSpeed(torrent.dlspeed)}
-                            </span>
-                          )}
-                          {torrent.upspeed > 0 && (
-                            <span className="text-blue-500">
-                              <ArrowUp className="inline h-3 w-3" /> {formatSpeed(torrent.upspeed)}
-                            </span>
-                          )}
-                          {torrent.eta > 0 && torrent.eta < 8640000 && (
-                            <span>ETA: {formatEta(torrent.eta)}</span>
-                          )}
-                        </span>
-                      </div>
-                      <Progress value={torrent.progress * 100} className="h-1" />
-                    </div>
-
-                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
-                      <span>Seeds: {torrent.num_seeds}</span>
-                      <span>Peers: {torrent.num_leechs}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            {visibleTorrents.map((torrent) => (
+              <TorrentRow
+                key={torrent.hash}
+                torrent={torrent}
+                selected={selectedTorrents.has(torrent.hash)}
+                onToggleSelect={toggleSelect}
+                onFetchDetail={fetchDetail}
+                onTorrentAction={torrentAction}
+                onOpenDeleteDrawer={openDeleteDrawer}
+              />
             ))}
           </div>
+
+          {useVirtualization && virtualRange.bottomSpacerHeight > 0 && (
+            <div style={{ height: virtualRange.bottomSpacerHeight }} />
+          )}
         </div>
       )}
 
-      {/* Torrent Detail Drawer */}
-      <Drawer open={!!detailHash} onOpenChange={(open) => { if (!open) { setDetailHash(null); setDetailData(null); } }}>
+      <Drawer
+        open={!!detailHash}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailHash(null);
+            setDetailData(null);
+          }
+        }}
+      >
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle className="text-sm break-all leading-snug">
-              {torrents.find((t) => t.hash === detailHash)?.name || 'Torrent Details'}
+              {detailHash ? torrentNameByHash.get(detailHash) || 'Torrent Details' : 'Torrent Details'}
             </DrawerTitle>
           </DrawerHeader>
           <div className="px-4 pb-6 max-h-[70vh] overflow-y-auto space-y-4">
@@ -610,7 +727,6 @@ export default function TorrentsPage() {
               </div>
             ) : detailData ? (
               <>
-                {/* General Info */}
                 <div>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">General</h3>
                   <div className="rounded-lg border divide-y">
@@ -631,7 +747,6 @@ export default function TorrentsPage() {
                   </div>
                 </div>
 
-                {/* Files */}
                 {detailData.files.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
@@ -654,7 +769,6 @@ export default function TorrentsPage() {
                   </div>
                 )}
 
-                {/* Trackers */}
                 {detailData.trackers.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
@@ -681,7 +795,6 @@ export default function TorrentsPage() {
         </DrawerContent>
       </Drawer>
 
-      {/* Add Torrent Drawer */}
       <Drawer open={addDrawerOpen} onOpenChange={setAddDrawerOpen}>
         <DrawerContent>
           <DrawerHeader>
@@ -759,7 +872,6 @@ export default function TorrentsPage() {
         </DrawerContent>
       </Drawer>
 
-      {/* Delete Confirmation Drawer */}
       <Drawer open={deleteDrawer.open} onOpenChange={(open) => !open && setDeleteDrawer({ ...deleteDrawer, open: false })}>
         <DrawerContent>
           <DrawerHeader>

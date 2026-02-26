@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { logApiDuration } from '@/lib/server-perf';
 
 export async function POST(
   request: NextRequest,
@@ -8,6 +9,7 @@ export async function POST(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const startedAt = performance.now();
 
   try {
     const { hash } = await params;
@@ -28,11 +30,14 @@ export async function POST(
         await client.forceStartTorrent(hash);
         break;
       default:
+        logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action: body.action, invalidAction: true });
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
 
+    logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action: body.action });
     return NextResponse.json({ success: true });
   } catch (error) {
+    logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', failed: true });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed' },
       { status: 500 }

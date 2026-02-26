@@ -6,6 +6,9 @@ import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 
+let cachedQBittorrentClient: QBittorrentClient | null = null;
+let cachedQBittorrentConfigKey: string | null = null;
+
 /**
  * Create a SonarrClient configured from the stored SONARR service connection.
  *
@@ -57,7 +60,15 @@ export async function getQBittorrentClient(): Promise<QBittorrentClient> {
     );
   }
 
-  return new QBittorrentClient(connection.url, connection.apiKey, connection.username || 'admin');
+  const username = connection.username || 'admin';
+  const configKey = `${connection.url}|${connection.apiKey}|${username}`;
+
+  if (!cachedQBittorrentClient || cachedQBittorrentConfigKey !== configKey) {
+    cachedQBittorrentClient = new QBittorrentClient(connection.url, connection.apiKey, username);
+    cachedQBittorrentConfigKey = configKey;
+  }
+
+  return cachedQBittorrentClient;
 }
 
 /**
