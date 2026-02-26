@@ -9,7 +9,6 @@ const withSerwist = withSerwistInit({
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  allowedDevOrigins: ['helprr.saibarath.space'],
   // Force webpack for Serwist compatibility
   turbopack: {},
   images: {
