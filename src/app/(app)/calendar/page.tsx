@@ -648,7 +648,7 @@ export default function CalendarPage() {
             `[data-agenda-date="${agendaTargetDateKey}"]`
           );
           if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            target.scrollIntoView({ behavior: 'instant', block: 'start' });
             done = true;
           }
         }
@@ -658,7 +658,7 @@ export default function CalendarPage() {
           `[data-week-date="${todayKey}"]`
         );
         if (target) {
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          target.scrollIntoView({ behavior: 'instant', block: 'start' });
           done = true;
         } else {
           const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });

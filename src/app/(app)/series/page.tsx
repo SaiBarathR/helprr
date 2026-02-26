@@ -258,7 +258,7 @@ export default function SeriesPage() {
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        window.scrollTo({ top: saved.scrollY, behavior: 'auto' });
+        window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
       });
     });
   }, [loading]);

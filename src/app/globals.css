@@ -119,19 +119,26 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
     -webkit-tap-highlight-color: transparent;
     overflow-x: clip;
   }
-  button, [role="button"], a, select, summary, [tabindex]:not([tabindex="-1"]) {
+
+  button,
+  [role="button"],
+  a,
+  select,
+  summary,
+  [tabindex]:not([tabindex="-1"]) {
     cursor: pointer;
   }
 }
 
 /* Smooth scrolling */
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: instant;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -140,6 +147,7 @@ html {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar,
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -147,11 +155,25 @@ html {
 }
 
 /* Status colors */
-.status-downloaded { color: oklch(0.72 0.17 152); }
-.status-missing { color: oklch(0.70 0.19 22); }
-.status-downloading { color: oklch(0.62 0.21 265); }
-.status-warning { color: oklch(0.75 0.18 65); }
-.status-upcoming { color: oklch(0.65 0.22 310); }
+.status-downloaded {
+  color: oklch(0.72 0.17 152);
+}
+
+.status-missing {
+  color: oklch(0.70 0.19 22);
+}
+
+.status-downloading {
+  color: oklch(0.62 0.21 265);
+}
+
+.status-warning {
+  color: oklch(0.75 0.18 65);
+}
+
+.status-upcoming {
+  color: oklch(0.65 0.22 310);
+}
 
 /* Native-style key-value rows (borderless) */
 .info-row {
@@ -162,9 +184,11 @@ html {
   border-bottom: 1px solid oklch(1 0 0 / 6%);
   font-size: 14px;
 }
+
 .info-row:last-child {
   border-bottom: none;
 }
+
 .info-row-label {
   color: var(--muted-foreground);
   font-size: 12px;
@@ -174,6 +198,7 @@ html {
   flex-shrink: 0;
   margin-right: 16px;
 }
+
 .info-row-value {
   text-align: right;
   min-width: 0;
@@ -187,6 +212,7 @@ html {
   border-radius: 12px;
   overflow: hidden;
 }
+
 .grouped-section-title {
   font-size: 13px;
   text-transform: uppercase;
@@ -194,10 +220,12 @@ html {
   padding: 8px 16px 6px;
   letter-spacing: 0.02em;
 }
+
 .grouped-section-content {
   background: var(--card);
   border-radius: 12px;
 }
+
 .grouped-row {
   display: flex;
   align-items: center;
@@ -206,6 +234,7 @@ html {
   min-height: 44px;
   border-bottom: 1px solid oklch(1 0 0 / 6%);
 }
+
 .grouped-row:last-child {
   border-bottom: none;
 }
@@ -225,6 +254,7 @@ html {
   transition: all 0.15s ease;
   min-height: 44px;
 }
+
 .pill-btn:active {
   opacity: 0.7;
   transform: scale(0.97);
@@ -238,17 +268,29 @@ html {
 ::view-transition-old(root) {
   animation: fade-out 0.15s ease-out;
 }
+
 ::view-transition-new(root) {
   animation: fade-in 0.15s ease-in;
 }
 
 @keyframes fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
 }
+
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* Touch target helper - apply to interactive nav/action elements */
