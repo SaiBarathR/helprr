@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -18,11 +18,25 @@ import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Filter, ArrowUpDown, Plus } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus, RefreshCw } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
-import type { RadarrMovie } from '@/types';
+import {
+  getCachedListData,
+  getListViewState,
+  isListDataFresh,
+  setCachedListData,
+  setListViewState,
+} from '@/lib/media-list-cache';
+import { useWindowVirtualRange } from '@/hooks/use-window-virtual-range';
+import type { RadarrMovieListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
+
+interface MoviesPageCacheData {
+  movies: RadarrMovieListItem[];
+  qualityProfiles: { id: number; name: string }[];
+  tags: { id: number; label: string }[];
+}
 
 const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
   posters: [
@@ -88,6 +102,28 @@ const sortOptions = [
   { value: 'tags', label: 'Tags' },
 ] as const;
 
+function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large') {
+  if (posterSize === 'small') {
+    if (width >= 1280) return 8;
+    if (width >= 1024) return 7;
+    if (width >= 768) return 6;
+    if (width >= 640) return 5;
+    return 4;
+  }
+
+  if (posterSize === 'large') {
+    if (width >= 1280) return 5;
+    if (width >= 1024) return 4;
+    if (width >= 768) return 3;
+    return 2;
+  }
+
+  if (width >= 1280) return 6;
+  if (width >= 1024) return 5;
+  if (width >= 768) return 4;
+  return 3;
+}
+
 /**
  * Render the Movies management page with client-side data loading, filtering, sorting, and multiple view modes (posters, overview, table).
  *
@@ -100,11 +136,17 @@ const sortOptions = [
  * @returns The Movies page JSX element.
  */
 export default function MoviesPage() {
-  const [movies, setMovies] = useState<RadarrMovie[]>([]);
+  const [movies, setMovies] = useState<RadarrMovieListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(1280);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const hasRestoredScrollRef = useRef(false);
+  const hasRestoredSearchRef = useRef(false);
+
   const {
     moviesView: viewMode,
     setMoviesView: setViewMode,
@@ -118,6 +160,8 @@ export default function MoviesPage() {
     setMoviesFilter: setFilter,
     moviesVisibleFields: visibleFieldsByMode,
     setMoviesVisibleFields: setVisibleFieldsForMode,
+    moviesSearch: search,
+    setMoviesSearch: setSearch,
   } = useUIStore();
 
   const visibleFields = visibleFieldsByMode[viewMode];
@@ -126,20 +170,134 @@ export default function MoviesPage() {
     [viewMode, setVisibleFieldsForMode]
   );
 
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/radarr').then((r) => r.ok ? r.json() : []),
-      fetch('/api/radarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-      fetch('/api/radarr/tags').then((r) => r.ok ? r.json() : []),
-    ]).then(([m, q, t]) => {
-      setMovies(m);
-      setQualityProfiles(q);
-      setTags(t);
-    }).catch(() => {})
-    .finally(() => setLoading(false));
+  const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
+    setListViewState('movies', { scrollY, search: searchValue });
+  }, [search]);
+
+  const fetchData = useCallback(async (force = false) => {
+    const cached = force ? null : getCachedListData<MoviesPageCacheData>('movies');
+    const hasCachedData = Boolean(cached?.data);
+
+    if (cached?.data) {
+      setMovies(cached.data.movies);
+      setQualityProfiles(cached.data.qualityProfiles);
+      setTags(cached.data.tags);
+      setLoading(false);
+
+      if (isListDataFresh(cached)) {
+        setRefreshing(false);
+        return;
+      }
+
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setRefreshing(false);
+    }
+
+    try {
+      const [m, q, t] = await Promise.all([
+        fetch('/api/radarr').then((r) => r.ok ? r.json() : []),
+        fetch('/api/radarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
+        fetch('/api/radarr/tags').then((r) => r.ok ? r.json() : []),
+      ]);
+
+      const next: MoviesPageCacheData = {
+        movies: m,
+        qualityProfiles: q,
+        tags: t,
+      };
+
+      setMovies(next.movies);
+      setQualityProfiles(next.qualityProfiles);
+      setTags(next.tags);
+      setCachedListData('movies', next);
+    } catch {
+      if (!hasCachedData) {
+        setMovies([]);
+        setQualityProfiles([]);
+        setTags([]);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  const handleSearch = useCallback((v: string) => setSearch(v), []);
+  useEffect(() => {
+    fetchData(false);
+  }, [fetchData]);
+
+  useEffect(() => {
+    if (hasRestoredSearchRef.current) return;
+    hasRestoredSearchRef.current = true;
+
+    const saved = getListViewState('movies');
+    if (!saved) return;
+    if (!search && saved.search) setSearch(saved.search);
+  }, [search, setSearch]);
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+
+    const measure = () => setContainerWidth(container.getBoundingClientRect().width);
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [viewMode, posterSize]);
+
+  useEffect(() => {
+    if (loading || hasRestoredScrollRef.current) return;
+    hasRestoredScrollRef.current = true;
+
+    const saved = getListViewState('movies');
+    if (!saved || saved.scrollY <= 0) return;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: saved.scrollY, behavior: 'auto' });
+      });
+    });
+  }, [loading]);
+
+  useEffect(() => {
+    persistViewState(window.scrollY, search);
+  }, [search, persistViewState]);
+
+  useEffect(() => {
+    let lastSaved = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - lastSaved < 150) return;
+      lastSaved = now;
+      persistViewState(window.scrollY, search);
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [persistViewState, search]);
+
+  const handleSearch = useCallback((v: string) => setSearch(v), [setSearch]);
+  const handleNavigateToDetail = useCallback(() => {
+    persistViewState(window.scrollY, search);
+  }, [persistViewState, search]);
+
+  const qualityProfileMap = useMemo(
+    () => new Map(qualityProfiles.map((profile) => [profile.id, profile.name])),
+    [qualityProfiles]
+  );
+  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.label])), [tags]);
 
   const filtered = useMemo(() => {
     let list = movies;
@@ -149,7 +307,6 @@ export default function MoviesPage() {
       list = list.filter((m) => m.title.toLowerCase().includes(q));
     }
 
-    // Filters
     if (filter === 'monitored') list = list.filter((m) => m.monitored);
     else if (filter === 'unmonitored') list = list.filter((m) => !m.monitored);
     else if (filter === 'missing') list = list.filter((m) => m.monitored && !m.hasFile);
@@ -158,7 +315,6 @@ export default function MoviesPage() {
     else if (filter === 'inCinemas') list = list.filter((m) => m.status === 'inCinemas');
     else if (filter === 'announced') list = list.filter((m) => m.status === 'announced');
 
-    // Sorting
     list = [...list].sort((a, b) => {
       let result = 0;
 
@@ -184,11 +340,12 @@ export default function MoviesPage() {
         case 'studio':
           result = (a.studio || '').localeCompare(b.studio || '');
           break;
-        case 'qualityProfile':
-          const qA = qualityProfiles.find(q => q.id === a.qualityProfileId)?.name || '';
-          const qB = qualityProfiles.find(q => q.id === b.qualityProfileId)?.name || '';
+        case 'qualityProfile': {
+          const qA = qualityProfileMap.get(a.qualityProfileId) || '';
+          const qB = qualityProfileMap.get(b.qualityProfileId) || '';
           result = qA.localeCompare(qB);
           break;
+        }
         case 'monitored':
           result = (a.monitored === b.monitored) ? 0 : a.monitored ? -1 : 1;
           break;
@@ -225,11 +382,12 @@ export default function MoviesPage() {
         case 'originalLanguage':
           result = (a.originalLanguage?.name || '').localeCompare(b.originalLanguage?.name || '');
           break;
-        case 'tags':
-          const tA = a.tags.map(id => tags.find(t => t.id === id)?.label || '').sort().join(',');
-          const tB = b.tags.map(id => tags.find(t => t.id === id)?.label || '').sort().join(',');
+        case 'tags': {
+          const tA = a.tags.map((id) => tagMap.get(id) || '').sort().join(',');
+          const tB = b.tags.map((id) => tagMap.get(id) || '').sort().join(',');
           result = tA.localeCompare(tB);
           break;
+        }
         default:
           result = 0;
       }
@@ -238,16 +396,104 @@ export default function MoviesPage() {
     });
 
     return list;
-  }, [movies, search, sort, sortDir, filter, qualityProfiles, tags]);
+  }, [movies, search, sort, sortDir, filter, qualityProfileMap, tagMap]);
+
+  const isDesktop = viewportWidth >= 768;
+  const effectiveView = viewMode === 'table' ? 'table' : viewMode;
+  const useVirtualization = filtered.length > 120 && !loading;
+
+  const posterGridClass = posterSize === 'small'
+    ? 'grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2'
+    : posterSize === 'large'
+      ? 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3'
+      : 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3';
+
+  const posterColumns = getPosterColumns(viewportWidth, posterSize);
+  const posterGap = posterSize === 'small' ? 8 : 12;
+  const posterRowHeight = useMemo(() => {
+    if (containerWidth <= 0) {
+      if (posterSize === 'small') return 148;
+      if (posterSize === 'large') return 264;
+      return 216;
+    }
+
+    const cardWidth = Math.max(1, (containerWidth - posterGap * (posterColumns - 1)) / posterColumns);
+    return cardWidth * 1.5 + posterGap;
+  }, [containerWidth, posterColumns, posterGap, posterSize]);
+
+  const posterRowCount = Math.ceil(filtered.length / posterColumns);
+  const posterVirtual = useWindowVirtualRange({
+    container: contentRef.current,
+    itemCount: posterRowCount,
+    itemSize: posterRowHeight,
+    enabled: useVirtualization && effectiveView === 'posters',
+    overscan: 2,
+  });
+
+  const overviewRowHeight = useMemo(() => {
+    let base = posterSize === 'small' ? 92 : posterSize === 'large' ? 168 : 124;
+    if (visibleFields.includes('overview')) base += 24;
+    if (!visibleFields.includes('images')) base -= 20;
+    return base;
+  }, [posterSize, visibleFields]);
+
+  const overviewVirtual = useWindowVirtualRange({
+    container: contentRef.current,
+    itemCount: filtered.length,
+    itemSize: overviewRowHeight,
+    enabled: useVirtualization && effectiveView === 'overview',
+    overscan: 6,
+  });
+
+  const tableRowHeight = 44;
+  const tableRows = filtered.map((movie) => ({
+    id: movie.id,
+    title: movie.title,
+    year: movie.year,
+    href: `/movies/${movie.id}`,
+    monitored: movie.monitored,
+    hasFile: movie.hasFile,
+    status: movie.status,
+    images: movie.images,
+    qualityProfile: qualityProfileMap.get(movie.qualityProfileId),
+    studio: movie.studio,
+    rating: movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value,
+    sizeOnDisk: movie.sizeOnDisk,
+    runtime: movie.runtime,
+    certification: movie.certification,
+    genres: movie.genres,
+  }));
+
+  const tableVirtual = useWindowVirtualRange({
+    container: contentRef.current,
+    itemCount: tableRows.length,
+    itemSize: tableRowHeight,
+    enabled: useVirtualization && effectiveView === 'table' && isDesktop,
+    overscan: 12,
+  });
+
+  const mobileOverviewFields = visibleFieldsByMode.overview;
+  const tableMobileOverviewRowHeight = useMemo(() => {
+    let base = posterSize === 'small' ? 92 : posterSize === 'large' ? 168 : 124;
+    if (mobileOverviewFields.includes('overview')) base += 24;
+    if (!mobileOverviewFields.includes('images')) base -= 20;
+    return base;
+  }, [mobileOverviewFields, posterSize]);
+
+  const tableMobileVirtual = useWindowVirtualRange({
+    container: contentRef.current,
+    itemCount: filtered.length,
+    itemSize: tableMobileOverviewRowHeight,
+    enabled: useVirtualization && effectiveView === 'table' && !isDesktop,
+    overscan: 6,
+  });
 
   const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
     <div className="space-y-3">
-      {/* Top action bar */}
       <div className="flex items-center gap-2">
-        {/* Filter dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -272,7 +518,6 @@ export default function MoviesPage() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Sort dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -310,7 +555,6 @@ export default function MoviesPage() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* View selector */}
         <ViewSelector value={viewMode} onChange={setViewMode} />
         <FieldToggles
           available={FIELD_OPTIONS_BY_MODE[viewMode]}
@@ -322,7 +566,20 @@ export default function MoviesPage() {
 
         <div className="flex-1" />
 
-        {/* Add movie button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => fetchData(true)}
+              disabled={refreshing}
+              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+              aria-label="Refresh Movies"
+            >
+              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh Movies</TooltipContent>
+        </Tooltip>
+
         <Tooltip>
           <TooltipTrigger asChild>
             <Link
@@ -337,20 +594,9 @@ export default function MoviesPage() {
         </Tooltip>
       </div>
 
-      {/* Search bar */}
       <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." />
 
-      {/* Content */}
       {(() => {
-        // On mobile, table isn't available — fall back to overview for rendering
-        const effectiveView = viewMode === 'table' ? 'table' : viewMode;
-
-        const posterGridClass = posterSize === 'small'
-          ? 'grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2'
-          : posterSize === 'large'
-            ? 'grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3'
-            : 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3';
-
         if (loading) {
           return effectiveView === 'posters' ? (
             <div className={posterGridClass}>
@@ -364,16 +610,14 @@ export default function MoviesPage() {
                 <Skeleton key={i} className="h-24 rounded-xl" />
               ))}
             </div>
+          ) : isDesktop ? (
+            <div className="block"><Skeleton className="h-96 rounded-xl" /></div>
           ) : (
-            <>
-              {/* Table skeleton on desktop, overview skeleton on mobile */}
-              <div className="hidden md:block"><Skeleton className="h-96 rounded-xl" /></div>
-              <div className="md:hidden space-y-2">
-                {[...Array(6)].map((_, i) => (
-                  <Skeleton key={i} className="h-24 rounded-xl" />
-                ))}
-              </div>
-            </>
+            <div className="space-y-2">
+              {[...Array(6)].map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </div>
           );
         }
 
@@ -387,34 +631,43 @@ export default function MoviesPage() {
           );
         }
 
-        const movieRating = (m: RadarrMovie) => m.ratings?.imdb?.value || m.ratings?.tmdb?.value;
-        const movieQuality = (m: RadarrMovie) => qualityProfiles.find((q) => q.id === m.qualityProfileId)?.name;
-
         if (effectiveView === 'posters') {
+          const startIndex = posterVirtual.startIndex * posterColumns;
+          const endIndex = Math.min(filtered.length, posterVirtual.endIndex * posterColumns);
+          const visibleMovies = filtered.slice(startIndex, endIndex);
+
           return (
-            <div className={posterGridClass}>
-              {filtered.map((movie) => (
-                <MediaCard
-                  key={movie.id}
-                  title={movie.title}
-                  year={movie.year}
-                  images={movie.images}
-                  hasFile={movie.hasFile}
-                  monitored={movie.monitored}
-                  type="movie"
-                  href={`/movies/${movie.id}`}
-                  visibleFields={visibleFields}
-                  rating={movieRating(movie)}
-                />
-              ))}
+            <div ref={contentRef}>
+              {posterVirtual.topSpacerHeight > 0 && <div style={{ height: posterVirtual.topSpacerHeight }} />}
+              <div className={posterGridClass}>
+                {visibleMovies.map((movie) => (
+                  <MediaCard
+                    key={movie.id}
+                    title={movie.title}
+                    year={movie.year}
+                    images={movie.images}
+                    hasFile={movie.hasFile}
+                    monitored={movie.monitored}
+                    type="movie"
+                    href={`/movies/${movie.id}`}
+                    visibleFields={visibleFields}
+                    rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
+                    onNavigate={handleNavigateToDetail}
+                  />
+                ))}
+              </div>
+              {posterVirtual.bottomSpacerHeight > 0 && <div style={{ height: posterVirtual.bottomSpacerHeight }} />}
             </div>
           );
         }
 
         if (effectiveView === 'overview') {
+          const visibleMovies = filtered.slice(overviewVirtual.startIndex, overviewVirtual.endIndex);
+
           return (
-            <div className="space-y-2">
-              {filtered.map((movie) => (
+            <div ref={contentRef} className="space-y-2">
+              {overviewVirtual.topSpacerHeight > 0 && <div style={{ height: overviewVirtual.topSpacerHeight }} />}
+              {visibleMovies.map((movie) => (
                 <MediaOverviewItem
                   key={movie.id}
                   title={movie.title}
@@ -427,72 +680,69 @@ export default function MoviesPage() {
                   status={movie.status}
                   visibleFields={visibleFields}
                   posterSize={posterSize}
-                  qualityProfile={movieQuality(movie)}
+                  qualityProfile={qualityProfileMap.get(movie.qualityProfileId)}
                   studio={movie.studio}
                   certification={movie.certification}
                   overview={movie.overview}
-                  rating={movieRating(movie)}
+                  rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
                   sizeOnDisk={movie.sizeOnDisk}
                   runtime={movie.runtime}
                   genres={movie.genres}
+                  onNavigate={handleNavigateToDetail}
                 />
               ))}
+              {overviewVirtual.bottomSpacerHeight > 0 && <div style={{ height: overviewVirtual.bottomSpacerHeight }} />}
             </div>
           );
         }
 
-        // Table view - show table on md+, overview fallback on mobile
-        const tableRows = filtered.map((movie) => ({
-          id: movie.id,
-          title: movie.title,
-          year: movie.year,
-          href: `/movies/${movie.id}`,
-          monitored: movie.monitored,
-          hasFile: movie.hasFile,
-          status: movie.status,
-          images: movie.images,
-          qualityProfile: movieQuality(movie),
-          studio: movie.studio,
-          rating: movieRating(movie),
-          sizeOnDisk: movie.sizeOnDisk,
-          runtime: movie.runtime,
-          certification: movie.certification,
-          genres: movie.genres,
-        }));
+        if (isDesktop) {
+          const visibleRows = tableRows.slice(tableVirtual.startIndex, tableVirtual.endIndex);
+          return (
+            <div ref={contentRef}>
+              <MediaTable
+                type="movie"
+                visibleFields={visibleFields}
+                rows={visibleRows}
+                topSpacerHeight={tableVirtual.topSpacerHeight}
+                bottomSpacerHeight={tableVirtual.bottomSpacerHeight}
+                onNavigate={handleNavigateToDetail}
+              />
+            </div>
+          );
+        }
 
-        const mobileOverviewFields = visibleFieldsByMode.overview;
+        const visibleMovies = filtered.slice(tableMobileVirtual.startIndex, tableMobileVirtual.endIndex);
+
         return (
-          <>
-            <div className="hidden md:block">
-              <MediaTable type="movie" visibleFields={visibleFields} rows={tableRows} />
-            </div>
-            {/* Mobile fallback: overview */}
-            <div className="md:hidden space-y-2">
-              {filtered.map((movie) => (
-                <MediaOverviewItem
-                  key={movie.id}
-                  title={movie.title}
-                  year={movie.year}
-                  images={movie.images}
-                  href={`/movies/${movie.id}`}
-                  type="movie"
-                  monitored={movie.monitored}
-                  hasFile={movie.hasFile}
-                  status={movie.status}
-                  visibleFields={mobileOverviewFields}
-                  posterSize={posterSize}
-                  qualityProfile={movieQuality(movie)}
-                  studio={movie.studio}
-                  certification={movie.certification}
-                  overview={movie.overview}
-                  rating={movieRating(movie)}
-                  sizeOnDisk={movie.sizeOnDisk}
-                  runtime={movie.runtime}
-                  genres={movie.genres}
-                />
-              ))}
-            </div>
-          </>
+          <div ref={contentRef} className="space-y-2">
+            {tableMobileVirtual.topSpacerHeight > 0 && <div style={{ height: tableMobileVirtual.topSpacerHeight }} />}
+            {visibleMovies.map((movie) => (
+              <MediaOverviewItem
+                key={movie.id}
+                title={movie.title}
+                year={movie.year}
+                images={movie.images}
+                href={`/movies/${movie.id}`}
+                type="movie"
+                monitored={movie.monitored}
+                hasFile={movie.hasFile}
+                status={movie.status}
+                visibleFields={mobileOverviewFields}
+                posterSize={posterSize}
+                qualityProfile={qualityProfileMap.get(movie.qualityProfileId)}
+                studio={movie.studio}
+                certification={movie.certification}
+                overview={movie.overview}
+                rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
+                sizeOnDisk={movie.sizeOnDisk}
+                runtime={movie.runtime}
+                genres={movie.genres}
+                onNavigate={handleNavigateToDetail}
+              />
+            ))}
+            {tableMobileVirtual.bottomSpacerHeight > 0 && <div style={{ height: tableMobileVirtual.bottomSpacerHeight }} />}
+          </div>
         );
       })()}
     </div>

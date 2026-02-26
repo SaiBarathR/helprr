@@ -16,6 +16,7 @@ interface MediaCardProps {
   href: string;
   visibleFields?: string[];
   rating?: number;
+  onNavigate?: () => void;
 }
 
 function getImageUrl(images: MediaImage[], coverType: string): string | null {
@@ -33,12 +34,13 @@ export function MediaCard({
   href,
   visibleFields,
   rating,
+  onNavigate,
 }: MediaCardProps) {
   const poster = getImageUrl(images, 'poster');
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
   return (
-    <Link href={href} className="group block">
+    <Link href={href} onClick={onNavigate} className="group block">
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm">
         {poster ? (
           <Image

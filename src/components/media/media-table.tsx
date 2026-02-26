@@ -37,12 +37,29 @@ export function MediaTable({
   rows,
   visibleFields,
   type,
+  topSpacerHeight = 0,
+  bottomSpacerHeight = 0,
+  onNavigate,
 }: {
   rows: MediaTableRow[];
   visibleFields: string[];
   type: 'movie' | 'series';
+  topSpacerHeight?: number;
+  bottomSpacerHeight?: number;
+  onNavigate?: () => void;
 }) {
   const show = (field: string) => visibleFields.includes(field);
+  const columnCount = [
+    show('monitored'),
+    true,
+    show('year'),
+    show('qualityProfile'),
+    show('network') && type === 'series',
+    show('studio') && type === 'movie',
+    show('episodeProgress') && type === 'series',
+    show('rating'),
+    show('sizeOnDisk'),
+  ].filter(Boolean).length;
 
   return (
     <div className="rounded-xl bg-card overflow-hidden">
@@ -62,6 +79,11 @@ export function MediaTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
+            {topSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={columnCount} style={{ height: topSpacerHeight }} />
+              </tr>
+            )}
             {rows.map((row) => (
               <tr key={row.id} className="hover:bg-muted/30 transition-colors">
                 {show('monitored') && (
@@ -74,7 +96,7 @@ export function MediaTable({
                   </td>
                 )}
                 <td className="px-3 py-2">
-                  <Link href={row.href} className="hover:underline flex items-center gap-2">
+                  <Link href={row.href} onClick={onNavigate} className="hover:underline flex items-center gap-2">
                     <span
                       className={`inline-block h-2 w-2 rounded-full shrink-0 ${
                         row.hasFile
@@ -96,6 +118,11 @@ export function MediaTable({
                 {show('sizeOnDisk') && <td className="px-3 py-2 text-muted-foreground text-right hidden sm:table-cell">{row.sizeOnDisk ? formatBytes(row.sizeOnDisk) : '-'}</td>}
               </tr>
             ))}
+            {bottomSpacerHeight > 0 && (
+              <tr aria-hidden="true">
+                <td colSpan={columnCount} style={{ height: bottomSpacerHeight }} />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
