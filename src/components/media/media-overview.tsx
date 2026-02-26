@@ -49,6 +49,7 @@ export interface MediaOverviewItemProps {
   genres?: string[];
   hasFile?: boolean;
   status?: string;
+  onNavigate?: () => void;
 }
 
 export function MediaOverviewItem({
@@ -70,14 +71,17 @@ export function MediaOverviewItem({
   runtime,
   episodeProgress,
   genres,
-  hasFile,
-  status,
+  onNavigate,
 }: MediaOverviewItemProps) {
   const poster = getImageUrl(images, 'poster');
   const show = (field: string) => visibleFields.includes(field);
 
   return (
-    <Link href={href} className="flex gap-3 rounded-xl bg-card p-3 hover:bg-muted/30 active:bg-muted/50 transition-colors">
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className="flex gap-3 rounded-xl bg-card p-3 hover:bg-muted/30 active:bg-muted/50 transition-colors"
+    >
       {/* Poster thumbnail */}
       {show('images') ? (
         <div className={cn('relative shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-muted', posterSizeClasses[posterSize])}>

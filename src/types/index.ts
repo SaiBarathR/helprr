@@ -42,6 +42,30 @@ export interface SonarrSeries {
   };
 }
 
+export type SonarrSeriesListItem = Pick<
+  SonarrSeries,
+  | 'id'
+  | 'title'
+  | 'sortTitle'
+  | 'status'
+  | 'overview'
+  | 'network'
+  | 'images'
+  | 'year'
+  | 'path'
+  | 'qualityProfileId'
+  | 'monitored'
+  | 'runtime'
+  | 'genres'
+  | 'tags'
+  | 'added'
+  | 'ratings'
+  | 'originalLanguage'
+  | 'nextAiring'
+  | 'previousAiring'
+  | 'statistics'
+>;
+
 export interface SonarrSeason {
   seasonNumber: number;
   monitored: boolean;
@@ -119,6 +143,35 @@ export interface RadarrMovie {
   };
   studio: string;
 }
+
+export type RadarrMovieListItem = Pick<
+  RadarrMovie,
+  | 'id'
+  | 'title'
+  | 'sortTitle'
+  | 'originalTitle'
+  | 'originalLanguage'
+  | 'sizeOnDisk'
+  | 'status'
+  | 'overview'
+  | 'inCinemas'
+  | 'physicalRelease'
+  | 'digitalRelease'
+  | 'images'
+  | 'year'
+  | 'hasFile'
+  | 'path'
+  | 'qualityProfileId'
+  | 'monitored'
+  | 'runtime'
+  | 'genres'
+  | 'tags'
+  | 'added'
+  | 'ratings'
+  | 'popularity'
+  | 'studio'
+  | 'certification'
+>;
 
 export type RadarrCalendarEntry = RadarrMovie;
 

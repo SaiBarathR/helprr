@@ -76,6 +76,8 @@ interface UIState {
   setMoviesPosterSize: (size: PosterSize) => void;
   moviesSort: string;
   setMoviesSort: (sort: string) => void;
+  moviesSearch: string;
+  setMoviesSearch: (search: string) => void;
   moviesSortDirection: 'asc' | 'desc';
   setMoviesSortDirection: (dir: 'asc' | 'desc') => void;
   moviesFilter: string;
@@ -89,6 +91,8 @@ interface UIState {
   setSeriesPosterSize: (size: PosterSize) => void;
   seriesSort: string;
   setSeriesSort: (sort: string) => void;
+  seriesSearch: string;
+  setSeriesSearch: (search: string) => void;
   seriesSortDirection: 'asc' | 'desc';
   setSeriesSortDirection: (dir: 'asc' | 'desc') => void;
   seriesFilter: string;
@@ -135,6 +139,8 @@ export const useUIStore = create<UIState>()(
       setMoviesPosterSize: (size) => set({ moviesPosterSize: size }),
       moviesSort: 'title',
       setMoviesSort: (sort) => set({ moviesSort: sort }),
+      moviesSearch: '',
+      setMoviesSearch: (search) => set({ moviesSearch: search }),
       moviesSortDirection: 'asc',
       setMoviesSortDirection: (dir) => set({ moviesSortDirection: dir }),
       moviesFilter: 'all',
@@ -150,6 +156,8 @@ export const useUIStore = create<UIState>()(
       setSeriesPosterSize: (size) => set({ seriesPosterSize: size }),
       seriesSort: 'title',
       setSeriesSort: (sort) => set({ seriesSort: sort }),
+      seriesSearch: '',
+      setSeriesSearch: (search) => set({ seriesSearch: search }),
       seriesSortDirection: 'asc',
       setSeriesSortDirection: (dir) => set({ seriesSortDirection: dir }),
       seriesFilter: 'all',
@@ -212,7 +220,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 4,
+      version: 5,
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version === 0) {
@@ -248,6 +256,10 @@ export const useUIStore = create<UIState>()(
           state.discoverSortDirection = 'desc';
           state.discoverFilters = cloneDiscoverFilters(DEFAULT_DISCOVER_FILTERS);
         }
+        if (version < 5) {
+          state.moviesSearch = '';
+          state.seriesSearch = '';
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -256,12 +268,14 @@ export const useUIStore = create<UIState>()(
         moviesView: state.moviesView,
         moviesPosterSize: state.moviesPosterSize,
         moviesSort: state.moviesSort,
+        moviesSearch: state.moviesSearch,
         moviesSortDirection: state.moviesSortDirection,
         moviesFilter: state.moviesFilter,
         moviesVisibleFields: state.moviesVisibleFields,
         seriesView: state.seriesView,
         seriesPosterSize: state.seriesPosterSize,
         seriesSort: state.seriesSort,
+        seriesSearch: state.seriesSearch,
         seriesSortDirection: state.seriesSortDirection,
         seriesFilter: state.seriesFilter,
         seriesVisibleFields: state.seriesVisibleFields,

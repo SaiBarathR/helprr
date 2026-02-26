@@ -14,7 +14,12 @@ export function SearchBar({ value, onChange, placeholder = 'Search...' }: Search
   const [internal, setInternal] = useState(value);
 
   useEffect(() => {
-    const timer = setTimeout(() => onChange(internal), 300);
+    if (internal === '') {
+      onChange('');
+      return;
+    }
+
+    const timer = setTimeout(() => onChange(internal), 700);
     return () => clearTimeout(timer);
   }, [internal, onChange]);
 
