@@ -18,9 +18,11 @@ export async function POST(
 
     switch (body.action) {
       case 'pause':
+      case 'stop':
         await client.pauseTorrent(hash);
         break;
       case 'resume':
+      case 'start':
         await client.resumeTorrent(hash);
         break;
       case 'delete':
