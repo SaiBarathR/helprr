@@ -188,10 +188,10 @@ const TorrentRow = memo(function TorrentRow({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'resume')}>
-                  <Play className="mr-2 h-4 w-4" /> Resume
+                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'start')}>
+                  <Play className="mr-2 h-4 w-4" /> Start
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'pause')}>
+                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'stop')}>
                   <Pause className="mr-2 h-4 w-4" /> Stop
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'forceStart')}>
@@ -396,7 +396,13 @@ export default function TorrentsPage() {
         const data = await res.json();
         throw new Error(data.error || 'Action failed');
       }
-      toast.success(`${action} successful`);
+      const successMessage: Record<string, string> = {
+        start: 'Started',
+        stop: 'Stopped',
+        forceStart: 'Force started',
+        delete: 'Deleted',
+      };
+      toast.success(successMessage[action] ?? 'Action successful');
       setTimeout(() => {
         void fetchSummary();
       }, 500);
@@ -610,14 +616,14 @@ export default function TorrentsPage() {
           <span className="text-xs text-muted-foreground mx-1 shrink-0">{selectedTorrents.size}</span>
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => void bulkAction('resume')}
-            aria-label="Resume"
+            onClick={() => void bulkAction('start')}
+            aria-label="Start"
           >
             <Play className="h-4 w-4" />
           </button>
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => void bulkAction('pause')}
+            onClick={() => void bulkAction('stop')}
             aria-label="Stop"
           >
             <Pause className="h-4 w-4" />

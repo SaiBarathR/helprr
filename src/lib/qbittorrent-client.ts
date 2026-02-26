@@ -62,6 +62,7 @@ export class QBittorrentClient {
   private password: string;
   private cookie: string | null = null;
   private authPromise: Promise<void> | null = null;
+  private torrentControlMode: 'unknown' | 'startStop' | 'pauseResume' = 'unknown';
 
   constructor(url: string, password: string, username: string = 'admin') {
     this.baseUrl = url.replace(/\/+$/, '');
@@ -204,16 +205,45 @@ export class QBittorrentClient {
     return this.get<TorrentTracker[]>('/api/v2/torrents/trackers', { hash });
   }
 
-  async pauseTorrent(hashes: string): Promise<void> {
+  private isNotFound(error: unknown): boolean {
+    return axios.isAxiosError(error) && error.response?.status === 404;
+  }
+
+  private async postTorrentControlAction(hashes: string, action: 'start' | 'stop'): Promise<void> {
     const params = new URLSearchParams();
     params.append('hashes', hashes);
-    await this.post('/api/v2/torrents/pause', params.toString());
+    const body = params.toString();
+
+    const endpoints = action === 'start'
+      ? { startStop: '/api/v2/torrents/start', pauseResume: '/api/v2/torrents/resume' }
+      : { startStop: '/api/v2/torrents/stop', pauseResume: '/api/v2/torrents/pause' };
+
+    const modesToTry: Array<'startStop' | 'pauseResume'> =
+      this.torrentControlMode === 'unknown'
+        ? ['startStop', 'pauseResume']
+        : this.torrentControlMode === 'startStop'
+          ? ['startStop', 'pauseResume']
+          : ['pauseResume', 'startStop'];
+
+    for (let i = 0; i < modesToTry.length; i++) {
+      const mode = modesToTry[i];
+      try {
+        await this.post(endpoints[mode], body);
+        this.torrentControlMode = mode;
+        return;
+      } catch (error) {
+        const canFallback = i === 0 && this.isNotFound(error);
+        if (!canFallback) throw error;
+      }
+    }
+  }
+
+  async pauseTorrent(hashes: string): Promise<void> {
+    await this.postTorrentControlAction(hashes, 'stop');
   }
 
   async resumeTorrent(hashes: string): Promise<void> {
-    const params = new URLSearchParams();
-    params.append('hashes', hashes);
-    await this.post('/api/v2/torrents/resume', params.toString());
+    await this.postTorrentControlAction(hashes, 'start');
   }
 
   async forceStartTorrent(hashes: string, value: boolean = true): Promise<void> {
