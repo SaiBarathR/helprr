@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { logApiDuration } from '@/lib/server-perf';
 
 export async function GET(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const startedAt = performance.now();
 
   try {
     const client = await getQBittorrentClient();
@@ -14,9 +16,15 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get('sort') || undefined;
     const reverse = searchParams.get('reverse') === 'true' ? true : undefined;
     const torrents = await client.getTorrents(filter, category, sort, reverse);
+    logApiDuration('/api/qbittorrent', startedAt, {
+      method: 'GET',
+      torrentCount: torrents.length,
+      filter: filter || 'all',
+    });
     return NextResponse.json(torrents);
   } catch (error) {
     console.error('Failed to fetch torrents:', error);
+    logApiDuration('/api/qbittorrent', startedAt, { method: 'GET', failed: true });
     return NextResponse.json(
       { error: 'Failed to fetch torrents' },
       { status: 500 }
@@ -27,6 +35,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const startedAt = performance.now();
 
   try {
     const client = await getQBittorrentClient();
@@ -47,6 +56,7 @@ export async function POST(request: NextRequest) {
         savepath: savepath || undefined,
         paused,
       });
+      logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file' });
       return NextResponse.json({ success: true });
     }
 
@@ -59,9 +69,11 @@ export async function POST(request: NextRequest) {
       savepath: body.savepath,
       paused: body.paused,
     });
+    logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet' });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Failed to add torrent:', error);
+    logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', failed: true });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to add torrent' },
       { status: 500 }

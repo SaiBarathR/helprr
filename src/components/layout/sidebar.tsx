@@ -4,11 +4,12 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Clapperboard, PanelLeftClose, PanelLeft } from 'lucide-react';
+import { Clapperboard, PanelLeftClose, PanelLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems } from '@/lib/nav-config';
+import { useNavPending } from '@/hooks/use-nav-pending';
 
 /**
  * Render the application's responsive, collapsible navigation sidebar.
@@ -20,6 +21,7 @@ import { getEnabledNavItems } from '@/lib/nav-config';
  */
 export function Sidebar() {
   const pathname = usePathname();
+  const { pendingHref, beginPending } = useNavPending();
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const navOrder = useUIStore((s) => s.navOrder);
@@ -45,19 +47,27 @@ export function Sidebar() {
       <nav className="flex-1 py-2 space-y-1 px-2">
         {navItems.map(({ href, icon: Icon, label }) => {
           const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+          const isPending = pendingHref === href;
           const link = (
             <Link
               key={href}
               href={href}
+              onClick={(event) => {
+                if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                  return;
+                }
+                beginPending(href);
+              }}
               className={cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                isPending && 'opacity-70',
                 sidebarCollapsed && 'justify-center px-2'
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className="h-4 w-4 shrink-0" />}
               {!sidebarCollapsed && label}
             </Link>
           );

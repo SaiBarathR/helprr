@@ -1,8 +1,7 @@
 /// <reference lib="webworker" />
 
-import { defaultCache } from '@serwist/next/worker';
-import type { PrecacheEntry, SerwistGlobalConfig } from 'serwist';
-import { Serwist } from 'serwist';
+import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from 'serwist';
+import { CacheFirst, ExpirationPlugin, NetworkOnly, Serwist, StaleWhileRevalidate } from 'serwist';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -12,12 +11,106 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 
+const runtimeCaching: RuntimeCaching[] =
+  process.env.NODE_ENV !== 'production'
+    ? [
+        {
+          matcher: /.*/i,
+          handler: new NetworkOnly(),
+        },
+      ]
+    : [
+        {
+          matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && pathname.startsWith('/api/'),
+          method: 'GET',
+          handler: new NetworkOnly(),
+        },
+        {
+          matcher: ({ request, sameOrigin, url: { pathname } }) =>
+            sameOrigin && !pathname.startsWith('/api/') && request.headers.get('RSC') === '1',
+          method: 'GET',
+          handler: new NetworkOnly(),
+        },
+        {
+          matcher: ({ request, sameOrigin, url: { pathname } }) =>
+            sameOrigin && !pathname.startsWith('/api/') && request.mode === 'navigate',
+          method: 'GET',
+          handler: new NetworkOnly(),
+        },
+        {
+          matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && pathname.startsWith('/_next/static/'),
+          method: 'GET',
+          handler: new CacheFirst({
+            cacheName: 'next-static-assets',
+            plugins: [
+              new ExpirationPlugin({
+                maxEntries: 96,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+                maxAgeFrom: 'last-used',
+              }),
+            ],
+          }),
+        },
+        {
+          matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && pathname.startsWith('/_next/image'),
+          method: 'GET',
+          handler: new StaleWhileRevalidate({
+            cacheName: 'next-image-assets',
+            plugins: [
+              new ExpirationPlugin({
+                maxEntries: 96,
+                maxAgeSeconds: 24 * 60 * 60,
+                maxAgeFrom: 'last-used',
+              }),
+            ],
+          }),
+        },
+        {
+          matcher: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|avif)$/i,
+          method: 'GET',
+          handler: new StaleWhileRevalidate({
+            cacheName: 'static-image-assets',
+            plugins: [
+              new ExpirationPlugin({
+                maxEntries: 96,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+                maxAgeFrom: 'last-used',
+              }),
+            ],
+          }),
+        },
+        {
+          matcher: /\.(?:woff|woff2|ttf|otf)$/i,
+          method: 'GET',
+          handler: new StaleWhileRevalidate({
+            cacheName: 'font-assets',
+            plugins: [
+              new ExpirationPlugin({
+                maxEntries: 12,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+                maxAgeFrom: 'last-used',
+              }),
+            ],
+          }),
+        },
+        {
+          matcher: ({ sameOrigin }) => !sameOrigin,
+          method: 'GET',
+          handler: new NetworkOnly(),
+        },
+        {
+          matcher: /.*/i,
+          method: 'GET',
+          handler: new NetworkOnly(),
+        },
+      ];
+
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  runtimeCaching: defaultCache,
+  runtimeCaching,
 });
 
 // Push notification handler

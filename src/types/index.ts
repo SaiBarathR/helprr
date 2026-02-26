@@ -345,6 +345,11 @@ export interface QBittorrentTransferInfo {
   connection_status: string;
 }
 
+export interface QBittorrentSummaryResponse {
+  torrents: QBittorrentTorrent[];
+  transferInfo: QBittorrentTransferInfo | null;
+}
+
 // Calendar Event (unified)
 export interface CalendarEvent {
   id: string;
