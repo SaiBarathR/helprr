@@ -358,7 +358,7 @@ function ManualImportContent() {
         onBack={() => router.back()}
       />
 
-      <div className="flex-1 overflow-y-auto overscroll-contain">
+      <div className="flex-1 overflow-y-auto overscroll-contain pb-28 md:pb-0">
         {loading ? (
           <div className="px-4 py-4 space-y-3">
             {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
@@ -469,8 +469,8 @@ function ManualImportContent() {
       {/* Bottom action bar */}
       {!loading && files.length > 0 && (
         <div
-          className="border-t border-border bg-background/95 backdrop-blur-sm px-4 py-3"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          className="fixed md:sticky left-0 right-0 bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 md:z-30 border-t border-border bg-background/95 backdrop-blur-sm px-4 py-3"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
         >
           <Button
             onClick={submitImport}
