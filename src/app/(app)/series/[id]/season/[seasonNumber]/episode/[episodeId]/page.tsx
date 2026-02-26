@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerClose,
@@ -20,6 +20,11 @@ import {
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, HistoryItem } from '@/types';
+import {
+  getEpisodeDetailSnapshot,
+  patchEpisodeAcrossSnapshots,
+  setEpisodeDetailSnapshot,
+} from '@/lib/series-route-cache';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -83,7 +88,6 @@ interface EpisodeWithFile extends SonarrEpisode {
 
 export default function EpisodeDetailPage() {
   const { id, seasonNumber: seasonNumberParam, episodeId: episodeIdParam } = useParams();
-  const router = useRouter();
   const seriesId = Number(id);
   const seasonNumber = Number(seasonNumberParam);
   const episodeId = Number(episodeIdParam);
@@ -93,50 +97,99 @@ export default function EpisodeDetailPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (hasCachedData: boolean) => {
+    if (!Number.isFinite(seriesId) || !Number.isFinite(episodeId)) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const [seriesRes, episodesRes] = await Promise.all([
         fetch(`/api/sonarr/${seriesId}`),
         fetch(`/api/sonarr/${seriesId}/episodes?includeEpisodeFile=true`),
       ]);
-      if (seriesRes.ok) setSeries(await seriesRes.json());
-      if (episodesRes.ok) {
-        const allEpisodes: EpisodeWithFile[] = await episodesRes.json();
-        const found = allEpisodes.find((e) => e.id === episodeId);
-        if (found) setEpisode(found);
+
+      const nextSeries: SonarrSeries | null = seriesRes.ok ? await seriesRes.json() : null;
+      const allEpisodes: EpisodeWithFile[] = episodesRes.ok ? await episodesRes.json() : [];
+      const nextEpisode = allEpisodes.find((episodeItem) => episodeItem.id === episodeId) ?? null;
+
+      setSeries(nextSeries);
+      setEpisode(nextEpisode);
+      const cached = getEpisodeDetailSnapshot(seriesId, episodeId);
+      setEpisodeDetailSnapshot(seriesId, episodeId, {
+        series: nextSeries,
+        episode: nextEpisode,
+        history: cached?.history ?? [],
+      });
+      if (nextEpisode) {
+        patchEpisodeAcrossSnapshots(seriesId, episodeId, () => nextEpisode);
       }
     } catch {
-      toast.error('Failed to load episode data');
+      if (!hasCachedData) {
+        toast.error('Failed to load episode data');
+      }
     } finally {
       setLoading(false);
     }
-  }, [seriesId, episodeId]);
+  }, [episodeId, seriesId]);
 
-  const fetchHistory = useCallback(async () => {
-    setHistoryLoading(true);
+  const fetchHistory = useCallback(async (hasCachedData: boolean) => {
+    if (!hasCachedData) {
+      setHistoryLoading(true);
+    }
+
     try {
       const res = await fetch(`/api/activity/history?episodeId=${episodeId}&pageSize=50`);
       if (res.ok) {
         const data = await res.json();
-        setHistory(data.records || []);
+        const records = data.records || [];
+        setHistory(records);
+        const cached = getEpisodeDetailSnapshot(seriesId, episodeId);
+        setEpisodeDetailSnapshot(seriesId, episodeId, {
+          series: cached?.series ?? null,
+          episode: cached?.episode ?? null,
+          history: records,
+        });
       }
     } catch {
       // Silently fail - history is non-critical
     } finally {
       setHistoryLoading(false);
     }
-  }, [episodeId]);
+  }, [episodeId, seriesId]);
 
   useEffect(() => {
-    fetchData();
-    fetchHistory();
-  }, [fetchData, fetchHistory]);
+    const cached = (
+      Number.isFinite(seriesId) && Number.isFinite(episodeId)
+    ) ? getEpisodeDetailSnapshot(seriesId, episodeId) : null;
+
+    if (cached) {
+      setSeries(cached.series);
+      setEpisode(cached.episode as EpisodeWithFile | null);
+      setHistory(cached.history);
+      setLoading(false);
+      setHistoryLoading(false);
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setHistoryLoading(true);
+      setRefreshing(false);
+    }
+
+    void Promise.all([
+      fetchData(Boolean(cached)),
+      fetchHistory(Boolean(cached)),
+    ]).finally(() => {
+      setRefreshing(false);
+    });
+  }, [episodeId, fetchData, fetchHistory, seriesId]);
 
   async function handleAutomaticSearch() {
     setActionLoading('search');
@@ -158,13 +211,21 @@ export default function EpisodeDetailPage() {
     if (!episode) return;
     setActionLoading('monitor');
     try {
+      const nextMonitored = !episode.monitored;
       const res = await fetch('/api/sonarr/episode/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ episodeIds: [episodeId], monitored: !episode.monitored }),
+        body: JSON.stringify({ episodeIds: [episodeId], monitored: nextMonitored }),
       });
       if (res.ok) {
-        setEpisode((prev) => prev ? { ...prev, monitored: !prev.monitored } : prev);
+        const nextEpisode = { ...episode, monitored: nextMonitored };
+        setEpisode(nextEpisode);
+        setEpisodeDetailSnapshot(seriesId, episodeId, {
+          series,
+          episode: nextEpisode,
+          history,
+        });
+        patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({ ...current, monitored: nextMonitored }));
         toast.success(episode.monitored ? 'Episode unmonitored' : 'Episode monitored');
       }
     } catch {
@@ -175,11 +236,11 @@ export default function EpisodeDetailPage() {
   }
 
   async function handleDeleteFile() {
-    if (!episode || !episode.episodeFileId) return;
+    if (!series || !episode || !episode.episodeFileId) return;
     setDeleting(true);
     try {
       // Sonarr v3 delete episode file endpoint
-      const res = await fetch(`/api/sonarr/${seriesId}`, {
+      await fetch(`/api/sonarr/${seriesId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -195,7 +256,14 @@ export default function EpisodeDetailPage() {
       });
       toast.success('Episode unmonitored');
       setShowDeleteDrawer(false);
-      setEpisode((prev) => prev ? { ...prev, monitored: false } : prev);
+      const nextEpisode = { ...episode, monitored: false };
+      setEpisode(nextEpisode);
+      setEpisodeDetailSnapshot(seriesId, episodeId, {
+        series,
+        episode: nextEpisode,
+        history,
+      });
+      patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({ ...current, monitored: false }));
     } catch {
       toast.error('Failed to delete file');
     } finally {
@@ -233,6 +301,9 @@ export default function EpisodeDetailPage() {
         title={episode.title || 'TBA'}
         rightContent={
           <div className="flex items-center gap-1">
+            {refreshing && !loading && (
+              <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
+            )}
             {/* Monitor toggle */}
             <button
               onClick={handleToggleMonitor}

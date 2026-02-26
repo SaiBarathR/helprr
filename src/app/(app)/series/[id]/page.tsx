@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -24,13 +24,20 @@ import {
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag } from '@/types';
+import {
+  getSeriesDetailSnapshot,
+  patchSeasonAcrossSnapshots,
+  setSeriesDetailSnapshot,
+} from '@/lib/series-route-cache';
 
 export default function SeriesDetailPage() {
   const { id } = useParams();
   const router = useRouter();
+  const seriesId = Number(id);
   const [series, setSeries] = useState<SonarrSeries | null>(null);
   const [episodes, setEpisodes] = useState<SonarrEpisode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showMonitorEdit, setShowMonitorEdit] = useState(false);
   const [monitorOption, setMonitorOption] = useState('');
@@ -57,24 +64,84 @@ export default function SeriesDetailPage() {
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
 
+  const persistSeriesSnapshot = useCallback((next: {
+    series?: SonarrSeries | null;
+    episodes?: SonarrEpisode[];
+    qualityProfiles?: QualityProfile[];
+    rootFolders?: RootFolder[];
+    tags?: Tag[];
+  } = {}) => {
+    if (!Number.isFinite(seriesId)) return;
+    setSeriesDetailSnapshot(seriesId, {
+      series: next.series ?? series,
+      episodes: next.episodes ?? episodes,
+      qualityProfiles: next.qualityProfiles ?? qualityProfiles,
+      rootFolders: next.rootFolders ?? rootFolders,
+      tags: next.tags ?? tags,
+    });
+  }, [episodes, qualityProfiles, rootFolders, series, seriesId, tags]);
+
+  const loadData = useCallback(async (hasCachedData: boolean) => {
+    if (!Number.isFinite(seriesId)) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    try {
+      const [nextSeries, nextEpisodes, nextQualityProfiles, nextRootFolders, nextTags] = await Promise.all([
+        fetch(`/api/sonarr/${seriesId}`).then((r) => r.ok ? r.json() : null),
+        fetch(`/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : []),
+        fetch('/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
+        fetch('/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
+        fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
+      ]);
+
+      setSeries(nextSeries);
+      setEpisodes(nextEpisodes);
+      setQualityProfiles(nextQualityProfiles);
+      setRootFolders(nextRootFolders);
+      setTags(nextTags);
+
+      setSeriesDetailSnapshot(seriesId, {
+        series: nextSeries,
+        episodes: nextEpisodes,
+        qualityProfiles: nextQualityProfiles,
+        rootFolders: nextRootFolders,
+        tags: nextTags,
+      });
+    } catch {
+      if (!hasCachedData) {
+        setSeries(null);
+        setEpisodes([]);
+        setQualityProfiles([]);
+        setRootFolders([]);
+        setTags([]);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [seriesId]);
+
   useEffect(() => {
-    Promise.all([
-      fetch(`/api/sonarr/${id}`).then((r) => r.ok ? r.json() : null),
-      fetch(`/api/sonarr/${id}/episodes`).then((r) => r.ok ? r.json() : []),
-      fetch('/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-      fetch('/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
-      fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([s, e, qp, rf, t]) => {
-        setSeries(s);
-        setEpisodes(e);
-        setQualityProfiles(qp);
-        setRootFolders(rf);
-        setTags(t);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [id]);
+    const cached = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId) : null;
+
+    if (cached) {
+      setSeries(cached.series);
+      setEpisodes(cached.episodes);
+      setQualityProfiles(cached.qualityProfiles);
+      setRootFolders(cached.rootFolders);
+      setTags(cached.tags);
+      setLoading(false);
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setRefreshing(false);
+    }
+
+    void loadData(Boolean(cached));
+  }, [loadData, seriesId]);
 
   const seasonNumbers = [...new Set(episodes.map((e) => e.seasonNumber))].sort((a, b) => b - a);
 
@@ -102,8 +169,12 @@ export default function SeriesDetailPage() {
         body: JSON.stringify({ ...series, monitored: !series.monitored }),
       });
       if (res.ok) {
-        const updated = await res.json();
+        const updated: SonarrSeries = await res.json();
         setSeries(updated);
+        persistSeriesSnapshot({ series: updated });
+        for (const season of updated.seasons) {
+          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season);
+        }
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
     } catch { toast.error('Failed to update'); }
@@ -125,8 +196,13 @@ export default function SeriesDetailPage() {
         body: JSON.stringify(updatedSeries),
       });
       if (res.ok) {
-        const updated = await res.json();
+        const updated: SonarrSeries = await res.json();
         setSeries(updated);
+        persistSeriesSnapshot({ series: updated });
+        const updatedSeason = updated.seasons.find((s) => s.seasonNumber === seasonNumber);
+        if (updatedSeason) {
+          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason);
+        }
         toast.success(`Season ${seasonNumber} ${monitored ? 'monitored' : 'unmonitored'}`);
       }
     } catch { toast.error('Failed to update season'); }
@@ -136,7 +212,7 @@ export default function SeriesDetailPage() {
     if (!series || !monitorOption) return;
     setActionLoading('applyMonitor');
     try {
-      const res = await fetch('/api/sonarr/command', {
+      await fetch('/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -178,8 +254,12 @@ export default function SeriesDetailPage() {
         body: JSON.stringify(monitorUpdate),
       });
       if (updateRes.ok) {
-        const updated = await updateRes.json();
+        const updated: SonarrSeries = await updateRes.json();
         setSeries(updated);
+        persistSeriesSnapshot({ series: updated });
+        for (const season of updated.seasons) {
+          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season);
+        }
         toast.success(`Monitor set to: ${MONITOR_OPTIONS.find((o) => o.value === monitorOption)?.label}`);
         setShowMonitorEdit(false);
       } else {
@@ -274,6 +354,9 @@ export default function SeriesDetailPage() {
         title={series.title}
         rightContent={
           <div className="flex items-center gap-0.5">
+            {refreshing && !loading && (
+              <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
+            )}
             {/* Bookmark / Monitor toggle */}
             <button
               onClick={handleToggleMonitored}
