@@ -63,6 +63,8 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
 }
 
 interface UIState {
+  hasHydrated: boolean;
+  setHasHydrated: (hydrated: boolean) => void;
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
   mediaView: 'grid' | 'list';
@@ -126,6 +128,8 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
+      hasHydrated: false,
+      setHasHydrated: (hydrated) => set({ hasHydrated: hydrated }),
       sidebarCollapsed: false,
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       mediaView: 'grid',
@@ -221,6 +225,9 @@ export const useUIStore = create<UIState>()(
     {
       name: 'helprr-ui-prefs',
       version: 5,
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
       migrate: (persisted, version) => {
         const state = persisted as Record<string, unknown>;
         if (version === 0) {

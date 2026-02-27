@@ -82,6 +82,35 @@ export function getEnabledNavItems(
   }, []);
 }
 
+export interface ResolveDefaultPageHrefInput {
+  defaultPage: NavItemId;
+  navOrder: NavItemId[];
+  disabledNavItems: NavItemId[];
+  fallbackHref?: string;
+}
+
+/**
+ * Resolve the route to use for app entry (login/root/PWA launch).
+ *
+ * Uses the configured default page when enabled. If it is disabled or invalid, falls back to the
+ * first enabled non-pinned item. If no non-pinned items are enabled, returns `fallbackHref`.
+ */
+export function resolveDefaultPageHref({
+  defaultPage,
+  navOrder,
+  disabledNavItems,
+  fallbackHref = '/dashboard',
+}: ResolveDefaultPageHrefInput): string {
+  const enabledItems = getEnabledNavItems(navOrder, disabledNavItems);
+  const defaultItem = enabledItems.find((item) => item.id === defaultPage);
+  if (defaultItem) return defaultItem.href;
+
+  const firstNonPinned = enabledItems.find((item) => !item.pinned);
+  if (firstNonPinned) return firstNonPinned.href;
+
+  return fallbackHref;
+}
+
 /**
  * Produce a bottom navigation layout from enabled navigation items.
  *

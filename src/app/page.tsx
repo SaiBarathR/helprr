@@ -3,23 +3,32 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/store';
-import { NAV_ITEM_MAP } from '@/lib/nav-config';
+import { resolveDefaultPageHref } from '@/lib/nav-config';
 
 /**
  * Client component that performs a client-side redirect to the user's configured default page.
  *
- * On mount and whenever the UI store's `defaultPage` changes, navigates to the route mapped from `defaultPage`, falling back to `'/dashboard'` if no mapping exists.
+ * After persisted UI preferences hydrate, resolves the effective default route from navigation
+ * settings and redirects there.
  *
  * @returns The rendered React node — always `null`.
  */
 export default function Home() {
   const router = useRouter();
+  const navOrder = useUIStore((s) => s.navOrder);
+  const disabledNavItems = useUIStore((s) => s.disabledNavItems);
   const defaultPage = useUIStore((s) => s.defaultPage);
+  const hydrated = useUIStore((s) => s.hasHydrated);
 
   useEffect(() => {
-    const href = NAV_ITEM_MAP[defaultPage]?.href ?? '/dashboard';
+    if (!hydrated) return;
+    const href = resolveDefaultPageHref({
+      defaultPage,
+      navOrder,
+      disabledNavItems,
+    });
     router.replace(href);
-  }, [defaultPage, router]);
+  }, [defaultPage, disabledNavItems, hydrated, navOrder, router]);
 
   return null;
 }
