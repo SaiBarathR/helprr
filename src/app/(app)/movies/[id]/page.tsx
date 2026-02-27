@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -35,47 +35,21 @@ import {
   Loader2,
   Star,
   Film,
+  FileText,
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
-import { format, formatDistanceToNow } from 'date-fns';
-import type { HistoryItem, RadarrMovie, QualityProfile, Tag } from '@/types';
-
-function eventTypeLabel(eventType: string): string {
-  switch (eventType) {
-    case 'grabbed': return 'GRABBED';
-    case 'downloadFolderImported':
-    case 'movieFileImported':
-    case 'imported': return 'IMPORTED';
-    case 'downloadFailed':
-    case 'failed': return 'DOWNLOAD FAILED';
-    case 'movieFileDeleted':
-    case 'deleted': return 'FILE DELETED';
-    case 'movieFileRenamed':
-    case 'renamed': return 'RENAMED';
-    case 'downloadIgnored':
-    case 'ignored': return 'IGNORED';
-    default: return eventType.toUpperCase();
-  }
-}
-
-function eventTypeBadgeVariant(eventType: string): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (eventType) {
-    case 'grabbed': return 'secondary';
-    case 'downloadFolderImported':
-    case 'movieFileImported':
-    case 'imported': return 'default';
-    case 'downloadFailed':
-    case 'failed':
-    case 'movieFileDeleted':
-    case 'deleted': return 'destructive';
-    default: return 'outline';
-  }
-}
+import { format } from 'date-fns';
+import type { RadarrMovie, QualityProfile, Tag } from '@/types';
+import {
+  getMovieDetailSnapshot,
+  setMovieDetailSnapshot,
+} from '@/lib/movie-route-cache';
 
 export default function MovieDetailPage() {
   const { id } = useParams();
+  const movieId = Number(id);
   const router = useRouter();
   const [movie, setMovie] = useState<RadarrMovie | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,58 +58,76 @@ export default function MovieDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
 
   // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const persistMovieSnapshot = useCallback((next: {
+    movie?: RadarrMovie | null;
+    qualityProfiles?: QualityProfile[];
+    tags?: Tag[];
+  } = {}) => {
+    if (!Number.isFinite(movieId)) return;
+    setMovieDetailSnapshot(movieId, {
+      movie: next.movie ?? movie,
+      qualityProfiles: next.qualityProfiles ?? qualityProfiles,
+      tags: next.tags ?? tags,
+    });
+  }, [movie, movieId, qualityProfiles, tags]);
 
-    Promise.all([
-      fetch(`/api/radarr/${id}`).then((r) => r.ok ? r.json() : null),
-      fetch('/api/radarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-      fetch('/api/radarr/tags').then((r) => r.ok ? r.json() : []),
-    ])
-      .then(([m, qp, t]) => {
-        if (cancelled) return;
-        setMovie(m);
-        setQualityProfiles(qp);
-        setTags(t);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
+  const loadData = useCallback(async (hasCachedData: boolean) => {
+    if (!Number.isFinite(movieId)) {
+      setLoading(false);
+      return;
+    }
+
+    // Keep movie detail page instant when returning from sub-pages.
+    if (hasCachedData) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [nextMovie, nextQualityProfiles, nextTags] = await Promise.all([
+        fetch(`/api/radarr/${movieId}`).then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/radarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
+        fetch('/api/radarr/tags').then((r) => (r.ok ? r.json() : [])),
+      ]);
+
+      setMovie(nextMovie);
+      setQualityProfiles(nextQualityProfiles);
+      setTags(nextTags);
+      setMovieDetailSnapshot(movieId, {
+        movie: nextMovie,
+        qualityProfiles: nextQualityProfiles,
+        tags: nextTags,
       });
-
-    void (async () => {
-      setHistoryLoading(true);
-      try {
-        const res = await fetch(`/api/radarr/history/movie?movieId=${id}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled) {
-            setHistory(Array.isArray(data) ? data : []);
-          }
-        }
-      } catch {
-        // History is non-critical.
-      } finally {
-        if (!cancelled) {
-          setHistoryLoading(false);
-        }
+    } catch {
+      if (!hasCachedData) {
+        setMovie(null);
+        setQualityProfiles([]);
+        setTags([]);
       }
-    })();
+    } finally {
+      setLoading(false);
+    }
+  }, [movieId]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
+  useEffect(() => {
+    const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
+
+    if (cached) {
+      setMovie(cached.movie);
+      setQualityProfiles(cached.qualityProfiles);
+      setTags(cached.tags);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    void loadData(Boolean(cached));
+  }, [loadData, movieId]);
 
 
   async function handleSearch() {
@@ -178,6 +170,7 @@ export default function MovieDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         setMovie(updated);
+        persistMovieSnapshot({ movie: updated });
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
     } catch { toast.error('Failed to update'); }
@@ -193,14 +186,6 @@ export default function MovieDetailPage() {
       router.push('/movies');
     } catch { toast.error('Delete failed'); }
     finally { setDeleting(false); }
-  }
-
-  function formatBytes(bytes: number) {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
 
   if (loading) {
@@ -232,18 +217,6 @@ export default function MovieDetailPage() {
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
   const rootFolder = movie.path ? movie.path.split('/').slice(0, -1).join('/') : '';
-  const importEvents = history.filter((item) => (
-    item.eventType === 'downloadFolderImported'
-    || item.eventType === 'movieFileImported'
-    || item.eventType === 'imported'
-  ));
-  const explicitUpgradeEvents = history.filter((item) => (
-    item.eventType === 'movieFileDeleted'
-    && item.data?.reason?.toLowerCase() === 'upgrade'
-  ));
-  const qualityUpgradeCount = explicitUpgradeEvents.length > 0
-    ? explicitUpgradeEvents.length
-    : Math.max(importEvents.length - 1, 0);
 
   // Extract media info from movie file if available
   const mediaInfo = movie.movieFile as (RadarrMovie['movieFile'] & {
@@ -520,6 +493,16 @@ export default function MovieDetailPage() {
             Interactive
           </Button>
         </div>
+        <div className="px-4">
+          <Button
+            onClick={() => router.push(`/movies/${movie.id}/files`)}
+            className="w-full rounded-full h-10"
+            variant="secondary"
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            Files &amp; information
+          </Button>
+        </div>
 
         {/* Information section */}
         <div className="px-4">
@@ -537,84 +520,7 @@ export default function MovieDetailPage() {
           </div>
         </div>
 
-        {/* File section */}
-        {movie.hasFile && movie.movieFile && (
-          <div className="px-4 pb-8">
-            <h2 className="text-base font-semibold mb-2">File</h2>
-            <div>
-              <div className="flex justify-between items-start py-2.5 border-b border-border/40">
-                <span className="text-sm text-muted-foreground shrink-0">Filename</span>
-                <span className="text-sm text-right ml-4 truncate max-w-[60%]">
-                  {movie.movieFile.relativePath}
-                </span>
-              </div>
-              <div className="flex justify-between items-start py-2.5 border-b border-border/40">
-                <span className="text-sm text-muted-foreground shrink-0">Quality</span>
-                <span className="text-sm text-right ml-4">
-                  {movie.movieFile.quality?.quality?.name}
-                </span>
-              </div>
-              <div className="flex justify-between items-start py-2.5">
-                <span className="text-sm text-muted-foreground shrink-0">Size</span>
-                <span className="text-sm text-right ml-4">
-                  {formatBytes(movie.movieFile.size)}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {!movie.hasFile && (
-          <div className="px-4">
-            <div className="py-8 text-center text-muted-foreground">
-              <Film className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No file on disk</p>
-            </div>
-          </div>
-        )}
-
-        {/* History section */}
-        <div className="px-4 pb-8 space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">History</h2>
-            <span className="text-xs text-muted-foreground">
-              {qualityUpgradeCount} quality {qualityUpgradeCount === 1 ? 'upgrade' : 'upgrades'}
-            </span>
-          </div>
-          {historyLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full rounded-lg" />
-              ))}
-            </div>
-          ) : history.length === 0 ? (
-            <div className="rounded-lg border px-4 py-6 text-center text-sm text-muted-foreground">
-              No history available
-            </div>
-          ) : (
-            <div className="rounded-lg border overflow-hidden divide-y">
-              {history.map((item, i) => (
-                <button
-                  key={`${item.id}-${item.date}-${i}`}
-                  onClick={() => setSelectedHistoryItem(item)}
-                  className="w-full text-left px-4 py-3 active:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge variant={eventTypeBadgeVariant(item.eventType)} className="text-[10px]">
-                      {eventTypeLabel(item.eventType)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 truncate">
-                    {item.sourceTitle}
-                  </p>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <div className="pb-8" />
 
       </div>
 
@@ -626,100 +532,6 @@ export default function MovieDetailPage() {
         service="radarr"
         searchParams={{ movieId: movie.id }}
       />
-
-      {/* History Detail Drawer */}
-      <Drawer open={!!selectedHistoryItem} onOpenChange={(v) => { if (!v) setSelectedHistoryItem(null); }}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>{selectedHistoryItem ? eventTypeLabel(selectedHistoryItem.eventType) : ''}</DrawerTitle>
-            <DrawerDescription>
-              {selectedHistoryItem?.date
-                ? format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')
-                : ''}
-            </DrawerDescription>
-          </DrawerHeader>
-          {selectedHistoryItem && (
-            <div className="px-4 pb-4 space-y-0 overflow-y-auto max-h-[60vh]">
-              <div className="rounded-lg border overflow-hidden divide-y">
-                <div className="px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
-                  <p className="text-sm mt-0.5 break-all leading-tight">
-                    {selectedHistoryItem.sourceTitle}
-                  </p>
-                </div>
-                <div className="flex justify-between items-center px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Date</span>
-                  <span className="text-sm">
-                    {format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
-                  <span className="text-sm">
-                    {selectedHistoryItem.quality?.quality?.name || 'Unknown'}
-                  </span>
-                </div>
-                {selectedHistoryItem.data?.indexer && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Indexer</span>
-                    <span className="text-sm">{selectedHistoryItem.data.indexer}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.downloadClient && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Download Client</span>
-                    <span className="text-sm">{selectedHistoryItem.data.downloadClient}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.releaseGroup && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Release Group</span>
-                    <span className="text-sm">{selectedHistoryItem.data.releaseGroup}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.nzbInfoUrl && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Source</span>
-                    <a
-                      href={selectedHistoryItem.data.nzbInfoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-primary flex items-center gap-1"
-                    >
-                      View <ExternalLink className="h-3 w-3" />
-                    </a>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.size && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Size</span>
-                    <span className="text-sm">{formatBytes(Number(selectedHistoryItem.data.size))}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.protocol && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
-                    <span className="text-sm capitalize">{selectedHistoryItem.data.protocol}</span>
-                  </div>
-                )}
-                {selectedHistoryItem.data?.message && (
-                  <div className="px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Message</span>
-                    <p className="text-sm mt-0.5 text-muted-foreground">{selectedHistoryItem.data.message}</p>
-                  </div>
-                )}
-              </div>
-              <div className="pt-4">
-                <DrawerClose asChild>
-                  <Button variant="ghost" className="w-full">
-                    Close
-                  </Button>
-                </DrawerClose>
-              </div>
-            </div>
-          )}
-        </DrawerContent>
-      </Drawer>
 
       {/* Delete Drawer (bottom sheet) */}
       <Drawer open={showDelete} onOpenChange={setShowDelete}>
