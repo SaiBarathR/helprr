@@ -3,6 +3,7 @@ import type {
   RadarrMovie,
   RadarrCalendarEntry,
   QueueResponse,
+  HistoryItem,
   HistoryResponse,
   ManualImportItem,
   QualityProfile,
@@ -173,6 +174,10 @@ export class RadarrClient {
     if (filters?.movieId) params.movieId = filters.movieId;
     if (filters?.eventType !== undefined) params.eventType = filters.eventType;
     return this.get<HistoryResponse>('/api/v3/history', params);
+  }
+
+  async getMovieHistory(movieId: number): Promise<HistoryItem[]> {
+    return this.get<HistoryItem[]>('/api/v3/history/movie', { movieId });
   }
 
   // Manual Import
