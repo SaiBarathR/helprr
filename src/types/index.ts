@@ -138,8 +138,49 @@ export interface RadarrMovie {
   movieFile?: {
     id: number;
     relativePath: string;
+    path?: string;
+    sceneName?: string;
+    releaseGroup?: string;
+    edition?: string;
+    indexerFlags?: number;
+    originalFilePath?: string;
+    qualityCutoffNotMet?: boolean;
     size: number;
-    quality: { quality: { name: string } };
+    quality: {
+      quality: {
+        name: string;
+        id?: number;
+        source?: string;
+        resolution?: number;
+        modifier?: string;
+      };
+      revision?: {
+        version?: number;
+        real?: number;
+        isRepack?: boolean;
+      };
+    };
+    dateAdded?: string;
+    customFormatScore?: number;
+    language?: { id: number; name: string };
+    languages?: { id: number; name: string }[];
+    mediaInfo?: {
+      runTime?: string | number;
+      resolution?: string;
+      videoCodec?: string;
+      videoDynamicRange?: string;
+      videoDynamicRangeType?: string;
+      videoBitrate?: number | string;
+      videoFps?: number | string;
+      videoBitDepth?: number | string;
+      scanType?: string;
+      audioCodec?: string;
+      audioChannels?: number | string;
+      audioBitrate?: number | string;
+      audioStreamCount?: number | string;
+      audioLanguages?: string;
+      subtitles?: string;
+    };
   };
   studio: string;
 }
