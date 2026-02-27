@@ -218,7 +218,7 @@ function AddSeriesPageContent() {
     <div>
       <PageHeader title="Add Series" />
 
-      <div className="px-4 space-y-4 mt-2 pb-8">
+      <div className="space-y-4 mt-2 pb-8">
         {/* Search form */}
         <form onSubmit={handleSearch} className="flex gap-2">
           <Input
