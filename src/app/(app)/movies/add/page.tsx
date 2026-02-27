@@ -226,7 +226,7 @@ function AddMoviePageContent() {
     <div>
       <PageHeader title="Add Movie" />
 
-      <div className="px-4 space-y-4 mt-2 pb-8">
+      <div className="space-y-4 mt-1 pb-8">
         {/* Search form */}
         <form onSubmit={handleSearch} className="flex gap-2">
           <Input
@@ -373,41 +373,41 @@ function AddMoviePageContent() {
             {searching
               ? [...Array(9)].map((_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-lg" />)
               : results.map((r) => (
-                  <button
-                    key={r.tmdbId}
-                    onClick={() => setSelected(r)}
-                    className="text-left group"
-                  >
-                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
-                      {posterUrl(r.images as { coverType: string; remoteUrl: string }[]) ? (
-                        <Image
-                          src={posterUrl(r.images as { coverType: string; remoteUrl: string }[])!}
-                          alt=""
-                          fill
-                          sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
-                          className="object-cover group-hover:scale-105 transition-transform"
-                        />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <Film className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                      {r.library?.exists && (
-                        <div className="absolute top-1.5 right-1.5">
-                          <Badge className="bg-green-600/90 text-white text-[10px]">
-                            <Check className="mr-1 h-3 w-3" />
-                            Added
-                          </Badge>
-                        </div>
-                      )}
-                      <div className="absolute bottom-0 p-1.5">
-                        <p className="text-[11px] font-medium text-white truncate leading-tight">{r.title}</p>
-                        <p className="text-[10px] text-white/70">{r.year}</p>
+                <button
+                  key={r.tmdbId}
+                  onClick={() => setSelected(r)}
+                  className="text-left group"
+                >
+                  <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+                    {posterUrl(r.images as { coverType: string; remoteUrl: string }[]) ? (
+                      <Image
+                        src={posterUrl(r.images as { coverType: string; remoteUrl: string }[])!}
+                        alt=""
+                        fill
+                        sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                        className="object-cover group-hover:scale-105 transition-transform"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Film className="h-8 w-8 text-muted-foreground" />
                       </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                    {r.library?.exists && (
+                      <div className="absolute top-1.5 right-1.5">
+                        <Badge className="bg-green-600/90 text-white text-[10px]">
+                          <Check className="mr-1 h-3 w-3" />
+                          Added
+                        </Badge>
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 p-1.5">
+                      <p className="text-[11px] font-medium text-white truncate leading-tight">{r.title}</p>
+                      <p className="text-[10px] text-white/70">{r.year}</p>
                     </div>
-                  </button>
-                ))}
+                  </div>
+                </button>
+              ))}
           </div>
         )}
       </div>
