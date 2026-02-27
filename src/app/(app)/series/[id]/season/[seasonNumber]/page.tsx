@@ -226,11 +226,15 @@ export default function SeasonDetailPage() {
       // Unmonitor all episodes in this season
       const episodeIds = episodes.map((e) => e.id);
       if (episodeIds.length > 0) {
-        await fetch('/api/sonarr/episode/monitor', {
+        const unmonitorEpisodesRes = await fetch('/api/sonarr/episode/monitor', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ episodeIds, monitored: false }),
         });
+        if (!unmonitorEpisodesRes.ok) {
+          toast.error('Failed to unmonitor season');
+          return;
+        }
       }
       // Unmonitor the season
       const updatedSeries = {
