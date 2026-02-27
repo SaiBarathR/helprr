@@ -183,13 +183,15 @@ export class QBittorrentClient {
     filter?: string,
     category?: string,
     sort?: string,
-    reverse?: boolean
+    reverse?: boolean,
+    hashes?: string
   ): Promise<QBittorrentTorrent[]> {
     const params: Record<string, unknown> = {};
     if (filter !== undefined) params.filter = filter;
     if (category !== undefined) params.category = category;
     if (sort !== undefined) params.sort = sort;
     if (reverse !== undefined) params.reverse = reverse;
+    if (hashes !== undefined) params.hashes = hashes;
     return this.get<QBittorrentTorrent[]>('/api/v2/torrents/info', params);
   }
 
@@ -260,13 +262,13 @@ export class QBittorrentClient {
     await this.post('/api/v2/torrents/delete', params.toString());
   }
 
-  async addMagnet(urls: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<void> {
+  async addMagnet(urls: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<string> {
     const params = new URLSearchParams();
     params.append('urls', urls);
     if (options?.category) params.append('category', options.category);
     if (options?.savepath) params.append('savepath', options.savepath);
     if (options?.paused !== undefined) params.append('paused', String(options.paused));
-    await this.post('/api/v2/torrents/add', params.toString());
+    return this.post<string>('/api/v2/torrents/add', params.toString());
   }
 
   async addTorrentFile(fileBuffer: Uint8Array, filename: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<void> {
