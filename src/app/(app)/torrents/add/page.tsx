@@ -8,6 +8,19 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
+type ApiResult = {
+  success?: boolean;
+  error?: string;
+};
+
+async function parseApiResult(res: Response): Promise<ApiResult> {
+  try {
+    return await res.json() as ApiResult;
+  } catch {
+    return {};
+  }
+}
+
 export default function AddTorrentPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -32,8 +45,8 @@ export default function AddTorrentPage() {
           body: JSON.stringify({ urls: magnetLink.trim() }),
         });
 
-        if (!res.ok) {
-          const data = await res.json();
+        const data = await parseApiResult(res);
+        if (!res.ok || data.error || data.success !== true) {
           throw new Error(data.error || 'Failed to add torrent');
         }
       } else {
@@ -50,8 +63,8 @@ export default function AddTorrentPage() {
           body: formData,
         });
 
-        if (!res.ok) {
-          const data = await res.json();
+        const data = await parseApiResult(res);
+        if (!res.ok || data.error || data.success !== true) {
           throw new Error(data.error || 'Failed to add torrent');
         }
       }
