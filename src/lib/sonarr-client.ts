@@ -107,6 +107,10 @@ export class SonarrClient {
     await this.delete(`/api/v3/series/${id}`, { deleteFiles });
   }
 
+  async deleteEpisodeFile(id: number): Promise<void> {
+    await this.delete(`/api/v3/episodefile/${id}`);
+  }
+
   // Episodes
   async getEpisodes(seriesId: number, includeEpisodeFile: boolean = false): Promise<SonarrEpisode[]> {
     return this.get<SonarrEpisode[]>('/api/v3/episode', { seriesId, includeEpisodeFile });

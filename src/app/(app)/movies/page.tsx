@@ -446,23 +446,25 @@ export default function MoviesPage() {
   });
 
   const tableRowHeight = 44;
-  const tableRows = filtered.map((movie) => ({
-    id: movie.id,
-    title: movie.title,
-    year: movie.year,
-    href: `/movies/${movie.id}`,
-    monitored: movie.monitored,
-    hasFile: movie.hasFile,
-    status: movie.status,
-    images: movie.images,
-    qualityProfile: qualityProfileMap.get(movie.qualityProfileId),
-    studio: movie.studio,
-    rating: movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value,
-    sizeOnDisk: movie.sizeOnDisk,
-    runtime: movie.runtime,
-    certification: movie.certification,
-    genres: movie.genres,
-  }));
+  const tableRows = useMemo(() => (
+    filtered.map((movie) => ({
+      id: movie.id,
+      title: movie.title,
+      year: movie.year,
+      href: `/movies/${movie.id}`,
+      monitored: movie.monitored,
+      hasFile: movie.hasFile,
+      status: movie.status,
+      images: movie.images,
+      qualityProfile: qualityProfileMap.get(movie.qualityProfileId),
+      studio: movie.studio,
+      rating: movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value,
+      sizeOnDisk: movie.sizeOnDisk,
+      runtime: movie.runtime,
+      certification: movie.certification,
+      genres: movie.genres,
+    }))
+  ), [filtered, qualityProfileMap]);
 
   const tableVirtual = useWindowVirtualRange({
     container: contentRef.current,

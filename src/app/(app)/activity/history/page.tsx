@@ -340,10 +340,13 @@ export default function HistoryPage() {
                 </DrawerTitle>
                 <p className="text-xs text-muted-foreground">
                   {drawerMode === 'basic' ? (
-                    <>
-                      {selectedItem.quality?.quality?.name}
-                      {selectedItem.data?.size && ` · ${formatBytes(Number(selectedItem.data.size))}`}
-                    </>
+                    (() => {
+                      const parts: string[] = [];
+                      const qualityName = selectedItem.quality?.quality?.name;
+                      if (qualityName) parts.push(qualityName);
+                      if (selectedItem.data?.size) parts.push(formatBytes(Number(selectedItem.data.size)));
+                      return parts.join(' · ');
+                    })()
                   ) : (
                     <>
                       {(selectedItem.source || 'unknown').toUpperCase()} ·{' '}
