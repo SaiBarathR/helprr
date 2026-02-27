@@ -124,6 +124,47 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
   return 3;
 }
 
+function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, pollMs = 50) {
+  return new Promise<void>((resolve) => {
+    const startedAt = Date.now();
+    let done = false;
+    let loadTimeoutId: number | null = null;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (loadTimeoutId !== null) window.clearTimeout(loadTimeoutId);
+      resolve();
+    };
+
+    const waitForHeight = () => {
+      if (done) return;
+      const reachedHeight = document.body.scrollHeight > targetScrollY;
+      const timedOut = Date.now() - startedAt >= timeoutMs;
+      if (reachedHeight || timedOut) {
+        finish();
+        return;
+      }
+      window.setTimeout(waitForHeight, pollMs);
+    };
+
+    if (document.readyState !== 'complete') {
+      const onLoad = () => {
+        window.removeEventListener('load', onLoad);
+        waitForHeight();
+      };
+      window.addEventListener('load', onLoad, { once: true });
+      loadTimeoutId = window.setTimeout(() => {
+        window.removeEventListener('load', onLoad);
+        waitForHeight();
+      }, timeoutMs);
+      return;
+    }
+
+    waitForHeight();
+  });
+}
+
 /**
  * Render the Movies management page with client-side data loading, filtering, sorting, and multiple view modes (posters, overview, table).
  *
@@ -259,16 +300,24 @@ export default function MoviesPage() {
 
   useEffect(() => {
     if (loading || hasRestoredScrollRef.current) return;
-    hasRestoredScrollRef.current = true;
 
     const saved = getListViewState('movies');
-    if (!saved || saved.scrollY <= 0) return;
+    if (!saved || saved.scrollY <= 0) {
+      hasRestoredScrollRef.current = true;
+      return;
+    }
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      });
-    });
+    let cancelled = false;
+    void (async () => {
+      await ensurePaintedOrHeightReached(saved.scrollY);
+      if (cancelled) return;
+      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      hasRestoredScrollRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [loading]);
 
   useEffect(() => {
