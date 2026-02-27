@@ -222,7 +222,7 @@ export class SonarrClient {
     pageSize: number = 20,
     sortKey: string = 'date',
     sortDirection: string = 'descending',
-    filters?: { episodeId?: number; seriesId?: number }
+    filters?: { episodeId?: number; seriesId?: number; eventType?: number }
   ): Promise<HistoryResponse> {
     const params: Record<string, unknown> = {
       page,
@@ -234,7 +234,24 @@ export class SonarrClient {
     };
     if (filters?.episodeId) params.episodeId = filters.episodeId;
     if (filters?.seriesId) params.seriesId = filters.seriesId;
+    if (filters?.eventType !== undefined) params.eventType = filters.eventType;
     return this.get<HistoryResponse>('/api/v3/history', params);
+  }
+
+  async getEpisodesByIds(episodeIds: number[]): Promise<SonarrEpisode[]> {
+    const uniqueIds = Array.from(
+      new Set(
+        episodeIds.filter((id) => Number.isFinite(id) && id > 0)
+      )
+    );
+
+    if (uniqueIds.length === 0) return [];
+
+    const query = uniqueIds
+      .map((id) => `episodeIds=${encodeURIComponent(String(id))}`)
+      .join('&');
+
+    return this.get<SonarrEpisode[]>(`/api/v3/episode?${query}`);
   }
 
   // Manual Import

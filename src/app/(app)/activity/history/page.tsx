@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ import type { HistoryItem } from '@/types';
 
 // --- Event type config ---
 
-type EventFilterKey = 'all' | 'grabbed' | 'downloadFolderImported' | 'downloadFailed' | 'downloadIgnored' | 'renamed' | 'episodeFileDeleted' | 'movieFileDeleted';
+type EventFilterKey = 'all' | 'grabbed' | 'imported' | 'failed' | 'deleted' | 'renamed' | 'ignored';
 
 interface EventFilterOption {
   key: EventFilterKey;
@@ -34,16 +34,17 @@ interface EventFilterOption {
 const EVENT_FILTERS: EventFilterOption[] = [
   { key: 'all', label: 'All Events' },
   { key: 'grabbed', label: 'Grabbed' },
-  { key: 'downloadFolderImported', label: 'Imported' },
-  { key: 'downloadFailed', label: 'Failed' },
-  { key: 'downloadIgnored', label: 'Ignored' },
+  { key: 'imported', label: 'Imported' },
+  { key: 'failed', label: 'Failed' },
+  { key: 'deleted', label: 'Deleted' },
   { key: 'renamed', label: 'Renamed' },
-  { key: 'episodeFileDeleted', label: 'Deleted' },
+  { key: 'ignored', label: 'Ignored' },
 ];
 
 // --- Instance filter ---
 
 type InstanceFilter = 'all' | 'sonarr' | 'radarr';
+type DrawerMode = 'basic' | 'detailed';
 
 const INSTANCE_OPTIONS: { key: InstanceFilter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -60,15 +61,21 @@ function eventColor(eventType: string) {
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
+    case 'imported':
       return 'bg-green-500/10 text-green-400 border-green-500/20';
     case 'downloadFailed':
+    case 'failed':
       return 'bg-red-500/10 text-red-400 border-red-500/20';
     case 'downloadIgnored':
+    case 'ignored':
       return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
     case 'episodeFileDeleted':
     case 'movieFileDeleted':
+    case 'deleted':
       return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
     case 'renamed':
+    case 'episodeFileRenamed':
+    case 'movieFileRenamed':
       return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
     default:
       return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
@@ -81,13 +88,22 @@ function eventLabel(eventType: string) {
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
+    case 'imported':
       return 'IMPORTED';
-    case 'downloadFailed': return 'FAILED';
-    case 'downloadIgnored': return 'IGNORED';
+    case 'downloadFailed':
+    case 'failed':
+      return 'FAILED';
+    case 'downloadIgnored':
+    case 'ignored':
+      return 'IGNORED';
     case 'episodeFileDeleted':
     case 'movieFileDeleted':
+    case 'deleted':
       return 'DELETED';
-    case 'renamed': return 'RENAMED';
+    case 'renamed':
+    case 'episodeFileRenamed':
+    case 'movieFileRenamed':
+      return 'RENAMED';
     default: return eventType.toUpperCase();
   }
 }
@@ -109,6 +125,7 @@ export default function HistoryPage() {
   const [eventFilter, setEventFilter] = useState<EventFilterKey>('all');
   const [instanceFilter, setInstanceFilter] = useState<InstanceFilter>('all');
   const [selectedItem, setSelectedItem] = useState<(HistoryItem & { source?: string }) | null>(null);
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>('basic');
 
   /**
    * Fetches a page of history events from the server and updates component state (history list, total count, and loading flags).
@@ -232,7 +249,10 @@ export default function HistoryPage() {
             {history.map((item, i) => (
               <button
                 key={`${item.source}-${item.id}-${i}`}
-                onClick={() => setSelectedItem(item)}
+                onClick={() => {
+                  setDrawerMode('basic');
+                  setSelectedItem(item);
+                }}
                 className="w-full text-left flex items-start gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors"
               >
                 <div className="flex-1 min-w-0 space-y-1">
@@ -296,8 +316,16 @@ export default function HistoryPage() {
       </div>
 
       {/* History item detail drawer */}
-      <Drawer open={!!selectedItem} onOpenChange={(open) => { if (!open) setSelectedItem(null); }}>
-        <DrawerContent>
+      <Drawer
+        open={!!selectedItem}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedItem(null);
+            setDrawerMode('basic');
+          }
+        }}
+      >
+        <DrawerContent className="max-h-[85vh]">
           {selectedItem && (
             <>
               <DrawerHeader className="text-left">
@@ -311,79 +339,124 @@ export default function HistoryPage() {
                   {selectedItem.sourceTitle}
                 </DrawerTitle>
                 <p className="text-xs text-muted-foreground">
-                  {selectedItem.quality?.quality?.name}
-                  {selectedItem.data?.size && ` · ${formatBytes(Number(selectedItem.data.size))}`}
+                  {drawerMode === 'basic' ? (
+                    <>
+                      {selectedItem.quality?.quality?.name}
+                      {selectedItem.data?.size && ` · ${formatBytes(Number(selectedItem.data.size))}`}
+                    </>
+                  ) : (
+                    <>
+                      {(selectedItem.source || 'unknown').toUpperCase()} ·{' '}
+                      {formatDistanceToNow(new Date(selectedItem.date), { addSuffix: true })}
+                    </>
+                  )}
                 </p>
               </DrawerHeader>
 
-              <div className="px-4 space-y-4 pb-6">
-                {/* Tags row */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge variant="outline" className="text-[10px]">
-                    {selectedItem.source?.toUpperCase()}
-                  </Badge>
-                  {selectedItem.data?.indexer && (
-                    <Badge variant="outline" className="text-[10px]">
-                      {selectedItem.data.indexer}
-                    </Badge>
-                  )}
-                  {selectedItem.data?.releaseGroup && (
-                    <Badge variant="outline" className="text-[10px]">
-                      {selectedItem.data.releaseGroup}
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Series / Movie info */}
-                {selectedItem.series && (
-                  <div className="rounded-lg bg-muted/30 p-3">
-                    <p className="text-sm font-medium">{selectedItem.series.title}</p>
-                    {selectedItem.episode && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        S{String(selectedItem.episode.seasonNumber).padStart(2, '0')}E{String(selectedItem.episode.episodeNumber).padStart(2, '0')} - {selectedItem.episode.title}
-                      </p>
-                    )}
-                  </div>
-                )}
-                {selectedItem.movie && (
-                  <div className="rounded-lg bg-muted/30 p-3">
-                    <p className="text-sm font-medium">{selectedItem.movie.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.movie.year}</p>
-                  </div>
-                )}
-
-                {/* Information section */}
-                <div>
-                  <h3 className="font-semibold text-sm mb-2">Information</h3>
-                  <div className="space-y-0 rounded-lg border divide-y">
-                    <InfoRow label="Event" value={eventLabel(selectedItem.eventType)} />
-                    <InfoRow label="Quality" value={selectedItem.quality?.quality?.name || '-'} />
-                    {selectedItem.data?.indexer && (
-                      <InfoRow label="Indexer" value={selectedItem.data.indexer} />
-                    )}
-                    {selectedItem.data?.downloadClient && (
-                      <InfoRow label="Client" value={selectedItem.data.downloadClient} />
-                    )}
-                    {selectedItem.data?.protocol && (
-                      <InfoRow label="Protocol" value={selectedItem.data.protocol} />
-                    )}
-                    {selectedItem.data?.releaseGroup && (
-                      <InfoRow label="Release Group" value={selectedItem.data.releaseGroup} />
-                    )}
-                    {selectedItem.data?.nzbInfoUrl && (
-                      <InfoRow label="NZB Info" value={selectedItem.data.nzbInfoUrl} />
-                    )}
-                    {selectedItem.data?.size && (
-                      <InfoRow label="Size" value={formatBytes(Number(selectedItem.data.size))} />
-                    )}
-                    <InfoRow
-                      label="Date"
-                      value={formatDistanceToNow(new Date(selectedItem.date), { addSuffix: true })}
-                    />
-                    <InfoRow label="Source" value={selectedItem.source || '-'} />
-                  </div>
+              <div className="px-4 pb-3">
+                <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
+                  <button
+                    onClick={() => setDrawerMode('basic')}
+                    className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
+                      drawerMode === 'basic'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Basic
+                  </button>
+                  <button
+                    onClick={() => setDrawerMode('detailed')}
+                    className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
+                      drawerMode === 'detailed'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Detailed
+                  </button>
                 </div>
               </div>
+
+              {drawerMode === 'basic' ? (
+                <div className="px-4 space-y-4 pb-6 overflow-y-auto">
+                  {/* Tags row */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-[10px]">
+                      {selectedItem.source?.toUpperCase()}
+                    </Badge>
+                    {selectedItem.data?.indexer && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {selectedItem.data.indexer}
+                      </Badge>
+                    )}
+                    {selectedItem.data?.releaseGroup && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {selectedItem.data.releaseGroup}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Series / Movie info */}
+                  {selectedItem.series && (
+                    <div className="rounded-lg bg-muted/30 p-3">
+                      <p className="text-sm font-medium">{selectedItem.series.title}</p>
+                      {selectedItem.episode && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          S{String(selectedItem.episode.seasonNumber).padStart(2, '0')}
+                          E{String(selectedItem.episode.episodeNumber).padStart(2, '0')} - {selectedItem.episode.title}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {selectedItem.movie && (
+                    <div className="rounded-lg bg-muted/30 p-3">
+                      <p className="text-sm font-medium">{selectedItem.movie.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.movie.year}</p>
+                    </div>
+                  )}
+
+                  {/* Information section */}
+                  <div>
+                    <h3 className="font-semibold text-sm mb-2">Information</h3>
+                    <div className="space-y-0 rounded-lg border divide-y">
+                      <InfoRow label="Event" value={eventLabel(selectedItem.eventType)} />
+                      <InfoRow label="Quality" value={selectedItem.quality?.quality?.name || '-'} />
+                      {selectedItem.data?.indexer && (
+                        <InfoRow label="Indexer" value={selectedItem.data.indexer} />
+                      )}
+                      {selectedItem.data?.downloadClient && (
+                        <InfoRow label="Client" value={selectedItem.data.downloadClient} />
+                      )}
+                      {selectedItem.data?.protocol && (
+                        <InfoRow label="Protocol" value={selectedItem.data.protocol} />
+                      )}
+                      {selectedItem.data?.releaseGroup && (
+                        <InfoRow label="Release Group" value={selectedItem.data.releaseGroup} />
+                      )}
+                      {selectedItem.data?.nzbInfoUrl && (
+                        <InfoRow label="NZB Info" value={selectedItem.data.nzbInfoUrl} />
+                      )}
+                      {selectedItem.data?.size && (
+                        <InfoRow label="Size" value={formatBytes(Number(selectedItem.data.size))} />
+                      )}
+                      <InfoRow
+                        label="Date"
+                        value={formatDistanceToNow(new Date(selectedItem.date), { addSuffix: true })}
+                      />
+                      <InfoRow label="Source" value={selectedItem.source || '-'} />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-4 pb-6 overflow-y-auto">
+                  <div className="space-y-2">
+                    {Object.entries(selectedItem).map(([key, value]) => (
+                      <RecursiveField key={key} name={key} value={value} depth={0} ancestors={[]} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </DrawerContent>
@@ -393,6 +466,86 @@ export default function HistoryPage() {
 }
 
 // --- Helpers ---
+
+function RecursiveField({
+  name,
+  value,
+  depth,
+  ancestors,
+}: {
+  name: string;
+  value: unknown;
+  depth: number;
+  ancestors: object[];
+}): JSX.Element | null {
+
+  const valueType = typeof value;
+  const isObject = valueType === 'object' && value !== null;
+  const hasName = name.trim().length > 0;
+  const displayName = hasName ? name : 'Item';
+
+  if (!isObject) {
+    return (
+      <div className="rounded-md border bg-muted/20 px-2 py-1.5">
+        <div className={`flex items-start gap-2 ${hasName ? '' : 'justify-end'}`}>
+          {hasName && (
+            <span className="text-[11px] font-mono text-muted-foreground min-w-[110px] break-all">{name}</span>
+          )}
+          <div className={`text-[11px] break-all flex-1 ${hasName ? 'text-right' : 'text-left'}`}>
+            <PrimitiveValue value={value} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const obj = value as object;
+  if (ancestors.includes(obj)) {
+    return (
+      <div className="rounded-md border bg-muted/20 px-2 py-1.5">
+        <div className={`flex items-start gap-2 ${hasName ? '' : 'justify-end'}`}>
+          {hasName && (
+            <span className="text-[11px] font-mono text-muted-foreground min-w-[110px] break-all">{name}</span>
+          )}
+          <span className={`text-[11px] text-orange-400 break-all flex-1 ${hasName ? 'text-right' : 'text-left'}`}>
+            [Circular]
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  const nextAncestors = [...ancestors, obj];
+  const entries: Array<[string, unknown]> = Array.isArray(value)
+    ? (value as unknown[]).map((item, index) => [String(index), item])
+    : Object.entries(value as Record<string, unknown>);
+  const openByDefault = depth < 1;
+
+  return (
+    <details open={openByDefault} className="rounded-md border bg-muted/20">
+      <summary className="cursor-pointer px-2 py-1.5 text-[11px] font-mono text-muted-foreground break-all">
+        {displayName}
+      </summary>
+      <div className="border-t px-2 py-2 space-y-2">
+        {entries.length === 0 ? (
+          <div className="text-[11px] text-muted-foreground italic">
+            {Array.isArray(value) ? '[]' : '{}'}
+          </div>
+        ) : (
+          entries.map(([childKey, childValue]) => (
+            <RecursiveField
+              key={`${name}.${childKey}`}
+              name={Array.isArray(value) ? '' : childKey}
+              value={childValue}
+              depth={depth + 1}
+              ancestors={nextAncestors}
+            />
+          ))
+        )}
+      </div>
+    </details>
+  );
+}
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
@@ -409,4 +562,24 @@ function formatBytes(bytes: number) {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function PrimitiveValue({ value }: { value: unknown }) {
+  if (value === null) return <span className="italic text-muted-foreground">null</span>;
+  if (value === undefined) return <span className="italic text-muted-foreground">undefined</span>;
+  if (typeof value === 'boolean') return <span>{value ? 'true' : 'false'}</span>;
+  if (typeof value === 'number') return <span>{Number.isFinite(value) ? String(value) : 'NaN'}</span>;
+  if (typeof value === 'bigint') return <span>{value.toString()}</span>;
+  if (typeof value === 'string') {
+    if (!value) return <span className="italic text-muted-foreground">{'""'}</span>;
+    if (/^https?:\/\//i.test(value)) {
+      return (
+        <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
+          {value}
+        </a>
+      );
+    }
+    return <span>{value}</span>;
+  }
+  return <span>{String(value)}</span>;
 }
