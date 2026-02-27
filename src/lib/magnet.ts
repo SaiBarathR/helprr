@@ -62,12 +62,10 @@ export function parseMagnetInfoHash(input: string): { normalizedHexHash: string 
     throw new MagnetParseError('Magnet link is missing xt parameter');
   }
 
-  let sawBtih = false;
   for (const xt of xtValues) {
     const match = /^urn:btih:([A-Za-z0-9]+)$/.exec(xt.trim());
     if (!match) continue;
 
-    sawBtih = true;
     const rawHash = match[1];
 
     if (BTIH_HEX_RE.test(rawHash)) {
@@ -79,10 +77,6 @@ export function parseMagnetInfoHash(input: string): { normalizedHexHash: string 
       return { normalizedHexHash: decodeBase32ToHex(base32Candidate) };
     }
 
-    throw new MagnetParseError('Invalid btih info hash in magnet link');
-  }
-
-  if (sawBtih) {
     throw new MagnetParseError('Invalid btih info hash in magnet link');
   }
 

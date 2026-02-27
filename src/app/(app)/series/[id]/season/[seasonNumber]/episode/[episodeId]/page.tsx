@@ -239,33 +239,44 @@ export default function EpisodeDetailPage() {
     if (!series || !episode || !episode.episodeFileId) return;
     setDeleting(true);
     try {
-      // Sonarr v3 delete episode file endpoint
-      await fetch(`/api/sonarr/${seriesId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...series,
-          // We can't delete files via the series PUT; we unmonitor the episode instead
-        }),
+      const deleteRes = await fetch(`/api/sonarr/episodefile/${episode.episodeFileId}`, {
+        method: 'DELETE',
       });
-      // Unmonitor the episode after "delete"
-      await fetch('/api/sonarr/episode/monitor', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ episodeIds: [episodeId], monitored: false }),
-      });
-      toast.success('Episode unmonitored');
+      if (!deleteRes.ok) {
+        let message = 'Failed to delete episode file';
+        try {
+          const body = await deleteRes.json();
+          if (typeof body?.error === 'string' && body.error) {
+            message = body.error;
+          }
+        } catch {
+          // Keep fallback message.
+        }
+        throw new Error(message);
+      }
+
+      toast.success('Episode file deleted');
       setShowDeleteDrawer(false);
-      const nextEpisode = { ...episode, monitored: false };
+      const nextEpisode = {
+        ...episode,
+        hasFile: false,
+        episodeFileId: 0,
+        episodeFile: undefined,
+      };
       setEpisode(nextEpisode);
       setEpisodeDetailSnapshot(seriesId, episodeId, {
         series,
         episode: nextEpisode,
         history,
       });
-      patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({ ...current, monitored: false }));
-    } catch {
-      toast.error('Failed to delete file');
+      patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({
+        ...current,
+        hasFile: false,
+        episodeFileId: 0,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to delete file';
+      toast.error(message);
     } finally {
       setDeleting(false);
     }
@@ -675,7 +686,7 @@ export default function EpisodeDetailPage() {
           <DrawerHeader>
             <DrawerTitle>Delete Episode File?</DrawerTitle>
             <DrawerDescription>
-              This will unmonitor the episode. The file on disk may need to be manually removed.
+              This will delete the episode file. Are you sure you want to continue?
             </DrawerDescription>
           </DrawerHeader>
           <div className="p-4 flex flex-col gap-2">

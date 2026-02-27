@@ -5,6 +5,7 @@ import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 
 function toListItem(movie: RadarrMovie): RadarrMovieListItem {
+  const poster = movie.images.find((img) => img.coverType === 'poster');
   return {
     id: movie.id,
     title: movie.title,
@@ -17,7 +18,7 @@ function toListItem(movie: RadarrMovie): RadarrMovieListItem {
     inCinemas: movie.inCinemas,
     physicalRelease: movie.physicalRelease,
     digitalRelease: movie.digitalRelease,
-    images: movie.images.filter((img) => img.coverType === 'poster').slice(0, 1),
+    images: poster ? [poster] : [],
     year: movie.year,
     hasFile: movie.hasFile,
     path: movie.path,

@@ -34,9 +34,19 @@ interface SnapshotInput {
   fetchedAt?: number;
 }
 
+const MAX_ENTRIES = 100;
 const seriesDetailCache = new Map<number, SeriesDetailSnapshot>();
 const seasonDetailCache = new Map<string, SeasonDetailSnapshot>();
 const episodeDetailCache = new Map<string, EpisodeDetailSnapshot>();
+
+function setWithLimit<K, V>(cache: Map<K, V>, key: K, value: V) {
+  cache.set(key, value);
+  if (cache.size <= MAX_ENTRIES) return;
+  const oldestKey = cache.keys().next().value;
+  if (oldestKey !== undefined) {
+    cache.delete(oldestKey);
+  }
+}
 
 function seasonKey(seriesId: number, seasonNumber: number) {
   return `${seriesId}:${seasonNumber}`;
@@ -61,7 +71,7 @@ export function setSeriesDetailSnapshot(
   seriesId: number,
   snapshot: Omit<SeriesDetailSnapshot, 'fetchedAt'> & SnapshotInput
 ) {
-  seriesDetailCache.set(seriesId, withFetchedAt(snapshot));
+  setWithLimit(seriesDetailCache, seriesId, withFetchedAt(snapshot));
 }
 
 export function getSeasonDetailSnapshot(
@@ -76,7 +86,7 @@ export function setSeasonDetailSnapshot(
   seasonNumber: number,
   snapshot: Omit<SeasonDetailSnapshot, 'fetchedAt'> & SnapshotInput
 ) {
-  seasonDetailCache.set(seasonKey(seriesId, seasonNumber), withFetchedAt(snapshot));
+  setWithLimit(seasonDetailCache, seasonKey(seriesId, seasonNumber), withFetchedAt(snapshot));
 }
 
 export function getEpisodeDetailSnapshot(
@@ -91,7 +101,7 @@ export function setEpisodeDetailSnapshot(
   episodeId: number,
   snapshot: Omit<EpisodeDetailSnapshot, 'fetchedAt'> & SnapshotInput
 ) {
-  episodeDetailCache.set(episodeKey(seriesId, episodeId), withFetchedAt(snapshot));
+  setWithLimit(episodeDetailCache, episodeKey(seriesId, episodeId), withFetchedAt(snapshot));
 }
 
 export function patchEpisodeAcrossSnapshots(
@@ -99,16 +109,30 @@ export function patchEpisodeAcrossSnapshots(
   episodeId: number,
   updater: (episode: SonarrEpisode) => SonarrEpisode
 ) {
+  patchEpisodesAcrossSnapshots(seriesId, [{ episodeId, updater }]);
+}
+
+export function patchEpisodesAcrossSnapshots(
+  seriesId: number,
+  updates: Array<{ episodeId: number; updater: (episode: SonarrEpisode) => SonarrEpisode }>
+) {
+  if (updates.length === 0) return;
+  const updaterMap = new Map<number, (episode: SonarrEpisode) => SonarrEpisode>();
+  for (const update of updates) {
+    updaterMap.set(update.episodeId, update.updater);
+  }
+
   const seriesSnapshot = seriesDetailCache.get(seriesId);
   if (seriesSnapshot) {
     let changed = false;
     const nextEpisodes = seriesSnapshot.episodes.map((episode) => {
-      if (episode.id !== episodeId) return episode;
+      const episodeUpdater = updaterMap.get(episode.id);
+      if (!episodeUpdater) return episode;
       changed = true;
-      return updater(episode);
+      return episodeUpdater(episode);
     });
     if (changed) {
-      seriesDetailCache.set(seriesId, {
+      setWithLimit(seriesDetailCache, seriesId, {
         ...seriesSnapshot,
         episodes: nextEpisodes,
         fetchedAt: Date.now(),
@@ -121,12 +145,13 @@ export function patchEpisodeAcrossSnapshots(
     if (!key.startsWith(seriesPrefix)) continue;
     let changed = false;
     const nextEpisodes = snapshot.episodes.map((episode) => {
-      if (episode.id !== episodeId) return episode;
+      const episodeUpdater = updaterMap.get(episode.id);
+      if (!episodeUpdater) return episode;
       changed = true;
-      return updater(episode);
+      return episodeUpdater(episode);
     });
     if (changed) {
-      seasonDetailCache.set(key, {
+      setWithLimit(seasonDetailCache, key, {
         ...snapshot,
         episodes: nextEpisodes,
         fetchedAt: Date.now(),
@@ -134,12 +159,13 @@ export function patchEpisodeAcrossSnapshots(
     }
   }
 
-  const snapshotKey = episodeKey(seriesId, episodeId);
-  const episodeSnapshot = episodeDetailCache.get(snapshotKey);
-  if (episodeSnapshot?.episode) {
-    episodeDetailCache.set(snapshotKey, {
+  for (const [episodeId, episodeUpdater] of updaterMap.entries()) {
+    const snapshotKey = episodeKey(seriesId, episodeId);
+    const episodeSnapshot = episodeDetailCache.get(snapshotKey);
+    if (!episodeSnapshot?.episode) continue;
+    setWithLimit(episodeDetailCache, snapshotKey, {
       ...episodeSnapshot,
-      episode: updater(episodeSnapshot.episode),
+      episode: episodeUpdater(episodeSnapshot.episode),
       fetchedAt: Date.now(),
     });
   }
@@ -152,7 +178,7 @@ export function patchSeasonAcrossSnapshots(
 ) {
   const seriesSnapshot = seriesDetailCache.get(seriesId);
   if (seriesSnapshot?.series) {
-    seriesDetailCache.set(seriesId, {
+    setWithLimit(seriesDetailCache, seriesId, {
       ...seriesSnapshot,
       series: {
         ...seriesSnapshot.series,
@@ -167,7 +193,7 @@ export function patchSeasonAcrossSnapshots(
   const seasonSnapshotKey = seasonKey(seriesId, seasonNumber);
   const seasonSnapshot = seasonDetailCache.get(seasonSnapshotKey);
   if (seasonSnapshot?.series) {
-    seasonDetailCache.set(seasonSnapshotKey, {
+    setWithLimit(seasonDetailCache, seasonSnapshotKey, {
       ...seasonSnapshot,
       series: {
         ...seasonSnapshot.series,
@@ -182,7 +208,7 @@ export function patchSeasonAcrossSnapshots(
   const seriesPrefix = `${seriesId}:`;
   for (const [key, snapshot] of episodeDetailCache.entries()) {
     if (!key.startsWith(seriesPrefix) || !snapshot.series) continue;
-    episodeDetailCache.set(key, {
+    setWithLimit(episodeDetailCache, key, {
       ...snapshot,
       series: {
         ...snapshot.series,

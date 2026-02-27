@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { SonarrSeries, SonarrSeriesListItem } from '@/types';
+import { logApiDuration } from '@/lib/server-perf';
 
 function toListItem(series: SonarrSeries): SonarrSeriesListItem {
   return {
@@ -29,16 +30,25 @@ function toListItem(series: SonarrSeries): SonarrSeriesListItem {
 }
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
   const authError = await requireAuth();
-  if (authError) return authError;
+  if (authError) {
+    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true, authError: true });
+    return authError;
+  }
 
   try {
     const full = request.nextUrl.searchParams.get('full') === 'true';
     const client = await getSonarrClient();
     const series = await client.getSeries();
-    if (full) return NextResponse.json(series);
+    if (full) {
+      logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: series.length });
+      return NextResponse.json(series);
+    }
+    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: series.length });
     return NextResponse.json(series.map(toListItem));
   } catch (error) {
+    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true });
     console.error('Failed to fetch series:', error);
     return NextResponse.json({ error: 'Failed to fetch series' }, { status: 500 });
   }

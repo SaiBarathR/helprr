@@ -24,6 +24,7 @@ import {
   getSeasonDetailSnapshot,
   getSeriesDetailSnapshot,
   patchEpisodeAcrossSnapshots,
+  patchEpisodesAcrossSnapshots,
   patchSeasonAcrossSnapshots,
   setSeasonDetailSnapshot,
   setSeriesDetailSnapshot,
@@ -246,9 +247,13 @@ export default function SeasonDetailPage() {
       const nextEpisodes = episodes.map((episode) => ({ ...episode, monitored: false }));
       setEpisodes(nextEpisodes);
       persistSeasonSnapshot({ episodes: nextEpisodes });
-      for (const episode of nextEpisodes) {
-        patchEpisodeAcrossSnapshots(seriesId, episode.id, (existing) => ({ ...existing, monitored: false }));
-      }
+      patchEpisodesAcrossSnapshots(
+        seriesId,
+        nextEpisodes.map((episode) => ({
+          episodeId: episode.id,
+          updater: (existing) => ({ ...existing, monitored: false }),
+        }))
+      );
       if (updateSeasonRes.ok) {
         const updated: SonarrSeries = await updateSeasonRes.json();
         setSeries(updated);
