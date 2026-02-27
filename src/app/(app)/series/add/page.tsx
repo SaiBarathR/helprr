@@ -16,10 +16,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Plus, Loader2, Tv, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import type { SonarrLookupResult, QualityProfile, RootFolder } from '@/types';
+import type { SonarrLookupResult, QualityProfile, RootFolder, Tag } from '@/types';
 
 function AddSeriesPageContent() {
   const router = useRouter();
@@ -30,9 +36,12 @@ function AddSeriesPageContent() {
   const [selected, setSelected] = useState<SonarrLookupResult | null>(null);
   const [profiles, setProfiles] = useState<QualityProfile[]>([]);
   const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [profileId, setProfileId] = useState('');
   const [rootFolder, setRootFolder] = useState('');
+  const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [monitorOption, setMonitorOption] = useState('all');
+  const [searchForMissingEpisodes, setSearchForMissingEpisodes] = useState(true);
   const [seriesType, setSeriesType] = useState('standard');
   const [seasonFolder, setSeasonFolder] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -47,9 +56,11 @@ function AddSeriesPageContent() {
     Promise.all([
       fetch('/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
       fetch('/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
-    ]).then(([p, r]) => {
+      fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
+    ]).then(([p, r, t]) => {
       setProfiles(p);
       setRootFolders(r);
+      setTags(t);
       if (p.length > 0) setProfileId(String(p[0].id));
       if (r.length > 0) setRootFolder(r[0].path);
     });
@@ -109,13 +120,18 @@ function AddSeriesPageContent() {
           qualityProfileId: Number(profileId),
           rootFolderPath: rootFolder,
           monitored: monitorOption !== 'none',
+          tags: selectedTags,
           seriesType,
           seasonFolder,
           titleSlug: selected.titleSlug,
           images: selected.images,
           seasons: selected.seasons,
           year: selected.year,
-          addOptions: { monitor: monitorOption, searchForMissingEpisodes: true, searchForCutoffUnmetEpisodes: false },
+          addOptions: {
+            monitor: monitorOption,
+            searchForMissingEpisodes,
+            searchForCutoffUnmetEpisodes: false,
+          },
         }),
       });
       if (res.ok) {
@@ -167,6 +183,24 @@ function AddSeriesPageContent() {
 
   function getRootFolderLabel(path: string) {
     return path || 'Select folder';
+  }
+
+  function toggleTag(tagId: number, checked: boolean) {
+    setSelectedTags((prev) => {
+      if (checked) {
+        if (prev.includes(tagId)) return prev;
+        return [...prev, tagId];
+      }
+      return prev.filter((id) => id !== tagId);
+    });
+  }
+
+  function getTagsLabel() {
+    if (selectedTags.length === 0) return 'No tags';
+    if (selectedTags.length === 1) {
+      return tags.find((tag) => tag.id === selectedTags[0])?.label ?? '1 tag';
+    }
+    return `${selectedTags.length} tags`;
   }
 
   const selectedInLibrary = selected?.library?.exists === true;
@@ -332,10 +366,45 @@ function AddSeriesPageContent() {
                     </Select>
                   </div>
 
-                  <div className="grouped-row" style={{ borderBottom: 'none' }}>
+                  <div className="grouped-row">
                     <Label className="text-sm shrink-0">Season Folders</Label>
                     <Switch checked={seasonFolder} onCheckedChange={setSeasonFolder} />
                   </div>
+
+                  <div
+                    className="grouped-row"
+                    style={tags.length === 0 ? { borderBottom: 'none' } : undefined}
+                  >
+                    <Label className="text-sm shrink-0">Start Search For Missing Episodes</Label>
+                    <Switch checked={searchForMissingEpisodes} onCheckedChange={setSearchForMissingEpisodes} />
+                  </div>
+
+                  {tags.length > 0 && (
+                    <div className="grouped-row" style={{ borderBottom: 'none' }}>
+                      <Label className="text-sm shrink-0">Tags</Label>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-end rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent/40 transition-colors"
+                          >
+                            {getTagsLabel()}
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          {tags.map((tag) => (
+                            <DropdownMenuCheckboxItem
+                              key={tag.id}
+                              checked={selectedTags.includes(tag.id)}
+                              onCheckedChange={(checked) => toggleTag(tag.id, checked === true)}
+                            >
+                              {tag.label}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
