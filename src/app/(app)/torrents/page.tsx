@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,8 +34,6 @@ import {
   Zap,
   Trash2,
   Plus,
-  Link,
-  FileUp,
   MoreVertical,
   Loader2,
   ArrowDown,
@@ -254,6 +253,7 @@ const TorrentRow = memo(function TorrentRow({
 }, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
 
 export default function TorrentsPage() {
+  const router = useRouter();
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -263,12 +263,6 @@ export default function TorrentsPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
-
-  const [addDrawerOpen, setAddDrawerOpen] = useState(false);
-  const [addMode, setAddMode] = useState<'magnet' | 'file'>('magnet');
-  const [magnetLink, setMagnetLink] = useState('');
-  const [torrentFile, setTorrentFile] = useState<File | null>(null);
-  const [adding, setAdding] = useState(false);
 
   const [detailHash, setDetailHash] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<{
@@ -286,7 +280,6 @@ export default function TorrentsPage() {
   });
   const [deleting, setDeleting] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const filterRef = useRef<FilterType>('all');
   const pollInFlightRef = useRef(false);
@@ -418,53 +411,6 @@ export default function TorrentsPage() {
     setSelectedTorrents(new Set());
   }, [selectedTorrents, torrentAction]);
 
-  const handleAddTorrent = useCallback(async () => {
-    setAdding(true);
-    try {
-      if (addMode === 'magnet') {
-        if (!magnetLink.trim()) {
-          toast.error('Please enter a magnet link');
-          return;
-        }
-        const res = await fetch('/api/qbittorrent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: magnetLink.trim() }),
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to add torrent');
-        }
-      } else {
-        if (!torrentFile) {
-          toast.error('Please select a .torrent file');
-          return;
-        }
-        const formData = new FormData();
-        formData.append('file', torrentFile);
-        const res = await fetch('/api/qbittorrent', {
-          method: 'POST',
-          body: formData,
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to add torrent');
-        }
-      }
-      toast.success('Torrent added');
-      setAddDrawerOpen(false);
-      setMagnetLink('');
-      setTorrentFile(null);
-      setTimeout(() => {
-        void fetchSummary();
-      }, 1000);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add torrent');
-    } finally {
-      setAdding(false);
-    }
-  }, [addMode, magnetLink, torrentFile, fetchSummary]);
-
   const handleDelete = useCallback(async () => {
     setDeleting(true);
     try {
@@ -591,7 +537,7 @@ export default function TorrentsPage() {
           <TooltipTrigger asChild>
             <button
               className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-              onClick={() => setAddDrawerOpen(true)}
+              onClick={() => router.push('/torrents/add')}
               aria-label="Add Torrent"
             >
               <Plus className="h-5 w-5" />
@@ -798,83 +744,6 @@ export default function TorrentsPage() {
               </>
             ) : null}
           </div>
-        </DrawerContent>
-      </Drawer>
-
-      <Drawer open={addDrawerOpen} onOpenChange={setAddDrawerOpen}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Add Torrent</DrawerTitle>
-            <DrawerDescription>Add a torrent via magnet link or .torrent file.</DrawerDescription>
-          </DrawerHeader>
-
-          <div className="px-4 space-y-4">
-            <div className="flex gap-2">
-              <Button
-                variant={addMode === 'magnet' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setAddMode('magnet')}
-                className="flex-1"
-              >
-                <Link className="mr-2 h-4 w-4" />
-                Magnet Link
-              </Button>
-              <Button
-                variant={addMode === 'file' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setAddMode('file')}
-                className="flex-1"
-              >
-                <FileUp className="mr-2 h-4 w-4" />
-                Torrent File
-              </Button>
-            </div>
-
-            {addMode === 'magnet' ? (
-              <Input
-                placeholder="magnet:?xt=urn:btih:..."
-                value={magnetLink}
-                onChange={(e) => setMagnetLink(e.target.value)}
-              />
-            ) : (
-              <>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".torrent"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) setTorrentFile(file);
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <FileUp className="mr-2 h-4 w-4" />
-                  {torrentFile ? torrentFile.name : 'Choose .torrent file'}
-                </Button>
-              </>
-            )}
-          </div>
-
-          <DrawerFooter>
-            <Button onClick={handleAddTorrent} disabled={adding} className="w-full">
-              {adding ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                'Add Torrent'
-              )}
-            </Button>
-            <DrawerClose asChild>
-              <Button variant="outline" className="w-full">Cancel</Button>
-            </DrawerClose>
-          </DrawerFooter>
         </DrawerContent>
       </Drawer>
 
