@@ -2,20 +2,7 @@ import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
-
-let jwtSecretBytes: Uint8Array | null = null;
-
-function getJwtSecret(): Uint8Array {
-  if (jwtSecretBytes) return jwtSecretBytes;
-
-  const jwtSecret = process.env.JWT_SECRET;
-  if (!jwtSecret) {
-    throw new Error('JWT_SECRET env var is required');
-  }
-
-  jwtSecretBytes = new TextEncoder().encode(jwtSecret);
-  return jwtSecretBytes;
-}
+import { getJwtSecret } from '@/lib/jwt-secret';
 
 const SESSION_DURATION = 30 * 24 * 60 * 60; // 30 days in seconds
 const COOKIE_NAME = 'helprr-session';

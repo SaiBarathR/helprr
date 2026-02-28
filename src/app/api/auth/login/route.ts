@@ -104,6 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     await clearAttempts(rateLimitKey);
   } catch (error) {
     console.error('[Auth] Failed to clear login attempts:', error);
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
   }
 
   const token = await createSession();

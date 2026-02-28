@@ -1,8 +1,10 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    if (!process.env.JWT_SECRET) {
-      throw new Error('JWT_SECRET env var is required');
-    }
+    const { getJwtSecret } = await import('@/lib/jwt-secret');
+    const { registerRedisShutdownHandlers } = await import('@/lib/redis');
+
+    getJwtSecret();
+    registerRedisShutdownHandlers();
 
     const { pollingService } = await import('@/lib/polling-service');
     const { prisma } = await import('@/lib/db');
