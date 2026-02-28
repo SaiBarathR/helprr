@@ -81,6 +81,13 @@ function formatRuntime(value?: string | number): string | null {
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function safeFormatDate(value: string | undefined, pattern: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return format(parsed, pattern);
+}
+
 type DrawerRow = {
   label: string;
   value: string;
@@ -182,16 +189,14 @@ export default function MovieFilesPage() {
     : movieFile?.language?.name ?? '';
   const audioLanguages = mediaInfo?.audioLanguages || fileLanguages;
   const subtitles = mediaInfo?.subtitles?.trim() ? mediaInfo.subtitles : 'None';
+  const addedLabel = safeFormatDate(movieFile?.dateAdded, "d MMMM yyyy 'at' h:mm a")
+    ?? safeFormatDate(movie.added, 'd MMMM yyyy');
 
   const informationRows: DrawerRow[] = [
     ...(movieFile?.relativePath
       ? [{ label: 'Filename', value: movieFile.relativePath, breakValue: true }]
       : []),
-    ...(movieFile?.dateAdded
-      ? [{ label: 'Added', value: format(new Date(movieFile.dateAdded), "d MMMM yyyy 'at' h:mm a") }]
-      : movie.added
-        ? [{ label: 'Added', value: format(new Date(movie.added), 'd MMMM yyyy') }]
-        : []),
+    ...(addedLabel ? [{ label: 'Added', value: addedLabel }] : []),
     ...(movieFile ? [{ label: 'File Size', value: formatBytes(movieFile.size) }] : []),
     ...(movieFile ? [{ label: 'Quality', value: qualityName }] : []),
     ...(movieFile?.releaseGroup ? [{ label: 'Release Group', value: movieFile.releaseGroup }] : []),

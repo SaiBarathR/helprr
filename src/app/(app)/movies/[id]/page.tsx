@@ -85,16 +85,35 @@ export default function MovieDetailPage() {
     // Keep movie detail page instant when returning from sub-pages.
     if (hasCachedData) {
       setLoading(false);
-      return;
     }
 
     try {
-      const [nextMovie, nextQualityProfiles, nextTags] = await Promise.all([
-        fetch(`/api/radarr/${movieId}`).then((r) => (r.ok ? r.json() : null)),
-        fetch('/api/radarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
-        fetch('/api/radarr/tags').then((r) => (r.ok ? r.json() : [])),
+      const [movieResult, nextQualityProfiles, nextTags] = await Promise.all([
+        fetch(`/api/radarr/${movieId}`).then(async (response): Promise<{ movie: RadarrMovie | null; notFound: boolean }> => {
+          if (response.ok) {
+            return { movie: await response.json() as RadarrMovie, notFound: false };
+          }
+
+          let message = '';
+          try {
+            const payload = await response.json() as { error?: string };
+            message = payload.error ?? '';
+          } catch {
+            // Ignore invalid error payloads.
+          }
+
+          const notFound = response.status === 404 || /not found|does not exist/i.test(message);
+          if (notFound) {
+            return { movie: null, notFound: true };
+          }
+
+          throw new Error(message || `Failed to fetch movie (${response.status})`);
+        }),
+        fetch('/api/radarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? await r.json() as QualityProfile[] : [])),
+        fetch('/api/radarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? await r.json() as Tag[] : [])),
       ]);
 
+      const nextMovie = movieResult.movie;
       setMovie(nextMovie);
       setQualityProfiles(nextQualityProfiles);
       setTags(nextTags);
@@ -103,6 +122,10 @@ export default function MovieDetailPage() {
         qualityProfiles: nextQualityProfiles,
         tags: nextTags,
       });
+
+      if (movieResult.notFound) {
+        return;
+      }
     } catch {
       if (!hasCachedData) {
         setMovie(null);
