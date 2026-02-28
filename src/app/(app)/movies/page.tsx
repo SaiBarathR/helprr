@@ -139,7 +139,8 @@ function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, p
 
     const waitForHeight = () => {
       if (done) return;
-      const reachedHeight = document.body.scrollHeight > targetScrollY;
+      const maxScrollTop = Math.max(0, document.body.scrollHeight - window.innerHeight);
+      const reachedHeight = maxScrollTop >= targetScrollY;
       const timedOut = Date.now() - startedAt >= timeoutMs;
       if (reachedHeight || timedOut) {
         finish();
