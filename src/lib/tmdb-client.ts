@@ -146,6 +146,43 @@ export class TmdbRateLimitError extends Error {
 
 const tmdbCooldowns = new Map<string, number>();
 const TMDB_REQUEST_TIMEOUT_MS = 10000;
+const TMDB_COOLDOWN_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+const TMDB_COOLDOWN_MAX_KEYS = 64;
+let tmdbLastSweepAtMs = 0;
+
+function sweepTmdbCooldowns(nowMs: number): void {
+  if (tmdbCooldowns.size === 0) {
+    tmdbLastSweepAtMs = nowMs;
+    return;
+  }
+
+  for (const [apiKey, cooldownUntil] of tmdbCooldowns.entries()) {
+    if (cooldownUntil <= nowMs) {
+      tmdbCooldowns.delete(apiKey);
+    }
+  }
+
+  if (tmdbCooldowns.size > TMDB_COOLDOWN_MAX_KEYS) {
+    const sortedByCooldown = [...tmdbCooldowns.entries()].sort((a, b) => a[1] - b[1]);
+    const keysToRemove = tmdbCooldowns.size - TMDB_COOLDOWN_MAX_KEYS;
+    for (let i = 0; i < keysToRemove; i += 1) {
+      const key = sortedByCooldown[i]?.[0];
+      if (key) {
+        tmdbCooldowns.delete(key);
+      }
+    }
+  }
+
+  tmdbLastSweepAtMs = nowMs;
+}
+
+function maybeSweepTmdbCooldowns(nowMs: number): void {
+  const shouldSweepByTime = nowMs - tmdbLastSweepAtMs >= TMDB_COOLDOWN_SWEEP_INTERVAL_MS;
+  const shouldSweepBySize = tmdbCooldowns.size > TMDB_COOLDOWN_MAX_KEYS;
+  if (shouldSweepByTime || shouldSweepBySize) {
+    sweepTmdbCooldowns(nowMs);
+  }
+}
 
 function toRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object') return {};
@@ -226,12 +263,15 @@ export class TmdbClient {
   }
 
   private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
+    const nowMs = Date.now();
+    maybeSweepTmdbCooldowns(nowMs);
+
     const cooldownUntil = tmdbCooldowns.get(this.apiKey);
-    if (cooldownUntil && Date.now() >= cooldownUntil) {
+    if (cooldownUntil && nowMs >= cooldownUntil) {
       tmdbCooldowns.delete(this.apiKey);
     }
-    if (cooldownUntil && Date.now() < cooldownUntil) {
-      const remainingSeconds = Math.max(1, Math.ceil((cooldownUntil - Date.now()) / 1000));
+    if (cooldownUntil && nowMs < cooldownUntil) {
+      const remainingSeconds = Math.max(1, Math.ceil((cooldownUntil - nowMs) / 1000));
       throw new TmdbRateLimitError(
         'TMDB rate limit reached',
         remainingSeconds,
@@ -259,6 +299,7 @@ export class TmdbClient {
           ? parsedRetryAtMs
           : Date.now() + retryAfterSeconds * 1000;
         tmdbCooldowns.set(this.apiKey, retryAtMs);
+        maybeSweepTmdbCooldowns(Date.now());
         throw new TmdbRateLimitError(
           'TMDB rate limit reached',
           retryAfterSeconds,
