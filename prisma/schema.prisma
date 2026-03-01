@@ -75,6 +75,7 @@ model AppSettings {
   dashboardRefreshIntervalSecs Int @default(5)
   activityRefreshIntervalSecs  Int @default(5)
   torrentsRefreshIntervalSecs  Int @default(5)
+  cacheImagesEnabled       Boolean @default(true)
   theme                    String  @default("dark")
   upcomingAlertHours       Int     @default(24)
   upcomingNotifyMode       String  @default("before_air") // "once_in_window" | "before_air" | "daily_digest"

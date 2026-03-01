@@ -26,6 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Plus, Loader2, Film, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RadarrLookupResult, QualityProfile, RootFolder, Tag } from '@/types';
+import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
 function AddMoviePageContent() {
   const router = useRouter();
@@ -167,7 +168,7 @@ function AddMoviePageContent() {
   }
 
   const posterUrl = (images: { coverType: string; remoteUrl: string }[]) =>
-    images.find((i) => i.coverType === 'poster')?.remoteUrl;
+    toCachedImageSrc(images.find((i) => i.coverType === 'poster')?.remoteUrl, 'radarr');
 
   const MONITOR_OPTIONS = [
     { value: 'movieOnly', label: 'Movie Only' },
@@ -282,6 +283,7 @@ function AddMoviePageContent() {
                   width={96}
                   height={144}
                   className="w-24 h-auto aspect-[2/3] object-cover rounded-lg shrink-0"
+                  unoptimized={isProtectedApiImageSrc(posterUrl(selected.images as { coverType: string; remoteUrl: string }[])!)}
                 />
               ) : (
                 <div className="w-24 aspect-[2/3] bg-muted rounded-lg flex items-center justify-center shrink-0">
@@ -452,6 +454,7 @@ function AddMoviePageContent() {
                         fill
                         sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
                         className="object-cover group-hover:scale-105 transition-transform"
+                        unoptimized={isProtectedApiImageSrc(posterUrl(r.images as { coverType: string; remoteUrl: string }[])!)}
                       />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
