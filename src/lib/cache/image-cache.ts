@@ -11,6 +11,7 @@ import { buildImageMetaKey, sha256Hex } from '@/lib/cache/keys';
 import {
   getCacheGeneration,
   getCacheImagesEnabled,
+  releaseCacheLock,
   tryAcquireCacheLock,
 } from '@/lib/cache/state';
 
@@ -31,7 +32,7 @@ export interface FetchCachedImageResult {
   cacheStatus: ImageCacheStatus;
 }
 
-interface ImageCacheMeta {
+export interface ImageCacheMeta {
   generation: number;
   relativePath: string;
   contentType: string;
@@ -182,8 +183,8 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
     await removeImageMeta(metaKey);
   }
 
-  const hasLock = await tryAcquireCacheLock('image', `${generation}:${cacheKey}`);
-  if (!hasLock && cachedMeta && now < cachedMeta.staleUntil) {
+  const lockToken = await tryAcquireCacheLock('image', `${generation}:${cacheKey}`);
+  if (!lockToken && cachedMeta && now < cachedMeta.staleUntil) {
     const staleBody = await loadCachedImage(cachedMeta);
     if (staleBody) {
       return {
@@ -256,6 +257,10 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
       contentType: null,
       cacheStatus: cachedMeta ? 'REVALIDATED' : 'MISS',
     };
+  } finally {
+    if (lockToken) {
+      void releaseCacheLock('image', `${generation}:${cacheKey}`, lockToken);
+    }
   }
 }
 

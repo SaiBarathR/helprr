@@ -63,22 +63,8 @@ export async function PUT(request: NextRequest) {
       cacheImagesEnabled,
     } = body;
 
-    const current = await prisma.appSettings.upsert({
+    const current = await prisma.appSettings.findUnique({
       where: { id: 'singleton' },
-      update: {},
-      create: {
-        id: 'singleton',
-        pollingIntervalSecs: 30,
-        dashboardRefreshIntervalSecs: 5,
-        activityRefreshIntervalSecs: 5,
-        torrentsRefreshIntervalSecs: 5,
-        cacheImagesEnabled: true,
-        theme: 'dark',
-        upcomingAlertHours: 24,
-        upcomingNotifyMode: 'before_air',
-        upcomingNotifyBeforeMins: 60,
-        upcomingDailyNotifyHour: 9,
-      },
     });
 
     const data: Record<string, unknown> = {};
@@ -122,7 +108,7 @@ export async function PUT(request: NextRequest) {
 
     setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
 
-    const disabledNow = current.cacheImagesEnabled && settings.cacheImagesEnabled === false;
+    const disabledNow = (current?.cacheImagesEnabled ?? true) && settings.cacheImagesEnabled === false;
     let cachePurge: Awaited<ReturnType<typeof disableCachingAndPurgeCaches>> | null = null;
     if (disabledNow) {
       cachePurge = await disableCachingAndPurgeCaches();

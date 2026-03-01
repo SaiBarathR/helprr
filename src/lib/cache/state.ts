@@ -113,17 +113,39 @@ export async function setLastCachePurgedAt(value: string): Promise<void> {
   }
 }
 
-export async function tryAcquireCacheLock(scope: string, keySeed: string, ttlMs = CACHE_LOCK_TTL_MS): Promise<boolean> {
+export async function tryAcquireCacheLock(scope: string, keySeed: string, ttlMs = CACHE_LOCK_TTL_MS): Promise<string | null> {
+  const token = randomUUID();
   try {
     const redis = await getRedisClient();
     const key = buildLockKey(scope, keySeed);
-    const result = await redis.set(key, randomUUID(), {
+    const result = await redis.set(key, token, {
       NX: true,
       PX: Math.max(1, ttlMs),
     });
-    return result === 'OK';
+    return result === 'OK' ? token : null;
   } catch {
     // If lock service is unavailable, do not block request path.
-    return true;
+    return token;
+  }
+}
+
+export async function releaseCacheLock(scope: string, keySeed: string, token: string): Promise<boolean> {
+  try {
+    const redis = await getRedisClient();
+    const key = buildLockKey(scope, keySeed);
+    const result = await redis.eval(
+      `if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0`,
+      {
+        keys: [key],
+        arguments: [token],
+      }
+    );
+
+    return Number(result) === 1;
+  } catch {
+    return false;
   }
 }
