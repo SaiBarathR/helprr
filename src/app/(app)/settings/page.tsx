@@ -557,8 +557,9 @@ export default function SettingsPage() {
           imageFiles: typeof usage.imageFiles === 'number' ? usage.imageFiles : 0,
           tmdbEntries: typeof usage.tmdbEntries === 'number' ? usage.tmdbEntries : 0,
         });
+      } else {
+        void loadCacheUsage();
       }
-      void loadCacheUsage();
     } catch {
       toast.error('Failed to delete cache');
     } finally {

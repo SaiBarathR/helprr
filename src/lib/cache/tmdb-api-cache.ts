@@ -7,6 +7,7 @@ import {
 import {
   getCacheGeneration,
   getCacheImagesEnabled,
+  releaseCacheLock,
   tryAcquireCacheLock,
 } from '@/lib/cache/state';
 
@@ -108,8 +109,8 @@ export async function getTmdbJsonWithCache<T>(options: TmdbCachedRequestOptions<
     return cachedEntry.payload;
   }
 
-  const hasLock = await tryAcquireCacheLock('tmdb', `${generation}:${cacheSeed}`);
-  if (!hasLock && cachedEntry && now < cachedEntry.staleUntil) {
+  const lockToken = await tryAcquireCacheLock('tmdb', `${generation}:${cacheSeed}`);
+  if (!lockToken && cachedEntry && now < cachedEntry.staleUntil) {
     return cachedEntry.payload;
   }
 
@@ -130,5 +131,9 @@ export async function getTmdbJsonWithCache<T>(options: TmdbCachedRequestOptions<
       return cachedEntry.payload;
     }
     throw error;
+  } finally {
+    if (lockToken) {
+      void releaseCacheLock('tmdb', `${generation}:${cacheSeed}`, lockToken);
+    }
   }
 }

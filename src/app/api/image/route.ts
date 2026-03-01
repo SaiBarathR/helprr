@@ -208,7 +208,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         'X-Helprr-Cache': result.cacheStatus,
       },
     });
-  } catch {
+  } catch (error) {
+    console.error('Failed to proxy image', {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json({ error: 'Failed to proxy image' }, { status: 500 });
   }
 }

@@ -166,6 +166,9 @@ function MediaPoster({
   variant?: 'rail' | 'grid';
 }) {
   const isGrid = variant === 'grid';
+  const posterSrc = item.posterPath
+    ? (toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath)
+    : null;
   return (
     <button
       onClick={() => onClick(item)}
@@ -174,14 +177,14 @@ function MediaPoster({
         : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] text-left'}
     >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
-        {item.posterPath ? (
+        {posterSrc ? (
           <Image
-            src={toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath}
+            src={posterSrc}
             alt={item.title}
             fill
             sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, 140px'}
             className="object-cover transition-transform duration-300 group-hover:scale-105"
-            unoptimized={isProtectedApiImageSrc(toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath)}
+            unoptimized={isProtectedApiImageSrc(posterSrc)}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
@@ -264,27 +267,34 @@ function SectionRow({
 
       {section.type === 'provider' && (
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {(section.items as Array<{ id: number; name: string; logoPath: string | null; type: 'movie' | 'tv' }>).map((provider) => (
-            <button
-              key={`${provider.type}-${provider.id}`}
-              onClick={() => onPickProvider(provider.id, provider.type === 'movie' ? 'movie' : 'show')}
-              className="min-w-[160px] rounded-xl border border-border/50 bg-accent/40 p-3 flex items-center gap-3"
-            >
-              <div className="relative h-8 w-8 rounded bg-background/70 overflow-hidden shrink-0">
-                {provider.logoPath ? (
-                  <Image
-                    src={toCachedImageSrc(`https://image.tmdb.org/t/p/w185${provider.logoPath}`, 'tmdb') || `https://image.tmdb.org/t/p/w185${provider.logoPath}`}
-                    alt={provider.name}
-                    fill
-                    sizes="32px"
-                    className="object-contain"
-                    unoptimized={isProtectedApiImageSrc(toCachedImageSrc(`https://image.tmdb.org/t/p/w185${provider.logoPath}`, 'tmdb') || `https://image.tmdb.org/t/p/w185${provider.logoPath}`)}
-                  />
-                ) : null}
-              </div>
-              <p className="text-sm font-semibold text-left truncate">{provider.name}</p>
-            </button>
-          ))}
+          {(section.items as Array<{ id: number; name: string; logoPath: string | null; type: 'movie' | 'tv' }>).map((provider) => {
+            const providerLogoPath = provider.logoPath ? `https://image.tmdb.org/t/p/w185${provider.logoPath}` : null;
+            const providerLogoSrc = providerLogoPath
+              ? (toCachedImageSrc(providerLogoPath, 'tmdb') || providerLogoPath)
+              : null;
+
+            return (
+              <button
+                key={`${provider.type}-${provider.id}`}
+                onClick={() => onPickProvider(provider.id, provider.type === 'movie' ? 'movie' : 'show')}
+                className="min-w-[160px] rounded-xl border border-border/50 bg-accent/40 p-3 flex items-center gap-3"
+              >
+                <div className="relative h-8 w-8 rounded bg-background/70 overflow-hidden shrink-0">
+                  {providerLogoSrc ? (
+                    <Image
+                      src={providerLogoSrc}
+                      alt={provider.name}
+                      fill
+                      sizes="32px"
+                      className="object-contain"
+                      unoptimized={isProtectedApiImageSrc(providerLogoSrc)}
+                    />
+                  ) : null}
+                </div>
+                <p className="text-sm font-semibold text-left truncate">{provider.name}</p>
+              </button>
+            );
+          })}
         </div>
       )}
     </section>
@@ -724,6 +734,9 @@ export default function DiscoverPage() {
     params.set('seriesType', itemDetail.isAnime ? 'anime' : 'standard');
     return `/series/add?${params.toString()}`;
   }, [itemDetail]);
+  const backdropSrc = itemDetail?.backdropPath
+    ? (toCachedImageSrc(itemDetail.backdropPath, 'tmdb') || itemDetail.backdropPath)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -1174,14 +1187,14 @@ export default function DiscoverPage() {
             ) : (
               <div className="space-y-4">
                 <div className="relative h-52 w-full bg-muted">
-                  {itemDetail.backdropPath ? (
+                  {backdropSrc ? (
                     <Image
-                      src={toCachedImageSrc(itemDetail.backdropPath, 'tmdb') || itemDetail.backdropPath}
+                      src={backdropSrc}
                       alt={itemDetail.title}
                       fill
                       sizes="100vw"
                       className="object-cover"
-                      unoptimized={isProtectedApiImageSrc(toCachedImageSrc(itemDetail.backdropPath, 'tmdb') || itemDetail.backdropPath)}
+                      unoptimized={isProtectedApiImageSrc(backdropSrc)}
                     />
                   ) : null}
                   <div className="absolute inset-0 bg-gradient-to-t from-background via-background/35 to-transparent" />

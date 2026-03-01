@@ -205,6 +205,9 @@ function AddSeriesPageContent() {
   }
 
   const selectedInLibrary = selected?.library?.exists === true;
+  const selectedPoster = selected
+    ? posterUrl(selected.images as { coverType: string; remoteUrl: string }[])
+    : null;
 
   useEffect(() => {
     const prefillTerm = searchParams.get('term');
@@ -271,14 +274,14 @@ function AddSeriesPageContent() {
           <div className="space-y-5">
             {/* Series info */}
             <div className="flex gap-4">
-              {posterUrl(selected.images as { coverType: string; remoteUrl: string }[]) ? (
+              {selectedPoster ? (
                 <Image
-                  src={posterUrl(selected.images as { coverType: string; remoteUrl: string }[])!}
+                  src={selectedPoster}
                   alt=""
                   width={96}
                   height={144}
                   className="w-24 h-auto aspect-[2/3] object-cover rounded-lg shrink-0"
-                  unoptimized={isProtectedApiImageSrc(posterUrl(selected.images as { coverType: string; remoteUrl: string }[])!)}
+                  unoptimized={isProtectedApiImageSrc(selectedPoster)}
                 />
               ) : (
                 <div className="w-24 aspect-[2/3] bg-muted rounded-lg flex items-center justify-center shrink-0">
