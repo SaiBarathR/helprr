@@ -11,6 +11,15 @@ interface ConnectionLike {
   apiKey: string;
 }
 
+const IMAGE_PATH_EXTENSION_RE = /\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|webp)$/i;
+
+const SERVICE_IMAGE_PATH_PATTERNS: Record<ConnectionLike['type'], RegExp[]> = {
+  RADARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
+  SONARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
+  JELLYFIN: [/^\/items\/[^/]+\/images\/[^/]+(?:\/\d+)?$/i],
+  TMDB: [/^\/t\/p\//i],
+};
+
 function parseServiceHint(value: string | null): ServiceHint | null {
   if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'jellyfin') {
     return value;
@@ -88,6 +97,30 @@ function matchesConnectionBase(target: URL, base: URL): boolean {
   }
 
   return target.pathname === basePath || target.pathname.startsWith(`${basePath}/`);
+}
+
+function getPathRelativeToBase(target: URL, base: URL): string | null {
+  const basePath = base.pathname.replace(/\/+$/, '');
+  if (!basePath || basePath === '/') return target.pathname;
+  if (target.pathname === basePath) return '/';
+  if (target.pathname.startsWith(`${basePath}/`)) {
+    return target.pathname.slice(basePath.length) || '/';
+  }
+  return null;
+}
+
+function isMatchedConnectionImagePathAllowed(connection: ConnectionLike, target: URL): boolean {
+  const base = normalizeBaseUrl(connection.url);
+  if (!base) return false;
+  const relativePath = getPathRelativeToBase(target, base);
+  if (!relativePath) return false;
+
+  if (IMAGE_PATH_EXTENSION_RE.test(relativePath)) {
+    return true;
+  }
+
+  const patterns = SERVICE_IMAGE_PATH_PATTERNS[connection.type];
+  return patterns.some((pattern) => pattern.test(relativePath));
 }
 
 function resolveAuthHeaders(connection: ConnectionLike | null): HeadersInit | undefined {
@@ -176,19 +209,30 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       const base = normalizeBaseUrl(connection.url);
       return base ? matchesConnectionBase(targetUrl, base) : false;
     }) || null;
+    const matchedConnectionPathAllowed = matchedConnection
+      ? isMatchedConnectionImagePathAllowed(matchedConnection, targetUrl)
+      : false;
+
+    if (matchedConnection && !matchedConnectionPathAllowed) {
+      return NextResponse.json({ error: 'Image source path is not allowed' }, { status: 403 });
+    }
 
     const allowed = isTmdbImageHost
-      || Boolean(matchedConnection)
+      || matchedConnectionPathAllowed
       || isAllowedExternalHostForArr(hint, targetUrl)
       || isAllowedKnownExternalImageHost(targetUrl);
     if (!allowed) {
       return NextResponse.json({ error: 'Image source host is not allowed' }, { status: 403 });
     }
 
+    const upstreamHeaders = matchedConnectionPathAllowed
+      ? resolveAuthHeaders(matchedConnection)
+      : undefined;
+
     const result = await fetchImageWithServerCache({
       cacheKey: `${hint ?? matchedConnection?.type.toLowerCase() ?? 'unknown'}:${targetUrl.toString()}`,
       upstreamUrl: targetUrl.toString(),
-      upstreamHeaders: resolveAuthHeaders(matchedConnection),
+      upstreamHeaders,
     });
 
     if (!result.body) {

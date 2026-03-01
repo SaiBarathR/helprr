@@ -111,7 +111,15 @@ export async function PUT(request: NextRequest) {
     const disabledNow = (current?.cacheImagesEnabled ?? true) && settings.cacheImagesEnabled === false;
     let cachePurge: Awaited<ReturnType<typeof disableCachingAndPurgeCaches>> | null = null;
     if (disabledNow) {
-      cachePurge = await disableCachingAndPurgeCaches();
+      try {
+        cachePurge = await disableCachingAndPurgeCaches();
+      } catch (cachePurgeError) {
+        console.error('Failed to purge cache after disabling image caching', {
+          message: cachePurgeError instanceof Error ? cachePurgeError.message : String(cachePurgeError),
+          stack: cachePurgeError instanceof Error ? cachePurgeError.stack : undefined,
+        });
+        cachePurge = null;
+      }
     }
 
     if (pollingIntervalSecs !== undefined) {
