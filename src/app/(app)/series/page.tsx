@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +28,6 @@ import {
   setCachedListData,
   setListViewState,
 } from '@/lib/media-list-cache';
-import { useWindowVirtualRange } from '@/hooks/use-window-virtual-range';
 import type { SonarrSeriesListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
@@ -135,6 +135,7 @@ export default function SeriesPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [contentOffsetTop, setContentOffsetTop] = useState(0);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
@@ -240,14 +241,22 @@ export default function SeriesPage() {
     const container = contentRef.current;
     if (!container) return;
 
-    const measure = () => setContainerWidth(container.getBoundingClientRect().width);
+    const measure = () => {
+      const rect = container.getBoundingClientRect();
+      setContainerWidth(rect.width);
+      setContentOffsetTop(rect.top + window.scrollY);
+    };
     measure();
 
     const observer = new ResizeObserver(measure);
     observer.observe(container);
+    window.addEventListener('resize', measure);
 
-    return () => observer.disconnect();
-  }, [viewMode, posterSize]);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [viewMode, posterSize, loading, series.length, search, filter]);
 
   useEffect(() => {
     if (loading || hasRestoredScrollRef.current) return;
@@ -379,7 +388,7 @@ export default function SeriesPage() {
 
   const isDesktop = viewportWidth >= 768;
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
-  const useVirtualization = filtered.length > 120 && !loading;
+  const useVirtualization = !loading && filtered.length > 0;
 
   const posterGridClass = posterSize === 'small'
     ? 'grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8 gap-2'
@@ -401,12 +410,12 @@ export default function SeriesPage() {
   }, [containerWidth, posterColumns, posterGap, posterSize]);
 
   const posterRowCount = Math.ceil(filtered.length / posterColumns);
-  const posterVirtual = useWindowVirtualRange({
-    container: contentRef.current,
-    itemCount: posterRowCount,
-    itemSize: posterRowHeight,
+  const posterVirtualizer = useWindowVirtualizer({
+    count: posterRowCount,
+    estimateSize: () => posterRowHeight,
     enabled: useVirtualization && effectiveView === 'posters',
     overscan: 2,
+    scrollMargin: contentOffsetTop,
   });
 
   const overviewRowHeight = useMemo(() => {
@@ -416,12 +425,12 @@ export default function SeriesPage() {
     return base;
   }, [posterSize, visibleFields]);
 
-  const overviewVirtual = useWindowVirtualRange({
-    container: contentRef.current,
-    itemCount: filtered.length,
-    itemSize: overviewRowHeight,
+  const overviewVirtualizer = useWindowVirtualizer({
+    count: filtered.length,
+    estimateSize: () => overviewRowHeight,
     enabled: useVirtualization && effectiveView === 'overview',
     overscan: 6,
+    scrollMargin: contentOffsetTop,
   });
 
   const tableRows = filtered.map((s) => ({
@@ -441,12 +450,12 @@ export default function SeriesPage() {
     genres: s.genres,
   }));
 
-  const tableVirtual = useWindowVirtualRange({
-    container: contentRef.current,
-    itemCount: tableRows.length,
-    itemSize: 44,
+  const tableVirtualizer = useWindowVirtualizer({
+    count: tableRows.length,
+    estimateSize: () => 44,
     enabled: useVirtualization && effectiveView === 'table' && isDesktop,
     overscan: 12,
+    scrollMargin: contentOffsetTop,
   });
 
   const mobileOverviewFields = visibleFieldsByMode.overview;
@@ -457,12 +466,12 @@ export default function SeriesPage() {
     return base;
   }, [mobileOverviewFields, posterSize]);
 
-  const tableMobileVirtual = useWindowVirtualRange({
-    container: contentRef.current,
-    itemCount: filtered.length,
-    itemSize: tableMobileOverviewRowHeight,
+  const tableMobileVirtualizer = useWindowVirtualizer({
+    count: filtered.length,
+    estimateSize: () => tableMobileOverviewRowHeight,
     enabled: useVirtualization && effectiveView === 'table' && !isDesktop,
     overscan: 6,
+    scrollMargin: contentOffsetTop,
   });
 
   const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
@@ -609,13 +618,20 @@ export default function SeriesPage() {
         }
 
         if (effectiveView === 'posters') {
-          const startIndex = posterVirtual.startIndex * posterColumns;
-          const endIndex = Math.min(filtered.length, posterVirtual.endIndex * posterColumns);
+          const virtualRows = posterVirtualizer.getVirtualItems();
+          const firstRow = virtualRows[0];
+          const lastRow = virtualRows[virtualRows.length - 1];
+          const startIndex = (firstRow?.index ?? 0) * posterColumns;
+          const endIndex = Math.min(filtered.length, ((lastRow?.index ?? 0) + 1) * posterColumns);
           const visibleSeries = filtered.slice(startIndex, endIndex);
+          const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
+          const bottomSpacerHeight = lastRow
+            ? Math.max(0, posterVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
+            : 0;
 
           return (
             <div ref={contentRef}>
-              {posterVirtual.topSpacerHeight > 0 && <div style={{ height: posterVirtual.topSpacerHeight }} />}
+              {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
               <div className={posterGridClass}>
                 {visibleSeries.map((s) => (
                   <MediaCard
@@ -633,17 +649,26 @@ export default function SeriesPage() {
                   />
                 ))}
               </div>
-              {posterVirtual.bottomSpacerHeight > 0 && <div style={{ height: posterVirtual.bottomSpacerHeight }} />}
+              {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
             </div>
           );
         }
 
         if (effectiveView === 'overview') {
-          const visibleSeries = filtered.slice(overviewVirtual.startIndex, overviewVirtual.endIndex);
+          const virtualRows = overviewVirtualizer.getVirtualItems();
+          const firstRow = virtualRows[0];
+          const lastRow = virtualRows[virtualRows.length - 1];
+          const startIndex = firstRow?.index ?? 0;
+          const endIndex = (lastRow?.index ?? 0) + 1;
+          const visibleSeries = filtered.slice(startIndex, endIndex);
+          const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
+          const bottomSpacerHeight = lastRow
+            ? Math.max(0, overviewVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
+            : 0;
 
           return (
             <div ref={contentRef} className="space-y-2">
-              {overviewVirtual.topSpacerHeight > 0 && <div style={{ height: overviewVirtual.topSpacerHeight }} />}
+              {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
               {visibleSeries.map((s) => (
                 <MediaOverviewItem
                   key={s.id}
@@ -667,32 +692,50 @@ export default function SeriesPage() {
                   onNavigate={handleNavigateToDetail}
                 />
               ))}
-              {overviewVirtual.bottomSpacerHeight > 0 && <div style={{ height: overviewVirtual.bottomSpacerHeight }} />}
+              {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
             </div>
           );
         }
 
         if (isDesktop) {
-          const visibleRows = tableRows.slice(tableVirtual.startIndex, tableVirtual.endIndex);
+          const virtualRows = tableVirtualizer.getVirtualItems();
+          const firstRow = virtualRows[0];
+          const lastRow = virtualRows[virtualRows.length - 1];
+          const startIndex = firstRow?.index ?? 0;
+          const endIndex = (lastRow?.index ?? 0) + 1;
+          const visibleRows = tableRows.slice(startIndex, endIndex);
+          const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
+          const bottomSpacerHeight = lastRow
+            ? Math.max(0, tableVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
+            : 0;
           return (
             <div ref={contentRef}>
               <MediaTable
                 type="series"
                 visibleFields={visibleFields}
                 rows={visibleRows}
-                topSpacerHeight={tableVirtual.topSpacerHeight}
-                bottomSpacerHeight={tableVirtual.bottomSpacerHeight}
+                topSpacerHeight={topSpacerHeight}
+                bottomSpacerHeight={bottomSpacerHeight}
                 onNavigate={handleNavigateToDetail}
               />
             </div>
           );
         }
 
-        const visibleSeries = filtered.slice(tableMobileVirtual.startIndex, tableMobileVirtual.endIndex);
+        const virtualRows = tableMobileVirtualizer.getVirtualItems();
+        const firstRow = virtualRows[0];
+        const lastRow = virtualRows[virtualRows.length - 1];
+        const startIndex = firstRow?.index ?? 0;
+        const endIndex = (lastRow?.index ?? 0) + 1;
+        const visibleSeries = filtered.slice(startIndex, endIndex);
+        const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
+        const bottomSpacerHeight = lastRow
+          ? Math.max(0, tableMobileVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
+          : 0;
 
         return (
           <div ref={contentRef} className="space-y-2">
-            {tableMobileVirtual.topSpacerHeight > 0 && <div style={{ height: tableMobileVirtual.topSpacerHeight }} />}
+            {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
             {visibleSeries.map((s) => (
               <MediaOverviewItem
                 key={s.id}
@@ -716,7 +759,7 @@ export default function SeriesPage() {
                 onNavigate={handleNavigateToDetail}
               />
             ))}
-            {tableMobileVirtual.bottomSpacerHeight > 0 && <div style={{ height: tableMobileVirtual.bottomSpacerHeight }} />}
+            {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
           </div>
         );
       })()}
