@@ -6,6 +6,7 @@ import {
   IMAGE_CACHE_DIR,
   IMAGE_CACHE_STALE_SECONDS,
   IMAGE_CACHE_TTL_SECONDS,
+  IMAGE_UPSTREAM_FETCH_TIMEOUT_MS,
 } from '@/lib/cache/config';
 import { buildImageMetaKey, sha256Hex } from '@/lib/cache/keys';
 import {
@@ -122,26 +123,70 @@ async function saveCachedImage(generation: number, keyHash: string, content: Buf
   return relativePath;
 }
 
+function isFetchAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+
+  if (error instanceof Error) {
+    const maybeCode = (error as Error & { code?: string }).code;
+    return error.name === 'AbortError' || maybeCode === 'ABORT_ERR';
+  }
+
+  if (typeof error === 'object' && error !== null && 'name' in error) {
+    return (error as { name?: string }).name === 'AbortError';
+  }
+
+  return false;
+}
+
 async function fetchUpstreamImage(url: string, headers?: HeadersInit): Promise<{ status: number; ok: boolean; body: Buffer | null; contentType: string | null }> {
-  const response = await fetch(url, { headers, cache: 'no-store' });
-  if (!response.ok) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), IMAGE_UPSTREAM_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      headers,
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return {
+        status: response.status,
+        ok: false,
+        body: null,
+        contentType: null,
+      };
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    const body = Buffer.from(await response.arrayBuffer());
+
     return {
       status: response.status,
+      ok: true,
+      body,
+      contentType,
+    };
+  } catch (error) {
+    if (isFetchAbortError(error)) {
+      return {
+        status: 504,
+        ok: false,
+        body: null,
+        contentType: null,
+      };
+    }
+
+    return {
+      status: 502,
       ok: false,
       body: null,
       contentType: null,
     };
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const contentType = response.headers.get('content-type') || 'image/jpeg';
-  const body = Buffer.from(await response.arrayBuffer());
-
-  return {
-    status: response.status,
-    ok: true,
-    body,
-    contentType,
-  };
 }
 
 async function fetchBypass(url: string, headers?: HeadersInit): Promise<FetchCachedImageResult> {

@@ -123,9 +123,15 @@ export async function tryAcquireCacheLock(scope: string, keySeed: string, ttlMs 
       PX: Math.max(1, ttlMs),
     });
     return result === 'OK' ? token : null;
-  } catch {
-    // If lock service is unavailable, do not block request path.
-    return token;
+  } catch (error) {
+    console.error('Failed to acquire cache lock', {
+      scope,
+      keySeed,
+      ttlMs,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return null;
   }
 }
 

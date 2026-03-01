@@ -17,6 +17,11 @@ export const IMAGE_CACHE_STALE_SECONDS = parsePositiveInt(
   30 * 24 * 60 * 60
 );
 
+export const IMAGE_UPSTREAM_FETCH_TIMEOUT_MS = parsePositiveInt(
+  process.env.IMAGE_UPSTREAM_FETCH_TIMEOUT_MS,
+  5_000
+);
+
 export const TMDB_CACHE_DEFAULT_TTL_SECONDS = parsePositiveInt(
   process.env.TMDB_CACHE_DEFAULT_TTL_SECONDS,
   10 * 60
