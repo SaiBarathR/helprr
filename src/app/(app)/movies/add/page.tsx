@@ -26,6 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Search, Plus, Loader2, Film, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RadarrLookupResult, QualityProfile, RootFolder, Tag } from '@/types';
+import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
 function AddMoviePageContent() {
   const router = useRouter();
@@ -167,7 +168,7 @@ function AddMoviePageContent() {
   }
 
   const posterUrl = (images: { coverType: string; remoteUrl: string }[]) =>
-    images.find((i) => i.coverType === 'poster')?.remoteUrl;
+    toCachedImageSrc(images.find((i) => i.coverType === 'poster')?.remoteUrl, 'radarr');
 
   const MONITOR_OPTIONS = [
     { value: 'movieOnly', label: 'Movie Only' },
@@ -216,6 +217,9 @@ function AddMoviePageContent() {
   }
 
   const selectedInLibrary = selected?.library?.exists === true;
+  const selectedPoster = selected
+    ? posterUrl(selected.images as { coverType: string; remoteUrl: string }[])
+    : null;
 
   useEffect(() => {
     const prefillTerm = searchParams.get('term');
@@ -275,13 +279,14 @@ function AddMoviePageContent() {
           <div className="space-y-5">
             {/* Movie info */}
             <div className="flex gap-4">
-              {posterUrl(selected.images as { coverType: string; remoteUrl: string }[]) ? (
+              {selectedPoster ? (
                 <Image
-                  src={posterUrl(selected.images as { coverType: string; remoteUrl: string }[])!}
+                  src={selectedPoster}
                   alt=""
                   width={96}
                   height={144}
                   className="w-24 h-auto aspect-[2/3] object-cover rounded-lg shrink-0"
+                  unoptimized={isProtectedApiImageSrc(selectedPoster)}
                 />
               ) : (
                 <div className="w-24 aspect-[2/3] bg-muted rounded-lg flex items-center justify-center shrink-0">
@@ -438,42 +443,46 @@ function AddMoviePageContent() {
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
             {searching
               ? [...Array(9)].map((_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-lg" />)
-              : results.map((r) => (
-                <button
-                  key={r.tmdbId}
-                  onClick={() => setSelected(r)}
-                  className="text-left group"
-                >
-                  <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
-                    {posterUrl(r.images as { coverType: string; remoteUrl: string }[]) ? (
-                      <Image
-                        src={posterUrl(r.images as { coverType: string; remoteUrl: string }[])!}
-                        alt=""
-                        fill
-                        sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
-                        className="object-cover group-hover:scale-105 transition-transform"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Film className="h-8 w-8 text-muted-foreground" />
+              : results.map((r) => {
+                const poster = posterUrl(r.images as { coverType: string; remoteUrl: string }[]);
+                return (
+                  <button
+                    key={r.tmdbId}
+                    onClick={() => setSelected(r)}
+                    className="text-left group"
+                  >
+                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+                      {poster ? (
+                        <Image
+                          src={poster}
+                          alt=""
+                          fill
+                          sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                          className="object-cover group-hover:scale-105 transition-transform"
+                          unoptimized={isProtectedApiImageSrc(poster)}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Film className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                      {r.library?.exists && (
+                        <div className="absolute top-1.5 right-1.5">
+                          <Badge className="bg-green-600/90 text-white text-[10px]">
+                            <Check className="mr-1 h-3 w-3" />
+                            Added
+                          </Badge>
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 p-1.5">
+                        <p className="text-[11px] font-medium text-white truncate leading-tight">{r.title}</p>
+                        <p className="text-[10px] text-white/70">{r.year}</p>
                       </div>
-                    )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                    {r.library?.exists && (
-                      <div className="absolute top-1.5 right-1.5">
-                        <Badge className="bg-green-600/90 text-white text-[10px]">
-                          <Check className="mr-1 h-3 w-3" />
-                          Added
-                        </Badge>
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 p-1.5">
-                      <p className="text-[11px] font-medium text-white truncate leading-tight">{r.title}</p>
-                      <p className="text-[10px] text-white/70">{r.year}</p>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}
           </div>
         )}
       </div>

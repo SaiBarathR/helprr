@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Film, Tv, Star } from 'lucide-react';
 import type { MediaImage } from '@/types';
+import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 
 interface MediaCardProps {
   title: string;
@@ -19,9 +20,14 @@ interface MediaCardProps {
   onNavigate?: () => void;
 }
 
-function getImageUrl(images: MediaImage[], coverType: string): string | null {
+function getImageUrl(
+  images: MediaImage[],
+  coverType: string,
+  serviceHint?: ImageServiceHint
+): string | null {
   const img = images.find((i) => i.coverType === coverType);
-  return img?.remoteUrl || img?.url || null;
+  const raw = img?.remoteUrl || img?.url || null;
+  return toCachedImageSrc(raw, serviceHint);
 }
 
 export function MediaCard({
@@ -36,7 +42,7 @@ export function MediaCard({
   rating,
   onNavigate,
 }: MediaCardProps) {
-  const poster = getImageUrl(images, 'poster');
+  const poster = getImageUrl(images, 'poster', type === 'movie' ? 'radarr' : 'sonarr');
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
   return (
@@ -49,6 +55,7 @@ export function MediaCard({
             fill
             sizes="(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 16vw"
             className="object-cover transition-transform duration-300 group-hover:scale-105"
+            unoptimized={isProtectedApiImageSrc(poster)}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">

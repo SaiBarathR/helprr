@@ -29,6 +29,7 @@ import {
   patchSeasonAcrossSnapshots,
   setSeriesDetailSnapshot,
 } from '@/lib/series-route-cache';
+import { isProtectedApiImageSrc } from '@/lib/image';
 
 export default function SeriesDetailPage() {
   const { id } = useParams();
@@ -326,7 +327,7 @@ export default function SeriesDetailPage() {
     return <div className="text-center py-12 text-muted-foreground">Series not found</div>;
   }
 
-  const poster = getImageUrl(series.images, 'poster');
+  const poster = getImageUrl(series.images, 'poster', 'sonarr');
   const qualityProfile = qualityProfiles.find((qp) => qp.id === series.qualityProfileId);
   const seriesTags = tags.filter((t) => series.tags.includes(t.id));
   const rootFolder = rootFolders.find((rf) => series.path?.startsWith(rf.path));
@@ -444,6 +445,7 @@ export default function SeriesDetailPage() {
                 width={112}
                 height={168}
                 className="w-full h-auto aspect-[2/3] object-cover rounded-lg"
+                unoptimized={isProtectedApiImageSrc(poster)}
               />
             ) : (
               <div className="w-full aspect-[2/3] rounded-lg bg-muted flex items-center justify-center">

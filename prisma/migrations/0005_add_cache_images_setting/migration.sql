@@ -1,0 +1,2 @@
+ALTER TABLE "AppSettings"
+ADD COLUMN IF NOT EXISTS "cacheImagesEnabled" BOOLEAN NOT NULL DEFAULT true;

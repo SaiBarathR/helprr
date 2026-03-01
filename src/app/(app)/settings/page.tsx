@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -38,6 +39,14 @@ interface JellyfinApiUser {
     IsHidden?: boolean;
     IsDisabled?: boolean;
   };
+}
+
+interface CacheUsageStats {
+  imageBytes: number;
+  tmdbApiBytes: number;
+  totalBytes: number;
+  imageFiles: number;
+  tmdbEntries: number;
 }
 
 function isJellyfinApiUser(value: unknown): value is JellyfinApiUser {
@@ -209,6 +218,12 @@ export default function SettingsPage() {
   const [dashboardRefreshInterval, setDashboardRefreshInterval] = useState('5');
   const [activityRefreshInterval, setActivityRefreshInterval] = useState('5');
   const [torrentsRefreshInterval, setTorrentsRefreshInterval] = useState('5');
+  const [cacheImagesEnabled, setCacheImagesEnabled] = useState(true);
+  const [cacheUsage, setCacheUsage] = useState<CacheUsageStats | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<'idle' | 'purging'>('idle');
+  const [cacheLastPurgedAt, setCacheLastPurgedAt] = useState<string | null>(null);
+  const [loadingCacheUsage, setLoadingCacheUsage] = useState(false);
+  const [purgingCache, setPurgingCache] = useState(false);
   const [upcomingAlertHours, setUpcomingAlertHours] = useState('24');
   const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
   const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
@@ -285,6 +300,7 @@ export default function SettingsPage() {
           setDashboardRefreshInterval(String(settings.dashboardRefreshIntervalSecs ?? 5));
           setActivityRefreshInterval(String(settings.activityRefreshIntervalSecs ?? 5));
           setTorrentsRefreshInterval(String(settings.torrentsRefreshIntervalSecs ?? 5));
+          setCacheImagesEnabled(settings.cacheImagesEnabled !== false);
           setUpcomingAlertHours(String(settings.upcomingAlertHours));
           if (settings.upcomingNotifyMode) setUpcomingNotifyMode(settings.upcomingNotifyMode);
           if (settings.upcomingNotifyBeforeMins != null) setUpcomingNotifyBeforeMins(String(settings.upcomingNotifyBeforeMins));
@@ -301,6 +317,52 @@ export default function SettingsPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadCacheUsage = useCallback(async () => {
+    if (!cacheImagesEnabled) {
+      setCacheUsage(null);
+      setCacheStatus('idle');
+      return;
+    }
+
+    setLoadingCacheUsage(true);
+    try {
+      const res = await fetch('/api/settings/cache');
+      if (!res.ok) return;
+      const data = await res.json();
+      const usage = data.usage as Partial<CacheUsageStats> | undefined;
+      if (usage) {
+        setCacheUsage({
+          imageBytes: typeof usage.imageBytes === 'number' ? usage.imageBytes : 0,
+          tmdbApiBytes: typeof usage.tmdbApiBytes === 'number' ? usage.tmdbApiBytes : 0,
+          totalBytes: typeof usage.totalBytes === 'number' ? usage.totalBytes : 0,
+          imageFiles: typeof usage.imageFiles === 'number' ? usage.imageFiles : 0,
+          tmdbEntries: typeof usage.tmdbEntries === 'number' ? usage.tmdbEntries : 0,
+        });
+      }
+      setCacheStatus(data.status === 'purging' ? 'purging' : 'idle');
+      setCacheLastPurgedAt(typeof data.lastPurgedAt === 'string' ? data.lastPurgedAt : null);
+    } catch {
+      // noop
+    } finally {
+      setLoadingCacheUsage(false);
+    }
+  }, [cacheImagesEnabled]);
+
+  useEffect(() => {
+    if (!cacheImagesEnabled) {
+      setCacheUsage(null);
+      setCacheStatus('idle');
+      return;
+    }
+
+    void loadCacheUsage();
+    const interval = setInterval(() => {
+      void loadCacheUsage();
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, [cacheImagesEnabled, loadCacheUsage]);
 
   function updateService(type: string, field: keyof ServiceForm, value: string | boolean) {
     setServices((prev) => ({
@@ -441,6 +503,7 @@ export default function SettingsPage() {
           dashboardRefreshIntervalSecs: parseInt(dashboardRefreshInterval, 10),
           activityRefreshIntervalSecs: parseInt(activityRefreshInterval, 10),
           torrentsRefreshIntervalSecs: parseInt(torrentsRefreshInterval, 10),
+          cacheImagesEnabled,
           theme,
           upcomingAlertHours: parseInt(upcomingAlertHours, 10),
           upcomingNotifyMode,
@@ -449,16 +512,58 @@ export default function SettingsPage() {
         }),
       });
 
+      const payload = await res.json().catch(() => null);
       if (res.ok) {
-        toast.success('Settings saved');
+        if (payload?.cachePurge?.deletedTotalBytes) {
+          toast.success(`Settings saved. Cache deleted (${formatBytes(payload.cachePurge.deletedTotalBytes)})`);
+        } else {
+          toast.success('Settings saved');
+        }
+        if (payload && typeof payload.cacheImagesEnabled === 'boolean') {
+          setCacheImagesEnabled(payload.cacheImagesEnabled);
+        }
+        void loadCacheUsage();
       } else {
-        const data = await res.json();
-        toast.error(data.error || 'Failed to save settings');
+        toast.error(payload?.error || 'Failed to save settings');
       }
     } catch {
       toast.error('Failed to save settings');
     } finally {
       setSavingSettings(false);
+    }
+  }
+
+  async function handleDeleteCache() {
+    setPurgingCache(true);
+    try {
+      const res = await fetch('/api/settings/cache', { method: 'DELETE' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(payload?.error || 'Failed to delete cache');
+        return;
+      }
+
+      if (payload?.result?.deletedTotalBytes) {
+        toast.success(`Cache deleted (${formatBytes(payload.result.deletedTotalBytes)})`);
+      } else {
+        toast.success('Cache deleted');
+      }
+      if (payload?.usage) {
+        const usage = payload.usage as Partial<CacheUsageStats>;
+        setCacheUsage({
+          imageBytes: typeof usage.imageBytes === 'number' ? usage.imageBytes : 0,
+          tmdbApiBytes: typeof usage.tmdbApiBytes === 'number' ? usage.tmdbApiBytes : 0,
+          totalBytes: typeof usage.totalBytes === 'number' ? usage.totalBytes : 0,
+          imageFiles: typeof usage.imageFiles === 'number' ? usage.imageFiles : 0,
+          tmdbEntries: typeof usage.tmdbEntries === 'number' ? usage.tmdbEntries : 0,
+        });
+      } else {
+        void loadCacheUsage();
+      }
+    } catch {
+      toast.error('Failed to delete cache');
+    } finally {
+      setPurgingCache(false);
     }
   }
 
@@ -476,6 +581,14 @@ export default function SettingsPage() {
       toast.error('Failed to sign out');
       setSigningOut(false);
     }
+  }
+
+  function formatBytes(bytes: number) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    const value = bytes / 1024 ** exponent;
+    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
   }
 
   function getPollingLabel(value: string) {
@@ -736,6 +849,77 @@ export default function SettingsPage() {
               </SelectContent>
             </Select>
           </div>
+        </div>
+      </div>
+
+      {/* ── Cache ── */}
+      <div className="grouped-section px-4 mb-6">
+        <div className="grouped-section-title">Cache</div>
+        <div className="grouped-section-content">
+          <div className="grouped-row">
+            <span className="text-sm">Cache Images</span>
+            <Switch
+              checked={cacheImagesEnabled}
+              onCheckedChange={setCacheImagesEnabled}
+              aria-label="Cache Images"
+            />
+          </div>
+
+          {cacheImagesEnabled && (
+            <>
+              <div className="grouped-row">
+                <span className="text-sm">Total Usage</span>
+                <span className="text-sm text-muted-foreground">
+                  {loadingCacheUsage ? 'Loading...' : formatBytes(cacheUsage?.totalBytes ?? 0)}
+                </span>
+              </div>
+              <div className="grouped-row">
+                <span className="text-sm">Image Cache</span>
+                <span className="text-sm text-muted-foreground">
+                  {loadingCacheUsage
+                    ? 'Loading...'
+                    : `${formatBytes(cacheUsage?.imageBytes ?? 0)} (${cacheUsage?.imageFiles ?? 0} files)`}
+                </span>
+              </div>
+              <div className="grouped-row">
+                <span className="text-sm">TMDB API Cache</span>
+                <span className="text-sm text-muted-foreground">
+                  {loadingCacheUsage
+                    ? 'Loading...'
+                    : `${formatBytes(cacheUsage?.tmdbApiBytes ?? 0)} (${cacheUsage?.tmdbEntries ?? 0} entries)`}
+                </span>
+              </div>
+              <div className="grouped-row">
+                <span className="text-sm">Purge Status</span>
+                <span className="text-sm text-muted-foreground capitalize">{cacheStatus}</span>
+              </div>
+              {cacheLastPurgedAt && (
+                <div className="grouped-row">
+                  <span className="text-sm">Last Purged</span>
+                  <span className="text-sm text-muted-foreground">
+                    {new Date(cacheLastPurgedAt).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] last:border-b-0">
+                <Button
+                  variant="outline"
+                  className="w-full h-9"
+                  onClick={handleDeleteCache}
+                  disabled={purgingCache || cacheStatus === 'purging'}
+                >
+                  {purgingCache ? (
+                    <>
+                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    'Delete Cache'
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
