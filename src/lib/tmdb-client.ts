@@ -1,4 +1,12 @@
 import axios, { AxiosInstance } from 'axios';
+import {
+  TMDB_CACHE_DEFAULT_TTL_SECONDS,
+  TMDB_CACHE_DETAILS_TTL_SECONDS,
+  TMDB_CACHE_DISCOVER_TTL_SECONDS,
+  TMDB_CACHE_STATIC_TTL_SECONDS,
+  TMDB_CACHE_STALE_SECONDS,
+} from '@/lib/cache/config';
+import { getTmdbJsonWithCache, type TmdbCachePolicy } from '@/lib/cache/tmdb-api-cache';
 
 export type TmdbMediaType = 'movie' | 'tv';
 
@@ -245,6 +253,50 @@ function parseRetryAfter(headers: unknown): { retryAfterSeconds: number | null; 
   return { retryAfterSeconds: null, retryAt: null };
 }
 
+function getTmdbCachePolicy(endpoint: string): TmdbCachePolicy {
+  if (endpoint === '/configuration') {
+    return {
+      ttlSeconds: TMDB_CACHE_STATIC_TTL_SECONDS,
+      staleSeconds: TMDB_CACHE_STALE_SECONDS,
+    };
+  }
+
+  if (
+    endpoint === '/genre/movie/list'
+    || endpoint === '/genre/tv/list'
+    || endpoint === '/watch/providers/movie'
+    || endpoint === '/watch/providers/tv'
+  ) {
+    return {
+      ttlSeconds: TMDB_CACHE_STATIC_TTL_SECONDS,
+      staleSeconds: TMDB_CACHE_STALE_SECONDS,
+    };
+  }
+
+  if (/^\/(movie|tv)\/\d+(\/external_ids)?$/.test(endpoint)) {
+    return {
+      ttlSeconds: TMDB_CACHE_DETAILS_TTL_SECONDS,
+      staleSeconds: TMDB_CACHE_STALE_SECONDS,
+    };
+  }
+
+  if (
+    endpoint.startsWith('/discover/')
+    || endpoint.startsWith('/search/')
+    || endpoint.startsWith('/trending/')
+  ) {
+    return {
+      ttlSeconds: TMDB_CACHE_DISCOVER_TTL_SECONDS,
+      staleSeconds: TMDB_CACHE_STALE_SECONDS,
+    };
+  }
+
+  return {
+    ttlSeconds: TMDB_CACHE_DEFAULT_TTL_SECONDS,
+    staleSeconds: TMDB_CACHE_STALE_SECONDS,
+  };
+}
+
 export class TmdbClient {
   private client: AxiosInstance;
   private apiKey: string;
@@ -263,52 +315,62 @@ export class TmdbClient {
   }
 
   private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
-    const nowMs = Date.now();
-    maybeSweepTmdbCooldowns(nowMs);
+    const cachePolicy = getTmdbCachePolicy(endpoint);
 
-    const cooldownUntil = tmdbCooldowns.get(this.apiKey);
-    if (cooldownUntil && nowMs >= cooldownUntil) {
-      tmdbCooldowns.delete(this.apiKey);
-    }
-    if (cooldownUntil && nowMs < cooldownUntil) {
-      const remainingSeconds = Math.max(1, Math.ceil((cooldownUntil - nowMs) / 1000));
-      throw new TmdbRateLimitError(
-        'TMDB rate limit reached',
-        remainingSeconds,
-        new Date(cooldownUntil).toISOString()
-      );
-    }
+    return getTmdbJsonWithCache<T>({
+      endpoint,
+      params,
+      apiKey: this.apiKey,
+      policy: cachePolicy,
+      fetcher: async () => {
+        const nowMs = Date.now();
+        maybeSweepTmdbCooldowns(nowMs);
 
-    try {
-      const response = await this.client.get<T>(endpoint, {
-        params: {
-          ...params,
-          ...(this.useBearerAuth ? {} : { api_key: this.apiKey }),
-        },
-        headers: {
-          ...(this.useBearerAuth ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-        },
-      });
-      return response.data;
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 429) {
-        const parsed = parseRetryAfter(error.response.headers);
-        const retryAfterSeconds = parsed.retryAfterSeconds ?? 60;
-        const parsedRetryAtMs = parsed.retryAt ? Date.parse(parsed.retryAt) : Number.NaN;
-        const retryAtMs = Number.isFinite(parsedRetryAtMs)
-          ? parsedRetryAtMs
-          : Date.now() + retryAfterSeconds * 1000;
-        tmdbCooldowns.set(this.apiKey, retryAtMs);
-        maybeSweepTmdbCooldowns(Date.now());
-        throw new TmdbRateLimitError(
-          'TMDB rate limit reached',
-          retryAfterSeconds,
-          parsed.retryAt || new Date(retryAtMs).toISOString()
-        );
-      }
+        const cooldownUntil = tmdbCooldowns.get(this.apiKey);
+        if (cooldownUntil && nowMs >= cooldownUntil) {
+          tmdbCooldowns.delete(this.apiKey);
+        }
+        if (cooldownUntil && nowMs < cooldownUntil) {
+          const remainingSeconds = Math.max(1, Math.ceil((cooldownUntil - nowMs) / 1000));
+          throw new TmdbRateLimitError(
+            'TMDB rate limit reached',
+            remainingSeconds,
+            new Date(cooldownUntil).toISOString()
+          );
+        }
 
-      throw error;
-    }
+        try {
+          const response = await this.client.get<T>(endpoint, {
+            params: {
+              ...params,
+              ...(this.useBearerAuth ? {} : { api_key: this.apiKey }),
+            },
+            headers: {
+              ...(this.useBearerAuth ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+            },
+          });
+          return response.data;
+        } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.status === 429) {
+            const parsed = parseRetryAfter(error.response.headers);
+            const retryAfterSeconds = parsed.retryAfterSeconds ?? 60;
+            const parsedRetryAtMs = parsed.retryAt ? Date.parse(parsed.retryAt) : Number.NaN;
+            const retryAtMs = Number.isFinite(parsedRetryAtMs)
+              ? parsedRetryAtMs
+              : Date.now() + retryAfterSeconds * 1000;
+            tmdbCooldowns.set(this.apiKey, retryAtMs);
+            maybeSweepTmdbCooldowns(Date.now());
+            throw new TmdbRateLimitError(
+              'TMDB rate limit reached',
+              retryAfterSeconds,
+              parsed.retryAt || new Date(retryAtMs).toISOString()
+            );
+          }
+
+          throw error;
+        }
+      },
+    });
   }
 
   async validateConnection(): Promise<void> {

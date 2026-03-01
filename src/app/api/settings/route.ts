@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { pollingService } from '@/lib/polling-service';
+import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
+import { setCachedCacheImagesEnabled } from '@/lib/cache/state';
 
 /**
  * Retrieve the singleton application settings, creating a record with defaults if none exists.
@@ -22,6 +24,7 @@ export async function GET() {
         dashboardRefreshIntervalSecs: 5,
         activityRefreshIntervalSecs: 5,
         torrentsRefreshIntervalSecs: 5,
+        cacheImagesEnabled: true,
         theme: 'dark',
         upcomingAlertHours: 24,
       },
@@ -57,7 +60,26 @@ export async function PUT(request: NextRequest) {
       pollingIntervalSecs, theme, upcomingAlertHours,
       dashboardRefreshIntervalSecs, activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
+      cacheImagesEnabled,
     } = body;
+
+    const current = await prisma.appSettings.upsert({
+      where: { id: 'singleton' },
+      update: {},
+      create: {
+        id: 'singleton',
+        pollingIntervalSecs: 30,
+        dashboardRefreshIntervalSecs: 5,
+        activityRefreshIntervalSecs: 5,
+        torrentsRefreshIntervalSecs: 5,
+        cacheImagesEnabled: true,
+        theme: 'dark',
+        upcomingAlertHours: 24,
+        upcomingNotifyMode: 'before_air',
+        upcomingNotifyBeforeMins: 60,
+        upcomingDailyNotifyHour: 9,
+      },
+    });
 
     const data: Record<string, unknown> = {};
     if (pollingIntervalSecs !== undefined)
@@ -77,6 +99,8 @@ export async function PUT(request: NextRequest) {
       data.upcomingNotifyBeforeMins = upcomingNotifyBeforeMins;
     if (upcomingDailyNotifyHour !== undefined)
       data.upcomingDailyNotifyHour = upcomingDailyNotifyHour;
+    if (cacheImagesEnabled !== undefined)
+      data.cacheImagesEnabled = Boolean(cacheImagesEnabled);
 
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -87,6 +111,7 @@ export async function PUT(request: NextRequest) {
         dashboardRefreshIntervalSecs: dashboardRefreshIntervalSecs ?? 5,
         activityRefreshIntervalSecs: activityRefreshIntervalSecs ?? 5,
         torrentsRefreshIntervalSecs: torrentsRefreshIntervalSecs ?? 5,
+        cacheImagesEnabled: cacheImagesEnabled ?? true,
         theme: theme ?? 'dark',
         upcomingAlertHours: upcomingAlertHours ?? 24,
         upcomingNotifyMode: upcomingNotifyMode ?? 'before_air',
@@ -94,6 +119,14 @@ export async function PUT(request: NextRequest) {
         upcomingDailyNotifyHour: upcomingDailyNotifyHour ?? 9,
       },
     });
+
+    setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
+
+    const disabledNow = current.cacheImagesEnabled && settings.cacheImagesEnabled === false;
+    let cachePurge: Awaited<ReturnType<typeof disableCachingAndPurgeCaches>> | null = null;
+    if (disabledNow) {
+      cachePurge = await disableCachingAndPurgeCaches();
+    }
 
     if (pollingIntervalSecs !== undefined) {
       const validatedPollingIntervalSecs = Number(pollingIntervalSecs);
@@ -113,7 +146,10 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(settings);
+    return NextResponse.json({
+      ...settings,
+      cachePurge,
+    });
   } catch (error) {
     console.error('Failed to update settings:', error);
     return NextResponse.json(

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
 const ALLOWED_IMAGE_TYPES = new Set(['Primary', 'Backdrop', 'Banner', 'Thumb', 'Logo']);
@@ -39,24 +40,29 @@ export async function GET(request: NextRequest) {
 
     const url = `${connection.url.replace(/\/+$/, '')}/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(type)}?maxWidth=${maxWidth}&quality=${quality}`;
 
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `MediaBrowser Token="${connection.apiKey}"`,
+    const result = await fetchImageWithServerCache({
+      cacheKey: `jellyfin:${itemId}:${type}:${maxWidth}:${quality}`,
+      upstreamUrl: url,
+      upstreamHeaders: {
+        Authorization: `MediaBrowser Token="${connection.apiKey}"`,
         'X-Emby-Token': connection.apiKey,
       },
     });
 
-    if (!response.ok) {
-      return new NextResponse(null, { status: response.status });
+    if (!result.body) {
+      return new NextResponse(null, {
+        status: result.status,
+        headers: {
+          'X-Helprr-Cache': result.cacheStatus,
+        },
+      });
     }
 
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const buffer = await response.arrayBuffer();
-
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(result.body), {
       headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400, immutable',
+        'Content-Type': result.contentType || 'image/jpeg',
+        'Cache-Control': 'private, max-age=86400, stale-while-revalidate=604800, stale-if-error=2592000',
+        'X-Helprr-Cache': result.cacheStatus,
       },
     });
   } catch {

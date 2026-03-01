@@ -7,10 +7,16 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { MediaImage } from '@/types';
 import type { PosterSize } from '@/lib/store';
+import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 
-function getImageUrl(images: MediaImage[], coverType: string): string | null {
+function getImageUrl(
+  images: MediaImage[],
+  coverType: string,
+  serviceHint?: ImageServiceHint
+): string | null {
   const img = images.find((i) => i.coverType === coverType);
-  return img?.remoteUrl || img?.url || null;
+  const raw = img?.remoteUrl || img?.url || null;
+  return toCachedImageSrc(raw, serviceHint);
 }
 
 function formatBytes(bytes: number) {
@@ -73,7 +79,7 @@ export function MediaOverviewItem({
   genres,
   onNavigate,
 }: MediaOverviewItemProps) {
-  const poster = getImageUrl(images, 'poster');
+  const poster = getImageUrl(images, 'poster', type === 'movie' ? 'radarr' : 'sonarr');
   const show = (field: string) => visibleFields.includes(field);
 
   return (
@@ -86,7 +92,14 @@ export function MediaOverviewItem({
       {show('images') ? (
         <div className={cn('relative shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-muted', posterSizeClasses[posterSize])}>
           {poster ? (
-            <Image src={poster} alt={title} fill sizes="(max-width: 640px) 80px, 112px" className="object-cover" />
+            <Image
+              src={poster}
+              alt={title}
+              fill
+              sizes="(max-width: 640px) 80px, 112px"
+              className="object-cover"
+              unoptimized={isProtectedApiImageSrc(poster)}
+            />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
               {type === 'movie' ? <Film className="h-6 w-6" /> : <Tv className="h-6 w-6" />}

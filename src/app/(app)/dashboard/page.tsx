@@ -19,7 +19,7 @@ import { formatDistanceToNow } from 'date-fns';
 import type { QueueItem, CalendarEvent, MediaImage } from '@/types';
 import type { JellyfinSession, JellyfinItem } from '@/types/jellyfin';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { isProtectedApiImageSrc } from '@/lib/image';
+import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
 
@@ -53,9 +53,9 @@ interface RecentItem {
   href: string;
 }
 
-function getPoster(images: MediaImage[]): string | null {
+function getPoster(images: MediaImage[], serviceHint?: 'radarr' | 'sonarr'): string | null {
   const img = images.find((i) => i.coverType === 'poster');
-  return img?.remoteUrl || img?.url || null;
+  return toCachedImageSrc(img?.remoteUrl || img?.url || null, serviceHint);
 }
 
 function formatBytes(bytes: number): string {
@@ -392,41 +392,45 @@ export default function DashboardPage() {
         <div>
           <SectionHeader title="Recently Added" href="/activity/history" />
           <Carousel>
-            {recentlyAdded.map((item) => (
-              <Link
-                key={item.id}
-                href={item.href}
-                className="snap-start shrink-0 w-[110px] group"
-              >
-                <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
-                  {item.poster ? (
-                    <Image
-                      src={item.poster}
-                      alt={item.title}
-                      fill
-                      sizes="110px"
-                      className="object-cover transition-transform duration-300 group-active:scale-105"
-                      unoptimized={isProtectedApiImageSrc(item.poster)}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      {item.type === 'movie'
-                        ? <Film className="h-6 w-6 text-muted-foreground/20" />
-                        : <Tv className="h-6 w-6 text-muted-foreground/20" />
-                      }
+            {recentlyAdded.map((item) => {
+              const posterSrc = toCachedImageSrc(item.poster, item.type === 'movie' ? 'radarr' : 'sonarr') || item.poster;
+
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className="snap-start shrink-0 w-[110px] group"
+                >
+                  <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
+                    {posterSrc ? (
+                      <Image
+                        src={posterSrc}
+                        alt={item.title}
+                        fill
+                        sizes="110px"
+                        className="object-cover transition-transform duration-300 group-active:scale-105"
+                        unoptimized={isProtectedApiImageSrc(posterSrc)}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        {item.type === 'movie'
+                          ? <Film className="h-6 w-6 text-muted-foreground/20" />
+                          : <Tv className="h-6 w-6 text-muted-foreground/20" />
+                        }
+                      </div>
+                    )}
+                    {/* Type badge in corner */}
+                    <div className="absolute top-1.5 left-1.5">
+                      <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
+                        {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
+                      </span>
                     </div>
-                  )}
-                  {/* Type badge in corner */}
-                  <div className="absolute top-1.5 left-1.5">
-                    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
-                      {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
-                    </span>
                   </div>
-                </div>
-                <p className="text-[11px] font-medium truncate leading-tight">{item.title}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{item.subtitle || formatDistanceToNowSafe(item.date)}</p>
-              </Link>
-            ))}
+                  <p className="text-[11px] font-medium truncate leading-tight">{item.title}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{item.subtitle || formatDistanceToNowSafe(item.date)}</p>
+                </Link>
+              );
+            })}
           </Carousel>
         </div>
       )}
@@ -441,7 +445,7 @@ export default function DashboardPage() {
         ) : (
           <Carousel>
             {upcoming.slice(0, 12).map((event) => {
-              const poster = getPoster(event.images);
+              const poster = getPoster(event.images, event.type === 'movie' ? 'radarr' : 'sonarr');
               return (
                 <Link
                   key={event.id}

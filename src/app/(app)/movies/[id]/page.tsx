@@ -46,6 +46,7 @@ import {
   getMovieDetailSnapshot,
   setMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
+import { isProtectedApiImageSrc } from '@/lib/image';
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -236,7 +237,7 @@ export default function MovieDetailPage() {
     return <div className="text-center py-12 text-muted-foreground">Movie not found</div>;
   }
 
-  const poster = getImageUrl(movie.images, 'poster');
+  const poster = getImageUrl(movie.images, 'poster', 'radarr');
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
   const rootFolder = movie.path ? movie.path.split('/').slice(0, -1).join('/') : '';
@@ -395,6 +396,7 @@ export default function MovieDetailPage() {
                   fill
                   sizes="120px"
                   className="object-cover"
+                  unoptimized={isProtectedApiImageSrc(poster)}
                 />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
