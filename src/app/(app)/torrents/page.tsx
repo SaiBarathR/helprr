@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -8,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { useWindowVirtualRange } from '@/hooks/use-window-virtual-range';
 import {
   Drawer,
   DrawerContent,
@@ -49,7 +49,6 @@ import type {
 } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 
-const VIRTUALIZE_THRESHOLD = 40;
 const TORRENT_ROW_HEIGHT = 140;
 
 function formatBytes(bytes: number): string {
@@ -263,6 +262,7 @@ export default function TorrentsPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
+  const [listOffsetTop, setListOffsetTop] = useState(0);
 
   const [detailHash, setDetailHash] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<{
@@ -378,6 +378,26 @@ export default function TorrentsPage() {
     });
   }, [torrents]);
 
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+
+    const measure = () => {
+      const rect = list.getBoundingClientRect();
+      setListOffsetTop(rect.top + window.scrollY);
+    };
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [selectedTorrents.size, loading, error, torrents.length, search]);
+
   const torrentAction = useCallback(async (hash: string, action: string, extra?: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/qbittorrent/${hash}`, {
@@ -445,19 +465,29 @@ export default function TorrentsPage() {
     return torrents.filter((torrent) => torrent.name.toLowerCase().includes(q));
   }, [search, torrents]);
 
-  const useVirtualization = filteredTorrents.length > VIRTUALIZE_THRESHOLD;
-  const virtualRange = useWindowVirtualRange({
-    container: listRef.current,
-    itemCount: filteredTorrents.length,
-    itemSize: TORRENT_ROW_HEIGHT,
+  const useVirtualization = !loading && filteredTorrents.length > 0;
+  const virtualizer = useWindowVirtualizer({
+    count: filteredTorrents.length,
+    estimateSize: () => TORRENT_ROW_HEIGHT,
     enabled: useVirtualization,
     overscan: 8,
+    scrollMargin: listOffsetTop,
   });
 
+  const virtualRows = virtualizer.getVirtualItems();
+  const firstVirtualRow = virtualRows[0];
+  const lastVirtualRow = virtualRows[virtualRows.length - 1];
+  const startIndex = firstVirtualRow?.index ?? 0;
+  const endIndex = (lastVirtualRow?.index ?? 0) + 1;
+
   const visibleTorrents = useMemo(() => {
-    if (!useVirtualization) return filteredTorrents;
-    return filteredTorrents.slice(virtualRange.startIndex, virtualRange.endIndex);
-  }, [filteredTorrents, useVirtualization, virtualRange.endIndex, virtualRange.startIndex]);
+    return filteredTorrents.slice(startIndex, endIndex);
+  }, [endIndex, filteredTorrents, startIndex]);
+
+  const topSpacerHeight = firstVirtualRow ? Math.max(0, firstVirtualRow.start - listOffsetTop) : 0;
+  const bottomSpacerHeight = lastVirtualRow
+    ? Math.max(0, virtualizer.getTotalSize() - (lastVirtualRow.end - listOffsetTop))
+    : 0;
 
   const torrentNameByHash = useMemo(
     () => new Map(torrents.map((torrent) => [torrent.hash, torrent.name])),
@@ -633,8 +663,8 @@ export default function TorrentsPage() {
             </span>
           </div>
 
-          {useVirtualization && virtualRange.topSpacerHeight > 0 && (
-            <div style={{ height: virtualRange.topSpacerHeight }} />
+          {topSpacerHeight > 0 && (
+            <div style={{ height: topSpacerHeight }} />
           )}
 
           <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
@@ -651,8 +681,8 @@ export default function TorrentsPage() {
             ))}
           </div>
 
-          {useVirtualization && virtualRange.bottomSpacerHeight > 0 && (
-            <div style={{ height: virtualRange.bottomSpacerHeight }} />
+          {bottomSpacerHeight > 0 && (
+            <div style={{ height: bottomSpacerHeight }} />
           )}
         </div>
       )}
