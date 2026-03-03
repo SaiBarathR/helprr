@@ -308,3 +308,30 @@ html {
   transform: scale(0.98);
   transition: all 0.1s ease;
 }
+
+/* iOS-style widget jiggle animation for edit mode */
+@keyframes widget-jiggle {
+  0% { transform: rotate(-0.7deg); }
+  25% { transform: rotate(0.7deg); }
+  50% { transform: rotate(-0.5deg); }
+  75% { transform: rotate(0.5deg); }
+  100% { transform: rotate(-0.7deg); }
+}
+
+.widget-jiggle {
+  animation: widget-jiggle 0.3s ease-in-out infinite;
+}
+
+.widget-jiggle:nth-child(2n) {
+  animation-delay: 0.05s;
+}
+
+.widget-jiggle:nth-child(3n) {
+  animation-delay: 0.1s;
+  animation-duration: 0.35s;
+}
+
+.widget-jiggle:nth-child(5n) {
+  animation-delay: 0.15s;
+  animation-duration: 0.25s;
+}

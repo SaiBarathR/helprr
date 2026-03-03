@@ -4,6 +4,8 @@ import {
   type NavItemId, DEFAULT_NAV_ORDER, NAV_ITEM_MAP, reconcileNavOrder,
 } from '@/lib/nav-config';
 import type { DiscoverContentType } from '@/types';
+import type { WidgetInstance, WidgetSize } from '@/lib/widgets/types';
+import { DEFAULT_LAYOUT } from '@/lib/widgets/registry';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -123,6 +125,16 @@ interface UIState {
   toggleNavItem: (id: NavItemId) => void;
   setDefaultPage: (id: NavItemId) => void;
   resetNavConfig: () => void;
+  // Dashboard widget layout
+  dashboardLayout: WidgetInstance[];
+  dashboardEditMode: boolean;
+  setDashboardLayout: (layout: WidgetInstance[]) => void;
+  setDashboardEditMode: (editing: boolean) => void;
+  addWidget: (widgetId: string, size: WidgetSize) => void;
+  removeWidget: (instanceId: string) => void;
+  resizeWidget: (instanceId: string, size: WidgetSize) => void;
+  reorderWidgets: (layout: WidgetInstance[]) => void;
+  resetDashboardLayout: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -221,10 +233,37 @@ export const useUIStore = create<UIState>()(
         }),
       setDefaultPage: (id) => set({ defaultPage: id }),
       resetNavConfig: () => set({ navOrder: [...DEFAULT_NAV_ORDER], disabledNavItems: [], defaultPage: 'dashboard' as NavItemId }),
+      // Dashboard widgets
+      dashboardLayout: DEFAULT_LAYOUT.map((w) => ({ ...w })),
+      dashboardEditMode: false,
+      setDashboardLayout: (layout) => set({ dashboardLayout: layout }),
+      setDashboardEditMode: (editing) => set({ dashboardEditMode: editing }),
+      addWidget: (widgetId, size) =>
+        set((state) => {
+          const count = state.dashboardLayout.filter((w) => w.widgetId === widgetId).length;
+          const instance: WidgetInstance = {
+            id: `${widgetId}-${count + 1}-${Date.now()}`,
+            widgetId,
+            size,
+          };
+          return { dashboardLayout: [...state.dashboardLayout, instance] };
+        }),
+      removeWidget: (instanceId) =>
+        set((state) => ({
+          dashboardLayout: state.dashboardLayout.filter((w) => w.id !== instanceId),
+        })),
+      resizeWidget: (instanceId, size) =>
+        set((state) => ({
+          dashboardLayout: state.dashboardLayout.map((w) =>
+            w.id === instanceId ? { ...w, size } : w
+          ),
+        })),
+      reorderWidgets: (layout) => set({ dashboardLayout: layout }),
+      resetDashboardLayout: () => set({ dashboardLayout: DEFAULT_LAYOUT.map((w) => ({ ...w })) }),
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 5,
+      version: 6,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -267,6 +306,9 @@ export const useUIStore = create<UIState>()(
           state.moviesSearch = '';
           state.seriesSearch = '';
         }
+        if (version < 6) {
+          state.dashboardLayout = DEFAULT_LAYOUT.map((w) => ({ ...w }));
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -295,6 +337,7 @@ export const useUIStore = create<UIState>()(
         navOrder: state.navOrder,
         disabledNavItems: state.disabledNavItems,
         defaultPage: state.defaultPage,
+        dashboardLayout: state.dashboardLayout,
       }),
     }
   )
