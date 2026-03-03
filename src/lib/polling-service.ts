@@ -8,6 +8,86 @@ export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
 
+  private normalizeValue(value: unknown): string {
+    return typeof value === 'string' ? value.trim().toLowerCase() : '';
+  }
+
+  private normalizeState(value: unknown): string {
+    return this.normalizeValue(value).replace(/[^a-z0-9]/g, '');
+  }
+
+  private isImportFailedState(value: unknown): boolean {
+    return this.normalizeState(value) === 'importfailed';
+  }
+
+  private isFailedDownloadStatus(value: unknown): boolean {
+    const status = this.normalizeValue(value);
+    return status === 'warning' || status === 'error' || status === 'failed';
+  }
+
+  private parseQueueSnapshots(raw: unknown): Map<number, {
+    id: number;
+    trackedDownloadState?: string;
+    trackedDownloadStatus?: string;
+  }> {
+    if (!Array.isArray(raw)) return new Map();
+
+    const entries = raw.flatMap((entry) => {
+      if (typeof entry === 'number' && Number.isFinite(entry)) {
+        return [{ id: entry }];
+      }
+      if (
+        entry
+        && typeof entry === 'object'
+        && 'id' in entry
+        && typeof entry.id === 'number'
+        && Number.isFinite(entry.id)
+      ) {
+        const obj = entry as {
+          id: number;
+          trackedDownloadState?: unknown;
+          trackedDownloadStatus?: unknown;
+        };
+        return [{
+          id: obj.id,
+          trackedDownloadState: typeof obj.trackedDownloadState === 'string' ? obj.trackedDownloadState : undefined,
+          trackedDownloadStatus: typeof obj.trackedDownloadStatus === 'string' ? obj.trackedDownloadStatus : undefined,
+        }];
+      }
+      return [];
+    });
+
+    return new Map(entries.map((entry) => [entry.id, entry]));
+  }
+
+  private parseJellyfinPollingState(raw: unknown): { sessionIds: string[]; recentItemIds: string[] } {
+    const parseStringArray = (value: unknown): string[] => {
+      if (!Array.isArray(value)) return [];
+      return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+    };
+
+    // Legacy shape (array of session ids).
+    if (Array.isArray(raw)) {
+      return {
+        sessionIds: parseStringArray(raw),
+        recentItemIds: [],
+      };
+    }
+
+    if (!raw || typeof raw !== 'object') {
+      return {
+        sessionIds: [],
+        recentItemIds: [],
+      };
+    }
+
+    const value = raw as { sessionIds?: unknown; recentItemIds?: unknown };
+    return {
+      sessionIds: parseStringArray(value.sessionIds),
+      recentItemIds: parseStringArray(value.recentItemIds),
+    };
+  }
+
   start(intervalMs: number): void {
     if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
       throw new Error('Invalid polling interval');
@@ -84,12 +164,16 @@ export class PollingService {
 
     // Queue polling
     const queue = await client.getQueue(1, 100);
-    const currentIds = queue.records.map((r) => r.id);
-    const prevIds = (state.lastQueueIds as number[]) || [];
-    const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
+    const previousQueue = this.parseQueueSnapshots(state.lastQueueIds);
 
-    for (const item of newItems) {
-      if (item.trackedDownloadState === 'importFailed') {
+    for (const item of queue.records) {
+      const previousItem = previousQueue.get(item.id);
+      const isImportFailedNow = this.isImportFailedState(item.trackedDownloadState);
+      const wasImportFailed = this.isImportFailedState(previousItem?.trackedDownloadState);
+      const isDownloadFailedNow = this.isFailedDownloadStatus(item.trackedDownloadStatus);
+      const wasDownloadFailed = this.isFailedDownloadStatus(previousItem?.trackedDownloadStatus);
+
+      if (isImportFailedNow && !wasImportFailed) {
         await notifyEvent({
           eventType: 'importFailed',
           title: 'Import Failed',
@@ -97,7 +181,7 @@ export class PollingService {
           metadata: { source: 'sonarr', id: item.id },
           url: '/activity',
         });
-      } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
+      } else if (!isImportFailedNow && isDownloadFailedNow && !wasDownloadFailed) {
         await notifyEvent({
           eventType: 'downloadFailed',
           title: 'Download Failed',
@@ -105,7 +189,7 @@ export class PollingService {
           metadata: { source: 'sonarr', id: item.id },
           url: '/activity',
         });
-      } else {
+      } else if (!previousItem && !isImportFailedNow && !isDownloadFailedNow) {
         await notifyEvent({
           eventType: 'grabbed',
           title: 'Download Started',
@@ -151,7 +235,11 @@ export class PollingService {
     await prisma.pollingState.update({
       where: { serviceType: 'SONARR' },
       data: {
-        lastQueueIds: currentIds,
+        lastQueueIds: queue.records.map((item) => ({
+          id: item.id,
+          trackedDownloadState: item.trackedDownloadState,
+          trackedDownloadStatus: item.trackedDownloadStatus,
+        })),
         lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
         lastHealthHash: healthHash,
       },
@@ -169,12 +257,16 @@ export class PollingService {
     });
 
     const queue = await client.getQueue(1, 100);
-    const currentIds = queue.records.map((r) => r.id);
-    const prevIds = (state.lastQueueIds as number[]) || [];
-    const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
+    const previousQueue = this.parseQueueSnapshots(state.lastQueueIds);
 
-    for (const item of newItems) {
-      if (item.trackedDownloadState === 'importFailed') {
+    for (const item of queue.records) {
+      const previousItem = previousQueue.get(item.id);
+      const isImportFailedNow = this.isImportFailedState(item.trackedDownloadState);
+      const wasImportFailed = this.isImportFailedState(previousItem?.trackedDownloadState);
+      const isDownloadFailedNow = this.isFailedDownloadStatus(item.trackedDownloadStatus);
+      const wasDownloadFailed = this.isFailedDownloadStatus(previousItem?.trackedDownloadStatus);
+
+      if (isImportFailedNow && !wasImportFailed) {
         await notifyEvent({
           eventType: 'importFailed',
           title: 'Movie Import Failed',
@@ -182,7 +274,7 @@ export class PollingService {
           metadata: { source: 'radarr', id: item.id },
           url: '/activity',
         });
-      } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
+      } else if (!isImportFailedNow && isDownloadFailedNow && !wasDownloadFailed) {
         await notifyEvent({
           eventType: 'downloadFailed',
           title: 'Movie Download Failed',
@@ -190,7 +282,7 @@ export class PollingService {
           metadata: { source: 'radarr', id: item.id },
           url: '/activity',
         });
-      } else {
+      } else if (!previousItem && !isImportFailedNow && !isDownloadFailedNow) {
         await notifyEvent({
           eventType: 'grabbed',
           title: 'Movie Download Started',
@@ -233,7 +325,11 @@ export class PollingService {
     await prisma.pollingState.update({
       where: { serviceType: 'RADARR' },
       data: {
-        lastQueueIds: currentIds,
+        lastQueueIds: queue.records.map((item) => ({
+          id: item.id,
+          trackedDownloadState: item.trackedDownloadState,
+          trackedDownloadStatus: item.trackedDownloadStatus,
+        })),
         lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
         lastHealthHash: healthHash,
       },
@@ -314,48 +410,55 @@ export class PollingService {
       create: { serviceType: 'JELLYFIN', lastQueueIds: [] },
     });
 
-    // Activity log polling (new library items)
-    try {
-      const minDate = state.lastHistoryDate?.toISOString();
-      const activity = await client.getActivityLog({ limit: 50, minDate });
-      const lastDate = state.lastHistoryDate;
-      const newEntries = lastDate
-        ? activity.Items.filter((a) => new Date(a.Date) > new Date(lastDate))
-        : [];
+    const jellyfinState = this.parseJellyfinPollingState(state.lastQueueIds);
+    let nextSessionIds = jellyfinState.sessionIds;
+    let nextRecentItemIds = jellyfinState.recentItemIds;
+    let nextHistoryDate = state.lastHistoryDate;
 
-      for (const entry of newEntries) {
-        if (entry.Type === 'ItemAdded' || entry.Name.includes('added to library')) {
+    // Recently added polling (new library items)
+    try {
+      const recentlyAdded = await client.getRecentlyAdded({ limit: 50 });
+      const currentRecentItemIds = recentlyAdded
+        .map((item) => item.Id)
+        .filter((itemId): itemId is string => typeof itemId === 'string' && itemId.length > 0);
+      const previousRecentItemIds = new Set(jellyfinState.recentItemIds);
+      const shouldNotify = jellyfinState.recentItemIds.length > 0;
+
+      if (shouldNotify) {
+        for (const item of recentlyAdded) {
+          const itemId = item.Id;
+          if (!itemId || previousRecentItemIds.has(itemId)) continue;
+
           await notifyEvent({
             eventType: 'jellyfinItemAdded',
             title: 'Media Added to Jellyfin',
-            body: entry.Overview || entry.Name,
-            metadata: { source: 'jellyfin', id: entry.Id },
+            body: item.Overview || item.Name,
+            metadata: { source: 'jellyfin', id: itemId },
             url: '/dashboard',
           });
         }
       }
 
-      const latestDate = activity.Items.length > 0
-        ? new Date(activity.Items[0].Date)
-        : state.lastHistoryDate;
-
-      await prisma.pollingState.update({
-        where: { serviceType: 'JELLYFIN' },
-        data: {
-          lastHistoryDate: latestDate,
-        },
-      });
+      nextRecentItemIds = currentRecentItemIds;
+      const mostRecentCreatedAt = recentlyAdded.reduce<Date | null>((latest, item) => {
+        if (!item.DateCreated) return latest;
+        const date = new Date(item.DateCreated);
+        if (Number.isNaN(date.getTime())) return latest;
+        if (!latest || date > latest) return date;
+        return latest;
+      }, null);
+      if (mostRecentCreatedAt) nextHistoryDate = mostRecentCreatedAt;
     } catch (e) {
-      console.error('[Polling] Jellyfin activity error:', e);
+      console.error('[Polling] Jellyfin recently-added error:', e);
     }
 
     // Session polling (new playback)
     try {
       const sessions = await client.getActiveSessions();
       const currentSessionIds = sessions.map((s) => s.Id);
-      const prevSessionIds = (state.lastQueueIds as string[]) || [];
+      const previousSessionIds = new Set(jellyfinState.sessionIds);
 
-      const newSessions = sessions.filter((s) => !prevSessionIds.includes(s.Id));
+      const newSessions = sessions.filter((s) => !previousSessionIds.has(s.Id));
 
       for (const session of newSessions) {
         const item = session.NowPlayingItem;
@@ -373,15 +476,21 @@ export class PollingService {
         }
       }
 
-      await prisma.pollingState.update({
-        where: { serviceType: 'JELLYFIN' },
-        data: {
-          lastQueueIds: currentSessionIds,
-        },
-      });
+      nextSessionIds = currentSessionIds;
     } catch (e) {
       console.error('[Polling] Jellyfin sessions error:', e);
     }
+
+    await prisma.pollingState.update({
+      where: { serviceType: 'JELLYFIN' },
+      data: {
+        lastQueueIds: {
+          sessionIds: nextSessionIds,
+          recentItemIds: nextRecentItemIds,
+        },
+        lastHistoryDate: nextHistoryDate,
+      },
+    });
   }
 
   private async checkUpcoming() {
