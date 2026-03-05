@@ -41,6 +41,7 @@ import {
   RefreshCw,
   Search,
   Filter,
+  FolderOpen,
 } from 'lucide-react';
 import type {
   QBittorrentTorrent,
@@ -731,11 +732,25 @@ export default function TorrentsPage() {
 
                 {detailData.files.length > 0 && (
                   <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Files ({detailData.files.length})
-                    </h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Files ({detailData.files.length})
+                      </h3>
+                      <button
+                        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+                        onClick={() => {
+                          const name = detailHash ? torrentNameByHash.get(detailHash) || '' : '';
+                          setDetailHash(null);
+                          setDetailData(null);
+                          router.push(`/torrents/${detailHash}/files?name=${encodeURIComponent(name)}`);
+                        }}
+                      >
+                        <FolderOpen className="h-3.5 w-3.5" />
+                        Manage Files
+                      </button>
+                    </div>
                     <div className="space-y-1.5">
-                      {detailData.files.map((file) => (
+                      {detailData.files.slice(0, 5).map((file) => (
                         <div key={file.index} className="rounded-lg bg-muted/40 p-2.5 space-y-1">
                           <p className="text-xs font-medium break-all leading-snug">{file.name}</p>
                           <div className="flex items-center gap-2">
@@ -747,6 +762,11 @@ export default function TorrentsPage() {
                           <p className="text-[10px] text-muted-foreground">{formatBytes(file.size)}</p>
                         </div>
                       ))}
+                      {detailData.files.length > 5 && (
+                        <p className="text-[10px] text-muted-foreground text-center py-1">
+                          +{detailData.files.length - 5} more files
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}
