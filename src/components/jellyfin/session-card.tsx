@@ -21,7 +21,10 @@ export function SessionCard({ session, variant, onInfoClick }: SessionCardProps)
     ? ticksToProgress(playState.PositionTicks, item.RunTimeTicks)
     : 0;
   const ti = session.TranscodingInfo;
-  const isTranscoding = Boolean(ti && !ti.IsVideoDirect);
+  const isRemuxing = Boolean(
+    ti && ti.IsVideoDirect && ti.IsAudioDirect && playState?.PlayMethod === 'Transcode'
+  ) || playState?.PlayMethod === 'DirectStream';
+  const isTranscoding = Boolean(ti && (!ti.IsVideoDirect || !ti.IsAudioDirect) && playState?.PlayMethod === 'Transcode');
   const isHW = Boolean(ti?.HardwareAccelerationType?.trim());
   const imageId = item?.Type === 'Episode' && item?.SeriesId ? item.SeriesId : item?.Id;
   const backdropSrc = imageId
@@ -73,15 +76,15 @@ export function SessionCard({ session, variant, onInfoClick }: SessionCardProps)
                 className={`text-[9px] px-2 py-0 flex items-center h-5 ${isHW ? 'text-amber-500 border-amber-500/30' : 'text-orange-500 border-orange-500/30'}`}
               >
                 <Zap className=" w-2 mr-0.5" />
-                <p className='pt-0.5'>
-                  {isHW ? 'HW' : 'Transcode'}
-                </p>
+                {isHW ? 'HW' : 'Transcode'}
+              </Badge>
+            ) : isRemuxing ? (
+              <Badge variant="outline" className="text-[9px] px-2 py-0 h-5 flex items-center text-blue-400 border-blue-400/30">
+                Remux
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-[9px] px-2 py-0 h-5 flex items-center text-green-500 border-green-500/30">
-                <p className='pt-0.5'>
-                  Direct
-                </p>
+              <Badge variant="outline" className="text-[9px]  h-5 flex items-center text-green-500 border-green-500/30">
+                Direct
               </Badge>
             )}
             {onInfoClick && (
