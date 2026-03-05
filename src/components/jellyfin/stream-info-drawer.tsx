@@ -80,7 +80,8 @@ export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
   const audioStreams = mediaStreams.filter((s) => s.Type === 'Audio');
   const outputSummary = ti ? getTranscodeOutputSummary(ti) : null;
   const hasTranscodeReasons = ti?.TranscodeReasons && ti.TranscodeReasons.length > 0;
-  const isRemuxing = playState?.PlayMethod === 'Transcode' && ti?.IsVideoDirect && ti?.IsAudioDirect;
+  const isRemuxing = (playState?.PlayMethod === 'Transcode' && ti?.IsVideoDirect && ti?.IsAudioDirect)
+    || (playState?.PlayMethod === 'DirectStream' && !!ti);
   const isTranscoding = playState?.PlayMethod === 'Transcode' && !isRemuxing;
 
   return (
