@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { MonitorPlay } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, SectionHeader } from '@/components/widgets/shared';
+import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import type { JellyfinItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -16,7 +16,7 @@ async function fetchResumeItems(): Promise<JellyfinItem[]> {
   return data.items || [];
 }
 
-export function ContinueWatchingWidget({ size, refreshInterval }: WidgetProps) {
+export function ContinueWatchingWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { data: resumeItems, loading } = useWidgetData({ fetchFn: fetchResumeItems, refreshInterval });
 
   if (loading) {
@@ -32,7 +32,9 @@ export function ContinueWatchingWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!resumeItems || resumeItems.length === 0) return null;
+  if (!resumeItems || resumeItems.length === 0) {
+    return editMode ? <EditModePlaceholder title="Continue Watching" message="Nothing to resume" /> : null;
+  }
 
   return (
     <div>

@@ -29,3 +29,12 @@ export function SectionHeader({ title, href, linkText = 'View all', badge }: { t
     </div>
   );
 }
+
+export function EditModePlaceholder({ title, message = 'No activity' }: { title: string; message?: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border bg-card/60 py-8 px-4 text-center">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+    </div>
+  );
+}

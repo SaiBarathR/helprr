@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Search, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface WantedCounts {
@@ -32,7 +33,7 @@ async function fetchWanted(): Promise<WantedCounts> {
   return { missing, cutoff };
 }
 
-export function WantedItemsWidget({ size, refreshInterval }: WidgetProps) {
+export function WantedItemsWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data, loading } = useWidgetData({ fetchFn: fetchWanted, refreshInterval });
 
   if (loading) {
@@ -44,12 +45,14 @@ export function WantedItemsWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return editMode ? <EditModePlaceholder title="Wanted Items" message="No wanted counts" /> : null;
+  }
 
   if (size === 'small') {
     return (
       <Link
-        href="/activity/wanted"
+        href="/activity?tab=missing"
         className="rounded-xl bg-card p-3 flex items-center gap-3 hover:bg-muted/30 active:bg-muted/50 transition-colors"
       >
         <Search className="h-4 w-4 text-amber-500" />
@@ -63,7 +66,7 @@ export function WantedItemsWidget({ size, refreshInterval }: WidgetProps) {
 
   return (
     <Link
-      href="/activity/wanted"
+      href="/activity?tab=missing"
       className="rounded-xl bg-card p-4 flex items-center gap-4 hover:bg-muted/30 active:bg-muted/50 transition-colors"
     >
       <div className="rounded-lg bg-amber-500/10 p-2.5 shrink-0">

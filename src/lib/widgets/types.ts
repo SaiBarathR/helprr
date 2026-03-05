@@ -7,6 +7,7 @@ export type WidgetCategory = 'overview' | 'media' | 'downloads' | 'streaming' | 
 export interface WidgetProps {
   size: WidgetSize;
   refreshInterval: number;
+  editMode?: boolean;
 }
 
 export interface WidgetDefinition {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -108,12 +108,20 @@ const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
 
 export default function ActivityPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [tab, setTab] = useState<TabKey>('queue');
   const [refreshing, setRefreshing] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>('progress');
   const [filterBy, setFilterBy] = useState<FilterKey>('all');
   const [queueCount, setQueueCount] = useState(0);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab && TABS.some((t) => t.key === requestedTab)) {
+      setTab(requestedTab as TabKey);
+    }
+  }, [searchParams]);
 
   /**
    * Trigger a refresh of monitored downloads in Sonarr and Radarr and notify the user of the outcome.

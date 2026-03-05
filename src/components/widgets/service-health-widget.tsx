@@ -2,15 +2,8 @@
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
-
-interface ServiceConnection {
-  id: string;
-  type: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-}
 
 interface ServiceStatus {
   type: string;
@@ -19,26 +12,12 @@ interface ServiceStatus {
 }
 
 async function fetchServiceHealth(): Promise<ServiceStatus[]> {
-  const res = await fetch('/api/services');
+  const res = await fetch('/api/services/health');
   if (!res.ok) return [];
-  const services: ServiceConnection[] = await res.json();
-
-  const results: ServiceStatus[] = [];
-  for (const svc of services) {
-    if (!svc.enabled) continue;
-    const name = svc.name || svc.type;
-    try {
-      // Use the stats endpoint as a lightweight health check
-      const testRes = await fetch('/api/services/stats', { signal: AbortSignal.timeout(5000) });
-      results.push({ type: svc.type, name, ok: testRes.ok });
-    } catch {
-      results.push({ type: svc.type, name, ok: false });
-    }
-  }
-  return results;
+  return res.json();
 }
 
-export function ServiceHealthWidget({ size, refreshInterval }: WidgetProps) {
+export function ServiceHealthWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { data: services, loading } = useWidgetData({
     fetchFn: fetchServiceHealth,
     refreshInterval: Math.max(refreshInterval, 30000), // Don't health-check more often than 30s
@@ -58,23 +37,9 @@ export function ServiceHealthWidget({ size, refreshInterval }: WidgetProps) {
   }
 
   if (!services || services.length === 0) {
-    return (
+    return editMode ? <EditModePlaceholder title="Service Health" message="No services configured" /> : (
       <div className="rounded-xl bg-card p-4 text-center">
         <p className="text-xs text-muted-foreground">No services configured</p>
-      </div>
-    );
-  }
-
-  if (size === 'small') {
-    const allOk = services.every((s) => s.ok);
-    const downCount = services.filter((s) => !s.ok).length;
-    return (
-      <div className="rounded-xl bg-card p-3 flex items-center gap-3">
-        <span className={`w-2.5 h-2.5 rounded-full ${allOk ? 'bg-green-500' : 'bg-rose-500'}`} />
-        <div>
-          <p className="text-sm font-medium">{allOk ? 'All services up' : `${downCount} down`}</p>
-          <p className="text-[10px] text-muted-foreground">{services.length} services</p>
-        </div>
       </div>
     );
   }
