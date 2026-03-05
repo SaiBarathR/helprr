@@ -44,6 +44,9 @@ function StreamSection({ stream, isDirect }: { stream: JellyfinMediaStream; isDi
         </div>
         <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
           {stream.Codec && <span>{stream.Codec.toUpperCase()}</span>}
+          {isVideo && stream.Profile && (
+            <span>{stream.Profile}</span>
+          )}
           {isVideo && stream.Width && stream.Height && (
             <span>{formatResolution(stream.Width, stream.Height)} ({stream.Width}x{stream.Height})</span>
           )}
@@ -55,9 +58,6 @@ function StreamSection({ stream, isDirect }: { stream: JellyfinMediaStream; isDi
           )}
           {isVideo && stream.VideoRange && stream.VideoRange !== 'SDR' && (
             <span>{stream.VideoRange}</span>
-          )}
-          {isVideo && stream.Profile && (
-            <span>{stream.Profile}</span>
           )}
           {!isVideo && stream.Channels && (
             <span>{stream.Channels}ch{stream.ChannelLayout ? ` (${stream.ChannelLayout})` : ''}</span>
@@ -74,13 +74,14 @@ export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
   const item = session?.NowPlayingItem;
   const playState = session?.PlayState;
   const ti = session?.TranscodingInfo;
-  const playMethod = getPlayMethodInfo(playState?.PlayMethod);
+  const playMethod = getPlayMethodInfo(playState?.PlayMethod, ti);
   const mediaStreams = item?.MediaStreams ?? [];
   const videoStreams = mediaStreams.filter((s) => s.Type === 'Video');
   const audioStreams = mediaStreams.filter((s) => s.Type === 'Audio');
   const outputSummary = ti ? getTranscodeOutputSummary(ti) : null;
   const hasTranscodeReasons = ti?.TranscodeReasons && ti.TranscodeReasons.length > 0;
-  const isTranscoding = playState?.PlayMethod === 'Transcode';
+  const isRemuxing = playState?.PlayMethod === 'Transcode' && ti?.IsVideoDirect && ti?.IsAudioDirect;
+  const isTranscoding = playState?.PlayMethod === 'Transcode' && !isRemuxing;
 
   return (
     <Drawer open={session !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -113,8 +114,8 @@ export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
             <p className="text-[11px] text-muted-foreground">{playMethod.description}</p>
           </div>
 
-          {/* Output Format (transcoding only) */}
-          {isTranscoding && ti && outputSummary && (
+          {/* Output Format (transcoding or remuxing) */}
+          {(isTranscoding || isRemuxing) && ti && outputSummary && (
             <div className="space-y-1.5">
               <h4 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Output</h4>
               <div className="rounded-lg bg-muted/50 p-3 space-y-1">
@@ -145,7 +146,7 @@ export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
           )}
 
           {/* Transcode Reasons */}
-          {isTranscoding && hasTranscodeReasons && (
+          {(isTranscoding || isRemuxing) && hasTranscodeReasons && (
             <div className="space-y-1.5">
               <h4 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Transcode Reasons</h4>
               <div className="space-y-1">
