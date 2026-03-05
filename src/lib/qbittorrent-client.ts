@@ -262,6 +262,14 @@ export class QBittorrentClient {
     await this.post('/api/v2/torrents/delete', params.toString());
   }
 
+  async setFilePriority(hash: string, fileIds: number[], priority: 0 | 1 | 6 | 7): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('id', fileIds.join('|'));
+    params.append('priority', String(priority));
+    await this.post('/api/v2/torrents/filePrio', params.toString());
+  }
+
   async addMagnet(urls: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<string> {
     const params = new URLSearchParams();
     params.append('urls', urls);
