@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pencil, Plus, Check, RotateCcw } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
@@ -13,7 +13,6 @@ export default function DashboardPage() {
   const resetLayout = useUIStore((s) => s.resetDashboardLayout);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [galleryOpen, setGalleryOpen] = useState(false);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     getRefreshIntervalMs('dashboardRefreshIntervalSecs', 5).then(setRefreshIntervalMs);
@@ -24,30 +23,8 @@ export default function DashboardPage() {
     return () => setEditMode(false);
   }, [setEditMode]);
 
-  const handleLongPressStart = useCallback(() => {
-    longPressTimer.current = setTimeout(() => {
-      setEditMode(true);
-      if (navigator.vibrate) navigator.vibrate(10);
-    }, 600);
-  }, [setEditMode]);
-
-  const handleLongPressEnd = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
-    }
-  }, []);
-
   return (
-    <div
-      className="space-y-0 pt-2 pb-4"
-      onTouchStart={!editMode ? handleLongPressStart : undefined}
-      onTouchEnd={handleLongPressEnd}
-      onTouchMove={handleLongPressEnd}
-      onMouseDown={!editMode ? handleLongPressStart : undefined}
-      onMouseUp={handleLongPressEnd}
-      onMouseLeave={handleLongPressEnd}
-    >
+    <div className="space-y-0 pt-2 pb-4">
       {/* Edit mode header */}
       {editMode && (
         <div className="flex items-center justify-between mb-3 px-0.5">
