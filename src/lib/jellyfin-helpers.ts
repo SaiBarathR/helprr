@@ -61,7 +61,9 @@ export function getPlayMethodInfo(
     case 'Transcode':
       return { label: 'Transcoding', description: 'The server is converting this media in real-time', color: 'text-orange-400' };
     case 'DirectStream':
-      return { label: 'Remuxing', description: 'The media is in an incompatible file container but both the video and audio streams are compatible. The media is being repackaged losslessly.', color: 'text-blue-400' };
+      return ti
+        ? { label: 'Remuxing', description: 'The media is in an incompatible file container but both the video and audio streams are compatible. The media is being repackaged losslessly.', color: 'text-blue-400' }
+        : { label: 'Direct Play', description: 'The source file is entirely compatible with this client and the session is receiving the file without modifications.', color: 'text-green-400' };
     case 'DirectPlay':
     default:
       return { label: 'Direct Play', description: 'The source file is entirely compatible with this client and the session is receiving the file without modifications.', color: 'text-green-400' };

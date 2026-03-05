@@ -23,7 +23,7 @@ export function SessionCard({ session, variant, onInfoClick }: SessionCardProps)
   const ti = session.TranscodingInfo;
   const isRemuxing = Boolean(
     ti && ti.IsVideoDirect && ti.IsAudioDirect && playState?.PlayMethod === 'Transcode'
-  ) || playState?.PlayMethod === 'DirectStream';
+  ) || Boolean(ti && playState?.PlayMethod === 'DirectStream');
   const isTranscoding = Boolean(ti && (!ti.IsVideoDirect || !ti.IsAudioDirect) && playState?.PlayMethod === 'Transcode');
   const isHW = Boolean(ti?.HardwareAccelerationType?.trim());
   const imageId = item?.Type === 'Episode' && item?.SeriesId ? item.SeriesId : item?.Id;
