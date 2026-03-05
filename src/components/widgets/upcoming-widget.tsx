@@ -1,8 +1,9 @@
 'use client';
 
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Film, Tv, Clock } from 'lucide-react';
+import { Film, Tv, Clock, ChevronDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { Carousel, SectionHeader } from '@/components/widgets/shared';
@@ -11,24 +12,60 @@ import { toCachedImageSrc, isProtectedApiImageSrc } from '@/lib/image';
 import type { CalendarEvent, MediaImage } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 
+const DAYS_OPTIONS = [7, 14, 30] as const;
+const STORAGE_KEY = 'helprr-upcoming-days';
+
 function getPoster(images: MediaImage[], serviceHint?: 'radarr' | 'sonarr'): string | null {
   const img = images.find((i) => i.coverType === 'poster');
   return toCachedImageSrc(img?.remoteUrl || img?.url || null, serviceHint);
 }
 
-async function fetchUpcoming(): Promise<CalendarEvent[]> {
-  const res = await fetch('/api/calendar?days=14');
-  if (!res.ok) return [];
-  return res.json();
+function getStoredDays(): number {
+  if (typeof window === 'undefined') return 14;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  const parsed = stored ? parseInt(stored, 10) : NaN;
+  return DAYS_OPTIONS.includes(parsed as typeof DAYS_OPTIONS[number]) ? parsed : 14;
 }
 
 export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
+  const [days, setDays] = useState(14);
+
+  useEffect(() => {
+    setDays(getStoredDays());
+  }, []);
+
+  const fetchUpcoming = useCallback(async (): Promise<CalendarEvent[]> => {
+    const res = await fetch(`/api/calendar?days=${days}`);
+    if (!res.ok) return [];
+    return res.json();
+  }, [days]);
+
   const { data: upcoming, loading } = useWidgetData({ fetchFn: fetchUpcoming, refreshInterval });
+
+  function handleDaysChange(newDays: number) {
+    setDays(newDays);
+    localStorage.setItem(STORAGE_KEY, String(newDays));
+  }
+
+  const daysSelector = (
+    <div className="relative inline-flex">
+      <select
+        value={days}
+        onChange={(e) => handleDaysChange(Number(e.target.value))}
+        className="appearance-none bg-muted/50 text-[10px] font-medium text-muted-foreground pl-2 pr-5 py-0.5 rounded-md cursor-pointer hover:bg-muted transition-colors focus:outline-none"
+      >
+        {DAYS_OPTIONS.map((d) => (
+          <option key={d} value={d}>{d} days</option>
+        ))}
+      </select>
+      <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-muted-foreground pointer-events-none" />
+    </div>
+  );
 
   if (loading) {
     return (
       <div>
-        <SectionHeader title="Upcoming" href="/calendar" />
+        <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
         <div className="flex gap-3 overflow-hidden">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-[170px] w-[110px] rounded-xl shrink-0" />
@@ -40,7 +77,7 @@ export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
 
   return (
     <div>
-      <SectionHeader title="Upcoming" href="/calendar" />
+      <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
       {!upcoming || upcoming.length === 0 ? (
         <div className="rounded-xl bg-card py-8 text-center">
           <p className="text-sm text-muted-foreground">Nothing upcoming</p>
