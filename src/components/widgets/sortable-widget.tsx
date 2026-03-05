@@ -1,6 +1,6 @@
 'use client';
 
-import { useSortable } from '@dnd-kit/sortable';
+import { useSortable, defaultAnimateLayoutChanges } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { MinusCircle } from 'lucide-react';
 import { WidgetRenderer } from './widget-renderer';
@@ -11,7 +11,6 @@ interface SortableWidgetProps {
   instance: WidgetInstance;
   refreshInterval: number;
   editMode: boolean;
-  isDropTarget?: boolean;
   onRemove: (id: string) => void;
   onResize: (id: string, size: WidgetSize) => void;
 }
@@ -25,7 +24,6 @@ export function SortableWidget({
   instance,
   refreshInterval,
   editMode,
-  isDropTarget = false,
   onRemove,
   onResize,
 }: SortableWidgetProps) {
@@ -36,35 +34,38 @@ export function SortableWidget({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: instance.id, disabled: !editMode });
+  } = useSortable({
+    id: instance.id,
+    disabled: !editMode,
+    animateLayoutChanges: (args) => defaultAnimateLayoutChanges({ ...args, wasDragging: true }),
+  });
 
   const definition = getWidgetDefinition(instance.widgetId);
   const isFullWidth = instance.size === 'medium' || instance.size === 'large';
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1)',
   };
 
   return (
     <div
+      id={`widget-${instance.id}`}
       ref={setNodeRef}
       style={style}
       className={`relative ${isFullWidth ? 'col-span-2' : 'col-span-1'} ${
-        isDragging ? 'z-50 opacity-85 scale-[1.01]' : ''
-      } ${isDropTarget ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background rounded-2xl' : ''} ${
-        editMode ? 'cursor-grab active:cursor-grabbing' : ''
-      }`}
+        isDragging ? 'z-0 widget-ghost rounded-2xl' : ''
+      } ${editMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
       onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
       {...(editMode ? { ...attributes, ...listeners } : {})}
     >
-      <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${isDragging ? 'shadow-2xl' : ''} ${
-        editMode ? 'pointer-events-none select-none touch-none' : ''
-      }`}>
+      <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${
+        isDragging ? 'invisible' : ''
+      } ${editMode ? 'pointer-events-none select-none touch-none' : ''}`}>
         <WidgetRenderer instance={instance} refreshInterval={refreshInterval} editMode={editMode} />
       </div>
 
-      {editMode && (
+      {editMode && !isDragging && (
         <>
           {/* Remove button */}
           <button

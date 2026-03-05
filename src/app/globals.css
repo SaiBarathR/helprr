@@ -309,6 +309,17 @@ html {
   transition: all 0.1s ease;
 }
 
+/* Widget ghost placeholder (shown at original position during drag) */
+@keyframes widget-ghost-pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.3; }
+}
+
+.widget-ghost {
+  animation: widget-ghost-pulse 1.5s ease-in-out infinite;
+  background: oklch(from var(--muted) l c h / 0.5);
+}
+
 /* iOS-style widget jiggle animation for edit mode */
 @keyframes widget-jiggle {
   0% { transform: rotate(-0.35deg); }
