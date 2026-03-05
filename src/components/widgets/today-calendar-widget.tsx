@@ -16,7 +16,7 @@ function getPoster(images: MediaImage[], serviceHint?: 'radarr' | 'sonarr'): str
 }
 
 async function fetchToday(): Promise<CalendarEvent[]> {
-  const res = await fetch('/api/calendar?days=1');
+  const res = await fetch('/api/calendar?days=1&fullDay=true');
   if (!res.ok) return [];
   return res.json();
 }
