@@ -55,9 +55,12 @@ export function SortableWidget({
       } ${isDropTarget ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background rounded-2xl' : ''} ${
         editMode ? 'cursor-grab active:cursor-grabbing' : ''
       }`}
+      onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
       {...(editMode ? { ...attributes, ...listeners } : {})}
     >
-      <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${isDragging ? 'shadow-2xl' : ''}`}>
+      <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${isDragging ? 'shadow-2xl' : ''} ${
+        editMode ? 'pointer-events-none select-none touch-none' : ''
+      }`}>
         <WidgetRenderer instance={instance} refreshInterval={refreshInterval} editMode={editMode} />
       </div>
 
