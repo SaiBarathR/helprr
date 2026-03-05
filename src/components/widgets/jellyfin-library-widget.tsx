@@ -3,6 +3,7 @@
 import { Film, Tv, MonitorPlay } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface JellyfinStats {
@@ -23,7 +24,7 @@ async function fetchJellyfinLibrary(): Promise<JellyfinStats | null> {
   };
 }
 
-export function JellyfinLibraryWidget({ size, refreshInterval }: WidgetProps) {
+export function JellyfinLibraryWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data, loading } = useWidgetData({ fetchFn: fetchJellyfinLibrary, refreshInterval });
 
   if (loading) {
@@ -35,7 +36,9 @@ export function JellyfinLibraryWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return editMode ? <EditModePlaceholder title="Jellyfin Library" message="No library stats" /> : null;
+  }
 
   if (size === 'small') {
     return (

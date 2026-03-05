@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatBytes } from '@/lib/format';
+import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface TransferInfo {
@@ -19,7 +20,7 @@ async function fetchTransfer(): Promise<TransferInfo> {
   return res.json();
 }
 
-export function TransferSpeedWidget({ size, refreshInterval }: WidgetProps) {
+export function TransferSpeedWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data, loading } = useWidgetData({
     fetchFn: fetchTransfer,
     refreshInterval: Math.min(refreshInterval, 3000), // More frequent for real-time speeds
@@ -34,7 +35,9 @@ export function TransferSpeedWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return editMode ? <EditModePlaceholder title="Transfer Speed" message="No transfer stats" /> : null;
+  }
 
   if (size === 'small') {
     return (

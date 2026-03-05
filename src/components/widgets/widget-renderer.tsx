@@ -8,9 +8,10 @@ import type { WidgetInstance } from '@/lib/widgets/types';
 interface WidgetRendererProps {
   instance: WidgetInstance;
   refreshInterval: number;
+  editMode?: boolean;
 }
 
-export function WidgetRenderer({ instance, refreshInterval }: WidgetRendererProps) {
+export function WidgetRenderer({ instance, refreshInterval, editMode = false }: WidgetRendererProps) {
   const definition = getWidgetDefinition(instance.widgetId);
 
   if (!definition) {
@@ -26,7 +27,7 @@ export function WidgetRenderer({ instance, refreshInterval }: WidgetRendererProp
   return (
     <WidgetWrapper size={instance.size}>
       <Suspense fallback={<WidgetSkeleton size={instance.size} />}>
-        <WidgetComponent size={instance.size} refreshInterval={refreshInterval} />
+        <WidgetComponent size={instance.size} refreshInterval={refreshInterval} editMode={editMode} />
       </Suspense>
     </WidgetWrapper>
   );

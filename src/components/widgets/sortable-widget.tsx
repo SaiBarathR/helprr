@@ -11,6 +11,7 @@ interface SortableWidgetProps {
   instance: WidgetInstance;
   refreshInterval: number;
   editMode: boolean;
+  isDropTarget?: boolean;
   onRemove: (id: string) => void;
   onResize: (id: string, size: WidgetSize) => void;
 }
@@ -24,6 +25,7 @@ export function SortableWidget({
   instance,
   refreshInterval,
   editMode,
+  isDropTarget = false,
   onRemove,
   onResize,
 }: SortableWidgetProps) {
@@ -49,11 +51,15 @@ export function SortableWidget({
       ref={setNodeRef}
       style={style}
       className={`relative ${isFullWidth ? 'col-span-2' : 'col-span-1'} ${
-        isDragging ? 'z-50 opacity-80 scale-[1.02]' : ''
-      } ${editMode ? 'widget-jiggle' : ''}`}
+        isDragging ? 'z-50 opacity-85 scale-[1.01]' : ''
+      } ${isDropTarget ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background rounded-2xl' : ''} ${
+        editMode ? 'cursor-grab active:cursor-grabbing' : ''
+      }`}
       {...(editMode ? { ...attributes, ...listeners } : {})}
     >
-      <WidgetRenderer instance={instance} refreshInterval={refreshInterval} />
+      <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${isDragging ? 'shadow-2xl' : ''}`}>
+        <WidgetRenderer instance={instance} refreshInterval={refreshInterval} editMode={editMode} />
+      </div>
 
       {editMode && (
         <>

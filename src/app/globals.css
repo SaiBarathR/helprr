@@ -311,27 +311,27 @@ html {
 
 /* iOS-style widget jiggle animation for edit mode */
 @keyframes widget-jiggle {
-  0% { transform: rotate(-0.7deg); }
-  25% { transform: rotate(0.7deg); }
-  50% { transform: rotate(-0.5deg); }
-  75% { transform: rotate(0.5deg); }
-  100% { transform: rotate(-0.7deg); }
+  0% { transform: rotate(-0.35deg); }
+  25% { transform: rotate(0.35deg); }
+  50% { transform: rotate(-0.25deg); }
+  75% { transform: rotate(0.25deg); }
+  100% { transform: rotate(-0.35deg); }
 }
 
 .widget-jiggle {
-  animation: widget-jiggle 0.3s ease-in-out infinite;
+  animation: widget-jiggle 0.95s ease-in-out infinite;
 }
 
 .widget-jiggle:nth-child(2n) {
-  animation-delay: 0.05s;
+  animation-delay: 0.08s;
 }
 
 .widget-jiggle:nth-child(3n) {
-  animation-delay: 0.1s;
-  animation-duration: 0.35s;
+  animation-delay: 0.14s;
+  animation-duration: 1.05s;
 }
 
 .widget-jiggle:nth-child(5n) {
-  animation-delay: 0.15s;
-  animation-duration: 0.25s;
+  animation-delay: 0.2s;
+  animation-duration: 0.85s;
 }

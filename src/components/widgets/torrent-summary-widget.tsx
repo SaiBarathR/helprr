@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp, Pause, HardDrive } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface TorrentSummary {
@@ -29,7 +30,7 @@ async function fetchTorrentSummary(): Promise<TorrentSummary> {
   return { total: torrents.length, downloading, seeding, paused };
 }
 
-export function TorrentSummaryWidget({ size, refreshInterval }: WidgetProps) {
+export function TorrentSummaryWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data, loading } = useWidgetData({ fetchFn: fetchTorrentSummary, refreshInterval });
 
   if (loading) {
@@ -41,7 +42,9 @@ export function TorrentSummaryWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!data) return null;
+  if (!data) {
+    return editMode ? <EditModePlaceholder title="Torrent Summary" message="No torrent data" /> : null;
+  }
 
   if (size === 'small') {
     return (

@@ -3,7 +3,7 @@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, SectionHeader } from '@/components/widgets/shared';
+import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
 import type { QueueItem } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 
@@ -14,7 +14,7 @@ async function fetchQueue(): Promise<QueueItem[]> {
   return data.records || [];
 }
 
-export function ActiveDownloadsWidget({ size, refreshInterval }: WidgetProps) {
+export function ActiveDownloadsWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { data: queue, loading } = useWidgetData({ fetchFn: fetchQueue, refreshInterval });
 
   if (loading) {
@@ -30,7 +30,9 @@ export function ActiveDownloadsWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!queue || queue.length === 0) return null;
+  if (!queue || queue.length === 0) {
+    return editMode ? <EditModePlaceholder title="Downloading" message="No active downloads" /> : null;
+  }
 
   return (
     <div>

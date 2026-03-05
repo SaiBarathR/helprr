@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, SectionHeader } from '@/components/widgets/shared';
+import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
 import type { JellyfinSession } from '@/types/jellyfin';
@@ -16,7 +16,7 @@ async function fetchSessions(): Promise<JellyfinSession[]> {
   return data.sessions || [];
 }
 
-export function NowStreamingWidget({ size, refreshInterval }: WidgetProps) {
+export function NowStreamingWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { data: sessions, loading } = useWidgetData({ fetchFn: fetchSessions, refreshInterval });
   const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
 
@@ -33,7 +33,9 @@ export function NowStreamingWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!sessions || sessions.length === 0) return null;
+  if (!sessions || sessions.length === 0) {
+    return editMode ? <EditModePlaceholder title="Now Streaming" message="No active streams" /> : null;
+  }
 
   return (
     <div>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Layers, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface ProwlarrSummary {
@@ -32,7 +33,7 @@ async function fetchProwlarr(): Promise<ProwlarrSummary | null> {
   return { total: indexers.length, enabled, disabled: indexers.length - enabled, blocked };
 }
 
-export function ProwlarrIndexersWidget({ size, refreshInterval }: WidgetProps) {
+export function ProwlarrIndexersWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data: prowlarr, loading } = useWidgetData({ fetchFn: fetchProwlarr, refreshInterval });
 
   if (loading) {
@@ -44,7 +45,9 @@ export function ProwlarrIndexersWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!prowlarr) return null;
+  if (!prowlarr) {
+    return editMode ? <EditModePlaceholder title="Prowlarr Indexers" message="Service unavailable" /> : null;
+  }
 
   if (size === 'small') {
     return (

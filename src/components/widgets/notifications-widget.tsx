@@ -1,7 +1,7 @@
 'use client';
 
-import Link from 'next/link';
-import { Bell, ArrowRight } from 'lucide-react';
+import { useCallback } from 'react';
+import { Bell } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatDistanceToNowSafe } from '@/lib/format';
@@ -17,15 +17,18 @@ interface NotificationRecord {
   createdAt: string;
 }
 
-async function fetchNotifications(): Promise<NotificationRecord[]> {
-  const res = await fetch('/api/notifications?pageSize=5');
+async function fetchNotifications(pageSize: number): Promise<NotificationRecord[]> {
+  const res = await fetch(`/api/notifications?pageSize=${pageSize}`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.records || [];
 }
 
 export function NotificationsWidget({ size, refreshInterval }: WidgetProps) {
-  const { data: notifications, loading } = useWidgetData({ fetchFn: fetchNotifications, refreshInterval });
+  const isLarge = size === 'large';
+  const maxItems = isLarge ? 10 : 5;
+  const fetchFn = useCallback(() => fetchNotifications(maxItems), [maxItems]);
+  const { data: notifications, loading } = useWidgetData({ fetchFn, refreshInterval });
 
   if (loading) {
     return (
@@ -56,18 +59,22 @@ export function NotificationsWidget({ size, refreshInterval }: WidgetProps) {
     <div>
       <SectionHeader title="Notifications" href="/notifications" />
       <div className="space-y-1.5">
-        {notifications.map((n) => (
+        {notifications.slice(0, maxItems).map((n) => (
           <div
             key={n.id}
-            className={`rounded-xl bg-card px-3 py-2.5 ${!n.read ? 'border-l-2 border-l-primary' : ''}`}
+            className={`rounded-xl bg-card px-3 ${isLarge ? 'py-3' : 'py-2.5'} ${!n.read ? 'border-l-2 border-l-primary' : ''}`}
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-medium line-clamp-1 flex-1">{n.title}</p>
+              <p className={`text-xs font-medium flex-1 ${isLarge ? 'line-clamp-2' : 'line-clamp-1'}`}>{n.title}</p>
               <span className="text-[10px] text-muted-foreground shrink-0">
                 {formatDistanceToNowSafe(n.createdAt)}
               </span>
             </div>
-            {n.body && <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{n.body}</p>}
+            {n.body && (
+              <p className={`text-[11px] text-muted-foreground mt-0.5 ${isLarge ? 'line-clamp-2' : 'line-clamp-1'}`}>
+                {n.body}
+              </p>
+            )}
           </div>
         ))}
       </div>

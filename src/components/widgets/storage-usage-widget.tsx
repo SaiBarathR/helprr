@@ -5,6 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatBytes } from '@/lib/format';
+import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface DiskInfo {
@@ -19,7 +20,7 @@ async function fetchStorage(): Promise<DiskInfo[]> {
   return data.diskSpace || [];
 }
 
-export function StorageUsageWidget({ size, refreshInterval }: WidgetProps) {
+export function StorageUsageWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data: disks, loading } = useWidgetData({ fetchFn: fetchStorage, refreshInterval });
 
   if (loading) {
@@ -31,7 +32,9 @@ export function StorageUsageWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!disks || disks.length === 0) return null;
+  if (!disks || disks.length === 0) {
+    return editMode ? <EditModePlaceholder title="Storage Usage" message="No disk stats" /> : null;
+  }
 
   const totalFree = disks.reduce((acc, d) => acc + d.freeSpace, 0);
   const totalSpace = disks.reduce((acc, d) => acc + d.totalSpace, 0);

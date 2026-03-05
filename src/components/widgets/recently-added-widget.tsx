@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Film, Tv } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, SectionHeader } from '@/components/widgets/shared';
+import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import { toCachedImageSrc, isProtectedApiImageSrc } from '@/lib/image';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -27,7 +27,7 @@ async function fetchRecent(): Promise<RecentItem[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export function RecentlyAddedWidget({ size, refreshInterval }: WidgetProps) {
+export function RecentlyAddedWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { data: recentlyAdded, loading } = useWidgetData({ fetchFn: fetchRecent, refreshInterval });
 
   if (loading) {
@@ -43,7 +43,9 @@ export function RecentlyAddedWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!recentlyAdded || recentlyAdded.length === 0) return null;
+  if (!recentlyAdded || recentlyAdded.length === 0) {
+    return editMode ? <EditModePlaceholder title="Recently Added" message="No recent imports" /> : null;
+  }
 
   return (
     <div>
