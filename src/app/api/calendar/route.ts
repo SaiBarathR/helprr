@@ -16,15 +16,28 @@ export async function GET(request: NextRequest) {
     let start = searchParams.get('start');
     let end = searchParams.get('end');
     const days = searchParams.get('days');
+    const fullDay = searchParams.get('fullDay') === 'true';
     const type = searchParams.get('type');
 
-    // If days provided without start/end, calculate from today
+    // If days provided without start/end, allow opting into full local day boundaries.
+    // fullDay=true respects process TZ (e.g. TZ=Asia/Kolkata) for date-only widgets.
     if (!start || !end) {
-      const daysNum = days ? parseInt(days, 10) : 30;
-      const now = new Date();
-      start = now.toISOString();
-      const endDate = new Date(now);
-      endDate.setDate(endDate.getDate() + daysNum);
+      const parsedDays = days ? parseInt(days, 10) : 30;
+      const daysNum = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : 30;
+
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+
+      if (fullDay) {
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setTime(startDate.getTime());
+        endDate.setDate(endDate.getDate() + daysNum);
+        endDate.setMilliseconds(endDate.getMilliseconds() - 1);
+      } else {
+        endDate.setDate(endDate.getDate() + daysNum);
+      }
+
+      start = startDate.toISOString();
       end = endDate.toISOString();
     }
 
