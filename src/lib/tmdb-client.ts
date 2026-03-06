@@ -69,6 +69,16 @@ export interface TmdbMovieDetail {
   spoken_languages: { english_name: string; iso_639_1: string; name: string }[];
   original_language: string;
   imdb_id?: string | null;
+  tagline?: string;
+  budget?: number;
+  revenue?: number;
+  homepage?: string | null;
+  belongs_to_collection?: {
+    id: number;
+    name: string;
+    poster_path: string | null;
+    backdrop_path: string | null;
+  } | null;
 }
 
 export interface TmdbTvDetail {
@@ -91,6 +101,49 @@ export interface TmdbTvDetail {
   spoken_languages: string[];
   original_language: string;
   origin_country: string[];
+  tagline?: string;
+  homepage?: string | null;
+  number_of_seasons?: number;
+  number_of_episodes?: number;
+  last_air_date?: string;
+  next_episode_to_air?: {
+    id: number;
+    name: string;
+    overview: string;
+    air_date: string;
+    episode_number: number;
+    season_number: number;
+    still_path: string | null;
+    vote_average: number;
+    runtime: number | null;
+  } | null;
+  last_episode_to_air?: {
+    id: number;
+    name: string;
+    overview: string;
+    air_date: string;
+    episode_number: number;
+    season_number: number;
+    still_path: string | null;
+    vote_average: number;
+    runtime: number | null;
+  } | null;
+  created_by?: Array<{
+    id: number;
+    name: string;
+    profile_path: string | null;
+  }>;
+  seasons?: Array<{
+    id: number;
+    air_date: string | null;
+    episode_count: number;
+    name: string;
+    overview: string;
+    poster_path: string | null;
+    season_number: number;
+    vote_average: number;
+  }>;
+  type?: string;
 }
 
 interface TmdbListResponse {
@@ -167,6 +220,154 @@ export interface TmdbPersonCombinedCredits {
   id: number;
   cast: TmdbPersonCreditItem[];
   crew: TmdbPersonCreditItem[];
+}
+
+export interface TmdbCastMember {
+  id: number;
+  name: string;
+  character: string;
+  profile_path: string | null;
+  order: number;
+  known_for_department?: string;
+}
+
+export interface TmdbCrewMember {
+  id: number;
+  name: string;
+  department: string;
+  job: string;
+  profile_path: string | null;
+  known_for_department?: string;
+}
+
+export interface TmdbCreditsResponse {
+  id: number;
+  cast: TmdbCastMember[];
+  crew: TmdbCrewMember[];
+}
+
+export interface TmdbAggregateCastRole {
+  character: string;
+  episode_count: number;
+}
+
+export interface TmdbAggregateCastMember {
+  id: number;
+  name: string;
+  profile_path: string | null;
+  roles: TmdbAggregateCastRole[];
+  total_episode_count: number;
+  order: number;
+  known_for_department?: string;
+}
+
+export interface TmdbAggregateCrewJob {
+  job: string;
+  episode_count: number;
+}
+
+export interface TmdbAggregateCrewMember {
+  id: number;
+  name: string;
+  profile_path: string | null;
+  department: string;
+  jobs: TmdbAggregateCrewJob[];
+  total_episode_count: number;
+  known_for_department?: string;
+}
+
+export interface TmdbAggregateCreditsResponse {
+  id: number;
+  cast: TmdbAggregateCastMember[];
+  crew: TmdbAggregateCrewMember[];
+}
+
+export interface TmdbVideoResult {
+  id: string;
+  key: string;
+  name: string;
+  site: string;
+  size: number;
+  type: string;
+  official: boolean;
+  published_at: string;
+  iso_639_1: string;
+}
+
+export interface TmdbVideosResponse {
+  id: number;
+  results: TmdbVideoResult[];
+}
+
+export interface TmdbWatchProviderEntry {
+  logo_path: string;
+  provider_id: number;
+  provider_name: string;
+  display_priority: number;
+}
+
+export interface TmdbTitleWatchProvidersResponse {
+  id: number;
+  results: Record<string, {
+    link?: string;
+    flatrate?: TmdbWatchProviderEntry[];
+    rent?: TmdbWatchProviderEntry[];
+    buy?: TmdbWatchProviderEntry[];
+  }>;
+}
+
+export interface TmdbSeasonDetail {
+  id: number;
+  air_date: string | null;
+  name: string;
+  overview: string;
+  poster_path: string | null;
+  season_number: number;
+  vote_average: number;
+  episodes: Array<{
+    id: number;
+    name: string;
+    overview: string;
+    air_date: string | null;
+    episode_number: number;
+    season_number: number;
+    still_path: string | null;
+    vote_average: number;
+    runtime: number | null;
+  }>;
+}
+
+export interface TmdbCollectionDetail {
+  id: number;
+  name: string;
+  overview: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  parts: TmdbListItem[];
+}
+
+export interface TmdbContentRatingResult {
+  iso_3166_1: string;
+  rating: string;
+}
+
+export interface TmdbContentRatingsResponse {
+  id: number;
+  results: TmdbContentRatingResult[];
+}
+
+export interface TmdbReleaseDateEntry {
+  iso_3166_1: string;
+  release_dates: Array<{
+    certification: string;
+    release_date: string;
+    type: number;
+  }>;
+}
+
+export interface TmdbReleaseDatesResponse {
+  id: number;
+  results: TmdbReleaseDateEntry[];
 }
 
 export interface TmdbDiscoverParams {
@@ -326,7 +527,14 @@ function getTmdbCachePolicy(endpoint: string): TmdbCachePolicy {
     };
   }
 
-  if (/^\/(movie|tv|person)\/\d+(\/external_ids|\/combined_credits)?$/.test(endpoint)) {
+  if (/^\/(movie|tv|person)\/\d+(\/[a-z_]+)?$/.test(endpoint)) {
+    return {
+      ttlSeconds: TMDB_CACHE_DETAILS_TTL_SECONDS,
+      staleSeconds: TMDB_CACHE_STALE_SECONDS,
+    };
+  }
+
+  if (/^\/tv\/\d+\/season\/\d+$/.test(endpoint) || /^\/collection\/\d+$/.test(endpoint)) {
     return {
       ttlSeconds: TMDB_CACHE_DETAILS_TTL_SECONDS,
       staleSeconds: TMDB_CACHE_STALE_SECONDS,
@@ -586,6 +794,80 @@ export class TmdbClient {
       watch_region: region,
     });
     return data.results || [];
+  }
+
+  async movieCredits(id: number): Promise<TmdbCreditsResponse> {
+    return this.get<TmdbCreditsResponse>(`/movie/${id}/credits`);
+  }
+
+  async tvAggregateCredits(id: number): Promise<TmdbAggregateCreditsResponse> {
+    return this.get<TmdbAggregateCreditsResponse>(`/tv/${id}/aggregate_credits`);
+  }
+
+  async movieSimilar(id: number, page = 1): Promise<TmdbListResponse> {
+    return this.get<TmdbListResponse>(`/movie/${id}/similar`, { page });
+  }
+
+  async tvSimilar(id: number, page = 1): Promise<TmdbListResponse> {
+    return this.get<TmdbListResponse>(`/tv/${id}/similar`, { page });
+  }
+
+  async movieRecommendations(id: number, page = 1): Promise<TmdbListResponse> {
+    return this.get<TmdbListResponse>(`/movie/${id}/recommendations`, { page });
+  }
+
+  async tvRecommendations(id: number, page = 1): Promise<TmdbListResponse> {
+    return this.get<TmdbListResponse>(`/tv/${id}/recommendations`, { page });
+  }
+
+  async movieVideos(id: number): Promise<TmdbVideosResponse> {
+    return this.get<TmdbVideosResponse>(`/movie/${id}/videos`);
+  }
+
+  async tvVideos(id: number): Promise<TmdbVideosResponse> {
+    return this.get<TmdbVideosResponse>(`/tv/${id}/videos`);
+  }
+
+  async movieWatchProvidersForTitle(id: number): Promise<TmdbTitleWatchProvidersResponse> {
+    return this.get<TmdbTitleWatchProvidersResponse>(`/movie/${id}/watch/providers`);
+  }
+
+  async tvWatchProvidersForTitle(id: number): Promise<TmdbTitleWatchProvidersResponse> {
+    return this.get<TmdbTitleWatchProvidersResponse>(`/tv/${id}/watch/providers`);
+  }
+
+  async tvSeasonDetails(tvId: number, seasonNumber: number): Promise<TmdbSeasonDetail> {
+    return this.get<TmdbSeasonDetail>(`/tv/${tvId}/season/${seasonNumber}`);
+  }
+
+  async collectionDetails(id: number): Promise<TmdbCollectionDetail> {
+    return this.get<TmdbCollectionDetail>(`/collection/${id}`);
+  }
+
+  async movieReleaseDates(id: number): Promise<TmdbReleaseDatesResponse> {
+    return this.get<TmdbReleaseDatesResponse>(`/movie/${id}/release_dates`);
+  }
+
+  async tvContentRatings(id: number): Promise<TmdbContentRatingsResponse> {
+    return this.get<TmdbContentRatingsResponse>(`/tv/${id}/content_ratings`);
+  }
+
+  async nowPlayingMovies(page = 1, region?: string): Promise<TmdbListResponse> {
+    const params: Record<string, unknown> = { page };
+    if (region) params.region = region;
+    return this.get<TmdbListResponse>('/movie/now_playing', params);
+  }
+
+  async airingTodayTv(page = 1): Promise<TmdbListResponse> {
+    return this.get<TmdbListResponse>('/tv/airing_today', { page });
+  }
+
+  async topRatedMovies(page = 1): Promise<TmdbListResponse> {
+    return this.get<TmdbListResponse>('/movie/top_rated', { page });
+  }
+
+  async topRatedTv(page = 1): Promise<TmdbListResponse> {
+    return this.get<TmdbListResponse>('/tv/top_rated', { page });
   }
 
   private formatSort(sortBy?: string, sortOrder: 'asc' | 'desc' = 'desc'): string {

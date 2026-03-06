@@ -23,6 +23,10 @@ const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder
   upcoming_series: { sortBy: 'upcoming', contentType: 'show', sortOrder: 'asc' },
   highly_rated: { sortBy: 'highlyRated', contentType: 'all' },
   most_loved: { sortBy: 'mostLoved', contentType: 'all' },
+  now_playing: { sortBy: 'popular', contentType: 'movie' },
+  airing_today: { sortBy: 'popular', contentType: 'show' },
+  top_rated_movies: { sortBy: 'highlyRated', contentType: 'movie' },
+  top_rated_tv: { sortBy: 'highlyRated', contentType: 'show' },
 };
 
 const EMPTY_LIST_RESPONSE = {
@@ -234,6 +238,10 @@ async function buildSections() {
     animeShows,
     movieProviders,
     tvProviders,
+    nowPlaying,
+    airingToday,
+    topRatedMoviesData,
+    topRatedTvData,
   ] = await Promise.all([
     safeTmdb('trending', partialFailures, () => tmdb.trending('all', 1), EMPTY_LIST_RESPONSE),
     safeTmdb('popular_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
@@ -246,6 +254,10 @@ async function buildSections() {
     safeTmdb('anime_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
     safeTmdb('movie_providers', partialFailures, () => tmdb.movieWatchProviders('US'), []),
     safeTmdb('tv_providers', partialFailures, () => tmdb.tvWatchProviders('US'), []),
+    safeTmdb('now_playing', partialFailures, () => tmdb.nowPlayingMovies(1, 'US'), EMPTY_LIST_RESPONSE),
+    safeTmdb('airing_today', partialFailures, () => tmdb.airingTodayTv(1), EMPTY_LIST_RESPONSE),
+    safeTmdb('top_rated_movies', partialFailures, () => tmdb.topRatedMovies(1), EMPTY_LIST_RESPONSE),
+    safeTmdb('top_rated_tv', partialFailures, () => tmdb.topRatedTv(1), EMPTY_LIST_RESPONSE),
   ]);
 
   const anime = dedupeDiscoverItems([
@@ -292,6 +304,13 @@ async function buildSections() {
       items: normalizeItems(trending.results, 'all').slice(0, 20),
     },
     {
+      key: 'now_playing',
+      title: 'Now in Theaters',
+      type: 'media',
+      mediaType: 'movie',
+      items: normalizeItems(nowPlaying.results, 'movie').slice(0, 20),
+    },
+    {
       key: 'popular_movies',
       title: 'Popular Movies',
       type: 'media',
@@ -320,6 +339,13 @@ async function buildSections() {
       items: providers,
     },
     {
+      key: 'airing_today',
+      title: 'Airing Today',
+      type: 'media',
+      mediaType: 'tv',
+      items: normalizeItems(airingToday.results, 'tv').slice(0, 20),
+    },
+    {
       key: 'popular_series',
       title: 'Popular Series',
       type: 'media',
@@ -339,6 +365,20 @@ async function buildSections() {
       type: 'media',
       mediaType: 'tv',
       items: normalizeItems(upcomingSeries.results, 'tv').slice(0, 20),
+    },
+    {
+      key: 'top_rated_movies',
+      title: 'Top Rated Movies',
+      type: 'media',
+      mediaType: 'movie',
+      items: normalizeItems(topRatedMoviesData.results, 'movie').slice(0, 20),
+    },
+    {
+      key: 'top_rated_tv',
+      title: 'Top Rated TV',
+      type: 'media',
+      mediaType: 'tv',
+      items: normalizeItems(topRatedTvData.results, 'tv').slice(0, 20),
     },
     {
       key: 'popular_anime',
