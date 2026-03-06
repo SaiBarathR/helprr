@@ -118,6 +118,57 @@ interface TmdbExternalIdsResponse {
   tvdb_id?: number | null;
 }
 
+export interface TmdbPersonDetail {
+  id: number;
+  name: string;
+  also_known_as: string[];
+  biography: string;
+  birthday: string | null;
+  deathday: string | null;
+  gender: number;
+  homepage: string | null;
+  imdb_id: string | null;
+  known_for_department: string;
+  place_of_birth: string | null;
+  popularity: number;
+  profile_path: string | null;
+}
+
+export interface TmdbPersonExternalIds {
+  imdb_id?: string | null;
+  facebook_id?: string | null;
+  instagram_id?: string | null;
+  twitter_id?: string | null;
+  tiktok_id?: string | null;
+  youtube_id?: string | null;
+}
+
+export interface TmdbPersonCreditItem {
+  id: number;
+  media_type: 'movie' | 'tv';
+  title?: string;
+  name?: string;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  release_date?: string;
+  first_air_date?: string;
+  vote_average?: number;
+  vote_count?: number;
+  popularity?: number;
+  genre_ids?: number[];
+  overview?: string;
+  character?: string;
+  department?: string;
+  job?: string;
+  episode_count?: number;
+}
+
+export interface TmdbPersonCombinedCredits {
+  id: number;
+  cast: TmdbPersonCreditItem[];
+  crew: TmdbPersonCreditItem[];
+}
+
 export interface TmdbDiscoverParams {
   page?: number;
   sortBy?: string;
@@ -138,6 +189,8 @@ export interface TmdbDiscoverParams {
   networks?: number[];
   releaseState?: 'released' | 'upcoming' | 'airing' | 'ended';
   anime?: boolean;
+  withCast?: number[];
+  withCrew?: number[];
 }
 
 export class TmdbRateLimitError extends Error {
@@ -273,7 +326,7 @@ function getTmdbCachePolicy(endpoint: string): TmdbCachePolicy {
     };
   }
 
-  if (/^\/(movie|tv)\/\d+(\/external_ids)?$/.test(endpoint)) {
+  if (/^\/(movie|tv|person)\/\d+(\/external_ids|\/combined_credits)?$/.test(endpoint)) {
     return {
       ttlSeconds: TMDB_CACHE_DETAILS_TTL_SECONDS,
       staleSeconds: TMDB_CACHE_STALE_SECONDS,
@@ -414,6 +467,8 @@ export class TmdbClient {
       params.with_watch_providers = input.providers.join('|');
       params.watch_region = input.region || 'US';
     }
+    if (input.withCast?.length) params.with_cast = input.withCast.join(',');
+    if (input.withCrew?.length) params.with_crew = input.withCrew.join(',');
     if (input.anime) {
       const existingGenres = typeof params.with_genres === 'string'
         ? params.with_genres
@@ -456,6 +511,8 @@ export class TmdbClient {
       params.watch_region = input.region || 'US';
     }
     if (input.networks?.length) params.with_networks = input.networks.join('|');
+    if (input.withCast?.length) params.with_cast = input.withCast.join(',');
+    if (input.withCrew?.length) params.with_crew = input.withCrew.join(',');
 
     if (input.releaseState === 'airing') params.with_status = '0';
     if (input.releaseState === 'ended') params.with_status = '3';
@@ -510,6 +567,18 @@ export class TmdbClient {
       watch_region: region,
     });
     return data.results || [];
+  }
+
+  async personDetails(id: number): Promise<TmdbPersonDetail> {
+    return this.get<TmdbPersonDetail>(`/person/${id}`);
+  }
+
+  async personExternalIds(id: number): Promise<TmdbPersonExternalIds> {
+    return this.get<TmdbPersonExternalIds>(`/person/${id}/external_ids`);
+  }
+
+  async personCombinedCredits(id: number): Promise<TmdbPersonCombinedCredits> {
+    return this.get<TmdbPersonCombinedCredits>(`/person/${id}/combined_credits`);
   }
 
   async tvWatchProviders(region = 'US'): Promise<TmdbProvidersResponse['results']> {
