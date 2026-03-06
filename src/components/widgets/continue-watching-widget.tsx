@@ -16,7 +16,7 @@ async function fetchResumeItems(): Promise<JellyfinItem[]> {
   return data.items || [];
 }
 
-export function ContinueWatchingWidget({ refreshInterval, editMode = false }: WidgetProps) {
+export function ContinueWatchingWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data: resumeItems, loading } = useWidgetData({ fetchFn: fetchResumeItems, refreshInterval });
 
   if (loading) {
@@ -34,6 +34,40 @@ export function ContinueWatchingWidget({ refreshInterval, editMode = false }: Wi
 
   if (!resumeItems || resumeItems.length === 0) {
     return editMode ? <EditModePlaceholder title="Continue Watching" message="Nothing to resume" /> : null;
+  }
+
+  if (size === 'medium') {
+    return (
+      <div>
+        <SectionHeader title="Continue Watching" />
+        <div className="space-y-1.5">
+          {resumeItems.slice(0, 4).map((item) => {
+            const progress = item.UserData?.PlayedPercentage ?? 0;
+            return (
+              <div
+                key={item.Id}
+                className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5"
+              >
+                <MonitorPlay className="h-3.5 w-3.5 text-[#00a4dc] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{item.SeriesName || item.Name}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {item.Type === 'Episode' && item.ParentIndexNumber != null
+                      ? `S${item.ParentIndexNumber}E${item.IndexNumber} · ${item.Name}`
+                      : item.Name !== (item.SeriesName || item.Name) ? item.Name : ''}
+                  </p>
+                </div>
+                <div className="w-12 shrink-0">
+                  <div className="h-1 rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-[#00a4dc]" style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
 
   return (

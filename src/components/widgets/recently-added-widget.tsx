@@ -27,7 +27,7 @@ async function fetchRecent(): Promise<RecentItem[]> {
   return Array.isArray(data) ? data : [];
 }
 
-export function RecentlyAddedWidget({ refreshInterval, editMode = false }: WidgetProps) {
+export function RecentlyAddedWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data: recentlyAdded, loading } = useWidgetData({ fetchFn: fetchRecent, refreshInterval });
 
   if (loading) {
@@ -45,6 +45,34 @@ export function RecentlyAddedWidget({ refreshInterval, editMode = false }: Widge
 
   if (!recentlyAdded || recentlyAdded.length === 0) {
     return editMode ? <EditModePlaceholder title="Recently Added" message="No recent imports" /> : null;
+  }
+
+  if (size === 'medium') {
+    return (
+      <div>
+        <SectionHeader title="Recently Added" href="/activity/history" />
+        <div className="space-y-1.5">
+          {recentlyAdded.slice(0, 4).map((item) => (
+            <Link
+              key={item.id}
+              href={item.href}
+              className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
+            >
+              <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
+                {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{item.title}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{item.subtitle}</p>
+              </div>
+              <span className="text-[10px] tabular-nums text-muted-foreground shrink-0">
+                {formatDistanceToNowSafe(item.date)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

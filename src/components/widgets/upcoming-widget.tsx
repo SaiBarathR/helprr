@@ -75,15 +75,49 @@ export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  return (
-    <div>
-      <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
-      {!upcoming || upcoming.length === 0 ? (
+  if (!upcoming || upcoming.length === 0) {
+    return (
+      <div>
+        <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
         <div className="rounded-xl bg-card py-8 text-center">
           <p className="text-sm text-muted-foreground">Nothing upcoming</p>
         </div>
-      ) : (
-        <Carousel>
+      </div>
+    );
+  }
+
+  if (size === 'medium') {
+    return (
+      <div>
+        <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
+        <div className="space-y-1.5">
+          {upcoming.slice(0, 4).map((event) => (
+            <Link
+              key={event.id}
+              href={event.type === 'episode' ? `/series/${event.seriesId}` : `/movies/${event.movieId}`}
+              className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
+            >
+              <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${event.type === 'episode' ? 'bg-purple-500/80' : 'bg-blue-500/80'}`}>
+                {event.type === 'episode' ? <Tv className="h-2.5 w-2.5 text-white" /> : <Film className="h-2.5 w-2.5 text-white" />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{event.title}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{event.subtitle}</p>
+              </div>
+              <span className="text-[10px] tabular-nums font-medium text-muted-foreground shrink-0">
+                {formatDistanceToNowSafe(event.date)}
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
+      <Carousel>
           {upcoming.slice(0, 12).map((event) => {
             const poster = getPoster(event.images, event.type === 'movie' ? 'radarr' : 'sonarr');
             return (
@@ -128,7 +162,6 @@ export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
             );
           })}
         </Carousel>
-      )}
     </div>
   );
 }
