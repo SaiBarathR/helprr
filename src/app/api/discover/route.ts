@@ -164,6 +164,8 @@ function parseFilters(searchParams: URLSearchParams): DiscoverFilters {
     providers: parseNumberList(searchParams.get('providers')),
     networks: parseNumberList(searchParams.get('networks')),
     releaseState: asReleaseState(searchParams.get('releaseState')),
+    withCast: parseNumberList(searchParams.get('withCast')),
+    withCrew: parseNumberList(searchParams.get('withCrew')),
   };
 }
 
@@ -182,6 +184,8 @@ function hasDiscoverFilters(filters: DiscoverFilters): boolean {
     || (filters.providers && filters.providers.length > 0)
     || (filters.networks && filters.networks.length > 0)
     || filters.releaseState
+    || (filters.withCast && filters.withCast.length > 0)
+    || (filters.withCrew && filters.withCrew.length > 0)
   );
 }
 
@@ -467,6 +471,8 @@ async function discoverItems(params: {
     providers: params.filters.providers,
     networks: params.filters.networks,
     releaseState: params.filters.releaseState,
+    withCast: params.filters.withCast,
+    withCrew: params.filters.withCrew,
   };
 
   const preset = applySortPreset(effectiveSortBy, baseParams);

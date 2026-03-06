@@ -128,9 +128,10 @@ export interface RadarrMovie {
   genres: string[];
   tags: number[];
   added: string;
-  ratings: { 
-    imdb?: { votes: number; value: number }; 
+  ratings: {
+    imdb?: { votes: number; value: number };
     tmdb?: { votes: number; value: number };
+    metacritic?: { votes: number; value: number };
     rottenTomatoes?: { votes: number; value: number };
     trakt?: { votes: number; value: number };
   };
@@ -447,6 +448,19 @@ export interface WantedResponse {
   records: WantedMissingRecord[];
 }
 
+// Radarr Credit
+export interface RadarrCredit {
+  id: number;
+  personName: string;
+  personTmdbId: number;
+  character?: string;
+  department?: string;
+  job?: string;
+  type: 'cast' | 'crew';
+  order: number;
+  images: MediaImage[];
+}
+
 // Tag type
 export interface Tag {
   id: number;
@@ -584,6 +598,8 @@ export interface DiscoverFilters {
   providers?: number[];
   networks?: number[];
   releaseState?: 'released' | 'upcoming' | 'airing' | 'ended';
+  withCast?: number[];
+  withCrew?: number[];
 }
 
 export interface DiscoverFiltersResponse {

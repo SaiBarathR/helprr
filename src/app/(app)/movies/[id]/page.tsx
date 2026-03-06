@@ -37,11 +37,14 @@ import {
   Film,
   FileText,
   ExternalLink,
+  User,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { format } from 'date-fns';
-import type { RadarrMovie, QualityProfile, Tag } from '@/types';
+import Link from 'next/link';
+import type { RadarrMovie, RadarrCredit, QualityProfile, Tag } from '@/types';
+import { toCachedImageSrc } from '@/lib/image';
 import {
   getMovieDetailSnapshot,
   setMovieDetailSnapshot,
@@ -63,6 +66,7 @@ export default function MovieDetailPage() {
   // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [credits, setCredits] = useState<RadarrCredit[]>([]);
 
   const persistMovieSnapshot = useCallback((next: {
     movie?: RadarrMovie | null;
@@ -127,6 +131,12 @@ export default function MovieDetailPage() {
       if (movieResult.notFound) {
         return;
       }
+
+      // Fetch credits in background (non-blocking)
+      fetch(`/api/radarr/credit?movieId=${movieId}`)
+        .then(async (r) => (r.ok ? (await r.json()) as RadarrCredit[] : []))
+        .then(setCredits)
+        .catch(() => setCredits([]));
     } catch {
       if (!hasCachedData) {
         setMovie(null);
@@ -435,24 +445,34 @@ export default function MovieDetailPage() {
             </p>
 
             {/* Ratings row */}
-            {(movie.ratings?.imdb || movie.ratings?.tmdb) && (
-              <div className="flex items-center gap-3 mt-2">
-                {movie.ratings.imdb && movie.ratings.imdb.value > 0 && (
-                  <div className="flex items-center gap-1">
-                    <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
-                    <span className="text-sm font-semibold">{movie.ratings.imdb.value.toFixed(1)}</span>
-                    <span className="text-[10px] text-muted-foreground">IMDb</span>
-                  </div>
-                )}
-                {movie.ratings.tmdb && movie.ratings.tmdb.value > 0 && (
-                  <div className="flex items-center gap-1">
-                    <Star className="h-3.5 w-3.5 text-blue-500 fill-blue-500" />
-                    <span className="text-sm font-semibold">{(movie.ratings.tmdb.value * 10).toFixed(0)}%</span>
-                    <span className="text-[10px] text-muted-foreground">TMDb</span>
-                  </div>
-                )}
-              </div>
-            )}
+            {(() => {
+              const r = movie.ratings;
+              const ratingItems: { label: string; score: string; votes: number; color: string }[] = [];
+              if (r?.imdb && r.imdb.value > 0) ratingItems.push({ label: 'IMDb', score: r.imdb.value.toFixed(1), votes: r.imdb.votes, color: 'text-yellow-500 fill-yellow-500' });
+              if (r?.tmdb && r.tmdb.value > 0) ratingItems.push({ label: 'TMDb', score: r.tmdb.value.toFixed(1), votes: r.tmdb.votes, color: 'text-sky-500 fill-sky-500' });
+              if (r?.metacritic && r.metacritic.value > 0) ratingItems.push({ label: 'MC', score: String(Math.round(r.metacritic.value)), votes: r.metacritic.votes, color: 'text-emerald-500 fill-emerald-500' });
+              if (r?.rottenTomatoes && r.rottenTomatoes.value > 0) ratingItems.push({ label: 'RT', score: `${Math.round(r.rottenTomatoes.value)}%`, votes: r.rottenTomatoes.votes, color: 'text-red-500 fill-red-500' });
+              if (r?.trakt && r.trakt.value > 0) ratingItems.push({ label: 'Trakt', score: r.trakt.value.toFixed(1), votes: r.trakt.votes, color: 'text-purple-500 fill-purple-500' });
+              if (!ratingItems.length) return null;
+              const fmtVotes = (n: number) => {
+                if (!n) return '';
+                if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+                if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
+                return String(n);
+              };
+              return (
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                  {ratingItems.map((ri) => (
+                    <div key={ri.label} className="flex items-center gap-1">
+                      <Star className={`h-3 w-3 ${ri.color}`} />
+                      <span className="text-sm font-semibold">{ri.score}</span>
+                      <span className="text-[10px] text-muted-foreground">{ri.label}</span>
+                      {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{fmtVotes(ri.votes)}</span>}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -493,6 +513,75 @@ export default function MovieDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Cast & Crew */}
+        {credits.length > 0 && (() => {
+          const cast = credits.filter((c) => c.type === 'cast').sort((a, b) => a.order - b.order).slice(0, 15);
+          const crew = credits.filter((c) => c.type === 'crew');
+          const seenCrew = new Set<string>();
+          const uniqueCrew = crew.filter((c) => {
+            const key = `${c.personName}-${c.job}`;
+            if (seenCrew.has(key)) return false;
+            seenCrew.add(key);
+            return true;
+          }).slice(0, 15);
+
+          const renderPersonCard = (person: RadarrCredit, subtitle?: string) => {
+            const headshot = person.images.find((img) => img.coverType === 'headshot');
+            const headshotSrc = headshot?.remoteUrl
+              ? toCachedImageSrc(headshot.remoteUrl, 'radarr')
+              : null;
+            return (
+              <Link
+                key={`${person.type}-${person.id}-${person.job || person.character}`}
+                href={`/discover/person/${person.personTmdbId}`}
+                className="shrink-0 w-[72px] text-center group"
+              >
+                <div className="relative w-[72px] h-[72px] rounded-full overflow-hidden bg-muted mx-auto">
+                  {headshotSrc ? (
+                    <Image
+                      src={headshotSrc}
+                      alt={person.personName}
+                      fill
+                      sizes="72px"
+                      className="object-cover"
+                      unoptimized={isProtectedApiImageSrc(headshotSrc)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                      <User className="h-6 w-6" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-[11px] font-medium mt-1.5 line-clamp-2 leading-tight">{person.personName}</p>
+                {subtitle && (
+                  <p className="text-[10px] text-muted-foreground line-clamp-1 leading-tight">{subtitle}</p>
+                )}
+              </Link>
+            );
+          };
+
+          return (
+            <div className="space-y-3">
+              {cast.length > 0 && (
+                <div>
+                  <h2 className="text-base font-semibold px-4 mb-2">Cast</h2>
+                  <div className="flex gap-3 overflow-x-auto pb-1 px-4 scrollbar-hide">
+                    {cast.map((person) => renderPersonCard(person, person.character))}
+                  </div>
+                </div>
+              )}
+              {uniqueCrew.length > 0 && (
+                <div>
+                  <h2 className="text-base font-semibold px-4 mb-2">Crew</h2>
+                  <div className="flex gap-3 overflow-x-auto pb-1 px-4 scrollbar-hide">
+                    {uniqueCrew.map((person) => renderPersonCard(person, person.job))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Pill buttons */}
         <div className="flex gap-3 px-4">
