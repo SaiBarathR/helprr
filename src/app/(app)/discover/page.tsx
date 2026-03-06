@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,17 +15,10 @@ import {
   SheetTitle,
   SheetFooter,
 } from '@/components/ui/sheet';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerTitle,
-} from '@/components/ui/drawer';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
-  DiscoverDetail,
   DiscoverFiltersResponse,
   DiscoverItem,
   DiscoverSection,
@@ -53,6 +46,10 @@ const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'mo
   popular_anime: { sort: 'popular', contentType: 'anime' },
   upcoming_movies: { sort: 'upcoming', contentType: 'movie' },
   upcoming_series: { sort: 'upcoming', contentType: 'show' },
+  now_playing: { sort: 'popular', contentType: 'movie' },
+  airing_today: { sort: 'popular', contentType: 'show' },
+  top_rated_movies: { sort: 'highlyRated', contentType: 'movie' },
+  top_rated_tv: { sort: 'highlyRated', contentType: 'show' },
 };
 
 const SORT_OPTIONS = [
@@ -67,11 +64,6 @@ interface RateLimitInfo {
   message: string;
   retryAfterSeconds: number | null;
   retryAt: string | null;
-}
-
-function formatYear(value: string | null) {
-  if (!value) return 'Unknown';
-  return value.slice(0, 4);
 }
 
 function cardTypeBadge(type: 'movie' | 'tv') {
@@ -339,9 +331,7 @@ export default function DiscoverPage() {
   const gridFetchControllerRef = useRef<AbortController | null>(null);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
 
-  const [selectedItem, setSelectedItem] = useState<{ id: number; mediaType: 'movie' | 'tv' } | null>(null);
-  const [itemDetail, setItemDetail] = useState<DiscoverDetail | null>(null);
-  const [itemLoading, setItemLoading] = useState(false);
+  const router = useRouter();
 
   const applyRateLimit = useCallback((payload: unknown) => {
     const data = payload as {
@@ -566,39 +556,6 @@ export default function DiscoverPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedItem) {
-      setItemDetail(null);
-      return;
-    }
-
-    let cancelled = false;
-    setItemLoading(true);
-    fetch(`/api/discover/item?mediaType=${selectedItem.mediaType}&id=${selectedItem.id}`)
-      .then(async (res) => {
-        const data = await res.json().catch(() => null);
-        if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
-          applyRateLimit(data);
-          return null;
-        }
-        if (res.ok) {
-          setRateLimitInfo(null);
-          return data;
-        }
-        return null;
-      })
-      .then((data) => {
-        if (!cancelled) setItemDetail(data);
-      })
-      .finally(() => {
-        if (!cancelled) setItemLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedItem, applyRateLimit]);
-
-  useEffect(() => {
     if (!rateLimitInfo?.retryAfterSeconds) {
       setRateLimitCountdown(null);
       return;
@@ -630,8 +587,8 @@ export default function DiscoverPage() {
   }, [query]);
 
   const handleOpenItem = useCallback((item: DiscoverItem) => {
-    setSelectedItem({ id: item.tmdbId, mediaType: item.mediaType });
-  }, []);
+    router.push(`/discover/${item.mediaType === 'movie' ? 'movie' : 'tv'}/${item.tmdbId}`);
+  }, [router]);
 
   const handleOpenFilters = useCallback(() => {
     setDraftFilters(discoverFilters);
@@ -738,32 +695,6 @@ export default function DiscoverPage() {
     if (discoverContentType === 'show') return filtersMeta.providers.filter((provider) => provider.type === 'tv');
     return filtersMeta.providers;
   }, [filtersMeta, discoverContentType]);
-
-  const detailAddHref = useMemo(() => {
-    if (!itemDetail) return null;
-    if (itemDetail.addTarget.exists && itemDetail.addTarget.id) {
-      return itemDetail.addTarget.service === 'radarr'
-        ? `/movies/${itemDetail.addTarget.id}`
-        : `/series/${itemDetail.addTarget.id}`;
-    }
-
-    if (itemDetail.mediaType === 'movie') {
-      const params = new URLSearchParams();
-      params.set('term', itemDetail.title);
-      params.set('tmdbId', String(itemDetail.tmdbId));
-      return `/movies/add?${params.toString()}`;
-    }
-
-    const params = new URLSearchParams();
-    params.set('term', itemDetail.title);
-    params.set('tmdbId', String(itemDetail.tmdbId));
-    if (itemDetail.tvdbId) params.set('tvdbId', String(itemDetail.tvdbId));
-    params.set('seriesType', itemDetail.isAnime ? 'anime' : 'standard');
-    return `/series/add?${params.toString()}`;
-  }, [itemDetail]);
-  const backdropSrc = itemDetail?.backdropPath
-    ? (toCachedImageSrc(itemDetail.backdropPath, 'tmdb') || itemDetail.backdropPath)
-    : null;
 
   return (
     <div className="space-y-4">
@@ -1212,67 +1143,6 @@ export default function DiscoverPage() {
         </SheetContent>
       </Sheet>
 
-      <Drawer open={!!selectedItem} onOpenChange={(open) => !open && setSelectedItem(null)}>
-        <DrawerContent className="max-h-[94vh]">
-          <DrawerTitle className="sr-only">Discover detail</DrawerTitle>
-          <DrawerDescription className="sr-only">Media details and add action</DrawerDescription>
-          <div className="overflow-y-auto pb-6">
-            {itemLoading || !itemDetail ? (
-              <div className="p-4 space-y-3">
-                <Skeleton className="h-52 w-full rounded-xl" />
-                <Skeleton className="h-6 w-48" />
-                <Skeleton className="h-20 w-full" />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="relative h-52 w-full bg-muted">
-                  {backdropSrc ? (
-                    <Image
-                      src={backdropSrc}
-                      alt={itemDetail.title}
-                      fill
-                      sizes="100vw"
-                      className="object-cover"
-                      unoptimized={isProtectedApiImageSrc(backdropSrc)}
-                    />
-                  ) : null}
-                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/35 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4">
-                    <div className="flex items-center gap-2 text-xs text-white/90">
-                      {cardTypeBadge(itemDetail.mediaType)}
-                      {itemDetail.isAnime && <Badge className="bg-pink-600/90 text-[10px] text-white">ANIME</Badge>}
-                    </div>
-                    <h3 className="mt-2 text-lg font-semibold text-white line-clamp-2">{itemDetail.title}</h3>
-                    <p className="text-xs text-white/80">
-                      {formatYear(itemDetail.releaseDate)} • {itemDetail.runtime ? `${itemDetail.runtime} min` : 'Runtime N/A'} • {itemDetail.rating.toFixed(1)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="px-4 space-y-3">
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {itemDetail.overview || 'No overview available.'}
-                  </p>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {(itemDetail.genreNames || []).map((genre) => (
-                      <Badge key={genre} variant="outline" className="text-xs">{genre}</Badge>
-                    ))}
-                  </div>
-
-                  {detailAddHref && (
-                    <Button asChild className="w-full h-11">
-                      <Link href={detailAddHref} onClick={() => setSelectedItem(null)}>
-                        {itemDetail.addTarget.exists ? 'Open in Library' : (itemDetail.mediaType === 'movie' ? 'Add to Radarr' : 'Add to Sonarr')}
-                      </Link>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </DrawerContent>
-      </Drawer>
     </div>
   );
 }
