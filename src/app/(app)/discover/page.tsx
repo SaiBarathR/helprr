@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +42,8 @@ import {
   Compass,
   ChevronRight,
   Sparkles,
+  X,
+  User,
 } from 'lucide-react';
 
 const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' | 'anime' }> = {
@@ -302,6 +305,7 @@ function SectionRow({
 }
 
 export default function DiscoverPage() {
+  const searchParams = useSearchParams();
   const {
     discoverContentType,
     setDiscoverContentType,
@@ -313,6 +317,8 @@ export default function DiscoverPage() {
     setDiscoverFilters,
   } = useUIStore();
 
+  const [personFilter, setPersonFilter] = useState<{ id: number; name: string } | null>(null);
+  const personInitRef = useRef(false);
   const [query, setQuery] = useState('');
   const [sections, setSections] = useState<DiscoverSection[]>([]);
   const [items, setItems] = useState<DiscoverItem[]>([]);
@@ -373,8 +379,9 @@ export default function DiscoverPage() {
       || activeSectionKey
       || discoverSort !== 'trending'
       || discoverContentType !== 'all'
+      || personFilter
     );
-  }, [manualBrowseMode, query, hasAdvancedFilters, activeSectionKey, discoverSort, discoverContentType]);
+  }, [manualBrowseMode, query, hasAdvancedFilters, activeSectionKey, discoverSort, discoverContentType, personFilter]);
 
   const visibleSections = useMemo(() => {
     if (discoverContentType === 'all') return sections;
@@ -449,6 +456,10 @@ export default function DiscoverPage() {
     if (discoverFilters.providers.length) params.set('providers', discoverFilters.providers.join(','));
     if (discoverFilters.networks.length) params.set('networks', discoverFilters.networks.join(','));
     if (discoverFilters.releaseState) params.set('releaseState', discoverFilters.releaseState);
+    if (personFilter) {
+      params.set('withCast', String(personFilter.id));
+      params.set('withCrew', String(personFilter.id));
+    }
 
     return params.toString();
   }, [
@@ -458,6 +469,7 @@ export default function DiscoverPage() {
     discoverSortDirection,
     discoverFilters,
     activeSectionKey,
+    personFilter,
   ]);
 
   const fetchGridItems = useCallback(async (pageValue: number, append = false, signal?: AbortSignal) => {
@@ -512,6 +524,20 @@ export default function DiscoverPage() {
     fetchSections();
     fetchFiltersMeta();
   }, [fetchSections, fetchFiltersMeta]);
+
+  // Handle person URL params (from movie detail cast/crew links)
+  useEffect(() => {
+    if (personInitRef.current) return;
+    personInitRef.current = true;
+    const personId = Number(searchParams.get('person'));
+    const personName = searchParams.get('personName');
+    if (Number.isFinite(personId) && personId > 0 && personName) {
+      setPersonFilter({ id: personId, name: personName });
+      setDiscoverContentType('movie');
+      setDiscoverSort('popular');
+      setManualBrowseMode(true);
+    }
+  }, [searchParams, setDiscoverContentType, setDiscoverSort]);
 
   useEffect(() => {
     if (!gridMode) return;
@@ -656,6 +682,7 @@ export default function DiscoverPage() {
     setActiveSectionKey(null);
     setQuery('');
     setManualBrowseMode(false);
+    setPersonFilter(null);
   }, [setDiscoverFilters, setDiscoverSort, setDiscoverSortDirection, setDiscoverContentType]);
 
   const handleSeeAll = useCallback((section: DiscoverSection) => {
@@ -855,11 +882,23 @@ export default function DiscoverPage() {
 
       {gridMode && (
         <div className="space-y-3">
+          {personFilter && (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <User className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-sm font-medium flex-1 truncate">Movies with {personFilter.name}</span>
+              <button
+                onClick={() => setPersonFilter(null)}
+                className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center hover:bg-accent"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm text-muted-foreground">Discover Results</p>
               <p className="text-xs text-muted-foreground">
-                {activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
+                {personFilter ? `Filtered by: ${personFilter.name}` : activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
               </p>
             </div>
             <div className="flex items-center gap-2">

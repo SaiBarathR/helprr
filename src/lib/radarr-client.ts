@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import type {
   RadarrMovie,
   RadarrCalendarEntry,
+  RadarrCredit,
   QueueResponse,
   HistoryItem,
   HistoryResponse,
@@ -109,6 +110,11 @@ export class RadarrClient {
     addImportExclusion: boolean = false
   ): Promise<void> {
     await this.delete(`/api/v3/movie/${id}`, { deleteFiles, addImportExclusion });
+  }
+
+  // Credits
+  async getCredits(movieId: number): Promise<RadarrCredit[]> {
+    return this.get<RadarrCredit[]>('/api/v3/credit', { movieId });
   }
 
   // Release (Interactive Search)

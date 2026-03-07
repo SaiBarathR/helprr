@@ -4,6 +4,8 @@ import {
   type NavItemId, DEFAULT_NAV_ORDER, NAV_ITEM_MAP, reconcileNavOrder,
 } from '@/lib/nav-config';
 import type { DiscoverContentType } from '@/types';
+import type { WidgetInstance, WidgetSize } from '@/lib/widgets/types';
+import { DEFAULT_LAYOUT, getWidgetDefinition } from '@/lib/widgets/registry';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -60,6 +62,23 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
     providers: [...filters.providers],
     networks: [...filters.networks],
   };
+}
+
+function normalizeWidgetSize(widgetId: string, size: WidgetSize): WidgetSize {
+  const definition = getWidgetDefinition(widgetId);
+  const requested = size === 'small' ? 'medium' : size;
+
+  if (!definition) return requested;
+  return definition.sizes.includes(requested) ? requested : definition.defaultSize;
+}
+
+function sanitizeDashboardLayout(layout: WidgetInstance[]): WidgetInstance[] {
+  return layout
+    .filter((item) => Boolean(getWidgetDefinition(item.widgetId)))
+    .map((item) => ({
+      ...item,
+      size: normalizeWidgetSize(item.widgetId, item.size),
+    }));
 }
 
 interface UIState {
@@ -123,6 +142,16 @@ interface UIState {
   toggleNavItem: (id: NavItemId) => void;
   setDefaultPage: (id: NavItemId) => void;
   resetNavConfig: () => void;
+  // Dashboard widget layout
+  dashboardLayout: WidgetInstance[];
+  dashboardEditMode: boolean;
+  setDashboardLayout: (layout: WidgetInstance[]) => void;
+  setDashboardEditMode: (editing: boolean) => void;
+  addWidget: (widgetId: string, size: WidgetSize) => void;
+  removeWidget: (instanceId: string) => void;
+  resizeWidget: (instanceId: string, size: WidgetSize) => void;
+  reorderWidgets: (layout: WidgetInstance[]) => void;
+  resetDashboardLayout: () => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -221,10 +250,39 @@ export const useUIStore = create<UIState>()(
         }),
       setDefaultPage: (id) => set({ defaultPage: id }),
       resetNavConfig: () => set({ navOrder: [...DEFAULT_NAV_ORDER], disabledNavItems: [], defaultPage: 'dashboard' as NavItemId }),
+      // Dashboard widgets
+      dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w }))),
+      dashboardEditMode: false,
+      setDashboardLayout: (layout) => set({ dashboardLayout: sanitizeDashboardLayout(layout) }),
+      setDashboardEditMode: (editing) => set({ dashboardEditMode: editing }),
+      addWidget: (widgetId, size) =>
+        set((state) => {
+          const count = state.dashboardLayout.filter((w) => w.widgetId === widgetId).length;
+          const instance: WidgetInstance = {
+            id: `${widgetId}-${count + 1}-${Date.now()}`,
+            widgetId,
+            size: normalizeWidgetSize(widgetId, size),
+          };
+          return { dashboardLayout: sanitizeDashboardLayout([...state.dashboardLayout, instance]) };
+        }),
+      removeWidget: (instanceId) =>
+        set((state) => ({
+          dashboardLayout: state.dashboardLayout.filter((w) => w.id !== instanceId),
+        })),
+      resizeWidget: (instanceId, size) =>
+        set((state) => ({
+          dashboardLayout: sanitizeDashboardLayout(
+            state.dashboardLayout.map((w) =>
+              w.id === instanceId ? { ...w, size: normalizeWidgetSize(w.widgetId, size) } : w
+            )
+          ),
+        })),
+      reorderWidgets: (layout) => set({ dashboardLayout: sanitizeDashboardLayout(layout) }),
+      resetDashboardLayout: () => set({ dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w }))) }),
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 5,
+      version: 7,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -267,6 +325,15 @@ export const useUIStore = create<UIState>()(
           state.moviesSearch = '';
           state.seriesSearch = '';
         }
+        if (version < 6) {
+          state.dashboardLayout = DEFAULT_LAYOUT.map((w) => ({ ...w }));
+        }
+        if (version < 7) {
+          const rawLayout = Array.isArray(state.dashboardLayout)
+            ? state.dashboardLayout as WidgetInstance[]
+            : DEFAULT_LAYOUT.map((w) => ({ ...w }));
+          state.dashboardLayout = sanitizeDashboardLayout(rawLayout);
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -295,6 +362,7 @@ export const useUIStore = create<UIState>()(
         navOrder: state.navOrder,
         disabledNavItems: state.disabledNavItems,
         defaultPage: state.defaultPage,
+        dashboardLayout: state.dashboardLayout,
       }),
     }
   )

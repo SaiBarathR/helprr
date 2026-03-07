@@ -308,3 +308,41 @@ html {
   transform: scale(0.98);
   transition: all 0.1s ease;
 }
+
+/* Widget ghost placeholder (shown at original position during drag) */
+@keyframes widget-ghost-pulse {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.3; }
+}
+
+.widget-ghost {
+  animation: widget-ghost-pulse 1.5s ease-in-out infinite;
+  background: oklch(from var(--muted) l c h / 0.5);
+}
+
+/* iOS-style widget jiggle animation for edit mode */
+@keyframes widget-jiggle {
+  0% { transform: rotate(-0.35deg); }
+  25% { transform: rotate(0.35deg); }
+  50% { transform: rotate(-0.25deg); }
+  75% { transform: rotate(0.25deg); }
+  100% { transform: rotate(-0.35deg); }
+}
+
+.widget-jiggle {
+  animation: widget-jiggle 0.95s ease-in-out infinite;
+}
+
+.widget-jiggle:nth-child(2n) {
+  animation-delay: 0.08s;
+}
+
+.widget-jiggle:nth-child(3n) {
+  animation-delay: 0.14s;
+  animation-duration: 1.05s;
+}
+
+.widget-jiggle:nth-child(5n) {
+  animation-delay: 0.2s;
+  animation-duration: 0.85s;
+}

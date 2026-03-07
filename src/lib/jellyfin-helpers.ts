@@ -45,22 +45,35 @@ export function formatResolution(w: number, h: number): string {
   return `${w}×${h}`;
 }
 
-export function getPlayMethodInfo(method?: string): { label: string; description: string; color: string } {
+export function getPlayMethodInfo(
+  method?: string,
+  ti?: JellyfinTranscodingInfo
+): { label: string; description: string; color: string } {
+  // Remux: reported as Transcode but both video and audio are direct
+  if (method === 'Transcode' && ti?.IsVideoDirect && ti?.IsAudioDirect) {
+    return {
+      label: 'Remuxing',
+      description: 'The media is in an incompatible file container but both the video and audio streams are compatible. The media is being repackaged losslessly.',
+      color: 'text-blue-400',
+    };
+  }
   switch (method) {
     case 'Transcode':
       return { label: 'Transcoding', description: 'The server is converting this media in real-time', color: 'text-orange-400' };
     case 'DirectStream':
-      return { label: 'Direct Streaming', description: 'The container is being remuxed without re-encoding', color: 'text-blue-400' };
+      return ti
+        ? { label: 'Remuxing', description: 'The media is in an incompatible file container but both the video and audio streams are compatible. The media is being repackaged losslessly.', color: 'text-blue-400' }
+        : { label: 'Direct Play', description: 'The source file is entirely compatible with this client and the session is receiving the file without modifications.', color: 'text-green-400' };
     case 'DirectPlay':
     default:
-      return { label: 'Direct Playing', description: 'The file is being sent directly without modification', color: 'text-green-400' };
+      return { label: 'Direct Play', description: 'The source file is entirely compatible with this client and the session is receiving the file without modifications.', color: 'text-green-400' };
   }
 }
 
 const TRANSCODE_REASON_MAP: Record<string, string> = {
   ContainerNotSupported: 'Container format is not supported',
   VideoCodecNotSupported: 'Video codec is not supported',
-  AudioCodecNotSupported: 'Audio codec is not supported',
+  AudioCodecNotSupported: 'Audio codec is not supported. DTS, Dolby TrueHD, etc. or number of audio channels is not supported by this client.',
   ContainerBitrateExceedsLimit: 'Container bitrate exceeds the limit',
   AudioBitrateNotSupported: 'Audio bitrate is not supported',
   VideoBitrateNotSupported: 'Video bitrate is not supported',
@@ -68,7 +81,7 @@ const TRANSCODE_REASON_MAP: Record<string, string> = {
   VideoProfileNotSupported: 'Video profile is not supported',
   AudioChannelsNotSupported: 'Audio channel count is not supported',
   SubtitleCodecNotSupported: 'Subtitle codec requires transcoding',
-  VideoRangeTypeNotSupported: 'Video range type (HDR/SDR) is not supported',
+  VideoRangeTypeNotSupported: 'Video range type (HDR) is not supported',
   AudioProfileNotSupported: 'Audio profile is not supported',
   RefFramesNotSupported: 'Reference frame count is not supported',
   VideoResolutionNotSupported: 'Video resolution is not supported',
