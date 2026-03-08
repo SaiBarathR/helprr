@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -343,7 +344,8 @@ export default function PersonDetailPage() {
                   ? toCachedImageSrc(credit.posterPath, 'tmdb')
                   : null;
                 return (
-                  <div
+                  <Link
+                    href={`/discover/${credit.mediaType === 'movie' ? 'movie' : 'tv'}/${credit.id}`}
                     key={`${credit.mediaType}-${credit.id}-${credit.job || credit.character || ''}`}
                     className="group text-left"
                   >
@@ -387,7 +389,7 @@ export default function PersonDetailPage() {
                         {credit.episodeCount ? ` (${credit.episodeCount} ep)` : ''}
                       </p>
                     )}
-                  </div>
+                  </Link>
                 );
               })}
             </div>
