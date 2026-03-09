@@ -21,8 +21,6 @@ services:
     image: redis:7-alpine
     container_name: helprr-redis
     restart: unless-stopped
-    ports:
-      - "6380:6379"
     networks:
       - helprr-net
     healthcheck:
