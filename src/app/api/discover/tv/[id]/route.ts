@@ -60,19 +60,18 @@ export async function GET(
     }
 
     const tmdb = await getTMDBClient();
+    const details = await tmdb.tvDetails(id);
 
     const [
-      details,
-      externalIds,
-      aggregateCredits,
-      videos,
-      watchProvidersData,
-      contentRatings,
-      recommendationsData,
-      similarData,
-      libraryData,
-    ] = await Promise.all([
-      tmdb.tvDetails(id),
+      externalIdsResult,
+      aggregateCreditsResult,
+      videosResult,
+      watchProvidersResult,
+      contentRatingsResult,
+      recommendationsResult,
+      similarResult,
+      libraryResult,
+    ] = await Promise.allSettled([
       tmdb.tvExternalIds(id),
       tmdb.tvAggregateCredits(id),
       tmdb.tvVideos(id),
@@ -82,6 +81,31 @@ export async function GET(
       tmdb.tvSimilar(id),
       getLibraries(),
     ]);
+
+    const externalIds = externalIdsResult.status === 'fulfilled'
+      ? externalIdsResult.value
+      : { imdb_id: null, tvdb_id: null };
+    const aggregateCredits = aggregateCreditsResult.status === 'fulfilled'
+      ? aggregateCreditsResult.value
+      : { id: details.id, cast: [], crew: [] };
+    const videos = videosResult.status === 'fulfilled'
+      ? videosResult.value
+      : { id: details.id, results: [] };
+    const watchProvidersData = watchProvidersResult.status === 'fulfilled'
+      ? watchProvidersResult.value
+      : { id: details.id, results: {} };
+    const contentRatings = contentRatingsResult.status === 'fulfilled'
+      ? contentRatingsResult.value
+      : { id: details.id, results: [] };
+    const recommendationsData = recommendationsResult.status === 'fulfilled'
+      ? recommendationsResult.value
+      : { page: 1, total_pages: 1, total_results: 0, results: [] };
+    const similarData = similarResult.status === 'fulfilled'
+      ? similarResult.value
+      : { page: 1, total_pages: 1, total_results: 0, results: [] };
+    const libraryData = libraryResult.status === 'fulfilled'
+      ? libraryResult.value
+      : { movies: [], series: [] };
 
     const lookups = buildLibraryLookups(libraryData.movies, libraryData.series);
 

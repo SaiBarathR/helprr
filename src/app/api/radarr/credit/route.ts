@@ -6,8 +6,13 @@ export async function GET(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const movieId = Number(new URL(request.url).searchParams.get('movieId'));
-  if (!Number.isFinite(movieId)) {
+  const rawMovieId = new URL(request.url).searchParams.get('movieId');
+  if (!rawMovieId || rawMovieId.trim() === '') {
+    return NextResponse.json({ error: 'movieId is required' }, { status: 400 });
+  }
+
+  const movieId = Number(rawMovieId);
+  if (!Number.isInteger(movieId) || movieId <= 0) {
     return NextResponse.json({ error: 'movieId is required' }, { status: 400 });
   }
 

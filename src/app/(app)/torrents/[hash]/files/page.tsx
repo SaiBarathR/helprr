@@ -45,6 +45,7 @@ export default function TorrentFilesPage() {
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
 
   const pendingMutationRef = useRef(false);
+  const mutationIdRef = useRef(0);
 
   // Fetch files from the existing details endpoint
   const fetchFiles = useCallback(async () => {
@@ -94,13 +95,15 @@ export default function TorrentFilesPage() {
 
   // Set priority via API with optimistic update
   const setPriority = useCallback(async (fileIds: number[], priority: number) => {
+    const mutationId = ++mutationIdRef.current;
     pendingMutationRef.current = true;
 
     // Optimistic update
-    const prevFiles = files;
-    setFiles((prev) =>
-      prev.map((f) => (fileIds.includes(f.index) ? { ...f, priority } : f))
-    );
+    let prevFiles: TorrentFile[] = [];
+    setFiles((prev) => {
+      prevFiles = prev;
+      return prev.map((f) => (fileIds.includes(f.index) ? { ...f, priority } : f));
+    });
 
     try {
       const res = await fetch(`/api/qbittorrent/${hash}/files/priority`, {
@@ -114,12 +117,16 @@ export default function TorrentFilesPage() {
       }
     } catch (err) {
       // Revert on error
-      setFiles(prevFiles);
-      toast.error(err instanceof Error ? err.message : 'Failed to set priority');
+      if (mutationId === mutationIdRef.current) {
+        setFiles(prevFiles);
+        toast.error(err instanceof Error ? err.message : 'Failed to set priority');
+      }
     } finally {
-      pendingMutationRef.current = false;
+      if (mutationId === mutationIdRef.current) {
+        pendingMutationRef.current = false;
+      }
     }
-  }, [files, hash]);
+  }, [hash]);
 
   // Toggle file download (priority 0 <-> 1)
   const toggleFileDownload = useCallback((fileIds: number[], currentlySelected: boolean) => {
@@ -286,6 +293,7 @@ function DirRow({
             <input
               type="checkbox"
               checked={checkState === 'all'}
+              aria-label={`Select ${node.name}`}
               ref={(el) => {
                 if (el) el.indeterminate = checkState === 'indeterminate';
               }}
@@ -366,6 +374,7 @@ function FileRow({
           <input
             type="checkbox"
             checked={isSelected}
+            aria-label={`Select ${node.name}`}
             onChange={() => onToggleDownload([file.index], isSelected)}
             className="rounded border-border h-4 w-4 mt-0.5 shrink-0"
           />
@@ -412,7 +421,11 @@ function FileRow({
                 }
               }}
             >
-              <SelectTrigger size="sm" className="h-6 text-[10px] px-2 min-w-[70px] border-border/50">
+              <SelectTrigger
+                size="sm"
+                aria-label={`Priority for ${node.name}`}
+                className="h-6 text-[10px] px-2 min-w-[70px] border-border/50"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent position="popper" align="end">

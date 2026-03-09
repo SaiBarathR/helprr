@@ -23,10 +23,10 @@ const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder
   upcoming_series: { sortBy: 'upcoming', contentType: 'show', sortOrder: 'asc' },
   highly_rated: { sortBy: 'highlyRated', contentType: 'all' },
   most_loved: { sortBy: 'mostLoved', contentType: 'all' },
-  now_playing: { sortBy: 'popular', contentType: 'movie' },
-  airing_today: { sortBy: 'popular', contentType: 'show' },
-  top_rated_movies: { sortBy: 'highlyRated', contentType: 'movie' },
-  top_rated_tv: { sortBy: 'highlyRated', contentType: 'show' },
+  now_playing: { sortBy: 'now_playing', contentType: 'movie' },
+  airing_today: { sortBy: 'airing_today', contentType: 'show' },
+  top_rated_movies: { sortBy: 'top_rated_movies', contentType: 'movie' },
+  top_rated_tv: { sortBy: 'top_rated_tv', contentType: 'show' },
 };
 
 const EMPTY_LIST_RESPONSE = {
@@ -154,6 +154,13 @@ function applySortPreset(sortBy: string, input: TmdbDiscoverParams): TmdbDiscove
 }
 
 function parseFilters(searchParams: URLSearchParams): DiscoverFilters {
+  const withCast = parseNumberList(searchParams.get('withCast'));
+  const withCrew = parseNumberList(searchParams.get('withCrew'));
+  const withPeople = parseNumberList(searchParams.get('with_people'))
+    || ([...(withCast || []), ...(withCrew || [])].length
+      ? [...new Set([...(withCast || []), ...(withCrew || [])])]
+      : undefined);
+
   return {
     genres: parseNumberList(searchParams.get('genres')),
     yearFrom: parseNumber(searchParams.get('yearFrom')),
@@ -168,8 +175,9 @@ function parseFilters(searchParams: URLSearchParams): DiscoverFilters {
     providers: parseNumberList(searchParams.get('providers')),
     networks: parseNumberList(searchParams.get('networks')),
     releaseState: asReleaseState(searchParams.get('releaseState')),
-    withCast: parseNumberList(searchParams.get('withCast')),
-    withCrew: parseNumberList(searchParams.get('withCrew')),
+    withPeople,
+    withCast,
+    withCrew,
   };
 }
 
@@ -188,6 +196,7 @@ function hasDiscoverFilters(filters: DiscoverFilters): boolean {
     || (filters.providers && filters.providers.length > 0)
     || (filters.networks && filters.networks.length > 0)
     || filters.releaseState
+    || (filters.withPeople && filters.withPeople.length > 0)
     || (filters.withCast && filters.withCast.length > 0)
     || (filters.withCrew && filters.withCrew.length > 0)
   );
@@ -458,10 +467,27 @@ async function discoverItems(params: {
   sortBy: string;
   sortOrder: 'asc' | 'desc';
   filters: DiscoverFilters;
+  section?: string | null;
 }) {
   const tmdb = await getTMDBClient();
   const hasFilters = hasDiscoverFilters(params.filters);
   const effectiveSortBy = params.sortBy === 'trending' && hasFilters ? 'popular' : params.sortBy;
+
+  if (params.section === 'now_playing' || effectiveSortBy === 'now_playing') {
+    return { data: await tmdb.nowPlayingMovies(params.page, 'US'), mediaType: 'movie' as const };
+  }
+
+  if (params.section === 'airing_today' || effectiveSortBy === 'airing_today') {
+    return { data: await tmdb.airingTodayTv(params.page), mediaType: 'tv' as const };
+  }
+
+  if (params.section === 'top_rated_movies' || effectiveSortBy === 'top_rated_movies') {
+    return { data: await tmdb.topRatedMovies(params.page), mediaType: 'movie' as const };
+  }
+
+  if (params.section === 'top_rated_tv' || effectiveSortBy === 'top_rated_tv') {
+    return { data: await tmdb.topRatedTv(params.page), mediaType: 'tv' as const };
+  }
 
   if (effectiveSortBy === 'trending') {
     if (params.contentType === 'movie') {
@@ -511,8 +537,7 @@ async function discoverItems(params: {
     providers: params.filters.providers,
     networks: params.filters.networks,
     releaseState: params.filters.releaseState,
-    withCast: params.filters.withCast,
-    withCrew: params.filters.withCrew,
+    withPeople: params.filters.withPeople,
   };
 
   const preset = applySortPreset(effectiveSortBy, baseParams);
@@ -624,7 +649,7 @@ export async function GET(request: NextRequest) {
 
     const result = mode === 'search' || query.trim()
       ? await searchItems({ q: query, page, contentType })
-      : await discoverItems({ page, contentType, sortBy, sortOrder, filters }).then((res) => res.data);
+      : await discoverItems({ page, contentType, sortBy, sortOrder, filters, section }).then((res) => res.data);
 
     let items = normalizeItems(
       result.results,

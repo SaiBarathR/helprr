@@ -25,7 +25,7 @@ export function WidgetRenderer({ instance, refreshInterval, editMode = false }: 
   const WidgetComponent = definition.component;
 
   return (
-    <WidgetWrapper size={instance.size}>
+    <WidgetWrapper widgetId={instance.id}>
       <Suspense fallback={<WidgetSkeleton size={instance.size} />}>
         <WidgetComponent size={instance.size} refreshInterval={refreshInterval} editMode={editMode} />
       </Suspense>

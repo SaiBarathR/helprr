@@ -598,6 +598,7 @@ export interface DiscoverFilters {
   providers?: number[];
   networks?: number[];
   releaseState?: 'released' | 'upcoming' | 'airing' | 'ended';
+  withPeople?: number[];
   withCast?: number[];
   withCrew?: number[];
 }

@@ -2,7 +2,7 @@
 
 import { useSortable, defaultAnimateLayoutChanges } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { MinusCircle } from 'lucide-react';
+import { GripVertical, MinusCircle } from 'lucide-react';
 import { WidgetRenderer } from './widget-renderer';
 import type { WidgetInstance, WidgetSize } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
@@ -42,6 +42,7 @@ export function SortableWidget({
 
   const definition = getWidgetDefinition(instance.widgetId);
   const isFullWidth = instance.size === 'medium' || instance.size === 'large';
+  const widgetTitle = definition?.name || 'widget';
 
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
@@ -55,9 +56,9 @@ export function SortableWidget({
       style={style}
       className={`relative ${isFullWidth ? 'col-span-2' : 'col-span-1'} ${
         isDragging ? 'z-0 widget-ghost rounded-2xl' : ''
-      } ${editMode ? 'cursor-grab active:cursor-grabbing' : ''}`}
+      }`}
       onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
-      {...(editMode ? { ...attributes, ...listeners } : {})}
+      {...(editMode ? { ...attributes } : {})}
     >
       <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${
         isDragging ? 'invisible' : ''
@@ -67,8 +68,20 @@ export function SortableWidget({
 
       {editMode && !isDragging && (
         <>
+          {/* Drag handle */}
+          <button
+            type="button"
+            aria-label={`Drag ${widgetTitle}`}
+            {...listeners}
+            className="absolute -top-2 right-2 z-10 bg-card border border-border text-muted-foreground rounded-full p-1 shadow-lg cursor-grab active:cursor-grabbing active:scale-90 transition-transform"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+
           {/* Remove button */}
           <button
+            type="button"
+            aria-label={`Remove ${widgetTitle}`}
             onClick={(e) => { e.stopPropagation(); onRemove(instance.id); }}
             className="absolute -top-2 -left-2 z-10 bg-destructive text-white rounded-full p-0.5 shadow-lg active:scale-90 transition-transform"
           >
@@ -78,6 +91,8 @@ export function SortableWidget({
           {/* Size toggle pill */}
           {definition && definition.sizes.length > 1 && (
             <button
+              type="button"
+              aria-label={`Resize ${widgetTitle} to ${getNextSize(instance.size, definition.sizes)}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onResize(instance.id, getNextSize(instance.size, definition.sizes));

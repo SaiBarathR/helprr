@@ -60,6 +60,7 @@ export default function DashboardPage() {
       {!editMode && (
         <button
           onClick={() => setEditMode(true)}
+          aria-label="Edit dashboard"
           className="fixed bottom-20 right-4 z-40 w-10 h-10 rounded-full bg-card border border-border shadow-lg flex items-center justify-center active:scale-90 transition-transform"
         >
           <Pencil className="h-4 w-4 text-muted-foreground" />
