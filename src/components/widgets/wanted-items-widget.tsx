@@ -18,17 +18,36 @@ async function fetchWanted(): Promise<WantedCounts> {
     fetch('/api/activity/wanted?type=cutoff&pageSize=1'),
   ]);
 
-  let missing = 0;
-  let cutoff = 0;
+  const missingResponse = missingRes.status === 'fulfilled' ? missingRes.value : null;
+  const cutoffResponse = cutoffRes.status === 'fulfilled' ? cutoffRes.value : null;
+  const errors: string[] = [];
 
-  if (missingRes.status === 'fulfilled' && missingRes.value.ok) {
-    const data = await missingRes.value.json();
-    missing = data.totalRecords || 0;
+  if (missingRes.status === 'rejected') {
+    errors.push(`missing rejected: ${missingRes.reason instanceof Error ? missingRes.reason.message : String(missingRes.reason)}`);
+  } else if (!missingRes.value.ok) {
+    errors.push(`missing failed: ${missingRes.value.status} ${missingRes.value.statusText}`);
   }
-  if (cutoffRes.status === 'fulfilled' && cutoffRes.value.ok) {
-    const data = await cutoffRes.value.json();
-    cutoff = data.totalRecords || 0;
+
+  if (cutoffRes.status === 'rejected') {
+    errors.push(`cutoff rejected: ${cutoffRes.reason instanceof Error ? cutoffRes.reason.message : String(cutoffRes.reason)}`);
+  } else if (!cutoffRes.value.ok) {
+    errors.push(`cutoff failed: ${cutoffRes.value.status} ${cutoffRes.value.statusText}`);
   }
+
+  if (errors.length > 0) {
+    throw new Error(`Failed to fetch wanted counts (${errors.join('; ')})`);
+  }
+
+  if (!missingResponse || !cutoffResponse) {
+    throw new Error('Failed to fetch wanted counts (missing response payload)');
+  }
+
+  const [missingData, cutoffData] = await Promise.all([
+    missingResponse.json(),
+    cutoffResponse.json(),
+  ]);
+  const missing = missingData.totalRecords || 0;
+  const cutoff = cutoffData.totalRecords || 0;
 
   return { missing, cutoff };
 }

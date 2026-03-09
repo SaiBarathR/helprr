@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -30,9 +30,16 @@ export default function DiscoverMovieDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [overviewExpanded, setOverviewExpanded] = useState(false);
+  const requestIdRef = useRef(0);
 
   const loadMovie = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    setLoading(true);
+    setMovie(null);
+    setError(null);
+
     if (!Number.isFinite(movieId) || movieId <= 0) {
+      if (requestId !== requestIdRef.current) return;
       setError('Invalid movie ID');
       setLoading(false);
       return;
@@ -45,16 +52,22 @@ export default function DiscoverMovieDetailPage() {
         throw new Error(data?.error || 'Failed to load movie');
       }
       const data = await res.json();
+      if (requestId !== requestIdRef.current) return;
       setMovie(data);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load movie');
     } finally {
+      if (requestId !== requestIdRef.current) return;
       setLoading(false);
     }
   }, [movieId]);
 
   useEffect(() => {
     void loadMovie();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [loadMovie]);
 
   const infoRows = useMemo(() => {

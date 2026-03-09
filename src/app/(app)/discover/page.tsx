@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
@@ -310,7 +309,6 @@ export default function DiscoverPage() {
   } = useUIStore();
 
   const [personFilter, setPersonFilter] = useState<{ id: number; name: string } | null>(null);
-  const personInitRef = useRef(false);
   const [query, setQuery] = useState('');
   const [sections, setSections] = useState<DiscoverSection[]>([]);
   const [items, setItems] = useState<DiscoverItem[]>([]);
@@ -447,8 +445,7 @@ export default function DiscoverPage() {
     if (discoverFilters.networks.length) params.set('networks', discoverFilters.networks.join(','));
     if (discoverFilters.releaseState) params.set('releaseState', discoverFilters.releaseState);
     if (personFilter) {
-      params.set('withCast', String(personFilter.id));
-      params.set('withCrew', String(personFilter.id));
+      params.set('with_people', String(personFilter.id));
     }
 
     return params.toString();
@@ -517,17 +514,28 @@ export default function DiscoverPage() {
 
   // Handle person URL params (from movie detail cast/crew links)
   useEffect(() => {
-    if (personInitRef.current) return;
-    personInitRef.current = true;
-    const personId = Number(searchParams.get('person'));
-    const personName = searchParams.get('personName');
-    if (Number.isFinite(personId) && personId > 0 && personName) {
+    const rawPersonId = searchParams.get('person');
+    const personName = searchParams.get('personName')?.trim() || '';
+    const personId = Number(rawPersonId);
+
+    const hasValidPerson = Number.isFinite(personId) && personId > 0 && Boolean(personName);
+    if (hasValidPerson) {
       setPersonFilter({ id: personId, name: personName });
       setDiscoverContentType('movie');
       setDiscoverSort('popular');
       setManualBrowseMode(true);
+      return;
     }
-  }, [searchParams, setDiscoverContentType, setDiscoverSort]);
+
+    setPersonFilter(null);
+    setManualBrowseMode(false);
+  }, [
+    searchParams,
+    setPersonFilter,
+    setDiscoverContentType,
+    setDiscoverSort,
+    setManualBrowseMode,
+  ]);
 
   useEffect(() => {
     if (!gridMode) return;

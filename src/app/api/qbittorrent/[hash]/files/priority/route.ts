@@ -15,23 +15,36 @@ export async function POST(
 
   try {
     const { hash } = await params;
-    const body = await request.json();
-    const { ids, priority } = body as { ids: number[]; priority: number };
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'malformed JSON' }, { status: 400 });
+    }
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'malformed JSON' }, { status: 400 });
+    }
+
+    const { ids, priority } = body as { ids: unknown; priority: unknown };
 
     if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => Number.isInteger(id) && id >= 0)) {
       return NextResponse.json({ error: 'ids must be a non-empty array of non-negative integers' }, { status: 400 });
     }
-    if (!VALID_PRIORITIES.has(priority)) {
+    if (typeof priority !== 'number' || !Number.isInteger(priority) || !VALID_PRIORITIES.has(priority)) {
       return NextResponse.json({ error: 'priority must be 0, 1, 6, or 7' }, { status: 400 });
     }
 
+    const parsedIds = ids as number[];
+    const parsedPriority = priority as 0 | 1 | 6 | 7;
+
     const client = await getQBittorrentClient();
-    await client.setFilePriority(hash, ids, priority as 0 | 1 | 6 | 7);
+    await client.setFilePriority(hash, parsedIds, parsedPriority);
 
     logApiDuration('/api/qbittorrent/[hash]/files/priority', startedAt, {
       method: 'POST',
-      fileCount: ids.length,
-      priority,
+      fileCount: parsedIds.length,
+      priority: parsedPriority,
     });
     return NextResponse.json({ success: true });
   } catch (error) {

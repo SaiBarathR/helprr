@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,7 @@ export default function MovieDetailPage() {
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [credits, setCredits] = useState<RadarrCredit[]>([]);
+  const creditsRequestIdRef = useRef(0);
 
   const persistMovieSnapshot = useCallback((next: {
     movie?: RadarrMovie | null;
@@ -82,6 +83,9 @@ export default function MovieDetailPage() {
   }, [movie, movieId, qualityProfiles, tags]);
 
   const loadData = useCallback(async (hasCachedData: boolean) => {
+    setCredits([]);
+    const creditsRequestId = ++creditsRequestIdRef.current;
+
     if (!Number.isFinite(movieId)) {
       setLoading(false);
       return;
@@ -133,10 +137,16 @@ export default function MovieDetailPage() {
       }
 
       // Fetch credits in background (non-blocking)
-      fetch(`/api/radarr/credit?movieId=${movieId}`)
+      void fetch(`/api/radarr/credit?movieId=${movieId}`)
         .then(async (r) => (r.ok ? (await r.json()) as RadarrCredit[] : []))
-        .then(setCredits)
-        .catch(() => setCredits([]));
+        .then((nextCredits) => {
+          if (creditsRequestId !== creditsRequestIdRef.current) return;
+          setCredits(nextCredits);
+        })
+        .catch(() => {
+          if (creditsRequestId !== creditsRequestIdRef.current) return;
+          setCredits([]);
+        });
     } catch {
       if (!hasCachedData) {
         setMovie(null);

@@ -212,6 +212,7 @@ export default function MoviesPage() {
     (fields: string[]) => setVisibleFieldsForMode(viewMode, fields),
     [viewMode, setVisibleFieldsForMode]
   );
+  const isDesktop = viewportWidth >= 768;
 
   const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
     setListViewState('movies', { scrollY, search: searchValue });
@@ -306,7 +307,7 @@ export default function MoviesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, movies.length, search, filter]);
+  }, [viewMode, posterSize, loading, movies.length, search, filter, isDesktop]);
 
   useEffect(() => {
     if (loading || hasRestoredScrollRef.current) return;
@@ -457,7 +458,6 @@ export default function MoviesPage() {
     return list;
   }, [movies, search, sort, sortDir, filter, qualityProfileMap, tagMap]);
 
-  const isDesktop = viewportWidth >= 768;
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
 

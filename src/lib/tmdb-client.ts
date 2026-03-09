@@ -390,6 +390,7 @@ export interface TmdbDiscoverParams {
   networks?: number[];
   releaseState?: 'released' | 'upcoming' | 'airing' | 'ended';
   anime?: boolean;
+  withPeople?: number[];
   withCast?: number[];
   withCrew?: number[];
 }
@@ -675,6 +676,7 @@ export class TmdbClient {
       params.with_watch_providers = input.providers.join('|');
       params.watch_region = input.region || 'US';
     }
+    if (input.withPeople?.length) params.with_people = input.withPeople.join(',');
     if (input.withCast?.length) params.with_cast = input.withCast.join(',');
     if (input.withCrew?.length) params.with_crew = input.withCrew.join(',');
     if (input.anime) {
@@ -719,8 +721,6 @@ export class TmdbClient {
       params.watch_region = input.region || 'US';
     }
     if (input.networks?.length) params.with_networks = input.networks.join('|');
-    if (input.withCast?.length) params.with_cast = input.withCast.join(',');
-    if (input.withCrew?.length) params.with_crew = input.withCrew.join(',');
 
     if (input.releaseState === 'airing') params.with_status = '0';
     if (input.releaseState === 'ended') params.with_status = '3';

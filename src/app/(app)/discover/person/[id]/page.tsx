@@ -96,7 +96,11 @@ export default function PersonDetailPage() {
   const [creditTab, setCreditTab] = useState<CreditTab>('cast');
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
 
-  const loadPerson = useCallback(async () => {
+  const loadPerson = useCallback(async (signal: AbortSignal) => {
+    setLoading(true);
+    setPerson(null);
+    setError(null);
+
     if (!Number.isFinite(personId) || personId <= 0) {
       setError('Invalid person ID');
       setLoading(false);
@@ -104,22 +108,28 @@ export default function PersonDetailPage() {
     }
 
     try {
-      const res = await fetch(`/api/discover/person?id=${personId}`);
+      const res = await fetch(`/api/discover/person?id=${personId}`, { signal });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error || 'Failed to load person');
       }
       const data = await res.json();
+      if (signal.aborted) return;
       setPerson(data);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Failed to load person');
     } finally {
+      if (signal.aborted) return;
       setLoading(false);
     }
   }, [personId]);
 
   useEffect(() => {
-    void loadPerson();
+    const controller = new AbortController();
+    void loadPerson(controller.signal);
+    return () => controller.abort();
   }, [loadPerson]);
 
   const filteredCredits = useMemo(() => {

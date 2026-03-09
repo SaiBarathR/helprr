@@ -13,6 +13,31 @@ interface TorrentSummary {
   paused: number;
 }
 
+const DOWNLOADING_STATES = new Set([
+  'downloading',
+  'metadl',
+  'forcedmetadl',
+  'queueddl',
+  'checkingdl',
+  'forceddl',
+  'allocating',
+  'stalleddl',
+]);
+
+const SEEDING_STATES = new Set([
+  'uploading',
+  'stalledup',
+  'queuedup',
+  'checkingup',
+  'forcedup',
+]);
+
+const PAUSED_STATES = new Set([
+  'paused',
+  'pauseddl',
+  'pausedup',
+]);
+
 async function fetchTorrentSummary(): Promise<TorrentSummary> {
   const res = await fetch('/api/qbittorrent/summary');
   if (!res.ok) throw new Error('Failed to fetch');
@@ -22,9 +47,16 @@ async function fetchTorrentSummary(): Promise<TorrentSummary> {
   let downloading = 0, seeding = 0, paused = 0;
   for (const t of torrents) {
     const state = (t.state || '').toLowerCase();
-    if (state.includes('download') || state === 'stalledDL'.toLowerCase()) downloading++;
-    else if (state.includes('upload') || state.includes('seed') || state === 'stalledUP'.toLowerCase()) seeding++;
-    else if (state.includes('paused') || state === 'pausedDL'.toLowerCase() || state === 'pausedUP'.toLowerCase()) paused++;
+    if (DOWNLOADING_STATES.has(state)) {
+      downloading++;
+    } else if (SEEDING_STATES.has(state)) {
+      seeding++;
+    } else if (PAUSED_STATES.has(state)) {
+      paused++;
+    } else {
+      // Explicitly ignore uncounted states such as error, missingFiles,
+      // checkingResumeData, moving, and unknown.
+    }
   }
 
   return { total: torrents.length, downloading, seeding, paused };

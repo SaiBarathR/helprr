@@ -29,7 +29,11 @@ export default function DiscoverTvDetailPage() {
   const [seasonData, setSeasonData] = useState<Record<number, DiscoverSeasonDetailResponse>>({});
   const [seasonLoading, setSeasonLoading] = useState<number | null>(null);
 
-  const loadShow = useCallback(async () => {
+  const loadShow = useCallback(async (signal: AbortSignal) => {
+    setLoading(true);
+    setShow(null);
+    setError(null);
+
     if (!Number.isFinite(tvId) || tvId <= 0) {
       setError('Invalid TV show ID');
       setLoading(false);
@@ -37,22 +41,28 @@ export default function DiscoverTvDetailPage() {
     }
 
     try {
-      const res = await fetch(`/api/discover/tv/${tvId}`);
+      const res = await fetch(`/api/discover/tv/${tvId}`, { signal });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         throw new Error(data?.error || 'Failed to load show');
       }
       const data = await res.json();
+      if (signal.aborted) return;
       setShow(data);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'Failed to load show');
     } finally {
+      if (signal.aborted) return;
       setLoading(false);
     }
   }, [tvId]);
 
   useEffect(() => {
-    void loadShow();
+    const controller = new AbortController();
+    void loadShow(controller.signal);
+    return () => controller.abort();
   }, [loadShow]);
 
   const handleToggleSeason = useCallback(async (seasonNumber: number) => {
