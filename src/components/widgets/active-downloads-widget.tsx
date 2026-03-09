@@ -14,6 +14,12 @@ async function fetchQueue(): Promise<QueueItem[]> {
   return data.records || [];
 }
 
+function getProgressPercent(item: QueueItem): number {
+  if (item.size <= 0) return 0;
+  const rawProgress = ((item.size - item.sizeleft) / item.size) * 100;
+  return Math.max(0, Math.min(100, rawProgress));
+}
+
 export function ActiveDownloadsWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data: queue, loading } = useWidgetData({ fetchFn: fetchQueue, refreshInterval });
 
@@ -40,7 +46,7 @@ export function ActiveDownloadsWidget({ size, refreshInterval, editMode = false 
         <SectionHeader title="Downloading" href="/activity" />
         <div className="space-y-1.5">
           {queue.slice(0, 3).map((item) => {
-            const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
+            const progress = getProgressPercent(item);
             return (
               <div
                 key={item.id}
@@ -69,7 +75,7 @@ export function ActiveDownloadsWidget({ size, refreshInterval, editMode = false 
       <SectionHeader title="Downloading" href="/activity" />
       <Carousel>
         {queue.slice(0, 8).map((item) => {
-          const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
+          const progress = getProgressPercent(item);
           return (
             <div
               key={item.id}

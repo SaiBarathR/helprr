@@ -6,7 +6,7 @@ interface StatsResponse {
   totalMovies?: number;
   totalSeries?: number;
   activeDownloads?: number;
-  diskSpace?: { freeSpace: number; totalSpace: number }[];
+  diskSpace?: { path: string; label: string; freeSpace: number; totalSpace: number }[];
   jellyfin?: {
     movieCount: number;
     seriesCount: number;
@@ -36,6 +36,8 @@ export async function GET() {
     const diskSpace = await radarr.getDiskSpace();
     if (Array.isArray(diskSpace)) {
       stats.diskSpace = diskSpace.map((d) => ({
+        path: d.path,
+        label: d.label,
         freeSpace: d.freeSpace,
         totalSpace: d.totalSpace,
       }));
@@ -56,6 +58,8 @@ export async function GET() {
       const diskSpace = await sonarr.getDiskSpace();
       if (Array.isArray(diskSpace)) {
         stats.diskSpace = diskSpace.map((d) => ({
+          path: d.path,
+          label: d.label,
           freeSpace: d.freeSpace,
           totalSpace: d.totalSpace,
         }));

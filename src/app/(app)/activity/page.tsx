@@ -70,6 +70,10 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'cutoff', label: 'Cutoff' },
 ];
 
+function isTabKey(value: string): value is TabKey {
+  return TABS.some((t) => t.key === value);
+}
+
 // --- Sort options ---
 
 type SortKey = 'title' | 'progress' | 'timeleft' | 'size';
@@ -118,10 +122,20 @@ export default function ActivityPage() {
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
-    if (requestedTab && TABS.some((t) => t.key === requestedTab)) {
-      setTab(requestedTab as TabKey);
+    if (requestedTab && isTabKey(requestedTab)) {
+      setTab(requestedTab);
     }
   }, [searchParams]);
+
+  function handleTabChange(nextTab: TabKey) {
+    if (!isTabKey(nextTab)) return;
+    setTab(nextTab);
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', nextTab);
+    const query = params.toString();
+    router.replace(query ? `/activity?${query}` : '/activity', { scroll: false });
+  }
 
   /**
    * Trigger a refresh of monitored downloads in Sonarr and Radarr and notify the user of the outcome.
@@ -245,7 +259,7 @@ export default function ActivityPage() {
           {TABS.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => handleTabChange(t.key)}
               className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'

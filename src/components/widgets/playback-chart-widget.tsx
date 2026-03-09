@@ -33,14 +33,23 @@ export function PlaybackChartWidget({ refreshInterval }: WidgetProps) {
     );
   }
 
-  if (!data || !data.pluginAvailable) {
+  if (!data) {
     return (
       <div>
         <SectionHeader title="Playback Activity" />
         <div className="rounded-xl bg-card py-8 text-center">
-          <p className="text-xs text-muted-foreground">
-            {!data?.pluginAvailable ? 'Playback Reporting Plugin required' : 'No data available'}
-          </p>
+          <p className="text-xs text-muted-foreground">No data available</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data.pluginAvailable) {
+    return (
+      <div>
+        <SectionHeader title="Playback Activity" />
+        <div className="rounded-xl bg-card py-8 text-center">
+          <p className="text-xs text-muted-foreground">Playback Reporting Plugin required</p>
         </div>
       </div>
     );

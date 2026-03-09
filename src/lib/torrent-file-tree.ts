@@ -111,12 +111,19 @@ export function buildFileTree(files: TorrentFile[]): TreeNode[] {
   return root;
 }
 
-export function getAllFileIndices(node: TreeNode): number[] {
-  if (node.type === 'file') return [node.file.index];
-  const indices: number[] = [];
-  for (const child of node.children) {
-    indices.push(...getAllFileIndices(child));
+function collectFileIndices(node: TreeNode, indices: number[]): void {
+  if (node.type === 'file') {
+    indices.push(node.file.index);
+    return;
   }
+  for (const child of node.children) {
+    collectFileIndices(child, indices);
+  }
+}
+
+export function getAllFileIndices(node: TreeNode): number[] {
+  const indices: number[] = [];
+  collectFileIndices(node, indices);
   return indices;
 }
 

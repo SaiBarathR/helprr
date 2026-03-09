@@ -38,7 +38,10 @@ export function useWidgetData<T>({
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
     doFetch();
     const interval = setInterval(doFetch, refreshInterval);
     return () => clearInterval(interval);
