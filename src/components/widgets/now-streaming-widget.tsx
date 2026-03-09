@@ -7,6 +7,7 @@ import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
+import { ticksToProgress } from '@/lib/jellyfin-helpers';
 import type { JellyfinSession } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 
@@ -55,8 +56,8 @@ export function NowStreamingWidget({ size, refreshInterval, editMode = false }: 
         <div className="space-y-1.5">
           {sessions.slice(0, 3).map((session) => {
             const np = session.NowPlayingItem;
-            const progress = np?.RunTimeTicks && session.PlayState?.PositionTicks
-              ? (session.PlayState.PositionTicks / np.RunTimeTicks) * 100
+            const progress = np?.RunTimeTicks && session.PlayState?.PositionTicks != null
+              ? Math.max(0, ticksToProgress(session.PlayState.PositionTicks, np.RunTimeTicks))
               : 0;
             return (
               <button

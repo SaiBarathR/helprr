@@ -54,15 +54,13 @@ export function SortableWidget({
       id={`widget-${instance.id}`}
       ref={setNodeRef}
       style={style}
-      className={`relative ${isFullWidth ? 'col-span-2' : 'col-span-1'} ${
-        isDragging ? 'z-0 widget-ghost rounded-2xl' : ''
-      }`}
+      className={`relative ${isFullWidth ? 'col-span-2' : 'col-span-1'} ${isDragging ? 'z-0 widget-ghost rounded-2xl' : ''
+        }`}
       onContextMenu={editMode ? (e) => e.preventDefault() : undefined}
       {...(editMode ? { ...attributes } : {})}
     >
-      <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${
-        isDragging ? 'invisible' : ''
-      } ${editMode ? 'pointer-events-none select-none touch-none' : ''}`}>
+      <div className={`${editMode && !isDragging ? 'widget-jiggle' : ''} ${isDragging ? 'invisible' : ''
+        } ${editMode ? 'pointer-events-none select-none touch-none' : ''}`}>
         <WidgetRenderer instance={instance} refreshInterval={refreshInterval} editMode={editMode} />
       </div>
 
@@ -73,7 +71,7 @@ export function SortableWidget({
             type="button"
             aria-label={`Drag ${widgetTitle}`}
             {...listeners}
-            className="absolute -top-2 right-2 z-10 bg-card border border-border text-muted-foreground rounded-full p-1 shadow-lg cursor-grab active:cursor-grabbing active:scale-90 transition-transform"
+            className="absolute -top-2 left-1/2 z-10 -translate-x-1/2 bg-card border border-border text-muted-foreground rounded-full p-1 shadow-lg cursor-grab active:cursor-grabbing active:scale-90 transition-transform"
           >
             <GripVertical className="h-4 w-4" />
           </button>

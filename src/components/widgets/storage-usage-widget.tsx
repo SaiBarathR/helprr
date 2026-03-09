@@ -9,6 +9,8 @@ import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface DiskInfo {
+  path?: string;
+  label?: string;
   freeSpace: number;
   totalSpace: number;
 }
@@ -60,8 +62,9 @@ export function StorageUsageWidget({ size, refreshInterval, editMode = false }: 
         {disks.map((disk, i) => {
           const used = disk.totalSpace - disk.freeSpace;
           const percent = disk.totalSpace > 0 ? (used / disk.totalSpace) * 100 : 0;
+          const diskKey = disk.path || (disk.label ? `${disk.label}-${disk.totalSpace}` : `disk-${disk.totalSpace}`);
           return (
-            <div key={i}>
+            <div key={diskKey}>
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-muted-foreground">Disk {i + 1}</span>
                 <span className="tabular-nums font-medium">

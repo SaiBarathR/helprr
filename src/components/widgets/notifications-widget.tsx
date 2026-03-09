@@ -19,7 +19,16 @@ interface NotificationRecord {
 
 async function fetchNotifications(pageSize: number): Promise<NotificationRecord[]> {
   const res = await fetch(`/api/notifications?pageSize=${pageSize}`);
-  if (!res.ok) return [];
+  if (!res.ok) {
+    let details = res.statusText || 'Unknown error';
+    try {
+      const body = await res.text();
+      if (body) details = `${details} - ${body}`;
+    } catch {
+      // Ignore body read failures; status info is enough.
+    }
+    throw new Error(`Failed to fetch notifications (${res.status}): ${details}`);
+  }
   const data = await res.json();
   return data.records || [];
 }

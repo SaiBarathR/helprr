@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Film, Tv, Clock, ChevronDown } from 'lucide-react';
@@ -28,11 +28,7 @@ function getStoredDays(): number {
 }
 
 export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
-  const [days, setDays] = useState(14);
-
-  useEffect(() => {
-    setDays(getStoredDays());
-  }, []);
+  const [days, setDays] = useState(() => getStoredDays());
 
   const fetchUpcoming = useCallback(async (): Promise<CalendarEvent[]> => {
     const res = await fetch(`/api/calendar?days=${days}`);

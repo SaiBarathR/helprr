@@ -530,7 +530,7 @@ export default function MovieDetailPage() {
           const crew = credits.filter((c) => c.type === 'crew');
           const seenCrew = new Set<string>();
           const uniqueCrew = crew.filter((c) => {
-            const key = `${c.personName}-${c.job}`;
+            const key = `${c.personTmdbId}-${c.job}`;
             if (seenCrew.has(key)) return false;
             seenCrew.add(key);
             return true;

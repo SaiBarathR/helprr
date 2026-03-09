@@ -1,63 +1,67 @@
-'use client';
-
-import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { headers } from 'next/headers';
 import Image from 'next/image';
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Star, Film } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverCollectionDetail } from '@/types';
 
-export default function DiscoverCollectionPage() {
-  const { id } = useParams();
-  const collectionId = Number(id);
-  const [collection, setCollection] = useState<DiscoverCollectionDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+type DiscoverCollectionPageProps = {
+  params: Promise<{ id: string }>;
+};
 
-  const loadCollection = useCallback(async () => {
-    if (!Number.isFinite(collectionId) || collectionId <= 0) {
-      setError('Invalid collection ID');
-      setLoading(false);
-      return;
-    }
+async function fetchCollection(collectionId: number): Promise<DiscoverCollectionDetail> {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host');
+  const proto = requestHeaders.get('x-forwarded-proto') ?? 'http';
+  const cookie = requestHeaders.get('cookie');
 
+  if (!host) {
+    throw new Error('Failed to load collection');
+  }
+
+  const res = await fetch(`${proto}://${host}/api/discover/collection/${collectionId}`, {
+    cache: 'no-store',
+    headers: cookie ? { cookie } : undefined,
+  });
+
+  if (!res.ok) {
+    let message = `Failed to load collection (${res.status})`;
     try {
-      const res = await fetch(`/api/discover/collection/${collectionId}`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || 'Failed to load collection');
+      const text = await res.text();
+      if (text) {
+        try {
+          const parsed = JSON.parse(text) as { error?: string };
+          message = parsed.error || message;
+        } catch {
+          message = text;
+        }
       }
-      const data = await res.json();
-      setCollection(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load collection');
-    } finally {
-      setLoading(false);
+    } catch {
+      // Ignore body parse failures and keep default message.
     }
-  }, [collectionId]);
+    throw new Error(message);
+  }
 
-  useEffect(() => {
-    void loadCollection();
-  }, [loadCollection]);
+  return res.json();
+}
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-[180px] w-full" />
-        <div className="px-4 space-y-3">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-16 w-full" />
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-24 w-full rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
+export default async function DiscoverCollectionPage({ params }: DiscoverCollectionPageProps) {
+  const { id } = await params;
+  const collectionId = Number(id);
+
+  let collection: DiscoverCollectionDetail | null = null;
+  let error: string | null = null;
+
+  if (!Number.isFinite(collectionId) || collectionId <= 0) {
+    error = 'Invalid collection ID';
+  } else {
+    try {
+      collection = await fetchCollection(collectionId);
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load collection';
+    }
   }
 
   if (error || !collection) {

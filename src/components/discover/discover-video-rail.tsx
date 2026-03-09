@@ -1,5 +1,3 @@
-'use client';
-
 import Image from 'next/image';
 import { Play } from 'lucide-react';
 import type { DiscoverVideo } from '@/types';
