@@ -1,4 +1,4 @@
-export type ImageServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin';
+export type ImageServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist';
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);

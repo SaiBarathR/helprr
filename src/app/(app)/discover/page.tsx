@@ -38,11 +38,10 @@ import {
   User,
 } from 'lucide-react';
 
-const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' | 'anime' }> = {
+const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' }> = {
   trending: { sort: 'trending', contentType: 'all' },
   popular_movies: { sort: 'popular', contentType: 'movie' },
   popular_series: { sort: 'popular', contentType: 'show' },
-  popular_anime: { sort: 'popular', contentType: 'anime' },
   upcoming_movies: { sort: 'upcoming', contentType: 'movie' },
   upcoming_series: { sort: 'upcoming', contentType: 'show' },
   now_playing: { sort: 'popular', contentType: 'movie' },
@@ -376,12 +375,11 @@ export default function DiscoverPage() {
 
     return sections.filter((section) => {
       if (!section.mediaType || section.mediaType === 'all') {
-        return section.key === 'providers' || discoverContentType === 'anime';
+        return section.key === 'providers';
       }
 
       if (discoverContentType === 'movie') return section.mediaType === 'movie';
       if (discoverContentType === 'show') return section.mediaType === 'tv';
-      if (discoverContentType === 'anime') return section.key === 'popular_anime';
       return true;
     });
   }, [sections, discoverContentType]);
@@ -605,7 +603,7 @@ export default function DiscoverPage() {
     setFiltersOpen(true);
   }, [discoverFilters, discoverSort, discoverSortDirection]);
 
-  const handleSelectContentType = useCallback((type: 'all' | 'movie' | 'show' | 'anime') => {
+  const handleSelectContentType = useCallback((type: 'all' | 'movie' | 'show') => {
     if (discoverContentType === type && gridMode) {
       const controller = new AbortController();
       gridFetchControllerRef.current?.abort();
@@ -712,7 +710,7 @@ export default function DiscoverPage() {
             <SearchBar
               value={query}
               onChange={setQuery}
-              placeholder="Search movies, shows, anime"
+              placeholder="Search movies and shows"
             />
           </div>
           <button
@@ -736,14 +734,13 @@ export default function DiscoverPage() {
               { value: 'all', label: 'All', icon: Compass },
               { value: 'movie', label: 'Movies', icon: Film },
               { value: 'show', label: 'Shows', icon: Tv },
-              { value: 'anime', label: 'Anime', icon: Sparkles },
             ].map((option) => {
               const Icon = option.icon;
               const active = discoverContentType === option.value;
               return (
                 <button
                   key={option.value}
-                  onClick={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show' | 'anime')}
+                  onClick={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show')}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
                     active ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground'
                   }`}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
-import { annotateDiscoverItems, dedupeDiscoverItems, normalizeTmdbItem, isJapaneseAnime } from '@/lib/discover';
+import { annotateDiscoverItems, dedupeDiscoverItems, normalizeTmdbItem } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type {
   DiscoverContentType,
@@ -18,7 +18,6 @@ const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder
   trending: { sortBy: 'trending', contentType: 'all' },
   popular_movies: { sortBy: 'popular', contentType: 'movie' },
   popular_series: { sortBy: 'popular', contentType: 'show' },
-  popular_anime: { sortBy: 'popular', contentType: 'anime' },
   upcoming_movies: { sortBy: 'upcoming', contentType: 'movie', sortOrder: 'asc' },
   upcoming_series: { sortBy: 'upcoming', contentType: 'show', sortOrder: 'asc' },
   highly_rated: { sortBy: 'highlyRated', contentType: 'all' },
@@ -68,7 +67,7 @@ function asSortOrder(sortOrder: string | null): 'asc' | 'desc' {
 }
 
 function asContentType(contentType: string | null): DiscoverContentType {
-  if (contentType === 'movie' || contentType === 'show' || contentType === 'anime') return contentType;
+  if (contentType === 'movie' || contentType === 'show') return contentType;
   return 'all';
 }
 
@@ -138,7 +137,6 @@ function applySortPreset(sortBy: string, input: TmdbDiscoverParams): TmdbDiscove
         runtimeMax: input.runtimeMax,
         genres: input.genres,
         networks: input.networks,
-        anime: input.anime,
         page: input.page,
         // Helps relevance for upcoming browse with year-range defaults
         // while keeping user filters intact.
@@ -243,8 +241,6 @@ async function buildSections() {
     upcomingSeries,
     movieGenres,
     tvGenres,
-    animeMovies,
-    animeShows,
     movieProviders,
     tvProviders,
     nowPlaying,
@@ -259,8 +255,6 @@ async function buildSections() {
     safeTmdb('upcoming_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'first_air_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
     safeTmdb('movie_genres', partialFailures, () => tmdb.movieGenres(), []),
     safeTmdb('series_genres', partialFailures, () => tmdb.tvGenres(), []),
-    safeTmdb('anime_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
-    safeTmdb('anime_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', anime: true }), EMPTY_LIST_RESPONSE),
     safeTmdb('movie_providers', partialFailures, () => tmdb.movieWatchProviders('US'), []),
     safeTmdb('tv_providers', partialFailures, () => tmdb.tvWatchProviders('US'), []),
     safeTmdb('now_playing', partialFailures, () => tmdb.nowPlayingMovies(1, 'US'), EMPTY_LIST_RESPONSE),
@@ -268,19 +262,6 @@ async function buildSections() {
     safeTmdb('top_rated_movies', partialFailures, () => tmdb.topRatedMovies(1), EMPTY_LIST_RESPONSE),
     safeTmdb('top_rated_tv', partialFailures, () => tmdb.topRatedTv(1), EMPTY_LIST_RESPONSE),
   ]);
-
-  const anime = dedupeDiscoverItems([
-    ...normalizeItems(animeMovies.results, 'movie'),
-    ...normalizeItems(animeShows.results, 'tv'),
-  ]).filter((item) => {
-    if (item.mediaType === 'movie') {
-      const raw = animeMovies.results.find((r) => r.id === item.tmdbId);
-      return raw ? isJapaneseAnime(raw, 'movie') : item.isAnime;
-    }
-
-    const raw = animeShows.results.find((r) => r.id === item.tmdbId);
-    return raw ? isJapaneseAnime(raw, 'tv') : item.isAnime;
-  });
 
   const combinedGenres = [
     ...movieGenres.map((genre) => ({ ...genre, type: 'movie' as const })),
@@ -389,13 +370,6 @@ async function buildSections() {
       mediaType: 'tv',
       items: normalizeItems(topRatedTvData.results, 'tv').slice(0, 20),
     },
-    {
-      key: 'popular_anime',
-      title: 'Popular Anime',
-      type: 'media',
-      mediaType: 'all',
-      items: anime.slice(0, 20),
-    },
   ];
 
   const { movies, series } = await getLibraries();
@@ -441,23 +415,6 @@ async function searchItems(params: {
     return tmdb.searchTv(query, params.page);
   }
 
-  if (params.contentType === 'anime') {
-    const [movie, tv] = await Promise.all([
-      tmdb.searchMovie(query, params.page),
-      tmdb.searchTv(query, params.page),
-    ]);
-
-    return {
-      page: params.page,
-      total_pages: Math.max(movie.total_pages, tv.total_pages),
-      total_results: movie.total_results + tv.total_results,
-      results: [
-        ...movie.results.map((item) => ({ ...item, media_type: 'movie' as const })),
-        ...tv.results.map((item) => ({ ...item, media_type: 'tv' as const })),
-      ],
-    };
-  }
-
   return tmdb.searchMulti(query, params.page);
 }
 
@@ -498,25 +455,6 @@ async function discoverItems(params: {
       return { data: await tmdb.trending('tv', params.page), mediaType: 'tv' as const };
     }
 
-    if (params.contentType === 'anime') {
-      const [movie, tv] = await Promise.all([
-        tmdb.trending('movie', params.page),
-        tmdb.trending('tv', params.page),
-      ]);
-      return {
-        data: {
-          page: params.page,
-          total_pages: Math.max(movie.total_pages, tv.total_pages),
-          total_results: movie.total_results + tv.total_results,
-          results: [
-            ...movie.results.map((item) => ({ ...item, media_type: 'movie' as const })),
-            ...tv.results.map((item) => ({ ...item, media_type: 'tv' as const })),
-          ],
-        },
-        mediaType: 'all' as const,
-      };
-    }
-
     return { data: await tmdb.trending('all', params.page), mediaType: 'all' as const };
   }
 
@@ -553,30 +491,6 @@ async function discoverItems(params: {
         sortBy: preset.sortBy === 'primary_release_date' ? 'first_air_date' : preset.sortBy,
       }),
       mediaType: 'tv' as const,
-    };
-  }
-
-  if (params.contentType === 'anime') {
-    const [movie, tv] = await Promise.all([
-      tmdb.discoverMovie({ ...preset, anime: true }),
-      tmdb.discoverTv({
-        ...preset,
-        anime: true,
-        sortBy: preset.sortBy === 'primary_release_date' ? 'first_air_date' : preset.sortBy,
-      }),
-    ]);
-
-    return {
-      data: {
-        page: params.page,
-        total_pages: Math.max(movie.total_pages, tv.total_pages),
-        total_results: movie.total_results + tv.total_results,
-        results: [
-          ...movie.results.map((item) => ({ ...item, media_type: 'movie' as const })),
-          ...tv.results.map((item) => ({ ...item, media_type: 'tv' as const })),
-        ],
-      },
-      mediaType: 'all' as const,
     };
   }
 
@@ -659,10 +573,6 @@ export async function GET(request: NextRequest) {
           ? 'tv'
           : 'all'
     );
-
-    if (contentType === 'anime') {
-      items = items.filter((item) => item.isAnime);
-    }
 
     if (contentType === 'movie') {
       items = items.filter((item) => item.mediaType === 'movie');

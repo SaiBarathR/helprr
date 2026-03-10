@@ -525,7 +525,7 @@ export interface RadarrLookupResult {
 }
 
 export type DiscoverMediaType = 'movie' | 'tv';
-export type DiscoverContentType = 'all' | 'movie' | 'show' | 'anime';
+export type DiscoverContentType = 'all' | 'movie' | 'show';
 export type DiscoverMode = 'sections' | 'browse' | 'search';
 
 export interface DiscoverGenre {
@@ -572,7 +572,6 @@ export interface DiscoverItem {
   genreNames?: string[];
   originalLanguage?: string;
   originCountry?: string[];
-  isAnime?: boolean;
   library?: DiscoverLibraryStatus;
 }
 

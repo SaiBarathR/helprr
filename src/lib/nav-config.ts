@@ -10,12 +10,14 @@ import {
   MonitorPlay,
   Bell,
   Settings,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 
 export type NavItemId =
   | 'dashboard'
   | 'discover'
+  | 'anime'
   | 'movies'
   | 'series'
   | 'calendar'
@@ -39,6 +41,7 @@ export interface NavItemDef {
 export const NAV_ITEMS: NavItemDef[] = [
   { id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard' },
   { id: 'discover', href: '/discover', icon: Compass, label: 'Discover', shortLabel: 'Discover' },
+  { id: 'anime', href: '/anime', icon: Sparkles, label: 'Anime', shortLabel: 'Anime' },
   { id: 'movies', href: '/movies', icon: Film, label: 'Movies', shortLabel: 'Movies' },
   { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series' },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar' },
