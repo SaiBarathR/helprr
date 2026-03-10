@@ -139,6 +139,60 @@ export default function PersonDetailPage() {
     return list.filter((c) => c.mediaType === mediaFilter);
   }, [person, creditTab, mediaFilter]);
 
+  const creditCards = useMemo(() => filteredCredits.map((credit) => {
+    const posterSrc = credit.posterPath
+      ? toCachedImageSrc(credit.posterPath, 'tmdb')
+      : null;
+    return (
+      <Link
+        href={`/discover/${credit.mediaType === 'movie' ? 'movie' : 'tv'}/${credit.id}`}
+        key={`${credit.mediaType}-${credit.id}-${credit.job || credit.character || ''}`}
+        className="group text-left"
+      >
+        <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
+          {posterSrc ? (
+            <Image
+              src={posterSrc}
+              alt={credit.title}
+              fill
+              sizes="(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 150px"
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              unoptimized={isProtectedApiImageSrc(posterSrc)}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+              {credit.mediaType === 'movie' ? <Film className="h-6 w-6" /> : <Tv className="h-6 w-6" />}
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+          <div className="absolute top-1.5 left-1.5">
+            <Badge className={`text-[9px] text-white ${credit.mediaType === 'movie' ? 'bg-blue-600/80' : 'bg-violet-600/80'}`}>
+              {credit.mediaType === 'movie' ? 'MOVIE' : 'TV'}
+            </Badge>
+          </div>
+          <div className="absolute bottom-0 left-0 right-0 p-1.5">
+            <p className="text-[10px] text-white font-medium line-clamp-2 leading-tight">{credit.title}</p>
+            <div className="mt-0.5 flex items-center justify-between text-[9px] text-white/80">
+              <span>{credit.year ?? '----'}</span>
+              {credit.rating > 0 && (
+                <span className="inline-flex items-center gap-0.5">
+                  <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
+                  {credit.rating.toFixed(1)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        {(credit.character || credit.job) && (
+          <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1 leading-tight px-0.5">
+            {credit.character || credit.job}
+            {credit.episodeCount ? ` (${credit.episodeCount} ep)` : ''}
+          </p>
+        )}
+      </Link>
+    );
+  }), [filteredCredits]);
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -349,59 +403,7 @@ export default function PersonDetailPage() {
             </div>
           ) : (
             <div className="px-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
-              {filteredCredits.map((credit) => {
-                const posterSrc = credit.posterPath
-                  ? toCachedImageSrc(credit.posterPath, 'tmdb')
-                  : null;
-                return (
-                  <Link
-                    href={`/discover/${credit.mediaType === 'movie' ? 'movie' : 'tv'}/${credit.id}`}
-                    key={`${credit.mediaType}-${credit.id}-${credit.job || credit.character || ''}`}
-                    className="group text-left"
-                  >
-                    <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
-                      {posterSrc ? (
-                        <Image
-                          src={posterSrc}
-                          alt={credit.title}
-                          fill
-                          sizes="(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 150px"
-                          className="object-cover transition-transform duration-300 group-hover:scale-105"
-                          unoptimized={isProtectedApiImageSrc(posterSrc)}
-                        />
-                      ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                          {credit.mediaType === 'movie' ? <Film className="h-6 w-6" /> : <Tv className="h-6 w-6" />}
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-                      <div className="absolute top-1.5 left-1.5">
-                        <Badge className={`text-[9px] text-white ${credit.mediaType === 'movie' ? 'bg-blue-600/80' : 'bg-violet-600/80'}`}>
-                          {credit.mediaType === 'movie' ? 'MOVIE' : 'TV'}
-                        </Badge>
-                      </div>
-                      <div className="absolute bottom-0 left-0 right-0 p-1.5">
-                        <p className="text-[10px] text-white font-medium line-clamp-2 leading-tight">{credit.title}</p>
-                        <div className="mt-0.5 flex items-center justify-between text-[9px] text-white/80">
-                          <span>{credit.year ?? '----'}</span>
-                          {credit.rating > 0 && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
-                              {credit.rating.toFixed(1)}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    {(credit.character || credit.job) && (
-                      <p className="text-[10px] text-muted-foreground mt-1 line-clamp-1 leading-tight px-0.5">
-                        {credit.character || credit.job}
-                        {credit.episodeCount ? ` (${credit.episodeCount} ep)` : ''}
-                      </p>
-                    )}
-                  </Link>
-                );
-              })}
+              {creditCards}
             </div>
           )}
         </div>

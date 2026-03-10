@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -50,6 +50,20 @@ import {
   setMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
 import { isProtectedApiImageSrc } from '@/lib/image';
+
+type RatingItem = {
+  label: string;
+  score: string;
+  votes: number;
+  color: string;
+};
+
+function formatRatingVotes(votes: number): string {
+  if (!votes) return '';
+  if (votes >= 1_000_000) return `${(votes / 1_000_000).toFixed(1)}M`;
+  if (votes >= 1_000) return `${(votes / 1_000).toFixed(votes >= 10_000 ? 0 : 1)}K`;
+  return String(votes);
+}
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -172,6 +186,19 @@ export default function MovieDetailPage() {
 
     void loadData(Boolean(cached));
   }, [loadData, movieId]);
+
+  const ratingItems = useMemo<RatingItem[]>(() => {
+    const ratings = movie?.ratings;
+    if (!ratings) return [];
+
+    const items: RatingItem[] = [];
+    if (ratings.imdb && ratings.imdb.value > 0) items.push({ label: 'IMDb', score: ratings.imdb.value.toFixed(1), votes: ratings.imdb.votes, color: 'text-yellow-500 fill-yellow-500' });
+    if (ratings.tmdb && ratings.tmdb.value > 0) items.push({ label: 'TMDb', score: ratings.tmdb.value.toFixed(1), votes: ratings.tmdb.votes, color: 'text-sky-500 fill-sky-500' });
+    if (ratings.metacritic && ratings.metacritic.value > 0) items.push({ label: 'MC', score: String(Math.round(ratings.metacritic.value)), votes: ratings.metacritic.votes, color: 'text-emerald-500 fill-emerald-500' });
+    if (ratings.rottenTomatoes && ratings.rottenTomatoes.value > 0) items.push({ label: 'RT', score: `${Math.round(ratings.rottenTomatoes.value)}%`, votes: ratings.rottenTomatoes.votes, color: 'text-red-500 fill-red-500' });
+    if (ratings.trakt && ratings.trakt.value > 0) items.push({ label: 'Trakt', score: ratings.trakt.value.toFixed(1), votes: ratings.trakt.votes, color: 'text-purple-500 fill-purple-500' });
+    return items;
+  }, [movie?.ratings]);
 
 
   async function handleSearch() {
@@ -455,34 +482,18 @@ export default function MovieDetailPage() {
             </p>
 
             {/* Ratings row */}
-            {(() => {
-              const r = movie.ratings;
-              const ratingItems: { label: string; score: string; votes: number; color: string }[] = [];
-              if (r?.imdb && r.imdb.value > 0) ratingItems.push({ label: 'IMDb', score: r.imdb.value.toFixed(1), votes: r.imdb.votes, color: 'text-yellow-500 fill-yellow-500' });
-              if (r?.tmdb && r.tmdb.value > 0) ratingItems.push({ label: 'TMDb', score: r.tmdb.value.toFixed(1), votes: r.tmdb.votes, color: 'text-sky-500 fill-sky-500' });
-              if (r?.metacritic && r.metacritic.value > 0) ratingItems.push({ label: 'MC', score: String(Math.round(r.metacritic.value)), votes: r.metacritic.votes, color: 'text-emerald-500 fill-emerald-500' });
-              if (r?.rottenTomatoes && r.rottenTomatoes.value > 0) ratingItems.push({ label: 'RT', score: `${Math.round(r.rottenTomatoes.value)}%`, votes: r.rottenTomatoes.votes, color: 'text-red-500 fill-red-500' });
-              if (r?.trakt && r.trakt.value > 0) ratingItems.push({ label: 'Trakt', score: r.trakt.value.toFixed(1), votes: r.trakt.votes, color: 'text-purple-500 fill-purple-500' });
-              if (!ratingItems.length) return null;
-              const fmtVotes = (n: number) => {
-                if (!n) return '';
-                if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-                if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
-                return String(n);
-              };
-              return (
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
-                  {ratingItems.map((ri) => (
-                    <div key={ri.label} className="flex items-center gap-1">
-                      <Star className={`h-3 w-3 ${ri.color}`} />
-                      <span className="text-sm font-semibold">{ri.score}</span>
-                      <span className="text-[10px] text-muted-foreground">{ri.label}</span>
-                      {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{fmtVotes(ri.votes)}</span>}
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
+            {ratingItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                {ratingItems.map((ri) => (
+                  <div key={ri.label} className="flex items-center gap-1">
+                    <Star className={`h-3 w-3 ${ri.color}`} />
+                    <span className="text-sm font-semibold">{ri.score}</span>
+                    <span className="text-[10px] text-muted-foreground">{ri.label}</span>
+                    {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

@@ -15,13 +15,9 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 import { DiscoverAddButton } from '@/components/discover/discover-add-button';
 import { DiscoverExternalLinks } from '@/components/discover/discover-external-links';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
+import { formatCurrency } from '@/lib/format';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverMovieFullDetail } from '@/types';
-
-function formatCurrency(value: number | null) {
-  if (!value || value <= 0) return null;
-  return `$${value.toLocaleString()}`;
-}
 
 export default function DiscoverMovieDetailPage() {
   const { id } = useParams();
