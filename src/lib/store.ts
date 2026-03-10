@@ -55,6 +55,34 @@ export const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
   releaseState: '',
 };
 
+export interface AnimeFiltersState {
+  genres: string[];
+  year: string;
+  yearMin: string;
+  yearMax: string;
+  season: string;
+  formats: string[];
+  status: string;
+}
+
+export const DEFAULT_ANIME_FILTERS: AnimeFiltersState = {
+  genres: [],
+  year: '',
+  yearMin: '',
+  yearMax: '',
+  season: '',
+  formats: [],
+  status: '',
+};
+
+function cloneAnimeFilters(filters: AnimeFiltersState): AnimeFiltersState {
+  return {
+    ...filters,
+    genres: [...filters.genres],
+    formats: [...filters.formats],
+  };
+}
+
 function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersState {
   return {
     ...filters,
@@ -129,6 +157,11 @@ interface UIState {
   setDiscoverSortDirection: (dir: 'asc' | 'desc') => void;
   discoverFilters: DiscoverFiltersState;
   setDiscoverFilters: (filters: DiscoverFiltersState) => void;
+  // Anime preferences
+  animeSort: string;
+  setAnimeSort: (sort: string) => void;
+  animeFilters: AnimeFiltersState;
+  setAnimeFilters: (filters: AnimeFiltersState) => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
@@ -208,6 +241,11 @@ export const useUIStore = create<UIState>()(
       setDiscoverSortDirection: (dir) => set({ discoverSortDirection: dir }),
       discoverFilters: cloneDiscoverFilters(DEFAULT_DISCOVER_FILTERS),
       setDiscoverFilters: (filters) => set({ discoverFilters: cloneDiscoverFilters(filters) }),
+      // Anime
+      animeSort: 'seasonal',
+      setAnimeSort: (sort) => set({ animeSort: sort }),
+      animeFilters: cloneAnimeFilters(DEFAULT_ANIME_FILTERS),
+      setAnimeFilters: (filters) => set({ animeFilters: cloneAnimeFilters(filters) }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
@@ -282,7 +320,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 7,
+      version: 9,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -334,6 +372,17 @@ export const useUIStore = create<UIState>()(
             : DEFAULT_LAYOUT.map((w) => ({ ...w }));
           state.dashboardLayout = sanitizeDashboardLayout(rawLayout);
         }
+        if (version < 8) {
+          state.animeSort = 'trending';
+          state.animeFilters = cloneAnimeFilters(DEFAULT_ANIME_FILTERS);
+          // If user's persisted discoverContentType is 'anime', reset to 'all'
+          if (state.discoverContentType === 'anime') {
+            state.discoverContentType = 'all';
+          }
+        }
+        if (version < 9) {
+          state.animeSort = 'seasonal';
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -357,6 +406,8 @@ export const useUIStore = create<UIState>()(
         discoverSort: state.discoverSort,
         discoverSortDirection: state.discoverSortDirection,
         discoverFilters: state.discoverFilters,
+        animeSort: state.animeSort,
+        animeFilters: state.animeFilters,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
         navOrder: state.navOrder,

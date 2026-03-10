@@ -28,7 +28,7 @@ function buildAddHref(detail: DiscoverDetail): string | null {
   params.set('term', detail.title);
   params.set('tmdbId', String(detail.tmdbId));
   if (detail.tvdbId) params.set('tvdbId', String(detail.tvdbId));
-  params.set('seriesType', detail.isAnime ? 'anime' : 'standard');
+  params.set('seriesType', 'standard');
   return `/series/add?${params.toString()}`;
 }
 

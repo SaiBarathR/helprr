@@ -157,7 +157,6 @@ export default function DiscoverTvDetailPage() {
           certification={show.certification}
           tagline={show.tagline}
           mediaType="tv"
-          isAnime={show.isAnime}
         />
 
         <DiscoverAddButton detail={show} />

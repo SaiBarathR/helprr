@@ -15,7 +15,6 @@ interface DiscoverHeroProps {
   certification: string | null;
   tagline: string | null;
   mediaType: 'movie' | 'tv';
-  isAnime?: boolean;
 }
 
 export function DiscoverHero({
@@ -28,7 +27,6 @@ export function DiscoverHero({
   certification,
   tagline,
   mediaType,
-  isAnime,
 }: DiscoverHeroProps) {
   const backdropSrc = backdropPath
     ? toCachedImageSrc(backdropPath, 'tmdb') || backdropPath
@@ -81,7 +79,6 @@ export function DiscoverHero({
             <Badge className={`text-[10px] text-white ${mediaType === 'movie' ? 'bg-blue-600/80' : 'bg-violet-600/80'}`}>
               {mediaType === 'movie' ? 'MOVIE' : 'SERIES'}
             </Badge>
-            {isAnime && <Badge className="bg-pink-600/90 text-[10px] text-white">ANIME</Badge>}
             {certification && (
               <Badge variant="outline" className="text-[10px]">{certification}</Badge>
             )}

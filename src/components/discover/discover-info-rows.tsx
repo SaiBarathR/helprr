@@ -14,7 +14,7 @@ export function DiscoverInfoRows({ title, rows }: DiscoverInfoRowsProps) {
   if (!rows.length) return null;
 
   return (
-    <div className="px-4">
+    <div>
       <h2 className="text-base font-semibold mb-2">{title}</h2>
       <div>
         {rows.map((row) => (
