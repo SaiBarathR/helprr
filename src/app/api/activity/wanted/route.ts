@@ -4,48 +4,108 @@ import { requireAuth } from '@/lib/auth';
 
 type WantedType = 'missing' | 'cutoff';
 type WantedSource = 'sonarr' | 'radarr';
+type WantedPageResponse<T> = {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: T[];
+};
+
+type WantedFetcher<T> = (page: number, pageSize: number) => Promise<WantedPageResponse<T>>;
 
 function normalizeWantedType(value: string | null): WantedType | null {
   return value === 'missing' || value === 'cutoff' ? value : null;
 }
 
-async function fetchWantedPage(type: WantedType, sourceFilter?: WantedSource) {
-  const [sonarrResult, radarrResult] = await Promise.allSettled([
-    (async () => {
-      if (sourceFilter === 'radarr') return null;
-      try {
-        const client = await getSonarrClient();
-        return type === 'cutoff'
-          ? await client.getCutoffUnmet(1, 500)
-          : await client.getWantedMissing(1, 500);
-      } catch {
-        return null;
-      }
-    })(),
-    (async () => {
-      if (sourceFilter === 'sonarr') return null;
-      try {
-        const client = await getRadarrClient();
-        return type === 'cutoff'
-          ? await client.getCutoffUnmet(1, 500)
-          : await client.getWantedMissing(1, 500);
-      } catch {
-        return null;
-      }
-    })(),
+async function getWantedTotal<T>(fetchPage: WantedFetcher<T>): Promise<number> {
+  try {
+    return (await fetchPage(1, 1)).totalRecords ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function getWantedSlice<T>(
+  fetchPage: WantedFetcher<T>,
+  startOffset: number,
+  endOffset: number,
+  fetchPageSize: number
+): Promise<T[]> {
+  if (endOffset <= startOffset) return [];
+
+  try {
+    const firstPage = Math.floor(startOffset / fetchPageSize) + 1;
+    const lastPage = Math.floor((endOffset - 1) / fetchPageSize) + 1;
+    const pages = await Promise.all(
+      Array.from({ length: lastPage - firstPage + 1 }, (_, index) =>
+        fetchPage(firstPage + index, fetchPageSize)
+      )
+    );
+    const combined = pages.flatMap((page) => page.records);
+    const trimStart = startOffset % fetchPageSize;
+    return combined.slice(trimStart, trimStart + (endOffset - startOffset));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchWantedPage(type: WantedType, page: number, pageSize: number, sourceFilter?: WantedSource) {
+  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+  const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20;
+  const startIndex = (safePage - 1) * safePageSize;
+  const endIndex = startIndex + safePageSize;
+
+  const [sonarrClient, radarrClient] = await Promise.all([
+    sourceFilter === 'radarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
+    sourceFilter === 'sonarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
   ]);
 
-  const sonarrData =
-    sonarrResult.status === 'fulfilled' && sonarrResult.value
-      ? sonarrResult.value
-      : { records: [], totalRecords: 0 };
+  const sonarrFetchPage = sonarrClient
+    ? (nextPage: number, nextPageSize: number) =>
+        type === 'cutoff'
+          ? sonarrClient.getCutoffUnmet(nextPage, nextPageSize)
+          : sonarrClient.getWantedMissing(nextPage, nextPageSize)
+    : null;
 
-  const radarrData =
-    radarrResult.status === 'fulfilled' && radarrResult.value
-      ? radarrResult.value
-      : { records: [], totalRecords: 0 };
+  const radarrFetchPage = radarrClient
+    ? (nextPage: number, nextPageSize: number) =>
+        type === 'cutoff'
+          ? radarrClient.getCutoffUnmet(nextPage, nextPageSize)
+          : radarrClient.getWantedMissing(nextPage, nextPageSize)
+    : null;
 
-  return { sonarrData, radarrData };
+  const [sonarrTotal, radarrTotal] = await Promise.all([
+    sonarrFetchPage ? getWantedTotal(sonarrFetchPage) : Promise.resolve(0),
+    radarrFetchPage ? getWantedTotal(radarrFetchPage) : Promise.resolve(0),
+  ]);
+
+  const sonarrStart = Math.min(startIndex, sonarrTotal);
+  const sonarrEnd = Math.min(endIndex, sonarrTotal);
+  const radarrStart = Math.max(0, startIndex - sonarrTotal);
+  const radarrEnd = Math.max(0, Math.min(endIndex - sonarrTotal, radarrTotal));
+
+  const [sonarrRecords, radarrRecords] = await Promise.all([
+    sonarrFetchPage ? getWantedSlice(sonarrFetchPage, sonarrStart, sonarrEnd, safePageSize) : Promise.resolve([]),
+    radarrFetchPage ? getWantedSlice(radarrFetchPage, radarrStart, radarrEnd, safePageSize) : Promise.resolve([]),
+  ]);
+
+  return {
+    page: safePage,
+    pageSize: safePageSize,
+    totalRecords: sonarrTotal + radarrTotal,
+    records: [
+      ...sonarrRecords.map((record) => ({
+        ...record,
+        source: 'sonarr' as const,
+        mediaType: 'episode' as const,
+      })),
+      ...radarrRecords.map((record) => ({
+        ...record,
+        source: 'radarr' as const,
+        mediaType: 'movie' as const,
+      })),
+    ],
+  };
 }
 
 async function fetchWantedCounts(sourceFilter?: WantedSource) {
@@ -131,42 +191,27 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const typeParam = searchParams.get('type');
-    const type = typeParam === null ? null : normalizeWantedType(typeParam) ?? 'missing';
+    const type = typeParam === null ? null : normalizeWantedType(typeParam);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
     const source = searchParams.get('source');
     const sourceFilter = source === 'sonarr' || source === 'radarr' ? source : undefined;
 
+    if (typeParam !== null && type === null) {
+      return NextResponse.json({ error: 'Unknown wanted type' }, { status: 400 });
+    }
+
     if (!type) {
       return NextResponse.json(await fetchWantedCounts(sourceFilter));
     }
 
-    const { sonarrData, radarrData } = await fetchWantedPage(type, sourceFilter);
-
-    const sonarrRecords = sonarrData.records.map((record) => ({
-      ...record,
-      source: 'sonarr' as const,
-      mediaType: 'episode' as const,
-    }));
-
-    const radarrRecords = radarrData.records.map((record) => ({
-      ...record,
-      source: 'radarr' as const,
-      mediaType: 'movie' as const,
-    }));
-
-    const mergedRecords = [...sonarrRecords, ...radarrRecords];
-    const totalRecords = mergedRecords.length;
-
-    // Manual pagination
-    const startIndex = (page - 1) * pageSize;
-    const paginatedRecords = mergedRecords.slice(startIndex, startIndex + pageSize);
+    const wantedPage = await fetchWantedPage(type, page, pageSize, sourceFilter);
 
     return NextResponse.json({
-      page,
-      pageSize,
-      totalRecords,
-      records: paginatedRecords,
+      page: wantedPage.page,
+      pageSize: wantedPage.pageSize,
+      totalRecords: wantedPage.totalRecords,
+      records: wantedPage.records,
     });
   } catch (error) {
     console.error('Failed to fetch wanted:', error);
