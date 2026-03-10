@@ -65,6 +65,7 @@ export function NowStreamingWidget({ size, refreshInterval, editMode = false }: 
               : 0;
             return (
               <button
+                type="button"
                 key={session.Id}
                 onClick={() => setSelectedSessionId(session.Id)}
                 className="w-full flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors text-left"

@@ -75,10 +75,12 @@ export function PlaybackChartWidget({ refreshInterval }: WidgetProps) {
             const heightPercent = (val / maxVal) * 100;
             return (
               <div key={hour} className="flex-1 flex flex-col items-center justify-end h-full">
-                <div
-                  className="w-full rounded-t bg-[#00a4dc]/70 min-h-[2px] transition-all"
-                  style={{ height: `${Math.max(heightPercent, 1)}%` }}
-                />
+                {heightPercent > 0 && (
+                  <div
+                    className="w-full rounded-t bg-[#00a4dc]/70 transition-all"
+                    style={{ height: `${heightPercent}%` }}
+                  />
+                )}
               </div>
             );
           })}
