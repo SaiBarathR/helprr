@@ -132,7 +132,6 @@ export default function DiscoverMovieDetailPage() {
           certification={movie.certification}
           tagline={movie.tagline}
           mediaType="movie"
-          isAnime={movie.isAnime}
         />
 
         <DiscoverAddButton detail={movie} />

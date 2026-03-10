@@ -3,7 +3,6 @@ import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-h
 import { requireAuth } from '@/lib/auth';
 import {
   buildLibraryLookups,
-  isJapaneseAnime,
   matchSeriesInLibrary,
   normalizeTmdbItem,
   annotateDiscoverItems,
@@ -165,14 +164,6 @@ export async function GET(
       genreNames: details.genres.map((g) => g.name),
       originalLanguage: details.original_language,
       originCountry: details.origin_country || [],
-      isAnime: isJapaneseAnime(
-        {
-          genre_ids: details.genres.map((g) => g.id),
-          original_language: details.original_language,
-          origin_country: details.origin_country || [],
-        },
-        'tv'
-      ),
       runtime: details.episode_run_time?.[0] ?? null,
       status: details.status || null,
       imdbId: externalIds.imdb_id || null,

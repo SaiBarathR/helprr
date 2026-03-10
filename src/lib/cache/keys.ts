@@ -32,6 +32,10 @@ export function buildTmdbDataKey(generation: number, keySeed: string): string {
   return `helprr:cache:tmdb:v${generation}:${sha256Hex(keySeed)}`;
 }
 
+export function buildAnilistDataKey(generation: number, keySeed: string): string {
+  return `helprr:cache:anilist:v${generation}:${sha256Hex(keySeed)}`;
+}
+
 export function buildLockKey(scope: string, keySeed: string): string {
   return `helprr:cache:lock:${scope}:${sha256Hex(keySeed)}`;
 }

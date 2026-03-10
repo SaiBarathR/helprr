@@ -22,23 +22,19 @@ function normalizeTitleKey(title: string, year: number | null) {
   return `${normalized}::${year ?? 'na'}`;
 }
 
+function normalizeBaseTitle(title: string) {
+  return title
+    .toLowerCase()
+    // Strip common seasonal suffixes: "Season 2", "2nd Season", "Part 2", "Cour 2", etc.
+    .replace(/\s+(?:season|part|cour|2nd|3rd|[0-9]+th)\s*([0-9]+)?/gi, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function asYear(value?: string) {
   if (!value) return null;
   const year = Number(value.slice(0, 4));
   return Number.isFinite(year) ? year : null;
-}
-
-type AnimeCandidate = Pick<TmdbListItem, 'genre_ids' | 'original_language' | 'origin_country'>;
-
-export function isJapaneseAnime(item: AnimeCandidate, mediaType: DiscoverMediaType): boolean {
-  const genres = item.genre_ids || [];
-  if (!genres.includes(16)) return false;
-
-  if (mediaType === 'tv') {
-    return (item.origin_country || []).includes('JP');
-  }
-
-  return item.original_language === 'ja';
 }
 
 export function normalizeTmdbItem(
@@ -75,7 +71,6 @@ export function normalizeTmdbItem(
     genres: item.genre_ids || [],
     originalLanguage: item.original_language,
     originCountry: item.origin_country || [],
-    isAnime: isJapaneseAnime(item, mediaType),
   };
 }
 
@@ -87,6 +82,7 @@ interface LibraryLookups {
   seriesByImdbId: Map<string, SonarrSeries>;
   seriesByTmdbId: Map<number, SonarrSeries>;
   seriesByTitleYear: Map<string, SonarrSeries>;
+  seriesByBaseTitle: Map<string, SonarrSeries>;
 }
 
 export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[]): LibraryLookups {
@@ -97,6 +93,7 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
   const seriesByImdbId = new Map<string, SonarrSeries>();
   const seriesByTmdbId = new Map<number, SonarrSeries>();
   const seriesByTitleYear = new Map<string, SonarrSeries>();
+  const seriesByBaseTitle = new Map<string, SonarrSeries>();
 
   for (const movie of movies) {
     movieByTmdbId.set(movie.tmdbId, movie);
@@ -110,6 +107,7 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
     const tmdbId = (show as SonarrSeries & { tmdbId?: number }).tmdbId;
     if (tmdbId) seriesByTmdbId.set(tmdbId, show);
     seriesByTitleYear.set(normalizeTitleKey(show.title, show.year ?? null), show);
+    seriesByBaseTitle.set(normalizeBaseTitle(show.title), show);
   }
 
   return {
@@ -120,6 +118,7 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
     seriesByImdbId,
     seriesByTmdbId,
     seriesByTitleYear,
+    seriesByBaseTitle,
   };
 }
 
@@ -172,6 +171,10 @@ export function matchSeriesInLibrary(
   const key = normalizeTitleKey(item.title, item.year);
   const byTitle = lookups.seriesByTitleYear.get(key);
   if (byTitle) return { exists: true, type: 'series', id: byTitle.id };
+
+  const baseTitleKey = normalizeBaseTitle(item.title);
+  const byBaseTitle = lookups.seriesByBaseTitle.get(baseTitleKey);
+  if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id };
 
   return { exists: false };
 }

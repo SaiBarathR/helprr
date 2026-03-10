@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 
-type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin';
+type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist';
 
 interface ConnectionLike {
   type: 'RADARR' | 'SONARR' | 'JELLYFIN' | 'TMDB';
@@ -21,7 +21,7 @@ const SERVICE_IMAGE_PATH_PATTERNS: Record<ConnectionLike['type'], RegExp[]> = {
 };
 
 function parseServiceHint(value: string | null): ServiceHint | null {
-  if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'jellyfin') {
+  if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'jellyfin' || value === 'anilist') {
     return value;
   }
   return null;
@@ -35,6 +35,10 @@ const DEFAULT_EXTERNAL_IMAGE_HOSTS = new Set<string>([
   'fanart.tv',
   'assets.fanart.tv',
   'static.tvmaze.com',
+  's4.anilist.co',
+  's1.anilist.co',
+  's2.anilist.co',
+  's3.anilist.co',
 ]);
 
 function getAllowedExternalImageHosts(): Set<string> {

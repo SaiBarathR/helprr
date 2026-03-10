@@ -389,7 +389,6 @@ export interface TmdbDiscoverParams {
   providers?: number[];
   networks?: number[];
   releaseState?: 'released' | 'upcoming' | 'airing' | 'ended';
-  anime?: boolean;
   withPeople?: number[];
   withCast?: number[];
   withCrew?: number[];
@@ -679,19 +678,6 @@ export class TmdbClient {
     if (input.withPeople?.length) params.with_people = input.withPeople.join(',');
     if (input.withCast?.length) params.with_cast = input.withCast.join(',');
     if (input.withCrew?.length) params.with_crew = input.withCrew.join(',');
-    if (input.anime) {
-      const existingGenres = typeof params.with_genres === 'string'
-        ? params.with_genres
-          .split(',')
-          .map((genreId) => Number(genreId.trim()))
-          .filter((genreId) => Number.isFinite(genreId))
-        : [];
-      const mergedGenres = [...new Set([16, ...existingGenres, ...(input.genres ?? [])])];
-      params.with_genres = mergedGenres.join(',');
-      if (!input.language) {
-        params.with_original_language = 'ja';
-      }
-    }
 
     const today = new Date().toISOString().slice(0, 10);
     if (input.releaseState === 'released') params['primary_release_date.lte'] = today;
@@ -725,21 +711,6 @@ export class TmdbClient {
     if (input.releaseState === 'airing') params.with_status = '0';
     if (input.releaseState === 'ended') params.with_status = '3';
     if (input.releaseState === 'upcoming') params.with_status = '1|2|5';
-
-    if (input.anime) {
-      const existingGenres = typeof params.with_genres === 'string'
-        ? params.with_genres
-          .split(',')
-          .map((genreId) => Number(genreId.trim()))
-          .filter((genreId) => Number.isFinite(genreId))
-        : [];
-      const mergedGenres = [...new Set([16, ...existingGenres, ...(input.genres ?? [])])];
-      params.with_genres = mergedGenres.join(',');
-      params.with_origin_country = 'JP';
-      if (!input.language) {
-        params.with_original_language = 'ja';
-      }
-    }
 
     return this.get<TmdbListResponse>('/discover/tv', params);
   }

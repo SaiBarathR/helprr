@@ -16,8 +16,8 @@ const SECURITY_HEADERS: Record<string, string> = {
   'X-DNS-Prefetch-Control': 'off',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Content-Security-Policy': IS_DEV
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: http:; font-src 'self' https:; connect-src 'self' ws: wss: http: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: http:; font-src 'self' https:; connect-src 'self' ws: wss: http: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 };
 
 function addSecurityHeaders(response: NextResponse): NextResponse {
