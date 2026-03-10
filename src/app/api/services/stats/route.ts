@@ -1,25 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient, getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import type { DiskSpace, ServicesStatsResponse } from '@/types/service-stats';
 
-interface StatsResponse {
-  totalMovies?: number;
-  totalSeries?: number;
-  activeDownloads?: number;
-  diskSpace?: { path: string; label: string; freeSpace: number; totalSpace: number }[];
-  jellyfin?: {
-    movieCount: number;
-    seriesCount: number;
-    episodeCount: number;
-    activeStreams: number;
-  };
+function mapDiskSpace(disks: Array<DiskSpace | null | undefined>): DiskSpace[] {
+  return disks.filter((disk): disk is DiskSpace => Boolean(disk));
 }
 
 export async function GET() {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const stats: StatsResponse = {};
+  const stats: ServicesStatsResponse = {};
   let activeDownloads = 0;
   let hasDownloadCount = false;
 
@@ -35,12 +27,7 @@ export async function GET() {
 
     const diskSpace = await radarr.getDiskSpace();
     if (Array.isArray(diskSpace)) {
-      stats.diskSpace = diskSpace.map((d) => ({
-        path: d.path,
-        label: d.label,
-        freeSpace: d.freeSpace,
-        totalSpace: d.totalSpace,
-      }));
+      stats.diskSpace = mapDiskSpace(diskSpace);
     }
   } catch {}
 
@@ -57,12 +44,7 @@ export async function GET() {
     if (!stats.diskSpace) {
       const diskSpace = await sonarr.getDiskSpace();
       if (Array.isArray(diskSpace)) {
-        stats.diskSpace = diskSpace.map((d) => ({
-          path: d.path,
-          label: d.label,
-          freeSpace: d.freeSpace,
-          totalSpace: d.totalSpace,
-        }));
+        stats.diskSpace = mapDiskSpace(diskSpace);
       }
     }
   } catch {}

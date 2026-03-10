@@ -5,21 +5,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
+import type { ServicesStatsResponse } from '@/types/service-stats';
 
-interface DashboardStats {
-  totalMovies: number;
-  totalSeries: number;
-  activeDownloads: number;
-  diskSpace: { freeSpace: number; totalSpace: number }[];
-  jellyfin?: {
-    movieCount: number;
-    seriesCount: number;
-    episodeCount: number;
-    activeStreams: number;
-  };
-}
-
-async function fetchStats(): Promise<DashboardStats> {
+async function fetchStats(): Promise<ServicesStatsResponse> {
   const res = await fetch('/api/services/stats');
   if (!res.ok) throw new Error('Failed to fetch stats');
   return res.json();

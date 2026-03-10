@@ -7,14 +7,29 @@ import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widge
 import type { QueueItem } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 
-async function fetchQueue(): Promise<QueueItem[]> {
-  const res = await fetch('/api/activity/queue');
+type QueueWidgetItem = QueueItem & {
+  source?: string;
+  service?: string;
+  backend?: string;
+};
+
+interface QueueApiResponse {
+  records: QueueWidgetItem[];
+  totalRecords: number;
+}
+
+function getQueueItemKey(item: QueueWidgetItem): string {
+  return `${item.source ?? item.service ?? item.backend ?? 'unknown'}-${item.id}`;
+}
+
+async function fetchQueue(): Promise<QueueWidgetItem[]> {
+  const res = await fetch('/api/activity/queue?pageSize=8');
   if (!res.ok) return [];
-  const data = await res.json();
+  const data: QueueApiResponse = await res.json();
   return data.records || [];
 }
 
-function getProgressPercent(item: QueueItem): number {
+function getProgressPercent(item: QueueWidgetItem): number {
   if (item.size <= 0) return 0;
   const rawProgress = ((item.size - item.sizeleft) / item.size) * 100;
   return Math.max(0, Math.min(100, rawProgress));
@@ -49,7 +64,7 @@ export function ActiveDownloadsWidget({ size, refreshInterval, editMode = false 
             const progress = getProgressPercent(item);
             return (
               <div
-                key={item.id}
+                key={getQueueItemKey(item)}
                 className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5"
               >
                 <div className="flex-1 min-w-0">
@@ -78,7 +93,7 @@ export function ActiveDownloadsWidget({ size, refreshInterval, editMode = false 
           const progress = getProgressPercent(item);
           return (
             <div
-              key={item.id}
+              key={getQueueItemKey(item)}
               className="snap-start shrink-0 w-[200px] rounded-xl bg-card p-3 flex flex-col justify-between"
             >
               <div>

@@ -7,18 +7,12 @@ import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatBytes } from '@/lib/format';
 import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
+import type { DiskSpace, ServicesStatsResponse } from '@/types/service-stats';
 
-interface DiskInfo {
-  path?: string;
-  label?: string;
-  freeSpace: number;
-  totalSpace: number;
-}
-
-async function fetchStorage(): Promise<DiskInfo[]> {
+async function fetchStorage(): Promise<DiskSpace[]> {
   const res = await fetch('/api/services/stats');
   if (!res.ok) return [];
-  const data = await res.json();
+  const data: ServicesStatsResponse = await res.json();
   return data.diskSpace || [];
 }
 

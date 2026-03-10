@@ -36,6 +36,8 @@ const PAUSED_STATES = new Set([
   'paused',
   'pauseddl',
   'pausedup',
+  'stoppeddl',
+  'stoppedup',
 ]);
 
 async function fetchTorrentSummary(): Promise<TorrentSummary> {

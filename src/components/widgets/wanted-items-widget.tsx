@@ -8,48 +8,28 @@ import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface WantedCounts {
-  missing: number;
-  cutoff: number;
+  missingTotal: number;
+  cutoffTotal: number;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 async function fetchWanted(): Promise<WantedCounts> {
-  const [missingRes, cutoffRes] = await Promise.allSettled([
-    fetch('/api/activity/wanted?type=missing&pageSize=1'),
-    fetch('/api/activity/wanted?type=cutoff&pageSize=1'),
-  ]);
-
-  const missingResponse = missingRes.status === 'fulfilled' ? missingRes.value : null;
-  const cutoffResponse = cutoffRes.status === 'fulfilled' ? cutoffRes.value : null;
-  const errors: string[] = [];
-
-  if (missingRes.status === 'rejected') {
-    errors.push(`missing rejected: ${missingRes.reason instanceof Error ? missingRes.reason.message : String(missingRes.reason)}`);
-  } else if (!missingRes.value.ok) {
-    errors.push(`missing failed: ${missingRes.value.status} ${missingRes.value.statusText}`);
+  const res = await fetch('/api/activity/wanted');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch wanted counts (${res.status} ${res.statusText})`);
   }
 
-  if (cutoffRes.status === 'rejected') {
-    errors.push(`cutoff rejected: ${cutoffRes.reason instanceof Error ? cutoffRes.reason.message : String(cutoffRes.reason)}`);
-  } else if (!cutoffRes.value.ok) {
-    errors.push(`cutoff failed: ${cutoffRes.value.status} ${cutoffRes.value.statusText}`);
+  const data: unknown = await res.json();
+  if (!isObject(data)) {
+    return { missingTotal: 0, cutoffTotal: 0 };
   }
 
-  if (errors.length > 0) {
-    throw new Error(`Failed to fetch wanted counts (${errors.join('; ')})`);
-  }
-
-  if (!missingResponse || !cutoffResponse) {
-    throw new Error('Failed to fetch wanted counts (missing response payload)');
-  }
-
-  const [missingData, cutoffData] = await Promise.all([
-    missingResponse.json(),
-    cutoffResponse.json(),
-  ]);
-  const missing = missingData.totalRecords || 0;
-  const cutoff = cutoffData.totalRecords || 0;
-
-  return { missing, cutoff };
+  const missingTotal = typeof data.missingTotal === 'number' ? data.missingTotal : 0;
+  const cutoffTotal = typeof data.cutoffTotal === 'number' ? data.cutoffTotal : 0;
+  return { missingTotal, cutoffTotal };
 }
 
 export function WantedItemsWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
@@ -76,7 +56,7 @@ export function WantedItemsWidget({ size, refreshInterval, editMode = false }: W
       >
         <Search className="h-4 w-4 text-amber-500" />
         <div>
-          <span className="text-lg font-bold tabular-nums">{data.missing}</span>
+          <span className="text-lg font-bold tabular-nums">{data.missingTotal}</span>
           <span className="text-xs text-muted-foreground ml-1">missing</span>
         </div>
       </Link>
@@ -95,12 +75,12 @@ export function WantedItemsWidget({ size, refreshInterval, editMode = false }: W
         <p className="text-xs text-muted-foreground mb-1">Wanted Items</p>
         <div className="flex items-center gap-3">
           <div>
-            <span className="text-2xl font-bold tabular-nums">{data.missing}</span>
+            <span className="text-2xl font-bold tabular-nums">{data.missingTotal}</span>
             <span className="text-xs text-muted-foreground ml-1">missing</span>
           </div>
-          {data.cutoff > 0 && (
+          {data.cutoffTotal > 0 && (
             <div>
-              <span className="text-xl font-bold tabular-nums text-amber-400">{data.cutoff}</span>
+              <span className="text-xl font-bold tabular-nums text-amber-400">{data.cutoffTotal}</span>
               <span className="text-xs text-muted-foreground ml-1">cutoff</span>
             </div>
           )}

@@ -10,6 +10,11 @@ export function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+export function formatCurrency(value: number | null): string | null {
+  if (!value || value <= 0) return null;
+  return `$${value.toLocaleString()}`;
+}
+
 export function formatDistanceToNowSafe(input: string, fallback = 'unknown'): string {
   const date = new Date(input);
   if (!Number.isFinite(date.getTime())) return fallback;

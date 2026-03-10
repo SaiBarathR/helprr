@@ -59,7 +59,7 @@ export function PlaybackChartWidget({ refreshInterval }: WidgetProps) {
   const hourlyTotals = HOURS.map((hour) => {
     let total = 0;
     for (let day = 0; day < 7; day++) {
-      total += data.data[`${day}-${hour}`] || 0;
+      total += data.data[`${day}-${hour.toString().padStart(2, '0')}`] || 0;
     }
     return total;
   });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { MonitorPlay } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
@@ -13,14 +13,18 @@ import type { WidgetProps } from '@/lib/widgets/types';
 
 async function fetchSessions(): Promise<JellyfinSession[]> {
   const res = await fetch('/api/jellyfin/sessions');
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.sessions || [];
+  if (!res.ok) throw new Error(`Failed to fetch sessions (${res.status})`);
+  const data: { sessions: JellyfinSession[] } = await res.json();
+  return data.sessions;
 }
 
 export function NowStreamingWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data: sessions, loading } = useWidgetData({ fetchFn: fetchSessions, refreshInterval });
-  const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const selectedSession = useMemo(
+    () => sessions?.find((session) => session.Id === selectedSessionId) ?? null,
+    [selectedSessionId, sessions]
+  );
 
   if (loading) {
     return (
@@ -62,7 +66,7 @@ export function NowStreamingWidget({ size, refreshInterval, editMode = false }: 
             return (
               <button
                 key={session.Id}
-                onClick={() => setSelectedSession(session)}
+                onClick={() => setSelectedSessionId(session.Id)}
                 className="w-full flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors text-left"
               >
                 <MonitorPlay className="h-3.5 w-3.5 text-green-400 shrink-0" />
@@ -83,7 +87,7 @@ export function NowStreamingWidget({ size, refreshInterval, editMode = false }: 
             );
           })}
         </div>
-        <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
+        <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSessionId(null)} />
       </div>
     );
   }
@@ -93,10 +97,15 @@ export function NowStreamingWidget({ size, refreshInterval, editMode = false }: 
       <SectionHeader title="Now Streaming" badge={liveBadge} />
       <Carousel>
         {sessions.map((session) => (
-          <SessionCard key={session.Id} session={session} variant="compact" onInfoClick={setSelectedSession} />
+          <SessionCard
+            key={session.Id}
+            session={session}
+            variant="compact"
+            onInfoClick={(selected) => setSelectedSessionId(selected.Id)}
+          />
         ))}
       </Carousel>
-      <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
+      <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSessionId(null)} />
     </div>
   );
 }
