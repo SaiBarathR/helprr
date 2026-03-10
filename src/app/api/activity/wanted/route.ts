@@ -111,7 +111,7 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
 async function fetchWantedCounts(sourceFilter?: WantedSource) {
   const [missingResult, cutoffResult] = await Promise.all([
     (async () => {
-      const [sonarrResult, radarrResult] = await Promise.allSettled([
+      const [sonarrResult, radarrResult] = await Promise.all([
         (async () => {
           if (sourceFilter === 'radarr') return 0;
           try {
@@ -132,11 +132,10 @@ async function fetchWantedCounts(sourceFilter?: WantedSource) {
         })(),
       ]);
 
-      return (sonarrResult.status === 'fulfilled' ? sonarrResult.value : 0)
-        + (radarrResult.status === 'fulfilled' ? radarrResult.value : 0);
+      return sonarrResult + radarrResult;
     })(),
     (async () => {
-      const [sonarrResult, radarrResult] = await Promise.allSettled([
+      const [sonarrResult, radarrResult] = await Promise.all([
         (async () => {
           if (sourceFilter === 'radarr') return 0;
           try {
@@ -157,8 +156,7 @@ async function fetchWantedCounts(sourceFilter?: WantedSource) {
         })(),
       ]);
 
-      return (sonarrResult.status === 'fulfilled' ? sonarrResult.value : 0)
-        + (radarrResult.status === 'fulfilled' ? radarrResult.value : 0);
+      return sonarrResult + radarrResult;
     })(),
   ]);
 
