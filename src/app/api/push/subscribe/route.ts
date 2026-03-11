@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       endpoint.trim().length === 0 ||
       typeof keys?.p256dh !== 'string' ||
       typeof keys.auth !== 'string' ||
-      (deviceName !== undefined && deviceName !== null && typeof deviceName !== 'string')
+      (deviceName != null && typeof deviceName !== 'string')
     ) {
       return NextResponse.json({ error: 'Invalid subscription data' }, { status: 400 });
     }
