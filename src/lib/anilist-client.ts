@@ -244,7 +244,8 @@ async function gqlRequest<T>(query: string, variables: Record<string, unknown>):
   );
 
   if (response.data.errors?.length) {
-    throw new Error(`AniList API error: ${response.data.errors[0].message}`);
+    const messages = response.data.errors.map((error) => error.message).join('; ');
+    throw new Error(`AniList API error: ${messages}`);
   }
 
   return response.data.data;

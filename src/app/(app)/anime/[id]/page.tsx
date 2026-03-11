@@ -110,7 +110,7 @@ export default function AnimeDetailPage() {
 
   // Build info rows
   const infoRows = [];
-  if (detail.format) infoRows.push({ label: 'Format', value: detail.format.replace('_', ' ') });
+  if (detail.format) infoRows.push({ label: 'Format', value: detail.format.replace(/_/g, ' ') });
   if (detail.status) infoRows.push({ label: 'Status', value: detail.status.charAt(0) + detail.status.slice(1).toLowerCase().replace(/_/g, ' ') });
   if (detail.episodes != null) infoRows.push({ label: 'Episodes', value: String(detail.episodes) });
   if (detail.duration != null) infoRows.push({ label: 'Duration', value: `${detail.duration} min` });
