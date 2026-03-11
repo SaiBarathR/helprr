@@ -4,6 +4,22 @@ export type AniListMediaFormat = 'TV' | 'TV_SHORT' | 'MOVIE' | 'SPECIAL' | 'OVA'
 export type AniListMediaStatus = 'FINISHED' | 'RELEASING' | 'NOT_YET_RELEASED' | 'CANCELLED' | 'HIATUS';
 export type AniListMediaSeason = 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL';
 export type AniListMediaType = 'ANIME' | 'MANGA';
+export type AnimeBrowseSort =
+  | 'seasonal'
+  | 'trending'
+  | 'popularity'
+  | 'score'
+  | 'newest'
+  | 'title'
+  | 'favourites'
+  | 'date_added'
+  | 'release_date';
+
+export interface AniListFuzzyDate {
+  year: number | null;
+  month: number | null;
+  day: number | null;
+}
 
 export interface AniListTrailer {
   id: string | null;
@@ -151,7 +167,7 @@ export interface AniListMedia {
   trending: number | null;
   isAdult: boolean;
   externalLinks: AniListExternalLink[];
-  startDate: { year: number | null; month: number | null; day: number | null } | null;
+  startDate: AniListFuzzyDate | null;
   studios: { edges: Array<{ isMain: boolean; node: AniListStudio }> } | null;
 }
 
@@ -169,6 +185,23 @@ export interface AniListMediaDetail extends AniListMedia {
   reviews: { nodes: AniListReview[] } | null;
 }
 
+export interface AniListMangaDetail extends AniListMedia {
+  description: string | null;
+  source: string | null;
+  hashtag: string | null;
+  meanScore: number | null;
+  favourites: number | null;
+  trailer: AniListTrailer | null;
+  characters: { edges: AniListCharacterEdge[] } | null;
+  staff: { edges: AniListStaffEdge[] } | null;
+  recommendations: { nodes: AniListRecommendationNode[] } | null;
+  relations: { edges: AniListRelationEdge[] } | null;
+  reviews: { nodes: AniListReview[] } | null;
+  chapters: number | null;
+  volumes: number | null;
+  endDate: AniListFuzzyDate | null;
+}
+
 export interface AniListPageInfo {
   total: number;
   currentPage: number;
@@ -184,7 +217,7 @@ export interface AniListBrowseFilters {
   season?: AniListMediaSeason;
   format?: AniListMediaFormat[];
   status?: AniListMediaStatus;
-  sort?: string;
+  sort?: AnimeBrowseSort;
 }
 
 export interface AniListListItem {
@@ -302,8 +335,8 @@ export interface AniListMangaDetailResponse {
   favourites: number | null;
   isAdult: boolean;
   source: string | null;
-  startDate: { year: number | null; month: number | null; day: number | null } | null;
-  endDate: { year: number | null; month: number | null; day: number | null } | null;
+  startDate: AniListFuzzyDate | null;
+  endDate: AniListFuzzyDate | null;
   staff: Array<{
     id: number;
     name: string;

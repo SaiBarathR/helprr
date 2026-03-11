@@ -2,13 +2,16 @@ import axios from 'axios';
 import type {
   AniListMedia,
   AniListMediaDetail,
+  AniListMangaDetail,
   AniListMediaFormat,
   AniListMediaSeason,
   AniListMediaStatus,
   AniListPageInfo,
   AniListSort,
+  AnimeBrowseSort,
 } from '@/types/anilist';
 import { getAnilistJsonWithCache, type AnilistCachePolicy } from '@/lib/cache/anilist-api-cache';
+import { getCurrentSeason } from '@/lib/anilist-helpers';
 
 const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
 const ANILIST_TIMEOUT_MS = 10_000;
@@ -221,6 +224,10 @@ interface MediaData {
   Media: AniListMediaDetail;
 }
 
+interface MangaMediaData {
+  Media: AniListMangaDetail;
+}
+
 async function gqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   await rateLimitWait();
 
@@ -300,7 +307,7 @@ export async function getAnimeDetail(id: number): Promise<AniListMediaDetail> {
   return result.Media;
 }
 
-export async function getMangaDetail(id: number): Promise<AniListMediaDetail> {
+export async function getMangaDetail(id: number): Promise<AniListMangaDetail> {
   const gqlQuery = `
     query ($id: Int) {
       Media(id: $id, type: MANGA) {
@@ -309,11 +316,11 @@ export async function getMangaDetail(id: number): Promise<AniListMediaDetail> {
     }
   `;
 
-  const result = await getAnilistJsonWithCache<MediaData>({
+  const result = await getAnilistJsonWithCache<MangaMediaData>({
     endpoint: 'mangaDetail',
     params: { id },
     policy: getCachePolicy('detail'),
-    fetcher: () => gqlRequest<MediaData>(gqlQuery, { id }),
+    fetcher: () => gqlRequest<MangaMediaData>(gqlQuery, { id }),
   });
 
   return result.Media;
@@ -421,10 +428,12 @@ export async function getSeasonal(
   return result.Page;
 }
 
-function mapSortToAniList(sort: string): AniListSort {
+function mapSortToAniList(sort: AnimeBrowseSort): AniListSort {
   switch (sort) {
+    case 'seasonal':
+    case 'popularity':
+      return 'POPULARITY_DESC';
     case 'trending': return 'TRENDING_DESC';
-    case 'popularity': return 'POPULARITY_DESC';
     case 'score': return 'SCORE_DESC';
     case 'newest': return 'START_DATE_DESC';
     case 'title': return 'TITLE_ROMAJI';
@@ -438,7 +447,7 @@ function mapSortToAniList(sort: string): AniListSort {
 export async function browseAnime(params: {
   page?: number;
   perPage?: number;
-  sort?: string;
+  sort?: AnimeBrowseSort;
   genres?: string[];
   year?: number;
   yearLesser?: number;
@@ -447,10 +456,15 @@ export async function browseAnime(params: {
   format?: AniListMediaFormat[];
   status?: AniListMediaStatus;
 }): Promise<{ pageInfo: AniListPageInfo; media: AniListMedia[] }> {
+  const currentSeason = getCurrentSeason();
+  const sort = params.sort ?? 'seasonal';
+  const season = params.season ?? (sort === 'seasonal' ? currentSeason.season : undefined);
+  const seasonYear = params.year ?? (sort === 'seasonal' ? currentSeason.year : undefined);
+
   const variables: Record<string, unknown> = {
     page: params.page ?? 1,
     perPage: params.perPage ?? 20,
-    sort: [mapSortToAniList(params.sort || 'trending')],
+    sort: [mapSortToAniList(sort)],
     isAdult: false,
   };
 
@@ -471,10 +485,10 @@ export async function browseAnime(params: {
     mediaArgs.push('genre_in: $genre_in');
     variables.genre_in = params.genres;
   }
-  if (params.year) {
+  if (seasonYear) {
     conditions.push('$seasonYear: Int');
     mediaArgs.push('seasonYear: $seasonYear');
-    variables.seasonYear = params.year;
+    variables.seasonYear = seasonYear;
   }
   if (params.yearLesser) {
     conditions.push('$startDate_lesser: FuzzyDateInt');
@@ -486,10 +500,10 @@ export async function browseAnime(params: {
     mediaArgs.push('startDate_greater: $startDate_greater');
     variables.startDate_greater = params.yearGreater * 10000; // Start of year
   }
-  if (params.season) {
+  if (season) {
     conditions.push('$season: MediaSeason');
     mediaArgs.push('season: $season');
-    variables.season = params.season;
+    variables.season = season;
   }
   if (params.format?.length) {
     conditions.push('$format_in: [MediaFormat]');

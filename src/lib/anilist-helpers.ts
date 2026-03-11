@@ -1,6 +1,7 @@
 import type {
   AniListMedia,
   AniListMediaDetail,
+  AniListMangaDetail,
   AniListMediaFormat,
   AniListMediaSeason,
   AniListListItem,
@@ -157,7 +158,7 @@ export function normalizeAniListDetail(media: AniListMediaDetail): AniListDetail
   };
 }
 
-export function normalizeAniListMangaDetail(media: AniListMediaDetail): AniListMangaDetailResponse {
+export function normalizeAniListMangaDetail(media: AniListMangaDetail): AniListMangaDetailResponse {
   const title = getPreferredTitle(media.title);
 
   const staff = (media.staff?.edges || []).map((edge) => ({
@@ -216,8 +217,8 @@ export function normalizeAniListMangaDetail(media: AniListMediaDetail): AniListM
     bannerImage: media.bannerImage,
     format: media.format,
     status: media.status,
-    chapters: (media as unknown as { chapters: number | null }).chapters ?? null,
-    volumes: (media as unknown as { volumes: number | null }).volumes ?? null,
+    chapters: media.chapters ?? null,
+    volumes: media.volumes ?? null,
     genres: media.genres || [],
     tags,
     averageScore: media.averageScore,
@@ -227,7 +228,7 @@ export function normalizeAniListMangaDetail(media: AniListMediaDetail): AniListM
     isAdult: media.isAdult,
     source: media.source,
     startDate: media.startDate ?? null,
-    endDate: (media as unknown as { endDate: { year: number | null; month: number | null; day: number | null } | null }).endDate ?? null,
+    endDate: media.endDate ?? null,
     staff,
     relations,
     recommendations,
@@ -257,10 +258,23 @@ export function extractYouTubeTrailerFallback(
 export function extractTvdbId(externalLinks: AniListExternalLink[]): number | null {
   for (const link of externalLinks) {
     if (!link.url) continue;
-    const match = link.url.match(/thetvdb\.com\/.*?(\d+)/);
-    if (match) {
-      const id = Number(match[1]);
+    try {
+      const url = new URL(link.url);
+      if (!/(^|\.)thetvdb\.com$/i.test(url.hostname)) continue;
+
+      const queryId = url.searchParams.get('id');
+      if (queryId && /^[1-9]\d*$/.test(queryId)) {
+        const id = Number(queryId);
+        if (Number.isFinite(id) && id > 0) return id;
+      }
+
+      const pathMatch = url.pathname.match(/^\/(?:series\/)?([1-9]\d*)(?:\/|$)/i);
+      if (!pathMatch) continue;
+
+      const id = Number(pathMatch[1]);
       if (Number.isFinite(id) && id > 0) return id;
+    } catch {
+      continue;
     }
   }
   return null;

@@ -14,10 +14,17 @@ interface AnimeAddButtonProps {
   tvdbId: number | null;
   tmdbId: number | null;
   library?: DiscoverLibraryStatus;
+  libraryAvailability?: {
+    radarr: 'ok' | 'unavailable';
+    sonarr: 'ok' | 'unavailable';
+  };
 }
 
-export function AnimeAddButton({ title, format, tvdbId, tmdbId, library }: AnimeAddButtonProps) {
+export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, libraryAvailability }: AnimeAddButtonProps) {
   const isMovie = isMovieFormat(format);
+  const serviceAvailable = isMovie
+    ? libraryAvailability?.radarr !== 'unavailable'
+    : libraryAvailability?.sonarr !== 'unavailable';
 
   if (library?.exists && library.id) {
     const href = library.type === 'movie'
@@ -34,6 +41,16 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library }: Anime
             </Badge>
             <span>Open in {library.type === 'movie' ? 'Radarr' : 'Sonarr'}</span>
           </Link>
+        </Button>
+      </div>
+    );
+  }
+
+  if (!serviceAvailable) {
+    return (
+      <div>
+        <Button disabled variant="secondary" className="w-full h-11">
+          {isMovie ? 'Radarr unavailable' : 'Sonarr unavailable'}
         </Button>
       </div>
     );

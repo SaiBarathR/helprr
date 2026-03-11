@@ -15,7 +15,45 @@ import {
   matchSeriesInLibrary,
 } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
-import type { AniListMediaFormat, AniListMediaSeason, AniListMediaStatus, AniListListItem } from '@/types/anilist';
+import type {
+  AniListMediaFormat,
+  AniListMediaSeason,
+  AniListMediaStatus,
+  AniListListItem,
+  AnimeBrowseSort,
+} from '@/types/anilist';
+
+const VALID_SORTS = new Set<AnimeBrowseSort>([
+  'seasonal',
+  'trending',
+  'popularity',
+  'score',
+  'newest',
+  'title',
+  'favourites',
+  'date_added',
+  'release_date',
+]);
+const VALID_SEASONS = new Set<AniListMediaSeason>(['WINTER', 'SPRING', 'SUMMER', 'FALL']);
+const VALID_FORMATS = new Set<AniListMediaFormat>([
+  'TV',
+  'TV_SHORT',
+  'MOVIE',
+  'SPECIAL',
+  'OVA',
+  'ONA',
+  'MUSIC',
+  'MANGA',
+  'NOVEL',
+  'ONE_SHOT',
+]);
+const VALID_STATUSES = new Set<AniListMediaStatus>([
+  'FINISHED',
+  'RELEASING',
+  'NOT_YET_RELEASED',
+  'CANCELLED',
+  'HIATUS',
+]);
 
 async function getLibraries() {
   const [movies, series] = await Promise.all([
@@ -69,6 +107,18 @@ function annotateAnimeItems(
   });
 }
 
+function parsePositiveInteger(value: string | null, fallback: number) {
+  const parsed = value ? Number(value) : Number.NaN;
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function parseOptionalYear(value: string | null) {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export async function GET(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -77,8 +127,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get('mode') || 'browse';
 
-    const page = Number(searchParams.get('page')) || 1;
-    const perPage = Math.min(Number(searchParams.get('perPage')) || 20, 50);
+    const page = parsePositiveInteger(searchParams.get('page'), 1);
+    const perPage = Math.min(parsePositiveInteger(searchParams.get('perPage'), 20), 50);
 
     if (mode === 'search') {
       const q = searchParams.get('q')?.trim();
@@ -98,33 +148,60 @@ export async function GET(request: NextRequest) {
     }
 
     // Browse mode
-    const sort = searchParams.get('sort') || 'trending';
+    const sortParam = searchParams.get('sort');
+    const seasonParam = searchParams.get('season');
+    const formatParam = searchParams.get('format');
+    const statusParam = searchParams.get('status');
+    const invalidParams: string[] = [];
+
+    const sort = sortParam
+      ? (VALID_SORTS.has(sortParam as AnimeBrowseSort) ? sortParam as AnimeBrowseSort : (invalidParams.push('sort'), null))
+      : 'seasonal';
+    const season = seasonParam
+      ? (VALID_SEASONS.has(seasonParam as AniListMediaSeason) ? seasonParam as AniListMediaSeason : (invalidParams.push('season'), null))
+      : undefined;
+    const formats = formatParam
+      ? formatParam.split(',').map((f) => f.trim()).filter(Boolean)
+      : [];
+    const invalidFormats = formats.filter((format) => !VALID_FORMATS.has(format as AniListMediaFormat));
+    const normalizedFormats = formatParam && !invalidFormats.length && formats.length
+      ? formats as AniListMediaFormat[]
+      : undefined;
+    if (formatParam && (!formats.length || invalidFormats.length)) invalidParams.push('format');
+    const status = statusParam
+      ? (VALID_STATUSES.has(statusParam as AniListMediaStatus) ? statusParam as AniListMediaStatus : (invalidParams.push('status'), null))
+      : undefined;
+
+    if (invalidParams.length) {
+      return NextResponse.json(
+        {
+          error: 'Invalid anime browse parameters',
+          invalidParams,
+        },
+        { status: 400 }
+      );
+    }
+
     const genresParam = searchParams.get('genres');
     const genres = genresParam ? genresParam.split(',').map((g) => g.trim()).filter(Boolean) : undefined;
     const yearParam = searchParams.get('year');
-    const year = yearParam ? Number(yearParam) : undefined;
+    const year = parseOptionalYear(yearParam);
     const yearMinParam = searchParams.get('yearMin');
-    const yearMin = yearMinParam ? Number(yearMinParam) : undefined;
+    const yearMin = parseOptionalYear(yearMinParam);
     const yearMaxParam = searchParams.get('yearMax');
-    const yearMax = yearMaxParam ? Number(yearMaxParam) : undefined;
-    const seasonParam = searchParams.get('season') as AniListMediaSeason | null;
-    const formatParam = searchParams.get('format');
-    const formats = formatParam
-      ? formatParam.split(',').map((f) => f.trim()).filter(Boolean) as AniListMediaFormat[]
-      : undefined;
-    const status = searchParams.get('status') as AniListMediaStatus | null;
+    const yearMax = parseOptionalYear(yearMaxParam);
 
     const result = await browseAnime({
       page,
       perPage,
-      sort,
+      sort: sort ?? 'seasonal',
       genres,
       year: year && Number.isFinite(year) ? year : undefined,
       yearLesser: yearMax && Number.isFinite(yearMax) ? yearMax : undefined,
       yearGreater: yearMin && Number.isFinite(yearMin) ? yearMin : undefined,
-      season: seasonParam || undefined,
-      format: formats?.length ? formats : undefined,
-      status: status || undefined,
+      season: season ?? undefined,
+      format: normalizedFormats,
+      status: status ?? undefined,
     });
 
     const { movies, series } = await getLibraries();
