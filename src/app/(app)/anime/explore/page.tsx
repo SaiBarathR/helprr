@@ -631,7 +631,7 @@ function AnimeCard({ item, grid }: { item: AnimeItemWithLibrary; grid?: boolean 
         )}
         {item.format && (
           <Badge className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white">
-            {item.format.replace('_', ' ')}
+            {item.format.replace(/_/g, ' ')}
           </Badge>
         )}
       </div>

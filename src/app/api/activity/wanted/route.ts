@@ -127,20 +127,22 @@ async function fetchWantedCounts(sourceFilter?: WantedSource) {
   };
 
   const [missingResult, cutoffResult] = await Promise.all([
-    Promise.all([
-      getFetcher(sonarrClient, 'missing'),
-      getFetcher(radarrClient, 'missing'),
-    ]).then(([sonarrFetcher, radarrFetcher]) => Promise.all([
-      sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
-      radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
-    ])).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult),
-    Promise.all([
-      getFetcher(sonarrClient, 'cutoff'),
-      getFetcher(radarrClient, 'cutoff'),
-    ]).then(([sonarrFetcher, radarrFetcher]) => Promise.all([
-      sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
-      radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
-    ])).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult),
+    (() => {
+      const sonarrFetcher = getFetcher(sonarrClient, 'missing');
+      const radarrFetcher = getFetcher(radarrClient, 'missing');
+      return Promise.all([
+        sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
+        radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
+      ]).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult);
+    })(),
+    (() => {
+      const sonarrFetcher = getFetcher(sonarrClient, 'cutoff');
+      const radarrFetcher = getFetcher(radarrClient, 'cutoff');
+      return Promise.all([
+        sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
+        radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
+      ]).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult);
+    })(),
   ]);
 
   return {
