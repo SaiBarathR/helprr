@@ -8,28 +8,29 @@ import {
   matchMovieInLibrary,
   matchSeriesInLibrary,
 } from '@/lib/discover';
-import type { RadarrMovie, SonarrSeries } from '@/types';
+
+type ServiceAvailability = 'ok' | 'unavailable';
 
 async function getLibraries() {
-  const [movies, series] = await Promise.all([
+  const [moviesResult, seriesResult] = await Promise.allSettled([
     (async () => {
-      try {
-        const client = await getRadarrClient();
-        return await client.getMovies();
-      } catch {
-        return [] as RadarrMovie[];
-      }
+      const client = await getRadarrClient();
+      return client.getMovies();
     })(),
     (async () => {
-      try {
-        const client = await getSonarrClient();
-        return await client.getSeries();
-      } catch {
-        return [] as SonarrSeries[];
-      }
+      const client = await getSonarrClient();
+      return client.getSeries();
     })(),
   ]);
-  return { movies, series };
+
+  return {
+    movies: moviesResult.status === 'fulfilled' ? moviesResult.value : null,
+    series: seriesResult.status === 'fulfilled' ? seriesResult.value : null,
+    availability: {
+      radarr: moviesResult.status === 'fulfilled' ? 'ok' as ServiceAvailability : 'unavailable' as ServiceAvailability,
+      sonarr: seriesResult.status === 'fulfilled' ? 'ok' as ServiceAvailability : 'unavailable' as ServiceAvailability,
+    },
+  };
 }
 
 export async function GET(
@@ -52,22 +53,32 @@ export async function GET(
     ]);
 
     const normalized = normalizeAniListDetail(detail);
-    const lookups = buildLibraryLookups(libraryResult.movies, libraryResult.series);
+    const isMovie = isMovieFormat(normalized.format);
+    const lookups = buildLibraryLookups(libraryResult.movies ?? [], libraryResult.series ?? []);
 
-    const library = isMovieFormat(normalized.format)
-      ? matchMovieInLibrary(lookups, {
-          tmdbId: normalized.tmdbId ?? undefined,
-          title: normalized.title,
-          year: normalized.year,
-        })
-      : matchSeriesInLibrary(lookups, {
-          tvdbId: normalized.tvdbId,
-          title: normalized.title,
-          year: normalized.year,
-        });
+    const library = isMovie
+      ? (
+        libraryResult.availability.radarr === 'ok'
+          ? matchMovieInLibrary(lookups, {
+              tmdbId: normalized.tmdbId ?? undefined,
+              title: normalized.title,
+              year: normalized.year,
+            })
+          : null
+      )
+      : (
+        libraryResult.availability.sonarr === 'ok'
+          ? matchSeriesInLibrary(lookups, {
+              tvdbId: normalized.tvdbId,
+              title: normalized.title,
+              year: normalized.year,
+            })
+          : null
+      );
 
     return NextResponse.json({
       ...normalized,
+      libraryAvailability: libraryResult.availability,
       library,
     });
   } catch (error) {

@@ -50,8 +50,18 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
             ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
             : null;
 
-          const isManga = item.type === 'MANGA';
+          const isManga = item.type === 'MANGA' || item.format === 'MANGA' || item.chapters != null || item.volumes != null;
           const href = isManga ? `/anime/manga/${item.id}` : `/anime/${item.id}`;
+          const metadata: string[] = [];
+
+          if (item.format) metadata.push(item.format.replace('_', ' '));
+
+          if (isManga) {
+            if (item.chapters != null) metadata.push(`${item.chapters} ch`);
+            if (item.volumes != null) metadata.push(`${item.volumes} vol`);
+          } else if (item.episodes != null) {
+            metadata.push(`${item.episodes} eps`);
+          }
 
           return (
             <Link
@@ -83,13 +93,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
               </div>
               <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{item.title}</p>
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                {item.format && <span>{item.format.replace('_', ' ')}</span>}
-                {item.episodes != null && (
-                  <>
-                    {item.format && <span>·</span>}
-                    <span>{item.episodes} eps</span>
-                  </>
-                )}
+                {metadata.join(' · ')}
               </div>
             </Link>
           );

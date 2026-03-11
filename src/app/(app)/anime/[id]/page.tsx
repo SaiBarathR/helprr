@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
+import DOMPurify from 'isomorphic-dompurify';
 import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
 import { AnimeAddButton } from '@/components/anime/anime-add-button';
@@ -16,20 +17,33 @@ import { ExternalLink } from 'lucide-react';
 import type { AniListDetailResponse } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 
-type DetailWithLibrary = AniListDetailResponse & { library?: DiscoverLibraryStatus };
+type DetailWithLibrary = AniListDetailResponse & {
+  library?: DiscoverLibraryStatus | null;
+  libraryAvailability?: {
+    radarr: 'ok' | 'unavailable';
+    sonarr: 'ok' | 'unavailable';
+  };
+};
+interface DetailState {
+  id: string;
+  detail: DetailWithLibrary | null;
+  error: string | null;
+  loading: boolean;
+}
 
 export default function AnimeDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const [detail, setDetail] = useState<DetailWithLibrary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<DetailState>(() => ({
+    id,
+    detail: null,
+    error: null,
+    loading: true,
+  }));
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
 
     fetch(`/api/anime/${id}`, { signal: controller.signal })
       .then(async (res) => {
@@ -41,18 +55,30 @@ export default function AnimeDetailPage() {
       })
       .then((data: DetailWithLibrary) => {
         if (!controller.signal.aborted) {
-          setDetail(data);
-          setLoading(false);
+          setState({
+            id,
+            detail: data,
+            error: null,
+            loading: false,
+          });
         }
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') return;
-        setError(e.message);
-        setLoading(false);
+        setState({
+          id,
+          detail: null,
+          error: e.message,
+          loading: false,
+        });
       });
 
     return () => controller.abort();
   }, [id]);
+
+  const detail = state.id === id ? state.detail : null;
+  const loading = state.id === id ? state.loading : true;
+  const error = state.id === id ? state.error : null;
 
   if (loading) {
     return (
@@ -80,6 +106,7 @@ export default function AnimeDetailPage() {
   }
 
   const nonSpoilerTags = detail.tags.filter((t) => !t.isSpoiler);
+  const sanitizedDescription = detail.description ? DOMPurify.sanitize(detail.description) : '';
 
   // Build info rows
   const infoRows = [];
@@ -143,7 +170,8 @@ export default function AnimeDetailPage() {
           format={detail.format}
           tvdbId={detail.tvdbId}
           tmdbId={detail.tmdbId}
-          library={detail.library}
+          library={detail.library ?? undefined}
+          libraryAvailability={detail.libraryAvailability}
         />
 
         {/* Trailer */}
@@ -167,14 +195,14 @@ export default function AnimeDetailPage() {
         )}
 
         {/* Synopsis */}
-        {detail.description && (
+        {sanitizedDescription && (
           <div>
             <h2 className="text-base font-semibold mb-1">Synopsis</h2>
             <div
               className={`text-sm text-muted-foreground leading-relaxed [&_i]:italic [&_br]:mb-2 ${synopsisExpanded ? '' : 'line-clamp-5'}`}
-              dangerouslySetInnerHTML={{ __html: detail.description }}
+              dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
             />
-            {detail.description.length > 200 && (
+            {sanitizedDescription.length > 200 && (
               <button
                 onClick={() => setSynopsisExpanded(!synopsisExpanded)}
                 className="text-xs text-primary mt-1 font-medium"

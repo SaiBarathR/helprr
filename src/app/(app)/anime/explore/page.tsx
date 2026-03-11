@@ -41,6 +41,7 @@ interface ListResponse {
 }
 
 const SORT_OPTIONS = [
+  { value: 'seasonal', label: 'Seasonal', icon: CalendarDays },
   { value: 'trending', label: 'Trending', icon: TrendingUp },
   { value: 'popularity', label: 'Popular', icon: Heart },
   { value: 'score', label: 'Score', icon: Star },
@@ -227,11 +228,19 @@ export default function AnimePage() {
   // Search effect
   useEffect(() => {
     if (!hasHydrated) return;
-    if (searchQuery.trim()) {
-      fetchSearch(searchQuery);
-    } else if (viewMode === 'search') {
-      fetchBrowse(1);
-    }
+    const trimmedQuery = searchQuery.trim();
+    const timeoutId = window.setTimeout(() => {
+      if (!trimmedQuery) {
+        if (viewMode === 'search') fetchBrowse(1);
+        return;
+      }
+
+      if (trimmedQuery.length < 3) return;
+
+      fetchSearch(trimmedQuery);
+    }, 300);
+
+    return () => window.clearTimeout(timeoutId);
   }, [searchQuery, hasHydrated, fetchSearch, fetchBrowse, viewMode]);
 
   // Infinite scroll
@@ -241,8 +250,9 @@ export default function AnimePage() {
       (entries) => {
         if (entries[0]?.isIntersecting && pageInfo?.hasNextPage && !loadingMore && !loading) {
           const nextPage = (pageInfo.currentPage || 1) + 1;
-          if (viewMode === 'search' && searchQuery.trim()) {
-            fetchSearch(searchQuery, nextPage, true);
+          const trimmedQuery = searchQuery.trim();
+          if (viewMode === 'search' && trimmedQuery.length >= 3) {
+            fetchSearch(trimmedQuery, nextPage, true);
           } else if (viewMode === 'browse') {
             fetchBrowse(nextPage, true);
           }
@@ -280,6 +290,7 @@ export default function AnimePage() {
     setAnimeFilters(DEFAULT_ANIME_FILTERS);
     setDraftFilters(DEFAULT_ANIME_FILTERS);
     setDraftSort('seasonal');
+    setViewMode('browse');
     setFilterOpen(false);
   };
 

@@ -12,6 +12,10 @@ type WantedPageResponse<T> = {
 };
 
 type WantedFetcher<T> = (page: number, pageSize: number) => Promise<WantedPageResponse<T>>;
+type WantedCapableClient<T> = {
+  getWantedMissing(page: number, pageSize: number): Promise<WantedPageResponse<T>>;
+  getCutoffUnmet(page: number, pageSize: number): Promise<WantedPageResponse<T>>;
+};
 
 function normalizeWantedType(value: string | null): WantedType | null {
   return value === 'missing' || value === 'cutoff' ? value : null;
@@ -109,55 +113,34 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
 }
 
 async function fetchWantedCounts(sourceFilter?: WantedSource) {
+  const [sonarrClient, radarrClient] = await Promise.all([
+    sourceFilter === 'radarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
+    sourceFilter === 'sonarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
+  ]);
+
+  const getFetcher = <T,>(client: WantedCapableClient<T> | null, type: WantedType): WantedFetcher<T> | null => {
+    if (!client) return null;
+    return (page, pageSize) =>
+      type === 'cutoff'
+        ? client.getCutoffUnmet(page, pageSize)
+        : client.getWantedMissing(page, pageSize);
+  };
+
   const [missingResult, cutoffResult] = await Promise.all([
-    (async () => {
-      const [sonarrResult, radarrResult] = await Promise.all([
-        (async () => {
-          if (sourceFilter === 'radarr') return 0;
-          try {
-            const client = await getSonarrClient();
-            return (await client.getWantedMissing(1, 1)).totalRecords;
-          } catch {
-            return 0;
-          }
-        })(),
-        (async () => {
-          if (sourceFilter === 'sonarr') return 0;
-          try {
-            const client = await getRadarrClient();
-            return (await client.getWantedMissing(1, 1)).totalRecords;
-          } catch {
-            return 0;
-          }
-        })(),
-      ]);
-
-      return sonarrResult + radarrResult;
-    })(),
-    (async () => {
-      const [sonarrResult, radarrResult] = await Promise.all([
-        (async () => {
-          if (sourceFilter === 'radarr') return 0;
-          try {
-            const client = await getSonarrClient();
-            return (await client.getCutoffUnmet(1, 1)).totalRecords;
-          } catch {
-            return 0;
-          }
-        })(),
-        (async () => {
-          if (sourceFilter === 'sonarr') return 0;
-          try {
-            const client = await getRadarrClient();
-            return (await client.getCutoffUnmet(1, 1)).totalRecords;
-          } catch {
-            return 0;
-          }
-        })(),
-      ]);
-
-      return sonarrResult + radarrResult;
-    })(),
+    Promise.all([
+      getFetcher(sonarrClient, 'missing'),
+      getFetcher(radarrClient, 'missing'),
+    ]).then(([sonarrFetcher, radarrFetcher]) => Promise.all([
+      sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
+      radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
+    ])).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult),
+    Promise.all([
+      getFetcher(sonarrClient, 'cutoff'),
+      getFetcher(radarrClient, 'cutoff'),
+    ]).then(([sonarrFetcher, radarrFetcher]) => Promise.all([
+      sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
+      radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
+    ])).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult),
   ]);
 
   return {

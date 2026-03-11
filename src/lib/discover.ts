@@ -82,7 +82,25 @@ interface LibraryLookups {
   seriesByImdbId: Map<string, SonarrSeries>;
   seriesByTmdbId: Map<number, SonarrSeries>;
   seriesByTitleYear: Map<string, SonarrSeries>;
-  seriesByBaseTitle: Map<string, SonarrSeries>;
+  seriesByBaseTitle: Map<string, SonarrSeries[]>;
+}
+
+function selectBestSeriesMatch(candidates: SonarrSeries[], year: number | null): SonarrSeries | null {
+  if (!candidates.length) return null;
+  if (year == null) return candidates[0];
+
+  let best = candidates[0];
+  let bestDistance = Math.abs((best.year ?? year) - year);
+
+  for (const candidate of candidates.slice(1)) {
+    const distance = Math.abs((candidate.year ?? year) - year);
+    if (distance < bestDistance) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
 }
 
 export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[]): LibraryLookups {
@@ -93,7 +111,7 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
   const seriesByImdbId = new Map<string, SonarrSeries>();
   const seriesByTmdbId = new Map<number, SonarrSeries>();
   const seriesByTitleYear = new Map<string, SonarrSeries>();
-  const seriesByBaseTitle = new Map<string, SonarrSeries>();
+  const seriesByBaseTitle = new Map<string, SonarrSeries[]>();
 
   for (const movie of movies) {
     movieByTmdbId.set(movie.tmdbId, movie);
@@ -107,7 +125,10 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
     const tmdbId = (show as SonarrSeries & { tmdbId?: number }).tmdbId;
     if (tmdbId) seriesByTmdbId.set(tmdbId, show);
     seriesByTitleYear.set(normalizeTitleKey(show.title, show.year ?? null), show);
-    seriesByBaseTitle.set(normalizeBaseTitle(show.title), show);
+    const baseTitleKey = normalizeBaseTitle(show.title);
+    const existing = seriesByBaseTitle.get(baseTitleKey) ?? [];
+    existing.push(show);
+    seriesByBaseTitle.set(baseTitleKey, existing);
   }
 
   return {
@@ -173,7 +194,7 @@ export function matchSeriesInLibrary(
   if (byTitle) return { exists: true, type: 'series', id: byTitle.id };
 
   const baseTitleKey = normalizeBaseTitle(item.title);
-  const byBaseTitle = lookups.seriesByBaseTitle.get(baseTitleKey);
+  const byBaseTitle = selectBestSeriesMatch(lookups.seriesByBaseTitle.get(baseTitleKey) ?? [], item.year);
   if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id };
 
   return { exists: false };

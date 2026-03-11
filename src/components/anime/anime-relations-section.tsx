@@ -60,7 +60,12 @@ export function AnimeRelationsSection({ relations }: AnimeRelationsSectionProps)
   }
 
   const sortedGroups = [...grouped.entries()].sort(
-    (a, b) => RELATION_ORDER.indexOf(a[0]) - RELATION_ORDER.indexOf(b[0])
+    (a, b) => {
+      const fallbackIndex = RELATION_ORDER.length;
+      const indexA = RELATION_ORDER.indexOf(a[0]);
+      const indexB = RELATION_ORDER.indexOf(b[0]);
+      return (indexA === -1 ? fallbackIndex : indexA) - (indexB === -1 ? fallbackIndex : indexB);
+    }
   );
 
   return (

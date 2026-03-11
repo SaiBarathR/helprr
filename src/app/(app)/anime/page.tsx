@@ -12,30 +12,19 @@ import type { AniListMediaSeason, AniListListItem } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 
 type AnimeItemWithLibrary = AniListListItem & { library?: DiscoverLibraryStatus };
+interface SeasonWindow {
+  season: AniListMediaSeason;
+  year: number;
+}
 
 interface HomeData {
+  currentSeason: SeasonWindow;
+  nextSeasonInfo: SeasonWindow;
   trending: AnimeItemWithLibrary[];
   season: AnimeItemWithLibrary[];
   nextSeason: AnimeItemWithLibrary[];
   popular: AnimeItemWithLibrary[];
   top: AnimeItemWithLibrary[];
-}
-
-function getCurrentSeasonClient(): { season: AniListMediaSeason; year: number } {
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-  if (month >= 4 && month <= 6) return { season: 'SPRING', year };
-  if (month >= 7 && month <= 9) return { season: 'SUMMER', year };
-  if (month >= 10 && month <= 12) return { season: 'FALL', year };
-  return { season: 'WINTER', year };
-}
-
-function getNextSeasonClient(currentSeason: AniListMediaSeason, currentYear: number): { season: AniListMediaSeason; year: number } {
-  if (currentSeason === 'WINTER') return { season: 'SPRING', year: currentYear };
-  if (currentSeason === 'SPRING') return { season: 'SUMMER', year: currentYear };
-  if (currentSeason === 'SUMMER') return { season: 'FALL', year: currentYear };
-  return { season: 'WINTER', year: currentYear + 1 };
 }
 
 function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
@@ -110,9 +99,6 @@ export default function AnimeHomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const current = getCurrentSeasonClient();
-  const next = getNextSeasonClient(current.season, current.year);
-
   useEffect(() => {
     async function fetchHome() {
       try {
@@ -132,6 +118,8 @@ export default function AnimeHomePage() {
 
   const heroAnime = data?.trending?.[0] ?? null;
   const trendingItems = data?.trending?.slice(1) ?? [];
+  const currentSeason = data?.currentSeason;
+  const nextSeasonInfo = data?.nextSeasonInfo;
 
   return (
     <div className="flex flex-col pb-20">
@@ -183,13 +171,21 @@ export default function AnimeHomePage() {
           <AnimeMediaRail
             title="Popular This Season"
             items={data.season}
-            viewAllHref={`/anime/explore?sort=popularity&season=${current.season}&year=${current.year}`}
+            viewAllHref={
+              currentSeason
+                ? `/anime/explore?sort=seasonal&season=${currentSeason.season}&year=${currentSeason.year}`
+                : '/anime/explore?sort=seasonal'
+            }
             size="large"
           />
           <AnimeMediaRail
             title="Upcoming Next Season"
             items={data.nextSeason}
-            viewAllHref={`/anime/explore?sort=popularity&season=${next.season}&year=${next.year}`}
+            viewAllHref={
+              nextSeasonInfo
+                ? `/anime/explore?sort=seasonal&season=${nextSeasonInfo.season}&year=${nextSeasonInfo.year}`
+                : '/anime/explore?sort=seasonal'
+            }
           />
           <AnimeMediaRail
             title="All Time Popular"

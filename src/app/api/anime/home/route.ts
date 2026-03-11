@@ -7,6 +7,11 @@ import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary } from '
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import type { AniListMediaSeason, AniListListItem, AniListMedia } from '@/types/anilist';
 
+interface SeasonWindow {
+  season: AniListMediaSeason;
+  year: number;
+}
+
 async function getLibraries() {
   const [movies, series] = await Promise.all([
     (async () => {
@@ -84,14 +89,20 @@ export async function GET() {
     const current = getCurrentSeasonClient();
     const next = getNextSeasonClient(current.season, current.year);
 
-    const result = await getAnimeHome(current.season, current.year, next.season, next.year);
-
-    const { movies, series } = await getLibraries();
+    const [result, { movies, series }] = await Promise.all([
+      getAnimeHome(current.season, current.year, next.season, next.year),
+      getLibraries(),
+    ]);
 
     const normalizeAndAnnotate = (items: AniListMedia[]) =>
       annotateAnimeItems(items.map(normalizeAniListItem), movies, series);
 
+    const currentSeason: SeasonWindow = current;
+    const nextSeasonInfo: SeasonWindow = next;
+
     return NextResponse.json({
+      currentSeason,
+      nextSeasonInfo,
       trending: normalizeAndAnnotate(result.trending),
       season: normalizeAndAnnotate(result.season),
       nextSeason: normalizeAndAnnotate(result.nextSeason),
