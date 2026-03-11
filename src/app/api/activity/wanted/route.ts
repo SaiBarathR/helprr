@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/request-parsing';
 
 type WantedType = 'missing' | 'cutoff';
 type WantedSource = 'sonarr' | 'radarr';
@@ -175,13 +176,17 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const typeParam = searchParams.get('type');
     const type = typeParam === null ? null : normalizeWantedType(typeParam);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
+    const page = parsePositiveIntParam(searchParams.get('page'), { defaultValue: 1 });
+    const pageSize = parsePositiveIntParam(searchParams.get('pageSize'), { defaultValue: 20, max: 200 });
     const source = searchParams.get('source');
     const sourceFilter = source === 'sonarr' || source === 'radarr' ? source : undefined;
 
     if (typeParam !== null && type === null) {
       return NextResponse.json({ error: 'Unknown wanted type' }, { status: 400 });
+    }
+
+    if (page === null || pageSize === null) {
+      return NextResponse.json({ error: 'Invalid pagination params' }, { status: 400 });
     }
 
     if (!type) {

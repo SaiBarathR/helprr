@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/request-parsing';
 
 export async function GET(request: NextRequest) {
   const authError = await requireAuth();
@@ -8,9 +9,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = request.nextUrl;
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '50');
+    const page = parsePositiveIntParam(searchParams.get('page'), { defaultValue: 1 });
+    const pageSize = parsePositiveIntParam(searchParams.get('pageSize'), { defaultValue: 50, max: 200 });
     const unreadOnly = searchParams.get('unreadOnly') === 'true';
+
+    if (page === null || pageSize === null) {
+      return NextResponse.json({ error: 'Invalid pagination params' }, { status: 400 });
+    }
 
     const where = unreadOnly ? { read: false } : {};
 

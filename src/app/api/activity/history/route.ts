@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/request-parsing';
 import type { HistoryItem } from '@/types';
 
 type HistorySource = 'sonarr' | 'radarr';
@@ -111,8 +112,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') || '50', 10);
+    const page = parsePositiveIntParam(searchParams.get('page'), { defaultValue: 1 });
+    const pageSize = parsePositiveIntParam(searchParams.get('pageSize'), { defaultValue: 50, max: 200 });
     const sortKey = searchParams.get('sortKey') || 'date';
     const sortDirection = searchParams.get('sortDirection') || 'descending';
     const eventTypeFilter = parseEventTypeFilter(searchParams.get('eventType'));
@@ -121,6 +122,10 @@ export async function GET(request: NextRequest) {
     const movieId = searchParams.get('movieId') ? parseInt(searchParams.get('movieId')!, 10) : undefined;
     const source = searchParams.get('source');
     const sourceFilter = source === 'sonarr' || source === 'radarr' ? source : undefined;
+
+    if (page === null || pageSize === null) {
+      return NextResponse.json({ error: 'Invalid pagination params' }, { status: 400 });
+    }
 
     // Fetch large batches from both services so we can merge and re-sort
     const fetchSize = 500;

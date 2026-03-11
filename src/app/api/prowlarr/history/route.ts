@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/request-parsing';
 
 /**
  * Handle GET requests to retrieve Prowlarr history.
@@ -16,14 +17,18 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') ?? '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') ?? '50', 10);
+    const page = parsePositiveIntParam(searchParams.get('page'), { defaultValue: 1 });
+    const pageSize = parsePositiveIntParam(searchParams.get('pageSize'), { defaultValue: 50, max: 200 });
     const indexerIdParam = searchParams.get('indexerId');
     const indexerId = indexerIdParam ? parseInt(indexerIdParam, 10) : undefined;
     const eventTypeParam = searchParams.get('eventType');
     const eventType = eventTypeParam !== null ? parseInt(eventTypeParam, 10) : undefined;
     const successfulParam = searchParams.get('successful');
     const successful = successfulParam !== null ? successfulParam === 'true' : undefined;
+
+    if (page === null || pageSize === null) {
+      return NextResponse.json({ error: 'Invalid pagination params' }, { status: 400 });
+    }
 
     const client = await getProwlarrClient();
     const history = await client.getHistory({ page, pageSize, indexerId, eventType, successful });

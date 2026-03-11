@@ -9,16 +9,29 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { endpoint, keys, deviceName } = body;
-
-    if (!endpoint || !keys?.p256dh || !keys?.auth) {
-      return NextResponse.json({ error: 'Missing subscription data' }, { status: 400 });
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid subscription data' }, { status: 400 });
     }
 
+    const { endpoint, keys, deviceName } = body;
+
+    if (
+      typeof endpoint !== 'string' ||
+      endpoint.trim().length === 0 ||
+      typeof keys?.p256dh !== 'string' ||
+      typeof keys.auth !== 'string' ||
+      (deviceName !== undefined && deviceName !== null && typeof deviceName !== 'string')
+    ) {
+      return NextResponse.json({ error: 'Invalid subscription data' }, { status: 400 });
+    }
+
+    const normalizedEndpoint = endpoint.trim();
+    const normalizedDeviceName = typeof deviceName === 'string' ? deviceName.trim() || null : null;
+
     const subscription = await prisma.pushSubscription.upsert({
-      where: { endpoint },
-      update: { p256dh: keys.p256dh, auth: keys.auth, deviceName },
-      create: { endpoint, p256dh: keys.p256dh, auth: keys.auth, deviceName },
+      where: { endpoint: normalizedEndpoint },
+      update: { p256dh: keys.p256dh, auth: keys.auth, deviceName: normalizedDeviceName },
+      create: { endpoint: normalizedEndpoint, p256dh: keys.p256dh, auth: keys.auth, deviceName: normalizedDeviceName },
     });
 
     await ensureNotificationPreferences(subscription.id);
@@ -36,10 +49,14 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const body = await request.json();
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ success: true });
+    }
+
     const { endpoint } = body;
 
-    if (endpoint) {
-      await prisma.pushSubscription.delete({ where: { endpoint } }).catch(() => {});
+    if (typeof endpoint === 'string' && endpoint.trim().length > 0) {
+      await prisma.pushSubscription.delete({ where: { endpoint: endpoint.trim() } }).catch(() => {});
     }
 
     return NextResponse.json({ success: true });

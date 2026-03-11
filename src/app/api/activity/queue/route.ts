@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { parsePositiveIntParam } from '@/lib/request-parsing';
 import type { QueueItem } from '@/types';
 
 export async function GET(request: NextRequest) {
@@ -9,8 +10,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') || '50', 10);
+    const page = parsePositiveIntParam(searchParams.get('page'), { defaultValue: 1 });
+    const pageSize = parsePositiveIntParam(searchParams.get('pageSize'), { defaultValue: 50, max: 200 });
+
+    if (page === null || pageSize === null) {
+      return NextResponse.json({ error: 'Invalid pagination params' }, { status: 400 });
+    }
 
     const [sonarrResult, radarrResult] = await Promise.allSettled([
       (async () => {
