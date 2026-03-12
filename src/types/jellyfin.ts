@@ -53,6 +53,8 @@ export interface JellyfinMediaStream {
   Profile?: string;
   VideoRange?: string;
   BitDepth?: number;
+  AudioSpatialFormat?: string;
+  SampleRate?: number;
 }
 
 export interface JellyfinItem {
@@ -76,6 +78,7 @@ export interface JellyfinItem {
   IndexNumber?: number;
   MediaType?: string;
   MediaStreams?: JellyfinMediaStream[];
+  Container?: string;
 }
 
 export interface JellyfinItemsResponse {
