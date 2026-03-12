@@ -176,26 +176,26 @@ export function matchSeriesInLibrary(
 ): DiscoverLibraryStatus {
   if (item.tvdbId && lookups.seriesByTvdbId.has(item.tvdbId)) {
     const found = lookups.seriesByTvdbId.get(item.tvdbId)!;
-    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug };
+    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId ?? undefined };
   }
 
   if (item.imdbId && lookups.seriesByImdbId.has(item.imdbId.toLowerCase())) {
     const found = lookups.seriesByImdbId.get(item.imdbId.toLowerCase())!;
-    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug };
+    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId ?? undefined };
   }
 
   if (item.tmdbId && lookups.seriesByTmdbId.has(item.tmdbId)) {
     const found = lookups.seriesByTmdbId.get(item.tmdbId)!;
-    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug };
+    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId ?? undefined };
   }
 
   const key = normalizeTitleKey(item.title, item.year);
   const byTitle = lookups.seriesByTitleYear.get(key);
-  if (byTitle) return { exists: true, type: 'series', id: byTitle.id, titleSlug: byTitle.titleSlug };
+  if (byTitle) return { exists: true, type: 'series', id: byTitle.id, titleSlug: byTitle.titleSlug, tmdbId: byTitle.tmdbId ?? undefined };
 
   const baseTitleKey = normalizeBaseTitle(item.title);
   const byBaseTitle = selectBestSeriesMatch(lookups.seriesByBaseTitle.get(baseTitleKey) ?? [], item.year);
-  if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id, titleSlug: byBaseTitle.titleSlug };
+  if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id, titleSlug: byBaseTitle.titleSlug, tmdbId: byBaseTitle.tmdbId ?? undefined };
 
   return { exists: false };
 }

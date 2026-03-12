@@ -192,20 +192,32 @@ export default function MovieDetailPage() {
 
   async function handleOpenInJellyfin() {
     if (!movie || !externalUrls.JELLYFIN) return;
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      toast.error('Popup blocked');
+      return;
+    }
+
     setJellyfinLoading(true);
     try {
       const params = new URLSearchParams();
       if (movie.imdbId) params.set('imdbId', movie.imdbId);
       if (movie.tmdbId) params.set('tmdbId', String(movie.tmdbId));
-      if (!params.toString()) { toast.error('No provider IDs available'); return; }
+      if (!params.toString()) {
+        popup.close();
+        toast.error('No provider IDs available');
+        return;
+      }
       const res = await fetch(`/api/jellyfin/lookup?${params}`);
       const data = res.ok ? await res.json() : null;
       if (data?.itemId) {
-        window.open(`${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`, '_blank');
+        popup.location.href = `${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`;
       } else {
+        popup.close();
         toast.error('Not found in Jellyfin');
       }
     } catch {
+      popup.close();
       toast.error('Jellyfin lookup failed');
     } finally {
       setJellyfinLoading(false);

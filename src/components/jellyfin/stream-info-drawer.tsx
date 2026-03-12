@@ -63,7 +63,7 @@ function StreamSection({ stream, isDirect }: { stream: JellyfinMediaStream; isDi
             <span>{stream.Channels}ch{stream.ChannelLayout ? ` (${stream.ChannelLayout})` : ''}</span>
           )}
           {stream.BitRate && <span>{formatBitrate(stream.BitRate)}</span>}
-          {!isVideo && stream?.AudioSpatialFormat !== "None" && (
+          {!isVideo && stream.AudioSpatialFormat && stream.AudioSpatialFormat !== 'None' && (
             <span>{stream.AudioSpatialFormat}</span>
           )}
           {!isVideo && stream.SampleRate && (
