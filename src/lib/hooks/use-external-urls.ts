@@ -5,18 +5,26 @@ type ExternalUrls = Record<string, string>;
 let cached: ExternalUrls | null = null;
 let pending: Promise<ExternalUrls> | null = null;
 
+export function invalidateExternalUrls(): void {
+  cached = null;
+  pending = null;
+}
+
+function isEmptyMap(value: ExternalUrls | null): boolean {
+  return !value || Object.keys(value).length === 0;
+}
+
 function fetchExternalUrls(): Promise<ExternalUrls> {
   if (!pending) {
     pending = fetch('/api/services/external-urls')
       .then((res) => (res.ok ? res.json() : {}))
       .then((data: ExternalUrls) => {
-        cached = data;
+        if (data && typeof data === 'object') {
+          cached = data;
+        }
         return data;
       })
-      .catch(() => {
-        cached = {};
-        return {};
-      })
+      .catch(() => ({}))
       .finally(() => {
         pending = null;
       });
@@ -28,7 +36,7 @@ export function useExternalUrls(): ExternalUrls {
   const [urls, setUrls] = useState<ExternalUrls>(() => cached ?? {});
 
   useEffect(() => {
-    if (cached) return;
+    if (!isEmptyMap(cached)) return;
     void fetchExternalUrls().then(setUrls);
   }, []);
 

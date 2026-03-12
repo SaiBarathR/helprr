@@ -18,6 +18,7 @@ import {
 import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle, Compass, ExternalLink } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
+import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 
 interface ServiceForm {
   url: string;
@@ -47,6 +48,14 @@ interface CacheUsageStats {
   totalBytes: number;
   imageFiles: number;
   tmdbEntries: number;
+}
+
+interface LoadedServiceConnection {
+  type: ServiceConfigType;
+  url: string;
+  apiKey: string;
+  username?: string | null;
+  externalUrl?: string | null;
 }
 
 function isJellyfinApiUser(value: unknown): value is JellyfinApiUser {
@@ -84,6 +93,30 @@ function mapJellyfinUsers(rawUsers: unknown[]): JellyfinUserOption[] {
     if (!unique.has(option.id)) unique.set(option.id, option);
   }
   return Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function isServiceConfigType(value: unknown): value is ServiceConfigType {
+  return typeof value === 'string' && SERVICE_CONFIG.some((config) => config.type === value);
+}
+
+function isLoadedServiceConnection(value: unknown): value is LoadedServiceConnection {
+  return (
+    !!value
+    && typeof value === 'object'
+    && isServiceConfigType((value as { type?: unknown }).type)
+    && typeof (value as { url?: unknown }).url === 'string'
+    && typeof (value as { apiKey?: unknown }).apiKey === 'string'
+    && (
+      (value as { username?: unknown }).username === undefined
+      || (value as { username?: unknown }).username === null
+      || typeof (value as { username?: unknown }).username === 'string'
+    )
+    && (
+      (value as { externalUrl?: unknown }).externalUrl === undefined
+      || (value as { externalUrl?: unknown }).externalUrl === null
+      || typeof (value as { externalUrl?: unknown }).externalUrl === 'string'
+    )
+  );
 }
 
 const defaultServiceForm: ServiceForm = {
@@ -138,6 +171,31 @@ const SERVICE_CONFIG = [
     placeholder: 'https://api.themoviedb.org/3',
   },
 ] as const;
+
+type ServiceConfigType = typeof SERVICE_CONFIG[number]['type'];
+type PersistedConnections = Record<ServiceConfigType, boolean>;
+
+function buildDefaultServices(): Record<ServiceConfigType, ServiceForm> {
+  return {
+    SONARR: { ...defaultServiceForm },
+    RADARR: { ...defaultServiceForm },
+    QBITTORRENT: { ...defaultServiceForm },
+    PROWLARR: { ...defaultServiceForm },
+    JELLYFIN: { ...defaultServiceForm },
+    TMDB: { ...defaultServiceForm },
+  };
+}
+
+function buildDefaultPersistedConnections(): PersistedConnections {
+  return {
+    SONARR: false,
+    RADARR: false,
+    QBITTORRENT: false,
+    PROWLARR: false,
+    JELLYFIN: false,
+    TMDB: false,
+  };
+}
 
 const POLLING_OPTIONS = [
   { value: '15', label: '15 seconds' },
@@ -202,18 +260,12 @@ export default function SettingsPage() {
 
   useEffect(() => setMounted(true), []);
 
-  const [services, setServices] = useState<Record<string, ServiceForm>>({
-    SONARR: { ...defaultServiceForm },
-    RADARR: { ...defaultServiceForm },
-    QBITTORRENT: { ...defaultServiceForm },
-    PROWLARR: { ...defaultServiceForm },
-    JELLYFIN: { ...defaultServiceForm },
-    TMDB: { ...defaultServiceForm },
-  });
+  const [services, setServices] = useState<Record<ServiceConfigType, ServiceForm>>(() => buildDefaultServices());
+  const [persistedConnections, setPersistedConnections] = useState<PersistedConnections>(() => buildDefaultPersistedConnections());
   const [jellyfinValidated, setJellyfinValidated] = useState<{ userId: string } | null>(null);
   const [jellyfinUsers, setJellyfinUsers] = useState<JellyfinUserOption[]>([]);
 
-  const [expandedService, setExpandedService] = useState<string | null>(null);
+  const [expandedService, setExpandedService] = useState<ServiceConfigType | null>(null);
   const [pollingInterval, setPollingInterval] = useState('30');
   const [dashboardRefreshInterval, setDashboardRefreshInterval] = useState('5');
   const [activityRefreshInterval, setActivityRefreshInterval] = useState('5');
@@ -242,27 +294,31 @@ export default function SettingsPage() {
         ]);
 
         if (connectionsRes.status === 'fulfilled' && connectionsRes.value.ok) {
-          const connections = await connectionsRes.value.json();
-          const updated = { ...services };
+          const connections = await connectionsRes.value.json() as unknown;
+          const updated = buildDefaultServices();
+          const nextPersistedConnections = buildDefaultPersistedConnections();
           let savedJellyfinUserId = '';
           const loadedExternalUrls: Record<string, string> = {};
-          for (const conn of connections) {
-            if (updated[conn.type]) {
-              updated[conn.type] = {
-                ...updated[conn.type],
-                url: conn.url,
-                apiKey: conn.apiKey,
-                username: conn.username || '',
-              };
-              if (conn.type === 'JELLYFIN') {
-                savedJellyfinUserId = conn.username || '';
-              }
-              if (conn.externalUrl) {
-                loadedExternalUrls[conn.type] = conn.externalUrl;
-              }
+          const parsedConnections = Array.isArray(connections)
+            ? connections.filter(isLoadedServiceConnection)
+            : [];
+          for (const conn of parsedConnections) {
+            nextPersistedConnections[conn.type] = true;
+            updated[conn.type] = {
+              ...updated[conn.type],
+              url: conn.url,
+              apiKey: conn.apiKey,
+              username: conn.username || '',
+            };
+            if (conn.type === 'JELLYFIN') {
+              savedJellyfinUserId = conn.username || '';
+            }
+            if (conn.externalUrl) {
+              loadedExternalUrls[conn.type] = conn.externalUrl;
             }
           }
           setServices(updated);
+          setPersistedConnections(nextPersistedConnections);
           setExternalUrls(loadedExternalUrls);
 
           if (savedJellyfinUserId) {
@@ -371,19 +427,18 @@ export default function SettingsPage() {
     return () => clearInterval(interval);
   }, [cacheImagesEnabled, loadCacheUsage]);
 
-  function updateService(type: string, field: keyof ServiceForm, value: string | boolean) {
+  function updateService(type: ServiceConfigType, field: keyof ServiceForm, value: string | boolean) {
     setServices((prev) => ({
       ...prev,
       [type]: { ...prev[type], [field]: value },
     }));
   }
 
-  function isConfigured(type: string) {
-    const svc = services[type];
-    return !!(svc.url && svc.apiKey);
+  function isConfigured(type: ServiceConfigType) {
+    return persistedConnections[type];
   }
 
-  async function testConnection(type: string) {
+  async function testConnection(type: ServiceConfigType) {
     const svc = services[type];
     const needsUsername = type === 'QBITTORRENT';
 
@@ -450,7 +505,7 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveConnection(type: string) {
+  async function saveConnection(type: ServiceConfigType) {
     const svc = services[type];
     const needsUsername = type === 'QBITTORRENT';
 
@@ -486,6 +541,11 @@ export default function SettingsPage() {
       });
 
       if (res.ok) {
+        setPersistedConnections((prev) => ({
+          ...prev,
+          [type]: true,
+        }));
+        invalidateExternalUrls();
         toast.success('Connection saved');
       } else {
         const data = await res.json();
@@ -613,6 +673,7 @@ export default function SettingsPage() {
         );
       const results = await Promise.all(promises);
       if (results.every((r) => r.ok)) {
+        invalidateExternalUrls();
         toast.success('External URLs saved');
       } else {
         toast.error('Failed to save some external URLs');

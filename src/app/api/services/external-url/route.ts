@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
-
-const VALID_TYPES = new Set(['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB']);
+import { isServiceType } from '@/lib/service-connection-secrets';
 
 export async function PUT(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -16,9 +16,10 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
   }
 
   const type = body.type;
-  if (typeof type !== 'string' || !VALID_TYPES.has(type)) {
+  if (typeof type !== 'string' || !isServiceType(type)) {
     return NextResponse.json({ error: 'Invalid service type' }, { status: 400 });
   }
+  const serviceType = ServiceType[type];
 
   const rawUrl = body.externalUrl;
   const externalUrl = typeof rawUrl === 'string' && rawUrl.trim()
@@ -26,13 +27,13 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     : null;
 
   try {
-    const existing = await prisma.serviceConnection.findUnique({ where: { type: type as 'SONARR' } });
+    const existing = await prisma.serviceConnection.findUnique({ where: { type: serviceType } });
     if (!existing) {
       return NextResponse.json({ error: 'Service not configured' }, { status: 404 });
     }
 
     const updated = await prisma.serviceConnection.update({
-      where: { type: type as 'SONARR' },
+      where: { type: serviceType },
       data: { externalUrl },
     });
 

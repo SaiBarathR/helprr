@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getJellyfinClient } from '@/lib/service-helpers';
+import {
+  getCachedJellyfinLookup,
+  setCachedJellyfinLookup,
+  type JellyfinLookupProvider,
+} from '@/lib/cache/jellyfin-lookup-cache';
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -17,9 +22,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const client = await getJellyfinClient();
+    const providerLookups: Array<{ provider: JellyfinLookupProvider; providerId: string }> = [];
+    if (imdbId) providerLookups.push({ provider: 'imdb', providerId: imdbId });
+    if (tvdbId) providerLookups.push({ provider: 'tvdb', providerId: tvdbId });
+    if (tmdbId) providerLookups.push({ provider: 'tmdb', providerId: tmdbId });
+
+    const cachedMatches = await Promise.all(
+      providerLookups.map(({ provider, providerId }) => getCachedJellyfinLookup(provider, providerId))
+    );
+    const cachedHit = cachedMatches.find((entry) => entry?.itemId);
+    if (cachedHit?.itemId) {
+      return NextResponse.json({ itemId: cachedHit.itemId });
+    }
+
+    if (cachedMatches.length > 0 && cachedMatches.every((entry) => entry !== null)) {
+      return NextResponse.json({ itemId: null });
+    }
 
     // AnyProviderIdEquals is broken in Jellyfin 10.11+, so fetch all
-    // movies/series with ProviderIds and match client-side.
+    // movies/series with ProviderIds and match client-side. This can be
+    // expensive on large libraries, so provider-ID cache hits short-circuit
+    // the full-library scan whenever possible.
     const result = await client.queryItems({
       IncludeItemTypes: 'Movie,Series',
       Recursive: true,
@@ -28,13 +51,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
 
     const match = result.Items?.find((item) => {
-      const pids = (item as { ProviderIds?: Record<string, string> }).ProviderIds;
+      const pids = item.ProviderIds;
       if (!pids) return false;
       if (imdbId && pids.Imdb === imdbId) return true;
       if (tvdbId && pids.Tvdb === tvdbId) return true;
       if (tmdbId && pids.Tmdb === tmdbId) return true;
       return false;
     });
+
+    await Promise.all(
+      providerLookups.map(({ provider, providerId }) =>
+        setCachedJellyfinLookup(provider, providerId, match?.Id ?? null)
+      )
+    );
 
     if (!match) {
       return NextResponse.json({ itemId: null });

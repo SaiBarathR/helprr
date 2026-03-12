@@ -61,6 +61,7 @@ export interface JellyfinItem {
   Id: string;
   Name: string;
   Type: string;
+  ProviderIds?: Record<string, string>;
   Overview?: string;
   SeriesName?: string;
   SeriesId?: string;

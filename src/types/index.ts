@@ -16,6 +16,7 @@ export interface SonarrSeries {
   monitored: boolean;
   runtime: number;
   tvdbId: number;
+  tmdbId?: number;
   tvRageId: number;
   tvMazeId: number;
   firstAired: string;

@@ -145,19 +145,32 @@ export default function AnimeDetailPage() {
   const showJellyfinLink = !!(detail.library?.exists && externalUrls.JELLYFIN && (detail.tvdbId || detail.tmdbId));
   async function handleOpenInJellyfin() {
     if (!externalUrls.JELLYFIN) return;
+    const popup = window.open('', '_blank');
+    if (!popup) {
+      toast.error('Popup blocked');
+      return;
+    }
+
     setJellyfinLoading(true);
     try {
       const params = new URLSearchParams();
       if (detail!.tvdbId) params.set('tvdbId', String(detail!.tvdbId));
       if (detail!.tmdbId) params.set('tmdbId', String(detail!.tmdbId));
+      if (!params.toString()) {
+        popup.close();
+        toast.error('No provider IDs available');
+        return;
+      }
       const res = await fetch(`/api/jellyfin/lookup?${params}`);
       const data = res.ok ? await res.json() : null;
       if (data?.itemId) {
-        window.open(`${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`, '_blank');
+        popup.location.href = `${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`;
       } else {
+        popup.close();
         toast.error('Not found in Jellyfin');
       }
     } catch {
+      popup.close();
       toast.error('Jellyfin lookup failed');
     } finally {
       setJellyfinLoading(false);
