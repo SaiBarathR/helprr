@@ -17,13 +17,14 @@ enum ServiceType {
 }
 
 model ServiceConnection {
-  id        String      @id @default(cuid())
-  type      ServiceType @unique
-  url       String
-  apiKey    String
-  username  String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id          String      @id @default(cuid())
+  type        ServiceType @unique
+  url         String
+  apiKey      String
+  username    String?
+  externalUrl String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model PushSubscription {

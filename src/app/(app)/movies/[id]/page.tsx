@@ -50,6 +50,7 @@ import {
   setMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
 import { isProtectedApiImageSrc } from '@/lib/image';
+import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 type RatingItem = {
   label: string;
@@ -76,6 +77,8 @@ export default function MovieDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
+  const externalUrls = useExternalUrls();
+  const [jellyfinLoading, setJellyfinLoading] = useState(false);
 
   // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
@@ -186,6 +189,28 @@ export default function MovieDetailPage() {
 
     void loadData(Boolean(cached));
   }, [loadData, movieId]);
+
+  async function handleOpenInJellyfin() {
+    if (!movie || !externalUrls.JELLYFIN) return;
+    setJellyfinLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (movie.imdbId) params.set('imdbId', movie.imdbId);
+      if (movie.tmdbId) params.set('tmdbId', String(movie.tmdbId));
+      if (!params.toString()) { toast.error('No provider IDs available'); return; }
+      const res = await fetch(`/api/jellyfin/lookup?${params}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.itemId) {
+        window.open(`${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`, '_blank');
+      } else {
+        toast.error('Not found in Jellyfin');
+      }
+    } catch {
+      toast.error('Jellyfin lookup failed');
+    } finally {
+      setJellyfinLoading(false);
+    }
+  }
 
   const ratingItems = useMemo<RatingItem[]>(() => {
     const ratings = movie?.ratings;
@@ -408,6 +433,20 @@ export default function MovieDetailPage() {
                   >
                     <ExternalLink className="h-4 w-4" />
                     Open in IMDb
+                  </DropdownMenuItem>
+                )}
+                {externalUrls.RADARR && movie.tmdbId && (
+                  <DropdownMenuItem asChild>
+                    <a href={`${externalUrls.RADARR}/movie/${movie.tmdbId}`} target="_blank" rel="noopener noreferrer">
+                      <Film className="h-4 w-4" />
+                      Open in Radarr
+                    </a>
+                  </DropdownMenuItem>
+                )}
+                {externalUrls.JELLYFIN && (movie?.imdbId || movie?.tmdbId) && (
+                  <DropdownMenuItem onClick={handleOpenInJellyfin} disabled={jellyfinLoading}>
+                    {jellyfinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                    Open in Jellyfin
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem

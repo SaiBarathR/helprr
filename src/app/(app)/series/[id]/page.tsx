@@ -30,6 +30,7 @@ import {
   setSeriesDetailSnapshot,
 } from '@/lib/series-route-cache';
 import { isProtectedApiImageSrc } from '@/lib/image';
+import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 export default function SeriesDetailPage() {
   const { id } = useParams();
@@ -45,6 +46,8 @@ export default function SeriesDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
+  const externalUrls = useExternalUrls();
+  const [jellyfinLoading, setJellyfinLoading] = useState(false);
 
   const MONITOR_OPTIONS = [
     { value: 'all', label: 'All Episodes' },
@@ -143,6 +146,28 @@ export default function SeriesDetailPage() {
 
     void loadData(Boolean(cached));
   }, [loadData, seriesId]);
+
+  async function handleOpenInJellyfin() {
+    if (!series || !externalUrls.JELLYFIN) return;
+    setJellyfinLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (series.imdbId) params.set('imdbId', series.imdbId);
+      if (series.tvdbId) params.set('tvdbId', String(series.tvdbId));
+      if (!params.toString()) { toast.error('No provider IDs available'); return; }
+      const res = await fetch(`/api/jellyfin/lookup?${params}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.itemId) {
+        window.open(`${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`, '_blank');
+      } else {
+        toast.error('Not found in Jellyfin');
+      }
+    } catch {
+      toast.error('Jellyfin lookup failed');
+    } finally {
+      setJellyfinLoading(false);
+    }
+  }
 
   const seasonNumbers = [...new Set(episodes.map((e) => e.seasonNumber))].sort((a, b) => b - a);
 
@@ -412,6 +437,20 @@ export default function SeriesDetailPage() {
                       <ExternalLink className="h-4 w-4" />
                       Open in TVDB
                     </a>
+                  </DropdownMenuItem>
+                )}
+                {externalUrls.SONARR && series.titleSlug && (
+                  <DropdownMenuItem asChild>
+                    <a href={`${externalUrls.SONARR}/series/${series.titleSlug}`} target="_blank" rel="noopener noreferrer">
+                      <Tv className="h-4 w-4" />
+                      Open in Sonarr
+                    </a>
+                  </DropdownMenuItem>
+                )}
+                {externalUrls.JELLYFIN && (series?.imdbId || series?.tvdbId) && (
+                  <DropdownMenuItem onClick={handleOpenInJellyfin} disabled={jellyfinLoading}>
+                    {jellyfinLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                    Open in Jellyfin
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />

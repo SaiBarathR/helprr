@@ -13,9 +13,11 @@ import { AnimeReviewCard } from '@/components/anime/anime-review-card';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Tv, Film, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { AniListDetailResponse } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
+import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 type DetailWithLibrary = AniListDetailResponse & {
   library?: DiscoverLibraryStatus | null;
@@ -41,6 +43,8 @@ export default function AnimeDetailPage() {
     loading: true,
   }));
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const externalUrls = useExternalUrls();
+  const [jellyfinLoading, setJellyfinLoading] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -137,6 +141,39 @@ export default function AnimeDetailPage() {
   // External links
   const anilistLink = `https://anilist.co/anime/${detail.id}`;
   const malLink = detail.malId ? `https://myanimelist.net/anime/${detail.malId}` : null;
+  // Build library "Open in" links
+  const showJellyfinLink = !!(detail.library?.exists && externalUrls.JELLYFIN && (detail.tvdbId || detail.tmdbId));
+  async function handleOpenInJellyfin() {
+    if (!externalUrls.JELLYFIN) return;
+    setJellyfinLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (detail!.tvdbId) params.set('tvdbId', String(detail!.tvdbId));
+      if (detail!.tmdbId) params.set('tmdbId', String(detail!.tmdbId));
+      const res = await fetch(`/api/jellyfin/lookup?${params}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.itemId) {
+        window.open(`${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`, '_blank');
+      } else {
+        toast.error('Not found in Jellyfin');
+      }
+    } catch {
+      toast.error('Jellyfin lookup failed');
+    } finally {
+      setJellyfinLoading(false);
+    }
+  }
+
+  const libraryLinks: { label: string; url: string; icon: 'sonarr' | 'radarr' }[] = [];
+  if (detail.library?.exists) {
+    if (detail.library.type === 'series' && externalUrls.SONARR && detail.library.titleSlug) {
+      libraryLinks.push({ label: 'Open in Sonarr', url: `${externalUrls.SONARR}/series/${detail.library.titleSlug}`, icon: 'sonarr' });
+    }
+    if (detail.library.type === 'movie' && externalUrls.RADARR && detail.library.tmdbId) {
+      libraryLinks.push({ label: 'Open in Radarr', url: `${externalUrls.RADARR}/movie/${detail.library.tmdbId}`, icon: 'radarr' });
+    }
+  }
+
   const importantLinks = [
     { label: 'AniList', url: anilistLink },
     ...(malLink ? [{ label: 'MyAnimeList', url: malLink }] : []),
@@ -269,10 +306,33 @@ export default function AnimeDetailPage() {
         <AnimeReviewCard reviews={detail.reviews} />
 
         {/* External Links */}
-        {importantLinks.length > 0 && (
+        {(importantLinks.length > 0 || libraryLinks.length > 0 || showJellyfinLink) && (
           <div>
             <h2 className="text-base font-semibold mb-2">External Links</h2>
             <div className="flex flex-wrap gap-2">
+              {libraryLinks.map((link) => (
+                <a
+                  key={link.url}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-primary bg-muted/30 rounded-lg px-3 py-1.5 border border-border/30 hover:bg-muted/50 transition-colors"
+                >
+                  {link.icon === 'sonarr' && <Tv className="h-3 w-3" />}
+                  {link.icon === 'radarr' && <Film className="h-3 w-3" />}
+                  {link.label}
+                </a>
+              ))}
+              {showJellyfinLink && (
+                <button
+                  onClick={handleOpenInJellyfin}
+                  disabled={jellyfinLoading}
+                  className="inline-flex items-center gap-1 text-sm text-primary bg-muted/30 rounded-lg px-3 py-1.5 border border-border/30 hover:bg-muted/50 transition-colors disabled:opacity-50"
+                >
+                  {jellyfinLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                  Open in Jellyfin
+                </button>
+              )}
               {importantLinks.map((link) => (
                 <a
                   key={link.url}

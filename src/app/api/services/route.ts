@@ -177,18 +177,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       username = selectedUserId;
     }
 
+    const rawExternalUrl = body.externalUrl;
+    const externalUrl = typeof rawExternalUrl === 'string' && rawExternalUrl.trim()
+      ? rawExternalUrl.trim().replace(/\/+$/, '')
+      : undefined;
+
     const connection = await prisma.serviceConnection.upsert({
       where: { type },
       update: {
         url,
         apiKey: apiKeyToStore,
         username,
+        ...(externalUrl !== undefined && { externalUrl }),
       },
       create: {
         type,
         url,
         apiKey: apiKeyToStore,
         username,
+        ...(externalUrl !== undefined && { externalUrl }),
       },
     });
 

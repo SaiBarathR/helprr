@@ -8,6 +8,7 @@ import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widge
 import { isProtectedApiImageSrc } from '@/lib/image';
 import type { JellyfinItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
+import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 async function fetchResumeItems(): Promise<JellyfinItem[]> {
   const res = await fetch('/api/jellyfin/resume');
@@ -16,8 +17,15 @@ async function fetchResumeItems(): Promise<JellyfinItem[]> {
   return data.items || [];
 }
 
+function jellyfinWebUrl(baseUrl: string, item: JellyfinItem): string {
+  const targetId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
+  return `${baseUrl}/web/index.html#!/details?id=${targetId}`;
+}
+
 export function ContinueWatchingWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
   const { data: resumeItems, loading } = useWidgetData({ fetchFn: fetchResumeItems, refreshInterval });
+  const externalUrls = useExternalUrls();
+  const jellyfinUrl = externalUrls.JELLYFIN;
 
   if (loading) {
     return (
@@ -80,8 +88,8 @@ export function ContinueWatchingWidget({ size, refreshInterval, editMode = false
           const hasImage = item.ImageTags?.Primary || (item.Type === 'Episode' && item.SeriesId);
           const jellyfinPosterSrc = `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`;
 
-          return (
-            <div key={item.Id} className="snap-start shrink-0 w-[110px]">
+          const cardContent = (
+            <>
               <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
                 {hasImage ? (
                   <Image
@@ -107,6 +115,22 @@ export function ContinueWatchingWidget({ size, refreshInterval, editMode = false
                   S{item.ParentIndexNumber}E{item.IndexNumber}
                 </p>
               )}
+            </>
+          );
+
+          return jellyfinUrl ? (
+            <a
+              key={item.Id}
+              href={jellyfinWebUrl(jellyfinUrl, item)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="snap-start shrink-0 w-[110px]"
+            >
+              {cardContent}
+            </a>
+          ) : (
+            <div key={item.Id} className="snap-start shrink-0 w-[110px]">
+              {cardContent}
             </div>
           );
         })}
