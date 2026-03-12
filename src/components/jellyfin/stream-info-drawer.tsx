@@ -63,6 +63,12 @@ function StreamSection({ stream, isDirect }: { stream: JellyfinMediaStream; isDi
             <span>{stream.Channels}ch{stream.ChannelLayout ? ` (${stream.ChannelLayout})` : ''}</span>
           )}
           {stream.BitRate && <span>{formatBitrate(stream.BitRate)}</span>}
+          {!isVideo && stream?.AudioSpatialFormat !== "None" && (
+            <span>{stream.AudioSpatialFormat}</span>
+          )}
+          {!isVideo && stream.SampleRate && (
+            <span>{(stream.SampleRate / 1000).toFixed(1)} kHz</span>
+          )}
           {stream.Language && <span>{stream.Language.toUpperCase()}</span>}
         </div>
       </div>
@@ -72,6 +78,7 @@ function StreamSection({ stream, isDirect }: { stream: JellyfinMediaStream; isDi
 
 export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
   const item = session?.NowPlayingItem;
+  const sourceContainer = session?.NowPlayingItem?.Container;
   const playState = session?.PlayState;
   const ti = session?.TranscodingInfo;
   const playMethod = getPlayMethodInfo(playState?.PlayMethod, ti);
@@ -130,6 +137,15 @@ export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
                   )}
                   {ti.Framerate && (
                     <span>Transcoding Framerate: {ti.Framerate} FPS</span>
+                  )}
+                  {ti.Container && (
+                    <span>Container: {ti.Container.toUpperCase()}</span>
+                  )}
+                  {sourceContainer && sourceContainer.toLowerCase() !== ti.Container?.toLowerCase() && (
+                    <span>Source container: {sourceContainer.toUpperCase()}</span>
+                  )}
+                  {ti.Bitrate && (
+                    <span>Bitrate: {formatBitrate(ti.Bitrate)}</span>
                   )}
                   {ti.VideoCodec?.trim() && (
                     <span>Video codec: {ti.VideoCodec.toUpperCase()} {ti.IsVideoDirect ? '(direct)' : '(transcoded)'}</span>
