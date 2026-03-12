@@ -149,17 +149,17 @@ export function matchMovieInLibrary(
 ): DiscoverLibraryStatus {
   if (item.tmdbId && lookups.movieByTmdbId.has(item.tmdbId)) {
     const found = lookups.movieByTmdbId.get(item.tmdbId)!;
-    return { exists: true, type: 'movie', id: found.id };
+    return { exists: true, type: 'movie', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId };
   }
 
   if (item.imdbId) {
     const byImdb = lookups.movieByImdbId.get(item.imdbId.toLowerCase());
-    if (byImdb) return { exists: true, type: 'movie', id: byImdb.id };
+    if (byImdb) return { exists: true, type: 'movie', id: byImdb.id, titleSlug: byImdb.titleSlug, tmdbId: byImdb.tmdbId };
   }
 
   const key = normalizeTitleKey(item.title, item.year);
   const byTitle = lookups.movieByTitleYear.get(key);
-  if (byTitle) return { exists: true, type: 'movie', id: byTitle.id };
+  if (byTitle) return { exists: true, type: 'movie', id: byTitle.id, titleSlug: byTitle.titleSlug, tmdbId: byTitle.tmdbId };
 
   return { exists: false };
 }
@@ -176,26 +176,26 @@ export function matchSeriesInLibrary(
 ): DiscoverLibraryStatus {
   if (item.tvdbId && lookups.seriesByTvdbId.has(item.tvdbId)) {
     const found = lookups.seriesByTvdbId.get(item.tvdbId)!;
-    return { exists: true, type: 'series', id: found.id };
+    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug };
   }
 
   if (item.imdbId && lookups.seriesByImdbId.has(item.imdbId.toLowerCase())) {
     const found = lookups.seriesByImdbId.get(item.imdbId.toLowerCase())!;
-    return { exists: true, type: 'series', id: found.id };
+    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug };
   }
 
   if (item.tmdbId && lookups.seriesByTmdbId.has(item.tmdbId)) {
     const found = lookups.seriesByTmdbId.get(item.tmdbId)!;
-    return { exists: true, type: 'series', id: found.id };
+    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug };
   }
 
   const key = normalizeTitleKey(item.title, item.year);
   const byTitle = lookups.seriesByTitleYear.get(key);
-  if (byTitle) return { exists: true, type: 'series', id: byTitle.id };
+  if (byTitle) return { exists: true, type: 'series', id: byTitle.id, titleSlug: byTitle.titleSlug };
 
   const baseTitleKey = normalizeBaseTitle(item.title);
   const byBaseTitle = selectBestSeriesMatch(lookups.seriesByBaseTitle.get(baseTitleKey) ?? [], item.year);
-  if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id };
+  if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id, titleSlug: byBaseTitle.titleSlug };
 
   return { exists: false };
 }

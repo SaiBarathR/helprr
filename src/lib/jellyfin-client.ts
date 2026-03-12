@@ -124,6 +124,14 @@ export class JellyfinClient {
     return this.get<JellyfinItemsResponse>(`/Users/${this.requireUserId()}/Items`, params);
   }
 
+  /** Query the root /Items endpoint which supports filters like AnyProviderIdEquals. */
+  async queryItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/Items', {
+      UserId: this.requireUserId(),
+      ...params,
+    });
+  }
+
   async getRecentlyAdded(params: { limit?: number; parentId?: string } = {}): Promise<JellyfinItem[]> {
     return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/Latest`, {
       Limit: params.limit ?? 15,

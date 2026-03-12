@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle, Compass } from 'lucide-react';
+import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle, Compass, ExternalLink } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 
@@ -230,6 +230,8 @@ export default function SettingsPage() {
   const [upcomingDailyNotifyHour, setUpcomingDailyNotifyHour] = useState('9');
   const [savingSettings, setSavingSettings] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [externalUrls, setExternalUrls] = useState<Record<string, string>>({});
+  const [savingExternalUrls, setSavingExternalUrls] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -243,6 +245,7 @@ export default function SettingsPage() {
           const connections = await connectionsRes.value.json();
           const updated = { ...services };
           let savedJellyfinUserId = '';
+          const loadedExternalUrls: Record<string, string> = {};
           for (const conn of connections) {
             if (updated[conn.type]) {
               updated[conn.type] = {
@@ -254,9 +257,13 @@ export default function SettingsPage() {
               if (conn.type === 'JELLYFIN') {
                 savedJellyfinUserId = conn.username || '';
               }
+              if (conn.externalUrl) {
+                loadedExternalUrls[conn.type] = conn.externalUrl;
+              }
             }
           }
           setServices(updated);
+          setExternalUrls(loadedExternalUrls);
 
           if (savedJellyfinUserId) {
             setJellyfinValidated({ userId: savedJellyfinUserId });
@@ -591,6 +598,32 @@ export default function SettingsPage() {
     return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
   }
 
+  async function saveExternalUrls() {
+    setSavingExternalUrls(true);
+    try {
+      const types = ['SONARR', 'RADARR', 'JELLYFIN'] as const;
+      const promises = types
+        .filter((type) => isConfigured(type))
+        .map((type) =>
+          fetch('/api/services/external-url', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, externalUrl: externalUrls[type] || '' }),
+          })
+        );
+      const results = await Promise.all(promises);
+      if (results.every((r) => r.ok)) {
+        toast.success('External URLs saved');
+      } else {
+        toast.error('Failed to save some external URLs');
+      }
+    } catch {
+      toast.error('Failed to save external URLs');
+    } finally {
+      setSavingExternalUrls(false);
+    }
+  }
+
   function getPollingLabel(value: string) {
     return POLLING_OPTIONS.find((o) => o.value === value)?.label ?? value;
   }
@@ -789,6 +822,57 @@ export default function SettingsPage() {
           })}
         </div>
       </div>
+
+      {/* ── External URLs ── */}
+      {(isConfigured('SONARR') || isConfigured('RADARR') || isConfigured('JELLYFIN')) && (
+        <div className="grouped-section px-4 mb-6">
+          <div className="grouped-section-title">External URLs</div>
+          <div className="grouped-section-subtitle text-xs text-muted-foreground px-4 pb-2">
+            Public URLs used for &quot;Open in&quot; links on detail pages
+          </div>
+          <div className="grouped-section-content">
+            {(['SONARR', 'RADARR', 'JELLYFIN'] as const).map((type) => {
+              if (!isConfigured(type)) return null;
+              const config = SERVICE_CONFIG.find((c) => c.type === type);
+              if (!config) return null;
+              return (
+                <div key={type} className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] last:border-b-0 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${config.dotColor}`} />
+                    <Label className="text-xs text-muted-foreground">{config.label}</Label>
+                  </div>
+                  <Input
+                    placeholder={`https://${config.label.toLowerCase()}.example.com`}
+                    value={externalUrls[type] || ''}
+                    onChange={(e) => setExternalUrls((prev) => ({ ...prev, [type]: e.target.value }))}
+                    className="h-10"
+                  />
+                </div>
+              );
+            })}
+            <div className="px-4 py-3">
+              <Button
+                className="w-full h-9"
+                size="sm"
+                onClick={saveExternalUrls}
+                disabled={savingExternalUrls}
+              >
+                {savingExternalUrls ? (
+                  <>
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                    Save External URLs
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Preferences ── */}
       <div className="grouped-section px-4 mb-6">

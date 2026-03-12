@@ -552,6 +552,8 @@ export interface DiscoverLibraryStatus {
   exists: boolean;
   type?: 'movie' | 'series';
   id?: number;
+  titleSlug?: string;
+  tmdbId?: number;
 }
 
 export interface DiscoverItem {

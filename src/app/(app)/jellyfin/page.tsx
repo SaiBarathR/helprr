@@ -60,6 +60,7 @@ import { ticksToMinutes, formatDurationSeconds } from '@/lib/jellyfin-helpers';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
+import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 // ─── Helpers ───
 
@@ -234,6 +235,8 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [recentlyAdded, setRecentlyAdded] = useState<JellyfinItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
+  const externalUrls = useExternalUrls();
+  const jellyfinUrl = externalUrls.JELLYFIN;
 
   const fetchData = useCallback(async () => {
     const [sysRes, sessRes, resumeRes, countsRes, recentRes] = await Promise.allSettled([
@@ -324,14 +327,14 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       {resumeItems.length > 0 && (
         <div>
           <SectionHeader title="Continue Watching" />
-          <Carousel>{resumeItems.map((item) => <PosterCard key={item.Id} item={item} showProgress />)}</Carousel>
+          <Carousel>{resumeItems.map((item) => <PosterCard key={item.Id} item={item} showProgress jellyfinUrl={jellyfinUrl} />)}</Carousel>
         </div>
       )}
 
       {recentlyAdded.length > 0 && (
         <div>
           <SectionHeader title="Recently Added" />
-          <Carousel>{recentlyAdded.map((item) => <PosterCard key={item.Id} item={item} />)}</Carousel>
+          <Carousel>{recentlyAdded.map((item) => <PosterCard key={item.Id} item={item} jellyfinUrl={jellyfinUrl} />)}</Carousel>
         </div>
       )}
       <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
@@ -339,13 +342,16 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   );
 }
 
-function PosterCard({ item, showProgress }: { item: JellyfinItem; showProgress?: boolean }) {
+function PosterCard({ item, showProgress, jellyfinUrl }: { item: JellyfinItem; showProgress?: boolean; jellyfinUrl?: string }) {
   const progress = item.UserData?.PlayedPercentage ?? 0;
   const imageId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
   const hasImage = item.ImageTags?.Primary || (item.Type === 'Episode' && item.SeriesId);
   const posterSrc = `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`;
-  return (
-    <div className="snap-start shrink-0 w-[110px]">
+  const targetId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
+  const href = jellyfinUrl ? `${jellyfinUrl}/web/index.html#!/details?id=${targetId}` : undefined;
+
+  const content = (
+    <>
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
         {hasImage ? <Image src={posterSrc} alt={item.Name} fill sizes="110px" className="object-cover" unoptimized={isProtectedApiImageSrc(posterSrc)} /> : (
           <div className="w-full h-full flex items-center justify-center"><MonitorPlay className="h-6 w-6 text-muted-foreground/20" /></div>
@@ -361,6 +367,16 @@ function PosterCard({ item, showProgress }: { item: JellyfinItem; showProgress?:
       </div>
       <p className="text-[11px] font-medium truncate leading-tight">{item.SeriesName || item.Name}</p>
       {item.Type === 'Episode' && item.ParentIndexNumber != null && <p className="text-[10px] text-muted-foreground truncate">S{item.ParentIndexNumber}E{item.IndexNumber}</p>}
+    </>
+  );
+
+  return href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="snap-start shrink-0 w-[110px]">
+      {content}
+    </a>
+  ) : (
+    <div className="snap-start shrink-0 w-[110px]">
+      {content}
     </div>
   );
 }
