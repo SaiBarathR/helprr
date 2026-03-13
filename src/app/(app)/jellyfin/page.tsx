@@ -45,6 +45,11 @@ import {
   Timer,
   XCircle,
   ChevronRight,
+  Play,
+  Square,
+  RotateCw,
+  Power,
+  FolderSync,
 } from 'lucide-react';
 import type {
   JellyfinSession,
@@ -236,26 +241,63 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [resumeItems, setResumeItems] = useState<JellyfinItem[]>([]);
   const [counts, setCounts] = useState<JellyfinItemCounts | null>(null);
   const [recentlyAdded, setRecentlyAdded] = useState<JellyfinItem[]>([]);
+  const [tasks, setTasks] = useState<JellyfinScheduledTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
+  const [serverAction, setServerAction] = useState<string | null>(null);
   const externalUrls = useExternalUrls();
   const jellyfinUrl = externalUrls.JELLYFIN;
 
   const fetchData = useCallback(async () => {
-    const [sysRes, sessRes, resumeRes, countsRes, recentRes] = await Promise.allSettled([
+    const [sysRes, sessRes, resumeRes, countsRes, recentRes, taskRes] = await Promise.allSettled([
       fetch('/api/jellyfin/system'),
       fetch('/api/jellyfin/sessions'),
       fetch('/api/jellyfin/resume'),
       fetch('/api/jellyfin/counts'),
       fetch('/api/jellyfin/recently-added?limit=20'),
+      fetch('/api/jellyfin/tasks'),
     ]);
     if (sysRes.status === 'fulfilled' && sysRes.value.ok) setSystem((await sysRes.value.json()).system);
     if (sessRes.status === 'fulfilled' && sessRes.value.ok) setSessions((await sessRes.value.json()).sessions || []);
     if (resumeRes.status === 'fulfilled' && resumeRes.value.ok) setResumeItems((await resumeRes.value.json()).items || []);
     if (countsRes.status === 'fulfilled' && countsRes.value.ok) setCounts((await countsRes.value.json()).counts);
     if (recentRes.status === 'fulfilled' && recentRes.value.ok) setRecentlyAdded((await recentRes.value.json()).items || []);
+    if (taskRes.status === 'fulfilled' && taskRes.value.ok) setTasks((await taskRes.value.json()).tasks || []);
     setLoading(false);
   }, []);
+
+  const refreshTasks = useCallback(async () => {
+    const res = await fetch('/api/jellyfin/tasks');
+    if (res.ok) {
+      const data = await res.json();
+      setTasks(data.tasks || []);
+    }
+  }, []);
+
+  const handleServerAction = useCallback(async (action: 'restart' | 'shutdown' | 'scan-libraries') => {
+    const labels: Record<string, string> = {
+      restart: 'restart the Jellyfin server',
+      shutdown: 'shut down the Jellyfin server',
+      'scan-libraries': 'scan all libraries',
+    };
+    if (action !== 'scan-libraries' && !window.confirm(`Are you sure you want to ${labels[action]}?`)) return;
+    setServerAction(action);
+    try {
+      await fetch('/api/jellyfin/system/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (action === 'scan-libraries') {
+        // Refresh task list to show the scan running
+        await refreshTasks();
+      }
+    } finally {
+      setServerAction(null);
+    }
+  }, [refreshTasks]);
+
+  const scanRunning = useMemo(() => tasks.some((t) => t.Key === 'RefreshLibrary' && t.State === 'Running'), [tasks]);
 
   useEffect(() => {
     let active = true;
@@ -285,22 +327,6 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
   return (
     <div className="space-y-5">
-      {system && (
-        <div className="rounded-xl bg-card p-3 flex items-center gap-3">
-          <div className="rounded-lg bg-[#00a4dc]/10 p-2"><Server className="h-4 w-4 text-[#00a4dc]" /></div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{system.ServerName}</p>
-            <p className="text-xs text-muted-foreground">v{system.Version}</p>
-          </div>
-          <div className="flex gap-1.5">
-            {system.HasPendingRestart && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-500 border-amber-500/30">Restart needed</Badge>}
-            {system.HasUpdateAvailable && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-blue-500 border-blue-500/30">Update available</Badge>}
-            {!system.HasPendingRestart && !system.HasUpdateAvailable && (
-              <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-green-500 border-green-500/30"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Healthy</Badge>
-            )}
-          </div>
-        </div>
-      )}
 
       {sessions.length > 0 && (
         <div>
@@ -316,6 +342,60 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           <Carousel>{sessions.map((s) => <SessionCard key={s.Id} session={s} variant="full" onInfoClick={setSelectedSession} />)}</Carousel>
         </div>
       )}
+
+
+      {system && (
+        <div className="rounded-xl bg-card overflow-hidden">
+          <div className="p-3 flex items-center gap-3">
+            <div className="rounded-lg bg-[#00a4dc]/10 p-2"><Server className="h-4 w-4 text-[#00a4dc]" /></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{system.ServerName}</p>
+              <p className="text-xs text-muted-foreground">v{system.Version}</p>
+            </div>
+            <div className="flex gap-1.5">
+              {system.HasPendingRestart && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-500 border-amber-500/30">Restart needed</Badge>}
+              {system.HasUpdateAvailable && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-blue-500 border-blue-500/30">Update available</Badge>}
+              {!system.HasPendingRestart && !system.HasUpdateAvailable && (
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-green-500 border-green-500/30"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Healthy</Badge>
+              )}
+            </div>
+          </div>
+          <div className="border-t border-border/50 px-3 py-2 flex gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-[#00a4dc] hover:bg-[#00a4dc]/10"
+              disabled={serverAction !== null || scanRunning}
+              onClick={() => handleServerAction('scan-libraries')}
+            >
+              {serverAction === 'scan-libraries' || scanRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <FolderSync className="h-3 w-3" />}
+              {scanRunning ? 'Scanning…' : 'Scan Libraries'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
+              disabled={serverAction !== null}
+              onClick={() => handleServerAction('restart')}
+            >
+              {serverAction === 'restart' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
+              Restart
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+              disabled={serverAction !== null}
+              onClick={() => handleServerAction('shutdown')}
+            >
+              {serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
+              Shutdown
+            </Button>
+          </div>
+        </div>
+      )}
+      
+      {tasks.length > 0 && <ScheduledTasksList tasks={tasks} onRefresh={refreshTasks} />}
 
       {counts && (
         <div className="grid gap-3 grid-cols-2">
@@ -340,6 +420,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           <Carousel>{recentlyAdded.map((item) => <PosterCard key={item.Id} item={item} jellyfinUrl={jellyfinUrl} />)}</Carousel>
         </div>
       )}
+
       <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
     </div>
   );
@@ -813,7 +894,6 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [clientBreakdown, setClientBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
   const [deviceBreakdown, setDeviceBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
   const [hourlyData, setHourlyData] = useState<Record<string, number>>({});
-  const [tasks, setTasks] = useState<JellyfinScheduledTask[]>([]);
   const [methodSort, setMethodSort] = useState<SortMode>('duration');
   const [tvSort, setTvSort] = useState<SortMode>('duration');
   const [clientSort, setClientSort] = useState<SortMode>('duration');
@@ -855,7 +935,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         if (selectedUserId) params.set('userId', selectedUserId);
         const query = params.toString();
 
-        const [actRes, tvRes, movRes, methRes, clientRes, deviceRes, hourRes, taskRes] = await Promise.allSettled([
+        const [actRes, tvRes, movRes, methRes, clientRes, deviceRes, hourRes] = await Promise.allSettled([
           fetch(`/api/jellyfin/playback/activity?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/tv-shows?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/movies?${query}`, { signal }),
@@ -863,7 +943,6 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           fetch(`/api/jellyfin/playback/breakdown/ClientName?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/breakdown/DeviceName?${query}`, { signal }),
           fetch(`/api/jellyfin/playback/hourly?${query}`, { signal }),
-          fetch('/api/jellyfin/tasks', { signal }),
         ]);
 
         // Parse all JSON before any setState so updates batch in a single render
@@ -875,7 +954,6 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         let newClientBreakdown: PlaybackBreakdownEntry[] = [];
         let newDeviceBreakdown: PlaybackBreakdownEntry[] = [];
         let newHourlyData: Record<string, number> = {};
-        let newTasks: JellyfinScheduledTask[] = [];
 
         if (actRes.status === 'fulfilled' && actRes.value.ok) {
           const d = await actRes.value.json();
@@ -912,8 +990,6 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           newHourlyData = d.data || {};
           if (d.pluginAvailable === false) newPluginAvailable = false;
         }
-        if (taskRes.status === 'fulfilled' && taskRes.value.ok) newTasks = (await taskRes.value.json()).tasks || [];
-
         if (signal.aborted) return;
 
         // All setState calls synchronous — React 18 batches into one render
@@ -925,7 +1001,6 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         setClientBreakdown(newClientBreakdown);
         setDeviceBreakdown(newDeviceBreakdown);
         setHourlyData(newHourlyData);
-        setTasks(newTasks);
       } catch (error) {
         if (isAbortError(error) || signal.aborted) return;
       } finally {
@@ -941,7 +1016,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
   if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48 rounded-lg" /><Skeleton className="h-40 rounded-xl" /><Skeleton className="h-40 rounded-xl" /></div>;
 
-  if (!pluginAvailable) return <div className="space-y-5"><PluginNotice />{tasks.length > 0 && <ScheduledTasksList tasks={tasks} />}</div>;
+  if (!pluginAvailable) return <div className="space-y-5"><PluginNotice /></div>;
 
   return (
     <div className="space-y-5">
@@ -1032,7 +1107,6 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         </div>
       )}
 
-      {tasks.length > 0 && <ScheduledTasksList tasks={tasks} />}
     </div>
   );
 }
@@ -1418,8 +1492,22 @@ function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
   return <Clock className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />;
 }
 
-function ScheduledTasksList({ tasks }: { tasks: JellyfinScheduledTask[] }) {
+function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask[]; onRefresh?: () => Promise<void> }) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busyTasks, setBusyTasks] = useState<Set<string>>(new Set());
+
+  const handleTaskAction = useCallback(async (taskId: string, action: 'start' | 'stop') => {
+    setBusyTasks((prev) => new Set(prev).add(taskId));
+    try {
+      const res = await fetch(`/api/jellyfin/tasks/${taskId}`, {
+        method: action === 'start' ? 'POST' : 'DELETE',
+      });
+      if (res.ok) await onRefresh?.();
+    } finally {
+      setBusyTasks((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
+    }
+  }, [onRefresh]);
 
   // Filter out hidden tasks
   const visible = useMemo(() => tasks.filter((t) => !t.IsHidden), [tasks]);
@@ -1430,11 +1518,10 @@ function ScheduledTasksList({ tasks }: { tasks: JellyfinScheduledTask[] }) {
     (t) => t.State === 'Idle' && t.LastExecutionResult?.Status && t.LastExecutionResult.Status !== 'Completed'
   ), [visible]);
 
-  // Group idle tasks by category
+  // Group all tasks by category (includes running tasks so counts are accurate)
   const categories = useMemo(() => {
-    const idle = visible.filter((t) => t.State === 'Idle');
-    const grouped: Record<string, typeof idle> = {};
-    for (const t of idle) {
+    const grouped: Record<string, typeof visible> = {};
+    for (const t of visible) {
       const cat = t.Category || 'Other';
       if (!grouped[cat]) grouped[cat] = [];
       grouped[cat].push(t);
@@ -1466,6 +1553,20 @@ function ScheduledTasksList({ tasks }: { tasks: JellyfinScheduledTask[] }) {
       <SectionHeader
         title="Scheduled Tasks"
         badge={runningCount > 0 ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[#00a4dc]/15 text-[#00a4dc]">{runningCount} running</Badge> : undefined}
+        trailing={onRefresh && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            disabled={refreshing}
+            onClick={async () => {
+              setRefreshing(true);
+              try { await onRefresh(); } finally { setRefreshing(false); }
+            }}
+          >
+            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          </Button>
+        )}
       />
 
       {/* Summary bar */}
@@ -1498,6 +1599,15 @@ function ScheduledTasksList({ tasks }: { tasks: JellyfinScheduledTask[] }) {
                 <span className="text-xs font-medium text-[#00a4dc] tabular-nums shrink-0">
                   {t.CurrentProgressPercentage != null ? `${t.CurrentProgressPercentage.toFixed(0)}%` : 'Running'}
                 </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                  disabled={busyTasks.has(t.Id)}
+                  onClick={() => handleTaskAction(t.Id, 'stop')}
+                >
+                  {busyTasks.has(t.Id) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
+                </Button>
               </div>
               {t.CurrentProgressPercentage != null && (
                 <div className="mt-2 ml-6">
@@ -1572,6 +1682,9 @@ function ScheduledTasksList({ tasks }: { tasks: JellyfinScheduledTask[] }) {
                       const lastStart = t.LastExecutionResult?.StartTimeUtc;
                       const duration = lastStart && lastEnd ? taskRunDuration(lastStart, lastEnd) : null;
 
+                      const isRunning = t.State === 'Running';
+                      const isBusy = busyTasks.has(t.Id);
+
                       return (
                         <div key={t.Id} className="px-3 py-2.5 pl-9">
                           <div className="flex items-start gap-2.5">
@@ -1598,6 +1711,15 @@ function ScheduledTasksList({ tasks }: { tasks: JellyfinScheduledTask[] }) {
                                 )}
                               </div>
                             </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className={`h-6 w-6 shrink-0 ${isRunning ? 'text-red-500 hover:text-red-400 hover:bg-red-500/10' : 'text-[#00a4dc] hover:text-[#00a4dc]/80 hover:bg-[#00a4dc]/10'}`}
+                              disabled={isBusy}
+                              onClick={() => handleTaskAction(t.Id, isRunning ? 'stop' : 'start')}
+                            >
+                              {isBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : isRunning ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                            </Button>
                           </div>
                         </div>
                       );

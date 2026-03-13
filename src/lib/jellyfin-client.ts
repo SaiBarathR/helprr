@@ -245,6 +245,26 @@ export class JellyfinClient {
     return this.get<JellyfinScheduledTask[]>('/ScheduledTasks');
   }
 
+  async startScheduledTask(taskId: string): Promise<void> {
+    await this.client.post(`/ScheduledTasks/Running/${taskId}`);
+  }
+
+  async stopScheduledTask(taskId: string): Promise<void> {
+    await this.client.delete(`/ScheduledTasks/Running/${taskId}`);
+  }
+
+  async restartServer(): Promise<void> {
+    await this.client.post('/System/Restart');
+  }
+
+  async shutdownServer(): Promise<void> {
+    await this.client.post('/System/Shutdown');
+  }
+
+  async scanAllLibraries(): Promise<void> {
+    await this.client.post('/Library/Refresh');
+  }
+
   // --- Playback Reporting Plugin methods ---
   // All under /user_usage_stats/ — returns null if plugin not installed (404)
   // Param conventions from HAR:
