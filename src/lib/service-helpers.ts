@@ -1,4 +1,6 @@
+import type { ServiceConnection } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
@@ -8,6 +10,14 @@ import { TmdbClient } from '@/lib/tmdb-client';
 
 let cachedQBittorrentClient: QBittorrentClient | null = null;
 let cachedQBittorrentConfigKey: string | null = null;
+
+function buildJellyfinConnectionFingerprint(connection: ServiceConnection): string {
+  return sha256Hex(stableStringify({
+    apiKey: connection.apiKey,
+    url: connection.url,
+    username: connection.username ?? null,
+  }));
+}
 
 /**
  * Create a SonarrClient configured from the stored SONARR service connection.
@@ -92,6 +102,15 @@ export async function getProwlarrClient(): Promise<ProwlarrClient> {
 }
 
 export async function getJellyfinClient(): Promise<JellyfinClient> {
+  const { client } = await getJellyfinClientContext();
+  return client;
+}
+
+export async function getJellyfinClientContext(): Promise<{
+  client: JellyfinClient;
+  connection: ServiceConnection;
+  connectionFingerprint: string;
+}> {
   const connection = await prisma.serviceConnection.findUnique({
     where: { type: 'JELLYFIN' },
   });
@@ -108,7 +127,11 @@ export async function getJellyfinClient(): Promise<JellyfinClient> {
     );
   }
 
-  return new JellyfinClient(connection.url, connection.apiKey, connection.username);
+  return {
+    client: new JellyfinClient(connection.url, connection.apiKey, connection.username),
+    connection,
+    connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
+  };
 }
 
 export async function getTMDBClient(): Promise<TmdbClient> {
