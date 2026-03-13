@@ -64,6 +64,7 @@ import type {
   PlayActivityUser,
   CustomHistoryItem,
 } from '@/types/jellyfin';
+import { toast } from 'sonner';
 import { ticksToMinutes, formatDurationSeconds, formatTriggerSchedule, timeAgo, taskRunDuration } from '@/lib/jellyfin-helpers';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
@@ -283,15 +284,21 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
     if (action !== 'scan-libraries' && !window.confirm(`Are you sure you want to ${labels[action]}?`)) return;
     setServerAction(action);
     try {
-      await fetch('/api/jellyfin/system/control', {
+      const res = await fetch('/api/jellyfin/system/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || `Failed to ${labels[action]}`);
+        return;
+      }
       if (action === 'scan-libraries') {
-        // Refresh task list to show the scan running
         await refreshTasks();
       }
+    } catch {
+      toast.error(`Failed to ${labels[action]}`);
     } finally {
       setServerAction(null);
     }
@@ -1503,7 +1510,14 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
       const res = await fetch(`/api/jellyfin/tasks/${taskId}`, {
         method: action === 'start' ? 'POST' : 'DELETE',
       });
-      if (res.ok) await onRefresh?.();
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || `Failed to ${action} task`);
+        return;
+      }
+      await onRefresh?.();
+    } catch {
+      toast.error(`Failed to ${action} task`);
     } finally {
       setBusyTasks((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
     }
