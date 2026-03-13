@@ -47,10 +47,12 @@ import {
 } from 'recharts';
 import {
   getProwlarrIndexerStatusId,
+  isProwlarrTestAllResponse,
   isProwlarrIndexerBlocked,
   type ProwlarrIndexer,
   type ProwlarrIndexerStatus,
   type ProwlarrIndexerStat,
+  type ProwlarrTestAllResponse,
   type ProwlarrHistoryRecord,
   type ProwlarrStats,
   type ProwlarrUserAgentStat,
@@ -1562,16 +1564,17 @@ function HistoryTab() {
 /**
  * Renders the Prowlarr management page with top-level actions and tabs for Indexers, Stats, and History.
  *
- * Provides action buttons to Refresh All, Sync All, and Test All indexers, and renders the IndexersTab,
+ * Provides action buttons to Sync All and Test All indexers, and renders the IndexersTab,
  * StatsTab, and HistoryTab within a tabbed interface.
  *
  * @returns The Prowlarr management page React element.
  */
 
 export default function ProwlarrPage() {
-  const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
+  const [testAllResults, setTestAllResults] = useState<ProwlarrTestAllResponse | null>(null);
+  const [testAllIndexerNames, setTestAllIndexerNames] = useState<Record<number, string>>({});
 
   /**
    * Send a named Prowlarr command to the API and update a loading flag during the request.
@@ -1607,18 +1610,57 @@ export default function ProwlarrPage() {
   /**
    * Initiates a "test all indexers" request for Prowlarr and manages UI feedback.
    *
-   * Sends a POST to /api/prowlarr/indexers/testall, shows a success toast when the request succeeds,
-   * shows the server-provided error message or a generic error toast when it fails, and ensures the
-   * testing-all state is set while the operation is in progress and cleared when complete.
+   * Sends a POST to /api/prowlarr/indexers/testall, shows a success toast when all indexers pass,
+   * shows a pass/fail summary when some indexers fail, opens a dialog with failed indexer details,
+   * and ensures the testing-all state is set while the operation is in progress and cleared when complete.
    */
   async function handleTestAll() {
     setTestingAll(true);
     try {
       const res = await fetch('/api/prowlarr/indexers/testall', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+
       if (res.ok) {
-        toast.success('Test All complete');
+        if (!isProwlarrTestAllResponse(data)) {
+          toast.error('Unexpected Test All response');
+          return;
+        }
+
+        if (data.hasFailures) {
+          toast.error(`${data.passed} passed, ${data.failed} failed`);
+
+          try {
+            const indexersRes = await fetch('/api/prowlarr/indexers');
+            if (!indexersRes.ok) {
+              setTestAllIndexerNames({});
+            } else {
+              const indexerData = await indexersRes.json().catch(() => []);
+              if (Array.isArray(indexerData)) {
+                setTestAllIndexerNames(Object.fromEntries(
+                  indexerData
+                    .filter((indexer): indexer is ProwlarrIndexer => (
+                      !!indexer
+                      && typeof indexer === 'object'
+                      && typeof (indexer as ProwlarrIndexer).id === 'number'
+                      && typeof (indexer as ProwlarrIndexer).name === 'string'
+                    ))
+                    .map((indexer) => [indexer.id, indexer.name])
+                ));
+              } else {
+                setTestAllIndexerNames({});
+              }
+            }
+          } catch {
+            setTestAllIndexerNames({});
+          }
+
+          setTestAllResults(data);
+        } else {
+          setTestAllResults(null);
+          setTestAllIndexerNames({});
+          toast.success('Test All complete');
+        }
       } else {
-        const data = await res.json().catch(() => ({}));
         toast.error(data.error || 'Test All failed');
       }
     } catch {
@@ -1632,20 +1674,6 @@ export default function ProwlarrPage() {
     <div className="space-y-4">
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 gap-1.5"
-          onClick={() => sendCommand('RefreshIndexer', 'Refresh All', setRefreshing)}
-          disabled={refreshing}
-        >
-          {refreshing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh All
-        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -1675,6 +1703,51 @@ export default function ProwlarrPage() {
           Test All
         </Button>
       </div>
+
+      <Dialog
+        open={!!testAllResults}
+        onOpenChange={(open) => {
+          if (!open) {
+            setTestAllResults(null);
+            setTestAllIndexerNames({});
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Test All Results</DialogTitle>
+            <DialogDescription>
+              {testAllResults
+                ? `${testAllResults.passed} passed, ${testAllResults.failed} failed during the latest Prowlarr test run.`
+                : 'Latest test-all results.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {testAllResults?.results.filter((result) => !result.isValid).map((result) => (
+              <div key={result.id} className="rounded-lg border border-border/60 bg-card px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium">
+                    {testAllIndexerNames[result.id] ?? `Indexer ID ${result.id}`}
+                  </p>
+                  <Badge variant="outline" className="border-rose-500/40 text-rose-400">
+                    Failed
+                  </Badge>
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  {result.validationFailures.length > 0 ? result.validationFailures.map((failure, index) => (
+                    <p key={`${result.id}-${index}`} className="text-xs text-muted-foreground">
+                      {failure.errorMessage}
+                    </p>
+                  )) : (
+                    <p className="text-xs text-muted-foreground">Unknown validation failure.</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Tabs */}
       <Tabs defaultValue="indexers">
