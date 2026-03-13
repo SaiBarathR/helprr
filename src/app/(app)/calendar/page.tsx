@@ -718,49 +718,9 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-3">
-      {/* Top bar: title + view tabs */}
-      <div className="flex items-center justify-between md:hidden">
-        <ViewTabs
-          value={calendarView}
-          views={availableViews}
-          onChange={(v) => setCalendarView(v)}
-        />
-        <CompactFilters
-          typeFilter={typeFilter}
-          setTypeFilter={setTypeFilter}
-          monitoredOnly={monitoredOnly}
-          setMonitoredOnly={setMonitoredOnly}
-        />
-      </div>
-
-      {/* Navigation row: arrows, today, period label, filters */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={goBack}
-            className="h-7 w-7 shrink-0"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={goForward}
-            className="h-7 w-7 shrink-0"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          <button
-            onClick={goToday}
-            className="text-[11px] font-medium text-primary hover:text-primary/80 transition-colors shrink-0 px-1"
-          >
-            Today
-          </button>
-          <span className="text-sm font-semibold truncate">{headerLabel}</span>
-        </div>
-        <div className="items-center justify-between hidden md:flex gap-2">
+      <div className="sticky top-0 z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2">
+        {/* Top bar: title + view tabs */}
+        <div className="flex items-center justify-between md:hidden">
           <ViewTabs
             value={calendarView}
             views={availableViews}
@@ -774,6 +734,48 @@ export default function CalendarPage() {
           />
         </div>
 
+        {/* Navigation row: arrows, today, period label, filters */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goBack}
+              className="h-7 w-7 shrink-0"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goForward}
+              className="h-7 w-7 shrink-0"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+            <button
+              onClick={goToday}
+              className="text-[11px] font-medium text-primary hover:text-primary/80 transition-colors shrink-0 px-1"
+            >
+              Today
+            </button>
+            <span className="text-sm font-semibold truncate">{headerLabel}</span>
+          </div>
+          <div className="items-center justify-between hidden md:flex gap-2">
+            <ViewTabs
+              value={calendarView}
+              views={availableViews}
+              onChange={(v) => setCalendarView(v)}
+            />
+            <CompactFilters
+              typeFilter={typeFilter}
+              setTypeFilter={setTypeFilter}
+              monitoredOnly={monitoredOnly}
+              setMonitoredOnly={setMonitoredOnly}
+            />
+          </div>
+
+        </div>
       </div>
 
       {/* Error state */}
