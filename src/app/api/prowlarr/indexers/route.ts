@@ -25,7 +25,7 @@ export async function GET() {
  * Handle POST requests to either test all Prowlarr indexers or add a new indexer.
  *
  * @param request - Incoming HTTP request whose JSON body should be either `{ action: "testall" }` to run tests for all indexers, or an indexer configuration object to be added.
- * @returns A JSON HTTP response containing the test results or the added indexer on success; on error, a JSON object with an `error` message and HTTP status 500.
+ * @returns A JSON HTTP response containing normalized test results or the added indexer on success; on error, a JSON object with an `error` message and HTTP status 500.
  */
 export async function POST(request: NextRequest) {
   const authError = await requireAuth();
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     if (body.action === 'testall') {
       const result = await client.testAllIndexers();
-      return NextResponse.json(result ?? { success: true });
+      return NextResponse.json(result);
     }
 
     // Otherwise treat as add indexer

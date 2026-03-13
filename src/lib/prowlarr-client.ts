@@ -71,6 +71,55 @@ export function isProwlarrIndexerBlocked(status: ProwlarrIndexerStatus, now = Da
   return disabledTill > now;
 }
 
+export interface ProwlarrValidationFailure {
+  propertyName: string;
+  errorMessage: string;
+  severity: string;
+}
+
+export interface ProwlarrIndexerTestResult {
+  id: number;
+  isValid: boolean;
+  validationFailures: ProwlarrValidationFailure[];
+}
+
+export interface ProwlarrTestAllResponse {
+  results: ProwlarrIndexerTestResult[];
+  passed: number;
+  failed: number;
+  hasFailures: boolean;
+}
+
+function isProwlarrIndexerTestResult(value: unknown): value is ProwlarrIndexerTestResult {
+  if (!value || typeof value !== 'object') return false;
+
+  const record = value as Record<string, unknown>;
+  return typeof record.id === 'number'
+    && typeof record.isValid === 'boolean'
+    && Array.isArray(record.validationFailures);
+}
+
+function normalizeProwlarrTestAllResponse(results: ProwlarrIndexerTestResult[]): ProwlarrTestAllResponse {
+  const failed = results.filter((result) => !result.isValid).length;
+  return {
+    results,
+    passed: results.length - failed,
+    failed,
+    hasFailures: failed > 0,
+  };
+}
+
+export function isProwlarrTestAllResponse(value: unknown): value is ProwlarrTestAllResponse {
+  if (!value || typeof value !== 'object') return false;
+
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.results)
+    && record.results.every(isProwlarrIndexerTestResult)
+    && typeof record.passed === 'number'
+    && typeof record.failed === 'number'
+    && typeof record.hasFailures === 'boolean';
+}
+
 export interface ProwlarrIndexerStat {
   indexerId: number;
   indexerName: string;
@@ -186,8 +235,16 @@ export class ProwlarrClient {
     await this.delete(`/api/v1/indexer/${id}`);
   }
 
-  async testAllIndexers(): Promise<unknown> {
-    return this.post('/api/v1/indexer/testall');
+  async testAllIndexers(): Promise<ProwlarrTestAllResponse> {
+    const response = await this.client.post<unknown>('/api/v1/indexer/testall', undefined, {
+      validateStatus: (status) => (status >= 200 && status < 300) || status === 400,
+    });
+
+    if (Array.isArray(response.data) && response.data.every(isProwlarrIndexerTestResult)) {
+      return normalizeProwlarrTestAllResponse(response.data);
+    }
+
+    throw new Error(`Unexpected test-all response (${response.status})`);
   }
 
   async getIndexer(id: number): Promise<ProwlarrIndexer> {
