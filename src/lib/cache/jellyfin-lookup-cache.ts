@@ -17,18 +17,29 @@ interface JellyfinLookupCacheEntry {
   staleUntil: number;
 }
 
-function buildCacheSeed(provider: JellyfinLookupProvider, providerId: string): string {
+function buildCacheSeed(
+  connectionFingerprint: string,
+  provider: JellyfinLookupProvider,
+  providerId: string
+): string {
   return stableStringify({
+    connectionFingerprint,
     provider,
     providerId,
   });
 }
 
-async function readEntry(provider: JellyfinLookupProvider, providerId: string): Promise<JellyfinLookupCacheEntry | null> {
+async function readEntry(
+  connectionFingerprint: string,
+  provider: JellyfinLookupProvider,
+  providerId: string
+): Promise<JellyfinLookupCacheEntry | null> {
   try {
     const generation = await getCacheGeneration();
     const redis = await getRedisClient();
-    const raw = await redis.get(buildJellyfinLookupKey(generation, buildCacheSeed(provider, providerId)));
+    const raw = await redis.get(
+      buildJellyfinLookupKey(generation, buildCacheSeed(connectionFingerprint, provider, providerId))
+    );
     if (!raw) return null;
 
     const parsed = JSON.parse(raw) as Partial<JellyfinLookupCacheEntry>;
@@ -57,10 +68,11 @@ async function readEntry(provider: JellyfinLookupProvider, providerId: string): 
 }
 
 export async function getCachedJellyfinLookup(
+  connectionFingerprint: string,
   provider: JellyfinLookupProvider,
   providerId: string
 ): Promise<{ itemId: string | null } | null> {
-  const entry = await readEntry(provider, providerId);
+  const entry = await readEntry(connectionFingerprint, provider, providerId);
   if (!entry) return null;
 
   const now = Date.now();
@@ -76,6 +88,7 @@ export async function getCachedJellyfinLookup(
 }
 
 export async function setCachedJellyfinLookup(
+  connectionFingerprint: string,
   provider: JellyfinLookupProvider,
   providerId: string,
   itemId: string | null
@@ -94,7 +107,10 @@ export async function setCachedJellyfinLookup(
       expiresAt: now + ttlMs,
       staleUntil: now + ttlMs + staleMs,
     };
-    const redisKey = buildJellyfinLookupKey(generation, buildCacheSeed(provider, providerId));
+    const redisKey = buildJellyfinLookupKey(
+      generation,
+      buildCacheSeed(connectionFingerprint, provider, providerId)
+    );
     await redis.set(redisKey, JSON.stringify(entry), {
       PX: Math.max(1, ttlMs + staleMs),
     });

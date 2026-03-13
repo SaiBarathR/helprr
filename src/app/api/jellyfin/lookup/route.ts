@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getJellyfinClient } from '@/lib/service-helpers';
+import { getJellyfinClientContext } from '@/lib/service-helpers';
 import {
   getCachedJellyfinLookup,
   setCachedJellyfinLookup,
@@ -21,14 +21,16 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const client = await getJellyfinClient();
+    const { client, connectionFingerprint } = await getJellyfinClientContext();
     const providerLookups: Array<{ provider: JellyfinLookupProvider; providerId: string }> = [];
     if (imdbId) providerLookups.push({ provider: 'imdb', providerId: imdbId });
     if (tvdbId) providerLookups.push({ provider: 'tvdb', providerId: tvdbId });
     if (tmdbId) providerLookups.push({ provider: 'tmdb', providerId: tmdbId });
 
     const cachedMatches = await Promise.all(
-      providerLookups.map(({ provider, providerId }) => getCachedJellyfinLookup(provider, providerId))
+      providerLookups.map(({ provider, providerId }) =>
+        getCachedJellyfinLookup(connectionFingerprint, provider, providerId)
+      )
     );
     const cachedHit = cachedMatches.find((entry) => entry?.itemId);
     if (cachedHit?.itemId) {
@@ -61,7 +63,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     await Promise.all(
       providerLookups.map(({ provider, providerId }) =>
-        setCachedJellyfinLookup(provider, providerId, match?.Id ?? null)
+        setCachedJellyfinLookup(connectionFingerprint, provider, providerId, match?.Id ?? null)
       )
     );
 
