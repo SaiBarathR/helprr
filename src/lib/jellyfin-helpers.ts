@@ -1,4 +1,4 @@
-import type { JellyfinItem, JellyfinTranscodingInfo } from '@/types/jellyfin';
+import type { JellyfinItem, JellyfinTranscodingInfo, JellyfinTaskTrigger } from '@/types/jellyfin';
 
 export function ticksToMinutes(ticks: number): string {
   const totalMinutes = Math.floor(ticks / 600000000);
@@ -102,4 +102,77 @@ export function getTranscodeOutputSummary(ti: JellyfinTranscodingInfo): string {
   if (ti.VideoCodec) parts.push(ti.VideoCodec.toUpperCase());
   if (ti.AudioCodec) parts.push(ti.AudioCodec.toUpperCase());
   return parts.join(' ');
+}
+
+// ─── Scheduled Task Helpers ───
+
+export function ticksToHumanInterval(ticks: number): string {
+  const seconds = ticks / 10_000_000;
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = minutes / 60;
+  if (hours < 24) return `${Math.round(hours)}h`;
+  const days = hours / 24;
+  if (days === 7) return '1w';
+  return `${Math.round(days)}d`;
+}
+
+function ticksToTimeString(ticks: number): string {
+  const totalSeconds = ticks / 10_000_000;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const h = hours % 12 || 12;
+  const ampm = hours < 12 ? 'AM' : 'PM';
+  return `${h}:${String(minutes).padStart(2, '0')} ${ampm}`;
+}
+
+export function formatTriggerSchedule(triggers: JellyfinTaskTrigger[]): string {
+  if (!triggers || triggers.length === 0) return 'Manual';
+  // Find the most informative non-startup trigger
+  const scheduled = triggers.filter((t) => t.Type !== 'StartupTrigger');
+  if (scheduled.length === 0) return 'Startup only';
+
+  const trigger = scheduled[0];
+  switch (trigger.Type) {
+    case 'IntervalTrigger':
+      return `Every ${ticksToHumanInterval(trigger.IntervalTicks!)}`;
+    case 'DailyTrigger':
+      return `Daily at ${ticksToTimeString(trigger.TimeOfDayTicks!)}`;
+    case 'WeeklyTrigger':
+      return `${trigger.DayOfWeek} ${ticksToTimeString(trigger.TimeOfDayTicks!)}`;
+    default:
+      return 'Scheduled';
+  }
+}
+
+export function timeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diff = now - then;
+  if (diff < 0) return 'just now';
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks}w ago`;
+}
+
+export function taskRunDuration(start: string, end: string): string {
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (ms < 1000) return '<1s';
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+  if (minutes < 60) return remaining > 0 ? `${minutes}m ${remaining}s` : `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMin = minutes % 60;
+  return `${hours}h ${remainingMin}m`;
 }

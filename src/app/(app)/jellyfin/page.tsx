@@ -42,6 +42,9 @@ import {
   CalendarIcon,
   ArrowUpDown,
   ChevronDown,
+  Timer,
+  XCircle,
+  ChevronRight,
 } from 'lucide-react';
 import type {
   JellyfinSession,
@@ -56,7 +59,7 @@ import type {
   PlayActivityUser,
   CustomHistoryItem,
 } from '@/types/jellyfin';
-import { ticksToMinutes, formatDurationSeconds } from '@/lib/jellyfin-helpers';
+import { ticksToMinutes, formatDurationSeconds, formatTriggerSchedule, timeAgo, taskRunDuration } from '@/lib/jellyfin-helpers';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
@@ -101,7 +104,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'stats', label: 'Stats' },
 ];
 
-const DAY_RANGES = [7, 14, 30, 90, 0]; // 0 = All Time
+const DAY_RANGES = [1, 3, 7, 14, 30, 90, 0]; // 0 = All Time
 const MAX_DAYS = 18250;
 
 // ─── Main Page ───
@@ -798,7 +801,7 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
 type SortMode = 'plays' | 'duration';
 
 function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState(3);
   const [pluginAvailable, setPluginAvailable] = useState(true);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
@@ -980,10 +983,10 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         )}
       </div>
 
-      {playActivity.length > 0 && (
+      {methodBreakdown.length > 0 && (
         <div>
-          <SectionHeader title="Play Activity" />
-          <PlayActivityChart data={playActivity} />
+          <SectionHeader title="Playback Methods" trailing={<SortToggle value={methodSort} onChange={setMethodSort} />} />
+          <PlaybackMethodBar entries={methodBreakdown} sortBy={methodSort} />
         </div>
       )}
 
@@ -1001,13 +1004,6 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         </div>
       )}
 
-      {methodBreakdown.length > 0 && (
-        <div>
-          <SectionHeader title="Playback Methods" trailing={<SortToggle value={methodSort} onChange={setMethodSort} />} />
-          <PlaybackMethodBar entries={methodBreakdown} sortBy={methodSort} />
-        </div>
-      )}
-
       {clientBreakdown.length > 0 && (
         <div>
           <SectionHeader title="Top Clients" trailing={<SortToggle value={clientSort} onChange={setClientSort} />} />
@@ -1019,6 +1015,13 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         <div>
           <SectionHeader title="Top Devices" trailing={<SortToggle value={deviceSort} onChange={setDeviceSort} />} />
           <RankedList entries={deviceBreakdown} sortBy={deviceSort} limit={10} />
+        </div>
+      )}
+
+      {playActivity.length > 0 && (
+        <div>
+          <SectionHeader title="Play Activity" />
+          <PlayActivityChart data={playActivity} />
         </div>
       )}
 
@@ -1407,37 +1410,203 @@ function HourlyHeatmap({ data }: { data: Record<string, number> }) {
 
 // ─── Scheduled Tasks ───
 
+function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
+  if (state === 'Running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00a4dc] shrink-0" />;
+  if (state === 'Cancelling') return <XCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />;
+  if (status === 'Completed') return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />;
+  if (status === 'Failed' || status === 'Aborted') return <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />;
+  return <Clock className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />;
+}
+
 function ScheduledTasksList({ tasks }: { tasks: JellyfinScheduledTask[] }) {
-  const active = tasks.filter((t) => t.State === 'Running' || t.State === 'Cancelling');
-  const recent = tasks.filter((t) => t.State === 'Idle' && t.LastExecutionResult)
-    .sort((a, b) => (b.LastExecutionResult?.EndTimeUtc || '').localeCompare(a.LastExecutionResult?.EndTimeUtc || ''))
-    .slice(0, 5);
-  if (active.length === 0 && recent.length === 0) return null;
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+
+  // Filter out hidden tasks
+  const visible = useMemo(() => tasks.filter((t) => !t.IsHidden), [tasks]);
+
+  const active = useMemo(() => visible.filter((t) => t.State === 'Running' || t.State === 'Cancelling'), [visible]);
+
+  const failed = useMemo(() => visible.filter(
+    (t) => t.State === 'Idle' && t.LastExecutionResult?.Status && t.LastExecutionResult.Status !== 'Completed'
+  ), [visible]);
+
+  // Group idle tasks by category
+  const categories = useMemo(() => {
+    const idle = visible.filter((t) => t.State === 'Idle');
+    const grouped: Record<string, typeof idle> = {};
+    for (const t of idle) {
+      const cat = t.Category || 'Other';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(t);
+    }
+    // Sort categories: ones with recent activity first
+    return Object.entries(grouped).sort((a, b) => {
+      const aLatest = a[1].reduce((max, t) => {
+        const end = t.LastExecutionResult?.EndTimeUtc;
+        return end && end > max ? end : max;
+      }, '');
+      const bLatest = b[1].reduce((max, t) => {
+        const end = t.LastExecutionResult?.EndTimeUtc;
+        return end && end > max ? end : max;
+      }, '');
+      return bLatest.localeCompare(aLatest);
+    });
+  }, [visible]);
+
+  // Summary stats
+  const totalCount = visible.length;
+  const runningCount = active.length;
+  const completedCount = visible.filter((t) => t.LastExecutionResult?.Status === 'Completed').length;
+  const failedCount = failed.length;
+
+  if (totalCount === 0) return null;
 
   return (
     <div>
-      <SectionHeader title="Scheduled Tasks" />
+      <SectionHeader
+        title="Scheduled Tasks"
+        badge={runningCount > 0 ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[#00a4dc]/15 text-[#00a4dc]">{runningCount} running</Badge> : undefined}
+      />
+
+      {/* Summary bar */}
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <div className="rounded-lg bg-card px-3 py-2 text-center">
+          <p className="text-lg font-semibold tabular-nums">{totalCount}</p>
+          <p className="text-[10px] text-muted-foreground">Total</p>
+        </div>
+        <div className="rounded-lg bg-card px-3 py-2 text-center">
+          <p className="text-lg font-semibold tabular-nums text-emerald-500">{completedCount}</p>
+          <p className="text-[10px] text-muted-foreground">Completed</p>
+        </div>
+        <div className="rounded-lg bg-card px-3 py-2 text-center">
+          <p className={`text-lg font-semibold tabular-nums ${failedCount > 0 ? 'text-red-500' : 'text-muted-foreground/50'}`}>{failedCount}</p>
+          <p className="text-[10px] text-muted-foreground">Failed</p>
+        </div>
+      </div>
+
+      {/* Active tasks */}
+      {active.length > 0 && (
+        <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50 mb-3">
+          {active.map((t) => (
+            <div key={t.Id} className="px-3 py-2.5">
+              <div className="flex items-center gap-2.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00a4dc] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{t.Name}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{t.Category}</p>
+                </div>
+                <span className="text-xs font-medium text-[#00a4dc] tabular-nums shrink-0">
+                  {t.CurrentProgressPercentage != null ? `${t.CurrentProgressPercentage.toFixed(0)}%` : 'Running'}
+                </span>
+              </div>
+              {t.CurrentProgressPercentage != null && (
+                <div className="mt-2 ml-6">
+                  <Progress value={t.CurrentProgressPercentage} className="h-1.5" />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Failed tasks */}
+      {failed.length > 0 && (
+        <div className="rounded-xl bg-red-500/5 border border-red-500/20 overflow-hidden divide-y divide-red-500/10 mb-3">
+          {failed.map((t) => (
+            <div key={t.Id} className="px-3 py-2.5 flex items-center gap-2.5">
+              <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate">{t.Name}</p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[10px] text-red-400">{t.LastExecutionResult?.Status}</span>
+                  {t.LastExecutionResult?.EndTimeUtc && (
+                    <span className="text-[10px] text-muted-foreground">{timeAgo(t.LastExecutionResult.EndTimeUtc)}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Categories */}
       <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
-        {active.map((t) => (
-          <div key={t.Id} className="px-3 py-2.5 flex items-center gap-3">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00a4dc] shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm truncate">{t.Name}</p>
-              {t.CurrentProgressPercentage != null && <Progress value={t.CurrentProgressPercentage} className="h-1 mt-1" />}
+        {categories.map(([category, catTasks]) => {
+          const isExpanded = expandedCategory === category;
+          const catRunning = catTasks.filter((t) => t.State === 'Running').length;
+          const catCompleted = catTasks.filter((t) => t.LastExecutionResult?.Status === 'Completed').length;
+          const latestRun = catTasks.reduce((latest, t) => {
+            const end = t.LastExecutionResult?.EndTimeUtc;
+            return end && end > latest ? end : latest;
+          }, '');
+
+          return (
+            <div key={category}>
+              <button
+                onClick={() => setExpandedCategory(isExpanded ? null : category)}
+                className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-muted/30 transition-colors"
+              >
+                <ChevronRight className={`h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-medium">{category}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {catTasks.length} task{catTasks.length !== 1 ? 's' : ''}
+                    {catRunning > 0 && <span className="text-[#00a4dc]"> &middot; {catRunning} running</span>}
+                    {latestRun && <span> &middot; {timeAgo(latestRun)}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="text-[10px] text-emerald-500 tabular-nums">{catCompleted}</span>
+                  <span className="text-[10px] text-muted-foreground/50">/</span>
+                  <span className="text-[10px] text-muted-foreground tabular-nums">{catTasks.length}</span>
+                </div>
+              </button>
+
+              {isExpanded && (
+                <div className="bg-muted/10 divide-y divide-border/30">
+                  {catTasks
+                    .sort((a, b) => (b.LastExecutionResult?.EndTimeUtc || '').localeCompare(a.LastExecutionResult?.EndTimeUtc || ''))
+                    .map((t) => {
+                      const schedule = formatTriggerSchedule(t.Triggers || []);
+                      const lastEnd = t.LastExecutionResult?.EndTimeUtc;
+                      const lastStart = t.LastExecutionResult?.StartTimeUtc;
+                      const duration = lastStart && lastEnd ? taskRunDuration(lastStart, lastEnd) : null;
+
+                      return (
+                        <div key={t.Id} className="px-3 py-2.5 pl-9">
+                          <div className="flex items-start gap-2.5">
+                            <TaskStatusIcon status={t.LastExecutionResult?.Status} state={t.State} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] truncate">{t.Name}</p>
+                              {t.Description && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{t.Description}</p>
+                              )}
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1">
+                                <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                  <Timer className="h-2.5 w-2.5" />
+                                  {schedule}
+                                </span>
+                                {lastEnd && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    Last: {timeAgo(lastEnd)}
+                                  </span>
+                                )}
+                                {duration && (
+                                  <span className="text-[10px] text-muted-foreground tabular-nums">
+                                    {duration}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
-            <span className="text-xs text-muted-foreground tabular-nums shrink-0">{t.CurrentProgressPercentage != null ? `${t.CurrentProgressPercentage.toFixed(0)}%` : 'Running'}</span>
-          </div>
-        ))}
-        {recent.map((t) => (
-          <div key={t.Id} className="px-3 py-2.5 flex items-center gap-3">
-            <CheckCircle2 className={`h-3.5 w-3.5 shrink-0 ${t.LastExecutionResult?.Status === 'Completed' ? 'text-green-500' : 'text-amber-500'}`} />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm truncate">{t.Name}</p>
-              <p className="text-[10px] text-muted-foreground">{t.Category}</p>
-            </div>
-            <span className="text-[10px] text-muted-foreground shrink-0">{t.LastExecutionResult?.Status}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

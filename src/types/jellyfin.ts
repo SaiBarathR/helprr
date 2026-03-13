@@ -175,6 +175,23 @@ export interface JellyfinUser {
   Policy?: { IsAdministrator?: boolean; IsHidden?: boolean; IsDisabled?: boolean };
 }
 
+export interface JellyfinTaskTrigger {
+  Type: 'IntervalTrigger' | 'DailyTrigger' | 'WeeklyTrigger' | 'StartupTrigger';
+  IntervalTicks?: number;
+  TimeOfDayTicks?: number;
+  MaxRuntimeTicks?: number;
+  DayOfWeek?: string;
+}
+
+export interface JellyfinTaskExecutionResult {
+  StartTimeUtc?: string;
+  EndTimeUtc?: string;
+  Status?: string;
+  Name?: string;
+  Key?: string;
+  Id?: string;
+}
+
 export interface JellyfinScheduledTask {
   Id: string;
   Name: string;
@@ -182,7 +199,10 @@ export interface JellyfinScheduledTask {
   Category?: string;
   State: 'Idle' | 'Running' | 'Cancelling';
   CurrentProgressPercentage?: number;
-  LastExecutionResult?: { EndTimeUtc?: string; Status?: string };
+  LastExecutionResult?: JellyfinTaskExecutionResult;
+  Triggers?: JellyfinTaskTrigger[];
+  Key?: string;
+  IsHidden?: boolean;
 }
 
 // Playback Reporting Plugin types
