@@ -5,6 +5,7 @@ import { Layers, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { EditModePlaceholder } from '@/components/widgets/shared';
+import { getProwlarrIndexerStatusId, isProwlarrIndexerBlocked, type ProwlarrIndexerStatus } from '@/lib/prowlarr-client';
 import type { WidgetProps } from '@/lib/widgets/types';
 
 interface ProwlarrSummary {
@@ -24,13 +25,19 @@ async function fetchProwlarr(): Promise<ProwlarrSummary | null> {
   const indexers: { id: number; enable: boolean }[] = await indexersRes.value.json();
   if (!Array.isArray(indexers)) return null;
 
-  const statuses: { providerId: number; disabledTill?: string }[] =
+  const statuses: ProwlarrIndexerStatus[] =
     statusRes.status === 'fulfilled' && statusRes.value.ok ? await statusRes.value.json() : [];
-  const blockedIds = new Set(statuses.filter((s) => s.disabledTill).map((s) => s.providerId));
-  const enabled = indexers.filter((i) => i.enable).length;
-  const blocked = indexers.filter((i) => blockedIds.has(i.id)).length;
+  const blockedIds = new Set(
+    statuses
+      .filter((status) => isProwlarrIndexerBlocked(status))
+      .map((status) => getProwlarrIndexerStatusId(status))
+      .filter((id): id is number => id !== null)
+  );
+  const disabled = indexers.filter((indexer) => !indexer.enable).length;
+  const blocked = indexers.filter((indexer) => indexer.enable && blockedIds.has(indexer.id)).length;
+  const enabled = indexers.filter((indexer) => indexer.enable && !blockedIds.has(indexer.id)).length;
 
-  return { total: indexers.length, enabled, disabled: indexers.length - enabled, blocked };
+  return { total: indexers.length, enabled, disabled, blocked };
 }
 
 export function ProwlarrIndexersWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
