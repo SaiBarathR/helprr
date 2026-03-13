@@ -50,11 +50,25 @@ export interface ProwlarrField {
 }
 
 export interface ProwlarrIndexerStatus {
-  providerId: number;
+  providerId?: number;
+  indexerId?: number;
   initialFailure?: string;
   mostRecentFailure?: string;
-  escalationLevel: number;
+  escalationLevel?: number;
   disabledTill?: string;
+}
+
+export function getProwlarrIndexerStatusId(status: ProwlarrIndexerStatus): number | null {
+  if (typeof status.indexerId === 'number') return status.indexerId;
+  if (typeof status.providerId === 'number') return status.providerId;
+  return null;
+}
+
+export function isProwlarrIndexerBlocked(status: ProwlarrIndexerStatus, now = Date.now()): boolean {
+  if (!status.disabledTill) return false;
+  const disabledTill = Date.parse(status.disabledTill);
+  if (Number.isNaN(disabledTill)) return true;
+  return disabledTill > now;
 }
 
 export interface ProwlarrIndexerStat {

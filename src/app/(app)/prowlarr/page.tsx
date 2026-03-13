@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -33,22 +35,25 @@ import {
   Rss,
   Download,
   Database,
+  Info,
 } from 'lucide-react';
 import {
   BarChart,
   Bar,
   XAxis,
   YAxis,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from 'recharts';
-import type {
-  ProwlarrIndexer,
-  ProwlarrIndexerStatus,
-  ProwlarrIndexerStat,
-  ProwlarrHistoryRecord,
-  ProwlarrStats,
-  ProwlarrUserAgentStat,
+import {
+  getProwlarrIndexerStatusId,
+  isProwlarrIndexerBlocked,
+  type ProwlarrIndexer,
+  type ProwlarrIndexerStatus,
+  type ProwlarrIndexerStat,
+  type ProwlarrHistoryRecord,
+  type ProwlarrStats,
+  type ProwlarrUserAgentStat,
 } from '@/lib/prowlarr-client';
 
 /**
@@ -120,17 +125,80 @@ function categoryColor(id: number | string): string {
  *
  * @param indexer - The indexer whose enabled state is used to determine the dot.
  * @param statuses - Array of indexer status objects; used to determine if the indexer is currently blocked.
- * @returns A JSX element: a small colored dot indicating the indexer state — amber for "Disabled", red for "Blocked" (disabledTill present), or green for "Enabled".
+ * @returns A JSX element: a small colored dot indicating the indexer state — amber for "Disabled", red for "Blocked" (disabledTill still active), or green for "Enabled".
  */
 function IndexerStatusDot({ indexer, statuses }: { indexer: ProwlarrIndexer; statuses: ProwlarrIndexerStatus[] }) {
   if (!indexer.enable) {
     return <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Disabled" />;
   }
-  const status = statuses.find((s) => s.providerId === indexer.id);
-  if (status && status.disabledTill) {
+  const status = getActiveBlockedStatus(indexer.id, statuses);
+  if (status && isProwlarrIndexerBlocked(status)) {
     return <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Blocked" />;
   }
   return <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" title="Enabled" />;
+}
+
+function getActiveBlockedStatus(indexerId: number, statuses: ProwlarrIndexerStatus[]): ProwlarrIndexerStatus | undefined {
+  return statuses.find((status) => (
+    getProwlarrIndexerStatusId(status) === indexerId && isProwlarrIndexerBlocked(status)
+  ));
+}
+
+function BlockedStatusDetails({ status }: { status: ProwlarrIndexerStatus }) {
+  return (
+    <div className="space-y-2">
+      <div>
+        <p className="text-sm font-medium text-foreground">Indexer temporarily blocked</p>
+      </div>
+      <div className="space-y-2 text-xs">
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-muted-foreground">Initial failure</span>
+          <span className="text-right text-foreground">{status.initialFailure ? formatDate(status.initialFailure) : '-'}</span>
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-muted-foreground">Last failure</span>
+          <span className="text-right text-foreground">{status.mostRecentFailure ? formatDate(status.mostRecentFailure) : '-'}</span>
+        </div>
+        <div className="flex items-start justify-between gap-3">
+          <span className="text-muted-foreground">Disabled until</span>
+          <span className="text-right text-foreground">{status.disabledTill ? formatDate(status.disabledTill) : '-'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BlockedStatusTrigger({ status }: { status: ProwlarrIndexerStatus }) {
+  return (
+    <Popover>
+      <UITooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="h-5 w-5 rounded-full text-rose-400 hover:text-rose-300 hover:bg-rose-500/10"
+              aria-label="Show blocked indexer details"
+            >
+              <Info className="h-3 w-3" />
+            </Button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="start"
+          sideOffset={8}
+          className="hidden md:block max-w-80 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+        >
+          <BlockedStatusDetails status={status} />
+        </TooltipContent>
+      </UITooltip>
+      <PopoverContent align="start" sideOffset={8} className="w-80 max-w-[calc(100vw-2rem)] p-3 md:hidden">
+        <BlockedStatusDetails status={status} />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 // ── Add Indexer Modal ────────────────────────────────────────────────────────
@@ -583,56 +651,70 @@ function IndexersTab() {
         </div>
       ) : (
         <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
-          {indexers.map((indexer) => (
-            <div key={indexer.id} className="px-4 py-3 flex items-center gap-3">
-              <IndexerStatusDot indexer={indexer} statuses={statuses} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{indexer.name}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] px-1.5 py-0 ${indexer.protocol === 'torrent' ? 'border-green-500/50 text-green-400' : 'border-blue-500/50 text-blue-400'}`}
+          {indexers.map((indexer) => {
+            const blockedStatus = getActiveBlockedStatus(indexer.id, statuses);
+            return (
+              <div key={indexer.id} className="px-4 py-3 flex items-center gap-3">
+                <IndexerStatusDot indexer={indexer} statuses={statuses} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{indexer.name}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] px-1.5 py-0 ${indexer.protocol === 'torrent' ? 'border-green-500/50 text-green-400' : 'border-blue-500/50 text-blue-400'}`}
+                    >
+                      {indexer.protocol}
+                    </Badge>
+                    <span className="text-[11px] text-muted-foreground">
+                      Priority: {indexer.priority}
+                    </span>
+                    {indexer.privacy && (
+                      <span className="text-[11px] text-muted-foreground capitalize">{indexer.privacy}</span>
+                    )}
+                    {blockedStatus && (
+                      <>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] px-1.5 py-0 border-rose-500/40 text-rose-400"
+                        >
+                          Blocked
+                        </Badge>
+                        <BlockedStatusTrigger status={blockedStatus} />
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-xs"
+                    onClick={() => handleTest(indexer.id)}
+                    disabled={testingId === indexer.id}
                   >
-                    {indexer.protocol}
-                  </Badge>
-                  <span className="text-[11px] text-muted-foreground">
-                    Priority: {indexer.priority}
-                  </span>
-                  {indexer.privacy && (
-                    <span className="text-[11px] text-muted-foreground capitalize">{indexer.privacy}</span>
-                  )}
+                    {testingId === indexer.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      'Test'
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 px-2 text-destructive hover:text-destructive"
+                    onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
+                    disabled={deletingId === indexer.id}
+                  >
+                    {deletingId === indexer.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-xs"
-                  onClick={() => handleTest(indexer.id)}
-                  disabled={testingId === indexer.id}
-                >
-                  {testingId === indexer.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    'Test'
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 text-destructive hover:text-destructive"
-                  onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
-                  disabled={deletingId === indexer.id}
-                >
-                  {deletingId === indexer.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -954,7 +1036,7 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <Tooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Bar dataKey="Response" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -986,7 +1068,7 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <Tooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Bar dataKey="Failure %" fill="#ef4444" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1030,7 +1112,7 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <Tooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Bar dataKey="Search" stackId="q" fill="#6366f1" />
                     <Bar dataKey="RSS" stackId="q" fill="#f59e0b" />
                     <Bar dataKey="Auth" stackId="q" fill="#ef4444" radius={[0, 4, 4, 0]} />
@@ -1064,7 +1146,7 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <Tooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Bar dataKey="Grabs" fill="#10b981" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1096,7 +1178,7 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <Tooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Bar dataKey="Queries" fill="#6366f1" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1128,7 +1210,7 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <Tooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Bar dataKey="Grabs" fill="#10b981" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
