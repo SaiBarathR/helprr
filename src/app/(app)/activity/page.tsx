@@ -171,7 +171,6 @@ export default function ActivityPage() {
       <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         {/* Top bar */}
         <div className="flex items-center justify-between pt-2 pb-2 w-full">
-          {/* <h1 className="text-xl font-bold">Activity</h1> */}
           <div className="flex items-center gap-1">
             {/* Filter */}
             <DropdownMenu>
@@ -581,7 +580,7 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
    * via `setQueue`. Always calls `setLoading(false)` when finished; errors are
    * ignored.
    */
-  async function fetchFailed() {
+  const fetchFailed = useCallback(async () => {
     try {
       const res = await fetch('/api/activity/queue');
       if (res.ok) {
@@ -595,9 +594,9 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
         setQueue(failed);
       }
     } catch { } finally { setLoading(false); }
-  }
+  }, [filterBy]);
 
-  useEffect(() => { fetchFailed(); }, [filterBy]);
+  useEffect(() => { fetchFailed(); }, [filterBy, fetchFailed]);
 
   /**
    * Navigate to the manual import page for a queue item, embedding its identifiers in the query string.

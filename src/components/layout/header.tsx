@@ -13,7 +13,7 @@ const routeTitles: Record<string, string> = Object.fromEntries(
 /**
  * Site header component that displays the brand on desktop and an adaptive title or brand link on mobile.
  *
- * On mobile devices, shows the current page title when the pathname matches a top-level route; otherwise shows a compact brand link to the movies page. On medium and larger screens the brand logo and name are always shown.
+ * Mobile-only header. Shows the current page title when the pathname matches a top-level route; otherwise shows a compact brand link to the movies page.
  *
  * @returns The header JSX element containing branding and conditional mobile title or link.
  */
@@ -27,12 +27,6 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm pt-[env(safe-area-inset-top)] md:hidden">
       <div className="flex items-center h-11 px-4">
-        {/* Desktop: show logo */}
-        <div className="hidden md:flex items-center gap-2">
-          <Clapperboard className="h-5 w-5 text-primary" />
-          <span className="font-semibold">Helprr</span>
-        </div>
-
         {/* Mobile: show page title for top-level pages */}
         {isTopLevel && title ? (
           <h1 className="md:hidden text-lg font-bold">{title}</h1>
