@@ -607,28 +607,30 @@ export default function MovieDetailPage() {
               <Link
                 key={`${person.type}-${person.id}-${person.job || person.character}`}
                 href={`/discover/person/${person.personTmdbId}`}
-                className="shrink-0 w-[72px] text-center group"
+                className="shrink-0 flex items-center gap-2.5 rounded-lg bg-muted/50 p-2 pr-3.5 min-w-0"
               >
-                <div className="relative w-[72px] h-[72px] rounded-full overflow-hidden bg-muted mx-auto">
+                <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
                   {headshotSrc ? (
                     <Image
                       src={headshotSrc}
                       alt={person.personName}
                       fill
-                      sizes="72px"
+                      sizes="40px"
                       className="object-cover"
                       unoptimized={isProtectedApiImageSrc(headshotSrc)}
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                      <User className="h-6 w-6" />
+                      <User className="h-4 w-4" />
                     </div>
                   )}
                 </div>
-                <p className="text-[11px] font-medium mt-1.5 line-clamp-2 leading-tight">{person.personName}</p>
-                {subtitle && (
-                  <p className="text-[10px] text-muted-foreground line-clamp-1 leading-tight">{subtitle}</p>
-                )}
+                <div className="whitespace-nowrap">
+                  <p className="text-xs font-medium leading-tight">{person.personName}</p>
+                  {subtitle && (
+                    <p className="text-[11px] text-muted-foreground leading-tight">{subtitle}</p>
+                  )}
+                </div>
               </Link>
             );
           };
@@ -638,7 +640,7 @@ export default function MovieDetailPage() {
               {cast.length > 0 && (
                 <div>
                   <h2 className="text-base font-semibold px-4 mb-2">Cast</h2>
-                  <div className="flex gap-3 overflow-x-auto pb-1 px-4 scrollbar-hide">
+                  <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
                     {cast.map((person) => renderPersonCard(person, person.character))}
                   </div>
                 </div>
@@ -646,7 +648,7 @@ export default function MovieDetailPage() {
               {uniqueCrew.length > 0 && (
                 <div>
                   <h2 className="text-base font-semibold px-4 mb-2">Crew</h2>
-                  <div className="flex gap-3 overflow-x-auto pb-1 px-4 scrollbar-hide">
+                  <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
                     {uniqueCrew.map((person) => renderPersonCard(person, person.job))}
                   </div>
                 </div>

@@ -24,7 +24,7 @@ export function DiscoverCastRail({ title, cast }: DiscoverCastRailProps) {
   return (
     <div>
       <h2 className="text-base font-semibold px-4 mb-2">{title}</h2>
-      <div className="flex gap-3 overflow-x-auto pb-1 px-4 scrollbar-hide">
+      <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
         {cast.map((person) => {
           const src = person.profilePath
             ? toCachedImageSrc(person.profilePath, 'tmdb') || person.profilePath
@@ -33,31 +33,33 @@ export function DiscoverCastRail({ title, cast }: DiscoverCastRailProps) {
             <Link
               key={`${person.id}-${person.character || ''}`}
               href={`/discover/person/${person.id}`}
-              className="shrink-0 w-[72px] text-center group"
+              className="shrink-0 flex items-center gap-2.5 rounded-lg bg-muted/50 p-2 pr-3.5 min-w-0"
             >
-              <div className="relative w-[72px] h-[72px] rounded-full overflow-hidden bg-muted mx-auto">
+              <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
                 {src ? (
                   <Image
                     src={src}
                     alt={person.name}
                     fill
-                    sizes="72px"
+                    sizes="40px"
                     className="object-cover"
                     unoptimized={isProtectedApiImageSrc(src)}
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                    <User className="h-6 w-6" />
+                    <User className="h-4 w-4" />
                   </div>
                 )}
               </div>
-              <p className="text-[11px] font-medium mt-1.5 line-clamp-2 leading-tight">{person.name}</p>
-              {person.character && (
-                <p className="text-[10px] text-muted-foreground line-clamp-1 leading-tight">
-                  {person.character}
-                  {person.episodeCount ? ` (${person.episodeCount} ep)` : ''}
-                </p>
-              )}
+              <div className="whitespace-nowrap">
+                <p className="text-xs font-medium leading-tight">{person.name}</p>
+                {person.character && (
+                  <p className="text-[11px] text-muted-foreground leading-tight">
+                    {person.character}
+                    {person.episodeCount ? ` · ${person.episodeCount} ep` : ''}
+                  </p>
+                )}
+              </div>
             </Link>
           );
         })}

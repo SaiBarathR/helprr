@@ -24,6 +24,13 @@ import {
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag } from '@/types';
+import { toCachedImageSrc } from '@/lib/image';
+import { User } from 'lucide-react';
+
+interface SeriesCredits {
+  cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
+  crew: { id: number; name: string; profilePath: string | null; character: string }[];
+}
 import {
   getSeriesDetailSnapshot,
   patchSeasonAcrossSnapshots,
@@ -48,6 +55,7 @@ export default function SeriesDetailPage() {
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
+  const [credits, setCredits] = useState<SeriesCredits>({ cast: [], crew: [] });
 
   const MONITOR_OPTIONS = [
     { value: 'all', label: 'All Episodes' },
@@ -145,6 +153,14 @@ export default function SeriesDetailPage() {
     }
 
     void loadData(Boolean(cached));
+
+    // Background fetch for TMDB credits (non-blocking)
+    if (Number.isFinite(seriesId)) {
+      fetch(`/api/sonarr/${seriesId}/credits`)
+        .then((r) => r.ok ? r.json() : { cast: [], crew: [] })
+        .then((data: SeriesCredits) => setCredits(data))
+        .catch(() => {});
+    }
   }, [loadData, seriesId]);
 
   async function handleOpenInJellyfin() {
@@ -570,6 +586,91 @@ export default function SeriesDetailPage() {
                 {overviewExpanded ? 'Show less' : 'More...'}
               </button>
             )}
+          </div>
+        )}
+
+        {/* Cast & Crew */}
+        {credits.cast.length > 0 && (
+          <div className="mt-4">
+            <h2 className="text-lg font-bold px-4 mb-2">Cast</h2>
+            <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
+              {credits.cast.map((person) => {
+                const src = person.profilePath
+                  ? toCachedImageSrc(person.profilePath, 'tmdb') || person.profilePath
+                  : null;
+                return (
+                  <Link
+                    key={`cast-${person.id}-${person.character}`}
+                    href={`/discover/person/${person.id}`}
+                    className="shrink-0 flex items-center gap-2.5 rounded-lg bg-muted/50 p-2 pr-3.5 min-w-0"
+                  >
+                    <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
+                      {src ? (
+                        <Image
+                          src={src}
+                          alt={person.name}
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                          unoptimized={isProtectedApiImageSrc(src)}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                          <User className="h-4 w-4" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="whitespace-nowrap">
+                      <p className="text-xs font-medium leading-tight">{person.name}</p>
+                      <p className="text-[11px] text-muted-foreground leading-tight">
+                        {person.character}
+                        {person.episodeCount ? ` · ${person.episodeCount} ep` : ''}
+                      </p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {credits.crew.length > 0 && (
+          <div className="mt-4">
+            <h2 className="text-lg font-bold px-4 mb-2">Crew</h2>
+            <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
+              {credits.crew.map((person) => {
+                const src = person.profilePath
+                  ? toCachedImageSrc(person.profilePath, 'tmdb') || person.profilePath
+                  : null;
+                return (
+                  <Link
+                    key={`crew-${person.id}-${person.character}`}
+                    href={`/discover/person/${person.id}`}
+                    className="shrink-0 flex items-center gap-2.5 rounded-lg bg-muted/50 p-2 pr-3.5 min-w-0"
+                  >
+                    <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
+                      {src ? (
+                        <Image
+                          src={src}
+                          alt={person.name}
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                          unoptimized={isProtectedApiImageSrc(src)}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                          <User className="h-4 w-4" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="whitespace-nowrap">
+                      <p className="text-xs font-medium leading-tight">{person.name}</p>
+                      <p className="text-[11px] text-muted-foreground leading-tight">{person.character}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         )}
 
