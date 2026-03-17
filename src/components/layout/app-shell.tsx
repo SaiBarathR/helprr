@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { BottomNav } from './bottom-nav';
+import { BottomNav } from '@/components/layout/bottom-nav';
 import { useUIStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 

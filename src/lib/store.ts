@@ -255,7 +255,7 @@ export const useUIStore = create<UIState>()(
       setCalendarMonitoredOnly: (v) => set({ calendarMonitoredOnly: v }),
       // Navigation
       navPosition: 'top',
-      setNavPosition: (position) => set({ navPosition: position }),
+      setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),
       navOrder: [...DEFAULT_NAV_ORDER],
       disabledNavItems: [],
       defaultPage: 'dashboard' as NavItemId,

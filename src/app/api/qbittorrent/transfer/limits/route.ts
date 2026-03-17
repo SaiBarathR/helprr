@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
         await client.toggleSpeedLimitsMode();
         break;
       default:
+        logApiDuration('/api/qbittorrent/transfer/limits', startedAt, { method: 'POST', action, invalidAction: true });
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
 
