@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
-  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, X,
+  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, X, Info,
   ExternalLink, Film, Tv, Clock, Calendar, HardDrive, FileText, Globe, Volume2, Subtitles,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -32,6 +32,34 @@ function formatBytes(bytes: number) {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatBitrate(value?: number): string | null {
+  if (value === undefined || value === null) return null;
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} mbps`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} kbps`;
+  if (value > 0) return `${value} bps`;
+  return null;
+}
+
+function formatRuntime(value?: string): string | null {
+  if (!value) return null;
+  return value;
+}
+
+type DrawerRow = { label: string; value: string; breakValue?: boolean };
+
+function DetailRows({ rows }: { rows: DrawerRow[] }) {
+  return (
+    <div className="rounded-lg border overflow-hidden divide-y">
+      {rows.map((row) => (
+        <div key={`${row.label}-${row.value}`} className="flex justify-between items-start px-4 py-2.5">
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">{row.label}</span>
+          <span className={`text-sm text-right ml-4 ${row.breakValue ? 'break-all' : ''}`}>{row.value}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function eventTypeLabel(eventType: string): string {
@@ -103,6 +131,7 @@ export default function EpisodeDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
+  const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
 
   const fetchData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId) || !Number.isFinite(episodeId)) {
@@ -495,9 +524,18 @@ export default function EpisodeDetailPage() {
       {/* File section */}
       {episode.hasFile && episodeFile && (
         <div className="mx-4 space-y-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            File
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              File
+            </h3>
+            <button
+              onClick={() => setFileDrawerOpen(true)}
+              className="p-1 rounded-md hover:bg-muted transition-colors"
+              title="File details"
+            >
+              <Info className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </div>
           <div className="rounded-lg border overflow-hidden">
             <div className="px-4 py-2.5 border-b">
               <span className="text-xs text-muted-foreground uppercase tracking-wide">Filename</span>
@@ -677,6 +715,101 @@ export default function EpisodeDetailPage() {
               </div>
             </div>
           )}
+        </DrawerContent>
+      </Drawer>
+
+      {/* File Detail Drawer */}
+      <Drawer open={fileDrawerOpen} onOpenChange={setFileDrawerOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Information</DrawerTitle>
+            <DrawerDescription className="break-all">
+              {episodeFile?.relativePath || episode.title || 'TBA'}
+            </DrawerDescription>
+          </DrawerHeader>
+          {episodeFile && (() => {
+            const epMediaInfo = episodeFile.mediaInfo;
+            const epQualityName = episodeFile.quality?.quality?.name ?? 'Unknown';
+            const epFileLanguages = episodeFile.languages?.length
+              ? episodeFile.languages.map((l) => l.name).join(', ')
+              : episodeFile.language?.name ?? '';
+            const epAudioLanguages = epMediaInfo?.audioLanguages || epFileLanguages;
+            const epSubtitles = epMediaInfo?.subtitles?.trim() ? epMediaInfo.subtitles : 'None';
+
+            const infoRows: DrawerRow[] = [
+              ...(episodeFile.relativePath
+                ? [{ label: 'Filename', value: episodeFile.relativePath, breakValue: true }]
+                : []),
+              { label: 'File Size', value: formatBytes(episodeFile.size) },
+              { label: 'Quality', value: epQualityName },
+              ...(epFileLanguages ? [{ label: 'Language', value: epFileLanguages }] : []),
+              ...(episodeFile.path ? [{ label: 'Path', value: episodeFile.path, breakValue: true }] : []),
+            ];
+
+            const vidRows: DrawerRow[] = [
+              ...(formatRuntime(epMediaInfo?.runTime)
+                ? [{ label: 'Runtime', value: formatRuntime(epMediaInfo?.runTime) as string }]
+                : []),
+              ...(epMediaInfo?.resolution ? [{ label: 'Resolution', value: epMediaInfo.resolution }] : []),
+              ...(epMediaInfo?.videoCodec ? [{ label: 'Codec', value: epMediaInfo.videoCodec.toUpperCase() }] : []),
+              ...(epMediaInfo?.videoDynamicRangeType
+                ? [{ label: 'Dynamic Range Type', value: epMediaInfo.videoDynamicRangeType }]
+                : []),
+              ...(formatBitrate(epMediaInfo?.videoBitrate)
+                ? [{ label: 'Bitrate', value: formatBitrate(epMediaInfo?.videoBitrate) as string }]
+                : []),
+              ...(epMediaInfo?.videoFps !== undefined && epMediaInfo.videoFps !== null
+                ? [{ label: 'Framerate', value: `${epMediaInfo.videoFps} fps` }]
+                : []),
+              ...(epMediaInfo?.videoBitDepth !== undefined && epMediaInfo.videoBitDepth !== null
+                ? [{ label: 'Color Depth', value: `${epMediaInfo.videoBitDepth} bit` }]
+                : []),
+              ...(epMediaInfo?.scanType ? [{ label: 'Scan Type', value: epMediaInfo.scanType }] : []),
+            ];
+
+            const audRows: DrawerRow[] = [
+              ...(epMediaInfo?.audioCodec ? [{ label: 'Codec', value: epMediaInfo.audioCodec.toUpperCase() }] : []),
+              ...(epMediaInfo?.audioChannels !== undefined && epMediaInfo.audioChannels !== null
+                ? [{ label: 'Channels', value: String(epMediaInfo.audioChannels) }]
+                : []),
+              ...(formatBitrate(epMediaInfo?.audioBitrate)
+                ? [{ label: 'Bitrate', value: formatBitrate(epMediaInfo?.audioBitrate) as string }]
+                : []),
+              ...(epAudioLanguages ? [{ label: 'Languages', value: epAudioLanguages }] : []),
+              ...(epMediaInfo?.audioStreamCount !== undefined && epMediaInfo.audioStreamCount !== null
+                ? [{ label: 'Stream Count', value: String(epMediaInfo.audioStreamCount) }]
+                : []),
+              ...(epMediaInfo ? [{ label: 'Subtitles', value: epSubtitles }] : []),
+            ];
+
+            return (
+              <div className="px-4 pb-4 space-y-4 overflow-y-auto max-h-[60vh]">
+                {infoRows.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Information</h3>
+                    <DetailRows rows={infoRows} />
+                  </div>
+                )}
+                {vidRows.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Video</h3>
+                    <DetailRows rows={vidRows} />
+                  </div>
+                )}
+                {audRows.length > 0 && (
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Audio</h3>
+                    <DetailRows rows={audRows} />
+                  </div>
+                )}
+                <div className="pt-1">
+                  <DrawerClose asChild>
+                    <Button variant="ghost" className="w-full">Close</Button>
+                  </DrawerClose>
+                </div>
+              </div>
+            );
+          })()}
         </DrawerContent>
       </Drawer>
 
