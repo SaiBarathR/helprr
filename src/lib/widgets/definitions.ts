@@ -11,8 +11,7 @@ import { UpcomingWidget } from '@/components/widgets/upcoming-widget';
 
 // New widgets
 import { ServiceHealthWidget } from '@/components/widgets/service-health-widget';
-import { TorrentSummaryWidget } from '@/components/widgets/torrent-summary-widget';
-import { TransferSpeedWidget } from '@/components/widgets/transfer-speed-widget';
+import { TorrentWidget } from '@/components/widgets/torrent-widget';
 import { WantedItemsWidget } from '@/components/widgets/wanted-items-widget';
 import { NotificationsWidget } from '@/components/widgets/notifications-widget';
 import { TodayCalendarWidget } from '@/components/widgets/today-calendar-widget';
@@ -109,25 +108,14 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     component: ServiceHealthWidget,
   },
   {
-    id: 'torrent-summary',
-    name: 'Torrent Summary',
-    description: 'Total, seeding, downloading, and paused torrent counts',
+    id: 'torrent-overview',
+    name: 'Torrents',
+    description: 'Torrent counts, transfer speeds, and rate limits',
     icon: 'HardDrive',
     category: 'downloads',
-    sizes: ['medium'],
+    sizes: ['medium', 'large'],
     defaultSize: 'medium',
-    component: TorrentSummaryWidget,
-    requiredServices: ['QBITTORRENT'],
-  },
-  {
-    id: 'transfer-speed',
-    name: 'Transfer Speed',
-    description: 'Real-time upload and download speeds',
-    icon: 'ArrowUpDown',
-    category: 'downloads',
-    sizes: ['medium'],
-    defaultSize: 'medium',
-    component: TransferSpeedWidget,
+    component: TorrentWidget,
     requiredServices: ['QBITTORRENT'],
   },
   {
