@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
-  Download, Trash2, AlertTriangle, ExternalLink,
+  Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
   Clock, Filter, ArrowUpDown,
 } from 'lucide-react';
@@ -772,8 +772,12 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
           : `${record.title || 'Unknown'} (${record.year || '?'})`;
         const dateStr = isEpisode ? record.airDateUtc || record.airDate : record.added;
 
-        const href = isEpisode && record.seriesId
+        const hasSeriesId = Number.isFinite(record.seriesId);
+        const hasSeasonNumber = Number.isFinite(record.seasonNumber);
+        const href = isEpisode && hasSeriesId && hasSeasonNumber
           ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
+          : isEpisode && hasSeriesId
+            ? `/series/${record.seriesId}`
           : !isEpisode
             ? `/movies/${record.id}`
             : null;

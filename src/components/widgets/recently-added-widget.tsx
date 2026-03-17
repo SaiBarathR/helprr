@@ -61,23 +61,29 @@ export function RecentlyAddedWidget({ size, refreshInterval, editMode = false }:
       <div>
         <SectionHeader title="Recently Added" href="/activity/history" />
         <div className="space-y-1.5">
-          {recentlyAdded.slice(0, 4).map((item) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
-            >
-              <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
-                {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{item.title}</p>
-                <p className="text-[10px] text-muted-foreground truncate">
-                  {item.subtitle} · {formatShortDate(item.date)} · {formatDistanceToNowShort(item.date)}
-                </p>
-              </div>
-            </Link>
-          ))}
+          {recentlyAdded.slice(0, 4).map((item) => {
+            const subtitle = [
+              item.subtitle,
+              formatShortDate(item.date),
+              formatDistanceToNowShort(item.date),
+            ].filter(Boolean).join(' • ');
+
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
+              >
+                <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
+                  {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate">{item.title}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{subtitle}</p>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </div>
     );

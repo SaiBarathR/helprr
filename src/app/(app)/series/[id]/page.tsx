@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -19,7 +18,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { getImageUrl } from '@/components/media/media-card';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Loader2, Tv, ChevronRight, Heart, Eye,
+  Pencil, Trash2, Loader2, Tv, Heart, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -154,13 +153,23 @@ export default function SeriesDetailPage() {
 
     void loadData(Boolean(cached));
 
-    // Background fetch for TMDB credits (non-blocking)
-    if (Number.isFinite(seriesId)) {
-      fetch(`/api/sonarr/${seriesId}/credits`)
-        .then((r) => r.ok ? r.json() : { cast: [], crew: [] })
-        .then((data: SeriesCredits) => setCredits(data))
-        .catch(() => {});
+    if (!Number.isFinite(seriesId)) {
+      setCredits({ cast: [], crew: [] });
+      return;
     }
+
+    // Background fetch for TMDB credits (non-blocking)
+    const controller = new AbortController();
+    fetch(`/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
+      .then((r) => r.ok ? r.json() : { cast: [], crew: [] })
+      .then((data: SeriesCredits) => setCredits(data))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      });
+
+    return () => {
+      controller.abort();
+    };
   }, [loadData, seriesId]);
 
   async function handleOpenInJellyfin() {

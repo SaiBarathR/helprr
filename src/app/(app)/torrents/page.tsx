@@ -48,7 +48,6 @@ import {
   Gauge,
   Copy,
   CheckCircle2,
-  RotateCw,
   Megaphone,
   Tag,
   Pencil,
@@ -165,12 +164,25 @@ function compareTorrents(a: QBittorrentTorrent, b: QBittorrentTorrent, key: Sort
     case 'name': return a.name.localeCompare(b.name);
     case 'category': return (a.category || '').localeCompare(b.category || '');
     case 'state': return a.state.localeCompare(b.state);
+    case 'size':
+    case 'progress':
+    case 'dlspeed':
+    case 'upspeed':
+    case 'eta':
+    case 'ratio':
+    case 'added_on':
+    case 'completion_on':
+    case 'num_seeds':
+    case 'num_leechs':
+    case 'priority':
+    case 'uploaded':
+    case 'downloaded':
+    case 'amount_left':
+    case 'time_active':
+    case 'seeding_time':
+      return a[key] - b[key];
     default: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const va = (a as any)[key];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const vb = (b as any)[key];
-      return (typeof va === 'number' ? va : 0) - (typeof vb === 'number' ? vb : 0);
+      return 0;
     }
   }
 }

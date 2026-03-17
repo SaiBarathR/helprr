@@ -43,6 +43,8 @@ function getEventIcon(eventType: string) {
     case 'grabbed':
       return <Download className="h-3.5 w-3.5 text-blue-400" />;
     case 'downloadFolderImported':
+    case 'episodeFileImported':
+    case 'movieFileImported':
     case 'imported':
       return <Download className="h-3.5 w-3.5 text-green-400" />;
     case 'downloadFailed':
@@ -61,6 +63,8 @@ function getEventLabel(eventType: string): string {
   switch (eventType) {
     case 'grabbed': return 'Grabbed';
     case 'downloadFolderImported': return 'Imported';
+    case 'episodeFileImported': return 'Imported';
+    case 'movieFileImported': return 'Imported';
     case 'imported': return 'Imported';
     case 'downloadFailed': return 'Failed';
     case 'importFailed': return 'Import Failed';
@@ -143,12 +147,10 @@ export function ActivityHistoryWidget({ size, refreshInterval }: WidgetProps) {
             ? <Film className="h-3.5 w-3.5 text-blue-400/70" />
             : <Tv className="h-3.5 w-3.5 text-purple-400/70" />;
 
-          const mediaLink = href ? (
-            <Link href={href} className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors" onClick={(e) => e.stopPropagation()}>
+          const mediaIndicator = (
+            <span className={`shrink-0 ${href ? '' : 'opacity-50'}`}>
               {mediaIcon}
-            </Link>
-          ) : (
-            <span className="shrink-0 opacity-50">{mediaIcon}</span>
+            </span>
           );
 
           const content = (
@@ -180,7 +182,7 @@ export function ActivityHistoryWidget({ size, refreshInterval }: WidgetProps) {
                   </div>
                 )}
               </div>
-              {mediaLink}
+              {mediaIndicator}
             </>
           );
 
