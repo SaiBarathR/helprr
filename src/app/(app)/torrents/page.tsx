@@ -39,6 +39,7 @@ import {
   Loader2,
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   RefreshCw,
   Search,
   Filter,
@@ -133,6 +134,46 @@ const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'paused', label: 'Paused' },
   { value: 'active', label: 'Active' },
 ];
+
+type SortKey = 'name' | 'size' | 'progress' | 'dlspeed' | 'upspeed' | 'eta' | 'ratio' | 'added_on' | 'completion_on' | 'num_seeds' | 'num_leechs' | 'priority' | 'category' | 'state' | 'uploaded' | 'downloaded' | 'amount_left' | 'time_active' | 'seeding_time';
+type SortDir = 'asc' | 'desc';
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'size', label: 'Size' },
+  { key: 'progress', label: 'Progress' },
+  { key: 'dlspeed', label: 'Download Speed' },
+  { key: 'upspeed', label: 'Upload Speed' },
+  { key: 'eta', label: 'ETA' },
+  { key: 'ratio', label: 'Ratio' },
+  { key: 'added_on', label: 'Date Added' },
+  { key: 'completion_on', label: 'Date Completed' },
+  { key: 'num_seeds', label: 'Seeds' },
+  { key: 'num_leechs', label: 'Peers' },
+  { key: 'priority', label: 'Priority' },
+  { key: 'category', label: 'Category' },
+  { key: 'state', label: 'Status' },
+  { key: 'uploaded', label: 'Uploaded' },
+  { key: 'downloaded', label: 'Downloaded' },
+  { key: 'amount_left', label: 'Remaining' },
+  { key: 'time_active', label: 'Time Active' },
+  { key: 'seeding_time', label: 'Seeding Time' },
+];
+
+function compareTorrents(a: QBittorrentTorrent, b: QBittorrentTorrent, key: SortKey): number {
+  switch (key) {
+    case 'name': return a.name.localeCompare(b.name);
+    case 'category': return (a.category || '').localeCompare(b.category || '');
+    case 'state': return a.state.localeCompare(b.state);
+    default: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const va = (a as any)[key];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vb = (b as any)[key];
+      return (typeof va === 'number' ? va : 0) - (typeof vb === 'number' ? vb : 0);
+    }
+  }
+}
 
 function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
   return (
@@ -444,6 +485,8 @@ export default function TorrentsPage() {
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('added_on');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
   const [listOffsetTop, setListOffsetTop] = useState(0);
 
@@ -740,9 +783,13 @@ export default function TorrentsPage() {
 
   const filteredTorrents = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return torrents;
-    return torrents.filter((torrent) => torrent.name.toLowerCase().includes(q));
-  }, [search, torrents]);
+    const filtered = q ? torrents.filter((torrent) => torrent.name.toLowerCase().includes(q)) : [...torrents];
+    filtered.sort((a, b) => {
+      const cmp = compareTorrents(a, b, sortKey);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return filtered;
+  }, [search, torrents, sortKey, sortDir]);
 
   const useVirtualization = !loading && filteredTorrents.length > 0;
   const virtualizer = useWindowVirtualizer({
@@ -814,6 +861,40 @@ export default function TorrentsPage() {
                   onCheckedChange={() => setFilter(opt.value)}
                 >
                   {opt.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label="Sort"
+              >
+                <ArrowUpDown className="h-5 w-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52 max-h-80 overflow-y-auto">
+              <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {SORT_OPTIONS.map((opt) => (
+                <DropdownMenuCheckboxItem
+                  key={opt.key}
+                  checked={sortKey === opt.key}
+                  onCheckedChange={() => {
+                    if (sortKey === opt.key) {
+                      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortKey(opt.key);
+                      setSortDir(opt.key === 'name' || opt.key === 'category' || opt.key === 'state' ? 'asc' : 'desc');
+                    }
+                  }}
+                >
+                  {opt.label}
+                  {sortKey === opt.key && (
+                    <span className="ml-auto text-[10px] text-muted-foreground">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                  )}
                 </DropdownMenuCheckboxItem>
               ))}
             </DropdownMenuContent>
