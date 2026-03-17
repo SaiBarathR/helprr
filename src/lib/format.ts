@@ -20,3 +20,9 @@ export function formatDistanceToNowSafe(input: string, fallback = 'unknown'): st
   if (!Number.isFinite(date.getTime())) return fallback;
   return formatDistanceToNow(date, { addSuffix: true });
 }
+
+export function formatDistanceToNowShort(input: string, fallback = 'unknown'): string {
+  const date = new Date(input);
+  if (!Number.isFinite(date.getTime())) return fallback;
+  return formatDistanceToNow(date, { addSuffix: true }).replace(/^about /, '');
+}

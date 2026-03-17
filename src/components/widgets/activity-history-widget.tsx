@@ -1,9 +1,10 @@
 'use client';
 
-import { Download, Film, Tv, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
+import { Download, Film, Tv, AlertTriangle, Trash2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { formatDistanceToNowSafe } from '@/lib/format';
+import { formatDistanceToNowShort, formatBytes } from '@/lib/format';
 import { SectionHeader } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 
@@ -14,13 +15,24 @@ interface HistoryRecord {
   sourceTitle?: string;
   source?: 'sonarr' | 'radarr';
   mediaType?: 'episode' | 'movie';
-  series?: { title: string };
-  episode?: { title: string; seasonNumber: number; episodeNumber: number };
-  movie?: { title: string };
+  seriesId?: number;
+  movieId?: number;
+  episodeId?: number;
+  series?: { title: string; id: number };
+  episode?: { title: string; seasonNumber: number; episodeNumber: number; id: number };
+  movie?: { title: string; id: number };
+  quality?: { quality: { name: string } };
+  customFormats?: { id: number; name: string }[];
+  languages?: { id: number; name: string }[];
+  data?: {
+    indexer?: string;
+    releaseGroup?: string;
+    size?: string;
+  };
 }
 
 async function fetchHistory(): Promise<HistoryRecord[]> {
-  const res = await fetch('/api/activity/history?pageSize=8');
+  const res = await fetch('/api/activity/history?pageSize=10');
   if (!res.ok) return [];
   const data = await res.json();
   return data.records || [];
@@ -36,8 +48,28 @@ function getEventIcon(eventType: string) {
     case 'downloadFailed':
     case 'importFailed':
       return <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />;
+    case 'deleted':
+    case 'episodeFileDeleted':
+    case 'movieFileDeleted':
+      return <Trash2 className="h-3.5 w-3.5 text-rose-400" />;
     default:
       return <Download className="h-3.5 w-3.5 text-muted-foreground" />;
+  }
+}
+
+function getEventLabel(eventType: string): string {
+  switch (eventType) {
+    case 'grabbed': return 'Grabbed';
+    case 'downloadFolderImported': return 'Imported';
+    case 'imported': return 'Imported';
+    case 'downloadFailed': return 'Failed';
+    case 'importFailed': return 'Import Failed';
+    case 'renamed': return 'Renamed';
+    case 'deleted':
+    case 'episodeFileDeleted':
+    case 'movieFileDeleted': return 'Deleted';
+    case 'ignored': return 'Ignored';
+    default: return eventType.replace(/([a-z])([A-Z])/g, '$1 $2');
   }
 }
 
@@ -49,6 +81,21 @@ function getTitle(record: HistoryRecord): string {
     return record.series.title;
   }
   return record.sourceTitle || 'Unknown';
+}
+
+function getHref(record: HistoryRecord): string | null {
+  if (record.source === 'radarr' && (record.movieId || record.movie?.id)) {
+    return `/movies/${record.movieId || record.movie?.id}`;
+  }
+  if (record.source === 'sonarr') {
+    const seriesId = record.seriesId || record.series?.id;
+    const ep = record.episode;
+    if (seriesId && ep) {
+      return `/series/${seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`;
+    }
+    if (seriesId) return `/series/${seriesId}`;
+  }
+  return null;
 }
 
 export function ActivityHistoryWidget({ size, refreshInterval }: WidgetProps) {
@@ -78,32 +125,86 @@ export function ActivityHistoryWidget({ size, refreshInterval }: WidgetProps) {
     );
   }
 
-  const limit = size === 'large' ? 8 : 5;
+  const limit = size === 'large' ? 10 : 5;
 
   return (
     <div>
       <SectionHeader title="Activity" href="/activity/history" />
       <div className="space-y-1">
-        {records.slice(0, limit).map((record) => (
-          <div
-            key={`${record.source}-${record.id}`}
-            className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2"
-          >
-            {getEventIcon(record.eventType)}
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium truncate">{getTitle(record)}</p>
-              <p className="text-[10px] text-muted-foreground">
-                {record.eventType === 'grabbed' ? 'Grabbed' : record.eventType === 'downloadFolderImported' ? 'Imported' : record.eventType}
-                {' · '}
-                {formatDistanceToNowSafe(record.date)}
-              </p>
+        {records.slice(0, limit).map((record) => {
+          const href = getHref(record);
+          const qualityName = record.quality?.quality?.name;
+          const releaseGroup = record.data?.releaseGroup;
+          const indexer = record.data?.indexer;
+          const fileSize = record.data?.size ? formatBytes(Number(record.data.size)) : null;
+          const customFormats = record.customFormats?.filter((cf) => cf.name) || [];
+
+          const mediaIcon = record.mediaType === 'movie'
+            ? <Film className="h-3.5 w-3.5 text-blue-400/70" />
+            : <Tv className="h-3.5 w-3.5 text-purple-400/70" />;
+
+          const mediaLink = href ? (
+            <Link href={href} className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors" onClick={(e) => e.stopPropagation()}>
+              {mediaIcon}
+            </Link>
+          ) : (
+            <span className="shrink-0 opacity-50">{mediaIcon}</span>
+          );
+
+          const content = (
+            <>
+              {getEventIcon(record.eventType)}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{getTitle(record)}</p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {getEventLabel(record.eventType)}
+                  {' · '}
+                  {formatDistanceToNowShort(record.date)}
+                  {qualityName && <> · {qualityName}</>}
+                  {fileSize && <> · {fileSize}</>}
+                </p>
+                {size === 'large' && (releaseGroup || indexer || customFormats.length > 0) && (
+                  <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                    {releaseGroup && (
+                      <span className="text-[9px] px-1.5 py-0 rounded bg-muted text-muted-foreground">{releaseGroup}</span>
+                    )}
+                    {indexer && (
+                      <span className="text-[9px] px-1.5 py-0 rounded bg-muted text-muted-foreground">{indexer}</span>
+                    )}
+                    {customFormats.slice(0, 3).map((cf) => (
+                      <span key={cf.id} className="text-[9px] px-1.5 py-0 rounded bg-purple-500/10 text-purple-400">{cf.name}</span>
+                    ))}
+                    {customFormats.length > 3 && (
+                      <span className="text-[9px] text-muted-foreground">+{customFormats.length - 3}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              {mediaLink}
+            </>
+          );
+
+          if (href) {
+            return (
+              <Link
+                key={`${record.source}-${record.id}`}
+                href={href}
+                className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2 hover:bg-muted/30 transition-colors"
+              >
+                {content}
+              </Link>
+            );
+          }
+
+          return (
+            <div
+              key={`${record.source}-${record.id}`}
+              className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2"
+            >
+              {content}
             </div>
-            {record.mediaType === 'movie'
-              ? <Film className="h-3 w-3 text-blue-400/50 shrink-0" />
-              : <Tv className="h-3 w-3 text-purple-400/50 shrink-0" />
-            }
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

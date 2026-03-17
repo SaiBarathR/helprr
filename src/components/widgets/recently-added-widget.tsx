@@ -2,13 +2,22 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Film, Tv } from 'lucide-react';
+import { Film, Tv, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
-import { formatDistanceToNowSafe } from '@/lib/format';
+import { formatDistanceToNowShort } from '@/lib/format';
 import { toCachedImageSrc, isProtectedApiImageSrc } from '@/lib/image';
 import type { WidgetProps } from '@/lib/widgets/types';
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (!Number.isFinite(d.getTime())) return '';
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  const day = d.getDate();
+  const time = d.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return `${month} ${day}, ${time}`;
+}
 
 interface RecentItem {
   id: string;
@@ -63,11 +72,10 @@ export function RecentlyAddedWidget({ size, refreshInterval, editMode = false }:
               </span>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium truncate">{item.title}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{item.subtitle}</p>
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {item.subtitle} · {formatShortDate(item.date)} · {formatDistanceToNowShort(item.date)}
+                </p>
               </div>
-              <span className="text-[10px] tabular-nums text-muted-foreground shrink-0">
-                {formatDistanceToNowSafe(item.date)}
-              </span>
             </Link>
           ))}
         </div>
@@ -106,6 +114,12 @@ export function RecentlyAddedWidget({ size, refreshInterval, editMode = false }:
                     }
                   </div>
                 )}
+                <div className="absolute bottom-1.5 left-1.5 right-1.5">
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[9px] text-white/90">
+                    <Clock className="h-2 w-2" />
+                    {formatDistanceToNowShort(item.date)}
+                  </span>
+                </div>
                 <div className="absolute top-1.5 left-1.5">
                   <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
                     {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
@@ -113,7 +127,8 @@ export function RecentlyAddedWidget({ size, refreshInterval, editMode = false }:
                 </div>
               </div>
               <p className="text-[11px] font-medium truncate leading-tight">{item.title}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{item.subtitle || formatDistanceToNowSafe(item.date)}</p>
+              <p className="text-[10px] text-muted-foreground truncate">{item.subtitle}</p>
+              <p className="text-[9px] text-muted-foreground/70 tabular-nums truncate">{formatShortDate(item.date)}</p>
             </Link>
           );
         })}
