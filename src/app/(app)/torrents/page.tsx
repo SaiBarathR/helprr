@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import {
   Drawer,
@@ -42,6 +43,14 @@ import {
   Search,
   Filter,
   FolderOpen,
+  Settings,
+  Gauge,
+  Copy,
+  CheckCircle2,
+  RotateCw,
+  Megaphone,
+  Tag,
+  Pencil,
 } from 'lucide-react';
 import type {
   QBittorrentTorrent,
@@ -50,7 +59,7 @@ import type {
 } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 
-const TORRENT_ROW_HEIGHT = 140;
+const TORRENT_ROW_HEIGHT = 160;
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -72,6 +81,23 @@ function formatEta(seconds: number): string {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
+}
+
+function formatSeedingTime(seconds: number): string {
+  if (seconds <= 0) return '-';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const parts: string[] = [];
+  if (d > 0) parts.push(`${d}d`);
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0 || parts.length === 0) parts.push(`${m}m`);
+  return parts.join(' ');
+}
+
+function formatSpeedLimit(bytesPerSec: number): string {
+  if (bytesPerSec <= 0) return 'Unlimited';
+  return formatSpeed(bytesPerSec);
 }
 
 function getStateBadge(state: string) {
@@ -125,6 +151,12 @@ function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
     && a.added_on === b.added_on
     && a.completion_on === b.completion_on
     && a.save_path === b.save_path
+    && a.ratio === b.ratio
+    && a.downloaded === b.downloaded
+    && a.uploaded === b.uploaded
+    && a.amount_left === b.amount_left
+    && a.dl_limit === b.dl_limit
+    && a.up_limit === b.up_limit
   );
 }
 
@@ -146,6 +178,123 @@ function mergeTorrents(prev: QBittorrentTorrent[], next: QBittorrentTorrent[]): 
   return changed ? merged : prev;
 }
 
+// --- SpeedLimitInput component ---
+
+function SpeedLimitInput({
+  label,
+  currentLimit,
+  onSave,
+}: {
+  label: string;
+  currentLimit: number;
+  onSave: (limitBytesPerSec: number) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [unit, setUnit] = useState<'KB/s' | 'MB/s'>('MB/s');
+  const [saving, setSaving] = useState(false);
+
+  const startEditing = () => {
+    if (currentLimit > 0) {
+      const mbVal = currentLimit / (1024 * 1024);
+      if (mbVal >= 1) {
+        setValue(mbVal.toFixed(1).replace(/\.0$/, ''));
+        setUnit('MB/s');
+      } else {
+        setValue((currentLimit / 1024).toFixed(0));
+        setUnit('KB/s');
+      }
+    } else {
+      setValue('');
+      setUnit('MB/s');
+    }
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    const numVal = parseFloat(value);
+    if (isNaN(numVal) || numVal < 0) {
+      toast.error('Invalid speed value');
+      return;
+    }
+    setSaving(true);
+    const bytesPerSec = unit === 'MB/s' ? numVal * 1024 * 1024 : numVal * 1024;
+    try {
+      await onSave(Math.round(bytesPerSec));
+      setEditing(false);
+      toast.success(`${label} updated`);
+    } catch {
+      toast.error(`Failed to set ${label.toLowerCase()}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUnlimited = async () => {
+    setSaving(true);
+    try {
+      await onSave(0);
+      setEditing(false);
+      toast.success(`${label} set to unlimited`);
+    } catch {
+      toast.error(`Failed to set ${label.toLowerCase()}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        className="flex items-center justify-between px-3 py-2 w-full text-left"
+        onClick={startEditing}
+      >
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-xs">{formatSpeedLimit(currentLimit)}</span>
+      </button>
+    );
+  }
+
+  return (
+    <div className="px-3 py-2 space-y-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center gap-2">
+        <Input
+          type="number"
+          min="0"
+          step="0.1"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="0"
+          className="h-8 text-xs flex-1"
+          autoFocus
+        />
+        <select
+          value={unit}
+          onChange={(e) => setUnit(e.target.value as 'KB/s' | 'MB/s')}
+          className="h-8 text-xs rounded-md border bg-background px-2"
+        >
+          <option value="KB/s">KB/s</option>
+          <option value="MB/s">MB/s</option>
+        </select>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" className="h-7 text-xs flex-1" onClick={handleSave} disabled={saving}>
+          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={handleUnlimited} disabled={saving}>
+          Unlimited
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(false)} disabled={saving}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// --- TorrentRow component ---
+
 interface TorrentRowProps {
   torrent: QBittorrentTorrent;
   selected: boolean;
@@ -153,6 +302,8 @@ interface TorrentRowProps {
   onFetchDetail: (hash: string) => void;
   onTorrentAction: (hash: string, action: string, extra?: Record<string, unknown>) => void;
   onOpenDeleteDrawer: (hash: string, name: string, deleteFiles: boolean) => void;
+  onOpenCategoryDrawer: (hash: string) => void;
+  onOpenRenameDrawer: (hash: string, name: string) => void;
 }
 
 const TorrentRow = memo(function TorrentRow({
@@ -162,7 +313,11 @@ const TorrentRow = memo(function TorrentRow({
   onFetchDetail,
   onTorrentAction,
   onOpenDeleteDrawer,
+  onOpenCategoryDrawer,
+  onOpenRenameDrawer,
 }: TorrentRowProps) {
+  const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
+
   return (
     <div className="px-3 py-3 sm:px-4">
       <div className="flex items-start gap-3">
@@ -197,6 +352,19 @@ const TorrentRow = memo(function TorrentRow({
                   <Zap className="mr-2 h-4 w-4" /> Force Start
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'recheck')}>
+                  <CheckCircle2 className="mr-2 h-4 w-4" /> Recheck
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'reannounce')}>
+                  <Megaphone className="mr-2 h-4 w-4" /> Reannounce
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onOpenCategoryDrawer(torrent.hash)}>
+                  <Tag className="mr-2 h-4 w-4" /> Set Category
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onOpenRenameDrawer(torrent.hash, torrent.name)}>
+                  <Pencil className="mr-2 h-4 w-4" /> Rename
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, false)}>
                   <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
                 </DropdownMenuItem>
@@ -217,6 +385,9 @@ const TorrentRow = memo(function TorrentRow({
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
                 {torrent.category}
               </Badge>
+            )}
+            {hasSpeedLimit && (
+              <Gauge className="h-3 w-3 text-yellow-500" />
             )}
           </div>
 
@@ -242,9 +413,17 @@ const TorrentRow = memo(function TorrentRow({
             <Progress value={torrent.progress * 100} className="h-1" />
           </div>
 
-          <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
             <span>Seeds: {torrent.num_seeds}</span>
             <span>Peers: {torrent.num_leechs}</span>
+            <span>Ratio: {(torrent.ratio ?? 0).toFixed(2)}</span>
+          </div>
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-muted-foreground">
+            <span>DL: {formatBytes(torrent.downloaded ?? 0)}</span>
+            <span>UL: {formatBytes(torrent.uploaded ?? 0)}</span>
+            {torrent.progress < 1 && torrent.amount_left > 0 && (
+              <span>Rem: {formatBytes(torrent.amount_left)}</span>
+            )}
           </div>
         </div>
       </div>
@@ -252,10 +431,13 @@ const TorrentRow = memo(function TorrentRow({
   );
 }, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
 
+// --- Main page ---
+
 export default function TorrentsPage() {
   const router = useRouter();
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
+  const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,6 +462,24 @@ export default function TorrentsPage() {
     deleteFiles: false,
   });
   const [deleting, setDeleting] = useState(false);
+
+  // Settings drawer
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [globalLimits, setGlobalLimits] = useState<{ downloadLimit: number; uploadLimit: number; speedLimitsMode: number } | null>(null);
+  const [globalLimitsLoading, setGlobalLimitsLoading] = useState(false);
+
+  // Category drawer
+  const [categoryDrawer, setCategoryDrawer] = useState<{ open: boolean; hash: string }>({ open: false, hash: '' });
+  const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }>>({});
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+
+  // Rename drawer
+  const [renameDrawer, setRenameDrawer] = useState<{ open: boolean; hash: string; name: string }>({ open: false, hash: '', name: '' });
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+
+  // Bulk speed limit drawer
+  const [bulkSpeedDrawer, setBulkSpeedDrawer] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const filterRef = useRef<FilterType>('all');
@@ -310,6 +510,7 @@ export default function TorrentsPage() {
 
       setTorrents((prev) => mergeTorrents(prev, data.torrents));
       setTransferInfo(data.transferInfo);
+      setSpeedLimitsMode(data.speedLimitsMode ?? 0);
       setError(null);
 
       const durationMs = performance.now() - startedAt;
@@ -346,6 +547,20 @@ export default function TorrentsPage() {
       toast.error('Failed to load torrent details');
     } finally {
       setDetailLoading(false);
+    }
+  }, []);
+
+  const fetchGlobalLimits = useCallback(async () => {
+    setGlobalLimitsLoading(true);
+    try {
+      const res = await fetch('/api/qbittorrent/transfer/limits');
+      if (res.ok) {
+        setGlobalLimits(await res.json());
+      }
+    } catch {
+      toast.error('Failed to load global limits');
+    } finally {
+      setGlobalLimitsLoading(false);
     }
   }, []);
 
@@ -415,6 +630,15 @@ export default function TorrentsPage() {
         stop: 'Stopped',
         forceStart: 'Force started',
         delete: 'Deleted',
+        recheck: 'Rechecking',
+        reannounce: 'Reannounced',
+        setDownloadLimit: 'Download limit set',
+        setUploadLimit: 'Upload limit set',
+        toggleSequentialDownload: 'Sequential download toggled',
+        toggleFirstLastPiecePrio: 'First/last piece priority toggled',
+        setCategory: 'Category set',
+        setAutoManagement: 'Auto management toggled',
+        rename: 'Renamed',
       };
       toast.success(successMessage[action] ?? 'Action successful');
       setTimeout(() => {
@@ -425,10 +649,10 @@ export default function TorrentsPage() {
     }
   }, [fetchSummary]);
 
-  const bulkAction = useCallback(async (action: string) => {
+  const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>) => {
     if (selectedTorrents.size === 0) return;
     const hashes = Array.from(selectedTorrents).join('|');
-    await torrentAction(hashes, action);
+    await torrentAction(hashes, action, extra);
     setSelectedTorrents(new Set());
   }, [selectedTorrents, torrentAction]);
 
@@ -460,6 +684,60 @@ export default function TorrentsPage() {
     setDeleteDrawer({ open: true, hash, name, deleteFiles });
   }, []);
 
+  const openCategoryDrawer = useCallback(async (hash: string) => {
+    setCategoryDrawer({ open: true, hash });
+    setCategoriesLoading(true);
+    try {
+      // Fetch categories via a dedicated endpoint call
+      const res = await fetch('/api/qbittorrent/categories');
+      if (res.ok) {
+        setCategories(await res.json());
+      }
+    } catch {
+      // Fallback: extract unique categories from loaded torrents
+      const cats: Record<string, { name: string; savePath: string }> = {};
+      torrents.forEach((t) => {
+        if (t.category) cats[t.category] = { name: t.category, savePath: '' };
+      });
+      setCategories(cats);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  }, [torrents]);
+
+  const openRenameDrawer = useCallback((hash: string, name: string) => {
+    setRenameDrawer({ open: true, hash, name });
+    setRenameValue(name);
+  }, []);
+
+  const handleRename = useCallback(async () => {
+    if (!renameValue.trim()) return;
+    setRenaming(true);
+    try {
+      await torrentAction(renameDrawer.hash, 'rename', { name: renameValue.trim() });
+      setRenameDrawer({ open: false, hash: '', name: '' });
+    } catch {
+      // Error handled in torrentAction
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameDrawer.hash, renameValue, torrentAction]);
+
+  const toggleAltSpeedMode = useCallback(async () => {
+    try {
+      const res = await fetch('/api/qbittorrent/transfer/limits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggleSpeedLimitsMode' }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast.success('Alternative speed mode toggled');
+      setTimeout(() => void fetchSummary(), 300);
+    } catch {
+      toast.error('Failed to toggle speed mode');
+    }
+  }, [fetchSummary]);
+
   const filteredTorrents = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return torrents;
@@ -490,6 +768,11 @@ export default function TorrentsPage() {
     ? Math.max(0, virtualizer.getTotalSize() - (lastVirtualRow.end - listOffsetTop))
     : 0;
 
+  const torrentByHash = useMemo(
+    () => new Map(torrents.map((torrent) => [torrent.hash, torrent])),
+    [torrents]
+  );
+
   const torrentNameByHash = useMemo(
     () => new Map(torrents.map((torrent) => [torrent.hash, torrent.name])),
     [torrents]
@@ -504,6 +787,9 @@ export default function TorrentsPage() {
     }
     setSelectedTorrents(new Set(filteredTorrents.map((torrent) => torrent.hash)));
   }, [filteredTorrents, selectedTorrents.size]);
+
+  // Get detail torrent data from the list for session stats / magnet
+  const detailTorrent = detailHash ? torrentByHash.get(detailHash) : null;
 
   return (
     <div className="space-y-3">
@@ -550,20 +836,40 @@ export default function TorrentsPage() {
             <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
 
-          {transferInfo && (
-            <div className="flex items-center gap-3 text-xs text-muted-foreground ml-1">
-              <span className="flex items-center gap-1">
-                <ArrowDown className="h-3 w-3 text-green-500" />
-                {formatSpeed(transferInfo.dl_info_speed)}
-              </span>
-              <span className="flex items-center gap-1">
-                <ArrowUp className="h-3 w-3 text-blue-500" />
-                {formatSpeed(transferInfo.up_info_speed)}
-              </span>
-            </div>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                  speedLimitsMode === 1
+                    ? 'bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30'
+                    : 'hover:bg-accent active:bg-accent/80'
+                }`}
+                onClick={toggleAltSpeedMode}
+                aria-label="Alternative Speed Limits"
+              >
+                <Gauge className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{speedLimitsMode === 1 ? 'Alt Speed: ON' : 'Alt Speed: OFF'}</TooltipContent>
+          </Tooltip>
 
           <div className="flex-1" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                onClick={() => {
+                  setSettingsOpen(true);
+                  void fetchGlobalLimits();
+                }}
+                aria-label="Settings"
+              >
+                <Settings className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -578,6 +884,19 @@ export default function TorrentsPage() {
             <TooltipContent>Add Torrent</TooltipContent>
           </Tooltip>
         </div>
+
+        {transferInfo && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <ArrowDown className="h-3 w-3 text-green-500" />
+              {formatSpeed(transferInfo.dl_info_speed)}
+            </span>
+            <span className="flex items-center gap-1">
+              <ArrowUp className="h-3 w-3 text-blue-500" />
+              {formatSpeed(transferInfo.up_info_speed)}
+            </span>
+          </div>
+        )}
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -613,6 +932,13 @@ export default function TorrentsPage() {
             aria-label="Force Start"
           >
             <Zap className="h-4 w-4" />
+          </button>
+          <button
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+            onClick={() => setBulkSpeedDrawer(true)}
+            aria-label="Speed Limits"
+          >
+            <Gauge className="h-4 w-4" />
           </button>
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-destructive"
@@ -680,6 +1006,8 @@ export default function TorrentsPage() {
                 onFetchDetail={fetchDetail}
                 onTorrentAction={torrentAction}
                 onOpenDeleteDrawer={openDeleteDrawer}
+                onOpenCategoryDrawer={openCategoryDrawer}
+                onOpenRenameDrawer={openRenameDrawer}
               />
             ))}
           </div>
@@ -690,6 +1018,7 @@ export default function TorrentsPage() {
         </div>
       )}
 
+      {/* Detail Drawer */}
       <Drawer
         open={!!detailHash}
         onOpenChange={(open) => {
@@ -712,26 +1041,152 @@ export default function TorrentsPage() {
               </div>
             ) : detailData ? (
               <>
+                {/* Transfer */}
                 <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">General</h3>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Transfer</h3>
                   <div className="rounded-lg border divide-y">
-                    <DetailRow label="Save Path" value={String(detailData.properties.save_path || '-')} />
                     <DetailRow label="Total Size" value={formatBytes(Number(detailData.properties.total_size) || 0)} />
                     <DetailRow label="Downloaded" value={formatBytes(Number(detailData.properties.total_downloaded) || 0)} />
                     <DetailRow label="Uploaded" value={formatBytes(Number(detailData.properties.total_uploaded) || 0)} />
-                    <DetailRow label="Ratio" value={Number(detailData.properties.share_ratio || 0).toFixed(2)} />
-                    <DetailRow label="Seeds" value={`${detailData.properties.seeds} (${detailData.properties.seeds_total} total)`} />
-                    <DetailRow label="Peers" value={`${detailData.properties.peers} (${detailData.properties.peers_total} total)`} />
-                    <DetailRow label="Connections" value={String(detailData.properties.nb_connections || 0)} />
-                    {Number(detailData.properties.addition_date) > 0 && (
-                      <DetailRow label="Added" value={new Date(Number(detailData.properties.addition_date) * 1000).toLocaleDateString()} />
+                    {detailTorrent && detailTorrent.progress < 1 && (
+                      <DetailRow label="Remaining" value={formatBytes(detailTorrent.amount_left || 0)} />
                     )}
-                    {Number(detailData.properties.completion_date) > 0 && (
-                      <DetailRow label="Completed" value={new Date(Number(detailData.properties.completion_date) * 1000).toLocaleDateString()} />
+                    <DetailRow label="Ratio" value={Number(detailData.properties.share_ratio || 0).toFixed(2)} />
+                    <DetailRow label="Availability" value={(detailTorrent?.availability ?? 0).toFixed(2)} />
+                    {Number(detailData.properties.dl_speed) > 0 && (
+                      <DetailRow label="DL Speed" value={formatSpeed(Number(detailData.properties.dl_speed))} />
+                    )}
+                    {Number(detailData.properties.up_speed) > 0 && (
+                      <DetailRow label="UL Speed" value={formatSpeed(Number(detailData.properties.up_speed))} />
                     )}
                   </div>
                 </div>
 
+                {/* Session Stats */}
+                {detailTorrent && (detailTorrent.downloaded_session > 0 || detailTorrent.uploaded_session > 0) && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Session Stats</h3>
+                    <div className="rounded-lg border divide-y">
+                      <DetailRow label="Session Downloaded" value={formatBytes(detailTorrent.downloaded_session)} />
+                      <DetailRow label="Session Uploaded" value={formatBytes(detailTorrent.uploaded_session)} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Speed Limits */}
+                {detailHash && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Speed Limits</h3>
+                    <div className="rounded-lg border divide-y">
+                      <SpeedLimitInput
+                        label="Download Limit"
+                        currentLimit={Number(detailData.properties.dl_limit) || 0}
+                        onSave={async (limit) => {
+                          await torrentAction(detailHash, 'setDownloadLimit', { limit });
+                          // Refresh detail
+                          void fetchDetail(detailHash);
+                        }}
+                      />
+                      <SpeedLimitInput
+                        label="Upload Limit"
+                        currentLimit={Number(detailData.properties.up_limit) || 0}
+                        onSave={async (limit) => {
+                          await torrentAction(detailHash, 'setUploadLimit', { limit });
+                          void fetchDetail(detailHash);
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Timing */}
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Timing</h3>
+                  <div className="rounded-lg border divide-y">
+                    {Number(detailData.properties.addition_date) > 0 && (
+                      <DetailRow label="Added" value={new Date(Number(detailData.properties.addition_date) * 1000).toLocaleString()} />
+                    )}
+                    {Number(detailData.properties.completion_date) > 0 && (
+                      <DetailRow label="Completed" value={new Date(Number(detailData.properties.completion_date) * 1000).toLocaleString()} />
+                    )}
+                    <DetailRow label="Seeding Time" value={formatSeedingTime(Number(detailData.properties.seeding_time) || 0)} />
+                    <DetailRow label="Time Elapsed" value={formatSeedingTime(Number(detailData.properties.time_elapsed) || 0)} />
+                    {detailTorrent && detailTorrent.eta > 0 && detailTorrent.eta < 8640000 && (
+                      <DetailRow label="ETA" value={formatEta(detailTorrent.eta)} />
+                    )}
+                  </div>
+                </div>
+
+                {/* Options */}
+                {detailHash && detailTorrent && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Options</h3>
+                    <div className="rounded-lg border divide-y">
+                      <div className="flex items-center justify-between px-3 py-2">
+                        <span className="text-xs text-muted-foreground">Sequential Download</span>
+                        <Switch
+                          checked={detailTorrent.seq_dl}
+                          onCheckedChange={() => {
+                            void torrentAction(detailHash, 'toggleSequentialDownload');
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2">
+                        <span className="text-xs text-muted-foreground">First/Last Piece Priority</span>
+                        <Switch
+                          checked={detailTorrent.f_l_piece_prio}
+                          onCheckedChange={() => {
+                            void torrentAction(detailHash, 'toggleFirstLastPiecePrio');
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2">
+                        <span className="text-xs text-muted-foreground">Auto Torrent Management</span>
+                        <Switch
+                          checked={detailTorrent.auto_tmm}
+                          onCheckedChange={(checked) => {
+                            void torrentAction(detailHash, 'setAutoManagement', { enable: checked });
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Network */}
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Network</h3>
+                  <div className="rounded-lg border divide-y">
+                    <DetailRow label="Seeds" value={`${detailData.properties.seeds} (${detailData.properties.seeds_total} total)`} />
+                    <DetailRow label="Peers" value={`${detailData.properties.peers} (${detailData.properties.peers_total} total)`} />
+                    <DetailRow label="Connections" value={String(detailData.properties.nb_connections || 0)} />
+                    <DetailRow label="Wasted" value={formatBytes(Number(detailData.properties.total_wasted) || 0)} />
+                    <DetailRow label="Save Path" value={String(detailData.properties.save_path || '-')} />
+                  </div>
+                </div>
+
+                {/* Magnet Link */}
+                {detailTorrent?.magnet_uri && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Magnet Link</h3>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs"
+                      onClick={() => {
+                        navigator.clipboard.writeText(detailTorrent.magnet_uri).then(
+                          () => toast.success('Magnet URI copied'),
+                          () => toast.error('Failed to copy')
+                        );
+                      }}
+                    >
+                      <Copy className="mr-2 h-3.5 w-3.5" />
+                      Copy Magnet URI
+                    </Button>
+                  </div>
+                )}
+
+                {/* Files */}
                 {detailData.files.length > 0 && (
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -773,6 +1228,7 @@ export default function TorrentsPage() {
                   </div>
                 )}
 
+                {/* Trackers */}
                 {detailData.trackers.length > 0 && (
                   <div>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
@@ -799,6 +1255,7 @@ export default function TorrentsPage() {
         </DrawerContent>
       </Drawer>
 
+      {/* Delete Drawer */}
       <Drawer open={deleteDrawer.open} onOpenChange={(open) => !open && setDeleteDrawer({ ...deleteDrawer, open: false })}>
         <DrawerContent>
           <DrawerHeader>
@@ -840,6 +1297,185 @@ export default function TorrentsPage() {
               <Button variant="outline" className="w-full">Cancel</Button>
             </DrawerClose>
           </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Global Settings Drawer */}
+      <Drawer open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>qBittorrent Settings</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-6 max-h-[70vh] overflow-y-auto space-y-4">
+            {globalLimitsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : globalLimits ? (
+              <>
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Speed Limits</h3>
+                  <div className="rounded-lg border divide-y">
+                    <SpeedLimitInput
+                      label="Global Download Limit"
+                      currentLimit={globalLimits.downloadLimit}
+                      onSave={async (limit) => {
+                        await fetch('/api/qbittorrent/transfer/limits', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'setDownloadLimit', limit }),
+                        });
+                        void fetchGlobalLimits();
+                      }}
+                    />
+                    <SpeedLimitInput
+                      label="Global Upload Limit"
+                      currentLimit={globalLimits.uploadLimit}
+                      onSave={async (limit) => {
+                        await fetch('/api/qbittorrent/transfer/limits', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'setUploadLimit', limit }),
+                        });
+                        void fetchGlobalLimits();
+                      }}
+                    />
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <span className="text-xs text-muted-foreground">Alternative Speed Limits</span>
+                      <Switch
+                        checked={globalLimits.speedLimitsMode === 1}
+                        onCheckedChange={async () => {
+                          await toggleAltSpeedMode();
+                          void fetchGlobalLimits();
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {transferInfo && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Transfer Stats</h3>
+                    <div className="rounded-lg border divide-y">
+                      <DetailRow label="Session Downloaded" value={formatBytes(transferInfo.dl_info_data)} />
+                      <DetailRow label="Session Uploaded" value={formatBytes(transferInfo.up_info_data)} />
+                      <DetailRow label="DHT Nodes" value={String(transferInfo.dht_nodes)} />
+                      <DetailRow label="Connection Status" value={transferInfo.connection_status} />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">Failed to load settings.</p>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Category Picker Drawer */}
+      <Drawer open={categoryDrawer.open} onOpenChange={(open) => !open && setCategoryDrawer({ open: false, hash: '' })}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Set Category</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-6 max-h-[60vh] overflow-y-auto">
+            {categoriesLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="rounded-lg border divide-y">
+                <button
+                  className="flex items-center w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
+                  onClick={async () => {
+                    await torrentAction(categoryDrawer.hash, 'setCategory', { category: '' });
+                    setCategoryDrawer({ open: false, hash: '' });
+                  }}
+                >
+                  <span className="text-muted-foreground italic">None</span>
+                </button>
+                {Object.entries(categories).map(([key, cat]) => (
+                  <button
+                    key={key}
+                    className="flex items-center justify-between w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
+                    onClick={async () => {
+                      await torrentAction(categoryDrawer.hash, 'setCategory', { category: cat.name });
+                      setCategoryDrawer({ open: false, hash: '' });
+                    }}
+                  >
+                    <span>{cat.name}</span>
+                    {cat.savePath && (
+                      <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{cat.savePath}</span>
+                    )}
+                  </button>
+                ))}
+                {Object.keys(categories).length === 0 && (
+                  <p className="px-3 py-3 text-sm text-muted-foreground text-center">No categories found</p>
+                )}
+              </div>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Rename Drawer */}
+      <Drawer open={renameDrawer.open} onOpenChange={(open) => !open && setRenameDrawer({ open: false, hash: '', name: '' })}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Rename Torrent</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-2">
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              placeholder="Torrent name"
+              autoFocus
+            />
+          </div>
+          <DrawerFooter>
+            <Button onClick={handleRename} disabled={renaming || !renameValue.trim()} className="w-full">
+              {renaming ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Renaming...
+                </>
+              ) : (
+                'Rename'
+              )}
+            </Button>
+            <DrawerClose asChild>
+              <Button variant="outline" className="w-full">Cancel</Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Bulk Speed Limit Drawer */}
+      <Drawer open={bulkSpeedDrawer} onOpenChange={setBulkSpeedDrawer}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Set Speed Limits ({selectedTorrents.size} torrents)</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-6 space-y-1">
+            <div className="rounded-lg border divide-y">
+              <SpeedLimitInput
+                label="Download Limit"
+                currentLimit={0}
+                onSave={async (limit) => {
+                  await bulkAction('setDownloadLimit', { limit });
+                  setBulkSpeedDrawer(false);
+                }}
+              />
+              <SpeedLimitInput
+                label="Upload Limit"
+                currentLimit={0}
+                onSave={async (limit) => {
+                  await bulkAction('setUploadLimit', { limit });
+                  setBulkSpeedDrawer(false);
+                }}
+              />
+            </div>
+          </div>
         </DrawerContent>
       </Drawer>
     </div>

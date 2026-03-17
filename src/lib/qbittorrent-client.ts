@@ -293,9 +293,108 @@ export class QBittorrentClient {
     return this.get('/api/v2/torrents/categories');
   }
 
+  // Per-torrent speed limits
+  async setTorrentDownloadLimit(hashes: string, limit: number): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('limit', String(limit));
+    await this.post('/api/v2/torrents/setDownloadLimit', params.toString());
+  }
+
+  async setTorrentUploadLimit(hashes: string, limit: number): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('limit', String(limit));
+    await this.post('/api/v2/torrents/setUploadLimit', params.toString());
+  }
+
+  // Torrent options
+  async toggleSequentialDownload(hashes: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    await this.post('/api/v2/torrents/toggleSequentialDownload', params.toString());
+  }
+
+  async toggleFirstLastPiecePrio(hashes: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    await this.post('/api/v2/torrents/toggleFirstLastPiecePrio', params.toString());
+  }
+
+  async setCategory(hashes: string, category: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('category', category);
+    await this.post('/api/v2/torrents/setCategory', params.toString());
+  }
+
+  async setShareLimits(hashes: string, ratioLimit: number, seedingTimeLimit: number, inactiveSeedingTimeLimit: number): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('ratioLimit', String(ratioLimit));
+    params.append('seedingTimeLimit', String(seedingTimeLimit));
+    params.append('inactiveSeedingTimeLimit', String(inactiveSeedingTimeLimit));
+    await this.post('/api/v2/torrents/setShareLimits', params.toString());
+  }
+
+  async recheckTorrent(hashes: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    await this.post('/api/v2/torrents/recheck', params.toString());
+  }
+
+  async reannounceTorrent(hashes: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    await this.post('/api/v2/torrents/reannounce', params.toString());
+  }
+
+  async setAutoManagement(hashes: string, enable: boolean): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hashes', hashes);
+    params.append('enable', String(enable));
+    await this.post('/api/v2/torrents/setAutoManagement', params.toString());
+  }
+
+  async renameTorrent(hash: string, name: string): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('hash', hash);
+    params.append('name', name);
+    await this.post('/api/v2/torrents/rename', params.toString());
+  }
+
   // Transfer
   async getTransferInfo(): Promise<QBittorrentTransferInfo> {
     return this.get<QBittorrentTransferInfo>('/api/v2/transfer/info');
+  }
+
+  // Global speed limits
+  async getGlobalDownloadLimit(): Promise<number> {
+    return this.get<number>('/api/v2/transfer/downloadLimit');
+  }
+
+  async getGlobalUploadLimit(): Promise<number> {
+    return this.get<number>('/api/v2/transfer/uploadLimit');
+  }
+
+  async setGlobalDownloadLimit(limit: number): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('limit', String(limit));
+    await this.post('/api/v2/transfer/setDownloadLimit', params.toString());
+  }
+
+  async setGlobalUploadLimit(limit: number): Promise<void> {
+    const params = new URLSearchParams();
+    params.append('limit', String(limit));
+    await this.post('/api/v2/transfer/setUploadLimit', params.toString());
+  }
+
+  async getSpeedLimitsMode(): Promise<number> {
+    return this.get<number>('/api/v2/transfer/speedLimitsMode');
+  }
+
+  async toggleSpeedLimitsMode(): Promise<void> {
+    await this.post('/api/v2/transfer/toggleSpeedLimitsMode');
   }
 
   // App
