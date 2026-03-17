@@ -305,8 +305,9 @@ export default function SeasonDetailPage() {
   return (
     <div className="space-y-4 pb-20">
       <PageHeader
-        subtitle={series.title}
+        subtitle={<Link href={`/series/${seriesId}`} className="hover:underline">{series.title}</Link>}
         title={seasonTitle}
+        onBack={() => router.push(`/series/${seriesId}`)}
         rightContent={
           <div className="flex items-center gap-1">
             {refreshing && !loading && (

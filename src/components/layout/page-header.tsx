@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 
 interface PageHeaderProps {
   title: string;
-  subtitle?: string;
+  subtitle?: React.ReactNode;
   showBack?: boolean;
   onBack?: () => void;
   rightContent?: React.ReactNode;

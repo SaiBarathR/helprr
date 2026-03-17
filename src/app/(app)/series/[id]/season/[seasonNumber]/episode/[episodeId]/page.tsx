@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerClose,
@@ -116,6 +117,7 @@ interface EpisodeWithFile extends SonarrEpisode {
 
 export default function EpisodeDetailPage() {
   const { id, seasonNumber: seasonNumberParam, episodeId: episodeIdParam } = useParams();
+  const router = useRouter();
   const seriesId = Number(id);
   const seasonNumber = Number(seasonNumberParam);
   const episodeId = Number(episodeIdParam);
@@ -337,8 +339,15 @@ export default function EpisodeDetailPage() {
   return (
     <div className="space-y-4 pb-20">
       <PageHeader
-        subtitle={series.title}
+        subtitle={
+          <span className="flex items-center gap-1 truncate">
+            <Link href={`/series/${seriesId}`} className="hover:underline truncate">{series.title}</Link>
+            <span className="text-muted-foreground/40 shrink-0">/</span>
+            <Link href={`/series/${seriesId}/season/${seasonNumber}`} className="hover:underline shrink-0">S{String(seasonNumber).padStart(2, '0')}</Link>
+          </span>
+        }
         title={episode.title || 'TBA'}
+        onBack={() => router.push(`/series/${seriesId}/season/${seasonNumber}`)}
         rightContent={
           <div className="flex items-center gap-1">
             {refreshing && !loading && (
