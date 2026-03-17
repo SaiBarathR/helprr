@@ -718,7 +718,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-3">
-      <div className="sticky top-0 z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2">
+      <div className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
         {/* Top bar: title + view tabs */}
         <div className="flex items-center justify-between md:hidden">
           <ViewTabs

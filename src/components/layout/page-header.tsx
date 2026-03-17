@@ -19,13 +19,10 @@ export function PageHeader({ title, subtitle, showBack = true, onBack, rightCont
   return (
     <header
       className={cn(
-        'sticky top-0 z-40 bg-background/80 backdrop-blur-lg',
+        'sticky z-40 bg-background/80 backdrop-blur-lg',
         className
       )}
-      style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        marginTop: 'calc(-1 * env(safe-area-inset-top, 0px))',
-      }}
+      style={{ top: 'var(--header-height, 0px)' }}
     >
       <div className="flex items-center h-11 px-1">
         {/* Left: back button */}

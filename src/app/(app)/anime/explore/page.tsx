@@ -315,14 +315,13 @@ export default function AnimePage() {
         Anime
       </Link>
 
-      {/* Search */}
-      <div className="pt-1 pb-1">
+      {/* Sticky search + sort/filter toolbar */}
+      <div className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1" style={{ top: 'var(--header-height, 0px)' }}>
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search anime..."
         />
-      </div>
 
       {/* Sort pills + Filter button */}
       {viewMode !== 'search' && (
@@ -361,6 +360,7 @@ export default function AnimePage() {
           })}
         </div>
       )}
+      </div>
 
       {/* Content */}
       {loading ? (

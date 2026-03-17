@@ -168,6 +168,8 @@ interface UIState {
   calendarMonitoredOnly: boolean;
   setCalendarMonitoredOnly: (v: boolean) => void;
   // Navigation preferences
+  navPosition: 'top' | 'bottom';
+  setNavPosition: (position: 'top' | 'bottom') => void;
   navOrder: NavItemId[];
   disabledNavItems: NavItemId[];
   defaultPage: NavItemId;
@@ -252,6 +254,8 @@ export const useUIStore = create<UIState>()(
       calendarMonitoredOnly: false,
       setCalendarMonitoredOnly: (v) => set({ calendarMonitoredOnly: v }),
       // Navigation
+      navPosition: 'top',
+      setNavPosition: (position) => set({ navPosition: position }),
       navOrder: [...DEFAULT_NAV_ORDER],
       disabledNavItems: [],
       defaultPage: 'dashboard' as NavItemId,
@@ -320,7 +324,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 9,
+      version: 10,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -383,6 +387,9 @@ export const useUIStore = create<UIState>()(
         if (version < 9) {
           state.animeSort = 'seasonal';
         }
+        if (version < 10) {
+          state.navPosition = 'top';
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -410,6 +417,7 @@ export const useUIStore = create<UIState>()(
         animeFilters: state.animeFilters,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
+        navPosition: state.navPosition,
         navOrder: state.navOrder,
         disabledNavItems: state.disabledNavItems,
         defaultPage: state.defaultPage,

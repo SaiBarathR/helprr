@@ -47,6 +47,7 @@
 }
 
 :root {
+  --header-height: calc(env(safe-area-inset-top, 0px) + 3rem);
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -133,6 +134,17 @@
   summary,
   [tabindex]:not([tabindex="-1"]) {
     cursor: pointer;
+  }
+}
+
+:root[data-nav-position="bottom"] {
+  --header-height: env(safe-area-inset-top, 0px);
+}
+
+@media (min-width: 768px) {
+  :root,
+  :root[data-nav-position="bottom"] {
+    --header-height: 0px;
   }
 }
 
@@ -360,4 +372,10 @@ html {
   .widget-jiggle:nth-child(5n) {
     animation: none;
   }
+}
+
+/* Scroll margin for calendar scrollIntoView targets */
+[data-agenda-date],
+[data-week-date] {
+  scroll-margin-top: calc(var(--header-height, 0px) + 4rem);
 }

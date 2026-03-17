@@ -479,108 +479,110 @@ export default function SeriesPage() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-              aria-label={`Filter: ${activeFilterLabel}`}
-            >
-              <Filter className="h-5 w-5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuLabel>Filter</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {filterOptions.map((opt) => (
-              <DropdownMenuCheckboxItem
-                key={opt.value}
-                checked={filter === opt.value}
-                onCheckedChange={() => setFilter(opt.value)}
+      <div className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={`Filter: ${activeFilterLabel}`}
               >
-                {opt.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                <Filter className="h-5 w-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Filter</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {filterOptions.map((opt) => (
+                <DropdownMenuCheckboxItem
+                  key={opt.value}
+                  checked={filter === opt.value}
+                  onCheckedChange={() => setFilter(opt.value)}
+                >
+                  {opt.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-              aria-label={`Sort: ${activeSortLabel} ${sortDir === 'asc' ? 'Ascending' : 'Descending'}`}
-            >
-              <ArrowUpDown className="h-5 w-5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {sortOptions.map((opt) => (
-              <DropdownMenuCheckboxItem
-                key={opt.value}
-                checked={sort === opt.value}
-                onCheckedChange={() => setSort(opt.value)}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={`Sort: ${activeSortLabel} ${sortDir === 'asc' ? 'Ascending' : 'Descending'}`}
               >
-                {opt.label}
+                <ArrowUpDown className="h-5 w-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuLabel>Sort By</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {sortOptions.map((opt) => (
+                <DropdownMenuCheckboxItem
+                  key={opt.value}
+                  checked={sort === opt.value}
+                  onCheckedChange={() => setSort(opt.value)}
+                >
+                  {opt.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={sortDir === 'asc'}
+                onCheckedChange={() => setSortDir('asc')}
+              >
+                Ascending
               </DropdownMenuCheckboxItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem
-              checked={sortDir === 'asc'}
-              onCheckedChange={() => setSortDir('asc')}
-            >
-              Ascending
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={sortDir === 'desc'}
-              onCheckedChange={() => setSortDir('desc')}
-            >
-              Descending
-            </DropdownMenuCheckboxItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuCheckboxItem
+                checked={sortDir === 'desc'}
+                onCheckedChange={() => setSortDir('desc')}
+              >
+                Descending
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        <ViewSelector value={viewMode} onChange={setViewMode} />
-        <FieldToggles
-          available={FIELD_OPTIONS_BY_MODE[viewMode]}
-          selected={visibleFields}
-          onChange={setVisibleFields}
-          posterSize={viewMode !== 'table' ? posterSize : undefined}
-          onPosterSizeChange={viewMode !== 'table' ? setPosterSize : undefined}
-        />
+          <ViewSelector value={viewMode} onChange={setViewMode} />
+          <FieldToggles
+            available={FIELD_OPTIONS_BY_MODE[viewMode]}
+            selected={visibleFields}
+            onChange={setVisibleFields}
+            posterSize={viewMode !== 'table' ? posterSize : undefined}
+            onPosterSizeChange={viewMode !== 'table' ? setPosterSize : undefined}
+          />
 
-        <div className="flex-1" />
+          <div className="flex-1" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={() => fetchData(true)}
-              disabled={refreshing}
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-              aria-label="Refresh Series"
-            >
-              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh Series</TooltipContent>
-        </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => fetchData(true)}
+                disabled={refreshing}
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label="Refresh Series"
+              >
+                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh Series</TooltipContent>
+          </Tooltip>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link
-              href="/series/add"
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-              aria-label="Add Series"
-            >
-              <Plus className="h-5 w-5" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent>Add Series</TooltipContent>
-        </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                href="/series/add"
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                aria-label="Add Series"
+              >
+                <Plus className="h-5 w-5" />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent>Add Series</TooltipContent>
+          </Tooltip>
+        </div>
+
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." />
       </div>
-
-      <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." />
 
       {(() => {
         if (loading) {

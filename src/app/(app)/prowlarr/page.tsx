@@ -1751,11 +1751,13 @@ export default function ProwlarrPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="indexers">
-        <TabsList className="w-full">
-          <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
-          <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>
-          <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
-        </TabsList>
+        <div className="sticky z-30 -mx-4 px-4 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
+          <TabsList className="w-full">
+            <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
+            <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>
+            <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="indexers" className="mt-4">
           <IndexersTab />
