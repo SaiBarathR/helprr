@@ -119,6 +119,8 @@ function SortableNavItem({
  * @returns The React element for the navigation order settings panel.
  */
 export function NavOrderSettings() {
+  const navPosition = useUIStore((s) => s.navPosition);
+  const setNavPosition = useUIStore((s) => s.setNavPosition);
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
   const defaultPage = useUIStore((s) => s.defaultPage);
@@ -171,6 +173,24 @@ export function NavOrderSettings() {
     <div className="grouped-section px-4 mb-6">
       <div className="grouped-section-title">Navigation</div>
       <div className="grouped-section-content">
+        <div className="grouped-row">
+          <span className="text-sm">Position</span>
+          <div className="flex items-center rounded-lg bg-muted/60 p-0.5">
+            {(['top', 'bottom'] as const).map((pos) => (
+              <button
+                key={pos}
+                onClick={() => setNavPosition(pos)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${
+                  navPosition === pos
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground'
+                }`}
+              >
+                {pos}
+              </button>
+            ))}
+          </div>
+        </div>
         <DndContext
           id="nav-order-settings-dnd"
           sensors={sensors}

@@ -25,7 +25,7 @@ export function Header() {
   const title = routeTitles[pathname];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm pt-[env(safe-area-inset-top)]">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm pt-[env(safe-area-inset-top)] md:hidden">
       <div className="flex items-center h-11 px-4">
         {/* Desktop: show logo */}
         <div className="hidden md:flex items-center gap-2">

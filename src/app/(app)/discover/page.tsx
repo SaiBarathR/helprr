@@ -704,7 +704,7 @@ export default function DiscoverPage() {
 
   return (
     <div className="space-y-4">
-      <div className="sticky top-0 z-30 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="sticky z-30 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         <div className="flex items-center gap-2">
           <div className="flex-1">
             <SearchBar

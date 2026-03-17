@@ -507,85 +507,87 @@ export default function TorrentsPage() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-              aria-label={`Filter: ${activeFilterLabel}`}
-            >
-              <Filter className="h-5 w-5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuLabel>Filter</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {filterOptions.map((opt) => (
-              <DropdownMenuCheckboxItem
-                key={opt.value}
-                checked={filter === opt.value}
-                onCheckedChange={() => setFilter(opt.value)}
+      <div className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={`Filter: ${activeFilterLabel}`}
               >
-                {opt.label}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                <Filter className="h-5 w-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuLabel>Filter</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {filterOptions.map((opt) => (
+                <DropdownMenuCheckboxItem
+                  key={opt.value}
+                  checked={filter === opt.value}
+                  onCheckedChange={() => setFilter(opt.value)}
+                >
+                  {opt.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-              onClick={() => {
-                setRefreshing(true);
-                if (torrents.length === 0) setLoading(true);
-                void fetchSummary();
-              }}
-              aria-label="Refresh"
-            >
-              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Refresh</TooltipContent>
-        </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                onClick={() => {
+                  setRefreshing(true);
+                  if (torrents.length === 0) setLoading(true);
+                  void fetchSummary();
+                }}
+                aria-label="Refresh"
+              >
+                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh</TooltipContent>
+          </Tooltip>
 
-        {transferInfo && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground ml-1">
-            <span className="flex items-center gap-1">
-              <ArrowDown className="h-3 w-3 text-green-500" />
-              {formatSpeed(transferInfo.dl_info_speed)}
-            </span>
-            <span className="flex items-center gap-1">
-              <ArrowUp className="h-3 w-3 text-blue-500" />
-              {formatSpeed(transferInfo.up_info_speed)}
-            </span>
-          </div>
-        )}
+          {transferInfo && (
+            <div className="flex items-center gap-3 text-xs text-muted-foreground ml-1">
+              <span className="flex items-center gap-1">
+                <ArrowDown className="h-3 w-3 text-green-500" />
+                {formatSpeed(transferInfo.dl_info_speed)}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowUp className="h-3 w-3 text-blue-500" />
+                {formatSpeed(transferInfo.up_info_speed)}
+              </span>
+            </div>
+          )}
 
-        <div className="flex-1" />
+          <div className="flex-1" />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-              onClick={() => router.push('/torrents/add')}
-              aria-label="Add Torrent"
-            >
-              <Plus className="h-5 w-5" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Add Torrent</TooltipContent>
-        </Tooltip>
-      </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                onClick={() => router.push('/torrents/add')}
+                aria-label="Add Torrent"
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Add Torrent</TooltipContent>
+          </Tooltip>
+        </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search torrents..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search torrents..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {selectedTorrents.size > 0 && (

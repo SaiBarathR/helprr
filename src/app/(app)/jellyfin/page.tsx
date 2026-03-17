@@ -159,7 +159,7 @@ export default function JellyfinPage() {
         </Button>
       </div> */}
 
-      <div className="px-2 pb-3 pt-3">
+      <div className="sticky z-30 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {TABS.map((t) => (
             <button

@@ -14,20 +14,14 @@ import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems, getBottomNavLayout } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
 
-/**
- * Render a responsive bottom navigation bar with primary tabs and an optional "More" popover.
- *
- * The navigation derives visible tabs and overflow items from the UI store, highlights the active
- * route based on the current pathname, and closes the "More" popover when a menu item is selected.
- *
- * @returns The JSX element for the bottom navigation bar
- */
 export function BottomNav() {
   const pathname = usePathname();
   const { pendingHref, beginPending } = useNavPending();
   const [moreOpen, setMoreOpen] = useState(false);
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
+  const navPosition = useUIStore((s) => s.navPosition);
+  const isBottom = navPosition === 'bottom';
 
   const { tabs, moreItems } = useMemo(() => {
     const enabled = getEnabledNavItems(navOrder, disabledNavItems);
@@ -39,7 +33,12 @@ export function BottomNav() {
   );
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 backdrop-blur-sm pb-[env(safe-area-inset-bottom)]">
+    <nav className={cn(
+      'md:hidden z-50 border-border bg-background/95 backdrop-blur-sm',
+      isBottom
+        ? 'fixed bottom-0 left-0 right-0 border-t pb-[env(safe-area-inset-bottom)]'
+        : 'sticky top-0 border-b pt-[env(safe-area-inset-top)]'
+    )}>
       <div className="flex items-center justify-around h-12">
         {tabs.map(({ href, icon: Icon, shortLabel }) => {
           const isActive = pathname === href || pathname.startsWith(href + '/');
@@ -70,7 +69,6 @@ export function BottomNav() {
           );
         })}
 
-        {/* More button — only shown when there are items beyond the first 4 */}
         {moreItems.length > 0 && (
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
@@ -85,7 +83,7 @@ export function BottomNav() {
               </button>
             </PopoverTrigger>
             <PopoverContent
-              side="top"
+              side={isBottom ? 'top' : 'bottom'}
               align="end"
               sideOffset={8}
               className="w-56 p-2"

@@ -168,101 +168,101 @@ export default function ActivityPage() {
 
   return (
     <div className="flex flex-col min-h-0">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-2">
-        <h1 className="text-xl font-bold">Activity</h1>
-        <div className="flex items-center gap-1">
-          {/* Filter */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Filter className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {FILTER_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.key}
-                  onClick={() => setFilterBy(opt.key)}
-                  className={filterBy === opt.key ? 'bg-accent' : ''}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Sort */}
-          {availableSortOptions.length > 0 && (
+      <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
+        {/* Top bar */}
+        <div className="flex items-center justify-between pt-2 pb-2 w-full">
+          {/* <h1 className="text-xl font-bold">Activity</h1> */}
+          <div className="flex items-center gap-1">
+            {/* Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <ArrowUpDown className="h-4 w-4" />
+                  <Filter className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {availableSortOptions.map((opt) => (
+                {FILTER_OPTIONS.map((opt) => (
                   <DropdownMenuItem
                     key={opt.key}
-                    onClick={() => setSortBy(opt.key)}
-                    className={sortBy === opt.key ? 'bg-accent' : ''}
+                    onClick={() => setFilterBy(opt.key)}
+                    className={filterBy === opt.key ? 'bg-accent' : ''}
                   >
                     {opt.label}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          )}
 
-          {/* History */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => router.push('/activity/history')}
-          >
-            <Clock className="h-4 w-4" />
-          </Button>
+            {/* Sort */}
+            {availableSortOptions.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <ArrowUpDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {availableSortOptions.map((opt) => (
+                    <DropdownMenuItem
+                      key={opt.key}
+                      onClick={() => setSortBy(opt.key)}
+                      className={sortBy === opt.key ? 'bg-accent' : ''}
+                    >
+                      {opt.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
-          {/* Refresh */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={handleRefreshActivity}
-                disabled={refreshing}
-              >
-                {refreshing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh</TooltipContent>
-          </Tooltip>
+            {/* History */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => router.push('/activity/history')}
+            >
+              <Clock className="h-4 w-4" />
+            </Button>
+
+            {/* Refresh */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={handleRefreshActivity}
+                  disabled={refreshing}
+                >
+                  {refreshing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Refresh</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
-      </div>
 
-      {/* Queue count */}
-      {tab === 'queue' && queueCount > 0 && (
-        <p className="px-4 text-xs text-muted-foreground mb-1">
-          {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
-        </p>
-      )}
+        {/* Queue count */}
+        {tab === 'queue' && queueCount > 0 && (
+          <p className="px-4 text-xs text-muted-foreground mb-1">
+            {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
+          </p>
+        )}
 
-      {/* Segmented control tabs */}
-      <div className="px-4 pb-3">
+        {/* Segmented control tabs */}
         <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => handleTabChange(t.key)}
               className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
                 }`}
             >
               {t.label}
