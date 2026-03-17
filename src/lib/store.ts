@@ -324,7 +324,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 10,
+      version: 11,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -389,6 +389,33 @@ export const useUIStore = create<UIState>()(
         }
         if (version < 10) {
           state.navPosition = 'top';
+        }
+        if (version < 11) {
+          // Merge torrent-summary + transfer-speed widgets into torrent-overview
+          const layout = Array.isArray(state.dashboardLayout)
+            ? state.dashboardLayout as WidgetInstance[]
+            : [];
+          const hadOld = layout.some(
+            (w) => w.widgetId === 'torrent-summary' || w.widgetId === 'transfer-speed'
+          );
+          if (hadOld) {
+            // Find first old torrent widget index for placement
+            const firstIdx = layout.findIndex(
+              (w) => w.widgetId === 'torrent-summary' || w.widgetId === 'transfer-speed'
+            );
+            // Remove all old torrent widgets
+            const filtered = layout.filter(
+              (w) => w.widgetId !== 'torrent-summary' && w.widgetId !== 'transfer-speed'
+            );
+            // Insert new combined widget at same position
+            const combined: WidgetInstance = {
+              id: `torrent-overview-1-${Date.now()}`,
+              widgetId: 'torrent-overview',
+              size: 'medium',
+            };
+            filtered.splice(firstIdx, 0, combined);
+            state.dashboardLayout = filtered;
+          }
         }
         return state as unknown as UIState;
       },
