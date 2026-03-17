@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
-import type { SonarrSeries, SonarrEpisode, HistoryItem } from '@/types';
+import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries } from '@/types';
 import {
   getEpisodeDetailSnapshot,
   patchEpisodeAcrossSnapshots,
@@ -35,17 +35,23 @@ function formatBytes(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function formatBitrate(value?: number): string | null {
-  if (value === undefined || value === null) return null;
+function formatBitrate(value?: string | number): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'string') return value;
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} mbps`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)} kbps`;
-  if (value > 0) return `${value} bps`;
-  return null;
+  return `${value} bps`;
 }
 
-function formatRuntime(value?: string): string | null {
-  if (!value) return null;
-  return value;
+function formatRuntime(value?: string | number): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'string') return value;
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const totalSeconds = Math.floor(value);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
@@ -61,6 +67,65 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
       ))}
     </div>
   );
+}
+
+function buildEpisodeDrawerData(episodeFile: SonarrEpisodeFile): {
+  infoRows: DrawerRow[];
+  vidRows: DrawerRow[];
+  audRows: DrawerRow[];
+} {
+  const mediaInfo = episodeFile.mediaInfo;
+  const qualityName = episodeFile.quality?.quality?.name ?? 'Unknown';
+  const fileLanguages = episodeFile.languages?.length
+    ? episodeFile.languages.map((language) => language.name).join(', ')
+    : episodeFile.language?.name ?? '';
+  const audioLanguages = mediaInfo?.audioLanguages || fileLanguages;
+  const subtitles = mediaInfo?.subtitles?.trim() ? mediaInfo.subtitles : 'None';
+  const runtime = formatRuntime(mediaInfo?.runTime);
+  const videoBitrate = formatBitrate(mediaInfo?.videoBitrate);
+  const audioBitrate = formatBitrate(mediaInfo?.audioBitrate);
+
+  const infoRows: DrawerRow[] = [
+    ...(episodeFile.relativePath
+      ? [{ label: 'Filename', value: episodeFile.relativePath, breakValue: true }]
+      : []),
+    { label: 'File Size', value: formatBytes(episodeFile.size) },
+    { label: 'Quality', value: qualityName },
+    ...(fileLanguages ? [{ label: 'Language', value: fileLanguages }] : []),
+    ...(episodeFile.path ? [{ label: 'Path', value: episodeFile.path, breakValue: true }] : []),
+  ];
+
+  const vidRows: DrawerRow[] = [
+    ...(runtime ? [{ label: 'Runtime', value: runtime }] : []),
+    ...(mediaInfo?.resolution ? [{ label: 'Resolution', value: mediaInfo.resolution }] : []),
+    ...(mediaInfo?.videoCodec ? [{ label: 'Codec', value: mediaInfo.videoCodec.toUpperCase() }] : []),
+    ...(mediaInfo?.videoDynamicRangeType
+      ? [{ label: 'Dynamic Range Type', value: mediaInfo.videoDynamicRangeType }]
+      : []),
+    ...(videoBitrate ? [{ label: 'Bitrate', value: videoBitrate }] : []),
+    ...(mediaInfo?.videoFps !== undefined && mediaInfo.videoFps !== null
+      ? [{ label: 'Framerate', value: `${mediaInfo.videoFps} fps` }]
+      : []),
+    ...(mediaInfo?.videoBitDepth !== undefined && mediaInfo.videoBitDepth !== null
+      ? [{ label: 'Color Depth', value: `${mediaInfo.videoBitDepth} bit` }]
+      : []),
+    ...(mediaInfo?.scanType ? [{ label: 'Scan Type', value: mediaInfo.scanType }] : []),
+  ];
+
+  const audRows: DrawerRow[] = [
+    ...(mediaInfo?.audioCodec ? [{ label: 'Codec', value: mediaInfo.audioCodec.toUpperCase() }] : []),
+    ...(mediaInfo?.audioChannels !== undefined && mediaInfo.audioChannels !== null
+      ? [{ label: 'Channels', value: String(mediaInfo.audioChannels) }]
+      : []),
+    ...(audioBitrate ? [{ label: 'Bitrate', value: audioBitrate }] : []),
+    ...(audioLanguages ? [{ label: 'Languages', value: audioLanguages }] : []),
+    ...(mediaInfo?.audioStreamCount !== undefined && mediaInfo.audioStreamCount !== null
+      ? [{ label: 'Stream Count', value: String(mediaInfo.audioStreamCount) }]
+      : []),
+    ...(mediaInfo ? [{ label: 'Subtitles', value: subtitles }] : []),
+  ];
+
+  return { infoRows, vidRows, audRows };
 }
 
 function eventTypeLabel(eventType: string): string {
@@ -84,35 +149,6 @@ function eventTypeBadgeVariant(eventType: string): 'default' | 'secondary' | 'de
     case 'episodeFileDeleted': return 'destructive';
     default: return 'outline';
   }
-}
-
-// Extended episode type that may include file info from Sonarr API
-interface EpisodeWithFile extends SonarrEpisode {
-  episodeFile?: {
-    id: number;
-    relativePath: string;
-    path: string;
-    size: number;
-    quality: { quality: { name: string; resolution: number } };
-    mediaInfo?: {
-      audioBitrate: number;
-      audioChannels: number;
-      audioCodec: string;
-      audioLanguages: string;
-      audioStreamCount: number;
-      videoBitDepth: number;
-      videoBitrate: number;
-      videoCodec: string;
-      videoDynamicRangeType: string;
-      videoFps: number;
-      resolution: string;
-      runTime: string;
-      scanType: string;
-      subtitles: string;
-    };
-    language?: { id: number; name: string };
-    languages?: { id: number; name: string }[];
-  };
 }
 
 export default function EpisodeDetailPage() {
@@ -203,7 +239,7 @@ export default function EpisodeDetailPage() {
 
     if (cached) {
       setSeries(cached.series);
-      setEpisode(cached.episode as EpisodeWithFile | null);
+      setEpisode(cached.episode);
       setHistory(cached.history);
       setLoading(false);
       setHistoryLoading(false);
@@ -741,59 +777,7 @@ export default function EpisodeDetailPage() {
             </DrawerDescription>
           </DrawerHeader>
           {episodeFile && (() => {
-            const epMediaInfo = episodeFile.mediaInfo;
-            const epQualityName = episodeFile.quality?.quality?.name ?? 'Unknown';
-            const epFileLanguages = episodeFile.languages?.length
-              ? episodeFile.languages.map((l) => l.name).join(', ')
-              : episodeFile.language?.name ?? '';
-            const epAudioLanguages = epMediaInfo?.audioLanguages || epFileLanguages;
-            const epSubtitles = epMediaInfo?.subtitles?.trim() ? epMediaInfo.subtitles : 'None';
-
-            const infoRows: DrawerRow[] = [
-              ...(episodeFile.relativePath
-                ? [{ label: 'Filename', value: episodeFile.relativePath, breakValue: true }]
-                : []),
-              { label: 'File Size', value: formatBytes(episodeFile.size) },
-              { label: 'Quality', value: epQualityName },
-              ...(epFileLanguages ? [{ label: 'Language', value: epFileLanguages }] : []),
-              ...(episodeFile.path ? [{ label: 'Path', value: episodeFile.path, breakValue: true }] : []),
-            ];
-
-            const vidRows: DrawerRow[] = [
-              ...(formatRuntime(epMediaInfo?.runTime)
-                ? [{ label: 'Runtime', value: formatRuntime(epMediaInfo?.runTime) as string }]
-                : []),
-              ...(epMediaInfo?.resolution ? [{ label: 'Resolution', value: epMediaInfo.resolution }] : []),
-              ...(epMediaInfo?.videoCodec ? [{ label: 'Codec', value: epMediaInfo.videoCodec.toUpperCase() }] : []),
-              ...(epMediaInfo?.videoDynamicRangeType
-                ? [{ label: 'Dynamic Range Type', value: epMediaInfo.videoDynamicRangeType }]
-                : []),
-              ...(formatBitrate(epMediaInfo?.videoBitrate)
-                ? [{ label: 'Bitrate', value: formatBitrate(epMediaInfo?.videoBitrate) as string }]
-                : []),
-              ...(epMediaInfo?.videoFps !== undefined && epMediaInfo.videoFps !== null
-                ? [{ label: 'Framerate', value: `${epMediaInfo.videoFps} fps` }]
-                : []),
-              ...(epMediaInfo?.videoBitDepth !== undefined && epMediaInfo.videoBitDepth !== null
-                ? [{ label: 'Color Depth', value: `${epMediaInfo.videoBitDepth} bit` }]
-                : []),
-              ...(epMediaInfo?.scanType ? [{ label: 'Scan Type', value: epMediaInfo.scanType }] : []),
-            ];
-
-            const audRows: DrawerRow[] = [
-              ...(epMediaInfo?.audioCodec ? [{ label: 'Codec', value: epMediaInfo.audioCodec.toUpperCase() }] : []),
-              ...(epMediaInfo?.audioChannels !== undefined && epMediaInfo.audioChannels !== null
-                ? [{ label: 'Channels', value: String(epMediaInfo.audioChannels) }]
-                : []),
-              ...(formatBitrate(epMediaInfo?.audioBitrate)
-                ? [{ label: 'Bitrate', value: formatBitrate(epMediaInfo?.audioBitrate) as string }]
-                : []),
-              ...(epAudioLanguages ? [{ label: 'Languages', value: epAudioLanguages }] : []),
-              ...(epMediaInfo?.audioStreamCount !== undefined && epMediaInfo.audioStreamCount !== null
-                ? [{ label: 'Stream Count', value: String(epMediaInfo.audioStreamCount) }]
-                : []),
-              ...(epMediaInfo ? [{ label: 'Subtitles', value: epSubtitles }] : []),
-            ];
+            const { infoRows, vidRows, audRows } = buildEpisodeDrawerData(episodeFile);
 
             return (
               <div className="px-4 pb-4 space-y-4 overflow-y-auto max-h-[60vh]">

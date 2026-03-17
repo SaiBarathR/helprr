@@ -97,6 +97,50 @@ export interface SonarrEpisode {
   series?: SonarrSeries;
 }
 
+export interface SonarrEpisodeFileLanguage {
+  id: number;
+  name: string;
+}
+
+export interface SonarrEpisodeFileQuality {
+  quality: {
+    name: string;
+    resolution?: number;
+  };
+}
+
+export interface SonarrEpisodeFileMediaInfo {
+  audioBitrate?: number | string;
+  audioChannels?: number | string;
+  audioCodec?: string;
+  audioLanguages?: string;
+  audioStreamCount?: number | string;
+  videoBitDepth?: number | string;
+  videoBitrate?: number | string;
+  videoCodec?: string;
+  videoDynamicRangeType?: string;
+  videoFps?: number | string;
+  resolution?: string;
+  runTime?: string | number;
+  scanType?: string;
+  subtitles?: string;
+}
+
+export interface SonarrEpisodeFile {
+  id: number;
+  relativePath: string;
+  path: string;
+  size: number;
+  quality: SonarrEpisodeFileQuality;
+  mediaInfo?: SonarrEpisodeFileMediaInfo;
+  language?: SonarrEpisodeFileLanguage;
+  languages?: SonarrEpisodeFileLanguage[];
+}
+
+export interface EpisodeWithFile extends SonarrEpisode {
+  episodeFile?: SonarrEpisodeFile;
+}
+
 export interface SonarrCalendarEntry extends SonarrEpisode {
   series: SonarrSeries;
 }

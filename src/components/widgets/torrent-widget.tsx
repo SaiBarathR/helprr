@@ -1,5 +1,7 @@
 'use client';
 
+import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { ArrowDown, ArrowUp, Pause, HardDrive, Gauge } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
@@ -33,6 +35,28 @@ interface TorrentData {
   dlRateLimit: number;
   upRateLimit: number;
   speedLimitsMode: boolean;
+}
+
+function TorrentWidgetCard({
+  children,
+  editMode,
+}: {
+  children: ReactNode;
+  editMode: boolean;
+}) {
+  if (editMode) {
+    return <div className="rounded-xl bg-card p-4 space-y-3">{children}</div>;
+  }
+
+  return (
+    <Link
+      href="/torrents"
+      aria-label="Open torrents"
+      className="block rounded-xl bg-card p-4 space-y-3 transition-colors hover:bg-muted/30 active:bg-muted/40"
+    >
+      {children}
+    </Link>
+  );
 }
 
 async function fetchTorrentData(): Promise<TorrentData> {
@@ -87,7 +111,7 @@ export function TorrentWidget({ size, refreshInterval, editMode = false }: Widge
 
   if (size === 'medium') {
     return (
-      <div className="rounded-xl bg-card p-4 space-y-3">
+      <TorrentWidgetCard editMode={editMode}>
         {/* Torrent counts */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -147,13 +171,13 @@ export function TorrentWidget({ size, refreshInterval, editMode = false }: Widge
             )}
           </div>
         )}
-      </div>
+      </TorrentWidgetCard>
     );
   }
 
   // large size
   return (
-    <div className="rounded-xl bg-card p-4 space-y-3">
+    <TorrentWidgetCard editMode={editMode}>
       {/* Torrent counts */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -214,6 +238,6 @@ export function TorrentWidget({ size, refreshInterval, editMode = false }: Widge
           )}
         </div>
       )}
-    </div>
+    </TorrentWidgetCard>
   );
 }

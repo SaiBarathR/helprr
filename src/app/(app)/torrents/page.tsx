@@ -124,6 +124,7 @@ function getStateBadge(state: string) {
 }
 
 type FilterType = 'all' | 'downloading' | 'seeding' | 'completed' | 'paused' | 'active';
+const TORRENTS_FILTER_STORAGE_KEY = 'helprr-torrents-filter';
 
 const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -136,6 +137,11 @@ const filterOptions: { value: FilterType; label: string }[] = [
 
 type SortKey = 'name' | 'size' | 'progress' | 'dlspeed' | 'upspeed' | 'eta' | 'ratio' | 'added_on' | 'completion_on' | 'num_seeds' | 'num_leechs' | 'priority' | 'category' | 'state' | 'uploaded' | 'downloaded' | 'amount_left' | 'time_active' | 'seeding_time';
 type SortDir = 'asc' | 'desc';
+const TORRENTS_SORT_KEY_STORAGE_KEY = 'helprr-torrents-sort-key';
+const TORRENTS_SORT_DIR_STORAGE_KEY = 'helprr-torrents-sort-dir';
+const DEFAULT_FILTER: FilterType = 'all';
+const DEFAULT_SORT_KEY: SortKey = 'added_on';
+const DEFAULT_SORT_DIR: SortDir = 'desc';
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Name' },
@@ -187,6 +193,18 @@ function compareTorrents(a: QBittorrentTorrent, b: QBittorrentTorrent, key: Sort
   }
 }
 
+function isFilterType(value: string): value is FilterType {
+  return filterOptions.some((option) => option.value === value);
+}
+
+function isSortKey(value: string): value is SortKey {
+  return SORT_OPTIONS.some((option) => option.key === value);
+}
+
+function isSortDir(value: string): value is SortDir {
+  return value === 'asc' || value === 'desc';
+}
+
 function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
   return (
     a.hash === b.hash
@@ -208,6 +226,9 @@ function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
     && a.downloaded === b.downloaded
     && a.uploaded === b.uploaded
     && a.amount_left === b.amount_left
+    && a.priority === b.priority
+    && a.time_active === b.time_active
+    && a.seeding_time === b.seeding_time
     && a.dl_limit === b.dl_limit
     && a.up_limit === b.up_limit
   );
@@ -496,9 +517,9 @@ export default function TorrentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterType>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('added_on');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [filter, setFilter] = useState<FilterType>(DEFAULT_FILTER);
+  const [sortKey, setSortKey] = useState<SortKey>(DEFAULT_SORT_KEY);
+  const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_SORT_DIR);
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
   const [listOffsetTop, setListOffsetTop] = useState(0);
 
@@ -535,9 +556,10 @@ export default function TorrentsPage() {
 
   // Bulk speed limit drawer
   const [bulkSpeedDrawer, setBulkSpeedDrawer] = useState(false);
+  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
-  const filterRef = useRef<FilterType>('all');
+  const filterRef = useRef<FilterType>(DEFAULT_FILTER);
   const pollInFlightRef = useRef(false);
   const pendingPollRef = useRef(false);
 
@@ -618,6 +640,34 @@ export default function TorrentsPage() {
       setGlobalLimitsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const storedFilter = localStorage.getItem(TORRENTS_FILTER_STORAGE_KEY);
+    const storedSortKey = localStorage.getItem(TORRENTS_SORT_KEY_STORAGE_KEY);
+    const storedSortDir = localStorage.getItem(TORRENTS_SORT_DIR_STORAGE_KEY);
+
+    if (storedFilter && isFilterType(storedFilter)) {
+      setFilter(storedFilter);
+    }
+    if (storedSortKey && isSortKey(storedSortKey)) {
+      setSortKey(storedSortKey);
+    }
+    if (storedSortDir && isSortDir(storedSortDir)) {
+      setSortDir(storedSortDir);
+    }
+
+    setPreferencesLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!preferencesLoaded || typeof window === 'undefined') return;
+
+    localStorage.setItem(TORRENTS_FILTER_STORAGE_KEY, filter);
+    localStorage.setItem(TORRENTS_SORT_KEY_STORAGE_KEY, sortKey);
+    localStorage.setItem(TORRENTS_SORT_DIR_STORAGE_KEY, sortDir);
+  }, [filter, preferencesLoaded, sortDir, sortKey]);
 
   useEffect(() => {
     filterRef.current = filter;

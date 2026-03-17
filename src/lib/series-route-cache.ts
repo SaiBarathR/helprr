@@ -1,4 +1,5 @@
 import type {
+  EpisodeWithFile,
   HistoryItem,
   QualityProfile,
   RootFolder,
@@ -25,7 +26,7 @@ export interface SeasonDetailSnapshot {
 
 export interface EpisodeDetailSnapshot {
   series: SonarrSeries | null;
-  episode: SonarrEpisode | null;
+  episode: EpisodeWithFile | null;
   history: HistoryItem[];
   fetchedAt: number;
 }
@@ -165,7 +166,10 @@ export function patchEpisodesAcrossSnapshots(
     if (!episodeSnapshot?.episode) continue;
     setWithLimit(episodeDetailCache, snapshotKey, {
       ...episodeSnapshot,
-      episode: episodeUpdater(episodeSnapshot.episode),
+      episode: {
+        ...episodeSnapshot.episode,
+        ...episodeUpdater(episodeSnapshot.episode),
+      },
       fetchedAt: Date.now(),
     });
   }
