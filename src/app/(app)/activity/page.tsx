@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
-  Download, Trash2, AlertTriangle,
+  Download, Trash2, AlertTriangle, ExternalLink,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
   Clock, Filter, ArrowUpDown,
 } from 'lucide-react';
@@ -771,13 +772,31 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
           : `${record.title || 'Unknown'} (${record.year || '?'})`;
         const dateStr = isEpisode ? record.airDateUtc || record.airDate : record.added;
 
+        const href = isEpisode && record.seriesId
+          ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
+          : !isEpisode
+            ? `/movies/${record.id}`
+            : null;
+
         return (
           <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
-            <div className="p-1.5 rounded bg-muted">
-              {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
-            </div>
+            {href ? (
+              <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
+                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
+              </Link>
+            ) : (
+              <div className="p-1.5 rounded bg-muted">
+                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
+              </div>
+            )}
             <div className="flex-1 min-w-0">
-              <p className="text-sm truncate">{displayTitle}</p>
+              {href ? (
+                <Link href={href} className="block">
+                  <p className="text-sm truncate">{displayTitle}</p>
+                </Link>
+              ) : (
+                <p className="text-sm truncate">{displayTitle}</p>
+              )}
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
                 {dateStr && (

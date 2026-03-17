@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type JSX } from 'react';
+import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Filter, Loader2 } from 'lucide-react';
+import { Filter, Loader2, ExternalLink, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';
@@ -401,23 +402,56 @@ export default function HistoryPage() {
                   </div>
 
                   {/* Series / Movie info */}
-                  {selectedItem.series && (
-                    <div className="rounded-lg bg-muted/30 p-3">
-                      <p className="text-sm font-medium">{selectedItem.series.title}</p>
-                      {selectedItem.episode && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          S{String(selectedItem.episode.seasonNumber).padStart(2, '0')}
-                          E{String(selectedItem.episode.episodeNumber).padStart(2, '0')} - {selectedItem.episode.title}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {selectedItem.movie && (
-                    <div className="rounded-lg bg-muted/30 p-3">
-                      <p className="text-sm font-medium">{selectedItem.movie.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.movie.year}</p>
-                    </div>
-                  )}
+                  {selectedItem.series && (() => {
+                    const ep = selectedItem.episode;
+                    const seriesId = selectedItem.seriesId || selectedItem.series.id;
+                    const href = seriesId && ep
+                      ? `/series/${seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`
+                      : seriesId
+                        ? `/series/${seriesId}`
+                        : null;
+                    const content = (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{selectedItem.series.title}</p>
+                          {ep && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              S{String(ep.seasonNumber).padStart(2, '0')}
+                              E{String(ep.episodeNumber).padStart(2, '0')} - {ep.title}
+                            </p>
+                          )}
+                        </div>
+                        {href && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                      </>
+                    );
+                    return href ? (
+                      <Link href={href} className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors">
+                        {content}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">{content}</div>
+                    );
+                  })()}
+                  {selectedItem.movie && (() => {
+                    const movieId = selectedItem.movieId || selectedItem.movie.id;
+                    const href = movieId ? `/movies/${movieId}` : null;
+                    const content = (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{selectedItem.movie.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.movie.year}</p>
+                        </div>
+                        {href && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                      </>
+                    );
+                    return href ? (
+                      <Link href={href} className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors">
+                        {content}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">{content}</div>
+                    );
+                  })()}
 
                   {/* Information section */}
                   <div>
