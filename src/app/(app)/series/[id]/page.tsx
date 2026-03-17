@@ -390,6 +390,7 @@ export default function SeriesDetailPage() {
       {/* Page Header */}
       <PageHeader
         title={series.title}
+        onBack={() => router.push('/series')}
         rightContent={
           <div className="flex items-center gap-0.5">
             {refreshing && !loading && (
