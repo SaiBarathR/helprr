@@ -1,5 +1,10 @@
 import { formatDistanceToNow } from 'date-fns';
 
+function parseDateSafe(input: string): Date | null {
+  const date = new Date(input);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   if (bytes < 0) return `-${formatBytes(Math.abs(bytes))}`;
@@ -16,13 +21,13 @@ export function formatCurrency(value: number | null): string | null {
 }
 
 export function formatDistanceToNowSafe(input: string, fallback = 'unknown'): string {
-  const date = new Date(input);
-  if (!Number.isFinite(date.getTime())) return fallback;
+  const date = parseDateSafe(input);
+  if (!date) return fallback;
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
 export function formatDistanceToNowShort(input: string, fallback = 'unknown'): string {
-  const date = new Date(input);
-  if (!Number.isFinite(date.getTime())) return fallback;
+  const date = parseDateSafe(input);
+  if (!date) return fallback;
   return formatDistanceToNow(date, { addSuffix: true }).replace(/^about /, '');
 }

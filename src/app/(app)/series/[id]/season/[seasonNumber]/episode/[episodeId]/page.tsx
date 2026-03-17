@@ -15,8 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
-  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, X, Info,
-  ExternalLink, Film, Tv, Clock, Calendar, HardDrive, FileText, Globe, Volume2, Subtitles,
+  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
+  ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -539,7 +539,11 @@ export default function EpisodeDetailPage() {
             </h3>
             <button
               onClick={() => setFileDrawerOpen(true)}
-              className="p-1 rounded-md hover:bg-muted transition-colors"
+              type="button"
+              aria-label="Open file details"
+              aria-expanded={fileDrawerOpen}
+              aria-controls="episode-file-details-drawer"
+              className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-md hover:bg-muted transition-colors"
               title="File details"
             >
               <Info className="h-4 w-4 text-muted-foreground" />
@@ -729,7 +733,7 @@ export default function EpisodeDetailPage() {
 
       {/* File Detail Drawer */}
       <Drawer open={fileDrawerOpen} onOpenChange={setFileDrawerOpen}>
-        <DrawerContent>
+        <DrawerContent id="episode-file-details-drawer">
           <DrawerHeader>
             <DrawerTitle>Information</DrawerTitle>
             <DrawerDescription className="break-all">

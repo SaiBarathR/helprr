@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/page-header';
+import { PersonCard } from '@/components/media/person-card';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Drawer,
@@ -37,19 +38,16 @@ import {
   Film,
   FileText,
   ExternalLink,
-  User,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { format } from 'date-fns';
-import Link from 'next/link';
 import type { RadarrMovie, RadarrCredit, QualityProfile, Tag } from '@/types';
-import { toCachedImageSrc } from '@/lib/image';
+import { isProtectedApiImageSrc } from '@/lib/image';
 import {
   getMovieDetailSnapshot,
   setMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
-import { isProtectedApiImageSrc } from '@/lib/image';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 type RatingItem = {
@@ -598,50 +596,22 @@ export default function MovieDetailPage() {
             return true;
           }).slice(0, 15);
 
-          const renderPersonCard = (person: RadarrCredit, subtitle?: string) => {
-            const headshot = person.images.find((img) => img.coverType === 'headshot');
-            const headshotSrc = headshot?.remoteUrl
-              ? toCachedImageSrc(headshot.remoteUrl, 'radarr')
-              : null;
-            return (
-              <Link
-                key={`${person.type}-${person.id}-${person.job || person.character}`}
-                href={`/discover/person/${person.personTmdbId}`}
-                className="shrink-0 flex items-center gap-2.5 rounded-lg bg-muted/50 p-2 pr-3.5 min-w-0"
-              >
-                <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
-                  {headshotSrc ? (
-                    <Image
-                      src={headshotSrc}
-                      alt={person.personName}
-                      fill
-                      sizes="40px"
-                      className="object-cover"
-                      unoptimized={isProtectedApiImageSrc(headshotSrc)}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                      <User className="h-4 w-4" />
-                    </div>
-                  )}
-                </div>
-                <div className="whitespace-nowrap">
-                  <p className="text-xs font-medium leading-tight">{person.personName}</p>
-                  {subtitle && (
-                    <p className="text-[11px] text-muted-foreground leading-tight">{subtitle}</p>
-                  )}
-                </div>
-              </Link>
-            );
-          };
-
           return (
             <div className="space-y-3">
               {cast.length > 0 && (
                 <div>
                   <h2 className="text-base font-semibold px-4 mb-2">Cast</h2>
                   <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
-                    {cast.map((person) => renderPersonCard(person, person.character))}
+                    {cast.map((person) => (
+                      <PersonCard
+                        key={`${person.type}-${person.id}-${person.job || person.character || ''}`}
+                        name={person.personName}
+                        personId={person.personTmdbId}
+                        imagePath={person.images.find((img) => img.coverType === 'headshot')?.remoteUrl ?? null}
+                        subtitle={person.character}
+                        cacheService="radarr"
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -649,7 +619,16 @@ export default function MovieDetailPage() {
                 <div>
                   <h2 className="text-base font-semibold px-4 mb-2">Crew</h2>
                   <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
-                    {uniqueCrew.map((person) => renderPersonCard(person, person.job))}
+                    {uniqueCrew.map((person) => (
+                      <PersonCard
+                        key={`${person.type}-${person.id}-${person.job || person.character || ''}`}
+                        name={person.personName}
+                        personId={person.personTmdbId}
+                        imagePath={person.images.find((img) => img.coverType === 'headshot')?.remoteUrl ?? null}
+                        subtitle={person.job}
+                        cacheService="radarr"
+                      />
+                    ))}
                   </div>
                 </div>
               )}

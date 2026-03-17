@@ -372,6 +372,7 @@ export interface QBittorrentTorrent {
   eta: number;
   category: string;
   tags: string;
+  priority: number;
   added_on: number;
   completion_on: number;
   save_path: string;
@@ -384,6 +385,7 @@ export interface QBittorrentTorrent {
   dl_limit: number;
   up_limit: number;
   magnet_uri: string;
+  time_active: number;
   seeding_time: number;
   availability: number;
   ratio: number;
