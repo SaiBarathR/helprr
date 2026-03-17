@@ -18,14 +18,16 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get('sort') || undefined;
     const reverse = searchParams.get('reverse') === 'true' ? true : undefined;
 
-    const [torrents, transferInfo] = await Promise.all([
+    const [torrents, transferInfo, speedLimitsMode] = await Promise.all([
       client.getTorrents(filter, category, sort, reverse),
       client.getTransferInfo().catch(() => null),
+      client.getSpeedLimitsMode().catch(() => 0),
     ]);
 
     const payload: QBittorrentSummaryResponse = {
       torrents,
       transferInfo,
+      speedLimitsMode,
     };
 
     logApiDuration('/api/qbittorrent/summary', startedAt, {

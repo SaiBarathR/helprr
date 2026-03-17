@@ -375,6 +375,24 @@ export interface QBittorrentTorrent {
   added_on: number;
   completion_on: number;
   save_path: string;
+  amount_left: number;
+  completed: number;
+  downloaded: number;
+  uploaded: number;
+  downloaded_session: number;
+  uploaded_session: number;
+  dl_limit: number;
+  up_limit: number;
+  magnet_uri: string;
+  seeding_time: number;
+  availability: number;
+  ratio: number;
+  seq_dl: boolean;
+  f_l_piece_prio: boolean;
+  force_start: boolean;
+  auto_tmm: boolean;
+  max_ratio: number;
+  max_seeding_time: number;
 }
 
 export interface QBittorrentTransferInfo {
@@ -391,6 +409,7 @@ export interface QBittorrentTransferInfo {
 export interface QBittorrentSummaryResponse {
   torrents: QBittorrentTorrent[];
   transferInfo: QBittorrentTransferInfo | null;
+  speedLimitsMode?: number;
 }
 
 // Calendar Event (unified)
