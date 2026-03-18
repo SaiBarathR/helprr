@@ -88,10 +88,10 @@ function cloneAnimeFilters(filters: AnimeFiltersState): AnimeFiltersState {
 function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersState {
   return {
     ...filters,
-    genres: [...filters.genres],
-    providers: [...filters.providers],
-    networks: [...filters.networks],
-    companies: [...filters.companies],
+    genres: [...(filters.genres ?? [])],
+    providers: [...(filters.providers ?? [])],
+    networks: [...(filters.networks ?? [])],
+    companies: [...(filters.companies ?? [])],
   };
 }
 

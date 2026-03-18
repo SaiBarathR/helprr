@@ -99,10 +99,12 @@ function normalizeFilterValues(filters: DiscoverFiltersState): DiscoverFiltersSt
 }
 
 function isDefaultFilters(filters: ReturnType<typeof useUIStore.getState>['discoverFilters']) {
-  const hasSameNumberSet = (a: number[], b: number[]) => {
-    if (a.length !== b.length) return false;
-    const uniqueA = new Set(a);
-    const uniqueB = new Set(b);
+  const hasSameNumberSet = (a: number[] | undefined, b: number[] | undefined) => {
+    const aa = a ?? [];
+    const bb = b ?? [];
+    if (aa.length !== bb.length) return false;
+    const uniqueA = new Set(aa);
+    const uniqueB = new Set(bb);
     if (uniqueA.size !== uniqueB.size) return false;
     for (const value of uniqueA) {
       if (!uniqueB.has(value)) return false;
@@ -144,9 +146,9 @@ function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
   if (filters.voteCountMin) count += 1;
   if (filters.language) count += 1;
   if (filters.region && filters.region !== DEFAULT_DISCOVER_FILTERS.region) count += 1;
-  if (filters.providers.length > 0) count += 1;
-  if (filters.networks.length > 0) count += 1;
-  if (filters.companies.length > 0) count += 1;
+  if (filters.providers?.length > 0) count += 1;
+  if (filters.networks?.length > 0) count += 1;
+  if (filters.companies?.length > 0) count += 1;
   if (filters.releaseState) count += 1;
   return count;
 }
