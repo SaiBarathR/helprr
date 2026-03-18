@@ -670,10 +670,12 @@ export default function TorrentsPage() {
   }, [filter, preferencesLoaded, sortDir, sortKey]);
 
   useEffect(() => {
+    if (!preferencesLoaded || typeof window === 'undefined') return;
+
     filterRef.current = filter;
     setLoading(true);
     void fetchSummary();
-  }, [fetchSummary, filter]);
+  }, [fetchSummary, filter, preferencesLoaded]);
 
   useEffect(() => {
     async function loadRefreshInterval() {

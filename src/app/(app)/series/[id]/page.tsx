@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -41,6 +41,8 @@ export default function SeriesDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const seriesId = Number(id);
+  const currentSeriesIdRef = useRef(seriesId);
+  currentSeriesIdRef.current = seriesId;
   const [series, setSeries] = useState<SonarrSeries | null>(null);
   const [episodes, setEpisodes] = useState<SonarrEpisode[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,6 +100,8 @@ export default function SeriesDetailPage() {
       return;
     }
 
+    const activeSeriesId = seriesId;
+
     try {
       const [nextSeries, nextEpisodes, nextQualityProfiles, nextRootFolders, nextTags] = await Promise.all([
         fetch(`/api/sonarr/${seriesId}`).then((r) => r.ok ? r.json() : null),
@@ -106,6 +110,8 @@ export default function SeriesDetailPage() {
         fetch('/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
         fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
       ]);
+
+      if (activeSeriesId !== currentSeriesIdRef.current) return;
 
       setSeries(nextSeries);
       setEpisodes(nextEpisodes);
@@ -121,6 +127,8 @@ export default function SeriesDetailPage() {
         tags: nextTags,
       });
     } catch {
+      if (activeSeriesId !== currentSeriesIdRef.current) return;
+
       if (!hasCachedData) {
         setSeries(null);
         setEpisodes([]);
@@ -129,6 +137,8 @@ export default function SeriesDetailPage() {
         setTags([]);
       }
     } finally {
+      if (activeSeriesId !== currentSeriesIdRef.current) return;
+
       setLoading(false);
       setRefreshing(false);
     }
