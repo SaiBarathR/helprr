@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DiscoverHero } from '@/components/discover/discover-hero';
-import { DiscoverCastRail } from '@/components/discover/discover-cast-rail';
+import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
@@ -168,26 +168,30 @@ export default function DiscoverMovieDetailPage() {
         )}
 
         {/* Cast */}
-        <DiscoverCastRail
+        <VirtualizedPersonRail
           title="Cast"
-          cast={movie.cast.map((c) => ({
+          items={movie.cast.map((c) => ({
             id: c.id,
             name: c.name,
-            character: c.character,
-            profilePath: c.profilePath,
+            imagePath: c.profilePath,
+            subtitle: c.character,
+            keySuffix: c.character || '',
           }))}
+          cacheService="tmdb"
         />
 
-        {/* Key Crew */}
+        {/* Crew */}
         {movie.crew.length > 0 && (
-          <DiscoverCastRail
+          <VirtualizedPersonRail
             title="Crew"
-            cast={movie.crew.map((c) => ({
+            items={movie.crew.map((c) => ({
               id: c.id,
               name: c.name,
-              character: c.job,
-              profilePath: c.profilePath,
+              imagePath: c.profilePath,
+              subtitle: c.job,
+              keySuffix: c.job,
             }))}
+            cacheService="tmdb"
           />
         )}
 

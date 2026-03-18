@@ -2,16 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getTMDBClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { tmdbImageUrl } from '@/lib/discover';
+import { crewRolePriority } from '@/lib/crew-priority';
 
 const EMPTY = { cast: [], crew: [] };
-
-const CREW_JOBS = new Set([
-  'Director',
-  'Writer',
-  'Creator',
-  'Executive Producer',
-  'Showrunner',
-]);
 
 export async function GET(
   _request: NextRequest,
@@ -45,7 +38,6 @@ export async function GET(
 
     const cast = credits.cast
       .sort((a, b) => a.order - b.order)
-      .slice(0, 20)
       .map((m) => ({
         id: m.id,
         name: m.name,
@@ -55,13 +47,16 @@ export async function GET(
       }));
 
     const crew = credits.crew
-      .filter((m) => m.jobs?.some((j) => CREW_JOBS.has(j.job)))
-      .slice(0, 10)
+      .sort((a, b) => {
+        const aJob = a.jobs?.[0]?.job || '';
+        const bJob = b.jobs?.[0]?.job || '';
+        return crewRolePriority(aJob) - crewRolePriority(bJob);
+      })
       .map((m) => ({
         id: m.id,
         name: m.name,
         profilePath: tmdbImageUrl(m.profile_path, 'w300'),
-        character: m.jobs?.find((j) => CREW_JOBS.has(j.job))?.job || '',
+        job: m.jobs?.[0]?.job || '',
       }));
 
     return NextResponse.json({ cast, crew });

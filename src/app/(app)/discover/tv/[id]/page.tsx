@@ -7,7 +7,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DiscoverHero } from '@/components/discover/discover-hero';
-import { DiscoverCastRail } from '@/components/discover/discover-cast-rail';
+import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
@@ -238,16 +238,34 @@ export default function DiscoverTvDetailPage() {
         )}
 
         {/* Cast */}
-        <DiscoverCastRail
+        <VirtualizedPersonRail
           title="Cast"
-          cast={show.cast.map((c) => ({
+          items={show.cast.map((c) => ({
             id: c.id,
             name: c.name,
-            character: c.character,
-            profilePath: c.profilePath,
-            episodeCount: c.episodeCount,
+            imagePath: c.profilePath,
+            subtitle: c.character
+              ? `${c.character}${c.episodeCount ? ` · ${c.episodeCount} ep` : ''}`
+              : undefined,
+            keySuffix: c.character || '',
           }))}
+          cacheService="tmdb"
         />
+
+        {/* Crew */}
+        {show.crew.length > 0 && (
+          <VirtualizedPersonRail
+            title="Crew"
+            items={show.crew.map((c) => ({
+              id: c.id,
+              name: c.name,
+              imagePath: c.profilePath,
+              subtitle: c.job,
+              keySuffix: c.job,
+            }))}
+            cacheService="tmdb"
+          />
+        )}
 
         {/* Seasons */}
         {show.seasons.length > 0 && (

@@ -8,6 +8,7 @@ import {
   annotateDiscoverItems,
   tmdbImageUrl,
 } from '@/lib/discover';
+import { crewRolePriority } from '@/lib/crew-priority';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type {
   DiscoverTvFullDetail,
@@ -214,7 +215,7 @@ export async function GET(
         seasonNumber: s.season_number,
         voteAverage: s.vote_average,
       })),
-      cast: (aggregateCredits.cast || []).slice(0, 20).map((c) => ({
+      cast: (aggregateCredits.cast || []).map((c) => ({
         id: c.id,
         name: c.name,
         profilePath: tmdbImageUrl(c.profile_path, 'w300'),
@@ -223,11 +224,11 @@ export async function GET(
         order: c.order,
       })),
       crew: (aggregateCredits.crew || [])
-        .filter((c) => {
-          const jobs = c.jobs?.map((j) => j.job) || [];
-          return jobs.some((j) => ['Director', 'Writer', 'Creator', 'Executive Producer', 'Showrunner'].includes(j));
+        .sort((a, b) => {
+          const aJob = a.jobs?.[0]?.job || a.department;
+          const bJob = b.jobs?.[0]?.job || b.department;
+          return crewRolePriority(aJob) - crewRolePriority(bJob);
         })
-        .slice(0, 10)
         .map((c) => ({
           id: c.id,
           name: c.name,
