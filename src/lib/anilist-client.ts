@@ -66,6 +66,14 @@ const MEDIA_DETAIL_FRAGMENT = `
   hashtag
   meanScore
   favourites
+  endDate { year month day }
+  synonyms
+  nextAiringEpisode { airingAt timeUntilAiring episode }
+  stats {
+    statusDistribution { status amount }
+    scoreDistribution { score amount }
+  }
+  rankings { id rank type format year season allTime context }
   trailer { id site thumbnail }
   characters(sort: [ROLE, RELEVANCE], perPage: 25) {
     edges {

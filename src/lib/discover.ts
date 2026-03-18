@@ -171,6 +171,8 @@ export function matchSeriesInLibrary(
     tvdbId?: number | null;
     imdbId?: string | null;
     title: string;
+    titleRomaji?: string | null;
+    titleNative?: string | null;
     year: number | null;
   }
 ): DiscoverLibraryStatus {
@@ -196,6 +198,27 @@ export function matchSeriesInLibrary(
   const baseTitleKey = normalizeBaseTitle(item.title);
   const byBaseTitle = selectBestSeriesMatch(lookups.seriesByBaseTitle.get(baseTitleKey) ?? [], item.year);
   if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id, titleSlug: byBaseTitle.titleSlug, tmdbId: byBaseTitle.tmdbId ?? undefined };
+
+  // Substring contains: IMDb/Sonarr may have one entry (e.g. "Jujutsu Kaisen")
+  // while AniList has separate per-season entries (e.g. "Jujutsu Kaisen Season 2").
+  // Check if a Sonarr title is contained within any of the AniList title variants.
+  const anilistTitles = [item.title, item.titleRomaji, item.titleNative]
+    .filter((t): t is string => !!t)
+    .map((t) => t.toLowerCase().replace(/[^a-z0-9\u3000-\u9fff\uff00-\uffef]+/g, ' ').trim());
+
+  if (anilistTitles.length > 0) {
+    const candidates: SonarrSeries[] = [];
+    for (const [sonarrBaseTitle, seriesList] of lookups.seriesByBaseTitle) {
+      for (const aniTitle of anilistTitles) {
+        if (aniTitle.includes(sonarrBaseTitle)) {
+          candidates.push(...seriesList);
+          break;
+        }
+      }
+    }
+    const bySubstring = selectBestSeriesMatch(candidates, item.year);
+    if (bySubstring) return { exists: true, type: 'series', id: bySubstring.id, titleSlug: bySubstring.titleSlug, tmdbId: bySubstring.tmdbId ?? undefined };
+  }
 
   return { exists: false };
 }
