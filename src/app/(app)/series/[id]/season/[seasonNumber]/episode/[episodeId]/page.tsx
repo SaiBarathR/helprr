@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -16,11 +17,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
-  ExternalLink,
+  ExternalLink, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
-import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries } from '@/types';
+import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries, DiscoverSeasonDetailResponse, DiscoverSeasonEpisode } from '@/types';
+import { toCachedImageSrc } from '@/lib/image';
 import {
   getEpisodeDetailSnapshot,
   patchEpisodeAcrossSnapshots,
@@ -170,6 +172,7 @@ export default function EpisodeDetailPage() {
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+  const [tmdbEpisode, setTmdbEpisode] = useState<DiscoverSeasonEpisode | null>(null);
 
   const fetchData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId) || !Number.isFinite(episodeId)) {
@@ -257,6 +260,26 @@ export default function EpisodeDetailPage() {
       setRefreshing(false);
     });
   }, [episodeId, fetchData, fetchHistory, seriesId]);
+
+  // Background-fetch TMDB episode data for still image and rating
+  useEffect(() => {
+    if (!series?.tmdbId || !episode) {
+      setTmdbEpisode(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: DiscoverSeasonDetailResponse | null) => {
+        const match = data?.episodes.find((e) => e.episodeNumber === episode.episodeNumber) ?? null;
+        setTmdbEpisode(match);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setTmdbEpisode(null);
+      });
+    return () => controller.abort();
+  }, [series?.tmdbId, seasonNumber, episode?.episodeNumber, episode]);
 
   async function handleAutomaticSearch() {
     setActionLoading('search');
@@ -459,8 +482,24 @@ export default function EpisodeDetailPage() {
         }
       />
 
-      {/* Status badge */}
-      <div className="px-4">
+      {/* Episode still image */}
+      {tmdbEpisode?.stillPath && (
+        <div className="relative w-full aspect-video overflow-hidden">
+          <Image
+            src={toCachedImageSrc(tmdbEpisode.stillPath, 'tmdb') || tmdbEpisode.stillPath}
+            alt=""
+            fill
+            sizes="100vw"
+            className="object-cover"
+            priority
+            unoptimized
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+        </div>
+      )}
+
+      {/* Status badge + rating */}
+      <div className="px-4 flex items-center gap-2">
         {episode.hasFile ? (
           <Badge className="bg-green-600 hover:bg-green-600 text-white">DOWNLOADED</Badge>
         ) : episode.monitored ? (
@@ -468,15 +507,21 @@ export default function EpisodeDetailPage() {
         ) : (
           <Badge variant="secondary">UNMONITORED</Badge>
         )}
+        {tmdbEpisode && tmdbEpisode.voteAverage > 0 && (
+          <span className="inline-flex items-center gap-1 text-sm">
+            <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+            <span className="font-medium">{tmdbEpisode.voteAverage.toFixed(1)}</span>
+          </span>
+        )}
       </div>
 
       {/* Episode code + runtime + air date line */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground px-4">
         <span className="font-medium text-foreground">{epCode}</span>
-        {series.runtime > 0 && (
+        {(tmdbEpisode?.runtime || series.runtime > 0) && (
           <>
             <span className="text-muted-foreground/40">|</span>
-            <span>{series.runtime} min</span>
+            <span>{tmdbEpisode?.runtime || series.runtime} min</span>
           </>
         )}
         {episode.airDate && (

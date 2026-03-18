@@ -42,14 +42,18 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { format } from 'date-fns';
-import type { RadarrMovie, RadarrCredit, QualityProfile, Tag } from '@/types';
-import { isProtectedApiImageSrc } from '@/lib/image';
+import type { RadarrMovie, RadarrCredit, QualityProfile, Tag, DiscoverMovieFullDetail } from '@/types';
+import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
 import {
   getMovieDetailSnapshot,
   setMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import Link from 'next/link';
+import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
+import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
+import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 
 type RatingItem = {
   label: string;
@@ -78,6 +82,7 @@ export default function MovieDetailPage() {
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
+  const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(null);
 
   // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
@@ -188,6 +193,23 @@ export default function MovieDetailPage() {
 
     void loadData(Boolean(cached));
   }, [loadData, movieId]);
+
+  // Background-fetch TMDB enrichment data
+  useEffect(() => {
+    if (!movie?.tmdbId) {
+      setTmdbData(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/discover/movie/${movie.tmdbId}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: DiscoverMovieFullDetail | null) => setTmdbData(data))
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setTmdbData(null);
+      });
+    return () => controller.abort();
+  }, [movie?.tmdbId]);
 
   async function handleOpenInJellyfin() {
     if (!movie || !externalUrls.JELLYFIN) return;
@@ -481,71 +503,137 @@ export default function MovieDetailPage() {
       />
 
       <div className="space-y-6 px-0">
-        {/* Hero: Poster + Title block */}
-        <div className="flex gap-4 px-4">
-          {/* Poster */}
-          <div className="w-[120px] shrink-0">
-            <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
-              {poster ? (
-                <Image
-                  src={poster}
-                  alt={movie.title}
-                  fill
-                  sizes="120px"
-                  className="object-cover"
-                  unoptimized={isProtectedApiImageSrc(poster)}
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                  <Film className="h-10 w-10" />
+        {/* Hero: Backdrop or flat poster layout */}
+        {tmdbData?.backdropPath ? (
+          <div>
+            {/* Backdrop image */}
+            <div className="relative w-full aspect-[16/9] overflow-hidden">
+              <Image
+                src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
+                alt=""
+                fill
+                sizes="100vw"
+                className="object-cover"
+                priority
+                unoptimized
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+            </div>
+            {/* Poster + info overlapping backdrop */}
+            <div className="relative -mt-20 px-4 flex gap-4">
+              <div className="w-[100px] shrink-0">
+                <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
+                  {poster ? (
+                    <Image
+                      src={poster}
+                      alt={movie.title}
+                      fill
+                      sizes="100px"
+                      className="object-cover"
+                      unoptimized={isProtectedApiImageSrc(poster)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                      <Film className="h-8 w-8" />
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 min-w-0 pt-6">
+                <Badge
+                  className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
+                    movie.hasFile
+                      ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                      : 'bg-red-500/20 text-red-400 border-red-500/30'
+                  }`}
+                  variant="outline"
+                >
+                  {movie.hasFile ? 'Downloaded' : 'Missing'}
+                </Badge>
+                <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {[
+                    movie.year,
+                    movie.runtime > 0 ? `${movie.runtime} min` : null,
+                    movie.certification || null,
+                  ]
+                    .filter(Boolean)
+                    .join(' \u00B7 ')}
+                </p>
+                {ratingItems.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                    {ratingItems.map((ri) => (
+                      <div key={ri.label} className="flex items-center gap-1">
+                        <Star className={`h-3 w-3 ${ri.color}`} />
+                        <span className="text-sm font-semibold">{ri.score}</span>
+                        <span className="text-[10px] text-muted-foreground">{ri.label}</span>
+                        {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {tmdbData.tagline && (
+              <p className="px-4 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-4 px-4">
+            <div className="w-[120px] shrink-0">
+              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+                {poster ? (
+                  <Image
+                    src={poster}
+                    alt={movie.title}
+                    fill
+                    sizes="120px"
+                    className="object-cover"
+                    unoptimized={isProtectedApiImageSrc(poster)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                    <Film className="h-10 w-10" />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 min-w-0 pt-1">
+              <Badge
+                className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
+                  movie.hasFile
+                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                    : 'bg-red-500/20 text-red-400 border-red-500/30'
+                }`}
+                variant="outline"
+              >
+                {movie.hasFile ? 'Downloaded' : 'Missing'}
+              </Badge>
+              <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                {[
+                  movie.year,
+                  movie.runtime > 0 ? `${movie.runtime} min` : null,
+                  movie.certification || null,
+                ]
+                  .filter(Boolean)
+                  .join(' \u00B7 ')}
+              </p>
+              {ratingItems.length > 0 && (
+                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                  {ratingItems.map((ri) => (
+                    <div key={ri.label} className="flex items-center gap-1">
+                      <Star className={`h-3 w-3 ${ri.color}`} />
+                      <span className="text-sm font-semibold">{ri.score}</span>
+                      <span className="text-[10px] text-muted-foreground">{ri.label}</span>
+                      {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </div>
-
-          {/* Title area */}
-          <div className="flex-1 min-w-0 pt-1">
-            {/* Status badge */}
-            <Badge
-              className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
-                movie.hasFile
-                  ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                  : 'bg-red-500/20 text-red-400 border-red-500/30'
-              }`}
-              variant="outline"
-            >
-              {movie.hasFile ? 'Downloaded' : 'Missing'}
-            </Badge>
-
-            {/* Title */}
-            <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
-
-            {/* Year, runtime, certification */}
-            <p className="text-sm text-muted-foreground mt-1">
-              {[
-                movie.year,
-                movie.runtime > 0 ? `${movie.runtime} min` : null,
-                movie.certification || null,
-              ]
-                .filter(Boolean)
-                .join(' \u00B7 ')}
-            </p>
-
-            {/* Ratings row */}
-            {ratingItems.length > 0 && (
-              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
-                {ratingItems.map((ri) => (
-                  <div key={ri.label} className="flex items-center gap-1">
-                    <Star className={`h-3 w-3 ${ri.color}`} />
-                    <span className="text-sm font-semibold">{ri.score}</span>
-                    <span className="text-[10px] text-muted-foreground">{ri.label}</span>
-                    {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Metadata rows - borderless key-value */}
         {metadataRows.length > 0 && (
@@ -638,6 +726,90 @@ export default function MovieDetailPage() {
             ))}
           </div>
         </div>
+
+        {/* TMDB Enrichment Sections */}
+        {tmdbData && (
+          <>
+            {tmdbData.videos.length > 0 && (
+              <DiscoverVideoRail title="Videos" videos={tmdbData.videos} />
+            )}
+
+            {tmdbData.recommendations.length > 0 && (
+              <DiscoverMediaRail title="Recommendations" items={tmdbData.recommendations} />
+            )}
+
+            {tmdbData.similar.length > 0 && (
+              <DiscoverMediaRail title="Similar Movies" items={tmdbData.similar} />
+            )}
+
+            {tmdbData.watchProviders && (
+              <DiscoverWatchProvidersSection providers={tmdbData.watchProviders} />
+            )}
+
+            {tmdbData.productionCompanies.length > 0 && (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Production</h2>
+                <div className="flex flex-wrap gap-2">
+                  {tmdbData.productionCompanies.map((company) => {
+                    const logoSrc = company.logoPath
+                      ? toCachedImageSrc(
+                          company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
+                          'tmdb'
+                        )
+                      : null;
+                    return (
+                      <Link
+                        key={company.id}
+                        href={`/discover?companies=${company.id}&contentType=movie`}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
+                      >
+                        {logoSrc && (
+                          <div className="relative h-5 w-8">
+                            <Image
+                              src={logoSrc}
+                              alt={company.name}
+                              fill
+                              sizes="32px"
+                              className="object-contain"
+                              unoptimized={isProtectedApiImageSrc(logoSrc)}
+                            />
+                          </div>
+                        )}
+                        <span className="text-xs font-medium">{company.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {tmdbData.collection && (
+              <div className="px-4">
+                <Link
+                  href={`/discover/collection/${tmdbData.collection.id}`}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-muted/60 border border-border/40 hover:bg-muted transition-colors"
+                >
+                  {tmdbData.collection.posterPath && (
+                    <div className="relative w-12 h-[72px] rounded-lg overflow-hidden shrink-0">
+                      <Image
+                        src={toCachedImageSrc(tmdbData.collection.posterPath, 'tmdb') || tmdbData.collection.posterPath}
+                        alt=""
+                        fill
+                        sizes="48px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Part of</p>
+                    <p className="text-sm font-medium line-clamp-1">{tmdbData.collection.name}</p>
+                  </div>
+                </Link>
+              </div>
+            )}
+          </>
+        )}
 
         <div className="pb-8" />
 
