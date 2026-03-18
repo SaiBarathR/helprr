@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
@@ -15,11 +16,12 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
-  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, X,
+  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import type { SonarrSeries, SonarrEpisode } from '@/types';
+import type { SonarrSeries, SonarrEpisode, DiscoverSeasonDetailResponse } from '@/types';
+import { toCachedImageSrc } from '@/lib/image';
 import {
   getSeasonDetailSnapshot,
   getSeriesDetailSnapshot,
@@ -52,6 +54,7 @@ export default function SeasonDetailPage() {
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
+  const [tmdbSeason, setTmdbSeason] = useState<DiscoverSeasonDetailResponse | null>(null);
 
   const persistSeasonSnapshot = useCallback((next: {
     series?: SonarrSeries | null;
@@ -128,6 +131,23 @@ export default function SeasonDetailPage() {
 
     void fetchData(Boolean(cached));
   }, [fetchData, seasonNumber, seriesId]);
+
+  // Background-fetch TMDB season data for episode images/ratings
+  useEffect(() => {
+    if (!series?.tmdbId) {
+      setTmdbSeason(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: DiscoverSeasonDetailResponse | null) => setTmdbSeason(data))
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setTmdbSeason(null);
+      });
+    return () => controller.abort();
+  }, [series?.tmdbId, seasonNumber]);
 
   const seasonData = series?.seasons.find((s) => s.seasonNumber === seasonNumber);
   const isSeasonMonitored = seasonData?.monitored ?? true;
@@ -403,22 +423,39 @@ export default function SeasonDetailPage() {
         {episodes.map((ep) => {
           const isFinale = ep.episodeNumber === episodes.length && episodes.length > 1;
           const isPremiere = ep.episodeNumber === 1;
+          const tmdbEp = tmdbSeason?.episodes.find((e) => e.episodeNumber === ep.episodeNumber);
 
           return (
             <Link
               key={ep.id}
               href={`/series/${id}/season/${seasonNumber}/episode/${ep.id}`}
-              className="flex items-center gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
+              className="flex gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
             >
-              {/* Episode number */}
-              <span className="w-7 text-right text-sm font-medium text-muted-foreground shrink-0">
-                {ep.episodeNumber}.
-              </span>
+              {/* Episode still image or number fallback */}
+              {tmdbEp?.stillPath ? (
+                <div className="relative w-[100px] h-[56px] rounded-lg overflow-hidden shrink-0 bg-muted">
+                  <Image
+                    src={toCachedImageSrc(tmdbEp.stillPath, 'tmdb') || tmdbEp.stillPath}
+                    alt=""
+                    fill
+                    sizes="100px"
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
+              ) : (
+                <div className="w-[100px] h-[56px] rounded-lg bg-muted flex items-center justify-center shrink-0">
+                  <span className="text-lg font-bold text-muted-foreground">{ep.episodeNumber}</span>
+                </div>
+              )}
 
               {/* Episode info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium truncate">
+                    {ep.episodeNumber || 'TBA'}
+                  </span>
+                  <span className="text-sm font-medium">
                     {ep.title || 'TBA'}
                   </span>
                   {isPremiere && (
@@ -428,33 +465,41 @@ export default function SeasonDetailPage() {
                   )}
                   {isFinale && (
                     <Badge variant="secondary" className="text-[10px] shrink-0">
-                      Season Finale
+                      Finale
                     </Badge>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  {ep.hasFile && (
+                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  {ep.hasFile ? (
                     <Badge
                       variant="default"
                       className="text-[10px] bg-green-600 hover:bg-green-600"
                     >
-                      {ep.hasFile ? 'DOWNLOADED' : ''}
+                      DOWNLOADED
                     </Badge>
-                  )}
-                  {!ep.hasFile && ep.monitored && (
-                    <Badge
-                      variant="destructive"
-                      className="text-[10px]"
-                    >
+                  ) : ep.monitored ? (
+                    <Badge variant="destructive" className="text-[10px]">
                       MISSING
                     </Badge>
-                  )}
+                  ) : null}
                   {ep.airDate && (
                     <span className="text-xs text-muted-foreground">
                       {format(new Date(ep.airDate), 'MMM d, yyyy')}
                     </span>
                   )}
+                  {tmdbEp && tmdbEp.runtime && (
+                    <span className="text-xs text-muted-foreground">{tmdbEp.runtime}m</span>
+                  )}
+                  {tmdbEp && tmdbEp.voteAverage > 0 && (
+                    <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                      <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+                      {tmdbEp.voteAverage.toFixed(1)}
+                    </span>
+                  )}
                 </div>
+                {tmdbEp?.overview && (
+                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{tmdbEp.overview}</p>
+                )}
               </div>
 
               {/* Monitor bookmark */}
@@ -464,7 +509,7 @@ export default function SeasonDetailPage() {
                   e.stopPropagation();
                   handleToggleEpisodeMonitor(ep.id, !ep.monitored);
                 }}
-                className="min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0"
+                className="min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
               >
                 {ep.monitored ? (
                   <BookmarkCheck className="h-4 w-4 text-primary" />

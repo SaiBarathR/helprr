@@ -19,18 +19,21 @@ import { getImageUrl } from '@/components/media/media-card';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Loader2, Tv, Heart, Eye,
+  Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag } from '@/types';
+import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag, DiscoverTvFullDetail, DiscoverSeasonDetailResponse } from '@/types';
 import {
   getSeriesDetailSnapshot,
   patchSeasonAcrossSnapshots,
   setSeriesDetailSnapshot,
 } from '@/lib/series-route-cache';
-import { isProtectedApiImageSrc } from '@/lib/image';
+import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
+import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
+import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -56,6 +59,9 @@ export default function SeriesDetailPage() {
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [credits, setCredits] = useState<SeriesCredits>({ cast: [], crew: [] });
+  const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(null);
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
+  const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(new Map());
 
   const MONITOR_OPTIONS = [
     { value: 'all', label: 'All Episodes' },
@@ -181,6 +187,45 @@ export default function SeriesDetailPage() {
       controller.abort();
     };
   }, [loadData, seriesId]);
+
+  // Background-fetch TMDB enrichment data
+  useEffect(() => {
+    if (!series?.tmdbId) {
+      setTmdbData(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/discover/tv/${series.tmdbId}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: DiscoverTvFullDetail | null) => setTmdbData(data))
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setTmdbData(null);
+      });
+    return () => controller.abort();
+  }, [series?.tmdbId]);
+
+  function toggleSeasonExpand(seasonNumber: number) {
+    setExpandedSeasons((prev) => {
+      const next = new Set(prev);
+      if (next.has(seasonNumber)) {
+        next.delete(seasonNumber);
+      } else {
+        next.add(seasonNumber);
+        if (!seasonEpisodes.has(seasonNumber) && series?.tmdbId) {
+          fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data: DiscoverSeasonDetailResponse | null) => {
+              if (data) {
+                setSeasonEpisodes((prev) => new Map(prev).set(seasonNumber, data));
+              }
+            })
+            .catch(() => {});
+        }
+      }
+      return next;
+    });
+  }
 
   async function handleOpenInJellyfin() {
     if (!series || !externalUrls.JELLYFIN) return;
@@ -521,45 +566,99 @@ export default function SeriesDetailPage() {
       />
 
       <div className="flex-1 overflow-y-auto">
-        {/* Hero: Poster + Title area */}
-        <div className="flex gap-4 px-4 pt-3 pb-4">
-          {/* Poster */}
-          <div className="w-28 shrink-0">
-            {poster ? (
+        {/* Hero: Backdrop or flat poster layout */}
+        {tmdbData?.backdropPath ? (
+          <div>
+            <div className="relative w-full aspect-[16/9] overflow-hidden">
               <Image
-                src={poster}
-                alt={series.title}
-                width={112}
-                height={168}
-                className="w-full h-auto aspect-[2/3] object-cover rounded-lg"
-                unoptimized={isProtectedApiImageSrc(poster)}
+                src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
+                alt=""
+                fill
+                sizes="100vw"
+                className="object-cover"
+                priority
+                unoptimized
               />
-            ) : (
-              <div className="w-full aspect-[2/3] rounded-lg bg-muted flex items-center justify-center">
-                <Tv className="h-10 w-10 text-muted-foreground" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+            </div>
+            <div className="relative -mt-20 px-4 flex gap-4">
+              <div className="w-[100px] shrink-0">
+                <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
+                  {poster ? (
+                    <Image
+                      src={poster}
+                      alt={series.title}
+                      fill
+                      sizes="100px"
+                      className="object-cover"
+                      unoptimized={isProtectedApiImageSrc(poster)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                      <Tv className="h-8 w-8" />
+                    </div>
+                  )}
+                </div>
               </div>
+              <div className="flex-1 min-w-0 pt-6">
+                <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
+                  {statusLabel}
+                </span>
+                <h1 className="text-lg font-bold leading-tight">{series.title}</h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {series.year}
+                  {series.runtime > 0 && <> &middot; {series.runtime}m</>}
+                  {series.certification && <> &middot; {series.certification}</>}
+                </p>
+                {series.ratings && series.ratings.value > 0 && (
+                  <div className="flex items-center gap-1 mt-1.5">
+                    <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" />
+                    <span className="text-sm font-medium">{Math.round(series.ratings.value * 10)}%</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            {tmdbData.tagline && (
+              <p className="px-4 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
             )}
           </div>
-
-          {/* Title & meta */}
-          <div className="flex-1 min-w-0 pt-1">
-            <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
-              {statusLabel}
-            </span>
-            <h1 className="text-lg font-bold leading-tight">{series.title}</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {series.year}
-              {series.runtime > 0 && <> &middot; {series.runtime}m</>}
-              {series.certification && <> &middot; {series.certification}</>}
-            </p>
-            {series.ratings && series.ratings.value > 0 && (
-              <div className="flex items-center gap-1 mt-1.5">
-                <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" />
-                <span className="text-sm font-medium">{Math.round(series.ratings.value * 10)}%</span>
-              </div>
-            )}
+        ) : (
+          <div className="flex gap-4 px-4 pt-3 pb-4">
+            <div className="w-28 shrink-0">
+              {poster ? (
+                <Image
+                  src={poster}
+                  alt={series.title}
+                  width={112}
+                  height={168}
+                  className="w-full h-auto aspect-[2/3] object-cover rounded-lg"
+                  unoptimized={isProtectedApiImageSrc(poster)}
+                />
+              ) : (
+                <div className="w-full aspect-[2/3] rounded-lg bg-muted flex items-center justify-center">
+                  <Tv className="h-10 w-10 text-muted-foreground" />
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0 pt-1">
+              <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
+                {statusLabel}
+              </span>
+              <h1 className="text-lg font-bold leading-tight">{series.title}</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {series.year}
+                {series.runtime > 0 && <> &middot; {series.runtime}m</>}
+                {series.certification && <> &middot; {series.certification}</>}
+              </p>
+              {series.ratings && series.ratings.value > 0 && (
+                <div className="flex items-center gap-1 mt-1.5">
+                  <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" />
+                  <span className="text-sm font-medium">{Math.round(series.ratings.value * 10)}%</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Borderless metadata rows */}
         <div className="px-4 space-y-0">
@@ -605,6 +704,24 @@ export default function SeriesDetailPage() {
                 {overviewExpanded ? 'Show less' : 'More...'}
               </button>
             )}
+          </div>
+        )}
+
+        {/* Created By */}
+        {tmdbData && tmdbData.createdBy.length > 0 && (
+          <div className="px-4 pt-2">
+            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Created By</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {tmdbData.createdBy.map((creator) => (
+                <Link
+                  key={creator.id}
+                  href={`/discover/person/${creator.id}`}
+                  className="text-sm font-medium text-primary"
+                >
+                  {creator.name}
+                </Link>
+              ))}
+            </div>
           </div>
         )}
 
@@ -654,32 +771,138 @@ export default function SeriesDetailPage() {
               const total = seasonEps.length;
               const seasonData = series.seasons.find((s) => s.seasonNumber === sn);
               const isMonitored = seasonData?.monitored ?? true;
+              const tmdbSeason = tmdbData?.seasons?.find((s) => s.seasonNumber === sn);
+              const isExpanded = expandedSeasons.has(sn);
+              const epData = seasonEpisodes.get(sn);
 
               return (
-                <Link
-                  key={sn}
-                  href={`/series/${id}/season/${sn}`}
-                  className="flex items-center py-3.5 border-b border-border/50"
-                >
-                  <div className="flex-1 min-w-0">
-                    <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
-                    <span className="ml-2 text-sm text-muted-foreground">{fileCount}/{total}</span>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleToggleSeasonMonitor(sn, !isMonitored);
-                    }}
-                    className="min-w-[44px] min-h-[44px] flex items-center justify-center"
-                  >
-                    {isMonitored ? (
-                      <Bookmark className="h-5 w-5 fill-current text-foreground" />
-                    ) : (
-                      <Bookmark className="h-5 w-5 text-muted-foreground" />
+                <div key={sn} className="border-b border-border/50">
+                  <div className="flex items-center py-3.5 gap-2">
+                    {/* TMDB season poster */}
+                    {tmdbSeason?.posterPath && (
+                      <div className="relative w-[45px] h-[67px] rounded overflow-hidden shrink-0">
+                        <Image
+                          src={toCachedImageSrc(tmdbSeason.posterPath, 'tmdb') || tmdbSeason.posterPath}
+                          alt=""
+                          fill
+                          sizes="45px"
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </div>
                     )}
-                  </button>
-                </Link>
+                    <Link href={`/series/${id}/season/${sn}`} className="flex-1 min-w-0 flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
+                          <span className="text-sm text-muted-foreground">{fileCount}/{total}</span>
+                        </div>
+                        {tmdbSeason && tmdbSeason.voteAverage > 0 && (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            <span className="text-xs text-muted-foreground">{tmdbSeason.voteAverage.toFixed(1)}</span>
+                          </div>
+                        )}
+                        {tmdbSeason?.overview && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{tmdbSeason.overview}</p>
+                        )}
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </Link>
+                    {/* Expand/collapse for TMDB episodes */}
+                    {tmdbData && (
+                      <button
+                        onClick={() => toggleSeasonExpand(sn)}
+                        className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                      >
+                        {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                      </button>
+                    )}
+                    {/* Monitor toggle */}
+                    <button
+                      onClick={() => handleToggleSeasonMonitor(sn, !isMonitored)}
+                      className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                    >
+                      {isMonitored ? (
+                        <Bookmark className="h-5 w-5 fill-current text-foreground" />
+                      ) : (
+                        <Bookmark className="h-5 w-5 text-muted-foreground" />
+                      )}
+                    </button>
+                  </div>
+                  {/* Expanded episode cards */}
+                  {isExpanded && (
+                    <div className="pb-3 pl-2">
+                      {epData ? (
+                        epData.episodes.map((ep) => {
+                          const sonarrEp = seasonEps.find((e) => e.episodeNumber === ep.episodeNumber);
+                          const episodeHref = sonarrEp
+                            ? `/series/${id}/season/${sn}/episode/${sonarrEp.id}`
+                            : null;
+
+                          const content = (
+                            <>
+                              {ep.stillPath && (
+                                <div className="relative w-[90px] h-[50px] rounded overflow-hidden shrink-0 bg-muted">
+                                  <Image
+                                    src={toCachedImageSrc(ep.stillPath, 'tmdb') || ep.stillPath}
+                                    alt=""
+                                    fill
+                                    sizes="90px"
+                                    className="object-cover"
+                                    unoptimized
+                                  />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-medium line-clamp-1">E{ep.episodeNumber} &middot; {ep.name}</p>
+                                  {sonarrEp?.hasFile && (
+                                    <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="Downloaded" />
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                  {ep.airDate && <span>{format(new Date(ep.airDate), 'MMM d, yyyy')}</span>}
+                                  {ep.runtime && <span>{ep.runtime}m</span>}
+                                  {ep.voteAverage > 0 && (
+                                    <span className="inline-flex items-center gap-0.5">
+                                      <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+                                      {ep.voteAverage.toFixed(1)}
+                                    </span>
+                                  )}
+                                </div>
+                                {ep.overview && <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{ep.overview}</p>}
+                              </div>
+                              {episodeHref && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 self-center" />}
+                            </>
+                          );
+
+                          return episodeHref ? (
+                            <Link
+                              key={ep.id}
+                              href={episodeHref}
+                              className="flex gap-3 py-2 border-t border-border/20 active:bg-muted/50 transition-colors"
+                            >
+                              {content}
+                            </Link>
+                          ) : (
+                            <div
+                              key={ep.id}
+                              className="flex gap-3 py-2 border-t border-border/20"
+                            >
+                              {content}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading episodes...
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -725,6 +948,103 @@ export default function SeriesDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* TMDB Enrichment Sections */}
+        {tmdbData && (
+          <div className="space-y-6 mt-6">
+            {tmdbData.videos.length > 0 && (
+              <DiscoverVideoRail title="Videos" videos={tmdbData.videos} />
+            )}
+
+            {tmdbData.recommendations.length > 0 && (
+              <DiscoverMediaRail title="Recommendations" items={tmdbData.recommendations} />
+            )}
+
+            {tmdbData.similar.length > 0 && (
+              <DiscoverMediaRail title="Similar Shows" items={tmdbData.similar} />
+            )}
+
+            {tmdbData.watchProviders && (
+              <DiscoverWatchProvidersSection providers={tmdbData.watchProviders} />
+            )}
+
+            {tmdbData.networks.length > 0 && (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Networks</h2>
+                <div className="flex gap-3 flex-wrap">
+                  {tmdbData.networks.map((network) => {
+                    const logoSrc = network.logoPath
+                      ? toCachedImageSrc(
+                          network.logoPath.startsWith('http') ? network.logoPath : `https://image.tmdb.org/t/p/w185${network.logoPath}`,
+                          'tmdb'
+                        )
+                      : null;
+                    return (
+                      <Link
+                        key={network.id}
+                        href={`/discover?networks=${network.id}&contentType=show`}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
+                      >
+                        {logoSrc && (
+                          <div className="relative h-5 w-8">
+                            <Image
+                              src={logoSrc}
+                              alt={network.name}
+                              fill
+                              sizes="32px"
+                              className="object-contain"
+                              unoptimized={isProtectedApiImageSrc(logoSrc)}
+                            />
+                          </div>
+                        )}
+                        <span className="text-xs font-medium">{network.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {tmdbData.productionCompanies.length > 0 && (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Production</h2>
+                <div className="flex gap-3 flex-wrap">
+                  {tmdbData.productionCompanies.map((company) => {
+                    const logoSrc = company.logoPath
+                      ? toCachedImageSrc(
+                          company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
+                          'tmdb'
+                        )
+                      : null;
+                    return (
+                      <Link
+                        key={company.id}
+                        href={`/discover?companies=${company.id}&contentType=show`}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
+                      >
+                        {logoSrc && (
+                          <div className="relative h-5 w-8">
+                            <Image
+                              src={logoSrc}
+                              alt={company.name}
+                              fill
+                              sizes="32px"
+                              className="object-contain"
+                              unoptimized={isProtectedApiImageSrc(logoSrc)}
+                            />
+                          </div>
+                        )}
+                        <span className="text-xs font-medium">{company.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="pb-2" />
+          </div>
+        )}
       </div>
 
       {/* Monitor edit drawer */}
