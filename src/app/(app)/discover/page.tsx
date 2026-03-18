@@ -5,7 +5,6 @@ import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   Sheet,
@@ -36,6 +35,7 @@ import {
   Sparkles,
   X,
   User,
+  Check,
 } from 'lucide-react';
 
 const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' }> = {
@@ -64,9 +64,14 @@ interface RateLimitInfo {
   retryAt: string | null;
 }
 
-function cardTypeBadge(type: 'movie' | 'tv') {
-  if (type === 'movie') return <Badge className="bg-blue-600/80 text-white text-[10px]">MOVIE</Badge>;
-  return <Badge className="bg-violet-600/80 text-white text-[10px]">SERIES</Badge>;
+function cardTypeIcon(type: 'movie' | 'tv') {
+  return (
+    <div className="flex items-center justify-center h-5 w-5 rounded-md bg-black/60">
+      {type === 'movie'
+        ? <Film className="h-3 w-3 text-blue-400" />
+        : <Tv className="h-3 w-3 text-violet-400" />}
+    </div>
+  );
 }
 
 function parsePositiveInt(value: string) {
@@ -189,10 +194,10 @@ function MediaPoster({
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-        <div className="absolute top-1.5 left-1.5">{cardTypeBadge(item.mediaType)}</div>
+        <div className="absolute top-1.5 left-1.5">{cardTypeIcon(item.mediaType)}</div>
         {item.library?.exists && (
-          <div className="absolute top-1.5 right-1.5">
-            <Badge className="bg-green-600/90 text-[10px] text-white">Added</Badge>
+          <div className="absolute top-1.5 right-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
+            <Check className="h-3 w-3 text-white" />
           </div>
         )}
         <div className="absolute bottom-0 left-0 right-0 p-2">
