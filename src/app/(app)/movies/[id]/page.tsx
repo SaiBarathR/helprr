@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/layout/page-header';
-import { PersonCard } from '@/components/media/person-card';
+import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Drawer,
@@ -44,6 +44,7 @@ import { getImageUrl } from '@/components/media/media-card';
 import { format } from 'date-fns';
 import type { RadarrMovie, RadarrCredit, QualityProfile, Tag } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
+import { crewRolePriority } from '@/lib/crew-priority';
 import {
   getMovieDetailSnapshot,
   setMovieDetailSnapshot,
@@ -585,56 +586,7 @@ export default function MovieDetailPage() {
         )}
 
         {/* Cast & Crew */}
-        {credits.length > 0 && (() => {
-          const cast = credits.filter((c) => c.type === 'cast').sort((a, b) => a.order - b.order).slice(0, 15);
-          const crew = credits.filter((c) => c.type === 'crew');
-          const seenCrew = new Set<string>();
-          const uniqueCrew = crew.filter((c) => {
-            const key = `${c.personTmdbId}-${c.job}`;
-            if (seenCrew.has(key)) return false;
-            seenCrew.add(key);
-            return true;
-          }).slice(0, 15);
-
-          return (
-            <div className="space-y-3">
-              {cast.length > 0 && (
-                <div>
-                  <h2 className="text-base font-semibold px-4 mb-2">Cast</h2>
-                  <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
-                    {cast.map((person) => (
-                      <PersonCard
-                        key={`${person.type}-${person.id}-${person.job || person.character || ''}`}
-                        name={person.personName}
-                        personId={person.personTmdbId}
-                        imagePath={person.images.find((img) => img.coverType === 'headshot')?.remoteUrl ?? null}
-                        subtitle={person.character}
-                        cacheService="radarr"
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {uniqueCrew.length > 0 && (
-                <div>
-                  <h2 className="text-base font-semibold px-4 mb-2">Crew</h2>
-                  <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
-                    {uniqueCrew.map((person) => (
-                      <PersonCard
-                        key={`${person.type}-${person.id}-${person.job || person.character || ''}`}
-                        name={person.personName}
-                        personId={person.personTmdbId}
-                        imagePath={person.images.find((img) => img.coverType === 'headshot')?.remoteUrl ?? null}
-                        subtitle={person.job}
-                        cacheService="radarr"
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        {credits.length > 0 && <MovieCreditsSection credits={credits} />}
 
         {/* Pill buttons */}
         <div className="flex gap-3 px-4">
@@ -729,5 +681,59 @@ export default function MovieDetailPage() {
         </DrawerContent>
       </Drawer>
     </>
+  );
+}
+
+function MovieCreditsSection({ credits }: { credits: RadarrCredit[] }) {
+  const { cast, crew } = useMemo(() => {
+    const castItems = credits
+      .filter((c) => c.type === 'cast')
+      .sort((a, b) => a.order - b.order)
+      .map((person) => ({
+        id: person.personTmdbId,
+        name: person.personName,
+        imagePath: person.images.find((img) => img.coverType === 'headshot')?.remoteUrl ?? null,
+        subtitle: person.character,
+        keySuffix: `cast-${person.id}-${person.character || ''}`,
+      }));
+
+    const seenCrew = new Set<string>();
+    const crewItems = credits
+      .filter((c) => c.type === 'crew')
+      .filter((c) => {
+        const key = `${c.personTmdbId}-${c.job}`;
+        if (seenCrew.has(key)) return false;
+        seenCrew.add(key);
+        return true;
+      })
+      .sort((a, b) => crewRolePriority(a.job || '') - crewRolePriority(b.job || ''))
+      .map((person) => ({
+        id: person.personTmdbId,
+        name: person.personName,
+        imagePath: person.images.find((img) => img.coverType === 'headshot')?.remoteUrl ?? null,
+        subtitle: person.job,
+        keySuffix: `crew-${person.id}-${person.job || ''}`,
+      }));
+
+    return { cast: castItems, crew: crewItems };
+  }, [credits]);
+
+  return (
+    <div className="space-y-3">
+      {cast.length > 0 && (
+        <VirtualizedPersonRail
+          title="Cast"
+          items={cast}
+          cacheService="radarr"
+        />
+      )}
+      {crew.length > 0 && (
+        <VirtualizedPersonRail
+          title="Crew"
+          items={crew}
+          cacheService="radarr"
+        />
+      )}
+    </div>
   );
 }

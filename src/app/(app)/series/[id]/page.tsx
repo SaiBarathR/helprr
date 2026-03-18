@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { PageHeader } from '@/components/layout/page-header';
 import { getImageUrl } from '@/components/media/media-card';
-import { PersonCard } from '@/components/media/person-card';
+import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye,
@@ -34,7 +34,7 @@ import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
-  crew: { id: number; name: string; profilePath: string | null; character: string }[];
+  crew: { id: number; name: string; profilePath: string | null; job: string }[];
 }
 
 export default function SeriesDetailPage() {
@@ -611,36 +611,34 @@ export default function SeriesDetailPage() {
         {/* Cast & Crew */}
         {credits.cast.length > 0 && (
           <div className="mt-4">
-            <h2 className="text-lg font-bold px-4 mb-2">Cast</h2>
-            <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
-              {credits.cast.map((person) => (
-                <PersonCard
-                  key={`cast-${person.id}-${person.character}`}
-                  name={person.name}
-                  personId={person.id}
-                  imagePath={person.profilePath}
-                  subtitle={`${person.character}${person.episodeCount ? ` · ${person.episodeCount} ep` : ''}`}
-                  cacheService="tmdb"
-                />
-              ))}
-            </div>
+            <VirtualizedPersonRail
+              title="Cast"
+              titleClassName="text-lg font-bold px-4 mb-2"
+              items={credits.cast.map((person) => ({
+                id: person.id,
+                name: person.name,
+                imagePath: person.profilePath,
+                subtitle: `${person.character}${person.episodeCount ? ` · ${person.episodeCount} ep` : ''}`,
+                keySuffix: `cast-${person.character}`,
+              }))}
+              cacheService="tmdb"
+            />
           </div>
         )}
         {credits.crew.length > 0 && (
           <div className="mt-4">
-            <h2 className="text-lg font-bold px-4 mb-2">Crew</h2>
-            <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 scrollbar-hide">
-              {credits.crew.map((person) => (
-                <PersonCard
-                  key={`crew-${person.id}-${person.character}`}
-                  name={person.name}
-                  personId={person.id}
-                  imagePath={person.profilePath}
-                  subtitle={person.character}
-                  cacheService="tmdb"
-                />
-              ))}
-            </div>
+            <VirtualizedPersonRail
+              title="Crew"
+              titleClassName="text-lg font-bold px-4 mb-2"
+              items={credits.crew.map((person) => ({
+                id: person.id,
+                name: person.name,
+                imagePath: person.profilePath,
+                subtitle: person.job,
+                keySuffix: `crew-${person.job}`,
+              }))}
+              cacheService="tmdb"
+            />
           </div>
         )}
 

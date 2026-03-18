@@ -8,6 +8,7 @@ import {
   annotateDiscoverItems,
   tmdbImageUrl,
 } from '@/lib/discover';
+import { crewRolePriority } from '@/lib/crew-priority';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type {
   DiscoverMovieFullDetail,
@@ -175,7 +176,7 @@ export async function GET(
             backdropPath: tmdbImageUrl(details.belongs_to_collection.backdrop_path, 'w780'),
           }
         : null,
-      cast: (credits.cast || []).slice(0, 20).map((c) => ({
+      cast: (credits.cast || []).map((c) => ({
         id: c.id,
         name: c.name,
         character: c.character,
@@ -183,7 +184,7 @@ export async function GET(
         order: c.order,
       })),
       crew: (credits.crew || [])
-        .filter((c) => ['Director', 'Writer', 'Screenplay', 'Story', 'Creator'].includes(c.job))
+        .sort((a, b) => crewRolePriority(a.job) - crewRolePriority(b.job))
         .map((c) => ({
           id: c.id,
           name: c.name,
