@@ -725,42 +725,6 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Cast & Crew */}
-        {credits.cast.length > 0 && (
-          <div className="mt-4">
-            <VirtualizedPersonRail
-              title="Cast"
-              titleClassName="text-lg font-bold px-4 mb-2"
-              viewAllHref={`/series/${seriesId}/credits?type=cast`}
-              items={credits.cast.map((person) => ({
-                id: person.id,
-                name: person.name,
-                imagePath: person.profilePath,
-                subtitle: `${person.character}${person.episodeCount ? ` · ${person.episodeCount} ep` : ''}`,
-                keySuffix: `cast-${person.character}`,
-              }))}
-              cacheService="tmdb"
-            />
-          </div>
-        )}
-        {credits.crew.length > 0 && (
-          <div className="mt-4">
-            <VirtualizedPersonRail
-              title="Crew"
-              titleClassName="text-lg font-bold px-4 mb-2"
-              viewAllHref={`/series/${seriesId}/credits?type=crew`}
-              items={credits.crew.map((person) => ({
-                id: person.id,
-                name: person.name,
-                imagePath: person.profilePath,
-                subtitle: person.job,
-                keySuffix: `crew-${person.job}`,
-              }))}
-              cacheService="tmdb"
-            />
-          </div>
-        )}
-
         {/* Seasons list */}
         <div className="mt-4 px-4">
           <h2 className="text-lg font-bold mb-2">Seasons</h2>
@@ -771,7 +735,8 @@ export default function SeriesDetailPage() {
               const total = seasonEps.length;
               const seasonData = series.seasons.find((s) => s.seasonNumber === sn);
               const isMonitored = seasonData?.monitored ?? true;
-              const tmdbSeason = tmdbData?.seasons?.find((s) => s.seasonNumber === sn);
+              const isAnime = series.seriesType === 'anime';
+              const tmdbSeason = isAnime ? undefined : tmdbData?.seasons?.find((s) => s.seasonNumber === sn);
               const isExpanded = expandedSeasons.has(sn);
               const epData = seasonEpisodes.get(sn);
 
@@ -809,8 +774,8 @@ export default function SeriesDetailPage() {
                       </div>
                       <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                     </Link>
-                    {/* Expand/collapse for TMDB episodes */}
-                    {tmdbData && (
+                    {/* Expand/collapse for TMDB episodes (not for anime) */}
+                    {tmdbData && !isAnime && (
                       <button
                         onClick={() => toggleSeasonExpand(sn)}
                         className="min-w-[36px] min-h-[44px] flex items-center justify-center"
@@ -948,6 +913,44 @@ export default function SeriesDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Cast & Crew */}
+        {credits.cast.length > 0 && (
+          <div className="mt-4">
+            <VirtualizedPersonRail
+              title="Cast"
+              titleClassName="text-lg font-bold px-4 mb-2"
+              viewAllHref={`/series/${seriesId}/credits?type=cast`}
+              items={credits.cast.map((person) => ({
+                id: person.id,
+                name: person.name,
+                imagePath: person.profilePath,
+                subtitle: `${person.character}${person.episodeCount ? ` · ${person.episodeCount} ep` : ''}`,
+                keySuffix: `cast-${person.character}`,
+              }))}
+              cacheService="tmdb"
+            />
+          </div>
+        )}
+        {credits.crew.length > 0 && (
+          <div className="mt-4">
+            <VirtualizedPersonRail
+              title="Crew"
+              titleClassName="text-lg font-bold px-4 mb-2"
+              viewAllHref={`/series/${seriesId}/credits?type=crew`}
+              items={credits.crew.map((person) => ({
+                id: person.id,
+                name: person.name,
+                imagePath: person.profilePath,
+                subtitle: person.job,
+                keySuffix: `crew-${person.job}`,
+              }))}
+              cacheService="tmdb"
+            />
+          </div>
+        )}
+
+
 
         {/* TMDB Enrichment Sections */}
         {tmdbData && (

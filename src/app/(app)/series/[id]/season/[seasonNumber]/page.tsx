@@ -132,9 +132,9 @@ export default function SeasonDetailPage() {
     void fetchData(Boolean(cached));
   }, [fetchData, seasonNumber, seriesId]);
 
-  // Background-fetch TMDB season data for episode images/ratings
+  // Background-fetch TMDB season data for episode images/ratings (skip for anime)
   useEffect(() => {
-    if (!series?.tmdbId) {
+    if (!series?.tmdbId || series.seriesType === 'anime') {
       setTmdbSeason(null);
       return;
     }
@@ -147,7 +147,7 @@ export default function SeasonDetailPage() {
         setTmdbSeason(null);
       });
     return () => controller.abort();
-  }, [series?.tmdbId, seasonNumber]);
+  }, [series?.tmdbId, series?.seriesType, seasonNumber]);
 
   const seasonData = series?.seasons.find((s) => s.seasonNumber === seasonNumber);
   const isSeasonMonitored = seasonData?.monitored ?? true;
@@ -431,28 +431,30 @@ export default function SeasonDetailPage() {
               href={`/series/${id}/season/${seasonNumber}/episode/${ep.id}`}
               className="flex gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
             >
-              {/* Episode still image or number fallback */}
-              {tmdbEp?.stillPath ? (
-                <div className="relative w-[100px] h-[56px] rounded-lg overflow-hidden shrink-0 bg-muted">
-                  <Image
-                    src={toCachedImageSrc(tmdbEp.stillPath, 'tmdb') || tmdbEp.stillPath}
-                    alt=""
-                    fill
-                    sizes="100px"
-                    className="object-cover"
-                    unoptimized
-                  />
-                </div>
-              ) : (
-                <div className="w-[100px] h-[56px] rounded-lg bg-muted flex items-center justify-center shrink-0">
-                  <span className="text-lg font-bold text-muted-foreground">{ep.episodeNumber}</span>
-                </div>
+              {/* Episode still image or number fallback (skip for anime) */}
+              {series?.seriesType !== 'anime' && (
+                tmdbEp?.stillPath ? (
+                  <div className="relative w-[100px] h-[56px] rounded-lg overflow-hidden shrink-0 bg-muted">
+                    <Image
+                      src={toCachedImageSrc(tmdbEp.stillPath, 'tmdb') || tmdbEp.stillPath}
+                      alt=""
+                      fill
+                      sizes="100px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                ) : (
+                  <div className="w-[100px] h-[56px] rounded-lg bg-muted flex items-center justify-center shrink-0">
+                    <span className="text-lg font-bold text-muted-foreground">{ep.episodeNumber}</span>
+                  </div>
+                )
               )}
 
               {/* Episode info */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium truncate">
+                  <span className="text-sm font-medium">
                     {ep.episodeNumber || 'TBA'}
                   </span>
                   <span className="text-sm font-medium">

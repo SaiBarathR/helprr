@@ -247,13 +247,6 @@ export default function ActivityPage() {
           </div>
         </div>
 
-        {/* Queue count */}
-        {tab === 'queue' && queueCount > 0 && (
-          <p className="px-4 text-xs text-muted-foreground mb-1">
-            {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
-          </p>
-        )}
-
         {/* Segmented control tabs */}
         <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {TABS.map((t) => (
@@ -270,6 +263,13 @@ export default function ActivityPage() {
           ))}
         </div>
       </div>
+
+      {/* Queue count */}
+      {tab === 'queue' && queueCount > 0 && (
+        <p className="px-4 text-xs text-muted-foreground mb-1">
+          {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
+        </p>
+      )}
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
@@ -778,9 +778,9 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
           ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
           : isEpisode && hasSeriesId
             ? `/series/${record.seriesId}`
-          : !isEpisode
-            ? `/movies/${record.id}`
-            : null;
+            : !isEpisode
+              ? `/movies/${record.id}`
+              : null;
 
         return (
           <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">

@@ -337,6 +337,45 @@ export interface TmdbSeasonDetail {
   }>;
 }
 
+export interface TmdbEpisodeGroupsResponse {
+  id: number;
+  results: Array<{
+    id: string;
+    name: string;
+    type: number; // 1=Original air date, 2=Absolute, 3=DVD, 4=Digital, 5=Story arc, 6=Production, 7=TV
+    description: string;
+    episode_count: number;
+    group_count: number;
+    network?: { id: number; name: string; logo_path: string | null } | null;
+  }>;
+}
+
+export interface TmdbEpisodeGroupDetailResponse {
+  id: string;
+  name: string;
+  type: number;
+  description: string;
+  episode_count: number;
+  group_count: number;
+  groups: Array<{
+    id: string;
+    name: string;
+    order: number;
+    episodes: Array<{
+      id: number;
+      name: string;
+      overview: string;
+      air_date: string | null;
+      episode_number: number;
+      season_number: number;
+      still_path: string | null;
+      vote_average: number;
+      runtime: number | null;
+      order: number;
+    }>;
+  }>;
+}
+
 export interface TmdbCollectionDetail {
   id: number;
   name: string;
@@ -812,6 +851,14 @@ export class TmdbClient {
 
   async tvSeasonDetails(tvId: number, seasonNumber: number): Promise<TmdbSeasonDetail> {
     return this.get<TmdbSeasonDetail>(`/tv/${tvId}/season/${seasonNumber}`);
+  }
+
+  async tvEpisodeGroups(tvId: number): Promise<TmdbEpisodeGroupsResponse> {
+    return this.get<TmdbEpisodeGroupsResponse>(`/tv/${tvId}/episode_groups`);
+  }
+
+  async tvEpisodeGroupDetails(groupId: string): Promise<TmdbEpisodeGroupDetailResponse> {
+    return this.get<TmdbEpisodeGroupDetailResponse>(`/tv/episode_group/${groupId}`);
   }
 
   async collectionDetails(id: number): Promise<TmdbCollectionDetail> {

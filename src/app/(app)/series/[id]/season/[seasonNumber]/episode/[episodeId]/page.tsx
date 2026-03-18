@@ -261,9 +261,9 @@ export default function EpisodeDetailPage() {
     });
   }, [episodeId, fetchData, fetchHistory, seriesId]);
 
-  // Background-fetch TMDB episode data for still image and rating
+  // Background-fetch TMDB episode data for still image and rating (skip for anime)
   useEffect(() => {
-    if (!series?.tmdbId || !episode) {
+    if (!series?.tmdbId || !episode || series.seriesType === 'anime') {
       setTmdbEpisode(null);
       return;
     }
@@ -279,7 +279,7 @@ export default function EpisodeDetailPage() {
         setTmdbEpisode(null);
       });
     return () => controller.abort();
-  }, [series?.tmdbId, seasonNumber, episode?.episodeNumber, episode]);
+  }, [series?.tmdbId, series?.seriesType, seasonNumber, episode]);
 
   async function handleAutomaticSearch() {
     setActionLoading('search');
