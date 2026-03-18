@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -104,9 +105,9 @@ export default function DiscoverTvDetailPage() {
       });
     }
     if (show.originalLanguage) rows.push({ label: 'Language', value: show.originalLanguage.toUpperCase() });
-    if (show.productionCompanies.length) {
-      rows.push({ label: 'Production', value: show.productionCompanies.map((c) => c.name).join(', ') });
-    }
+    if (show.rating > 0) rows.push({ label: 'Rating', value: `${show.rating.toFixed(1)}/10` });
+    if (show.voteCount > 0) rows.push({ label: 'Vote Count', value: show.voteCount.toLocaleString() });
+    if (show.popularity > 0) rows.push({ label: 'Popularity', value: show.popularity.toFixed(1) });
     return rows;
   }, [show]);
 
@@ -190,7 +191,14 @@ export default function DiscoverTvDetailPage() {
           <div className="px-4">
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">Created by </span>
-              {show.createdBy.map((c) => c.name).join(', ')}
+              {show.createdBy.map((c, i) => (
+                <span key={c.id}>
+                  {i > 0 && ', '}
+                  <Link href={`/discover/person/${c.id}`} className="text-primary font-medium">
+                    {c.name}
+                  </Link>
+                </span>
+              ))}
             </p>
           </div>
         )}
@@ -216,7 +224,7 @@ export default function DiscoverTvDetailPage() {
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${network.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <div key={network.id} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link key={network.id} href={`/discover?networks=${network.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
                       <div className="relative h-5 w-8">
                         <Image
@@ -230,7 +238,38 @@ export default function DiscoverTvDetailPage() {
                       </div>
                     )}
                     <span className="text-xs font-medium">{network.name}</span>
-                  </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Production Companies */}
+        {show.productionCompanies.length > 0 && (
+          <div className="px-4">
+            <h2 className="text-base font-semibold mb-2">Production Companies</h2>
+            <div className="flex gap-3 flex-wrap">
+              {show.productionCompanies.map((company) => {
+                const logoSrc = company.logoPath
+                  ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${company.logoPath}`, 'tmdb')
+                  : null;
+                return (
+                  <Link key={company.id} href={`/discover?companies=${company.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                    {logoSrc && (
+                      <div className="relative h-5 w-8">
+                        <Image
+                          src={logoSrc}
+                          alt={company.name}
+                          fill
+                          sizes="32px"
+                          className="object-contain"
+                          unoptimized={isProtectedApiImageSrc(logoSrc)}
+                        />
+                      </div>
+                    )}
+                    <span className="text-xs font-medium">{company.name}</span>
+                  </Link>
                 );
               })}
             </div>
@@ -240,6 +279,7 @@ export default function DiscoverTvDetailPage() {
         {/* Cast */}
         <VirtualizedPersonRail
           title="Cast"
+          viewAllHref={`/discover/tv/${tvId}/credits?type=cast`}
           items={show.cast.map((c) => ({
             id: c.id,
             name: c.name,
@@ -256,6 +296,7 @@ export default function DiscoverTvDetailPage() {
         {show.crew.length > 0 && (
           <VirtualizedPersonRail
             title="Crew"
+            viewAllHref={`/discover/tv/${tvId}/credits?type=crew`}
             items={show.crew.map((c) => ({
               id: c.id,
               name: c.name,

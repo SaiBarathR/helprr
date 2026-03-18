@@ -392,6 +392,7 @@ export interface TmdbDiscoverParams {
   withPeople?: number[];
   withCast?: number[];
   withCrew?: number[];
+  companies?: number[];
 }
 
 export class TmdbRateLimitError extends Error {
@@ -678,6 +679,7 @@ export class TmdbClient {
     if (input.withPeople?.length) params.with_people = input.withPeople.join(',');
     if (input.withCast?.length) params.with_cast = input.withCast.join(',');
     if (input.withCrew?.length) params.with_crew = input.withCrew.join(',');
+    if (input.companies?.length) params.with_companies = input.companies.join('|');
 
     const today = new Date().toISOString().slice(0, 10);
     if (input.releaseState === 'released') params['primary_release_date.lte'] = today;
@@ -707,6 +709,7 @@ export class TmdbClient {
       params.watch_region = input.region || 'US';
     }
     if (input.networks?.length) params.with_networks = input.networks.join('|');
+    if (input.companies?.length) params.with_companies = input.companies.join('|');
 
     if (input.releaseState === 'airing') params.with_status = '0';
     if (input.releaseState === 'ended') params.with_status = '3';

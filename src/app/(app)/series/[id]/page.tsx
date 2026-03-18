@@ -614,6 +614,7 @@ export default function SeriesDetailPage() {
             <VirtualizedPersonRail
               title="Cast"
               titleClassName="text-lg font-bold px-4 mb-2"
+              viewAllHref={`/series/${seriesId}/credits?type=cast`}
               items={credits.cast.map((person) => ({
                 id: person.id,
                 name: person.name,
@@ -630,6 +631,7 @@ export default function SeriesDetailPage() {
             <VirtualizedPersonRail
               title="Crew"
               titleClassName="text-lg font-bold px-4 mb-2"
+              viewAllHref={`/series/${seriesId}/credits?type=crew`}
               items={credits.crew.map((person) => ({
                 id: person.id,
                 name: person.name,

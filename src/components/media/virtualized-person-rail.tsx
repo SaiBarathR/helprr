@@ -2,7 +2,9 @@
 'use client';
 
 import { useRef } from 'react';
+import Link from 'next/link';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { ChevronRight } from 'lucide-react';
 import { PersonCard } from '@/components/media/person-card';
 import type { ImageServiceHint } from '@/lib/image';
 
@@ -19,6 +21,7 @@ interface VirtualizedPersonRailProps {
   items: VirtualizedPersonRailItem[];
   cacheService: ImageServiceHint;
   titleClassName?: string;
+  viewAllHref?: string;
 }
 
 // PersonCard height: p-2 (8px) + h-10 image (40px) + p-2 (8px) = 56px
@@ -29,6 +32,7 @@ export function VirtualizedPersonRail({
   items,
   cacheService,
   titleClassName = 'text-base font-semibold px-4 mb-2',
+  viewAllHref,
 }: VirtualizedPersonRailProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +49,19 @@ export function VirtualizedPersonRail({
 
   return (
     <div>
-      <h2 className={titleClassName}>{title}</h2>
+      {viewAllHref ? (
+        <div className="flex items-center justify-between px-4 mb-2">
+          <h2 className={titleClassName?.replace(/\bpx-\d+\b/g, '').replace(/\bmb-\d+\b/g, '').trim() || 'text-base font-semibold'}>
+            {title}
+          </h2>
+          <Link href={viewAllHref} className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
+            View All
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      ) : (
+        <h2 className={titleClassName}>{title}</h2>
+      )}
       <div
         ref={scrollRef}
         className="overflow-x-auto pb-1 px-4 scrollbar-hide"

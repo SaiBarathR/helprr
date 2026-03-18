@@ -172,6 +172,7 @@ function parseFilters(searchParams: URLSearchParams): DiscoverFilters {
     voteCountMin: parseNumber(searchParams.get('voteCountMin')),
     providers: parseNumberList(searchParams.get('providers')),
     networks: parseNumberList(searchParams.get('networks')),
+    companies: parseNumberList(searchParams.get('companies')),
     releaseState: asReleaseState(searchParams.get('releaseState')),
     withPeople,
     withCast,
@@ -193,6 +194,7 @@ function hasDiscoverFilters(filters: DiscoverFilters): boolean {
     || filters.voteCountMin !== undefined
     || (filters.providers && filters.providers.length > 0)
     || (filters.networks && filters.networks.length > 0)
+    || (filters.companies && filters.companies.length > 0)
     || filters.releaseState
     || (filters.withPeople && filters.withPeople.length > 0)
     || (filters.withCast && filters.withCast.length > 0)
@@ -474,6 +476,7 @@ async function discoverItems(params: {
     voteCountMin: params.filters.voteCountMin,
     providers: params.filters.providers,
     networks: params.filters.networks,
+    companies: params.filters.companies,
     releaseState: params.filters.releaseState,
     withPeople: params.filters.withPeople,
   };

@@ -123,6 +123,7 @@ function isDefaultFilters(filters: ReturnType<typeof useUIStore.getState>['disco
     && filters.voteCountMin === DEFAULT_DISCOVER_FILTERS.voteCountMin
     && hasSameNumberSet(filters.providers, DEFAULT_DISCOVER_FILTERS.providers)
     && hasSameNumberSet(filters.networks, DEFAULT_DISCOVER_FILTERS.networks)
+    && hasSameNumberSet(filters.companies, DEFAULT_DISCOVER_FILTERS.companies)
     && filters.releaseState === DEFAULT_DISCOVER_FILTERS.releaseState;
 }
 
@@ -145,6 +146,7 @@ function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
   if (filters.region && filters.region !== DEFAULT_DISCOVER_FILTERS.region) count += 1;
   if (filters.providers.length > 0) count += 1;
   if (filters.networks.length > 0) count += 1;
+  if (filters.companies.length > 0) count += 1;
   if (filters.releaseState) count += 1;
   return count;
 }
@@ -441,6 +443,7 @@ export default function DiscoverPage() {
     if (discoverFilters.voteCountMin) params.set('voteCountMin', discoverFilters.voteCountMin);
     if (discoverFilters.providers.length) params.set('providers', discoverFilters.providers.join(','));
     if (discoverFilters.networks.length) params.set('networks', discoverFilters.networks.join(','));
+    if (discoverFilters.companies.length) params.set('companies', discoverFilters.companies.join(','));
     if (discoverFilters.releaseState) params.set('releaseState', discoverFilters.releaseState);
     if (personFilter) {
       params.set('with_people', String(personFilter.id));
@@ -532,6 +535,39 @@ export default function DiscoverPage() {
     setPersonFilter,
     setDiscoverContentType,
     setDiscoverSort,
+    setManualBrowseMode,
+  ]);
+
+  // Handle companies/networks URL params (from detail page links)
+  useEffect(() => {
+    const rawCompanies = searchParams.get('companies');
+    const rawNetworks = searchParams.get('networks');
+    const rawContentType = searchParams.get('contentType');
+    if (!rawCompanies && !rawNetworks) return;
+
+    const parseIds = (raw: string | null) =>
+      raw
+        ? raw.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v > 0)
+        : [];
+
+    const companyIds = parseIds(rawCompanies);
+    const networkIds = parseIds(rawNetworks);
+    if (!companyIds.length && !networkIds.length) return;
+
+    const ct = rawContentType === 'movie' || rawContentType === 'show' ? rawContentType : 'all';
+    setDiscoverContentType(ct);
+    setDiscoverSort('popular');
+    setDiscoverFilters({
+      ...DEFAULT_DISCOVER_FILTERS,
+      companies: companyIds,
+      networks: networkIds,
+    });
+    setManualBrowseMode(true);
+  }, [
+    searchParams,
+    setDiscoverContentType,
+    setDiscoverSort,
+    setDiscoverFilters,
     setManualBrowseMode,
   ]);
 
