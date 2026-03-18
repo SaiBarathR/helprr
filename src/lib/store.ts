@@ -24,6 +24,7 @@ export interface DiscoverFiltersState {
   voteCountMin: string;
   providers: number[];
   networks: number[];
+  companies: number[];
   releaseState: '' | 'released' | 'upcoming' | 'airing' | 'ended';
 }
 
@@ -52,6 +53,7 @@ export const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
   voteCountMin: '',
   providers: [],
   networks: [],
+  companies: [],
   releaseState: '',
 };
 
@@ -89,6 +91,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
     genres: [...filters.genres],
     providers: [...filters.providers],
     networks: [...filters.networks],
+    companies: [...filters.companies],
   };
 }
 
@@ -324,7 +327,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 11,
+      version: 12,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -415,6 +418,13 @@ export const useUIStore = create<UIState>()(
             };
             filtered.splice(firstIdx, 0, combined);
             state.dashboardLayout = filtered;
+          }
+        }
+        if (version < 12) {
+          // Add companies to discover filters
+          const filters = state.discoverFilters as Record<string, unknown> | undefined;
+          if (filters && !Array.isArray(filters.companies)) {
+            filters.companies = [];
           }
         }
         return state as unknown as UIState;

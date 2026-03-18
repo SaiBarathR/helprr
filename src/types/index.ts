@@ -664,6 +664,7 @@ export interface DiscoverFilters {
   voteCountMin?: number;
   providers?: number[];
   networks?: number[];
+  companies?: number[];
   releaseState?: 'released' | 'upcoming' | 'airing' | 'ended';
   withPeople?: number[];
   withCast?: number[];

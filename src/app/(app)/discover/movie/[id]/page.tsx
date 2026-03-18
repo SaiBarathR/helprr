@@ -71,13 +71,13 @@ export default function DiscoverMovieDetailPage() {
     const rows: { label: string; value: string }[] = [];
     if (movie.status) rows.push({ label: 'Status', value: movie.status });
     if (movie.originalLanguage) rows.push({ label: 'Language', value: movie.originalLanguage.toUpperCase() });
+    if (movie.rating > 0) rows.push({ label: 'Rating', value: `${movie.rating.toFixed(1)}/10` });
+    if (movie.voteCount > 0) rows.push({ label: 'Vote Count', value: movie.voteCount.toLocaleString() });
+    if (movie.popularity > 0) rows.push({ label: 'Popularity', value: movie.popularity.toFixed(1) });
     const budget = formatCurrency(movie.budget);
     if (budget) rows.push({ label: 'Budget', value: budget });
     const revenue = formatCurrency(movie.revenue);
     if (revenue) rows.push({ label: 'Revenue', value: revenue });
-    if (movie.productionCompanies.length) {
-      rows.push({ label: 'Production', value: movie.productionCompanies.map((c) => c.name).join(', ') });
-    }
     return rows;
   }, [movie]);
 
@@ -170,6 +170,7 @@ export default function DiscoverMovieDetailPage() {
         {/* Cast */}
         <VirtualizedPersonRail
           title="Cast"
+          viewAllHref={`/discover/movie/${movieId}/credits?type=cast`}
           items={movie.cast.map((c) => ({
             id: c.id,
             name: c.name,
@@ -184,6 +185,7 @@ export default function DiscoverMovieDetailPage() {
         {movie.crew.length > 0 && (
           <VirtualizedPersonRail
             title="Crew"
+            viewAllHref={`/discover/movie/${movieId}/credits?type=crew`}
             items={movie.crew.map((c) => ({
               id: c.id,
               name: c.name,
@@ -236,6 +238,37 @@ export default function DiscoverMovieDetailPage() {
                 <p className="text-xs text-muted-foreground mt-0.5">View all movies in this collection</p>
               </div>
             </Link>
+          </div>
+        )}
+
+        {/* Production Companies */}
+        {movie.productionCompanies.length > 0 && (
+          <div className="px-4">
+            <h2 className="text-base font-semibold mb-2">Production Companies</h2>
+            <div className="flex gap-3 flex-wrap">
+              {movie.productionCompanies.map((company) => {
+                const logoSrc = company.logoPath
+                  ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${company.logoPath}`, 'tmdb')
+                  : null;
+                return (
+                  <Link key={company.id} href={`/discover?companies=${company.id}&contentType=movie`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                    {logoSrc && (
+                      <div className="relative h-5 w-8">
+                        <Image
+                          src={logoSrc}
+                          alt={company.name}
+                          fill
+                          sizes="32px"
+                          className="object-contain"
+                          unoptimized={isProtectedApiImageSrc(logoSrc)}
+                        />
+                      </div>
+                    )}
+                    <span className="text-xs font-medium">{company.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
         )}
 

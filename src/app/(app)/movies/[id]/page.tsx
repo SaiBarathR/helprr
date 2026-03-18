@@ -586,7 +586,7 @@ export default function MovieDetailPage() {
         )}
 
         {/* Cast & Crew */}
-        {credits.length > 0 && <MovieCreditsSection credits={credits} />}
+        {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} />}
 
         {/* Pill buttons */}
         <div className="flex gap-3 px-4">
@@ -684,7 +684,7 @@ export default function MovieDetailPage() {
   );
 }
 
-function MovieCreditsSection({ credits }: { credits: RadarrCredit[] }) {
+function MovieCreditsSection({ credits, movieId }: { credits: RadarrCredit[]; movieId: number }) {
   const { cast, crew } = useMemo(() => {
     const castItems = credits
       .filter((c) => c.type === 'cast')
@@ -723,6 +723,7 @@ function MovieCreditsSection({ credits }: { credits: RadarrCredit[] }) {
       {cast.length > 0 && (
         <VirtualizedPersonRail
           title="Cast"
+          viewAllHref={`/movies/${movieId}/credits?type=cast`}
           items={cast}
           cacheService="radarr"
         />
@@ -730,6 +731,7 @@ function MovieCreditsSection({ credits }: { credits: RadarrCredit[] }) {
       {crew.length > 0 && (
         <VirtualizedPersonRail
           title="Crew"
+          viewAllHref={`/movies/${movieId}/credits?type=crew`}
           items={crew}
           cacheService="radarr"
         />
