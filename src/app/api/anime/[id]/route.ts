@@ -71,6 +71,8 @@ export async function GET(
           ? matchSeriesInLibrary(lookups, {
               tvdbId: normalized.tvdbId,
               title: normalized.title,
+              titleRomaji: normalized.titleRomaji,
+              titleNative: normalized.titleNative,
               year: normalized.year,
             })
           : null

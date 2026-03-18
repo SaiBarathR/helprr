@@ -101,6 +101,33 @@ export interface AniListStaffEdge {
   };
 }
 
+export interface AniListNextAiringEpisode {
+  airingAt: number;
+  timeUntilAiring: number;
+  episode: number;
+}
+
+export interface AniListStatusDistribution {
+  status: string;
+  amount: number;
+}
+
+export interface AniListScoreDistribution {
+  score: number;
+  amount: number;
+}
+
+export interface AniListRanking {
+  id: number;
+  rank: number;
+  type: string;
+  format: string;
+  year: number | null;
+  season: string | null;
+  allTime: boolean;
+  context: string;
+}
+
 export interface AniListReview {
   id: number;
   summary: string;
@@ -177,6 +204,14 @@ export interface AniListMediaDetail extends AniListMedia {
   hashtag: string | null;
   meanScore: number | null;
   favourites: number | null;
+  endDate: AniListFuzzyDate | null;
+  synonyms: string[] | null;
+  nextAiringEpisode: AniListNextAiringEpisode | null;
+  stats: {
+    statusDistribution: AniListStatusDistribution[];
+    scoreDistribution: AniListScoreDistribution[];
+  } | null;
+  rankings: AniListRanking[] | null;
   trailer: AniListTrailer | null;
   characters: { edges: AniListCharacterEdge[] } | null;
   staff: { edges: AniListStaffEdge[] } | null;
@@ -265,6 +300,14 @@ export interface AniListDetailResponse {
   favourites: number | null;
   isAdult: boolean;
   source: string | null;
+  hashtag: string | null;
+  startDate: AniListFuzzyDate | null;
+  endDate: AniListFuzzyDate | null;
+  synonyms: string[];
+  nextAiringEpisode: AniListNextAiringEpisode | null;
+  statusDistribution: AniListStatusDistribution[];
+  scoreDistribution: AniListScoreDistribution[];
+  rankings: AniListRanking[];
   trailer: AniListTrailer | null;
   studios: Array<{ id: number; name: string; isMain: boolean }>;
   characters: Array<{
