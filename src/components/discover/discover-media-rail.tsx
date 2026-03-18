@@ -2,8 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
-import { Star, Film, Tv } from 'lucide-react';
+import { Star, Film, Tv, Check } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverItem } from '@/types';
 
@@ -46,14 +45,14 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-                <div className="absolute top-1.5 left-1.5">
-                  <Badge className={`text-[10px] text-white ${item.mediaType === 'movie' ? 'bg-blue-600/80' : 'bg-violet-600/80'}`}>
-                    {item.mediaType === 'movie' ? 'MOVIE' : 'TV'}
-                  </Badge>
+                <div className="absolute top-1.5 left-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-black/60">
+                  {item.mediaType === 'movie'
+                    ? <Film className="h-3 w-3 text-blue-400" />
+                    : <Tv className="h-3 w-3 text-violet-400" />}
                 </div>
                 {item.library?.exists && (
-                  <div className="absolute top-1.5 right-1.5">
-                    <Badge className="bg-green-600/90 text-[10px] text-white">Added</Badge>
+                  <div className="absolute top-1.5 right-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
+                    <Check className="h-3 w-3 text-white" />
                   </div>
                 )}
                 <div className="absolute bottom-0 left-0 right-0 p-2">
