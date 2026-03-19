@@ -34,7 +34,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
   const imgSize = size === 'large' ? '140px' : '110px';
 
   return (
-    <div className='px-3'>
+    <div>
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-base font-semibold">{title}</h2>
         {viewAllHref && (
