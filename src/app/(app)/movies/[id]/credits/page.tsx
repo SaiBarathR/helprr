@@ -16,6 +16,7 @@ export default function MovieCreditsPage() {
   const [credits, setCredits] = useState<RadarrCredit[]>([]);
   const [title, setTitle] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   const loadData = useCallback(async (signal: AbortSignal) => {
     if (!Number.isFinite(movieId) || movieId <= 0) {
@@ -23,6 +24,7 @@ export default function MovieCreditsPage() {
       return;
     }
 
+    setLoading(true);
     try {
       const [movieRes, creditsRes] = await Promise.all([
         fetch(`/api/radarr/${movieId}`, { signal }),
@@ -40,8 +42,11 @@ export default function MovieCreditsPage() {
         const data: RadarrCredit[] = await creditsRes.json();
         setCredits(data);
       }
+
+      setError(null);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return;
+      setError(err instanceof Error ? err : new Error('Failed to load credits'));
     } finally {
       if (!signal.aborted) setLoading(false);
     }
@@ -93,6 +98,7 @@ export default function MovieCreditsPage() {
       cacheService="radarr"
       loading={loading}
       initialTab={initialTab}
+      error={error?.message ?? null}
     />
   );
 }

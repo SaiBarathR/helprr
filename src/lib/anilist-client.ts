@@ -4,6 +4,7 @@ import type {
   AniListMediaDetail,
   AniListMangaDetail,
   AniListMediaFormat,
+  AniListNextAiringEpisode,
   AniListMediaSeason,
   AniListMediaStatus,
   AniListPageInfo,
@@ -68,7 +69,7 @@ const MEDIA_DETAIL_FRAGMENT = `
   favourites
   endDate { year month day }
   synonyms
-  nextAiringEpisode { airingAt timeUntilAiring episode }
+  nextAiringEpisode { airingAt episode }
   stats {
     statusDistribution { status amount }
     scoreDistribution { score amount }
@@ -221,6 +222,12 @@ interface GqlResponse<T> {
   errors?: Array<{ message: string }>;
 }
 
+interface AiringMediaData {
+  Media: {
+    nextAiringEpisode: AniListNextAiringEpisode | null;
+  } | null;
+}
+
 interface PageData {
   Page: {
     pageInfo: AniListPageInfo;
@@ -259,10 +266,12 @@ async function gqlRequest<T>(query: string, variables: Record<string, unknown>):
   return response.data.data;
 }
 
-function getCachePolicy(type: 'sections' | 'browse' | 'detail'): AnilistCachePolicy {
+function getCachePolicy(type: 'sections' | 'browse' | 'detail' | 'airing'): AnilistCachePolicy {
   switch (type) {
     case 'sections':
       return { ttlSeconds: 5 * 60, staleSeconds: 30 * 60 };
+    case 'airing':
+      return { ttlSeconds: 10 * 60, staleSeconds: 30 * 60 };
     case 'detail':
       return { ttlSeconds: 24 * 60 * 60, staleSeconds: 7 * 24 * 60 * 60 };
     case 'browse':
@@ -314,6 +323,25 @@ export async function getAnimeDetail(id: number): Promise<AniListMediaDetail> {
   });
 
   return result.Media;
+}
+
+export async function getAnimeNextAiringEpisode(id: number): Promise<AniListNextAiringEpisode | null> {
+  const gqlQuery = `
+    query ($id: Int) {
+      Media(id: $id, type: ANIME) {
+        nextAiringEpisode { airingAt episode }
+      }
+    }
+  `;
+
+  const result = await getAnilistJsonWithCache<AiringMediaData>({
+    endpoint: 'airing',
+    params: { id },
+    policy: getCachePolicy('airing'),
+    fetcher: () => gqlRequest<AiringMediaData>(gqlQuery, { id }),
+  });
+
+  return result.Media?.nextAiringEpisode ?? null;
 }
 
 export async function getMangaDetail(id: number): Promise<AniListMangaDetail> {

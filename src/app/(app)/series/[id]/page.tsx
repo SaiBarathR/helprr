@@ -123,6 +123,7 @@ export default function SeriesDetailPage() {
   const [showAniListRemap, setShowAniListRemap] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
   const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(new Map());
+  const [animeNowMs, setAnimeNowMs] = useState(() => Date.now());
 
   const MONITOR_OPTIONS = [
     { value: 'all', label: 'All Episodes' },
@@ -231,6 +232,13 @@ export default function SeriesDetailPage() {
   }, [loadData, seriesId]);
 
   useEffect(() => {
+    setTmdbData(null);
+    setAnimeData(null);
+    setExpandedSeasons(new Set());
+    setSeasonEpisodes(new Map());
+  }, [seriesId]);
+
+  useEffect(() => {
     if (!Number.isFinite(seriesId) || !series?.id || series.seriesType === 'anime') {
       setCredits({ cast: [], crew: [] });
       return;
@@ -257,6 +265,7 @@ export default function SeriesDetailPage() {
       return;
     }
     const controller = new AbortController();
+    setTmdbData(null);
     fetch(`/api/discover/tv/${series.tmdbId}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: DiscoverTvFullDetail | null) => setTmdbData(data))
@@ -275,6 +284,7 @@ export default function SeriesDetailPage() {
     }
 
     const controller = new AbortController();
+    setAnimeData(null);
     setAnimeLoading(true);
 
     fetch(`/api/sonarr/${series.id}/anime`, { signal: controller.signal })
@@ -306,6 +316,58 @@ export default function SeriesDetailPage() {
     return () => controller.abort();
   }, [series?.id, series?.seriesType]);
 
+  useEffect(() => {
+    if (series?.seriesType !== 'anime' || !series?.id) return;
+
+    let cancelled = false;
+
+    const refreshAnimeData = async () => {
+      try {
+        const response = await fetch(`/api/sonarr/${series.id}/anime`);
+        if (!response.ok) return;
+        const data: SeriesAniListResponse = await response.json();
+        if (!cancelled) {
+          setAnimeData(data);
+        }
+      } catch {
+        // Keep the current detail on background refresh failures.
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshAnimeData();
+    }, 10 * 60 * 1000);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      void refreshAnimeData();
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [series?.id, series?.seriesType]);
+
+  useEffect(() => {
+    setAnimeNowMs(Date.now());
+
+    if (!animeData?.detail?.nextAiringEpisode) return;
+
+    const tick = window.setInterval(() => {
+      setAnimeNowMs(Date.now());
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(tick);
+    };
+  }, [animeData?.detail?.nextAiringEpisode]);
+
   function toggleSeasonExpand(seasonNumber: number) {
     setExpandedSeasons((prev) => {
       const next = new Set(prev);
@@ -314,10 +376,11 @@ export default function SeriesDetailPage() {
       } else {
         next.add(seasonNumber);
         if (!seasonEpisodes.has(seasonNumber) && series?.tmdbId) {
+          const activeSeriesId = seriesId;
           fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`)
             .then((r) => (r.ok ? r.json() : null))
             .then((data: DiscoverSeasonDetailResponse | null) => {
-              if (data) {
+              if (data && activeSeriesId === currentSeriesIdRef.current) {
                 setSeasonEpisodes((prev) => new Map(prev).set(seasonNumber, data));
               }
             })
@@ -578,6 +641,9 @@ export default function SeriesDetailPage() {
   const isAnimeSeries = series.seriesType === 'anime';
   const animeDetail = animeData?.detail ?? null;
   const animeMapping = animeData?.mapping ?? null;
+  const nextAiringSeconds = animeDetail?.nextAiringEpisode
+    ? Math.max(0, animeDetail.nextAiringEpisode.airingAt - Math.floor(animeNowMs / 1000))
+    : null;
   const animeDescription = animeDetail?.description ? DOMPurify.sanitize(animeDetail.description) : '';
   const animeInfoRows: Array<{ label: string; value: string }> = [];
   if (animeDetail?.format) animeInfoRows.push({ label: 'Format', value: animeDetail.format.replace(/_/g, ' ') });
@@ -852,7 +918,7 @@ export default function SeriesDetailPage() {
                 <div className="text-sm">
                   <span className="font-medium">Ep {animeDetail.nextAiringEpisode.episode}</span>
                   <span className="text-muted-foreground"> airing in </span>
-                  <span className="font-medium text-blue-400">{formatCountdown(animeDetail.nextAiringEpisode.timeUntilAiring)}</span>
+                  <span className="font-medium text-blue-400">{formatCountdown(nextAiringSeconds ?? 0)}</span>
                 </div>
               </div>
             )}
@@ -1361,7 +1427,8 @@ export default function SeriesDetailPage() {
               <div className="mt-4">
                 <VirtualizedPersonRail
                   title="Cast"
-                  titleClassName="text-lg font-bold px-2 mb-2"
+                  titleTextClassName="text-lg font-bold"
+                  headerClassName="px-2 mb-2"
                   viewAllHref={`/series/${seriesId}/credits?type=cast`}
                   items={credits.cast.map((person) => ({
                     id: person.id,
@@ -1378,7 +1445,8 @@ export default function SeriesDetailPage() {
               <div className="mt-4">
                 <VirtualizedPersonRail
                   title="Crew"
-                  titleClassName="text-lg font-bold px-2 mb-2"
+                  titleTextClassName="text-lg font-bold"
+                  headerClassName="px-2 mb-2"
                   viewAllHref={`/series/${seriesId}/credits?type=crew`}
                   items={credits.crew.map((person) => ({
                     id: person.id,

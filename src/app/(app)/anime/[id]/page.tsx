@@ -86,6 +86,7 @@ export default function AnimeDetailPage() {
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     const controller = new AbortController();
@@ -121,9 +122,69 @@ export default function AnimeDetailPage() {
     return () => controller.abort();
   }, [id]);
 
+  useEffect(() => {
+    setNowMs(Date.now());
+
+    if (state.id !== id || !state.detail?.nextAiringEpisode) return;
+
+    const tick = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(tick);
+    };
+  }, [id, state.detail?.nextAiringEpisode, state.id]);
+
+  useEffect(() => {
+    if (state.id !== id || !state.detail) return;
+
+    let cancelled = false;
+
+    const refreshDetail = async () => {
+      try {
+        const res = await fetch(`/api/anime/${id}`);
+        if (!res.ok) return;
+        const data: DetailWithLibrary = await res.json();
+        if (!cancelled) {
+          setState((prev) => (prev.id === id ? {
+            ...prev,
+            detail: data,
+            error: null,
+            loading: false,
+          } : prev));
+        }
+      } catch {
+        // Keep the current detail on background refresh failures.
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      void refreshDetail();
+    }, 10 * 60 * 1000);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'hidden') return;
+      void refreshDetail();
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [id, state.detail, state.id]);
+
   const detail = state.id === id ? state.detail : null;
   const loading = state.id === id ? state.loading : true;
   const error = state.id === id ? state.error : null;
+  const nextAiringSeconds = detail?.nextAiringEpisode
+    ? Math.max(0, detail.nextAiringEpisode.airingAt - Math.floor(nowMs / 1000))
+    : null;
 
   if (loading) {
     return (
@@ -295,7 +356,7 @@ export default function AnimeDetailPage() {
             <div className="text-sm">
               <span className="font-medium">Ep {detail.nextAiringEpisode.episode}</span>
               <span className="text-muted-foreground"> airing in </span>
-              <span className="font-medium text-blue-400">{formatCountdown(detail.nextAiringEpisode.timeUntilAiring)}</span>
+              <span className="font-medium text-blue-400">{formatCountdown(nextAiringSeconds ?? 0)}</span>
             </div>
           </div>
         )}
@@ -484,7 +545,7 @@ export default function AnimeDetailPage() {
           <div>
             <h2 className="text-base font-semibold mb-2">Score Distribution</h2>
             <div className="flex items-end gap-1 h-28">
-              {scoreDistribution
+              {[...scoreDistribution]
                 .sort((a, b) => a.score - b.score)
                 .map((s) => {
                   const height = (s.amount / maxScoreAmount) * 100;

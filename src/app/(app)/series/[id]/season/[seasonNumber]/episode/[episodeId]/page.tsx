@@ -173,6 +173,7 @@ export default function EpisodeDetailPage() {
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [tmdbEpisode, setTmdbEpisode] = useState<DiscoverSeasonEpisode | null>(null);
+  const episodeNumber = episode?.episodeNumber;
 
   const fetchData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId) || !Number.isFinite(episodeId)) {
@@ -263,7 +264,7 @@ export default function EpisodeDetailPage() {
 
   // Background-fetch TMDB episode data for still image and rating (skip for anime)
   useEffect(() => {
-    if (!series?.tmdbId || !episode || series.seriesType === 'anime') {
+    if (!series?.tmdbId || !episodeNumber || series.seriesType === 'anime') {
       setTmdbEpisode(null);
       return;
     }
@@ -271,7 +272,7 @@ export default function EpisodeDetailPage() {
     fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: DiscoverSeasonDetailResponse | null) => {
-        const match = data?.episodes.find((e) => e.episodeNumber === episode.episodeNumber) ?? null;
+        const match = data?.episodes.find((e) => e.episodeNumber === episodeNumber) ?? null;
         setTmdbEpisode(match);
       })
       .catch((err: unknown) => {
@@ -279,7 +280,7 @@ export default function EpisodeDetailPage() {
         setTmdbEpisode(null);
       });
     return () => controller.abort();
-  }, [series?.tmdbId, series?.seriesType, seasonNumber, episode]);
+  }, [episodeNumber, seasonNumber, series?.seriesType, series?.tmdbId]);
 
   async function handleAutomaticSearch() {
     setActionLoading('search');
