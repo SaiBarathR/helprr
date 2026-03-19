@@ -45,9 +45,11 @@ interface JellyfinApiUser {
 interface CacheUsageStats {
   imageBytes: number;
   tmdbApiBytes: number;
+  anilistApiBytes: number;
   totalBytes: number;
   imageFiles: number;
   tmdbEntries: number;
+  anilistEntries: number;
 }
 
 interface LoadedServiceConnection {
@@ -398,9 +400,11 @@ export default function SettingsPage() {
         setCacheUsage({
           imageBytes: typeof usage.imageBytes === 'number' ? usage.imageBytes : 0,
           tmdbApiBytes: typeof usage.tmdbApiBytes === 'number' ? usage.tmdbApiBytes : 0,
+          anilistApiBytes: typeof usage.anilistApiBytes === 'number' ? usage.anilistApiBytes : 0,
           totalBytes: typeof usage.totalBytes === 'number' ? usage.totalBytes : 0,
           imageFiles: typeof usage.imageFiles === 'number' ? usage.imageFiles : 0,
           tmdbEntries: typeof usage.tmdbEntries === 'number' ? usage.tmdbEntries : 0,
+          anilistEntries: typeof usage.anilistEntries === 'number' ? usage.anilistEntries : 0,
         });
       }
       setCacheStatus(data.status === 'purging' ? 'purging' : 'idle');
@@ -620,9 +624,11 @@ export default function SettingsPage() {
         setCacheUsage({
           imageBytes: typeof usage.imageBytes === 'number' ? usage.imageBytes : 0,
           tmdbApiBytes: typeof usage.tmdbApiBytes === 'number' ? usage.tmdbApiBytes : 0,
+          anilistApiBytes: typeof usage.anilistApiBytes === 'number' ? usage.anilistApiBytes : 0,
           totalBytes: typeof usage.totalBytes === 'number' ? usage.totalBytes : 0,
           imageFiles: typeof usage.imageFiles === 'number' ? usage.imageFiles : 0,
           tmdbEntries: typeof usage.tmdbEntries === 'number' ? usage.tmdbEntries : 0,
+          anilistEntries: typeof usage.anilistEntries === 'number' ? usage.anilistEntries : 0,
         });
       } else {
         void loadCacheUsage();
@@ -1032,6 +1038,14 @@ export default function SettingsPage() {
                   {loadingCacheUsage
                     ? 'Loading...'
                     : `${formatBytes(cacheUsage?.tmdbApiBytes ?? 0)} (${cacheUsage?.tmdbEntries ?? 0} entries)`}
+                </span>
+              </div>
+              <div className="grouped-row">
+                <span className="text-sm">AniList API Cache</span>
+                <span className="text-sm text-muted-foreground">
+                  {loadingCacheUsage
+                    ? 'Loading...'
+                    : `${formatBytes(cacheUsage?.anilistApiBytes ?? 0)} (${cacheUsage?.anilistEntries ?? 0} entries)`}
                 </span>
               </div>
               <div className="grouped-row">

@@ -278,6 +278,41 @@ export interface AniListListItem {
   coverImageColor: string | null;
 }
 
+export type SeriesAniListMappingState =
+  | 'AUTO_MATCH'
+  | 'AUTO_UNMATCHED'
+  | 'MANUAL_MATCH'
+  | 'MANUAL_NONE';
+
+export interface SeriesAniListCandidate {
+  id: number;
+  title: string;
+  titleRomaji: string | null;
+  titleNative: string | null;
+  coverImage: string | null;
+  format: AniListMediaFormat | null;
+  status: AniListMediaStatus | null;
+  seasonYear: number | null;
+  episodes: number | null;
+  averageScore: number | null;
+  popularity: number | null;
+  matchScore: number;
+}
+
+export interface SeriesAniListMapping {
+  sonarrSeriesId: number;
+  anilistMediaId: number | null;
+  state: SeriesAniListMappingState;
+  matchMethod: string | null;
+  confidence: number | null;
+  resolvedAt: string;
+}
+
+export interface SeriesAniListResponse {
+  mapping: SeriesAniListMapping;
+  detail: AniListDetailResponse | null;
+}
+
 export interface AniListDetailResponse {
   id: number;
   title: string;

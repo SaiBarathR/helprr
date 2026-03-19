@@ -83,3 +83,19 @@ model AppSettings {
   upcomingNotifyBeforeMins Int     @default(60)
   upcomingDailyNotifyHour  Int     @default(9)            // 0-23, for daily_digest mode
 }
+
+model AniListSeriesMapping {
+  id                   String   @id @default(cuid())
+  sonarrSeriesId       Int      @unique
+  anilistMediaId       Int?
+  state                String
+  matchMethod          String?
+  confidence           Int?
+  seriesTitleSnapshot  String
+  seriesYearSnapshot   Int?
+  seriesTvdbIdSnapshot Int?
+  seriesTmdbIdSnapshot Int?
+  resolvedAt           DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
