@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import DOMPurify from 'isomorphic-dompurify';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle,
@@ -15,15 +17,23 @@ import {
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { PageHeader } from '@/components/layout/page-header';
+import { AnimeHero } from '@/components/anime/anime-hero';
+import { AnimeCharacterRail } from '@/components/anime/anime-character-rail';
+import { AnimeRelationsSection } from '@/components/anime/anime-relations-section';
+import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
+import { AniListRemapDrawer } from '@/components/anime/anilist-remap-drawer';
 import { getImageUrl } from '@/components/media/media-card';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
+import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
+  Clock, Trophy, TrendingUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag, DiscoverTvFullDetail, DiscoverSeasonDetailResponse } from '@/types';
+import type { AniListFuzzyDate, SeriesAniListResponse } from '@/types/anilist';
 import {
   getSeriesDetailSnapshot,
   patchSeasonAcrossSnapshots,
@@ -38,6 +48,53 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
   crew: { id: number; name: string; profilePath: string | null; job: string }[];
+}
+
+function formatFuzzyDate(date: AniListFuzzyDate | null): string | null {
+  if (!date || !date.year) return null;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  if (date.month && date.day) {
+    return `${months[date.month - 1]} ${date.day}, ${date.year}`;
+  }
+  if (date.month) {
+    return `${months[date.month - 1]} ${date.year}`;
+  }
+  return String(date.year);
+}
+
+function formatCountdown(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  parts.push(`${mins}m`);
+  return parts.join(' ');
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  CURRENT: 'bg-blue-500',
+  PLANNING: 'bg-green-500',
+  COMPLETED: 'bg-violet-500',
+  PAUSED: 'bg-yellow-500',
+  DROPPED: 'bg-red-500',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  CURRENT: 'Current',
+  PLANNING: 'Planning',
+  COMPLETED: 'Completed',
+  PAUSED: 'Paused',
+  DROPPED: 'Dropped',
+};
+
+function formatAniListMappingState(state: SeriesAniListResponse['mapping']['state'] | null | undefined): string {
+  if (state === 'MANUAL_MATCH') return 'Manual match';
+  if (state === 'MANUAL_NONE') return 'Manually unmapped';
+  if (state === 'AUTO_MATCH') return 'Auto matched';
+  if (state === 'AUTO_UNMATCHED') return 'No confident match';
+  return 'Not mapped';
 }
 
 export default function SeriesDetailPage() {
@@ -60,6 +117,10 @@ export default function SeriesDetailPage() {
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [credits, setCredits] = useState<SeriesCredits>({ cast: [], crew: [] });
   const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(null);
+  const [animeData, setAnimeData] = useState<SeriesAniListResponse | null>(null);
+  const [animeLoading, setAnimeLoading] = useState(false);
+  const [animeOverviewExpanded, setAnimeOverviewExpanded] = useState(false);
+  const [showAniListRemap, setShowAniListRemap] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
   const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(new Map());
 
@@ -167,13 +228,14 @@ export default function SeriesDetailPage() {
     }
 
     void loadData(Boolean(cached));
+  }, [loadData, seriesId]);
 
-    if (!Number.isFinite(seriesId)) {
+  useEffect(() => {
+    if (!Number.isFinite(seriesId) || !series?.id || series.seriesType === 'anime') {
       setCredits({ cast: [], crew: [] });
       return;
     }
 
-    // Background fetch for TMDB credits (non-blocking)
     setCredits({ cast: [], crew: [] });
     const controller = new AbortController();
     fetch(`/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
@@ -186,11 +248,11 @@ export default function SeriesDetailPage() {
     return () => {
       controller.abort();
     };
-  }, [loadData, seriesId]);
+  }, [series?.id, series?.seriesType, seriesId]);
 
   // Background-fetch TMDB enrichment data
   useEffect(() => {
-    if (!series?.tmdbId) {
+    if (!series?.tmdbId || series.seriesType === 'anime') {
       setTmdbData(null);
       return;
     }
@@ -203,7 +265,46 @@ export default function SeriesDetailPage() {
         setTmdbData(null);
       });
     return () => controller.abort();
-  }, [series?.tmdbId]);
+  }, [series?.seriesType, series?.tmdbId]);
+
+  useEffect(() => {
+    if (!series?.id || series.seriesType !== 'anime') {
+      setAnimeData(null);
+      setAnimeLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setAnimeLoading(true);
+
+    fetch(`/api/sonarr/${series.id}/anime`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to load AniList details');
+        }
+        return response.json();
+      })
+      .then((data: SeriesAniListResponse) => {
+        if (!controller.signal.aborted) {
+          setAnimeData(data);
+        }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+        if (!controller.signal.aborted) {
+          setAnimeData(null);
+          toast.error(error instanceof Error ? error.message : 'Failed to load AniList details');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setAnimeLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [series?.id, series?.seriesType]);
 
   function toggleSeasonExpand(seasonNumber: number) {
     setExpandedSeasons((prev) => {
@@ -259,6 +360,16 @@ export default function SeriesDetailPage() {
     } finally {
       setJellyfinLoading(false);
     }
+  }
+
+  function handleAniListUpdated(next: SeriesAniListResponse) {
+    setAnimeData(next);
+    setAnimeOverviewExpanded(false);
+    toast.success(
+      next.mapping.state === 'MANUAL_NONE'
+        ? 'AniList mapping cleared'
+        : 'AniList mapping updated'
+    );
   }
 
   const seasonNumbers = [...new Set(episodes.map((e) => e.seasonNumber))].sort((a, b) => b - a);
@@ -464,6 +575,60 @@ export default function SeriesDetailPage() {
   const nextAiring = series.nextAiring
     ? format(new Date(series.nextAiring), "MMM d, yyyy 'at' h:mm a")
     : null;
+  const isAnimeSeries = series.seriesType === 'anime';
+  const animeDetail = animeData?.detail ?? null;
+  const animeMapping = animeData?.mapping ?? null;
+  const animeDescription = animeDetail?.description ? DOMPurify.sanitize(animeDetail.description) : '';
+  const animeInfoRows: Array<{ label: string; value: string }> = [];
+  if (animeDetail?.format) animeInfoRows.push({ label: 'Format', value: animeDetail.format.replace(/_/g, ' ') });
+  if (animeDetail?.episodes != null) animeInfoRows.push({ label: 'Episodes', value: String(animeDetail.episodes) });
+  if (animeDetail?.duration != null) animeInfoRows.push({ label: 'Episode Duration', value: `${animeDetail.duration} mins` });
+  if (animeDetail?.status) animeInfoRows.push({ label: 'Status', value: animeDetail.status.charAt(0) + animeDetail.status.slice(1).toLowerCase().replace(/_/g, ' ') });
+  const animeStartDate = formatFuzzyDate(animeDetail?.startDate ?? null);
+  if (animeStartDate) animeInfoRows.push({ label: 'Start Date', value: animeStartDate });
+  const animeEndDate = formatFuzzyDate(animeDetail?.endDate ?? null);
+  if (animeEndDate) animeInfoRows.push({ label: 'End Date', value: animeEndDate });
+  if (animeDetail?.season && animeDetail.seasonYear) {
+    animeInfoRows.push({ label: 'Season', value: `${animeDetail.season.charAt(0)}${animeDetail.season.slice(1).toLowerCase()} ${animeDetail.seasonYear}` });
+  }
+  if (animeDetail?.averageScore != null) animeInfoRows.push({ label: 'Average Score', value: `${animeDetail.averageScore}%` });
+  if (animeDetail?.meanScore != null) animeInfoRows.push({ label: 'Mean Score', value: `${animeDetail.meanScore}%` });
+  if (animeDetail?.popularity != null) animeInfoRows.push({ label: 'Popularity', value: animeDetail.popularity.toLocaleString() });
+  if (animeDetail?.favourites != null) animeInfoRows.push({ label: 'Favorites', value: animeDetail.favourites.toLocaleString() });
+  const mainStudios = animeDetail?.studios.filter((studio) => studio.isMain) ?? [];
+  if (mainStudios.length > 0) {
+    animeInfoRows.push({ label: 'Studios', value: mainStudios.map((studio) => studio.name).join(', ') });
+  }
+  const producers = animeDetail?.studios.filter((studio) => !studio.isMain) ?? [];
+  if (producers.length > 0) {
+    animeInfoRows.push({ label: 'Producers', value: producers.map((studio) => studio.name).join(', ') });
+  }
+  if (animeDetail?.source) {
+    animeInfoRows.push({
+      label: 'Source',
+      value: animeDetail.source.replace(/_/g, ' ').split(' ').map((word) => word.charAt(0) + word.slice(1).toLowerCase()).join(' '),
+    });
+  }
+  if (animeDetail?.hashtag) animeInfoRows.push({ label: 'Hashtag', value: animeDetail.hashtag });
+  const animeAltTitles: { label: string; value: string }[] = [];
+  if (animeDetail?.titleRomaji) animeAltTitles.push({ label: 'Romaji', value: animeDetail.titleRomaji });
+  const animeEnglishTitle = animeDetail && animeDetail.title !== animeDetail.titleRomaji ? animeDetail.title : null;
+  if (animeEnglishTitle && animeEnglishTitle !== animeDetail?.titleNative) {
+    animeAltTitles.push({ label: 'English', value: animeEnglishTitle });
+  }
+  if (animeDetail?.titleNative) animeAltTitles.push({ label: 'Native', value: animeDetail.titleNative });
+  if (animeDetail?.synonyms?.length) animeAltTitles.push({ label: 'Synonyms', value: animeDetail.synonyms.join(', ') });
+  const animeTags = animeDetail?.tags.filter((tag) => !tag.isSpoiler) ?? [];
+  const animeScoreDistribution = animeDetail?.scoreDistribution ?? [];
+  const maxScoreAmount = animeScoreDistribution.length > 0
+    ? Math.max(...animeScoreDistribution.map((entry) => entry.amount))
+    : 0;
+  const animeStatusDistribution = animeDetail?.statusDistribution ?? [];
+  const totalStatusUsers = animeStatusDistribution.reduce((sum, entry) => sum + entry.amount, 0);
+  const animeLinks: Array<{ label: string; url: string }> = animeDetail ? [
+    { label: 'AniList', url: `https://anilist.co/anime/${animeDetail.id}` },
+    ...(animeDetail.malId ? [{ label: 'MyAnimeList', url: `https://myanimelist.net/anime/${animeDetail.malId}` }] : []),
+  ] : [];
 
   return (
     <div className="flex flex-col min-h-0">
@@ -507,6 +672,12 @@ export default function SeriesDetailPage() {
                   <Search className="h-4 w-4" />
                   Search Monitored
                 </DropdownMenuItem>
+                {isAnimeSeries && (
+                  <DropdownMenuItem onClick={() => setShowAniListRemap(true)}>
+                    <Search className="h-4 w-4" />
+                    Remap AniList
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 {series.tvdbId > 0 && (
                   <DropdownMenuItem asChild>
@@ -567,7 +738,20 @@ export default function SeriesDetailPage() {
 
       <div className="flex-1 overflow-y-auto">
         {/* Hero: Backdrop or flat poster layout */}
-        {tmdbData?.backdropPath ? (
+        {isAnimeSeries && animeDetail ? (
+          <AnimeHero
+            title={animeDetail.title}
+            bannerImage={animeDetail.bannerImage}
+            coverImage={animeDetail.coverImage}
+            format={animeDetail.format}
+            averageScore={animeDetail.averageScore}
+            episodes={animeDetail.episodes}
+            status={animeDetail.status}
+            season={animeDetail.season}
+            seasonYear={animeDetail.seasonYear}
+            studios={animeDetail.studios}
+          />
+        ) : tmdbData?.backdropPath ? (
           <div>
             <div className="relative w-full aspect-[16/9] overflow-hidden">
               <Image
@@ -657,6 +841,46 @@ export default function SeriesDetailPage() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {isAnimeSeries && (
+          <div className="px-4 pt-3 space-y-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">AniList Mapping</p>
+                <p className="text-xs text-muted-foreground">
+                  {animeLoading ? 'Loading AniList details...' : formatAniListMappingState(animeMapping?.state)}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {animeMapping?.state === 'MANUAL_MATCH' ? (
+                  <Badge className="bg-green-600/90 text-white">Manual</Badge>
+                ) : animeMapping?.state === 'AUTO_MATCH' ? (
+                  <Badge variant="outline">Auto</Badge>
+                ) : null}
+                <Button variant="outline" size="sm" onClick={() => setShowAniListRemap(true)}>
+                  Remap
+                </Button>
+              </div>
+            </div>
+
+            {animeDetail?.nextAiringEpisode && (
+              <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2.5">
+                <Clock className="h-4 w-4 text-blue-400 shrink-0" />
+                <div className="text-sm">
+                  <span className="font-medium">Ep {animeDetail.nextAiringEpisode.episode}</span>
+                  <span className="text-muted-foreground"> airing in </span>
+                  <span className="font-medium text-blue-400">{formatCountdown(animeDetail.nextAiringEpisode.timeUntilAiring)}</span>
+                </div>
+              </div>
+            )}
+
+            {!animeLoading && !animeDetail && (
+              <div className="rounded-lg border border-border/40 bg-muted/10 px-3 py-3 text-sm text-muted-foreground">
+                No confident AniList match is stored for this series yet. Use remap to search and attach the right anime entry manually.
+              </div>
+            )}
           </div>
         )}
 
@@ -911,144 +1135,377 @@ export default function SeriesDetailPage() {
                 {series.added ? format(new Date(series.added), 'MMM d, yyyy') : 'Unknown'}
               </span>
             </div>
+            {isAnimeSeries && (
+              <div className="flex justify-between py-2.5 border-b border-border/30">
+                <span className="text-sm text-muted-foreground">AniList</span>
+                <span className="text-sm text-right">{formatAniListMappingState(animeMapping?.state)}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Cast & Crew */}
-        {credits.cast.length > 0 && (
-          <div className="mt-4">
-            <VirtualizedPersonRail
-              title="Cast"
-              titleClassName="text-lg font-bold px-4 mb-2"
-              viewAllHref={`/series/${seriesId}/credits?type=cast`}
-              items={credits.cast.map((person) => ({
-                id: person.id,
-                name: person.name,
-                imagePath: person.profilePath,
-                subtitle: `${person.character}${person.episodeCount ? ` · ${person.episodeCount} ep` : ''}`,
-                keySuffix: `cast-${person.character}`,
-              }))}
-              cacheService="tmdb"
-            />
-          </div>
-        )}
-        {credits.crew.length > 0 && (
-          <div className="mt-4">
-            <VirtualizedPersonRail
-              title="Crew"
-              titleClassName="text-lg font-bold px-4 mb-2"
-              viewAllHref={`/series/${seriesId}/credits?type=crew`}
-              items={credits.crew.map((person) => ({
-                id: person.id,
-                name: person.name,
-                imagePath: person.profilePath,
-                subtitle: person.job,
-                keySuffix: `crew-${person.job}`,
-              }))}
-              cacheService="tmdb"
-            />
-          </div>
-        )}
-
-
-
-        {/* TMDB Enrichment Sections */}
-        {tmdbData && (
-          <div className="space-y-6 mt-6">
-            {tmdbData.videos.length > 0 && (
-              <DiscoverVideoRail title="Videos" videos={tmdbData.videos} />
-            )}
-
-            {tmdbData.recommendations.length > 0 && (
-              <DiscoverMediaRail title="Recommendations" items={tmdbData.recommendations} />
-            )}
-
-            {tmdbData.similar.length > 0 && (
-              <DiscoverMediaRail title="Similar Shows" items={tmdbData.similar} />
-            )}
-
-            {tmdbData.watchProviders && (
-              <DiscoverWatchProvidersSection providers={tmdbData.watchProviders} />
-            )}
-
-            {tmdbData.networks.length > 0 && (
+        {isAnimeSeries ? (
+          <div className="space-y-5 mt-2 pb-8">
+            {animeDescription && (
               <div className="px-4">
-                <h2 className="text-base font-semibold mb-2">Networks</h2>
-                <div className="flex gap-3 flex-wrap">
-                  {tmdbData.networks.map((network) => {
-                    const logoSrc = network.logoPath
-                      ? toCachedImageSrc(
-                          network.logoPath.startsWith('http') ? network.logoPath : `https://image.tmdb.org/t/p/w185${network.logoPath}`,
-                          'tmdb'
-                        )
-                      : null;
-                    return (
-                      <Link
-                        key={network.id}
-                        href={`/discover?networks=${network.id}&contentType=show`}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
-                      >
-                        {logoSrc && (
-                          <div className="relative h-5 w-8">
-                            <Image
-                              src={logoSrc}
-                              alt={network.name}
-                              fill
-                              sizes="32px"
-                              className="object-contain"
-                              unoptimized={isProtectedApiImageSrc(logoSrc)}
-                            />
-                          </div>
-                        )}
-                        <span className="text-xs font-medium">{network.name}</span>
-                      </Link>
-                    );
-                  })}
+                <h2 className="text-base font-semibold mb-1">Synopsis</h2>
+                <div
+                  className={`text-sm text-muted-foreground leading-relaxed [&_i]:italic [&_br]:mb-2 ${animeOverviewExpanded ? '' : 'line-clamp-5'}`}
+                  dangerouslySetInnerHTML={{ __html: animeDescription }}
+                />
+                {animeDescription.length > 200 && (
+                  <button
+                    onClick={() => setAnimeOverviewExpanded(!animeOverviewExpanded)}
+                    className="text-xs text-primary mt-1 font-medium"
+                  >
+                    {animeOverviewExpanded ? 'Show less' : 'Read more'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <DiscoverInfoRows title="AniList Information" rows={animeInfoRows} />
+
+            {animeAltTitles.length > 0 && (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Alternative Titles</h2>
+                <div>
+                  {animeAltTitles.map((title) => (
+                    <div
+                      key={title.label}
+                      className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+                    >
+                      <span className="text-sm text-muted-foreground shrink-0">{title.label}</span>
+                      <span className="text-sm text-right ml-4">{title.value}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
 
-            {tmdbData.productionCompanies.length > 0 && (
+            {(animeDetail?.genres.length || animeTags.length > 0) && (
               <div className="px-4">
-                <h2 className="text-base font-semibold mb-2">Production</h2>
-                <div className="flex gap-3 flex-wrap">
-                  {tmdbData.productionCompanies.map((company) => {
-                    const logoSrc = company.logoPath
-                      ? toCachedImageSrc(
-                          company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
-                          'tmdb'
-                        )
-                      : null;
-                    return (
-                      <Link
-                        key={company.id}
-                        href={`/discover?companies=${company.id}&contentType=show`}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
-                      >
-                        {logoSrc && (
-                          <div className="relative h-5 w-8">
-                            <Image
-                              src={logoSrc}
-                              alt={company.name}
-                              fill
-                              sizes="32px"
-                              className="object-contain"
-                              unoptimized={isProtectedApiImageSrc(logoSrc)}
-                            />
-                          </div>
-                        )}
-                        <span className="text-xs font-medium">{company.name}</span>
-                      </Link>
-                    );
-                  })}
+                <h2 className="text-base font-semibold mb-2">Genres & Tags</h2>
+                <div className="flex flex-wrap gap-1.5">
+                  {(animeDetail?.genres ?? []).map((genre) => (
+                    <Badge key={genre} variant="secondary" className="text-xs">
+                      {genre}
+                    </Badge>
+                  ))}
+                  {animeTags.slice(0, 15).map((tag) => (
+                    <Badge key={tag.name} variant="outline" className="text-xs">
+                      {tag.name}
+                      <span className="ml-1 text-muted-foreground">{tag.rank}%</span>
+                    </Badge>
+                  ))}
                 </div>
               </div>
             )}
 
-            <div className="pb-2" />
+            {animeDetail && <AnimeCharacterRail characters={animeDetail.characters} />}
+
+            {animeDetail?.staff.length ? (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Staff</h2>
+                <div className="grid grid-cols-2 gap-2">
+                  {animeDetail.staff.map((person, index) => {
+                    const staffImgSrc = person.image
+                      ? toCachedImageSrc(person.image, 'anilist') || person.image
+                      : null;
+
+                    return (
+                      <div
+                        key={`${person.id}-${person.role}-${index}`}
+                        className="flex items-center gap-2 rounded-lg border border-border/30 bg-muted/20 p-2"
+                      >
+                        <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
+                          {staffImgSrc ? (
+                            <Image
+                              src={staffImgSrc}
+                              alt={person.name}
+                              fill
+                              sizes="40px"
+                              className="object-cover"
+                              unoptimized={isProtectedApiImageSrc(staffImgSrc)}
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-[10px]">
+                              ?
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{person.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{person.role}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {animeDetail?.rankings.length ? (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Rankings</h2>
+                <div className="space-y-1.5">
+                  {animeDetail.rankings.map((ranking) => (
+                    <div
+                      key={ranking.id}
+                      className="flex items-center gap-2 rounded-lg border border-border/30 bg-muted/20 px-3 py-2"
+                    >
+                      {ranking.type === 'RATED' ? (
+                        <Trophy className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+                      ) : (
+                        <TrendingUp className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                      )}
+                      <span className="text-sm">
+                        <span className="font-semibold">#{ranking.rank}</span> {ranking.context}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {animeStatusDistribution.length > 0 && (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Status Distribution</h2>
+                {totalStatusUsers > 0 && (
+                  <div className="flex h-3 rounded-full overflow-hidden mb-3">
+                    {animeStatusDistribution.map((entry) => (
+                      <div
+                        key={entry.status}
+                        className={STATUS_COLORS[entry.status] || 'bg-gray-500'}
+                        style={{ width: `${(entry.amount / totalStatusUsers) * 100}%` }}
+                      />
+                    ))}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {animeStatusDistribution.map((entry) => (
+                    <div key={entry.status} className="flex items-center gap-2">
+                      <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_COLORS[entry.status] || 'bg-gray-500'}`} />
+                      <div className="text-sm">
+                        <span className="text-muted-foreground">{STATUS_LABELS[entry.status] || entry.status}</span>
+                        <span className="ml-1.5 font-medium">{entry.amount.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {animeScoreDistribution.length > 0 && maxScoreAmount > 0 && (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">Score Distribution</h2>
+                <div className="flex items-end gap-1 h-28">
+                  {[...animeScoreDistribution]
+                    .sort((a, b) => a.score - b.score)
+                    .map((entry) => {
+                      const height = (entry.amount / maxScoreAmount) * 100;
+                      const barColor = entry.score >= 70
+                        ? 'bg-green-500'
+                        : entry.score >= 50
+                          ? 'bg-yellow-500'
+                          : 'bg-red-500';
+
+                      return (
+                        <div key={entry.score} className="flex-1 flex flex-col items-center gap-1">
+                          <span className="text-[10px] text-muted-foreground">{entry.amount > 0 ? entry.amount.toLocaleString() : ''}</span>
+                          <div className="w-full flex items-end" style={{ height: '80px' }}>
+                            <div
+                              className={`w-full rounded-t-sm ${barColor}`}
+                              style={{ height: `${Math.max(height, 2)}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">{entry.score}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {animeDetail && <AnimeRelationsSection relations={animeDetail.relations} />}
+            {animeDetail && <AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} />}
+
+            {(animeLinks.length > 0 || (externalUrls.JELLYFIN && (series.imdbId || series.tvdbId))) && (
+              <div className="px-4">
+                <h2 className="text-base font-semibold mb-2">External Links</h2>
+                <div className="flex flex-wrap gap-2">
+                  {externalUrls.JELLYFIN && (series.imdbId || series.tvdbId) && (
+                    <button
+                      onClick={handleOpenInJellyfin}
+                      disabled={jellyfinLoading}
+                      className="inline-flex items-center gap-1 rounded-lg border border-border/30 bg-muted/30 px-3 py-1.5 text-sm text-primary hover:bg-muted/50 transition-colors disabled:opacity-50"
+                    >
+                      {jellyfinLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+                      Open in Jellyfin
+                    </button>
+                  )}
+                  {animeLinks.map((link) => (
+                    <a
+                      key={link.url}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-lg border border-border/30 bg-muted/30 px-3 py-1.5 text-sm text-primary hover:bg-muted/50 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      {link.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+        ) : (
+          <>
+            {/* Cast & Crew */}
+            {credits.cast.length > 0 && (
+              <div className="mt-4">
+                <VirtualizedPersonRail
+                  title="Cast"
+                  titleClassName="text-lg font-bold px-4 mb-2"
+                  viewAllHref={`/series/${seriesId}/credits?type=cast`}
+                  items={credits.cast.map((person) => ({
+                    id: person.id,
+                    name: person.name,
+                    imagePath: person.profilePath,
+                    subtitle: `${person.character}${person.episodeCount ? ` · ${person.episodeCount} ep` : ''}`,
+                    keySuffix: `cast-${person.character}`,
+                  }))}
+                  cacheService="tmdb"
+                />
+              </div>
+            )}
+            {credits.crew.length > 0 && (
+              <div className="mt-4">
+                <VirtualizedPersonRail
+                  title="Crew"
+                  titleClassName="text-lg font-bold px-4 mb-2"
+                  viewAllHref={`/series/${seriesId}/credits?type=crew`}
+                  items={credits.crew.map((person) => ({
+                    id: person.id,
+                    name: person.name,
+                    imagePath: person.profilePath,
+                    subtitle: person.job,
+                    keySuffix: `crew-${person.job}`,
+                  }))}
+                  cacheService="tmdb"
+                />
+              </div>
+            )}
+
+            {/* TMDB Enrichment Sections */}
+            {tmdbData && (
+              <div className="space-y-6 mt-6">
+                {tmdbData.videos.length > 0 && (
+                  <DiscoverVideoRail title="Videos" videos={tmdbData.videos} />
+                )}
+
+                {tmdbData.recommendations.length > 0 && (
+                  <DiscoverMediaRail title="Recommendations" items={tmdbData.recommendations} />
+                )}
+
+                {tmdbData.similar.length > 0 && (
+                  <DiscoverMediaRail title="Similar Shows" items={tmdbData.similar} />
+                )}
+
+                {tmdbData.watchProviders && (
+                  <DiscoverWatchProvidersSection providers={tmdbData.watchProviders} />
+                )}
+
+                {tmdbData.networks.length > 0 && (
+                  <div className="px-4">
+                    <h2 className="text-base font-semibold mb-2">Networks</h2>
+                    <div className="flex gap-3 flex-wrap">
+                      {tmdbData.networks.map((network) => {
+                        const logoSrc = network.logoPath
+                          ? toCachedImageSrc(
+                              network.logoPath.startsWith('http') ? network.logoPath : `https://image.tmdb.org/t/p/w185${network.logoPath}`,
+                              'tmdb'
+                            )
+                          : null;
+                        return (
+                          <Link
+                            key={network.id}
+                            href={`/discover?networks=${network.id}&contentType=show`}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
+                          >
+                            {logoSrc && (
+                              <div className="relative h-5 w-8">
+                                <Image
+                                  src={logoSrc}
+                                  alt={network.name}
+                                  fill
+                                  sizes="32px"
+                                  className="object-contain"
+                                  unoptimized={isProtectedApiImageSrc(logoSrc)}
+                                />
+                              </div>
+                            )}
+                            <span className="text-xs font-medium">{network.name}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {tmdbData.productionCompanies.length > 0 && (
+                  <div className="px-4">
+                    <h2 className="text-base font-semibold mb-2">Production</h2>
+                    <div className="flex gap-3 flex-wrap">
+                      {tmdbData.productionCompanies.map((company) => {
+                        const logoSrc = company.logoPath
+                          ? toCachedImageSrc(
+                              company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
+                              'tmdb'
+                            )
+                          : null;
+                        return (
+                          <Link
+                            key={company.id}
+                            href={`/discover?companies=${company.id}&contentType=show`}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
+                          >
+                            {logoSrc && (
+                              <div className="relative h-5 w-8">
+                                <Image
+                                  src={logoSrc}
+                                  alt={company.name}
+                                  fill
+                                  sizes="32px"
+                                  className="object-contain"
+                                  unoptimized={isProtectedApiImageSrc(logoSrc)}
+                                />
+                              </div>
+                            )}
+                            <span className="text-xs font-medium">{company.name}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pb-2" />
+              </div>
+            )}
+          </>
         )}
       </div>
+
+      <AniListRemapDrawer
+        open={showAniListRemap}
+        onOpenChange={setShowAniListRemap}
+        seriesId={series.id}
+        seriesTitle={series.title}
+        mapping={animeMapping}
+        onUpdated={handleAniListUpdated}
+      />
 
       {/* Monitor edit drawer */}
       <Drawer open={showMonitorEdit} onOpenChange={setShowMonitorEdit}>

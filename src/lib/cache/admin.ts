@@ -14,9 +14,11 @@ import {
 export interface CacheUsageSummary {
   imageBytes: number;
   tmdbApiBytes: number;
+  anilistApiBytes: number;
   totalBytes: number;
   imageFiles: number;
   tmdbEntries: number;
+  anilistEntries: number;
 }
 
 export interface CachePurgeResult {
@@ -25,6 +27,8 @@ export interface CachePurgeResult {
   deletedImageFiles: number;
   deletedTmdbBytes: number;
   deletedTmdbEntries: number;
+  deletedAnilistBytes: number;
+  deletedAnilistEntries: number;
   deletedTotalBytes: number;
   purgedAt: string;
 }
@@ -132,12 +136,15 @@ async function purgeGeneration(generation: number): Promise<CachePurgeResult> {
 
   const imageMetaKeys = await scanRedisKeys(`helprr:cache:image:v${generation}:*`);
   const tmdbKeys = await scanRedisKeys(`helprr:cache:tmdb:v${generation}:*`);
+  const anilistKeys = await scanRedisKeys(`helprr:cache:anilist:v${generation}:*`);
   const tmdbUsage = await getRedisKeysUsage(tmdbKeys);
+  const anilistUsage = await getRedisKeysUsage(anilistKeys);
 
   await Promise.all([
     rm(imageDir, { recursive: true, force: true }).catch(() => undefined),
     deleteRedisKeys(imageMetaKeys),
     deleteRedisKeys(tmdbKeys),
+    deleteRedisKeys(anilistKeys),
   ]);
 
   const purgedAt = new Date().toISOString();
@@ -149,7 +156,9 @@ async function purgeGeneration(generation: number): Promise<CachePurgeResult> {
     deletedImageFiles: imageUsage.files,
     deletedTmdbBytes: tmdbUsage.bytes,
     deletedTmdbEntries: tmdbUsage.entries,
-    deletedTotalBytes: imageUsage.bytes + tmdbUsage.bytes,
+    deletedAnilistBytes: anilistUsage.bytes,
+    deletedAnilistEntries: anilistUsage.entries,
+    deletedTotalBytes: imageUsage.bytes + tmdbUsage.bytes + anilistUsage.bytes,
     purgedAt,
   };
 }
@@ -158,14 +167,18 @@ export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {
   const generation = await getCacheGeneration();
   const imageUsage = await getDirectoryUsage(generationImageDirectory(generation));
   const tmdbKeys = await scanRedisKeys(`helprr:cache:tmdb:v${generation}:*`);
+  const anilistKeys = await scanRedisKeys(`helprr:cache:anilist:v${generation}:*`);
   const tmdbUsage = await getRedisKeysUsage(tmdbKeys);
+  const anilistUsage = await getRedisKeysUsage(anilistKeys);
 
   return {
     imageBytes: imageUsage.bytes,
     tmdbApiBytes: tmdbUsage.bytes,
-    totalBytes: imageUsage.bytes + tmdbUsage.bytes,
+    anilistApiBytes: anilistUsage.bytes,
+    totalBytes: imageUsage.bytes + tmdbUsage.bytes + anilistUsage.bytes,
     imageFiles: imageUsage.files,
     tmdbEntries: tmdbUsage.entries,
+    anilistEntries: anilistUsage.entries,
   };
 }
 
