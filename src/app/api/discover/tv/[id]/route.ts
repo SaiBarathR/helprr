@@ -224,17 +224,22 @@ export async function GET(
         order: c.order,
       })),
       crew: (aggregateCredits.crew || [])
-        .sort((a, b) => {
-          const aJob = a.jobs?.[0]?.job || a.department;
-          const bJob = b.jobs?.[0]?.job || b.department;
-          return crewRolePriority(aJob) - crewRolePriority(bJob);
+        .map((c) => {
+          const bestJob = c.jobs?.reduce<string | null>((best, entry) => {
+            if (!entry?.job) return best;
+            if (!best) return entry.job;
+            return crewRolePriority(entry.job) < crewRolePriority(best) ? entry.job : best;
+          }, null) || c.department;
+
+          return { person: c, bestJob };
         })
-        .map((c) => ({
-          id: c.id,
-          name: c.name,
-          department: c.department,
-          job: c.jobs?.[0]?.job || c.department,
-          profilePath: tmdbImageUrl(c.profile_path, 'w300'),
+        .sort((a, b) => crewRolePriority(a.bestJob) - crewRolePriority(b.bestJob))
+        .map(({ person, bestJob }) => ({
+          id: person.id,
+          name: person.name,
+          department: person.department,
+          job: bestJob,
+          profilePath: tmdbImageUrl(person.profile_path, 'w300'),
         })),
       videos: filteredVideos.map((v) => ({
         id: v.id,

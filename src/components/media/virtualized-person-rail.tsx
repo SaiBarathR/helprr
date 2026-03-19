@@ -20,7 +20,8 @@ interface VirtualizedPersonRailProps {
   title: string;
   items: VirtualizedPersonRailItem[];
   cacheService: ImageServiceHint;
-  titleClassName?: string;
+  titleTextClassName?: string;
+  headerClassName?: string;
   viewAllHref?: string;
 }
 
@@ -31,7 +32,8 @@ export function VirtualizedPersonRail({
   title,
   items,
   cacheService,
-  titleClassName = 'text-base font-semibold px-4 mb-2',
+  titleTextClassName = 'text-base font-semibold',
+  headerClassName = 'px-4 mb-2',
   viewAllHref,
 }: VirtualizedPersonRailProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -50,8 +52,8 @@ export function VirtualizedPersonRail({
   return (
     <div>
       {viewAllHref ? (
-        <div className="flex items-center justify-between px-4 mb-2">
-          <h2 className={titleClassName?.replace(/\bpx-\d+\b/g, '').replace(/\bmb-\d+\b/g, '').trim() || 'text-base font-semibold'}>
+        <div className={`flex items-center justify-between ${headerClassName}`}>
+          <h2 className={titleTextClassName}>
             {title}
           </h2>
           <Link href={viewAllHref} className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
@@ -60,7 +62,9 @@ export function VirtualizedPersonRail({
           </Link>
         </div>
       ) : (
-        <h2 className={titleClassName}>{title}</h2>
+        <div className={headerClassName}>
+          <h2 className={titleTextClassName}>{title}</h2>
+        </div>
       )}
       <div
         ref={scrollRef}

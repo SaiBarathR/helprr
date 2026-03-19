@@ -103,7 +103,6 @@ export interface AniListStaffEdge {
 
 export interface AniListNextAiringEpisode {
   airingAt: number;
-  timeUntilAiring: number;
   episode: number;
 }
 

@@ -1,7 +1,7 @@
 'use no memo';
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { PageHeader } from '@/components/layout/page-header';
 import { PersonRow } from '@/components/media/person-row';
@@ -24,6 +24,7 @@ interface CreditsListPageProps {
   cacheService: ImageServiceHint;
   loading?: boolean;
   initialTab?: 'cast' | 'crew';
+  error?: string | null;
 }
 
 const ROW_HEIGHT = 72;
@@ -35,9 +36,18 @@ export function CreditsListPage({
   cacheService,
   loading,
   initialTab = 'cast',
+  error = null,
 }: CreditsListPageProps) {
   const [tab, setTab] = useState<'cast' | 'crew'>(initialTab);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
+  const handleListRef = useCallback((node: HTMLDivElement | null) => {
+    setScrollMargin(node?.offsetTop ?? 0);
+  }, []);
 
   const items = tab === 'cast' ? cast : crew;
 
@@ -45,7 +55,7 @@ export function CreditsListPage({
     count: items.length,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
-    scrollMargin: listRef.current?.offsetTop ?? 0,
+    scrollMargin,
   });
 
   if (loading) {
@@ -94,13 +104,17 @@ export function CreditsListPage({
         })}
       </div>
 
-      {items.length === 0 ? (
+      {error ? (
+        <div className="px-4 py-12 text-center text-sm text-destructive">
+          {error}
+        </div>
+      ) : items.length === 0 ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           No {tab} credits found
         </div>
       ) : (
         <div
-          ref={listRef}
+          ref={handleListRef}
           className="relative w-full"
           style={{ height: virtualizer.getTotalSize() }}
         >

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 import { requireAuth } from '@/lib/auth';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { searchSeriesAniListCandidates } from '@/lib/anilist-series-mapping';
+import type { SonarrSeries } from '@/types';
 
 export async function GET(
   request: NextRequest,
@@ -18,7 +20,19 @@ export async function GET(
     }
 
     const client = await getSonarrClient();
-    const series = await client.getSeriesById(seriesId);
+    let series: SonarrSeries;
+    try {
+      series = await client.getSeriesById(seriesId);
+    } catch (error) {
+      const status = axios.isAxiosError(error)
+        ? error.response?.status
+        : (error as { statusCode?: number })?.statusCode;
+      if (status === 404) {
+        return NextResponse.json({ error: 'Invalid series ID' }, { status: 400 });
+      }
+      throw error;
+    }
+
     if (!series || series.seriesType !== 'anime') {
       return NextResponse.json({ error: 'Series is not an anime item' }, { status: 400 });
     }

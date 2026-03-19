@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
-import { getAnimeDetail } from '@/lib/anilist-client';
+import { getAnimeDetail, getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { normalizeAniListDetail, isMovieFormat } from '@/lib/anilist-helpers';
 import {
   buildLibraryLookups,
@@ -47,12 +47,16 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid anime ID' }, { status: 400 });
     }
 
-    const [detail, libraryResult] = await Promise.all([
+    const [detail, nextAiringEpisode, libraryResult] = await Promise.all([
       getAnimeDetail(id),
+      getAnimeNextAiringEpisode(id),
       getLibraries(),
     ]);
 
-    const normalized = normalizeAniListDetail(detail);
+    const normalized = {
+      ...normalizeAniListDetail(detail),
+      nextAiringEpisode,
+    };
     const isMovie = isMovieFormat(normalized.format);
     const lookups = buildLibraryLookups(libraryResult.movies ?? [], libraryResult.series ?? []);
 

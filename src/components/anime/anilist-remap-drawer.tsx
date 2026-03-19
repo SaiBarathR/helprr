@@ -60,7 +60,14 @@ export function AniListRemapDrawer({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    setResults([]);
+    setLoading(false);
+    setError(null);
     setQuery(seriesTitle);
   }, [open, seriesTitle]);
 
@@ -70,6 +77,7 @@ export function AniListRemapDrawer({
     if (!open) return;
 
     const controller = new AbortController();
+    setResults([]);
     const handle = window.setTimeout(async () => {
       setLoading(true);
       setError(null);
@@ -162,7 +170,12 @@ export function AniListRemapDrawer({
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <Input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setResults([]);
+                setLoading(false);
+                setError(null);
+                setQuery(event.target.value);
+              }}
               placeholder="Search AniList"
               className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
             />

@@ -581,6 +581,13 @@ function getTmdbCachePolicy(endpoint: string): TmdbCachePolicy {
     };
   }
 
+  if (/^\/tv\/episode_group\/[^/]+$/.test(endpoint)) {
+    return {
+      ttlSeconds: TMDB_CACHE_DETAILS_TTL_SECONDS,
+      staleSeconds: TMDB_CACHE_STALE_SECONDS,
+    };
+  }
+
   if (
     endpoint.startsWith('/discover/')
     || endpoint.startsWith('/search/')

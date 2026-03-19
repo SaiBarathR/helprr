@@ -1,6 +1,6 @@
 import type { AniListSeriesMapping as PrismaAniListSeriesMapping } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getAnimeDetail, searchAnime } from '@/lib/anilist-client';
+import { getAnimeDetail, getAnimeNextAiringEpisode, searchAnime } from '@/lib/anilist-client';
 import {
   extractTmdbId,
   extractTvdbId,
@@ -20,6 +20,7 @@ import type {
 const AUTO_UNMATCHED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SEARCH_PAGE_SIZE = 10;
 const ACCEPTABLE_SERIES_FORMATS = new Set(['TV', 'TV_SHORT', 'OVA', 'ONA', 'SPECIAL']);
+const REJECTED_SERIES_FORMATS = new Set(['MANGA', 'NOVEL', 'ONE_SHOT']);
 
 interface SeriesSnapshot {
   title: string;
@@ -32,6 +33,10 @@ interface ScoredCandidate {
   candidate: AniListMedia;
   score: number;
   method: string | null;
+}
+
+function isRejectedSeriesFormat(format: AniListMedia['format']): boolean {
+  return Boolean(format && (isMovieFormat(format) || REJECTED_SERIES_FORMATS.has(format)));
 }
 
 function normalizeTitle(value: string | null | undefined): string {
@@ -142,7 +147,7 @@ function scoreCandidate(series: SonarrSeries, candidate: AniListMedia): ScoredCa
 
   if (candidate.format && ACCEPTABLE_SERIES_FORMATS.has(candidate.format)) {
     score += 14;
-  } else if (isMovieFormat(candidate.format) || candidate.format === 'MANGA' || candidate.format === 'NOVEL' || candidate.format === 'ONE_SHOT') {
+  } else if (isRejectedSeriesFormat(candidate.format)) {
     score -= 40;
   }
 
@@ -296,6 +301,21 @@ function mapCandidate(series: SonarrSeries, candidate: AniListMedia): SeriesAniL
   };
 }
 
+async function normalizeSeriesDetailWithFreshAiring(anilistMediaId: number) {
+  const [detail, nextAiringEpisode] = await Promise.all([
+    getAnimeDetail(anilistMediaId),
+    getAnimeNextAiringEpisode(anilistMediaId),
+  ]);
+
+  return {
+    detail,
+    normalized: {
+      ...normalizeAniListDetail(detail),
+      nextAiringEpisode,
+    },
+  };
+}
+
 export async function getSeriesAniListResponse(series: SonarrSeries): Promise<SeriesAniListResponse> {
   const mappingRecord = await getCurrentMappingRecord(series);
 
@@ -306,13 +326,13 @@ export async function getSeriesAniListResponse(series: SonarrSeries): Promise<Se
     };
   }
 
-  const detail = await getAnimeDetail(mappingRecord.anilistMediaId);
+  const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(mappingRecord.anilistMediaId);
 
-  if (isMovieFormat(detail.format)) {
+  if (isRejectedSeriesFormat(detail.format)) {
     const resetRecord = await persistMapping(series, {
       anilistMediaId: null,
       state: 'AUTO_UNMATCHED',
-      matchMethod: 'mapped_movie_rejected',
+      matchMethod: 'mapped_non_series_rejected',
       confidence: null,
     });
 
@@ -324,7 +344,7 @@ export async function getSeriesAniListResponse(series: SonarrSeries): Promise<Se
 
   return {
     mapping: mappingFromRecord(mappingRecord),
-    detail: normalizeAniListDetail(detail),
+    detail: normalized,
   };
 }
 
@@ -348,9 +368,9 @@ export async function setManualSeriesAniListMapping(
   series: SonarrSeries,
   anilistMediaId: number
 ): Promise<SeriesAniListResponse> {
-  const detail = await getAnimeDetail(anilistMediaId);
-  if (isMovieFormat(detail.format)) {
-    throw new Error('AniList movies cannot be mapped to Sonarr series.');
+  const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(anilistMediaId);
+  if (isRejectedSeriesFormat(detail.format)) {
+    throw new Error('Only AniList anime series formats can be mapped to Sonarr series.');
   }
 
   const record = await persistMapping(series, {
@@ -362,7 +382,7 @@ export async function setManualSeriesAniListMapping(
 
   return {
     mapping: mappingFromRecord(record),
-    detail: normalizeAniListDetail(detail),
+    detail: normalized,
   };
 }
 

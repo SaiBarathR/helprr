@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
 import { requireAuth } from '@/lib/auth';
 import { getSonarrClient } from '@/lib/service-helpers';
 import {
@@ -6,7 +7,12 @@ import {
   getSeriesAniListResponse,
   setManualSeriesAniListMapping,
 } from '@/lib/anilist-series-mapping';
+import type { SonarrSeries } from '@/types';
 import type { SeriesAniListResponse } from '@/types/anilist';
+
+interface PutPayload {
+  anilistMediaId?: number | string | null;
+}
 
 async function getAnimeSeries(id: string) {
   const seriesId = Number(id);
@@ -15,7 +21,19 @@ async function getAnimeSeries(id: string) {
   }
 
   const client = await getSonarrClient();
-  const series = await client.getSeriesById(seriesId);
+  let series: SonarrSeries;
+  try {
+    series = await client.getSeriesById(seriesId);
+  } catch (error) {
+    const status = axios.isAxiosError(error)
+      ? error.response?.status
+      : (error as { statusCode?: number })?.statusCode;
+    if (status === 404) {
+      throw new Error('Invalid series ID');
+    }
+    throw error;
+  }
+
   if (!series || series.seriesType !== 'anime') {
     throw new Error('Series is not an anime item');
   }
@@ -50,7 +68,7 @@ export async function PUT(
   if (authError) return authError;
 
   try {
-    const body = await request.json();
+    const body = await request.json() as PutPayload;
     const anilistMediaId = Number(body?.anilistMediaId);
     if (!Number.isFinite(anilistMediaId) || anilistMediaId <= 0) {
       return NextResponse.json({ error: 'Invalid AniList media ID' }, { status: 400 });
@@ -62,7 +80,11 @@ export async function PUT(
     return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to set AniList mapping';
-    const status = message === 'Series is not an anime item' || message === 'AniList movies cannot be mapped to Sonarr series.' ? 400 : 500;
+    const status = message === 'Invalid series ID'
+      || message === 'Series is not an anime item'
+      || message === 'Only AniList anime series formats can be mapped to Sonarr series.'
+      ? 400
+      : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -151,9 +151,9 @@ function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
   if (filters.voteCountMin) count += 1;
   if (filters.language) count += 1;
   if (filters.region && filters.region !== DEFAULT_DISCOVER_FILTERS.region) count += 1;
-  if (filters.providers?.length > 0) count += 1;
-  if (filters.networks?.length > 0) count += 1;
-  if (filters.companies?.length > 0) count += 1;
+  if (filters.providers.length > 0) count += 1;
+  if (filters.networks.length > 0) count += 1;
+  if (filters.companies.length > 0) count += 1;
   if (filters.releaseState) count += 1;
   return count;
 }
