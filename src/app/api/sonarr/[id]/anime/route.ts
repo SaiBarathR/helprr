@@ -6,6 +6,7 @@ import {
   getSeriesAniListResponse,
   setManualSeriesAniListMapping,
 } from '@/lib/anilist-series-mapping';
+import type { SeriesAniListResponse } from '@/types/anilist';
 
 async function getAnimeSeries(id: string) {
   const seriesId = Number(id);
@@ -77,7 +78,7 @@ export async function DELETE(
     const { id } = await params;
     const series = await getAnimeSeries(id);
     const mapping = await clearManualSeriesAniListMapping(series);
-    return NextResponse.json({ mapping, detail: null });
+    return NextResponse.json({ mapping, detail: null } satisfies SeriesAniListResponse);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to clear AniList mapping';
     const status = message === 'Invalid series ID' || message === 'Series is not an anime item' ? 400 : 500;

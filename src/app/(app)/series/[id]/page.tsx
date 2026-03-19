@@ -765,7 +765,7 @@ export default function SeriesDetailPage() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
             </div>
-            <div className="relative -mt-20 px-4 flex gap-4">
+            <div className="relative -mt-20 px-2 flex gap-4">
               <div className="w-[100px] shrink-0">
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
@@ -803,11 +803,11 @@ export default function SeriesDetailPage() {
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="px-4 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <p className="px-2 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
             )}
           </div>
         ) : (
-          <div className="flex gap-4 px-4 pt-3 pb-4">
+          <div className="flex gap-4 px-2 pt-3 pb-4">
             <div className="w-28 shrink-0">
               {poster ? (
                 <Image
@@ -845,26 +845,7 @@ export default function SeriesDetailPage() {
         )}
 
         {isAnimeSeries && (
-          <div className="px-4 pt-3 space-y-3">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/40 bg-muted/20 px-3 py-3">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">AniList Mapping</p>
-                <p className="text-xs text-muted-foreground">
-                  {animeLoading ? 'Loading AniList details...' : formatAniListMappingState(animeMapping?.state)}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {animeMapping?.state === 'MANUAL_MATCH' ? (
-                  <Badge className="bg-green-600/90 text-white">Manual</Badge>
-                ) : animeMapping?.state === 'AUTO_MATCH' ? (
-                  <Badge variant="outline">Auto</Badge>
-                ) : null}
-                <Button variant="outline" size="sm" onClick={() => setShowAniListRemap(true)}>
-                  Remap
-                </Button>
-              </div>
-            </div>
-
+          <div className="px-2 pt-3 space-y-3">
             {animeDetail?.nextAiringEpisode && (
               <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2.5">
                 <Clock className="h-4 w-4 text-blue-400 shrink-0" />
@@ -877,15 +858,15 @@ export default function SeriesDetailPage() {
             )}
 
             {!animeLoading && !animeDetail && (
-              <div className="rounded-lg border border-border/40 bg-muted/10 px-3 py-3 text-sm text-muted-foreground">
-                No confident AniList match is stored for this series yet. Use remap to search and attach the right anime entry manually.
-              </div>
+              <p className="text-xs text-muted-foreground">
+                No AniList match found. Tap AniList in Information to remap manually.
+              </p>
             )}
           </div>
         )}
 
         {/* Borderless metadata rows */}
-        <div className="px-4 space-y-0">
+        <div className="px-2 space-y-0">
           <div className="flex py-2 border-b border-border/30">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Status</span>
             <span className="text-sm capitalize">{series.status}</span>
@@ -912,7 +893,7 @@ export default function SeriesDetailPage() {
 
         {/* Overview */}
         {series.overview && (
-          <div className="px-4 pt-4 pb-2">
+          <div className="px-2 pt-4 pb-2">
             <p
               className={`text-sm text-muted-foreground leading-relaxed ${
                 !overviewExpanded ? 'line-clamp-3' : ''
@@ -933,7 +914,7 @@ export default function SeriesDetailPage() {
 
         {/* Created By */}
         {tmdbData && tmdbData.createdBy.length > 0 && (
-          <div className="px-4 pt-2">
+          <div className="px-2 pt-2">
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Created By</p>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {tmdbData.createdBy.map((creator) => (
@@ -950,7 +931,7 @@ export default function SeriesDetailPage() {
         )}
 
         {/* Seasons list */}
-        <div className="mt-4 px-4">
+        <div className="mt-4 px-2">
           <h2 className="text-lg font-bold mb-2">Seasons</h2>
           <div>
             {seasonNumbers.map((sn) => {
@@ -1098,7 +1079,7 @@ export default function SeriesDetailPage() {
         </div>
 
         {/* Information section */}
-        <div className="mt-6 px-4 pb-8">
+        <div className="mt-6 px-2 pb-8">
           <h2 className="text-lg font-bold mb-2">Information</h2>
           <div className="space-y-0">
             <div className="flex justify-between py-2.5 border-b border-border/30">
@@ -1136,10 +1117,21 @@ export default function SeriesDetailPage() {
               </span>
             </div>
             {isAnimeSeries && (
-              <div className="flex justify-between py-2.5 border-b border-border/30">
+              <button
+                onClick={() => setShowAniListRemap(true)}
+                className="flex justify-between items-center w-full py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
+              >
                 <span className="text-sm text-muted-foreground">AniList</span>
-                <span className="text-sm text-right">{formatAniListMappingState(animeMapping?.state)}</span>
-              </div>
+                <span className="flex items-center gap-2 text-sm text-right">
+                  {formatAniListMappingState(animeMapping?.state)}
+                  {animeMapping?.state === 'MANUAL_MATCH' ? (
+                    <Badge className="bg-green-600/90 text-white text-[10px] px-1.5 py-0">Manual</Badge>
+                  ) : animeMapping?.state === 'AUTO_MATCH' ? (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">Auto</Badge>
+                  ) : null}
+                  <Pencil className="h-3 w-3 text-muted-foreground" />
+                </span>
+              </button>
             )}
           </div>
         </div>
@@ -1147,7 +1139,7 @@ export default function SeriesDetailPage() {
         {isAnimeSeries ? (
           <div className="space-y-5 mt-2 pb-8">
             {animeDescription && (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-1">Synopsis</h2>
                 <div
                   className={`text-sm text-muted-foreground leading-relaxed [&_i]:italic [&_br]:mb-2 ${animeOverviewExpanded ? '' : 'line-clamp-5'}`}
@@ -1164,10 +1156,12 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
-            <DiscoverInfoRows title="AniList Information" rows={animeInfoRows} />
+            <div className="px-2">
+              <DiscoverInfoRows title="AniList Information" rows={animeInfoRows} />
+            </div>
 
             {animeAltTitles.length > 0 && (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-2">Alternative Titles</h2>
                 <div>
                   {animeAltTitles.map((title) => (
@@ -1184,7 +1178,7 @@ export default function SeriesDetailPage() {
             )}
 
             {(animeDetail?.genres.length || animeTags.length > 0) && (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-2">Genres & Tags</h2>
                 <div className="flex flex-wrap gap-1.5">
                   {(animeDetail?.genres ?? []).map((genre) => (
@@ -1202,10 +1196,10 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
-            {animeDetail && <AnimeCharacterRail characters={animeDetail.characters} />}
+            {animeDetail && <div className="px-2"><AnimeCharacterRail characters={animeDetail.characters} /></div>}
 
             {animeDetail?.staff.length ? (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-2">Staff</h2>
                 <div className="grid grid-cols-2 gap-2">
                   {animeDetail.staff.map((person, index) => {
@@ -1246,7 +1240,7 @@ export default function SeriesDetailPage() {
             ) : null}
 
             {animeDetail?.rankings.length ? (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-2">Rankings</h2>
                 <div className="space-y-1.5">
                   {animeDetail.rankings.map((ranking) => (
@@ -1269,7 +1263,7 @@ export default function SeriesDetailPage() {
             ) : null}
 
             {animeStatusDistribution.length > 0 && (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-2">Status Distribution</h2>
                 {totalStatusUsers > 0 && (
                   <div className="flex h-3 rounded-full overflow-hidden mb-3">
@@ -1297,7 +1291,7 @@ export default function SeriesDetailPage() {
             )}
 
             {animeScoreDistribution.length > 0 && maxScoreAmount > 0 && (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-2">Score Distribution</h2>
                 <div className="flex items-end gap-1 h-28">
                   {[...animeScoreDistribution]
@@ -1327,11 +1321,11 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
-            {animeDetail && <AnimeRelationsSection relations={animeDetail.relations} />}
-            {animeDetail && <AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} />}
+            {animeDetail && <div className="px-2"><AnimeRelationsSection relations={animeDetail.relations} /></div>}
+            {animeDetail && <div className="px-2"><AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} /></div>}
 
             {(animeLinks.length > 0 || (externalUrls.JELLYFIN && (series.imdbId || series.tvdbId))) && (
-              <div className="px-4">
+              <div className="px-2">
                 <h2 className="text-base font-semibold mb-2">External Links</h2>
                 <div className="flex flex-wrap gap-2">
                   {externalUrls.JELLYFIN && (series.imdbId || series.tvdbId) && (
@@ -1367,7 +1361,7 @@ export default function SeriesDetailPage() {
               <div className="mt-4">
                 <VirtualizedPersonRail
                   title="Cast"
-                  titleClassName="text-lg font-bold px-4 mb-2"
+                  titleClassName="text-lg font-bold px-2 mb-2"
                   viewAllHref={`/series/${seriesId}/credits?type=cast`}
                   items={credits.cast.map((person) => ({
                     id: person.id,
@@ -1384,7 +1378,7 @@ export default function SeriesDetailPage() {
               <div className="mt-4">
                 <VirtualizedPersonRail
                   title="Crew"
-                  titleClassName="text-lg font-bold px-4 mb-2"
+                  titleClassName="text-lg font-bold px-2 mb-2"
                   viewAllHref={`/series/${seriesId}/credits?type=crew`}
                   items={credits.crew.map((person) => ({
                     id: person.id,
