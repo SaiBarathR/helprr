@@ -9,7 +9,7 @@ import type { TmdbListItem } from '@/lib/tmdb-client';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
-export function tmdbImageUrl(path: string | null | undefined, size: 'w300' | 'w500' | 'w780' | 'original' = 'w500'): string | null {
+export function tmdbImageUrl(path: string | null | undefined, size: 'w300' | 'w500' | 'w780' | 'w1280' | 'original' = 'w500'): string | null {
   if (!path) return null;
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }
@@ -62,7 +62,7 @@ export function normalizeTmdbItem(
     originalTitle: mediaType === 'movie' ? item.original_title || undefined : item.original_name || undefined,
     overview: item.overview || '',
     posterPath: tmdbImageUrl(item.poster_path),
-    backdropPath: tmdbImageUrl(item.backdrop_path, 'w780'),
+    backdropPath: tmdbImageUrl(item.backdrop_path, 'w1280'),
     releaseDate,
     year: asYear(releaseDate || undefined),
     rating: item.vote_average || 0,

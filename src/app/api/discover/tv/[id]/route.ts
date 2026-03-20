@@ -155,7 +155,7 @@ export async function GET(
       originalTitle: details.original_name,
       overview: details.overview || '',
       posterPath: tmdbImageUrl(details.poster_path),
-      backdropPath: tmdbImageUrl(details.backdrop_path, 'w780'),
+      backdropPath: tmdbImageUrl(details.backdrop_path, 'w1280'),
       releaseDate: details.first_air_date || null,
       year: toYear(details.first_air_date),
       rating: details.vote_average || 0,

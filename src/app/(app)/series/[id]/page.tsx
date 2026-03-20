@@ -819,7 +819,7 @@ export default function SeriesDetailPage() {
           />
         ) : tmdbData?.backdropPath ? (
           <div>
-            <div className="relative w-full aspect-[16/9] overflow-hidden">
+            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
               <Image
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
                 alt=""
@@ -831,7 +831,7 @@ export default function SeriesDetailPage() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
             </div>
-            <div className="relative -mt-20 px-2 flex gap-4">
+            <div className="relative -mt-[90px] px-4 flex gap-3.5">
               <div className="w-[100px] shrink-0">
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
@@ -850,7 +850,7 @@ export default function SeriesDetailPage() {
                   )}
                 </div>
               </div>
-              <div className="flex-1 min-w-0 pt-6">
+              <div className="flex-1 min-w-0 pt-[60px]">
                 <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
                   {statusLabel}
                 </span>

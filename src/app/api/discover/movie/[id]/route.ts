@@ -138,7 +138,7 @@ export async function GET(
       originalTitle: details.original_title,
       overview: details.overview || '',
       posterPath: tmdbImageUrl(details.poster_path),
-      backdropPath: tmdbImageUrl(details.backdrop_path, 'w780'),
+      backdropPath: tmdbImageUrl(details.backdrop_path, 'w1280'),
       releaseDate: details.release_date || null,
       year: toYear(details.release_date),
       rating: details.vote_average || 0,
@@ -173,7 +173,7 @@ export async function GET(
             id: details.belongs_to_collection.id,
             name: details.belongs_to_collection.name,
             posterPath: tmdbImageUrl(details.belongs_to_collection.poster_path),
-            backdropPath: tmdbImageUrl(details.belongs_to_collection.backdrop_path, 'w780'),
+            backdropPath: tmdbImageUrl(details.belongs_to_collection.backdrop_path, 'w1280'),
           }
         : null,
       cast: (credits.cast || []).map((c) => ({

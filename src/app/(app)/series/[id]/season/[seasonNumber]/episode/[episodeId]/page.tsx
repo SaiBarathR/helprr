@@ -485,7 +485,7 @@ export default function EpisodeDetailPage() {
 
       {/* Episode still image */}
       {tmdbEpisode?.stillPath && (
-        <div className="relative w-full aspect-video overflow-hidden">
+        <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
           <Image
             src={toCachedImageSrc(tmdbEpisode.stillPath, 'tmdb') || tmdbEpisode.stillPath}
             alt=""
