@@ -22,7 +22,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { Search, Plus, Loader2, Film, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RadarrLookupResult, QualityProfile, RootFolder, Tag } from '@/types';
@@ -442,7 +442,7 @@ function AddMoviePageContent() {
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
             {searching
-              ? [...Array(9)].map((_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-lg" />)
+              ? <PageSpinner />
               : results.map((r) => {
                 const poster = posterUrl(r.images as { coverType: string; remoteUrl: string }[]);
                 return (
@@ -492,7 +492,7 @@ function AddMoviePageContent() {
 
 export default function AddMoviePage() {
   return (
-    <Suspense fallback={<div className="px-4 py-6 text-sm text-muted-foreground">Loading add movie...</div>}>
+    <Suspense fallback={<div className="py-6 text-sm text-muted-foreground">Loading add movie...</div>}>
       <AddMoviePageContent />
     </Suspense>
   );

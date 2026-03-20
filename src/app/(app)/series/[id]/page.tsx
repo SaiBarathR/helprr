@@ -7,7 +7,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle,
   DrawerDescription, DrawerFooter, DrawerClose,
@@ -588,30 +588,7 @@ export default function SeriesDetailPage() {
 
   // Loading skeleton
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <div className="flex gap-4 px-4">
-          <Skeleton className="h-40 w-28 rounded-lg shrink-0" />
-          <div className="flex-1 space-y-2 pt-2">
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-        </div>
-        <div className="space-y-2 px-4">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-        </div>
-        <div className="space-y-1 px-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Series" /><PageSpinner /></>;
   }
 
   if (!series) {
@@ -697,7 +674,7 @@ export default function SeriesDetailPage() {
   ] : [];
 
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col min-h-0 animate-content-in">
       {/* Page Header */}
       <PageHeader
         title={series.title}
@@ -818,7 +795,7 @@ export default function SeriesDetailPage() {
             studios={animeDetail.studios}
           />
         ) : tmdbData?.backdropPath ? (
-          <div>
+          <div className="-mx-2 md:-mx-6">
             <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
               <Image
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
@@ -831,7 +808,7 @@ export default function SeriesDetailPage() {
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
             </div>
-            <div className="relative -mt-[90px] px-4 flex gap-3.5">
+            <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
               <div className="w-[100px] shrink-0">
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
@@ -869,11 +846,11 @@ export default function SeriesDetailPage() {
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="px-2 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <p className="px-2 md:px-6 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
             )}
           </div>
         ) : (
-          <div className="flex gap-4 px-2 pt-3 pb-4">
+          <div className="flex gap-4 pt-3 pb-4">
             <div className="w-28 shrink-0">
               {poster ? (
                 <Image
@@ -911,7 +888,7 @@ export default function SeriesDetailPage() {
         )}
 
         {isAnimeSeries && (
-          <div className="px-2 pt-3 space-y-3">
+          <div className="pt-3 space-y-3">
             {animeDetail?.nextAiringEpisode && (
               <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2.5">
                 <Clock className="h-4 w-4 text-blue-400 shrink-0" />
@@ -932,7 +909,7 @@ export default function SeriesDetailPage() {
         )}
 
         {/* Borderless metadata rows */}
-        <div className="px-2 space-y-0">
+        <div className="space-y-0">
           <div className="flex py-2 border-b border-border/30">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Status</span>
             <span className="text-sm capitalize">{series.status}</span>
@@ -959,7 +936,7 @@ export default function SeriesDetailPage() {
 
         {/* Overview */}
         {series.overview && (
-          <div className="px-2 pt-4 pb-2">
+          <div className="pt-4 pb-2">
             <p
               className={`text-sm text-muted-foreground leading-relaxed ${
                 !overviewExpanded ? 'line-clamp-3' : ''
@@ -980,7 +957,7 @@ export default function SeriesDetailPage() {
 
         {/* Created By */}
         {tmdbData && tmdbData.createdBy.length > 0 && (
-          <div className="px-2 pt-2">
+          <div className="pt-2">
             <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Created By</p>
             <div className="flex flex-wrap gap-x-3 gap-y-1">
               {tmdbData.createdBy.map((creator) => (
@@ -997,7 +974,7 @@ export default function SeriesDetailPage() {
         )}
 
         {/* Seasons list */}
-        <div className="mt-4 px-2">
+        <div className="mt-4">
           <h2 className="text-lg font-bold mb-2">Seasons</h2>
           <div>
             {seasonNumbers.map((sn) => {
@@ -1145,7 +1122,7 @@ export default function SeriesDetailPage() {
         </div>
 
         {/* Information section */}
-        <div className="mt-6 px-2 pb-8">
+        <div className="mt-6">
           <h2 className="text-lg font-bold mb-2">Information</h2>
           <div className="space-y-0">
             <div className="flex justify-between py-2.5 border-b border-border/30">
@@ -1203,9 +1180,9 @@ export default function SeriesDetailPage() {
         </div>
 
         {isAnimeSeries ? (
-          <div className="space-y-5 mt-2 pb-8">
+          <div className="space-y-5 mt-2">
             {animeDescription && (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-1">Synopsis</h2>
                 <div
                   className={`text-sm text-muted-foreground leading-relaxed [&_i]:italic [&_br]:mb-2 ${animeOverviewExpanded ? '' : 'line-clamp-5'}`}
@@ -1222,12 +1199,12 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
-            <div className="px-2">
+            <div>
               <DiscoverInfoRows title="AniList Information" rows={animeInfoRows} />
             </div>
 
             {animeAltTitles.length > 0 && (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-2">Alternative Titles</h2>
                 <div>
                   {animeAltTitles.map((title) => (
@@ -1244,7 +1221,7 @@ export default function SeriesDetailPage() {
             )}
 
             {(animeDetail?.genres.length || animeTags.length > 0) && (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-2">Genres & Tags</h2>
                 <div className="flex flex-wrap gap-1.5">
                   {(animeDetail?.genres ?? []).map((genre) => (
@@ -1262,10 +1239,10 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
-            {animeDetail && <div className="px-2"><AnimeCharacterRail characters={animeDetail.characters} /></div>}
+            {animeDetail && <div><AnimeCharacterRail characters={animeDetail.characters} /></div>}
 
             {animeDetail?.staff.length ? (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-2">Staff</h2>
                 <div className="grid grid-cols-2 gap-2">
                   {animeDetail.staff.map((person, index) => {
@@ -1306,7 +1283,7 @@ export default function SeriesDetailPage() {
             ) : null}
 
             {animeDetail?.rankings.length ? (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-2">Rankings</h2>
                 <div className="space-y-1.5">
                   {animeDetail.rankings.map((ranking) => (
@@ -1329,7 +1306,7 @@ export default function SeriesDetailPage() {
             ) : null}
 
             {animeStatusDistribution.length > 0 && (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-2">Status Distribution</h2>
                 {totalStatusUsers > 0 && (
                   <div className="flex h-3 rounded-full overflow-hidden mb-3">
@@ -1357,7 +1334,7 @@ export default function SeriesDetailPage() {
             )}
 
             {animeScoreDistribution.length > 0 && maxScoreAmount > 0 && (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-2">Score Distribution</h2>
                 <div className="flex items-end gap-1 h-28">
                   {[...animeScoreDistribution]
@@ -1387,11 +1364,11 @@ export default function SeriesDetailPage() {
               </div>
             )}
 
-            {animeDetail && <div className="px-2"><AnimeRelationsSection relations={animeDetail.relations} /></div>}
-            {animeDetail && <div className="px-2"><AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} /></div>}
+            {animeDetail && <div><AnimeRelationsSection relations={animeDetail.relations} /></div>}
+            {animeDetail && <div><AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} /></div>}
 
             {(animeLinks.length > 0 || (externalUrls.JELLYFIN && (series.imdbId || series.tvdbId))) && (
-              <div className="px-2">
+              <div>
                 <h2 className="text-base font-semibold mb-2">External Links</h2>
                 <div className="flex flex-wrap gap-2">
                   {externalUrls.JELLYFIN && (series.imdbId || series.tvdbId) && (
@@ -1480,7 +1457,7 @@ export default function SeriesDetailPage() {
                 )}
 
                 {tmdbData.networks.length > 0 && (
-                  <div className="px-4">
+                  <div>
                     <h2 className="text-base font-semibold mb-2">Networks</h2>
                     <div className="flex gap-3 flex-wrap">
                       {tmdbData.networks.map((network) => {
@@ -1517,7 +1494,7 @@ export default function SeriesDetailPage() {
                 )}
 
                 {tmdbData.productionCompanies.length > 0 && (
-                  <div className="px-4">
+                  <div>
                     <h2 className="text-base font-semibold mb-2">Production</h2>
                     <div className="flex gap-3 flex-wrap">
                       {tmdbData.productionCompanies.map((company) => {

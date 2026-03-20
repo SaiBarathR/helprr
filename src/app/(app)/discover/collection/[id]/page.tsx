@@ -85,7 +85,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
 
       <div className="space-y-5 pb-8">
         {/* Hero */}
-        <div className="relative h-[180px] w-full bg-muted/40">
+        <div className="relative h-[180px] w-full bg-muted/40 -mx-2 md:-mx-6">
           {backdropSrc && (
             <Image
               src={backdropSrc}
@@ -98,7 +98,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
             />
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-          <div className="absolute bottom-0 left-0 right-0 p-4">
+          <div className="absolute bottom-0 left-0 right-0 px-2 md:px-6 pb-4">
             <h1 className="text-xl font-bold text-white">{collection.name}</h1>
             <p className="text-sm text-white/80">{collection.parts.length} movies</p>
           </div>
@@ -106,7 +106,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
 
         {/* Overview */}
         {collection.overview && (
-          <div className="px-4">
+          <div>
             <p className="text-sm text-muted-foreground leading-relaxed">
               {collection.overview}
             </p>
@@ -114,7 +114,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
         )}
 
         {/* Movies */}
-        <div className="px-4 space-y-2.5">
+        <div className="space-y-2.5">
           {collection.parts.map((movie) => {
             const posterSrc = movie.posterPath
               ? toCachedImageSrc(movie.posterPath, 'tmdb') || movie.posterPath

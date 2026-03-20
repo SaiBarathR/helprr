@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { PageHeader } from '@/components/layout/page-header';
 import { PersonRow } from '@/components/media/person-row';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import type { ImageServiceHint } from '@/lib/image';
 
 export interface CreditPerson {
@@ -60,23 +60,9 @@ export function CreditsListPage({
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <div className="px-4 flex gap-2">
-          <Skeleton className="h-8 w-20 rounded-full" />
-          <Skeleton className="h-8 w-20 rounded-full" />
-        </div>
-        <div className="px-4 space-y-1">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="flex items-center gap-3 py-3">
-              <Skeleton className="h-12 w-12 rounded-full shrink-0" />
-              <div className="flex-1 space-y-1.5">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-3 w-24" />
-              </div>
-            </div>
-          ))}
-        </div>
+      <div>
+        <PageHeader title={mediaTitle} />
+        <PageSpinner />
       </div>
     );
   }
@@ -85,7 +71,7 @@ export function CreditsListPage({
     <div>
       <PageHeader title={mediaTitle} />
 
-      <div className="px-4 py-2 flex items-center gap-2">
+      <div className="py-2 flex items-center gap-2">
         {(['cast', 'crew'] as const).map((t) => {
           const count = t === 'cast' ? cast.length : crew.length;
           return (
@@ -105,7 +91,7 @@ export function CreditsListPage({
       </div>
 
       {error ? (
-        <div className="px-4 py-12 text-center text-sm text-destructive">
+        <div className="py-12 text-center text-sm text-destructive">
           {error}
         </div>
       ) : items.length === 0 ? (

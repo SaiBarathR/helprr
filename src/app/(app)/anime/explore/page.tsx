@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer,
   DrawerContent,
@@ -295,17 +295,11 @@ export default function AnimePage() {
   };
 
   if (!hasHydrated) {
-    return (
-      <div className="p-4 space-y-4">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-[200px] w-full rounded-lg" />
-        <Skeleton className="h-[200px] w-full rounded-lg" />
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   return (
-    <div className="pb-20">
+    <div>
       {/* Back to Anime */}
       <Link
         href="/anime"
@@ -316,7 +310,7 @@ export default function AnimePage() {
       </Link>
 
       {/* Sticky search + sort/filter toolbar */}
-      <div className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1" style={{ top: 'var(--header-height, 0px)' }}>
+      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1" style={{ top: 'var(--header-height, 0px)' }}>
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
@@ -364,17 +358,7 @@ export default function AnimePage() {
 
       {/* Content */}
       {loading ? (
-        <div className="pt-2">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-            {Array.from({ length: 18 }).map((_, i) => (
-              <div key={i}>
-                <Skeleton className="aspect-[2/3] rounded-lg" />
-                <Skeleton className="h-3 w-3/4 mt-1.5" />
-                <Skeleton className="h-2.5 w-1/2 mt-1" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <PageSpinner />
       ) : (
         <div className="pt-2">
           {items.length === 0 ? (

@@ -13,7 +13,7 @@ import {
   SheetTitle,
   SheetFooter,
 } from '@/components/ui/sheet';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
@@ -832,18 +832,7 @@ export default function DiscoverPage() {
       {!gridMode && (
         <div className="space-y-5">
           {loadingSections ? (
-            <div className="space-y-5">
-              {[...Array(6)].map((_, idx) => (
-                <div key={idx} className="space-y-2">
-                  <Skeleton className="h-5 w-40" />
-                  <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
-                    {[...Array(8)].map((__, i) => (
-                      <Skeleton key={i} className="h-[165px] w-[110px] sm:h-[210px] sm:w-[140px] rounded-xl shrink-0" />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <PageSpinner />
           ) : (
             visibleSections.map((section) => (
               <SectionRow
@@ -898,11 +887,7 @@ export default function DiscoverPage() {
           </div>
 
           {loadingItems ? (
-            <div className={gridClassName}>
-              {[...Array(24)].map((_, idx) => (
-                <Skeleton key={idx} className="w-full aspect-[2/3] rounded-xl" />
-              ))}
-            </div>
+            <PageSpinner />
           ) : items.length === 0 ? (
             <div className="rounded-xl border border-border/60 bg-card p-8 text-center space-y-2">
               <Search className="h-6 w-6 mx-auto text-muted-foreground" />

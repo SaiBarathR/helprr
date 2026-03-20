@@ -10,7 +10,7 @@ import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { AnimeReviewCard } from '@/components/anime/anime-review-card';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { ExternalLink } from 'lucide-react';
 import type { AniListMangaDetailResponse } from '@/types/anilist';
 
@@ -71,17 +71,7 @@ export default function MangaDetailPage() {
   const error = state.id === id ? state.error : null;
 
   if (loading) {
-    return (
-      <div>
-        <PageHeader title="Loading..." />
-        <Skeleton className="h-[220px] w-full" />
-        <div className="p-4 space-y-3">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <Skeleton className="h-20 w-full" />
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Manga" /><PageSpinner /></>;
   }
 
   if (error || !detail) {
@@ -138,7 +128,7 @@ export default function MangaDetailPage() {
   ];
 
   return (
-    <div className="pb-20">
+    <div className="animate-content-in">
       <PageHeader title={detail.title} />
 
       {/* Hero */}

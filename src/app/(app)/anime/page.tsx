@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { Search, Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListMediaSeason, AniListListItem } from '@/types/anilist';
@@ -38,7 +38,7 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
   const accentColor = anime.coverImageColor || '#6366f1';
 
   return (
-    <Link href={`/anime/${anime.id}`} className="block -mx-4 -mt-3">
+    <Link href={`/anime/${anime.id}`} className="block -mx-2 -mt-3">
       <div className="relative h-[280px] overflow-hidden">
         {bannerSrc ? (
           <Image
@@ -122,44 +122,28 @@ export default function AnimeHomePage() {
   const nextSeasonInfo = data?.nextSeasonInfo;
 
   return (
-    <div className="flex flex-col pb-20">
+    <div className="flex flex-col">
+      {/* Search Link — always visible */}
+      <div className="flex items-center justify-between mb-5">
+        <Link
+          href="/anime/explore"
+          className="flex-1 flex items-center gap-2 bg-muted/50 border border-border/50 text-muted-foreground rounded-full px-4 py-2 text-sm hover:bg-muted transition-colors"
+        >
+          <Search className="h-4 w-4" />
+          <span>Search or browse anime...</span>
+        </Link>
+      </div>
+
       {loading ? (
-        <div className="space-y-6">
-          {/* Hero skeleton */}
-          <Skeleton className="h-[280px] -mx-4 -mt-3 rounded-none" />
-          {/* Search bar skeleton */}
-          <Skeleton className="h-10 w-full rounded-full" />
-          {/* Carousel skeletons */}
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i}>
-              <Skeleton className="h-5 w-32 mb-3" />
-              <div className="flex gap-3 overflow-hidden -mx-4 px-4">
-                {Array.from({ length: 4 }).map((_, j) => (
-                  <Skeleton key={j} className={`${i < 2 ? 'h-[210px] w-[140px]' : 'h-[165px] w-[110px]'} rounded-lg flex-shrink-0`} />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <PageSpinner />
       ) : error ? (
-        <div className="px-4 py-12 text-center text-muted-foreground">
+        <div className="py-12 text-center text-muted-foreground">
           {error}
         </div>
       ) : data ? (
         <div className="space-y-5">
           {/* Hero Banner */}
           {heroAnime && <HeroBanner anime={heroAnime} />}
-
-          {/* Search Link */}
-          <div className="flex items-center justify-between">
-            <Link
-              href="/anime/explore"
-              className="flex-1 flex items-center gap-2 bg-muted/50 border border-border/50 text-muted-foreground rounded-full px-4 py-2 text-sm hover:bg-muted transition-colors"
-            >
-              <Search className="h-4 w-4" />
-              <span>Search or browse anime...</span>
-            </Link>
-          </div>
 
           {/* Carousels */}
           <AnimeMediaRail

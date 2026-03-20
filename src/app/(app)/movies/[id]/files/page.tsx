@@ -15,7 +15,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import type { HistoryItem, RadarrMovie } from '@/types';
 import {
   getMovieDetailSnapshot,
@@ -154,21 +154,7 @@ export default function MovieFilesPage() {
   }, [movieId]);
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <div className="px-4 space-y-2">
-          <Skeleton className="h-8 w-20" />
-          <Skeleton className="h-24 w-full rounded-2xl" />
-        </div>
-        <div className="px-4 space-y-2">
-          <Skeleton className="h-8 w-24" />
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full rounded-xl" />
-          ))}
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Files & information" /><PageSpinner /></>;
   }
 
   if (!movie) {
@@ -281,11 +267,7 @@ export default function MovieFilesPage() {
         <section className="space-y-2">
           <h2 className="text-3xl font-bold leading-tight">History</h2>
           {historyLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-16 w-full rounded-xl" />
-              ))}
-            </div>
+            <PageSpinner />
           ) : history.length === 0 ? (
             <div className="rounded-2xl border px-4 py-6 text-center text-sm text-muted-foreground">
               No history available

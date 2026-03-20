@@ -13,7 +13,7 @@ import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { AnimeReviewCard } from '@/components/anime/anime-review-card';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { ExternalLink, Tv, Film, Loader2, Clock, Trophy, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -187,17 +187,7 @@ export default function AnimeDetailPage() {
     : null;
 
   if (loading) {
-    return (
-      <div>
-        <PageHeader title="Loading..." />
-        <Skeleton className="h-[220px] w-full" />
-        <div className="p-4 space-y-3">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-64" />
-          <Skeleton className="h-20 w-full" />
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Anime" /><PageSpinner /></>;
   }
 
   if (error || !detail) {
@@ -321,7 +311,7 @@ export default function AnimeDetailPage() {
   ];
 
   return (
-    <div className="pb-20">
+    <div className="animate-content-in">
       <PageHeader title={detail.title} />
 
       {/* Hero */}

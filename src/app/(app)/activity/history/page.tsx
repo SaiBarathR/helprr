@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer,
   DrawerContent,
@@ -206,7 +206,7 @@ export default function HistoryPage() {
       />
 
       {/* Instance segmented control */}
-      <div className="px-4 pb-3 pt-2">
+      <div className="pb-3 pt-2">
         <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {INSTANCE_OPTIONS.map((opt) => (
             <button
@@ -226,7 +226,7 @@ export default function HistoryPage() {
 
       {/* Active filter indicator */}
       {eventFilter !== 'all' && (
-        <div className="px-4 pb-2">
+        <div className="pb-2">
           <Badge variant="secondary" className="text-[10px]">
             {activeFilterLabel}
           </Badge>
@@ -234,13 +234,9 @@ export default function HistoryPage() {
       )}
 
       {/* History list */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto pb-4">
         {loading ? (
-          <div className="space-y-2">
-            {[...Array(8)].map((_, i) => (
-              <Skeleton key={i} className="h-16 rounded-xl" />
-            ))}
-          </div>
+          <PageSpinner />
         ) : history.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-sm">No history events</p>

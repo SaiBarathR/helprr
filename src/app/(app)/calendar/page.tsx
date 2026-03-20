@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
 import type { CalendarEvent } from '@/types';
@@ -438,31 +438,6 @@ function WeekView({
   );
 }
 
-// ─── Loading Skeleton ───────────────────────────────────────────────────────
-
-function CalendarSkeleton() {
-  return (
-    <div className="space-y-3 pt-2">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="flex items-start gap-4 py-3 px-1">
-          <div className="w-10 shrink-0 flex flex-col items-center gap-0.5">
-            <Skeleton className="h-2.5 w-6" />
-            <Skeleton className="h-7 w-7 rounded" />
-            <Skeleton className="h-2.5 w-6" />
-          </div>
-          <div className="flex-1 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-14" />
-            </div>
-            <Skeleton className="h-3 w-28" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ─── View Tabs (compact pill style) ─────────────────────────────────────────
 
 type ViewType = 'agenda' | 'month' | 'week';
@@ -718,7 +693,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-3">
-      <div className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
+      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
         {/* Top bar: title + view tabs */}
         <div className="flex items-center justify-between md:hidden">
           <ViewTabs
@@ -788,7 +763,7 @@ export default function CalendarPage() {
       )}
 
       {/* Loading state */}
-      {loading && <CalendarSkeleton />}
+      {loading && <PageSpinner />}
 
       {/* Calendar views */}
       {!loading && (

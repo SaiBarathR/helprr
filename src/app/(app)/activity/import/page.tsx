@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Loader2, RefreshCw, Check, ChevronRight, Search,
 } from 'lucide-react';
@@ -24,11 +24,7 @@ type View = 'files' | 'episodes';
 
 export default function ManualImportPage() {
   return (
-    <Suspense fallback={
-      <div className="px-4 py-4 space-y-3">
-        {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
-      </div>
-    }>
+    <Suspense fallback={<PageSpinner />}>
       <ManualImportContent />
     </Suspense>
   );
@@ -278,7 +274,7 @@ function ManualImportContent() {
         />
 
         {/* Search bar */}
-        <div className="px-4 py-2 border-b border-border">
+        <div className="py-2 border-b border-border">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <input
@@ -300,7 +296,7 @@ function ManualImportContent() {
             filteredSeasons.map(([season, episodes]) => (
               <div key={season}>
                 {/* Season header */}
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm px-4 py-2 border-b border-border/50">
+                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border/50">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     {season === 0 ? 'Specials' : `Season ${season}`}
                   </span>
@@ -360,15 +356,13 @@ function ManualImportContent() {
 
       <div className="flex-1 overflow-y-auto overscroll-contain pb-28 md:pb-0">
         {loading ? (
-          <div className="px-4 py-4 space-y-3">
-            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
-          </div>
+          <PageSpinner />
         ) : files.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-sm">No files detected</p>
           </div>
         ) : (
-          <div className="px-4 py-3 space-y-3">
+          <div className="py-3 space-y-3">
             {/* Refresh episodes button (Sonarr only) */}
             {isSonarr && seriesId && (
               <Button

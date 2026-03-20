@@ -76,7 +76,7 @@ export function AnimeRelationsSection({ relations }: AnimeRelationsSectionProps)
           <h3 className="text-sm font-medium text-muted-foreground mb-1.5">
             {formatRelationType(type)}
           </h3>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+          <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
             {items.map((rel) => {
               const imgSrc = rel.coverImage
                 ? toCachedImageSrc(rel.coverImage, 'anilist') || rel.coverImage

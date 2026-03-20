@@ -12,8 +12,8 @@ export function DiscoverVideoRail({ title, videos }: DiscoverVideoRailProps) {
 
   return (
     <div>
-      <h2 className="text-base font-semibold px-4 mb-2">{title}</h2>
-      <div className="flex gap-3 overflow-x-auto pb-1 px-4 scrollbar-hide">
+      <h2 className="text-base font-semibold mb-2">{title}</h2>
+      <div className="flex gap-3 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
         {videos.map((video) => {
           const thumbnailUrl = video.site === 'YouTube'
             ? `https://img.youtube.com/vi/${video.key}/mqdefault.jpg`

@@ -36,7 +36,7 @@ export function DiscoverHero({
     : null;
 
   return (
-    <div className="relative">
+    <div className="relative -mx-2 md:-mx-6">
       {/* Backdrop */}
       <div className="relative h-[220px] w-full bg-muted/40">
         {backdropSrc && (
@@ -54,7 +54,7 @@ export function DiscoverHero({
       </div>
 
       {/* Poster + Info overlay */}
-      <div className="relative -mt-[90px] px-4 flex gap-3.5">
+      <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
         {/* Poster */}
         <div className="relative w-[100px] h-[150px] rounded-lg overflow-hidden bg-muted border border-border/40 shadow-lg shrink-0">
           {posterSrc ? (
@@ -107,7 +107,7 @@ export function DiscoverHero({
 
       {/* Tagline */}
       {tagline && (
-        <p className="px-4 mt-2 text-sm italic text-muted-foreground">{tagline}</p>
+        <p className="px-2 md:px-6 mt-2 text-sm italic text-muted-foreground">{tagline}</p>
       )}
     </div>
   );

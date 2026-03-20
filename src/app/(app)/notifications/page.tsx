@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { Bell, Check, Download, X, AlertTriangle, Clock, Settings2, Loader2, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -93,7 +93,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4">
       <PageHeader
         showBack={false}
         title="History"
@@ -117,7 +117,7 @@ export default function NotificationsPage() {
       />
 
       {loading ? (
-        <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}</div>
+        <PageSpinner />
       ) : notifications.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -130,7 +130,7 @@ export default function NotificationsPage() {
               <button
                 key={n.id}
                 onClick={() => !n.read && markAsRead(n.id)}
-                className={`w-full text-left flex items-start gap-3 py-3 px-4 transition-colors active:bg-muted/50 ${
+                className={`w-full text-left flex items-start gap-3 py-3 transition-colors active:bg-muted/50 ${
                   !n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
                 }`}
               >

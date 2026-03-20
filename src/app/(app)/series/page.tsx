@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   DropdownMenu,
@@ -479,7 +479,7 @@ export default function SeriesPage() {
 
   return (
     <div className="space-y-3">
-      <div className="sticky z-30 -mx-4 px-4 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
+      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
         <div className="flex items-center gap-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -586,27 +586,7 @@ export default function SeriesPage() {
 
       {(() => {
         if (loading) {
-          return effectiveView === 'posters' ? (
-            <div className={posterGridClass}>
-              {[...Array(12)].map((_, i) => (
-                <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
-              ))}
-            </div>
-          ) : effectiveView === 'overview' ? (
-            <div className="space-y-2">
-              {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-xl" />
-              ))}
-            </div>
-          ) : isDesktop ? (
-            <div className="block"><Skeleton className="h-96 rounded-xl" /></div>
-          ) : (
-            <div className="space-y-2">
-              {[...Array(6)].map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-xl" />
-              ))}
-            </div>
-          );
+          return <PageSpinner />;
         }
 
         if (filtered.length === 0) {
