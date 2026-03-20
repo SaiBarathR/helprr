@@ -84,7 +84,7 @@ export function AnimeHero({
       </div>
 
       {/* Poster + Info overlay */}
-      <div className="relative -mt-[90px] flex gap-3.5">
+      <div className="relative -mt-[90px] px-4 flex gap-3.5">
         <div className="relative w-[100px] h-[150px] rounded-lg overflow-hidden bg-muted border border-border/40 shadow-lg shrink-0">
           {coverSrc ? (
             <Image

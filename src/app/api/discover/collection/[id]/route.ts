@@ -57,7 +57,7 @@ export async function GET(
       name: collection.name,
       overview: collection.overview || '',
       posterPath: tmdbImageUrl(collection.poster_path),
-      backdropPath: tmdbImageUrl(collection.backdrop_path, 'w780'),
+      backdropPath: tmdbImageUrl(collection.backdrop_path, 'w1280'),
       parts: annotatedParts,
     };
 
