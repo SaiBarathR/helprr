@@ -170,7 +170,7 @@ export default function TorrentFilesPage() {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 animate-content-in">
       <PageHeader name={torrentName} onBack={() => router.back()} />
 
       {/* Summary bar */}

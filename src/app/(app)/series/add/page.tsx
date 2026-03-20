@@ -253,7 +253,7 @@ function AddSeriesPageContent() {
   }, [searchParams, autoSearched, runSearch]);
 
   return (
-    <div>
+    <div className="animate-content-in">
       <PageHeader title="Add Series" />
 
       <div className="space-y-4 mt-2 pb-8">

@@ -65,7 +65,7 @@ export function AnimeHero({
             alt={title}
             fill
             sizes="100vw"
-            className="object-cover"
+            className="object-cover animate-hero-zoom"
             priority
             unoptimized={isProtectedApiImageSrc(bannerSrc)}
           />
@@ -75,7 +75,7 @@ export function AnimeHero({
             alt={title}
             fill
             sizes="100vw"
-            className="object-cover blur-2xl opacity-50"
+            className="object-cover blur-2xl opacity-50 animate-hero-zoom"
             priority
             unoptimized={isProtectedApiImageSrc(coverSrc)}
           />

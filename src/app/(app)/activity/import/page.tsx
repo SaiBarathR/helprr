@@ -347,7 +347,7 @@ function ManualImportContent() {
   // ── Files view (default) ──────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-background">
+    <div className="flex flex-col h-[100dvh] bg-background animate-content-in">
       <PageHeader
         title="Manual Import"
         subtitle={itemTitle}

@@ -725,7 +725,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div>
+    <div className="animate-content-in">
       {/* <h1 className="text-[28px] font-bold px-4 pt-2 pb-4">Settings</h1> */}
 
       {/* ── Instances ── */}

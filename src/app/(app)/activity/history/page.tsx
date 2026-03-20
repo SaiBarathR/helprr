@@ -180,7 +180,7 @@ export default function HistoryPage() {
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
 
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col min-h-0 animate-content-in">
       <PageHeader
         title="History"
         rightContent={
@@ -242,7 +242,7 @@ export default function HistoryPage() {
             <p className="text-sm">No history events</p>
           </div>
         ) : (
-          <div className="space-y-1">
+          <div className="space-y-1 animate-list-in">
             {history.map((item, i) => (
               <button
                 key={`${item.source}-${item.id}-${i}`}

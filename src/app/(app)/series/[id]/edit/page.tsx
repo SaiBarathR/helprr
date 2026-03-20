@@ -97,7 +97,7 @@ export default function SeriesEditPage() {
   }
 
   return (
-    <div>
+    <div className="animate-content-in">
       <PageHeader title={`Edit ${series.title}`} />
 
       <div className="px-4 pt-4 pb-8 space-y-6">

@@ -114,7 +114,7 @@ export default function NotificationPreferencesPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-content-in">
       <Button variant="ghost" size="sm" onClick={() => router.back()}>
         <ArrowLeft className="mr-2 h-4 w-4" /> Back
       </Button>

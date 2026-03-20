@@ -93,7 +93,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-content-in">
       <PageHeader
         showBack={false}
         title="History"
@@ -125,7 +125,7 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <>
-          <div className="space-y-0.5">
+          <div className="space-y-0.5 animate-list-in">
             {notifications.map((n) => (
               <button
                 key={n.id}

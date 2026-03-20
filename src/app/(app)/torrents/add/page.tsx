@@ -79,7 +79,7 @@ export default function AddTorrentPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-content-in">
       <PageHeader title="Add Torrent" />
 
       <div className="rounded-xl border bg-card p-4 space-y-4">

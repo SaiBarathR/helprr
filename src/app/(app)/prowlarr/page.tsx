@@ -1671,7 +1671,7 @@ export default function ProwlarrPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 animate-content-in">
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button
