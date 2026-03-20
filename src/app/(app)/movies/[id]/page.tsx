@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { PageHeader } from '@/components/layout/page-header';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
@@ -318,24 +318,7 @@ export default function MovieDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <div className="flex gap-4 px-4">
-          <Skeleton className="h-[180px] w-[120px] rounded-lg shrink-0" />
-          <div className="flex-1 space-y-2 pt-2">
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-        </div>
-        <div className="px-4 space-y-3">
-          <Skeleton className="h-16 w-full rounded-lg" />
-          <Skeleton className="h-10 w-full rounded-full" />
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Movie" /><PageSpinner /></>;
   }
 
   if (!movie) {
@@ -502,12 +485,12 @@ export default function MovieDetailPage() {
         }
       />
 
-      <div className="space-y-6 px-0">
+      <div className="space-y-6 animate-content-in">
         {/* Hero: Backdrop or flat poster layout */}
         {tmdbData?.backdropPath ? (
           <div>
             {/* Backdrop image */}
-            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
+            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 -mx-2 md:-mx-6">
               <Image
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
                 alt=""
@@ -520,7 +503,7 @@ export default function MovieDetailPage() {
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
             </div>
             {/* Poster + info overlapping backdrop */}
-            <div className="relative -mt-[90px] px-4 flex gap-3.5">
+            <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
               <div className="w-[100px] shrink-0">
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
@@ -575,11 +558,11 @@ export default function MovieDetailPage() {
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="px-4 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <p className="mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
             )}
           </div>
         ) : (
-          <div className="flex gap-4 px-4">
+          <div className="flex gap-4">
             <div className="w-[120px] shrink-0">
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                 {poster ? (
@@ -637,7 +620,7 @@ export default function MovieDetailPage() {
 
         {/* Metadata rows - borderless key-value */}
         {metadataRows.length > 0 && (
-          <div className="px-4">
+          <div>
             {metadataRows.map((row) => (
               <div
                 key={row.label}
@@ -654,7 +637,7 @@ export default function MovieDetailPage() {
 
         {/* Overview - collapsible */}
         {movie.overview && (
-          <div className="px-4">
+          <div>
             <div className="relative">
               <p
                 className={`text-sm text-muted-foreground leading-relaxed ${
@@ -677,7 +660,7 @@ export default function MovieDetailPage() {
         {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} />}
 
         {/* Pill buttons */}
-        <div className="flex gap-3 px-4">
+        <div className="flex gap-3">
           <Button
             onClick={handleSearch}
             disabled={!!actionLoading}
@@ -700,7 +683,7 @@ export default function MovieDetailPage() {
             Interactive
           </Button>
         </div>
-        <div className="px-4">
+        <div>
           <Button
             onClick={() => router.push(`/movies/${movie.id}/files`)}
             className="w-full rounded-full h-10"
@@ -712,7 +695,7 @@ export default function MovieDetailPage() {
         </div>
 
         {/* Information section */}
-        <div className="px-4">
+        <div>
           <h2 className="text-base font-semibold mb-2">Information</h2>
           <div>
             {infoRows.map((row) => (
@@ -747,7 +730,7 @@ export default function MovieDetailPage() {
             )}
 
             {tmdbData.productionCompanies.length > 0 && (
-              <div className="px-4">
+              <div>
                 <h2 className="text-base font-semibold mb-2">Production</h2>
                 <div className="flex flex-wrap gap-2">
                   {tmdbData.productionCompanies.map((company) => {
@@ -784,7 +767,7 @@ export default function MovieDetailPage() {
             )}
 
             {tmdbData.collection && (
-              <div className="px-4">
+              <div>
                 <Link
                   href={`/discover/collection/${tmdbData.collection.id}`}
                   className="flex items-center gap-3 p-3 rounded-xl bg-muted/60 border border-border/40 hover:bg-muted transition-colors"
@@ -810,8 +793,6 @@ export default function MovieDetailPage() {
             )}
           </>
         )}
-
-        <div className="pb-8" />
 
       </div>
 

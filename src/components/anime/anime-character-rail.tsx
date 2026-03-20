@@ -27,7 +27,7 @@ export function AnimeCharacterRail({ characters }: AnimeCharacterRailProps) {
   return (
     <div>
       <h2 className="text-base font-semibold mb-2">Characters & Voice Actors</h2>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
         {characters.map((char) => {
           const charImgSrc = char.image
             ? toCachedImageSrc(char.image, 'anilist') || char.image

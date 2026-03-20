@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { DiscoverHero } from '@/components/discover/discover-hero';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
@@ -112,24 +112,7 @@ export default function DiscoverTvDetailPage() {
   }, [show]);
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-[220px] w-full" />
-        <div className="flex gap-3.5 px-4 -mt-[90px] relative z-10">
-          <Skeleton className="w-[100px] h-[150px] rounded-lg shrink-0" />
-          <div className="flex-1 pt-[60px] space-y-2">
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-          </div>
-        </div>
-        <div className="px-4 space-y-2 mt-6">
-          <Skeleton className="h-11 w-full rounded-lg" />
-          <Skeleton className="h-20 w-full" />
-        </div>
-      </div>
-    );
+    return <><PageHeader title="TV Show" /><PageSpinner /></>;
   }
 
   if (error || !show) {
@@ -147,7 +130,7 @@ export default function DiscoverTvDetailPage() {
     <>
       <PageHeader title={show.title} />
 
-      <div className="space-y-5 pb-8">
+      <div className="space-y-5 animate-content-in">
         <DiscoverHero
           title={show.title}
           backdropPath={show.backdropPath}
@@ -164,7 +147,7 @@ export default function DiscoverTvDetailPage() {
 
         {/* Overview */}
         {show.overview && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-1">Overview</h2>
             <div className="relative">
               <p
@@ -188,7 +171,7 @@ export default function DiscoverTvDetailPage() {
 
         {/* Created By */}
         {show.createdBy.length > 0 && (
-          <div className="px-4">
+          <div>
             <p className="text-sm text-muted-foreground">
               <span className="font-medium text-foreground">Created by </span>
               {show.createdBy.map((c, i) => (
@@ -205,7 +188,7 @@ export default function DiscoverTvDetailPage() {
 
         {/* Genres */}
         {show.genreNames && show.genreNames.length > 0 && (
-          <div className="px-4">
+          <div>
             <div className="flex flex-wrap gap-1.5">
               {show.genreNames.map((genre) => (
                 <Badge key={genre} variant="outline" className="text-xs">{genre}</Badge>
@@ -216,7 +199,7 @@ export default function DiscoverTvDetailPage() {
 
         {/* Networks */}
         {show.networks.length > 0 && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-2">Networks</h2>
             <div className="flex gap-3 flex-wrap">
               {show.networks.map((network) => {
@@ -247,7 +230,7 @@ export default function DiscoverTvDetailPage() {
 
         {/* Production Companies */}
         {show.productionCompanies.length > 0 && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-2">Production Companies</h2>
             <div className="flex gap-3 flex-wrap">
               {show.productionCompanies.map((company) => {
@@ -310,7 +293,7 @@ export default function DiscoverTvDetailPage() {
 
         {/* Seasons */}
         {show.seasons.length > 0 && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-2">Seasons</h2>
             <div className="space-y-2">
               {show.seasons.map((season) => (

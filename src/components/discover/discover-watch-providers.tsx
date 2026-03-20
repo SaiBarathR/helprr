@@ -45,7 +45,7 @@ export function DiscoverWatchProvidersSection({ providers }: DiscoverWatchProvid
   if (!hasAny) return null;
 
   return (
-    <div className="px-4">
+    <div>
       <h2 className="text-base font-semibold mb-2">Where to Watch</h2>
       <div className="space-y-3">
         {providers.flatrate && <ProviderGroup label="Stream" entries={providers.flatrate} />}

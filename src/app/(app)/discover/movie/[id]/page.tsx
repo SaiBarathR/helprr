@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { DiscoverHero } from '@/components/discover/discover-hero';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
@@ -82,24 +82,7 @@ export default function DiscoverMovieDetailPage() {
   }, [movie]);
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-[220px] w-full" />
-        <div className="flex gap-3.5 px-4 -mt-[90px] relative z-10">
-          <Skeleton className="w-[100px] h-[150px] rounded-lg shrink-0" />
-          <div className="flex-1 pt-[60px] space-y-2">
-            <Skeleton className="h-5 w-20" />
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-          </div>
-        </div>
-        <div className="px-4 space-y-2 mt-6">
-          <Skeleton className="h-11 w-full rounded-lg" />
-          <Skeleton className="h-20 w-full" />
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Movie" /><PageSpinner /></>;
   }
 
   if (error || !movie) {
@@ -117,7 +100,7 @@ export default function DiscoverMovieDetailPage() {
     <>
       <PageHeader title={movie.title} />
 
-      <div className="space-y-5 pb-8">
+      <div className="space-y-5 animate-content-in">
         <DiscoverHero
           title={movie.title}
           backdropPath={movie.backdropPath}
@@ -134,7 +117,7 @@ export default function DiscoverMovieDetailPage() {
 
         {/* Overview */}
         {movie.overview && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-1">Overview</h2>
             <div className="relative">
               <p
@@ -158,7 +141,7 @@ export default function DiscoverMovieDetailPage() {
 
         {/* Genres */}
         {movie.genreNames && movie.genreNames.length > 0 && (
-          <div className="px-4">
+          <div>
             <div className="flex flex-wrap gap-1.5">
               {movie.genreNames.map((genre) => (
                 <Badge key={genre} variant="outline" className="text-xs">{genre}</Badge>
@@ -213,7 +196,7 @@ export default function DiscoverMovieDetailPage() {
 
         {/* Collection */}
         {movie.collection && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-2">Collection</h2>
             <Link
               href={`/discover/collection/${movie.collection.id}`}
@@ -243,7 +226,7 @@ export default function DiscoverMovieDetailPage() {
 
         {/* Production Companies */}
         {movie.productionCompanies.length > 0 && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-2">Production Companies</h2>
             <div className="flex gap-3 flex-wrap">
               {movie.productionCompanies.map((company) => {

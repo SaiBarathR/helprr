@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer,
   DrawerContent,
@@ -266,13 +266,13 @@ export default function ActivityPage() {
 
       {/* Queue count */}
       {tab === 'queue' && queueCount > 0 && (
-        <p className="px-4 text-xs text-muted-foreground mb-1">
+        <p className="text-xs text-muted-foreground mb-1">
           {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
         </p>
       )}
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <div className="flex-1 overflow-y-auto">
         {tab === 'queue' && (
           <QueueTab
             sortBy={sortBy}
@@ -384,13 +384,7 @@ function QueueTab({
   }
 
   if (loading) {
-    return (
-      <div className="space-y-2">
-        {[...Array(3)].map((_, i) => (
-          <Skeleton key={i} className="h-20 rounded-xl" />
-        ))}
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   if (sorted.length === 0) {
@@ -616,13 +610,7 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-2">
-        {[...Array(2)].map((_, i) => (
-          <Skeleton key={i} className="h-20 rounded-xl" />
-        ))}
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   if (queue.length === 0) {
@@ -735,13 +723,7 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
   }
 
   if (loading && page === 1) {
-    return (
-      <div className="space-y-2">
-        {[...Array(5)].map((_, i) => (
-          <Skeleton key={i} className="h-14 rounded-xl" />
-        ))}
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   if (records.length === 0) {

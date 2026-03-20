@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import {
   User,
@@ -270,31 +270,7 @@ export default function PersonDetailPage() {
   }), [filteredCredits]);
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <div className="flex gap-4 px-4">
-          <Skeleton className="h-[140px] w-[140px] rounded-full shrink-0" />
-          <div className="flex-1 space-y-2 pt-4">
-            <Skeleton className="h-6 w-40" />
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-        </div>
-        <div className="px-4 space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-3/4" />
-        </div>
-        <div className="px-4">
-          <div className="grid grid-cols-3 gap-2">
-            {[...Array(9)].map((_, i) => (
-              <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Person" /><PageSpinner /></>;
   }
 
   if (error || !person) {
@@ -337,9 +313,9 @@ export default function PersonDetailPage() {
     <>
       <PageHeader title={person.name} />
 
-      <div className="space-y-5 px-0">
+      <div className="space-y-5 animate-content-in">
         {/* Profile hero */}
-        <div className="flex gap-4 px-4">
+        <div className="flex gap-4">
           <div className="relative w-[120px] h-[120px] rounded-full overflow-hidden bg-muted shrink-0">
             {profileSrc ? (
               <Image
@@ -384,7 +360,7 @@ export default function PersonDetailPage() {
 
         {/* Social links */}
         {socialLinks.length > 0 && (
-          <div className="flex gap-2 px-4 overflow-x-auto scrollbar-hide">
+          <div className="flex gap-2 overflow-x-auto -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
             {socialLinks.map((link) => (
               <a
                 key={link.label}
@@ -402,7 +378,7 @@ export default function PersonDetailPage() {
 
         {/* Biography */}
         {person.biography && (
-          <div className="px-4">
+          <div>
             <h2 className="text-base font-semibold mb-1">Biography</h2>
             <div className="relative">
               <p
@@ -426,7 +402,7 @@ export default function PersonDetailPage() {
 
         {/* Also known as */}
         {person.alsoKnownAs.length > 0 && (
-          <div className="px-4">
+          <div>
             <h2 className="text-sm font-semibold text-muted-foreground mb-1">Also known as</h2>
             <p className="text-sm text-muted-foreground">{person.alsoKnownAs.join(', ')}</p>
           </div>
@@ -517,17 +493,16 @@ export default function PersonDetailPage() {
 
           {/* Credits grid */}
           {filteredCredits.length === 0 ? (
-            <div className="px-4 py-8 text-center text-muted-foreground text-sm">
+            <div className="py-8 text-center text-muted-foreground text-sm">
               No {activeDepartment.toLowerCase()} credits found
             </div>
           ) : (
-            <div className="px-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
               {creditCards}
             </div>
           )}
         </div>
 
-        <div className="pb-8" />
       </div>
     </>
   );

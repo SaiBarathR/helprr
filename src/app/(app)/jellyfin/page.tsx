@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -324,12 +324,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   }, [fetchData, onLoadStart, onLoadEnd]);
 
   if (loading) {
-    return (
-      <div className="space-y-5">
-        <Skeleton className="h-12 rounded-xl" />
-        <div className="grid gap-3 grid-cols-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
-      </div>
-    );
+    return <PageSpinner />;
   }
 
   return (
@@ -576,7 +571,7 @@ function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
     }
   }
 
-  if (loading) return <div className="space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>;
+  if (loading) return <PageSpinner />;
   if (!pluginAvailable) return <PluginNotice />;
   if (users.length === 0) return <div className="text-center py-16 text-muted-foreground"><Users className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">No user activity found</p></div>;
 
@@ -619,7 +614,7 @@ function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
               </DrawerHeader>
               <div className="px-2 pb-6 max-h-[60vh] overflow-y-auto">
                 {historyLoading ? (
-                  <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+                  <PageSpinner />
                 ) : userHistory.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-8">No plays in the last 30 days</p>
                 ) : (
@@ -830,7 +825,7 @@ function HistoryTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
       {/* History list */}
       {loading ? (
-        <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)}</div>
+        <PageSpinner />
       ) : items.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground"><Clock className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">No plays found</p></div>
       ) : (
@@ -1021,7 +1016,7 @@ function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
     return () => controller.abort();
   }, [days, selectedUserId, onLoadStart, onLoadEnd, pluginAvailable]);
 
-  if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48 rounded-lg" /><Skeleton className="h-40 rounded-xl" /><Skeleton className="h-40 rounded-xl" /></div>;
+  if (loading) return <PageSpinner />;
 
   if (!pluginAvailable) return <div className="space-y-5"><PluginNotice /></div>;
 

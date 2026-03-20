@@ -24,7 +24,7 @@ export default function DashboardPage() {
   }, [setEditMode]);
 
   return (
-    <div className="space-y-0 pt-2 pb-4">
+    <div className="space-y-0 pt-2">
       {/* Edit mode header */}
       {editMode && (
         <div className="flex items-center justify-between mb-3 px-0.5">

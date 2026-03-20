@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
@@ -300,19 +300,7 @@ export default function SeasonDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-6 w-48" />
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-28 rounded-full" />
-          <Skeleton className="h-9 w-28 rounded-full" />
-        </div>
-        {[...Array(6)].map((_, i) => (
-          <Skeleton key={i} className="h-16 w-full rounded-lg" />
-        ))}
-      </div>
-    );
+    return <><PageHeader title="Season" /><PageSpinner /></>;
   }
 
   if (!series) {
@@ -323,7 +311,7 @@ export default function SeasonDetailPage() {
   const fileCount = episodes.filter((e) => e.hasFile).length;
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 animate-content-in">
       <PageHeader
         subtitle={<Link href={`/series/${seriesId}`} className="hover:underline">{series.title}</Link>}
         title={seasonTitle}
@@ -379,7 +367,7 @@ export default function SeasonDetailPage() {
       />
 
       {/* Metadata line */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground px-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>{series.year}</span>
         <span className="text-muted-foreground/40">|</span>
         {series.runtime > 0 && (
@@ -394,7 +382,7 @@ export default function SeasonDetailPage() {
       </div>
 
       {/* Pill buttons */}
-      <div className="flex gap-2 px-4">
+      <div className="flex gap-2">
         <Button
           variant="secondary"
           className="rounded-full flex-1"
@@ -429,7 +417,7 @@ export default function SeasonDetailPage() {
             <Link
               key={ep.id}
               href={`/series/${id}/season/${seasonNumber}/episode/${ep.id}`}
-              className="flex gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
+              className="flex gap-3 py-3 active:bg-muted/50 transition-colors"
             >
               {/* Episode still image or number fallback (skip for anime) */}
               {series?.seriesType !== 'anime' && (

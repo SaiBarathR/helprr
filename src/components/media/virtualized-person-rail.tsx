@@ -33,7 +33,7 @@ export function VirtualizedPersonRail({
   items,
   cacheService,
   titleTextClassName = 'text-base font-semibold',
-  headerClassName = 'px-4 mb-2',
+  headerClassName = 'mb-2',
   viewAllHref,
 }: VirtualizedPersonRailProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -68,7 +68,7 @@ export function VirtualizedPersonRail({
       )}
       <div
         ref={scrollRef}
-        className="overflow-x-auto pb-1 px-4 scrollbar-hide"
+        className="overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide"
       >
         <div
           className="relative"

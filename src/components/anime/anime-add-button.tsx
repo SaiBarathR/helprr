@@ -72,7 +72,7 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
 
   const params = buildSonarrAddParams({ title, tvdbId });
   return (
-    <div className="px-4">
+    <div>
       <Button asChild className="w-full h-11 gap-2">
         <Link href={`/series/add?${params}`}>
           <Plus className="h-4 w-4" />

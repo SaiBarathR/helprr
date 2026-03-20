@@ -725,11 +725,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="pb-8">
+    <div>
       {/* <h1 className="text-[28px] font-bold px-4 pt-2 pb-4">Settings</h1> */}
 
       {/* ── Instances ── */}
-      <div className="grouped-section px-4 mb-6">
+      <div className="grouped-section mb-6">
         <div className="grouped-section-title">Instances</div>
         <div className="grouped-section-content">
           {SERVICE_CONFIG.map((config, idx) => {
@@ -892,7 +892,7 @@ export default function SettingsPage() {
 
       {/* ── External URLs ── */}
       {(isConfigured('SONARR') || isConfigured('RADARR') || isConfigured('JELLYFIN')) && (
-        <div className="grouped-section px-4 mb-6">
+        <div className="grouped-section mb-6">
           <div className="grouped-section-title">External URLs</div>
           <div className="grouped-section-subtitle text-xs text-muted-foreground px-4 pb-2">
             Public URLs used for &quot;Open in&quot; links on detail pages
@@ -942,7 +942,7 @@ export default function SettingsPage() {
       )}
 
       {/* ── Preferences ── */}
-      <div className="grouped-section px-4 mb-6">
+      <div className="grouped-section mb-6">
         <div className="grouped-section-title">Preferences</div>
         <div className="grouped-section-content">
           <div className="grouped-row">
@@ -1004,7 +1004,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Cache ── */}
-      <div className="grouped-section px-4 mb-6">
+      <div className="grouped-section mb-6">
         <div className="grouped-section-title">Cache</div>
         <div className="grouped-section-content">
           <div className="grouped-row">
@@ -1083,7 +1083,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Display ── */}
-      <div className="grouped-section px-4 mb-6">
+      <div className="grouped-section mb-6">
         <div className="grouped-section-title">Display</div>
         <div className="grouped-section-content">
           <div className="grouped-row">
@@ -1109,7 +1109,7 @@ export default function SettingsPage() {
       <NavOrderSettings />
 
       {/* ── Notifications ── */}
-      <div className="grouped-section px-4 mb-6">
+      <div className="grouped-section mb-6">
         <div className="grouped-section-title">Notifications</div>
         <div className="grouped-section-content">
           <div className="grouped-row">
@@ -1177,7 +1177,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Save Settings Button ── */}
-      <div className="px-4 mb-6">
+      <div className="mb-6">
         <Button
           className="w-full h-11"
           onClick={saveGeneralSettings}
@@ -1195,7 +1195,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Account ── */}
-      <div className="grouped-section px-4 mb-6">
+      <div className="grouped-section mb-6">
         <div className="grouped-section-title">Account</div>
         <div className="grouped-section-content">
           <button

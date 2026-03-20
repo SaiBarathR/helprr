@@ -13,7 +13,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { RadarrMovie, QualityProfile, RootFolder, Tag } from '@/types';
@@ -107,42 +107,7 @@ export default function MovieEditPage() {
   }
 
   if (loading) {
-    return (
-      <div>
-        <PageHeader title="Edit Movie" />
-        <div className="px-4 space-y-6 mt-4">
-          <div className="grouped-section">
-            <Skeleton className="h-5 w-32 mb-2" />
-            <div className="grouped-section-content">
-              <div className="grouped-row">
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-9 w-40" />
-              </div>
-              <div className="grouped-row">
-                <Skeleton className="h-4 w-36" />
-                <Skeleton className="h-9 w-40" />
-              </div>
-              <div className="grouped-row">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-9 w-40" />
-              </div>
-            </div>
-          </div>
-          <div className="grouped-section">
-            <Skeleton className="h-5 w-16 mb-2" />
-            <div className="grouped-section-content">
-              <div className="grouped-row">
-                <div className="flex flex-wrap gap-1.5">
-                  <Skeleton className="h-6 w-16 rounded-full" />
-                  <Skeleton className="h-6 w-20 rounded-full" />
-                  <Skeleton className="h-6 w-14 rounded-full" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Edit Movie" /><PageSpinner /></>;
   }
 
   if (!movie) {

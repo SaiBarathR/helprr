@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SonarrSeries, QualityProfile, Tag } from '@/types';
@@ -84,29 +84,7 @@ export default function SeriesEditPage() {
   }
 
   if (loading) {
-    return (
-      <div>
-        <PageHeader title="Edit Series" />
-        <div className="px-4 pt-4 space-y-6">
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-10 w-full rounded-xl" />
-          </div>
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-10 w-full rounded-xl" />
-          </div>
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-16" />
-            <div className="flex gap-2">
-              <Skeleton className="h-7 w-16 rounded-full" />
-              <Skeleton className="h-7 w-20 rounded-full" />
-              <Skeleton className="h-7 w-14 rounded-full" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <><PageHeader title="Edit Series" /><PageSpinner /></>;
   }
 
   if (!series) {

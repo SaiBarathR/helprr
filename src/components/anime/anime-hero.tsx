@@ -56,7 +56,7 @@ export function AnimeHero({
   };
 
   return (
-    <div className="relative">
+    <div className="relative -mx-2 md:-mx-6">
       {/* Banner */}
       <div className="relative h-[220px] w-full bg-muted/40">
         {bannerSrc ? (
@@ -84,7 +84,7 @@ export function AnimeHero({
       </div>
 
       {/* Poster + Info overlay */}
-      <div className="relative -mt-[90px] px-4 flex gap-3.5">
+      <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
         <div className="relative w-[100px] h-[150px] rounded-lg overflow-hidden bg-muted border border-border/40 shadow-lg shrink-0">
           {coverSrc ? (
             <Image

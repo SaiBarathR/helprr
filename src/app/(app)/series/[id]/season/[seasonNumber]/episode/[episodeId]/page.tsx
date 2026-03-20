@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { PageSpinner } from '@/components/ui/page-spinner';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
@@ -374,18 +374,7 @@ export default function EpisodeDetailPage() {
   }
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-11 w-full" />
-        <Skeleton className="h-6 w-64" />
-        <Skeleton className="h-24 w-full rounded-lg" />
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-28 rounded-full" />
-          <Skeleton className="h-9 w-28 rounded-full" />
-        </div>
-        <Skeleton className="h-32 w-full rounded-lg" />
-      </div>
-    );
+    return <><PageHeader title="Episode" /><PageSpinner /></>;
   }
 
   if (!series || !episode) {
@@ -397,7 +386,7 @@ export default function EpisodeDetailPage() {
   const epCode = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 animate-content-in">
       <PageHeader
         subtitle={
           <span className="flex items-center gap-1 truncate">
@@ -500,7 +489,7 @@ export default function EpisodeDetailPage() {
       )}
 
       {/* Status badge + rating */}
-      <div className="px-4 flex items-center gap-2">
+      <div className="flex items-center gap-2">
         {episode.hasFile ? (
           <Badge className="bg-green-600 hover:bg-green-600 text-white">DOWNLOADED</Badge>
         ) : episode.monitored ? (
@@ -517,7 +506,7 @@ export default function EpisodeDetailPage() {
       </div>
 
       {/* Episode code + runtime + air date line */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground px-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">{epCode}</span>
         {(tmdbEpisode?.runtime || series.runtime > 0) && (
           <>
@@ -534,7 +523,7 @@ export default function EpisodeDetailPage() {
       </div>
 
       {/* Metadata rows */}
-      <div className="space-y-0 mx-4 rounded-lg border overflow-hidden">
+      <div className="space-y-0 rounded-lg border overflow-hidden">
         {series.network && (
           <div className="flex justify-between items-center px-4 py-2.5 border-b">
             <span className="text-xs text-muted-foreground uppercase tracking-wide">Network</span>
@@ -582,13 +571,13 @@ export default function EpisodeDetailPage() {
 
       {/* Overview */}
       {episode.overview && (
-        <div className="px-4">
+        <div>
           <p className="text-sm text-muted-foreground leading-relaxed">{episode.overview}</p>
         </div>
       )}
 
       {/* Pill buttons */}
-      <div className="flex gap-2 px-4">
+      <div className="flex gap-2">
         <Button
           variant="secondary"
           className="rounded-full flex-1"
@@ -614,7 +603,7 @@ export default function EpisodeDetailPage() {
 
       {/* File section */}
       {episode.hasFile && episodeFile && (
-        <div className="mx-4 space-y-2">
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               File
@@ -665,16 +654,12 @@ export default function EpisodeDetailPage() {
       )}
 
       {/* History section */}
-      <div className="mx-4 space-y-2">
+      <div className="space-y-2">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           History
         </h3>
         {historyLoading ? (
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full rounded-lg" />
-            ))}
-          </div>
+          <PageSpinner />
         ) : history.length === 0 ? (
           <div className="rounded-lg border px-4 py-6 text-center text-sm text-muted-foreground">
             No history available

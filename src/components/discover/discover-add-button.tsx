@@ -38,7 +38,7 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
 
   if (detail.addTarget.exists) {
     return (
-      <div className="px-4">
+      <div>
         <Button asChild variant="secondary" className="w-full h-11 gap-2">
           <Link href={href}>
             <Badge className="bg-green-600/90 text-white gap-1">
@@ -53,7 +53,7 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
   }
 
   return (
-    <div className="px-4">
+    <div>
       <Button asChild className="w-full h-11 gap-2">
         <Link href={href}>
           <Plus className="h-4 w-4" />

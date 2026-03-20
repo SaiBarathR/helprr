@@ -34,7 +34,7 @@ export function DiscoverExternalLinks({ tmdbId, mediaType, imdbId, homepage }: D
   if (!links.length) return null;
 
   return (
-    <div className="px-4">
+    <div>
       <h2 className="text-base font-semibold mb-2">External Links</h2>
       <div className="flex gap-2 flex-wrap">
         {links.map((link) => (
