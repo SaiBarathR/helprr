@@ -80,7 +80,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
     : null;
 
   return (
-    <>
+    <div className="animate-content-in">
       <PageHeader title={collection.name} />
 
       <div className="space-y-5 pb-8">
@@ -169,6 +169,6 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
           })}
         </div>
       </div>
-    </>
+    </div>
   );
 }

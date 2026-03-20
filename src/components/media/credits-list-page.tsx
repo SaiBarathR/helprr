@@ -68,7 +68,7 @@ export function CreditsListPage({
   }
 
   return (
-    <div>
+    <div className="animate-content-in">
       <PageHeader title={mediaTitle} />
 
       <div className="py-2 flex items-center gap-2">

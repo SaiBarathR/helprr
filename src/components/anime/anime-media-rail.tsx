@@ -44,7 +44,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
           </Link>
         )}
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory">
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in">
         {items.map((item) => {
           const imgSrc = item.coverImage
             ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage

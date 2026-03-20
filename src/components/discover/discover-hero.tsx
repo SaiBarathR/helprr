@@ -45,7 +45,7 @@ export function DiscoverHero({
             alt={title}
             fill
             sizes="100vw"
-            className="object-cover"
+            className="object-cover animate-hero-zoom"
             priority
             unoptimized={isProtectedApiImageSrc(backdropSrc)}
           />

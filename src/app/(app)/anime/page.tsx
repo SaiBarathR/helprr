@@ -45,7 +45,7 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
             src={bannerSrc}
             alt={anime.title}
             fill
-            className="object-cover"
+            className="object-cover animate-hero-zoom"
             priority
             unoptimized={isProtectedApiImageSrc(bannerSrc)}
           />
@@ -54,7 +54,7 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
             src={coverSrc}
             alt={anime.title}
             fill
-            className="object-cover blur-2xl scale-125"
+            className="object-cover blur-2xl scale-125 animate-hero-zoom"
             priority
             unoptimized={isProtectedApiImageSrc(coverSrc)}
           />
@@ -122,7 +122,7 @@ export default function AnimeHomePage() {
   const nextSeasonInfo = data?.nextSeasonInfo;
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col animate-content-in">
       {/* Search Link — always visible */}
       <div className="flex items-center justify-between mb-5">
         <Link

@@ -142,6 +142,7 @@
 }
 
 @media (min-width: 768px) {
+
   :root,
   :root[data-nav-position="bottom"] {
     --header-height: 0px;
@@ -323,8 +324,15 @@ html {
 
 /* Widget ghost placeholder (shown at original position during drag) */
 @keyframes widget-ghost-pulse {
-  0%, 100% { opacity: 0.2; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .widget-ghost {
@@ -333,11 +341,25 @@ html {
 
 /* iOS-style widget jiggle animation for edit mode */
 @keyframes widget-jiggle {
-  0% { transform: rotate(-0.35deg); }
-  25% { transform: rotate(0.35deg); }
-  50% { transform: rotate(-0.25deg); }
-  75% { transform: rotate(0.25deg); }
-  100% { transform: rotate(-0.35deg); }
+  0% {
+    transform: rotate(-0.35deg);
+  }
+
+  25% {
+    transform: rotate(0.35deg);
+  }
+
+  50% {
+    transform: rotate(-0.25deg);
+  }
+
+  75% {
+    transform: rotate(0.25deg);
+  }
+
+  100% {
+    transform: rotate(-0.35deg);
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -365,19 +387,32 @@ html {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .widget-ghost,
   .widget-jiggle,
   .widget-jiggle:nth-child(2n),
   .widget-jiggle:nth-child(3n),
-  .widget-jiggle:nth-child(5n) {
-    animation: none;
+  .widget-jiggle:nth-child(5n),
+  .animate-content-in,
+  .animate-content-in>*,
+  .animate-list-in>*,
+  .animate-rail-in>*,
+  /* .animate-hero-zoom, */
+  .animate-spinner-in {
+    animation: none !important;
+    opacity: 1 !important;
   }
 }
 
 /* Shimmer animation for skeleton loaders */
 @keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* Content entrance animation */
@@ -386,6 +421,7 @@ html {
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -396,16 +432,166 @@ html {
   animation: content-in 0.3s ease-out both;
 }
 
-.animate-content-in > * {
+.animate-content-in>* {
   animation: content-in 0.3s ease-out both;
 }
 
-.animate-content-in > *:nth-child(1) { animation-delay: 0ms; }
-.animate-content-in > *:nth-child(2) { animation-delay: 50ms; }
-.animate-content-in > *:nth-child(3) { animation-delay: 100ms; }
-.animate-content-in > *:nth-child(4) { animation-delay: 130ms; }
-.animate-content-in > *:nth-child(5) { animation-delay: 160ms; }
-.animate-content-in > *:nth-child(n+6) { animation-delay: 180ms; }
+.animate-content-in>*:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.animate-content-in>*:nth-child(2) {
+  animation-delay: 50ms;
+}
+
+.animate-content-in>*:nth-child(3) {
+  animation-delay: 100ms;
+}
+
+.animate-content-in>*:nth-child(4) {
+  animation-delay: 130ms;
+}
+
+.animate-content-in>*:nth-child(5) {
+  animation-delay: 160ms;
+}
+
+.animate-content-in>*:nth-child(n+6) {
+  animation-delay: 180ms;
+}
+
+/* List item entrance animation — faster, tighter stagger for non-virtualized lists */
+@keyframes list-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-list-in>* {
+  animation: list-in 0.2s ease-out both;
+}
+
+.animate-list-in>*:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.animate-list-in>*:nth-child(2) {
+  animation-delay: 30ms;
+}
+
+.animate-list-in>*:nth-child(3) {
+  animation-delay: 60ms;
+}
+
+.animate-list-in>*:nth-child(4) {
+  animation-delay: 90ms;
+}
+
+.animate-list-in>*:nth-child(5) {
+  animation-delay: 120ms;
+}
+
+.animate-list-in>*:nth-child(6) {
+  animation-delay: 150ms;
+}
+
+.animate-list-in>*:nth-child(7) {
+  animation-delay: 180ms;
+}
+
+.animate-list-in>*:nth-child(8) {
+  animation-delay: 210ms;
+}
+
+.animate-list-in>*:nth-child(9) {
+  animation-delay: 240ms;
+}
+
+.animate-list-in>*:nth-child(10) {
+  animation-delay: 270ms;
+}
+
+.animate-list-in>*:nth-child(n+11) {
+  animation-delay: 300ms;
+}
+
+/* Horizontal rail entrance animation — slide from right + fade */
+@keyframes rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-rail-in>* {
+  animation: rail-in 0.25s ease-out both;
+}
+
+.animate-rail-in>*:nth-child(1) {
+  animation-delay: 0ms;
+}
+
+.animate-rail-in>*:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.animate-rail-in>*:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.animate-rail-in>*:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.animate-rail-in>*:nth-child(5) {
+  animation-delay: 160ms;
+}
+
+.animate-rail-in>*:nth-child(n+6) {
+  animation-delay: 200ms;
+}
+
+/* Hero Ken Burns — subtle slow zoom on backdrop images */
+@keyframes hero-zoom {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.02);
+  }
+}
+
+/* .animate-hero-zoom {
+  animation: hero-zoom 8s ease-out both;
+} */
+
+/* PageSpinner delayed fade-in — prevents flash on fast loads */
+@keyframes spinner-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-spinner-in {
+  opacity: 0;
+  animation: spinner-in 0.15s ease-out 0.1s both;
+}
 
 /* Scroll margin for calendar scrollIntoView targets */
 [data-agenda-date],

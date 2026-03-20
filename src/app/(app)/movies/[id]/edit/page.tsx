@@ -122,7 +122,7 @@ export default function MovieEditPage() {
   }
 
   return (
-    <div>
+    <div className="animate-content-in">
       <PageHeader title={`Edit ${movie.title}`} />
 
       <div className="px-4 space-y-6 mt-4 pb-8">

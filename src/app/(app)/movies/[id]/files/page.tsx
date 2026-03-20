@@ -241,7 +241,7 @@ export default function MovieFilesPage() {
   ];
 
   return (
-    <>
+    <div className="animate-content-in">
       <PageHeader title={movie.title} />
 
       <div className="space-y-6 pb-8">
@@ -443,6 +443,6 @@ export default function MovieFilesPage() {
           )}
         </DrawerContent>
       </Drawer>
-    </>
+    </div>
   );
 }

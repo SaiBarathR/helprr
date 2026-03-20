@@ -17,7 +17,7 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
   return (
     <div>
       <h2 className="text-base font-semibold mb-2">{title}</h2>
-      <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
+      <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide animate-rail-in">
         {items.map((item) => {
           const posterSrc = item.posterPath
             ? toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath

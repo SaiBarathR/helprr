@@ -299,7 +299,7 @@ export default function AnimePage() {
   }
 
   return (
-    <div>
+    <div className="animate-content-in">
       {/* Back to Anime */}
       <Link
         href="/anime"

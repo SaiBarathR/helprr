@@ -168,7 +168,7 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col min-h-0 animate-content-in">
       <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         {/* Top bar */}
         <div className="flex items-center justify-between pt-2 pb-2 w-full">
@@ -398,7 +398,7 @@ function QueueTab({
 
   return (
     <>
-      <div className="space-y-2">
+      <div className="space-y-2 animate-list-in">
         {sorted.map((item) => {
           const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
           return (
@@ -623,7 +623,7 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 animate-list-in">
       {queue.map((item) => (
         <div key={`${item.source}-${item.id}`} className="rounded-xl bg-muted/30 p-3 space-y-2">
           <div className="flex items-start justify-between gap-2">
@@ -745,7 +745,7 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1 animate-list-in">
       {records.map((record) => {
         const key = `${record.source}-${record.id}`;
         const isEpisode = record.mediaType === 'episode';

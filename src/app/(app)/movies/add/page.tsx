@@ -258,7 +258,7 @@ function AddMoviePageContent() {
   }, [searchParams, autoSearched, runSearch]);
 
   return (
-    <div>
+    <div className="animate-content-in">
       <PageHeader title="Add Movie" />
 
       <div className="space-y-4 mt-1 pb-8">
