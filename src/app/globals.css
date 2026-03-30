@@ -397,7 +397,7 @@ html {
   .animate-content-in>*,
   .animate-list-in>*,
   .animate-rail-in>*,
-  /* .animate-hero-zoom, */
+  .animate-hero-zoom,
   .animate-spinner-in {
     animation: none !important;
     opacity: 1 !important;
@@ -573,9 +573,9 @@ html {
   }
 }
 
-/* .animate-hero-zoom {
+.animate-hero-zoom {
   animation: hero-zoom 8s ease-out both;
-} */
+}
 
 /* PageSpinner delayed fade-in — prevents flash on fast loads */
 @keyframes spinner-in {

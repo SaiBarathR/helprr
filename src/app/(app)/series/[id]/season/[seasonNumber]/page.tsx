@@ -417,7 +417,7 @@ export default function SeasonDetailPage() {
             <Link
               key={ep.id}
               href={`/series/${id}/season/${seasonNumber}/episode/${ep.id}`}
-              className="flex gap-3 py-3 active:bg-muted/50 transition-colors"
+              className="flex gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
             >
               {/* Episode still image or number fallback (skip for anime) */}
               {series?.seriesType !== 'anime' && (

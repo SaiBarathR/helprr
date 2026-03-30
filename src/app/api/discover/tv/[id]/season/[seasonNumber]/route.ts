@@ -38,7 +38,8 @@ export async function GET(
         airDate: ep.air_date,
         episodeNumber: ep.episode_number,
         seasonNumber: ep.season_number,
-        stillPath: tmdbImageUrl(ep.still_path, 'original'),
+        // Episode stills render as small card thumbnails, so a medium TMDB size is sufficient.
+        stillPath: tmdbImageUrl(ep.still_path, 'w300'),
         voteAverage: ep.vote_average,
         runtime: ep.runtime,
       })),
