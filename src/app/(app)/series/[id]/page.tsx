@@ -795,8 +795,8 @@ export default function SeriesDetailPage() {
             studios={animeDetail.studios}
           />
         ) : tmdbData?.backdropPath ? (
-          <div className="-mx-2 md:-mx-6">
-            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
+          <div>
+            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 -mx-2 md:-mx-6">
               <Image
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
                 alt=""

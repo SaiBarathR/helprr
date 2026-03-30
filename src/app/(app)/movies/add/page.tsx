@@ -442,7 +442,11 @@ function AddMoviePageContent() {
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
             {searching
-              ? <PageSpinner />
+              ? (
+                  <div className="col-span-full flex justify-center">
+                    <PageSpinner />
+                  </div>
+                )
               : results.map((r) => {
                 const poster = posterUrl(r.images as { coverType: string; remoteUrl: string }[]);
                 return (
