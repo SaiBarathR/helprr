@@ -601,6 +601,7 @@ export default function SettingsPage() {
         }
         if (payload && typeof payload.hideImagesEnabled === 'boolean') {
           setHideImagesEnabled(payload.hideImagesEnabled);
+          setHideExternalImages(payload.hideImagesEnabled);
         }
         void loadCacheUsage();
       } else {
