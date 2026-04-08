@@ -19,6 +19,7 @@ import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCi
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
+import { setHideExternalImages } from '@/lib/image';
 
 interface ServiceForm {
   url: string;
@@ -273,6 +274,7 @@ export default function SettingsPage() {
   const [activityRefreshInterval, setActivityRefreshInterval] = useState('5');
   const [torrentsRefreshInterval, setTorrentsRefreshInterval] = useState('5');
   const [cacheImagesEnabled, setCacheImagesEnabled] = useState(true);
+  const [hideImagesEnabled, setHideImagesEnabled] = useState(false);
   const [cacheUsage, setCacheUsage] = useState<CacheUsageStats | null>(null);
   const [cacheStatus, setCacheStatus] = useState<'idle' | 'purging'>('idle');
   const [cacheLastPurgedAt, setCacheLastPurgedAt] = useState<string | null>(null);
@@ -366,6 +368,9 @@ export default function SettingsPage() {
           setActivityRefreshInterval(String(settings.activityRefreshIntervalSecs ?? 5));
           setTorrentsRefreshInterval(String(settings.torrentsRefreshIntervalSecs ?? 5));
           setCacheImagesEnabled(settings.cacheImagesEnabled !== false);
+          const hideVal = settings.hideImagesEnabled === true;
+          setHideImagesEnabled(hideVal);
+          setHideExternalImages(hideVal);
           setUpcomingAlertHours(String(settings.upcomingAlertHours));
           if (settings.upcomingNotifyMode) setUpcomingNotifyMode(settings.upcomingNotifyMode);
           if (settings.upcomingNotifyBeforeMins != null) setUpcomingNotifyBeforeMins(String(settings.upcomingNotifyBeforeMins));
@@ -575,6 +580,7 @@ export default function SettingsPage() {
           activityRefreshIntervalSecs: parseInt(activityRefreshInterval, 10),
           torrentsRefreshIntervalSecs: parseInt(torrentsRefreshInterval, 10),
           cacheImagesEnabled,
+          hideImagesEnabled,
           theme,
           upcomingAlertHours: parseInt(upcomingAlertHours, 10),
           upcomingNotifyMode,
@@ -592,6 +598,9 @@ export default function SettingsPage() {
         }
         if (payload && typeof payload.cacheImagesEnabled === 'boolean') {
           setCacheImagesEnabled(payload.cacheImagesEnabled);
+        }
+        if (payload && typeof payload.hideImagesEnabled === 'boolean') {
+          setHideImagesEnabled(payload.hideImagesEnabled);
         }
         void loadCacheUsage();
       } else {
@@ -1098,6 +1107,17 @@ export default function SettingsPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grouped-row">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm">Hide Images</span>
+              <span className="text-xs text-muted-foreground">Hide 3rd-party images (TVDB, TMDB, AniList) to avoid rate limits</span>
+            </div>
+            <Switch
+              checked={hideImagesEnabled}
+              onCheckedChange={(v) => { setHideImagesEnabled(v); setHideExternalImages(v); }}
+              aria-label="Hide Images"
+            />
           </div>
         </div>
       </div>

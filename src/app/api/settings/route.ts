@@ -60,7 +60,7 @@ export async function PUT(request: NextRequest) {
       pollingIntervalSecs, theme, upcomingAlertHours,
       dashboardRefreshIntervalSecs, activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
-      cacheImagesEnabled,
+      cacheImagesEnabled, hideImagesEnabled,
     } = body;
 
     const current = await prisma.appSettings.findUnique({
@@ -87,6 +87,8 @@ export async function PUT(request: NextRequest) {
       data.upcomingDailyNotifyHour = upcomingDailyNotifyHour;
     if (cacheImagesEnabled !== undefined)
       data.cacheImagesEnabled = Boolean(cacheImagesEnabled);
+    if (hideImagesEnabled !== undefined)
+      data.hideImagesEnabled = Boolean(hideImagesEnabled);
 
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -98,6 +100,7 @@ export async function PUT(request: NextRequest) {
         activityRefreshIntervalSecs: activityRefreshIntervalSecs ?? 5,
         torrentsRefreshIntervalSecs: torrentsRefreshIntervalSecs ?? 5,
         cacheImagesEnabled: cacheImagesEnabled ?? true,
+        hideImagesEnabled: hideImagesEnabled ?? false,
         theme: theme ?? 'dark',
         upcomingAlertHours: upcomingAlertHours ?? 24,
         upcomingNotifyMode: upcomingNotifyMode ?? 'before_air',

@@ -1,5 +1,34 @@
 export type ImageServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist';
 
+const THIRD_PARTY_IMAGE_HOSTS = new Set<string>([
+  'image.tmdb.org',
+  'artworks.thetvdb.com',
+  'thetvdb.com',
+  'www.thetvdb.com',
+  'fanart.tv',
+  'assets.fanart.tv',
+  'static.tvmaze.com',
+  's4.anilist.co',
+  's1.anilist.co',
+  's2.anilist.co',
+  's3.anilist.co',
+]);
+
+let _hideExternalImages = false;
+
+export function setHideExternalImages(value: boolean) {
+  _hideExternalImages = value;
+}
+
+function isThirdPartyImageUrl(src: string): boolean {
+  try {
+    const parsed = new URL(src);
+    return THIRD_PARTY_IMAGE_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
@@ -9,6 +38,10 @@ export function toCachedImageSrc(
   serviceHint?: ImageServiceHint
 ): string | null {
   if (!src) return null;
+
+  if (_hideExternalImages && isHttpUrl(src) && isThirdPartyImageUrl(src)) {
+    return null;
+  }
 
   if (!isHttpUrl(src)) {
     return src;
