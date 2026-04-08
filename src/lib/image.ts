@@ -14,6 +14,10 @@ const THIRD_PARTY_IMAGE_HOSTS = new Set<string>([
   's3.anilist.co',
 ]);
 
+/** Transparent 1×1 GIF returned instead of null so `|| originalUrl` fallbacks stay inert. */
+const HIDDEN_IMAGE_PLACEHOLDER =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 let _hideExternalImages = false;
 
 export function setHideExternalImages(value: boolean) {
@@ -40,7 +44,7 @@ export function toCachedImageSrc(
   if (!src) return null;
 
   if (_hideExternalImages && isHttpUrl(src) && isThirdPartyImageUrl(src)) {
-    return null;
+    return HIDDEN_IMAGE_PLACEHOLDER;
   }
 
   if (!isHttpUrl(src)) {
