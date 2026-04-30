@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { DiscoverHero } from '@/components/discover/discover-hero';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
@@ -141,6 +140,8 @@ export default function DiscoverTvDetailPage() {
           certification={show.certification}
           tagline={show.tagline}
           mediaType="tv"
+          inLibrary={show.addTarget?.exists}
+          genres={show.genreNames}
         />
 
         <DiscoverAddButton detail={show} />
@@ -183,17 +184,6 @@ export default function DiscoverTvDetailPage() {
                 </span>
               ))}
             </p>
-          </div>
-        )}
-
-        {/* Genres */}
-        {show.genreNames && show.genreNames.length > 0 && (
-          <div>
-            <div className="flex flex-wrap gap-1.5">
-              {show.genreNames.map((genre) => (
-                <Badge key={genre} variant="outline" className="text-xs">{genre}</Badge>
-              ))}
-            </div>
           </div>
         )}
 

@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { DiscoverHero } from '@/components/discover/discover-hero';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
@@ -111,6 +110,8 @@ export default function DiscoverMovieDetailPage() {
           certification={movie.certification}
           tagline={movie.tagline}
           mediaType="movie"
+          inLibrary={movie.addTarget?.exists}
+          genres={movie.genreNames}
         />
 
         <DiscoverAddButton detail={movie} />
@@ -135,17 +136,6 @@ export default function DiscoverMovieDetailPage() {
                   {overviewExpanded ? 'less' : 'more...'}
                 </button>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Genres */}
-        {movie.genreNames && movie.genreNames.length > 0 && (
-          <div>
-            <div className="flex flex-wrap gap-1.5">
-              {movie.genreNames.map((genre) => (
-                <Badge key={genre} variant="outline" className="text-xs">{genre}</Badge>
-              ))}
             </div>
           </div>
         )}
