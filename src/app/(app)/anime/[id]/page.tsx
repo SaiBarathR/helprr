@@ -326,6 +326,7 @@ export default function AnimeDetailPage() {
         season={detail.season}
         seasonYear={detail.seasonYear}
         studios={detail.studios}
+        inLibrary={detail.library?.exists}
       />
 
       <div className="space-y-5 mt-4">
