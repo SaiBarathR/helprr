@@ -13,39 +13,55 @@ interface PageHeaderProps {
   className?: string;
 }
 
-export function PageHeader({ title, subtitle, showBack = true, onBack, rightContent, className }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  subtitle,
+  showBack = true,
+  onBack,
+  rightContent,
+  className,
+}: PageHeaderProps) {
   const router = useRouter();
 
   return (
     <header
       className={cn(
-        'sticky z-40 bg-background/80 backdrop-blur-lg',
+        'sticky z-40 bg-background/75 backdrop-blur-xl',
         className
       )}
       style={{ top: 'var(--header-height, 0px)' }}
     >
-      <div className="flex items-center h-11 px-1">
-        {/* Left: back button */}
+      {/* Hairline rule under header */}
+      <div
+        aria-hidden
+        className="absolute inset-x-0 bottom-0 h-px pointer-events-none"
+        style={{ background: 'var(--hairline)' }}
+      />
+      <div className="flex items-center h-12 px-1">
         {showBack && (
           <button
             onClick={onBack || (() => router.back())}
-            className="flex items-center gap-0 text-primary min-w-[44px] min-h-[44px] justify-center -ml-1"
+            className="press-feedback group flex items-center gap-0.5 text-primary min-w-[44px] min-h-[44px] justify-center -ml-1"
+            aria-label="Back"
           >
-            <ChevronLeft className="h-6 w-6" />
+            <ChevronLeft className="h-5 w-5 transition-transform group-active:-translate-x-0.5" />
+            <span className="sr-only">Back</span>
           </button>
         )}
 
-        {/* Center: title */}
         <div className="flex-1 min-w-0 px-2">
           {subtitle && (
-            <p className="text-[11px] text-muted-foreground truncate leading-tight">{subtitle}</p>
+            <p className="tracked-caps text-[9px] text-muted-foreground/80 truncate leading-tight">
+              {subtitle}
+            </p>
           )}
-          <h1 className="text-base font-semibold truncate leading-tight">{title}</h1>
+          <h1 className="text-[15px] font-semibold tracking-tight truncate leading-tight">
+            {title}
+          </h1>
         </div>
 
-        {/* Right: action slots */}
         {rightContent && (
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0 pr-1">
             {rightContent}
           </div>
         )}

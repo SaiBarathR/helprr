@@ -15,14 +15,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isBottom = navPosition === 'bottom';
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen min-w-0">
+    <div className="relative flex-1 flex flex-col min-h-screen min-w-0">
+      {/* Ambient projector wash + grain — fixed background atmosphere */}
+      <div className="lens-flare" aria-hidden />
+      <div className="ambient-grain" aria-hidden />
+
       {!isBottom && <BottomNav />}
       <main
         className={cn(
-          'flex-1 px-2 md:p-6 [overflow-x:clip]',
-          isBottom ? 'pt-2 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-4' : 'pt-2 pb-4'
+          'relative z-[1] flex-1 px-3 md:px-8 [overflow-x:clip]',
+          isBottom
+            ? 'pt-3 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-6'
+            : 'pt-3 pb-6'
         )}
-        style={isBottom ? { paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0.5rem))' } : undefined}
+        style={
+          isBottom
+            ? { paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0.75rem))' }
+            : undefined
+        }
       >
         {children}
       </main>

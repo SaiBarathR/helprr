@@ -9,32 +9,76 @@ export function Carousel({ children, className = '' }: { children: React.ReactNo
       <div className={`flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide -mx-1 px-1 ${className}`}>
         {children}
       </div>
-      <div className="pointer-events-none absolute top-0 right-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent" />
+      {/* Soft fade-out edges */}
+      <div className="pointer-events-none absolute top-0 left-0 bottom-2 w-6 bg-gradient-to-r from-background to-transparent" />
+      <div className="pointer-events-none absolute top-0 right-0 bottom-2 w-10 bg-gradient-to-l from-background to-transparent" />
     </div>
   );
 }
 
-export function SectionHeader({ title, href, linkText = 'View all', badge }: { title: string; href?: string; linkText?: string; badge?: React.ReactNode }) {
+export function SectionHeader({
+  title,
+  href,
+  linkText = 'View all',
+  badge,
+  eyebrow,
+}: {
+  title: string;
+  href?: string;
+  linkText?: string;
+  badge?: React.ReactNode;
+  eyebrow?: string;
+}) {
   return (
-    <div className="flex items-center justify-between mb-2.5">
-      <div className="flex items-center gap-2">
-        <h2 className="text-base font-semibold">{title}</h2>
-        {badge}
+    <div className="mb-3 flex items-end justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        {eyebrow && (
+          <span className="tracked-caps text-[10px] text-muted-foreground/80 mb-1 inline-block">
+            {eyebrow}
+          </span>
+        )}
+        <div className="flex items-center gap-2.5">
+          <h2 className="font-display text-[20px] leading-none tracking-[-0.02em] font-medium truncate">
+            {title}
+          </h2>
+          {badge}
+          {/* Hairline rule extending to right */}
+          <span
+            aria-hidden
+            className="hidden sm:block flex-1 h-px"
+            style={{ background: 'var(--hairline)' }}
+          />
+        </div>
       </div>
       {href && (
-        <Link href={href} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-0.5">
-          {linkText} <ArrowRight className="h-3 w-3" />
+        <Link
+          href={href}
+          className="group shrink-0 flex items-center gap-1 text-[11px] tracked-caps text-muted-foreground hover:text-primary transition-colors"
+        >
+          <span>{linkText}</span>
+          <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
         </Link>
       )}
     </div>
   );
 }
 
-export function EditModePlaceholder({ title, message = 'No activity' }: { title: string; message?: string }) {
+export function EditModePlaceholder({
+  title,
+  message = 'No activity',
+}: {
+  title: string;
+  message?: string;
+}) {
   return (
-    <div className="rounded-xl border border-dashed border-border bg-card/60 py-8 px-4 text-center">
-      <p className="text-sm font-medium">{title}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+    <div className="rounded-lg border border-dashed border-border/70 bg-card/40 backdrop-blur-sm py-8 px-4 text-center">
+      <div className="flex justify-center mb-2">
+        <span className="reel" />
+      </div>
+      <p className="text-[13px] font-semibold tracking-tight">{title}</p>
+      <p className="mt-1 text-[11px] tracked-mid text-muted-foreground/80">
+        {message}
+      </p>
     </div>
   );
 }

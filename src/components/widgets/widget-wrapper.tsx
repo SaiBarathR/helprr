@@ -1,6 +1,7 @@
 'use client';
 
 import { Component, type ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { WidgetSize } from '@/lib/widgets/types';
 
@@ -33,12 +34,15 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode; widgetId: str
   render() {
     if (this.state.hasError) {
       return (
-        <div className="rounded-xl bg-card p-4 flex flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
-          <span>Widget failed to load</span>
+        <div className="rounded-lg border border-dashed border-destructive/30 bg-card/40 backdrop-blur-sm p-4 flex flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+          <AlertTriangle className="h-4 w-4 text-destructive/80" />
+          <span className="tracked-caps text-[10px] text-destructive/80">
+            Widget Failed
+          </span>
           <button
             type="button"
             onClick={this.resetError}
-            className="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-foreground"
+            className="press-feedback rounded-full border border-border/70 px-3 py-1 text-[11px] font-medium text-foreground hover:border-foreground/30 transition-colors"
           >
             Retry
           </button>
@@ -51,7 +55,7 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode; widgetId: str
 
 export function WidgetSkeleton({ size }: { size: WidgetSize }) {
   const h = size === 'large' ? 'h-[280px]' : size === 'medium' ? 'h-[160px]' : 'h-[120px]';
-  return <Skeleton className={`${h} w-full rounded-xl`} />;
+  return <Skeleton className={`${h} w-full rounded-lg`} />;
 }
 
 export function WidgetWrapper({ widgetId, children }: WidgetWrapperProps) {

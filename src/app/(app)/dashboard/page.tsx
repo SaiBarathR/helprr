@@ -24,21 +24,41 @@ export default function DashboardPage() {
   }, [setEditMode]);
 
   return (
-    <div className="space-y-0 pt-2">
-      {/* Edit mode header */}
+    <div className="relative space-y-0 pt-1">
+      {/* Dashboard masthead — editorial */}
+      {!editMode && (
+        <div className="mb-4 flex items-end justify-between gap-3 px-0.5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="marquee-dot" />
+              <span className="tracked-caps text-[10px] text-muted-foreground/80">
+                Now Showing
+              </span>
+            </div>
+            <h1 className="font-display text-[28px] sm:text-[32px] leading-none tracking-[-0.03em] font-medium">
+              Dashboard
+            </h1>
+          </div>
+          <span className="hidden sm:inline-block tracked-caps text-[10px] text-muted-foreground/70 font-mono">
+            Reel · 01
+          </span>
+        </div>
+      )}
+
+      {/* Edit mode chrome */}
       {editMode && (
-        <div className="flex items-center justify-between mb-3 px-0.5">
+        <div className="mb-4 flex items-center justify-between px-0.5">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setGalleryOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium active:scale-95 transition-transform"
+              className="press-feedback projector-glow flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-primary text-primary-foreground text-[11px] font-semibold tracking-tight"
             >
               <Plus className="h-3.5 w-3.5" />
               Add Widget
             </button>
             <button
               onClick={resetLayout}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium active:scale-95 transition-transform"
+              className="press-feedback flex items-center gap-1 px-3 py-1.5 rounded-full border border-border text-muted-foreground hover:text-foreground hover:border-foreground/20 text-[11px] font-medium transition-colors"
             >
               <RotateCcw className="h-3 w-3" />
               Reset
@@ -46,7 +66,7 @@ export default function DashboardPage() {
           </div>
           <button
             onClick={() => setEditMode(false)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary text-primary-foreground text-xs font-medium active:scale-95 transition-transform"
+            className="press-feedback flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-foreground text-background text-[11px] font-semibold tracking-tight"
           >
             <Check className="h-3.5 w-3.5" />
             Done
@@ -61,7 +81,7 @@ export default function DashboardPage() {
         <button
           onClick={() => setEditMode(true)}
           aria-label="Edit dashboard"
-          className="fixed bottom-20 right-4 z-40 w-10 h-10 rounded-full bg-card border border-border shadow-lg flex items-center justify-center active:scale-90 transition-transform"
+          className="press-feedback fixed bottom-20 md:bottom-6 right-4 z-40 w-11 h-11 rounded-full bg-card/90 backdrop-blur-md border border-border shadow-lg flex items-center justify-center hover:border-primary/40 hover:text-primary transition-colors"
         >
           <Pencil className="h-4 w-4 text-muted-foreground" />
         </button>

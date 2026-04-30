@@ -6,6 +6,7 @@ import {
 import type { DiscoverContentType } from '@/types';
 import type { WidgetInstance, WidgetSize } from '@/lib/widgets/types';
 import { DEFAULT_LAYOUT, getWidgetDefinition } from '@/lib/widgets/registry';
+import { type AccentId, DEFAULT_ACCENT, isAccentId } from '@/lib/accent-config';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -170,6 +171,9 @@ interface UIState {
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
   calendarMonitoredOnly: boolean;
   setCalendarMonitoredOnly: (v: boolean) => void;
+  // Theme accent — stored per device via localStorage
+  accentColor: AccentId;
+  setAccentColor: (id: AccentId) => void;
   // Navigation preferences
   navPosition: 'top' | 'bottom';
   setNavPosition: (position: 'top' | 'bottom') => void;
@@ -256,6 +260,9 @@ export const useUIStore = create<UIState>()(
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
       calendarMonitoredOnly: false,
       setCalendarMonitoredOnly: (v) => set({ calendarMonitoredOnly: v }),
+      // Theme accent
+      accentColor: DEFAULT_ACCENT,
+      setAccentColor: (id) => set({ accentColor: id }),
       // Navigation
       navPosition: 'top',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),
@@ -327,7 +334,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 12,
+      version: 13,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -427,6 +434,12 @@ export const useUIStore = create<UIState>()(
             filters.companies = [];
           }
         }
+        if (version < 13) {
+          // Default accent color (per-device)
+          if (!isAccentId(state.accentColor)) {
+            state.accentColor = DEFAULT_ACCENT;
+          }
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -454,6 +467,7 @@ export const useUIStore = create<UIState>()(
         animeFilters: state.animeFilters,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
+        accentColor: state.accentColor,
         navPosition: state.navPosition,
         navOrder: state.navOrder,
         disabledNavItems: state.disabledNavItems,

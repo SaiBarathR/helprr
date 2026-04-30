@@ -1,26 +1,34 @@
 import type { Metadata, Viewport } from 'next';
-import { Geist, Geist_Mono, Fraunces } from 'next/font/google';
+import { Bricolage_Grotesque, Fraunces, JetBrains_Mono } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { ServiceWorkerRegister } from '@/components/sw-register';
+import { AccentApplier } from '@/components/accent-applier';
 import './globals.css';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+// Body — Bricolage Grotesque with full optical-size variable axis.
+// Distinctive ink-trapped grotesque, tightens at small sizes, blooms at display sizes.
+const bricolage = Bricolage_Grotesque({
+  variable: '--font-bricolage',
   subsets: ['latin'],
+  display: 'swap',
+  axes: ['opsz'],
 });
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
-
+// Display — Fraunces. Editorial serif used for hero titles and section eyebrows.
 const fraunces = Fraunces({
   variable: '--font-display',
   subsets: ['latin'],
-  weight: ['500', '600'],
-  style: 'normal',
+  weight: ['500', '600', '700'],
+  style: ['normal', 'italic'],
+  display: 'swap',
+});
+
+// Mono — JetBrains Mono, tabular-aligned for status grids and counters.
+const jetbrainsMono = JetBrains_Mono({
+  variable: '--font-mono-stack',
+  subsets: ['latin'],
   display: 'swap',
 });
 
@@ -54,7 +62,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} font-sans antialiased`}
+        className={`${bricolage.variable} ${fraunces.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <ThemeProvider
           attribute="class"
@@ -62,6 +70,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <AccentApplier />
           <TooltipProvider delayDuration={300}>
             {children}
           </TooltipProvider>

@@ -19,6 +19,9 @@ import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCi
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
+import { useUIStore } from '@/lib/store';
+import { ACCENT_PRESETS } from '@/lib/accent-config';
+import { Check } from 'lucide-react';
 
 interface ServiceForm {
   url: string;
@@ -258,6 +261,8 @@ const NOTIFY_BEFORE_OPTIONS = [
 export default function SettingsPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
+  const accentColor = useUIStore((s) => s.accentColor);
+  const setAccentColor = useUIStore((s) => s.setAccentColor);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -1098,6 +1103,68 @@ export default function SettingsPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          {/* Accent color picker — stored per-device, so mobile and desktop can differ */}
+          <div className="px-4 py-3 border-t border-[var(--hairline)]">
+            <div className="flex items-baseline justify-between mb-1">
+              <span className="text-sm">Accent Color</span>
+              {mounted && (
+                <span className="tracked-caps text-[10px] text-muted-foreground/80">
+                  This device
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground/80 leading-relaxed mb-3">
+              Picked separately for each device — set one shade on your phone
+              and another on your desktop.
+            </p>
+            <div className="grid grid-cols-7 gap-2">
+              {ACCENT_PRESETS.map((preset) => {
+                const isSelected = mounted && accentColor === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => setAccentColor(preset.id)}
+                    aria-label={preset.label}
+                    aria-pressed={isSelected}
+                    title={preset.label}
+                    className="press-feedback group relative aspect-square rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-transform"
+                  >
+                    {/* Outer ring shows selected state */}
+                    <span
+                      aria-hidden
+                      className={`absolute inset-0 rounded-full transition-all ${
+                        isSelected
+                          ? 'ring-2 ring-offset-2 ring-offset-background scale-100'
+                          : 'ring-1 ring-border group-hover:ring-foreground/30 scale-95'
+                      }`}
+                      style={isSelected ? { boxShadow: `0 0 18px -4px ${preset.swatch}` } : undefined}
+                    />
+                    <span
+                      aria-hidden
+                      className="absolute inset-1 rounded-full"
+                      style={{ background: preset.swatch }}
+                    />
+                    {isSelected && (
+                      <Check
+                        className="absolute inset-0 m-auto h-4 w-4 text-background mix-blend-difference"
+                        strokeWidth={3}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {mounted && (
+              <p className="mt-3 text-[11px] text-muted-foreground/70 leading-relaxed">
+                <span className="font-medium text-foreground/90">
+                  {ACCENT_PRESETS.find((p) => p.id === accentColor)?.label}
+                </span>
+                {' — '}
+                {ACCENT_PRESETS.find((p) => p.id === accentColor)?.description}
+              </p>
+            )}
           </div>
         </div>
       </div>
