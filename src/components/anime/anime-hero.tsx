@@ -1,8 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { Badge } from '@/components/ui/badge';
-import { Star } from 'lucide-react';
+import { Star, Check } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListMediaFormat, AniListMediaStatus, AniListMediaSeason } from '@/types/anilist';
 
@@ -17,12 +16,28 @@ interface AnimeHeroProps {
   season: AniListMediaSeason | null;
   seasonYear: number | null;
   studios: Array<{ name: string; isMain: boolean }>;
+  inLibrary?: boolean;
 }
 
 function formatStatus(status: AniListMediaStatus | null): string {
   if (!status) return '';
   return status.charAt(0) + status.slice(1).toLowerCase().replace(/_/g, ' ');
 }
+
+function formatSeason(season: AniListMediaSeason | null): string {
+  if (!season) return '';
+  return season.charAt(0) + season.slice(1).toLowerCase();
+}
+
+const FORMAT_LABELS: Record<string, string> = {
+  TV: 'Television',
+  TV_SHORT: 'TV Short',
+  MOVIE: 'Anime Film',
+  OVA: 'Original Video',
+  ONA: 'Original Net',
+  SPECIAL: 'Special',
+  MUSIC: 'Music',
+};
 
 export function AnimeHero({
   title,
@@ -35,6 +50,7 @@ export function AnimeHero({
   season,
   seasonYear,
   studios,
+  inLibrary,
 }: AnimeHeroProps) {
   const bannerSrc = bannerImage
     ? toCachedImageSrc(bannerImage, 'anilist') || bannerImage
@@ -44,103 +60,142 @@ export function AnimeHero({
     : null;
 
   const mainStudios = studios.filter((s) => s.isMain).map((s) => s.name);
-
-  const formatColors: Record<string, string> = {
-    TV: 'bg-blue-600/80',
-    MOVIE: 'bg-violet-600/80',
-    OVA: 'bg-amber-600/80',
-    ONA: 'bg-teal-600/80',
-    SPECIAL: 'bg-pink-600/80',
-    TV_SHORT: 'bg-cyan-600/80',
-    MUSIC: 'bg-rose-600/80',
-  };
+  const formatLabel = format ? FORMAT_LABELS[format] || format.replace('_', ' ') : 'Animation';
+  const seasonLine = season && seasonYear
+    ? `${formatSeason(season)} ${seasonYear}`
+    : seasonYear
+      ? String(seasonYear)
+      : null;
 
   return (
-    <div className="relative -mx-2 md:-mx-6">
-      {/* Banner */}
-      <div className="relative h-[220px] w-full bg-muted/40">
+    <section className="relative -mx-2 md:-mx-6">
+      {/* ── Cinematic banner ───────────────────────────────────────── */}
+      <div className="relative h-[260px] sm:h-[340px] md:h-[420px] lg:h-[480px] w-full overflow-hidden bg-black">
         {bannerSrc ? (
-          <Image
-            src={bannerSrc}
-            alt={title}
-            fill
-            sizes="100vw"
-            className="object-cover animate-hero-zoom"
-            priority
-            unoptimized={isProtectedApiImageSrc(bannerSrc)}
-          />
+          <>
+            <Image
+              src={bannerSrc}
+              alt=""
+              fill
+              sizes="100vw"
+              className="object-cover scale-[1.03] animate-hero-zoom"
+              priority
+              unoptimized={isProtectedApiImageSrc(bannerSrc)}
+            />
+            <div className="cinema-gradient" aria-hidden />
+            <div className="cinema-grain" aria-hidden />
+            <div
+              aria-hidden
+              className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-black/40 to-transparent pointer-events-none"
+            />
+            <div
+              aria-hidden
+              className="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-black/40 to-transparent pointer-events-none"
+            />
+          </>
         ) : coverSrc ? (
-          <Image
-            src={coverSrc}
-            alt={title}
-            fill
-            sizes="100vw"
-            className="object-cover blur-2xl opacity-50 animate-hero-zoom"
-            priority
-            unoptimized={isProtectedApiImageSrc(coverSrc)}
-          />
-        ) : null}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
-      </div>
-
-      {/* Poster + Info overlay */}
-      <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
-        <div className="relative w-[100px] h-[150px] rounded-lg overflow-hidden bg-muted border border-border/40 shadow-lg shrink-0">
-          {coverSrc ? (
+          <>
             <Image
               src={coverSrc}
-              alt={title}
+              alt=""
               fill
-              sizes="100px"
-              className="object-cover"
+              sizes="100vw"
+              className="object-cover scale-110 blur-3xl opacity-60"
+              priority
               unoptimized={isProtectedApiImageSrc(coverSrc)}
             />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
-              No Image
-            </div>
-          )}
-        </div>
+            <div className="cinema-gradient" aria-hidden />
+            <div className="cinema-grain" aria-hidden />
+          </>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 via-black to-zinc-950" />
+        )}
 
-        <div className="flex-1 min-w-0 pt-[60px]">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {format && (
-              <Badge className={`text-[10px] text-white ${formatColors[format] || 'bg-gray-600/80'}`}>
-                {format.replace('_', ' ')}
-              </Badge>
-            )}
-            {averageScore != null && averageScore > 0 && (
-              <Badge className="bg-yellow-600/80 text-[10px] text-white gap-0.5">
-                <Star className="h-2.5 w-2.5 fill-current" />
-                {averageScore}%
-              </Badge>
-            )}
-            {status && (
-              <Badge variant="outline" className="text-[10px]">
-                {formatStatus(status)}
-              </Badge>
+        {inLibrary && (
+          <div className="absolute top-3 right-3 md:top-5 md:right-6 hero-meta-fade">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/70 backdrop-blur-md text-emerald-300 px-3 py-1.5 text-[11px] font-medium status-pill-glow">
+              <Check className="h-3 w-3" strokeWidth={2.5} />
+              <span className="tracked-caps">In Library</span>
+            </span>
+          </div>
+        )}
+
+        <div className="absolute top-3 left-3 md:top-5 md:left-6 hero-meta-fade">
+          <div className="flex items-center gap-2 text-white/65">
+            <span className="block w-6 h-px bg-white/40 hairline-grow" />
+            <span className="tracked-caps">{formatLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Spec strip ─────────────────────────────────────────────── */}
+      <div className="relative px-4 md:px-8 lg:px-10 -mt-12 md:-mt-16 flex gap-4 md:gap-6">
+        <div className="relative w-[110px] h-[165px] md:w-[140px] md:h-[210px] shrink-0">
+          <div className="absolute inset-0 rounded-md overflow-hidden bg-zinc-900 ring-1 ring-white/10 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)]">
+            {coverSrc ? (
+              <Image
+                src={coverSrc}
+                alt={title}
+                fill
+                sizes="(min-width: 768px) 140px, 110px"
+                className="object-cover"
+                unoptimized={isProtectedApiImageSrc(coverSrc)}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-[11px] tracked-caps">
+                No Art
+              </div>
             )}
           </div>
-          <h1 className="text-lg font-bold leading-tight mt-1 line-clamp-2">{title}</h1>
-          <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground flex-wrap">
-            {season && seasonYear && (
-              <span>{season.charAt(0) + season.slice(1).toLowerCase()} {seasonYear}</span>
+        </div>
+
+        <div className="flex-1 min-w-0 pt-12 md:pt-20 space-y-3 md:space-y-4">
+          {/* Editorial spec row */}
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
+            {seasonLine && (
+              <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
+                {seasonLine}
+              </span>
             )}
-            {!season && seasonYear && <span>{seasonYear}</span>}
             {episodes != null && (
               <>
-                <span className="text-muted-foreground/50">·</span>
-                <span>{episodes} ep{episodes !== 1 ? 's' : ''}</span>
+                <span className="block w-px h-3 bg-border self-center" aria-hidden />
+                <span className="tracked-caps text-muted-foreground">
+                  {episodes} Ep{episodes === 1 ? '' : 's'}
+                </span>
+              </>
+            )}
+            {status && (
+              <>
+                <span className="block w-px h-3 bg-border self-center" aria-hidden />
+                <span className="tracked-caps text-muted-foreground">{formatStatus(status)}</span>
+              </>
+            )}
+            {averageScore != null && averageScore > 0 && (
+              <>
+                <span className="block w-px h-3 bg-border self-center" aria-hidden />
+                <span className="inline-flex items-baseline gap-1">
+                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400 self-center" />
+                  <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
+                    {averageScore}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">%</span>
+                </span>
               </>
             )}
           </div>
+
+          {/* Studio attribution */}
           {mainStudios.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">
-              {mainStudios.join(', ')}
-            </p>
+            <div className="space-y-1 pl-4 md:pl-5 border-l border-border/60">
+              <div className="tracked-caps text-muted-foreground">Studio</div>
+              <p className="font-display text-foreground/90 leading-snug text-sm md:text-base lg:text-lg">
+                {mainStudios.join(' · ')}
+              </p>
+            </div>
           )}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
