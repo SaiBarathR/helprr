@@ -11,7 +11,6 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
@@ -366,48 +365,69 @@ export default function SeasonDetailPage() {
         }
       />
 
-      {/* Metadata line */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span>{series.year}</span>
-        <span className="text-muted-foreground/40">|</span>
-        {series.runtime > 0 && (
-          <>
-            <span>{series.runtime} min</span>
-            <span className="text-muted-foreground/40">|</span>
-          </>
-        )}
-        <span>{formatBytes(totalSize)}</span>
-        <span className="text-muted-foreground/40">|</span>
-        <span>{fileCount}/{episodes.length} episodes</span>
+      {/* Status strip */}
+      <div className="flex items-center gap-2">
+        <span className="marquee-dot" aria-hidden />
+        <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+          {isSeasonMonitored ? 'Monitored' : 'Idle'} · Season {seasonNumber}
+        </span>
+        <span className="hairline flex-1" aria-hidden />
+        <span className="tracked-caps text-[9px] text-muted-foreground/70 font-mono tabular" style={{ letterSpacing: '0.22em' }}>
+          {fileCount}/{episodes.length}
+        </span>
       </div>
 
-      {/* Pill buttons */}
+      {/* Metadata grid */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-card/40 border border-[color:var(--hairline)] px-3 py-2.5" style={{ borderRadius: 'calc(var(--radius) - 2px)' }}>
+          <p className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.22em' }}>Year</p>
+          <p className="font-mono tabular text-[15px] mt-0.5">{series.year || '—'}</p>
+        </div>
+        <div className="bg-card/40 border border-[color:var(--hairline)] px-3 py-2.5" style={{ borderRadius: 'calc(var(--radius) - 2px)' }}>
+          <p className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.22em' }}>Runtime</p>
+          <p className="font-mono tabular text-[15px] mt-0.5">{series.runtime > 0 ? `${series.runtime}m` : '—'}</p>
+        </div>
+        <div className="bg-card/40 border border-[color:var(--hairline)] px-3 py-2.5" style={{ borderRadius: 'calc(var(--radius) - 2px)' }}>
+          <p className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.22em' }}>On disk</p>
+          <p className="font-mono tabular text-[13px] mt-0.5 text-[color:var(--amber)]">{formatBytes(totalSize)}</p>
+        </div>
+      </div>
+
+      {/* Action buttons */}
       <div className="flex gap-2">
         <Button
-          variant="secondary"
-          className="rounded-full flex-1"
+          className="flex-1 h-11 cta-sheen projector-glow"
           onClick={handleAutomaticSearch}
           disabled={!!actionLoading}
         >
           {actionLoading === 'search' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Search className="mr-2 h-4 w-4" />
+            <Search className="h-4 w-4" />
           )}
-          Automatic
+          <span className="tracked-caps text-[10px]">Auto Search</span>
         </Button>
         <Button
-          variant="secondary"
-          className="rounded-full flex-1"
+          variant="outline"
+          className="flex-1 h-11"
           onClick={() => setInteractiveSearch(true)}
         >
-          <Search className="mr-2 h-4 w-4" />
-          Interactive
+          <Search className="h-4 w-4" />
+          <span className="tracked-caps text-[10px]">Interactive</span>
         </Button>
       </div>
 
+      {/* Episodes header */}
+      <div className="flex items-center gap-2 pt-2">
+        <span className="reel" aria-hidden />
+        <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+          Episodes · {episodes.length}
+        </h2>
+        <span className="hairline flex-1" aria-hidden />
+      </div>
+
       {/* Episode list */}
-      <div className="space-y-0.5">
+      <div className="border-t border-b border-[color:var(--hairline)]">
         {episodes.map((ep) => {
           const isFinale = ep.episodeNumber === episodes.length && episodes.length > 1;
           const isPremiere = ep.episodeNumber === 1;
@@ -417,94 +437,119 @@ export default function SeasonDetailPage() {
             <Link
               key={ep.id}
               href={`/series/${id}/season/${seasonNumber}/episode/${ep.id}`}
-              className="flex gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
+              className="group flex gap-3 px-1 py-3 border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/30 transition-colors"
             >
-              {/* Episode still image or number fallback (skip for anime) */}
+              {/* Reel number column */}
+              <div className="w-10 shrink-0 flex flex-col items-center pt-1">
+                <span className="font-mono tabular text-[11px] text-[color:var(--amber)]/80 tracked-mid" style={{ letterSpacing: '0.18em' }}>
+                  E{String(ep.episodeNumber || 0).padStart(2, '0')}
+                </span>
+              </div>
+
               {series?.seriesType !== 'anime' && (
                 tmdbEp?.stillPath ? (
-                  <div className="relative w-[100px] h-[56px] rounded-lg overflow-hidden shrink-0 bg-muted">
+                  <div
+                    className="relative w-[110px] h-[62px] overflow-hidden shrink-0 bg-muted/40"
+                    style={{ borderRadius: 'calc(var(--radius) - 2px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                  >
                     <Image
                       src={toCachedImageSrc(tmdbEp.stillPath, 'tmdb') || tmdbEp.stillPath}
                       alt=""
                       fill
-                      sizes="100px"
-                      className="object-cover"
+                      sizes="110px"
+                      className="object-cover transition-transform duration-500 group-hover:scale-[1.05]"
                       unoptimized
                     />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[color:var(--ink-deep)]/50 to-transparent" />
                   </div>
                 ) : (
-                  <div className="w-[100px] h-[56px] rounded-lg bg-muted flex items-center justify-center shrink-0">
-                    <span className="text-lg font-bold text-muted-foreground">{ep.episodeNumber}</span>
+                  <div
+                    className="w-[110px] h-[62px] bg-muted/40 flex items-center justify-center shrink-0"
+                    style={{ borderRadius: 'calc(var(--radius) - 2px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                  >
+                    <span className="font-display text-[20px] text-muted-foreground/70">{ep.episodeNumber}</span>
                   </div>
                 )
               )}
 
-              {/* Episode info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">
-                    {ep.episodeNumber || 'TBA'}
-                  </span>
-                  <span className="text-sm font-medium">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h3 className="font-display text-[14px] sm:text-[15px] leading-tight truncate group-hover:text-[color:var(--amber)] transition-colors" style={{ letterSpacing: '-0.012em' }}>
                     {ep.title || 'TBA'}
-                  </span>
+                  </h3>
                   {isPremiere && (
-                    <Badge variant="secondary" className="text-[10px] shrink-0">
+                    <span className="tracked-caps text-[8px] px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)]" style={{ borderRadius: '3px', letterSpacing: '0.2em' }}>
                       Premiere
-                    </Badge>
+                    </span>
                   )}
                   {isFinale && (
-                    <Badge variant="secondary" className="text-[10px] shrink-0">
+                    <span className="tracked-caps text-[8px] px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)]" style={{ borderRadius: '3px', letterSpacing: '0.2em' }}>
                       Finale
-                    </Badge>
+                    </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {ep.hasFile ? (
-                    <Badge
-                      variant="default"
-                      className="text-[10px] bg-green-600 hover:bg-green-600"
+                    <span
+                      className="inline-flex items-center gap-1 tracked-caps text-[8.5px] px-1.5 py-0.5 border"
+                      style={{
+                        borderRadius: '3px',
+                        letterSpacing: '0.22em',
+                        background: 'oklch(0.78 0.13 162 / 0.16)',
+                        borderColor: 'oklch(0.78 0.13 162 / 0.4)',
+                        color: 'oklch(0.78 0.13 162)',
+                      }}
                     >
-                      DOWNLOADED
-                    </Badge>
+                      <span className="inline-block h-1 w-1 rounded-full" style={{ background: 'oklch(0.78 0.13 162)' }} />
+                      Downloaded
+                    </span>
                   ) : ep.monitored ? (
-                    <Badge variant="destructive" className="text-[10px]">
-                      MISSING
-                    </Badge>
+                    <span
+                      className="inline-flex items-center gap-1 tracked-caps text-[8.5px] px-1.5 py-0.5 border"
+                      style={{
+                        borderRadius: '3px',
+                        letterSpacing: '0.22em',
+                        background: 'oklch(0.66 0.20 25 / 0.16)',
+                        borderColor: 'oklch(0.66 0.20 25 / 0.4)',
+                        color: 'oklch(0.78 0.18 25)',
+                      }}
+                    >
+                      <span className="inline-block h-1 w-1 rounded-full" style={{ background: 'oklch(0.66 0.20 25)' }} />
+                      Missing
+                    </span>
                   ) : null}
                   {ep.airDate && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="font-mono tabular text-[10px] text-muted-foreground/80">
                       {format(new Date(ep.airDate), 'MMM d, yyyy')}
                     </span>
                   )}
                   {tmdbEp && tmdbEp.runtime && (
-                    <span className="text-xs text-muted-foreground">{tmdbEp.runtime}m</span>
+                    <span className="font-mono tabular text-[10px] text-muted-foreground/70">{tmdbEp.runtime}m</span>
                   )}
                   {tmdbEp && tmdbEp.voteAverage > 0 && (
-                    <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-                      <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+                    <span className="inline-flex items-center gap-0.5 font-mono tabular text-[10px] text-[color:var(--amber)]">
+                      <Star className="h-2.5 w-2.5 fill-[color:var(--amber)]" />
                       {tmdbEp.voteAverage.toFixed(1)}
                     </span>
                   )}
                 </div>
                 {tmdbEp?.overview && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{tmdbEp.overview}</p>
+                  <p className="text-[12px] text-muted-foreground/85 line-clamp-2 mt-1.5 leading-snug">{tmdbEp.overview}</p>
                 )}
               </div>
 
-              {/* Monitor bookmark */}
               <button
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   handleToggleEpisodeMonitor(ep.id, !ep.monitored);
                 }}
-                className="min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
+                className="press-feedback min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
               >
                 {ep.monitored ? (
-                  <BookmarkCheck className="h-4 w-4 text-primary" />
+                  <BookmarkCheck className="h-4 w-4 text-[color:var(--amber)]" />
                 ) : (
-                  <Bookmark className="h-4 w-4 text-muted-foreground" />
+                  <Bookmark className="h-4 w-4 text-muted-foreground/60" />
                 )}
               </button>
             </Link>
@@ -512,8 +557,9 @@ export default function SeasonDetailPage() {
         })}
 
         {episodes.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground text-sm">
-            No episodes found for this season
+          <div className="px-4 py-12 text-center">
+            <p className="tracked-caps text-[10px] text-muted-foreground">No episodes</p>
+            <p className="font-display text-[16px] mt-1.5">Reel not yet pressed.</p>
           </div>
         )}
       </div>

@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
@@ -100,27 +99,58 @@ function formatSpeedLimit(bytesPerSec: number): string {
   return formatSpeed(bytesPerSec);
 }
 
-function getStateBadge(state: string) {
-  const stateMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-    downloading: { label: 'Downloading', variant: 'default' },
-    stalledDL: { label: 'Stalled', variant: 'secondary' },
-    uploading: { label: 'Seeding', variant: 'default' },
-    stalledUP: { label: 'Seeding', variant: 'secondary' },
-    pausedDL: { label: 'Paused', variant: 'outline' },
-    pausedUP: { label: 'Paused', variant: 'outline' },
-    queuedDL: { label: 'Queued', variant: 'secondary' },
-    queuedUP: { label: 'Queued', variant: 'secondary' },
-    checkingDL: { label: 'Checking', variant: 'secondary' },
-    checkingUP: { label: 'Checking', variant: 'secondary' },
-    forcedDL: { label: 'Forced DL', variant: 'default' },
-    forcedUP: { label: 'Forced UL', variant: 'default' },
-    missingFiles: { label: 'Missing', variant: 'destructive' },
-    error: { label: 'Error', variant: 'destructive' },
-    moving: { label: 'Moving', variant: 'secondary' },
-  };
+function getStatePillStyle(state: string): React.CSSProperties {
+  const base = { borderRadius: '3px', letterSpacing: '0.22em', border: '1px solid' };
+  switch (state) {
+    case 'downloading':
+    case 'forcedDL':
+      return { ...base, background: 'var(--amber-soft)', borderColor: 'oklch(0.80 0.15 70 / 0.4)', color: 'var(--amber)' };
+    case 'uploading':
+    case 'forcedUP':
+      return { ...base, background: 'oklch(0.78 0.13 162 / 0.16)', borderColor: 'oklch(0.78 0.13 162 / 0.4)', color: 'oklch(0.78 0.13 162)' };
+    case 'stalledDL':
+    case 'stalledUP':
+    case 'queuedDL':
+    case 'queuedUP':
+    case 'checkingDL':
+    case 'checkingUP':
+    case 'moving':
+      return { ...base, background: 'oklch(0.72 0.13 220 / 0.14)', borderColor: 'oklch(0.72 0.13 220 / 0.4)', color: 'oklch(0.80 0.13 220)' };
+    case 'pausedDL':
+    case 'pausedUP':
+      return { ...base, background: 'var(--card)', borderColor: 'var(--hairline)', color: 'var(--muted-foreground)' };
+    case 'missingFiles':
+    case 'error':
+      return { ...base, background: 'oklch(0.66 0.20 25 / 0.16)', borderColor: 'oklch(0.66 0.20 25 / 0.4)', color: 'oklch(0.78 0.18 25)' };
+    default:
+      return { ...base, background: 'var(--muted)', borderColor: 'var(--hairline)', color: 'var(--muted-foreground)' };
+  }
+}
 
-  const s = stateMap[state] || { label: state, variant: 'secondary' as const };
-  return <Badge variant={s.variant} className="text-[10px] px-1.5 py-0">{s.label}</Badge>;
+function getStateBadge(state: string) {
+  const stateLabels: Record<string, string> = {
+    downloading: 'Downloading',
+    stalledDL: 'Stalled',
+    uploading: 'Seeding',
+    stalledUP: 'Seeding',
+    pausedDL: 'Paused',
+    pausedUP: 'Paused',
+    queuedDL: 'Queued',
+    queuedUP: 'Queued',
+    checkingDL: 'Checking',
+    checkingUP: 'Checking',
+    forcedDL: 'Forced DL',
+    forcedUP: 'Forced UL',
+    missingFiles: 'Missing',
+    error: 'Error',
+    moving: 'Moving',
+  };
+  const label = stateLabels[state] || state;
+  return (
+    <span className="tracked-caps text-[8.5px] px-1.5 py-0.5" style={getStatePillStyle(state)}>
+      {label}
+    </span>
+  );
 }
 
 type FilterType = 'all' | 'downloading' | 'seeding' | 'completed' | 'paused' | 'active';
@@ -393,18 +423,19 @@ const TorrentRow = memo(function TorrentRow({
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
 
   return (
-    <div className="px-3 py-3 sm:px-4">
+    <div className="group px-3 py-3 sm:px-4 hover:bg-[color:var(--amber-soft)]/20 transition-colors">
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
           checked={selected}
           onChange={() => onToggleSelect(torrent.hash)}
-          className="mt-1 rounded border-border"
+          className="mt-1 rounded border-border accent-[color:var(--amber)]"
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <button
-              className="text-sm font-medium truncate text-left hover:underline"
+              className="font-display text-[13.5px] truncate text-left group-hover:text-[color:var(--amber)] transition-colors"
+              style={{ letterSpacing: '-0.012em' }}
               onClick={() => onFetchDetail(torrent.hash)}
             >
               {torrent.name}
@@ -452,51 +483,59 @@ const TorrentRow = memo(function TorrentRow({
             </DropdownMenu>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
             {getStateBadge(torrent.state)}
-            <span className="text-[11px] text-muted-foreground">{formatBytes(torrent.size)}</span>
+            <span className="font-mono tabular text-[10.5px] text-muted-foreground/85">{formatBytes(torrent.size)}</span>
             {torrent.category && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
+              <span
+                className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground truncate max-w-[120px]"
+                style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+              >
                 {torrent.category}
-              </Badge>
+              </span>
             )}
             {hasSpeedLimit && (
-              <Gauge className="h-3 w-3 text-yellow-500" />
+              <Gauge className="h-3 w-3 text-[color:var(--amber)]" />
             )}
           </div>
 
           <div className="mt-2">
-            <div className="flex justify-between text-[11px] text-muted-foreground mb-1 flex-wrap gap-x-2">
-              <span>{(torrent.progress * 100).toFixed(1)}%</span>
-              <span className="flex items-center flex-wrap gap-x-2">
+            <div className="flex justify-between font-mono tabular text-[10px] text-muted-foreground/85 mb-1 flex-wrap gap-x-2">
+              <span className="text-[color:var(--amber)]">{(torrent.progress * 100).toFixed(1)}%</span>
+              <span className="flex items-center flex-wrap gap-x-2.5">
                 {torrent.dlspeed > 0 && (
-                  <span className="text-green-500">
-                    <ArrowDown className="inline h-3 w-3" /> {formatSpeed(torrent.dlspeed)}
+                  <span className="inline-flex items-center gap-0.5" style={{ color: 'oklch(0.78 0.13 162)' }}>
+                    <ArrowDown className="h-3 w-3" /> {formatSpeed(torrent.dlspeed)}
                   </span>
                 )}
                 {torrent.upspeed > 0 && (
-                  <span className="text-blue-500">
-                    <ArrowUp className="inline h-3 w-3" /> {formatSpeed(torrent.upspeed)}
+                  <span className="inline-flex items-center gap-0.5" style={{ color: 'oklch(0.72 0.13 220)' }}>
+                    <ArrowUp className="h-3 w-3" /> {formatSpeed(torrent.upspeed)}
                   </span>
                 )}
                 {torrent.eta > 0 && torrent.eta < 8640000 && (
-                  <span>ETA: {formatEta(torrent.eta)}</span>
+                  <span>ETA · {formatEta(torrent.eta)}</span>
                 )}
               </span>
             </div>
-            <Progress value={torrent.progress * 100} className="h-1" />
+            <div className="relative h-1 bg-muted/40 overflow-hidden" style={{ borderRadius: '999px' }}>
+              <div
+                className="absolute inset-y-0 left-0 bg-[color:var(--amber)] transition-all"
+                style={{ width: `${torrent.progress * 100}%`, boxShadow: '0 0 6px var(--amber-glow)' }}
+              />
+            </div>
           </div>
 
-          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
-            <span>Seeds: {torrent.num_seeds}</span>
-            <span>Peers: {torrent.num_leechs}</span>
-            <span>Ratio: {(torrent.ratio ?? 0).toFixed(2)}</span>
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-2 font-mono tabular text-[10px] text-muted-foreground/85">
+            <span><span className="tracked-caps text-[8px] text-muted-foreground/60 mr-0.5" style={{ letterSpacing: '0.2em' }}>S</span>{torrent.num_seeds}</span>
+            <span><span className="tracked-caps text-[8px] text-muted-foreground/60 mr-0.5" style={{ letterSpacing: '0.2em' }}>P</span>{torrent.num_leechs}</span>
+            <span><span className="tracked-caps text-[8px] text-muted-foreground/60 mr-0.5" style={{ letterSpacing: '0.2em' }}>Ratio</span>{(torrent.ratio ?? 0).toFixed(2)}</span>
           </div>
-          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-muted-foreground">
-            <span>DL: {formatBytes(torrent.downloaded ?? 0)}</span>
-            <span>UL: {formatBytes(torrent.uploaded ?? 0)}</span>
+          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5 font-mono tabular text-[10px] text-muted-foreground/85">
+            <span><span className="tracked-caps text-[8px] text-muted-foreground/60 mr-0.5" style={{ letterSpacing: '0.2em' }}>DL</span>{formatBytes(torrent.downloaded ?? 0)}</span>
+            <span><span className="tracked-caps text-[8px] text-muted-foreground/60 mr-0.5" style={{ letterSpacing: '0.2em' }}>UL</span>{formatBytes(torrent.uploaded ?? 0)}</span>
             {torrent.progress < 1 && torrent.amount_left > 0 && (
-              <span>Rem: {formatBytes(torrent.amount_left)}</span>
+              <span><span className="tracked-caps text-[8px] text-muted-foreground/60 mr-0.5" style={{ letterSpacing: '0.2em' }}>Rem</span>{formatBytes(torrent.amount_left)}</span>
             )}
           </div>
         </div>
@@ -904,15 +943,42 @@ export default function TorrentsPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
-        <div className="flex items-center gap-2">
+      <div className="sticky z-30 -mx-3 px-3 md:-mx-8 md:px-8 pt-1 pb-2.5 bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 space-y-2.5" style={{ top: 'var(--header-height, 0px)' }}>
+        <div
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-px"
+          style={{ background: 'var(--hairline)' }}
+        />
+
+        {/* Status strip with live transfer */}
+        <div className="flex items-center gap-2 pt-1.5">
+          <span className="marquee-dot" aria-hidden />
+          <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+            qBittorrent · {torrents.length} {torrents.length === 1 ? 'torrent' : 'torrents'}
+          </span>
+          <span className="hairline flex-1" aria-hidden />
+          {transferInfo && (
+            <span className="flex items-center gap-2 font-mono tabular text-[10px]">
+              <span className="inline-flex items-center gap-0.5" style={{ color: 'oklch(0.78 0.13 162)' }}>
+                <ArrowDown className="h-2.5 w-2.5" /> {formatSpeed(transferInfo.dl_info_speed)}
+              </span>
+              <span className="inline-flex items-center gap-0.5" style={{ color: 'oklch(0.72 0.13 220)' }}>
+                <ArrowUp className="h-2.5 w-2.5" /> {formatSpeed(transferInfo.up_info_speed)}
+              </span>
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="press-feedback h-10 px-2.5 inline-flex items-center gap-1.5 border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 aria-label={`Filter: ${activeFilterLabel}`}
               >
-                <Filter className="h-5 w-5" />
+                <Filter className="h-3.5 w-3.5" />
+                <span className="tracked-caps text-[9.5px] hidden sm:inline">{activeFilterLabel}</span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -933,10 +999,13 @@ export default function TorrentsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="press-feedback h-10 px-2.5 inline-flex items-center gap-1.5 border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 aria-label="Sort"
               >
-                <ArrowUpDown className="h-5 w-5" />
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                <span className="tracked-caps text-[9.5px] hidden sm:inline">{SORT_OPTIONS.find((o) => o.key === sortKey)?.label}</span>
+                <span className="hidden sm:inline text-[10px] text-[color:var(--amber)]">{sortDir === 'asc' ? '↑' : '↓'}</span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-52 max-h-80 overflow-y-auto">
@@ -967,7 +1036,8 @@ export default function TorrentsPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="press-feedback h-10 w-10 inline-flex items-center justify-center border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 onClick={() => {
                   setRefreshing(true);
                   if (torrents.length === 0) setLoading(true);
@@ -975,7 +1045,7 @@ export default function TorrentsPage() {
                 }}
                 aria-label="Refresh"
               >
-                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin text-[color:var(--amber)]' : ''}`} />
               </button>
             </TooltipTrigger>
             <TooltipContent>Refresh</TooltipContent>
@@ -984,15 +1054,17 @@ export default function TorrentsPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
-                  speedLimitsMode === 1
-                    ? 'bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30'
-                    : 'hover:bg-accent active:bg-accent/80'
-                }`}
+                className="press-feedback h-10 w-10 inline-flex items-center justify-center border transition-colors"
+                style={{
+                  borderRadius: 'calc(var(--radius) - 2px)',
+                  borderColor: speedLimitsMode === 1 ? 'oklch(0.80 0.15 70 / 0.5)' : 'var(--hairline)',
+                  background: speedLimitsMode === 1 ? 'var(--amber-soft)' : 'var(--card)',
+                  color: speedLimitsMode === 1 ? 'var(--amber)' : 'inherit',
+                }}
                 onClick={toggleAltSpeedMode}
                 aria-label="Alternative Speed Limits"
               >
-                <Gauge className="h-5 w-5" />
+                <Gauge className="h-4 w-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent>{speedLimitsMode === 1 ? 'Alt Speed: ON' : 'Alt Speed: OFF'}</TooltipContent>
@@ -1003,14 +1075,15 @@ export default function TorrentsPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="press-feedback h-10 w-10 inline-flex items-center justify-center border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 onClick={() => {
                   setSettingsOpen(true);
                   void fetchGlobalLimits();
                 }}
                 aria-label="Settings"
               >
-                <Settings className="h-5 w-5" />
+                <Settings className="h-4 w-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent>Settings</TooltipContent>
@@ -1019,44 +1092,36 @@ export default function TorrentsPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                className="press-feedback projector-glow cta-sheen h-10 px-3.5 inline-flex items-center gap-1.5 bg-[color:var(--amber)] text-[color:var(--primary-foreground)] hover:translate-y-[-1px] transition-transform"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 onClick={() => router.push('/torrents/add')}
                 aria-label="Add Torrent"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-4 w-4" />
+                <span className="tracked-caps text-[10px] hidden sm:inline">Add</span>
               </button>
             </TooltipTrigger>
             <TooltipContent>Add Torrent</TooltipContent>
           </Tooltip>
         </div>
 
-        {transferInfo && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <ArrowDown className="h-3 w-3 text-green-500" />
-              {formatSpeed(transferInfo.dl_info_speed)}
-            </span>
-            <span className="flex items-center gap-1">
-              <ArrowUp className="h-3 w-3 text-blue-500" />
-              {formatSpeed(transferInfo.up_info_speed)}
-            </span>
-          </div>
-        )}
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <div className="relative group">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70 group-focus-within:text-[color:var(--amber)] transition-colors" />
           <Input
-            placeholder="Search torrents..."
+            placeholder="Search torrents — by name…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-10 bg-card/40"
           />
         </div>
       </div>
 
       {selectedTorrents.size > 0 && (
-        <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">
-          <span className="text-xs text-muted-foreground mx-1 shrink-0">{selectedTorrents.size}</span>
+        <div
+          className="flex items-center gap-1 px-3 py-1.5 bg-[color:var(--amber-soft)]/40 border border-[color:var(--amber)]/30"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <span className="font-mono tabular text-[11px] text-[color:var(--amber)] mx-1 shrink-0">{selectedTorrents.size}</span>
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
             onClick={() => void bulkAction('start')}
@@ -1112,28 +1177,40 @@ export default function TorrentsPage() {
 
       {loading && torrents.length === 0 ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <Loader2 className="h-8 w-8 animate-spin text-[color:var(--amber)]" />
         </div>
       ) : error ? (
-        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-          <p>{error}</p>
-          <p className="text-sm mt-2">Make sure qBittorrent is configured in Settings.</p>
+        <div
+          className="border border-[color:var(--hairline)] bg-card/40 p-8 text-center"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <p className="tracked-caps text-[10px] text-destructive">Connection error</p>
+          <p className="font-display text-[18px] mt-2">{error}</p>
+          <p className="text-[12px] text-muted-foreground mt-2">Make sure qBittorrent is configured in Settings.</p>
         </div>
       ) : filteredTorrents.length === 0 ? (
-        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-          {search ? 'No torrents match your search.' : 'No torrents found.'}
+        <div
+          className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <p className="tracked-caps text-[10px] text-muted-foreground">
+            {search ? 'No matches' : 'Empty queue'}
+          </p>
+          <p className="font-display text-[18px]">
+            {search ? 'Nothing matches.' : 'Booth is idle.'}
+          </p>
         </div>
       ) : (
-        <div className="space-y-0" ref={listRef}>
-          <div className="flex items-center gap-2 px-3 pb-2">
+        <div className="space-y-2" ref={listRef}>
+          <div className="flex items-center gap-2 px-1">
             <input
               type="checkbox"
               checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
               onChange={selectAll}
-              className="rounded border-border"
+              className="rounded border-border accent-[color:var(--amber)]"
             />
-            <span className="text-xs text-muted-foreground">
-              {filteredTorrents.length} torrent{filteredTorrents.length !== 1 ? 's' : ''}
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              {filteredTorrents.length} {filteredTorrents.length !== 1 ? 'torrents' : 'torrent'} · select all
             </span>
           </div>
 
@@ -1141,7 +1218,10 @@ export default function TorrentsPage() {
             <div style={{ height: topSpacerHeight }} />
           )}
 
-          <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
+          <div
+            className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden divide-y divide-[color:var(--hairline)]"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
             {visibleTorrents.map((torrent) => (
               <TorrentRow
                 key={torrent.hash}

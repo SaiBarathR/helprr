@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
@@ -123,21 +122,28 @@ export default function MovieEditPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={`Edit ${movie.title}`} />
+      <PageHeader title={movie.title} subtitle="Edit · Booth Sheet" />
 
-      <div className="px-4 space-y-6 mt-4 pb-8">
-        {/* Settings Section */}
-        <div className="grouped-section">
-          <div className="grouped-section-title">Settings</div>
-          <div className="grouped-section-content">
-            {/* Quality Profile */}
-            <div className="grouped-row">
-              <Label className="text-sm shrink-0">Quality Profile</Label>
+      <div className="space-y-6 mt-4 pb-8">
+        {/* Settings */}
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              Settings
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
+          <div className="border-t border-b border-[color:var(--hairline)]">
+            <div className="flex justify-between items-center gap-3 py-3 border-b border-[color:var(--hairline)]">
+              <Label className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Quality Profile
+              </Label>
               <Select
                 value={String(qualityProfileId)}
                 onValueChange={(v) => setQualityProfileId(Number(v))}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Select profile" />
                 </SelectTrigger>
                 <SelectContent>
@@ -150,14 +156,15 @@ export default function MovieEditPage() {
               </Select>
             </div>
 
-            {/* Minimum Availability */}
-            <div className="grouped-row">
-              <Label className="text-sm shrink-0">Minimum Availability</Label>
+            <div className="flex justify-between items-center gap-3 py-3 border-b border-[color:var(--hairline)]">
+              <Label className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Min. Availability
+              </Label>
               <Select
                 value={minimumAvailability}
                 onValueChange={setMinimumAvailability}
               >
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-[200px]">
                   <SelectValue placeholder="Select availability" />
                 </SelectTrigger>
                 <SelectContent>
@@ -168,12 +175,13 @@ export default function MovieEditPage() {
               </Select>
             </div>
 
-            {/* Root Folder */}
             {rootFolders.length > 0 && (
-              <div className="grouped-row">
-                <Label className="text-sm shrink-0">Root Folder</Label>
+              <div className="flex justify-between items-center gap-3 py-3">
+                <Label className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                  Root Folder
+                </Label>
                 <Select value={rootFolder} onValueChange={setRootFolder}>
-                  <SelectTrigger className="w-[180px]">
+                  <SelectTrigger className="w-[200px]">
                     <SelectValue placeholder="Select folder" />
                   </SelectTrigger>
                   <SelectContent>
@@ -187,50 +195,57 @@ export default function MovieEditPage() {
               </div>
             )}
           </div>
-        </div>
+        </section>
 
-        {/* Tags Section */}
+        {/* Tags */}
         {tags.length > 0 && (
-          <div className="grouped-section">
-            <div className="grouped-section-title">Tags</div>
-            <div className="grouped-section-content">
-              <div className="grouped-row">
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((t) => (
-                    <Badge
-                      key={t.id}
-                      variant={
-                        selectedTags.includes(t.id) ? 'default' : 'outline'
-                      }
-                      className="cursor-pointer select-none"
-                      onClick={() => toggleTag(t.id)}
-                    >
-                      {t.label}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Tags · {selectedTags.length}
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
             </div>
-          </div>
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((t) => {
+                const active = selectedTags.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => toggleTag(t.id)}
+                    className={`px-2.5 py-1 text-[11px] border transition-all ${
+                      active
+                        ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                        : 'border-[color:var(--hairline)] text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                    }`}
+                    style={{ borderRadius: '999px' }}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
-        {/* Action Buttons */}
-        <div className="flex gap-3 pt-2">
+        {/* Actions */}
+        <div className="flex gap-2 pt-2">
           <Button
-            className="flex-1"
+            className="flex-1 h-11 cta-sheen projector-glow"
             onClick={handleSave}
             disabled={saving}
           >
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save Changes
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span className="tracked-caps text-[10px]">Save Changes</span>
           </Button>
           <Button
             variant="outline"
-            className="flex-1"
+            className="flex-1 h-11"
             onClick={() => router.back()}
             disabled={saving}
           >
-            Cancel
+            <span className="tracked-caps text-[10px]">Cancel</span>
           </Button>
         </div>
       </div>

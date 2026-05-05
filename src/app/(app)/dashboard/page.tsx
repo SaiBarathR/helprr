@@ -25,21 +25,15 @@ export default function DashboardPage() {
 
   return (
     <div className="relative space-y-0 pt-1">
-      {/* Dashboard masthead — editorial */}
+      {/* Live status strip — minimal, no page name */}
       {!editMode && (
-        <div className="mb-4 flex items-end justify-between gap-3 px-0.5">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="marquee-dot" />
-              <span className="tracked-caps text-[10px] text-muted-foreground/80">
-                Now Showing
-              </span>
-            </div>
-            <h1 className="font-display text-[28px] sm:text-[32px] leading-none tracking-[-0.03em] font-medium">
-              Dashboard
-            </h1>
-          </div>
-          <span className="hidden sm:inline-block tracked-caps text-[10px] text-muted-foreground/70 font-mono">
+        <div className="mb-3 flex items-center gap-2 px-0.5">
+          <span className="marquee-dot" />
+          <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+            Now Showing · Live
+          </span>
+          <div className="hairline flex-1" aria-hidden />
+          <span className="hidden sm:inline tracked-caps text-[9.5px] text-muted-foreground/60 font-mono tabular">
             Reel · 01
           </span>
         </div>

@@ -55,31 +55,32 @@ const INSTANCE_OPTIONS: { key: InstanceFilter; label: string }[] = [
 
 // --- Event styling ---
 
-function eventColor(eventType: string) {
+function eventPillStyle(eventType: string): React.CSSProperties {
+  const base = { borderRadius: '3px', letterSpacing: '0.22em', border: '1px solid' };
   switch (eventType) {
     case 'grabbed':
-      return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+      return { ...base, background: 'var(--amber-soft)', borderColor: 'oklch(0.80 0.15 70 / 0.4)', color: 'var(--amber)' };
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
     case 'imported':
-      return 'bg-green-500/10 text-green-400 border-green-500/20';
+      return { ...base, background: 'oklch(0.78 0.13 162 / 0.16)', borderColor: 'oklch(0.78 0.13 162 / 0.4)', color: 'oklch(0.78 0.13 162)' };
     case 'downloadFailed':
     case 'failed':
-      return 'bg-red-500/10 text-red-400 border-red-500/20';
+      return { ...base, background: 'oklch(0.66 0.20 25 / 0.16)', borderColor: 'oklch(0.66 0.20 25 / 0.4)', color: 'oklch(0.78 0.18 25)' };
     case 'downloadIgnored':
     case 'ignored':
-      return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+      return { ...base, background: 'oklch(0.78 0.16 78 / 0.14)', borderColor: 'oklch(0.78 0.16 78 / 0.4)', color: 'oklch(0.80 0.16 78)' };
     case 'episodeFileDeleted':
     case 'movieFileDeleted':
     case 'deleted':
-      return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+      return { ...base, background: 'oklch(0.55 0.18 28 / 0.14)', borderColor: 'oklch(0.55 0.18 28 / 0.4)', color: 'oklch(0.78 0.18 28)' };
     case 'renamed':
     case 'episodeFileRenamed':
     case 'movieFileRenamed':
-      return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
+      return { ...base, background: 'oklch(0.72 0.13 220 / 0.14)', borderColor: 'oklch(0.72 0.13 220 / 0.4)', color: 'oklch(0.80 0.13 220)' };
     default:
-      return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+      return { ...base, background: 'var(--muted)', borderColor: 'var(--hairline)', color: 'var(--muted-foreground)' };
   }
 }
 
@@ -182,13 +183,17 @@ export default function HistoryPage() {
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
       <PageHeader
-        title="History"
+        title="Booth Log"
+        subtitle="Activity History"
         rightContent={
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <button
+                className="press-feedback h-9 w-9 inline-flex items-center justify-center hover:text-[color:var(--amber)] transition-colors"
+                aria-label="Filter"
+              >
                 <Filter className="h-4 w-4" />
-              </Button>
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {EVENT_FILTERS.map((opt) => (
@@ -205,107 +210,137 @@ export default function HistoryPage() {
         }
       />
 
-      {/* Instance segmented control */}
-      <div className="pb-3 pt-2">
-        <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-          {INSTANCE_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setInstanceFilter(opt.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                instanceFilter === opt.key
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+      {/* Instance tab strip */}
+      <div className="py-3">
+        <div className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1">
+          {INSTANCE_OPTIONS.map((opt) => {
+            const active = instanceFilter === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => setInstanceFilter(opt.key)}
+                className={`relative px-3 py-2 inline-flex items-center gap-2 whitespace-nowrap transition-colors ${
+                  active ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'
+                }`}
+              >
+                <span className="font-display text-[14px]" style={{ letterSpacing: '-0.01em' }}>
+                  {opt.label}
+                </span>
+                <span
+                  aria-hidden
+                  className={`absolute left-2 right-2 -bottom-px h-px transition-all ${
+                    active ? 'bg-[color:var(--amber)] opacity-100' : 'bg-foreground/20 opacity-0'
+                  }`}
+                />
+              </button>
+            );
+          })}
         </div>
+        <div className="hairline" aria-hidden />
       </div>
 
-      {/* Active filter indicator */}
       {eventFilter !== 'all' && (
-        <div className="pb-2">
-          <Badge variant="secondary" className="text-[10px]">
-            {activeFilterLabel}
-          </Badge>
+        <div className="pb-3">
+          <span
+            className="tracked-caps text-[9px] px-1.5 py-0.5 inline-block"
+            style={{
+              borderRadius: '3px',
+              letterSpacing: '0.22em',
+              background: 'var(--amber-soft)',
+              border: '1px solid oklch(0.80 0.15 70 / 0.4)',
+              color: 'var(--amber)',
+            }}
+          >
+            Filter · {activeFilterLabel}
+          </span>
         </div>
       )}
 
-      {/* History list */}
       <div className="flex-1 overflow-y-auto pb-4">
         {loading ? (
           <PageSpinner />
         ) : history.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <p className="text-sm">No history events</p>
+          <div
+            className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
+            <p className="tracked-caps text-[10px] text-muted-foreground">No history</p>
+            <p className="font-display text-[18px]">Booth log empty.</p>
           </div>
         ) : (
-          <div className="space-y-1 animate-list-in">
-            {history.map((item, i) => (
-              <button
-                key={`${item.source}-${item.id}-${i}`}
-                onClick={() => {
-                  setDrawerMode('basic');
-                  setSelectedItem(item);
-                }}
-                className="w-full text-left flex items-start gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors"
-              >
-                <div className="flex-1 min-w-0 space-y-1">
-                  {/* Status label */}
-                  <Badge
-                    variant="secondary"
-                    className={`text-[9px] px-1.5 py-0 font-semibold ${eventColor(item.eventType)}`}
-                  >
-                    {eventLabel(item.eventType)}
-                  </Badge>
+          <div className="space-y-2 animate-list-in">
+            <div className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden" style={{ borderRadius: 'calc(var(--radius) - 1px)' }}>
+              {history.map((item, i) => (
+                <button
+                  key={`${item.source}-${item.id}-${i}`}
+                  onClick={() => {
+                    setDrawerMode('basic');
+                    setSelectedItem(item);
+                  }}
+                  className="group w-full text-left flex items-start gap-3 py-3 px-3.5 border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/30 transition-colors"
+                >
+                  <div className="flex-1 min-w-0 space-y-1.5">
+                    <span
+                      className="tracked-caps text-[8.5px] px-1.5 py-0.5"
+                      style={eventPillStyle(item.eventType)}
+                    >
+                      {eventLabel(item.eventType)}
+                    </span>
 
-                  {/* Filename - allow wrapping */}
-                  <p className="text-sm leading-snug break-words">
-                    {item.sourceTitle}
-                  </p>
+                    <p className="font-mono tabular text-[12px] leading-snug break-words text-foreground/90">
+                      {item.sourceTitle}
+                    </p>
 
-                  {/* Metadata row */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {item.quality?.quality?.name && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                        {item.quality.quality.name}
-                      </Badge>
-                    )}
-                    {item.data?.droppedPath && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                        {item.data.indexer || item.data.downloadClient || ''}
-                      </Badge>
-                    )}
-                    {!item.data?.droppedPath && item.data?.indexer && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                        {item.data.indexer}
-                      </Badge>
-                    )}
-                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                      {item.source}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {item.quality?.quality?.name && (
+                        <span
+                          className="tracked-caps text-[8.5px] px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)]"
+                          style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                        >
+                          {item.quality.quality.name}
+                        </span>
+                      )}
+                      {item.data?.droppedPath && (
+                        <span
+                          className="tracked-caps text-[8px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                          style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                        >
+                          {item.data.indexer || item.data.downloadClient || ''}
+                        </span>
+                      )}
+                      {!item.data?.droppedPath && item.data?.indexer && (
+                        <span
+                          className="tracked-caps text-[8px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                          style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                        >
+                          {item.data.indexer}
+                        </span>
+                      )}
+                      <span
+                        className="tracked-caps text-[8px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                        style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                      >
+                        {item.source}
+                      </span>
+                    </div>
                   </div>
-                </div>
 
-                {/* Time ago */}
-                <span className="text-[10px] text-muted-foreground shrink-0 mt-1 tabular-nums">
-                  {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
-                </span>
-              </button>
-            ))}
+                  <span className="font-mono tabular text-[10px] text-muted-foreground/80 shrink-0 mt-1">
+                    {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
+                  </span>
+                </button>
+              ))}
+            </div>
 
-            {/* Load more */}
             {history.length < total && (
               <Button
-                variant="ghost"
-                className="w-full mt-2"
+                variant="outline"
+                className="w-full h-10 cta-sheen"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
               >
-                {loadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Load more
+                {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
+                <span className="tracked-caps text-[10px]">Load more</span>
               </Button>
             )}
           </div>
@@ -325,17 +360,17 @@ export default function HistoryPage() {
         <DrawerContent className="max-h-[85vh]">
           {selectedItem && (
             <>
-              <DrawerHeader className="text-left">
-                <Badge
-                  variant="secondary"
-                  className={`w-fit text-[10px] px-2 py-0.5 font-semibold ${eventColor(selectedItem.eventType)}`}
+              <DrawerHeader className="text-left space-y-1.5">
+                <span
+                  className="w-fit tracked-caps text-[9px] px-1.5 py-0.5"
+                  style={eventPillStyle(selectedItem.eventType)}
                 >
                   {eventLabel(selectedItem.eventType)}
-                </Badge>
-                <DrawerTitle className="text-sm break-all leading-snug mt-1">
+                </span>
+                <DrawerTitle className="font-mono tabular text-[12.5px] break-all leading-snug" style={{ letterSpacing: '0.005em' }}>
                   {selectedItem.sourceTitle}
                 </DrawerTitle>
-                <p className="text-xs text-muted-foreground">
+                <p className="font-mono tabular text-[10.5px] text-muted-foreground/85">
                   {drawerMode === 'basic' ? (
                     (() => {
                       const parts: string[] = [];
@@ -354,27 +389,29 @@ export default function HistoryPage() {
               </DrawerHeader>
 
               <div className="px-4 pb-3">
-                <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-                  <button
-                    onClick={() => setDrawerMode('basic')}
-                    className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                      drawerMode === 'basic'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Basic
-                  </button>
-                  <button
-                    onClick={() => setDrawerMode('detailed')}
-                    className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                      drawerMode === 'detailed'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Detailed
-                  </button>
+                <div className="flex items-center gap-1">
+                  {(['basic', 'detailed'] as const).map((mode) => {
+                    const active = drawerMode === mode;
+                    return (
+                      <button
+                        key={mode}
+                        onClick={() => setDrawerMode(mode)}
+                        className={`relative flex-1 px-3 py-2 inline-flex items-center justify-center gap-2 transition-colors ${
+                          active ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'
+                        }`}
+                      >
+                        <span className="font-display text-[14px] capitalize" style={{ letterSpacing: '-0.01em' }}>
+                          {mode}
+                        </span>
+                        <span
+                          aria-hidden
+                          className={`absolute left-2 right-2 -bottom-px h-px transition-all ${
+                            active ? 'bg-[color:var(--amber)] opacity-100' : 'bg-foreground/20 opacity-0'
+                          }`}
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Film, Tv, Eye, EyeOff } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Film, Tv, Eye, EyeOff, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { MediaImage } from '@/types';
 import type { PosterSize } from '@/lib/store';
@@ -42,7 +41,6 @@ export interface MediaOverviewItemProps {
   monitored?: boolean;
   visibleFields: string[];
   posterSize?: PosterSize;
-  // Optional data fields
   qualityProfile?: string;
   network?: string;
   studio?: string;
@@ -56,6 +54,17 @@ export interface MediaOverviewItemProps {
   hasFile?: boolean;
   status?: string;
   onNavigate?: () => void;
+}
+
+function StatChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-card/40 border border-[color:var(--hairline)] tracked-caps text-[8.5px] text-muted-foreground"
+      style={{ borderRadius: '3px', letterSpacing: '0.18em' }}
+    >
+      {children}
+    </span>
+  );
 }
 
 export function MediaOverviewItem({
@@ -77,6 +86,7 @@ export function MediaOverviewItem({
   runtime,
   episodeProgress,
   genres,
+  hasFile,
   onNavigate,
 }: MediaOverviewItemProps) {
   const poster = getImageUrl(images, 'poster', type === 'movie' ? 'radarr' : 'sonarr');
@@ -86,79 +96,110 @@ export function MediaOverviewItem({
     <Link
       href={href}
       onClick={onNavigate}
-      className="flex gap-3 rounded-xl bg-card p-3 hover:bg-muted/30 active:bg-muted/50 transition-colors"
+      className="group flex gap-3 p-2.5 sm:p-3 bg-card/30 hover:bg-card/60 border border-[color:var(--hairline)] hover:border-[color:var(--amber-soft)] transition-all press-feedback"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
     >
-      {/* Poster thumbnail */}
       {show('images') ? (
-        <div className={cn('relative shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-muted', posterSizeClasses[posterSize])}>
+        <div
+          className={cn(
+            'relative shrink-0 aspect-[2/3] overflow-hidden bg-muted/40',
+            posterSizeClasses[posterSize]
+          )}
+          style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+        >
           {poster ? (
             <Image
               src={poster}
               alt={title}
               fill
               sizes="(max-width: 640px) 80px, 112px"
-              className="object-cover"
+              className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
               unoptimized={isProtectedApiImageSrc(poster)}
             />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/70">
               {type === 'movie' ? <Film className="h-6 w-6" /> : <Tv className="h-6 w-6" />}
             </div>
           )}
-          {monitored === false && <div className="absolute inset-0 bg-black/40" />}
+          <div
+            aria-hidden
+            className="absolute inset-0"
+            style={{ border: '1px solid var(--hairline)', borderRadius: 'inherit' }}
+          />
+          {monitored === false && <div className="absolute inset-0 bg-[color:var(--ink-deep)]/50" />}
+          {hasFile !== undefined && (
+            <span
+              className="absolute top-1 right-1 inline-block h-1.5 w-1.5 rounded-full"
+              style={{
+                background: hasFile
+                  ? 'oklch(0.78 0.13 162)'
+                  : monitored
+                    ? 'oklch(0.66 0.20 25)'
+                    : 'oklch(0.55 0.012 75)',
+                boxShadow: hasFile
+                  ? '0 0 6px oklch(0.78 0.13 162 / 0.6)'
+                  : monitored
+                    ? '0 0 6px oklch(0.66 0.20 25 / 0.5)'
+                    : 'none',
+              }}
+            />
+          )}
         </div>
       ) : null}
 
-      {/* Metadata */}
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2">
+      <div className="flex-1 min-w-0 space-y-1.5">
+        <div className="flex items-baseline gap-2">
           {show('monitored') && (
             monitored ? (
-              <Eye className="h-3.5 w-3.5 text-primary shrink-0" />
+              <Eye className="h-3.5 w-3.5 text-[color:var(--amber)] shrink-0 self-center" />
             ) : (
-              <EyeOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <EyeOff className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 self-center" />
             )
           )}
-          <h3 className="text-sm font-medium truncate">{title}</h3>
-          {show('year') && <span className="text-xs text-muted-foreground shrink-0">({year})</span>}
+          <h3 className="font-display text-[15px] sm:text-[16px] leading-tight truncate group-hover:text-[color:var(--amber)] transition-colors" style={{ letterSpacing: '-0.018em' }}>
+            {title}
+          </h3>
+          {show('year') && (
+            <span className="font-mono tabular text-[10px] text-muted-foreground shrink-0">
+              {year || '----'}
+            </span>
+          )}
         </div>
 
-        {/* Badges row */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           {show('qualityProfile') && qualityProfile && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{qualityProfile}</Badge>
+            <span
+              className="inline-flex items-center px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)] tracked-caps text-[8.5px]"
+              style={{ borderRadius: '3px', letterSpacing: '0.18em' }}
+            >
+              {qualityProfile}
+            </span>
           )}
-          {show('network') && network && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{network}</Badge>
-          )}
-          {show('studio') && studio && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{studio}</Badge>
-          )}
-          {certification && show('certification') && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{certification}</Badge>
-          )}
+          {show('network') && network && <StatChip>{network}</StatChip>}
+          {show('studio') && studio && <StatChip>{studio}</StatChip>}
+          {certification && show('certification') && <StatChip>{certification}</StatChip>}
           {show('rating') && rating !== undefined && rating > 0 && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+            <span className="inline-flex items-center gap-0.5 font-mono tabular text-[10px] text-[color:var(--amber)]">
+              <Star className="h-2.5 w-2.5 fill-[color:var(--amber)]" />
               {typeof rating === 'number' ? rating.toFixed(1) : rating}
-            </Badge>
+            </span>
           )}
           {show('episodeProgress') && episodeProgress && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{episodeProgress}</Badge>
+            <span className="font-mono tabular text-[10px] text-muted-foreground">{episodeProgress}</span>
           )}
           {show('sizeOnDisk') && sizeOnDisk !== undefined && sizeOnDisk > 0 && (
-            <span className="text-[10px] text-muted-foreground">{formatBytes(sizeOnDisk)}</span>
+            <span className="font-mono tabular text-[10px] text-muted-foreground/80">{formatBytes(sizeOnDisk)}</span>
           )}
           {show('runtime') && runtime !== undefined && runtime > 0 && (
-            <span className="text-[10px] text-muted-foreground">{runtime}m</span>
+            <span className="font-mono tabular text-[10px] text-muted-foreground/80">{runtime}m</span>
           )}
           {show('genres') && genres && genres.length > 0 && (
-            <span className="text-[10px] text-muted-foreground">{genres.slice(0, 3).join(', ')}</span>
+            <span className="text-[10px] text-muted-foreground/80 italic truncate">{genres.slice(0, 3).join(' · ')}</span>
           )}
         </div>
 
-        {/* Overview text */}
         {show('overview') && overview && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{overview}</p>
+          <p className="text-[12px] text-muted-foreground/85 leading-snug line-clamp-2">{overview}</p>
         )}
       </div>
     </Link>

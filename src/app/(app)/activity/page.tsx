@@ -3,9 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer,
@@ -32,13 +30,27 @@ import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 
 // --- Status helpers ---
 
-function statusColor(status: string, tracked?: string) {
-  if (tracked === 'warning' || status === 'warning') return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
-  if (tracked === 'error' || status === 'failed') return 'bg-red-500/10 text-red-500 border-red-500/20';
-  if (status === 'completed' || status === 'imported') return 'bg-green-500/10 text-green-500 border-green-500/20';
-  if (status === 'downloading') return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-  if (status === 'queued' || status === 'delay') return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
-  return 'bg-muted text-muted-foreground border-muted';
+function statusColor(status: string, tracked?: string): React.CSSProperties {
+  if (tracked === 'warning' || status === 'warning')
+    return { background: 'oklch(0.78 0.16 78 / 0.16)', borderColor: 'oklch(0.78 0.16 78 / 0.4)', color: 'oklch(0.80 0.16 78)' };
+  if (tracked === 'error' || status === 'failed')
+    return { background: 'oklch(0.66 0.20 25 / 0.16)', borderColor: 'oklch(0.66 0.20 25 / 0.4)', color: 'oklch(0.78 0.18 25)' };
+  if (status === 'completed' || status === 'imported')
+    return { background: 'oklch(0.78 0.13 162 / 0.16)', borderColor: 'oklch(0.78 0.13 162 / 0.4)', color: 'oklch(0.78 0.13 162)' };
+  if (status === 'downloading')
+    return { background: 'var(--amber-soft)', borderColor: 'oklch(0.80 0.15 70 / 0.4)', color: 'var(--amber)' };
+  if (status === 'queued' || status === 'delay')
+    return { background: 'oklch(0.72 0.18 300 / 0.14)', borderColor: 'oklch(0.72 0.18 300 / 0.4)', color: 'oklch(0.80 0.16 300)' };
+  return { background: 'var(--muted)', borderColor: 'var(--hairline)', color: 'var(--muted-foreground)' };
+}
+
+function statusPillStyle(status: string, tracked?: string): React.CSSProperties {
+  return {
+    borderRadius: '3px',
+    letterSpacing: '0.22em',
+    border: '1px solid',
+    ...statusColor(status, tracked),
+  };
 }
 
 function statusLabel(item: QueueItem & { source?: string }) {
@@ -168,17 +180,76 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="flex flex-col min-h-0 animate-content-in">
-      <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
-        {/* Top bar */}
-        <div className="flex items-center justify-between pt-2 pb-2 w-full">
-          <div className="flex items-center gap-1">
-            {/* Filter */}
+    <div className="flex flex-col min-h-0 animate-content-in space-y-3">
+      <div
+        className="sticky z-30 -mx-3 px-3 md:-mx-8 md:px-8 pb-2.5 bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70"
+        style={{ top: 'var(--header-height, 0px)' }}
+      >
+        <div
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-px"
+          style={{ background: 'var(--hairline)' }}
+        />
+
+        {/* Status strip */}
+        <div className="flex items-center gap-2 pt-1.5 pb-2">
+          <span className="marquee-dot" aria-hidden />
+          <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+            Booth Activity · Live
+          </span>
+          <span className="hairline flex-1" aria-hidden />
+          {tab === 'queue' && queueCount > 0 && (
+            <span className="tracked-caps text-[9px] text-muted-foreground/70 font-mono tabular" style={{ letterSpacing: '0.22em' }}>
+              {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
+            </span>
+          )}
+        </div>
+
+        {/* Editorial tab strip */}
+        <div className="flex items-end justify-between gap-3">
+          <div className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            {TABS.map((t) => {
+              const active = tab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => handleTabChange(t.key)}
+                  className={`relative px-3 py-2 inline-flex items-center gap-2 whitespace-nowrap transition-colors ${
+                    active ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'
+                  }`}
+                >
+                  <span className="font-display text-[14px] sm:text-[15px]" style={{ letterSpacing: '-0.01em' }}>
+                    {t.label}
+                  </span>
+                  <span
+                    aria-hidden
+                    className={`absolute left-2 right-2 -bottom-px h-px transition-all ${
+                      active ? 'bg-[color:var(--amber)] opacity-100' : 'bg-foreground/20 opacity-0'
+                    }`}
+                  />
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-1 h-1 rounded-full bg-[color:var(--amber)]"
+                      style={{ boxShadow: '0 0 8px var(--amber-glow)' }}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Filter className="h-4 w-4" />
-                </Button>
+                <button
+                  className="press-feedback h-9 px-2.5 inline-flex items-center gap-1.5 border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                  style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                  aria-label="Filter"
+                >
+                  <Filter className="h-3.5 w-3.5" />
+                  <span className="tracked-caps text-[9px] hidden sm:inline">{FILTER_OPTIONS.find((o) => o.key === filterBy)?.label || 'All'}</span>
+                </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {FILTER_OPTIONS.map((opt) => (
@@ -193,13 +264,16 @@ export default function ActivityPage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Sort */}
             {availableSortOptions.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <ArrowUpDown className="h-4 w-4" />
-                  </Button>
+                  <button
+                    className="press-feedback h-9 w-9 inline-flex items-center justify-center border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                    style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                    aria-label="Sort"
+                  >
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                  </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {availableSortOptions.map((opt) => (
@@ -215,61 +289,36 @@ export default function ActivityPage() {
               </DropdownMenu>
             )}
 
-            {/* History */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+            <button
+              className="press-feedback h-9 w-9 inline-flex items-center justify-center border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+              style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
               onClick={() => router.push('/activity/history')}
+              aria-label="History"
             >
-              <Clock className="h-4 w-4" />
-            </Button>
+              <Clock className="h-3.5 w-3.5" />
+            </button>
 
-            {/* Refresh */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
+                <button
+                  className="press-feedback h-9 w-9 inline-flex items-center justify-center border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                  style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                   onClick={handleRefreshActivity}
                   disabled={refreshing}
+                  aria-label="Refresh"
                 >
                   {refreshing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[color:var(--amber)]" />
                   ) : (
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw className="h-3.5 w-3.5" />
                   )}
-                </Button>
+                </button>
               </TooltipTrigger>
               <TooltipContent>Refresh</TooltipContent>
             </Tooltip>
           </div>
         </div>
-
-        {/* Segmented control tabs */}
-        <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => handleTabChange(t.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
       </div>
-
-      {/* Queue count */}
-      {tab === 'queue' && queueCount > 0 && (
-        <p className="text-xs text-muted-foreground mb-1">
-          {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
-        </p>
-      )}
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
@@ -389,48 +438,64 @@ function QueueTab({
 
   if (sorted.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground">
-        <Download className="h-8 w-8 mx-auto mb-2 opacity-40" />
-        <p className="text-sm">No items in queue</p>
+      <div
+        className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+        style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+      >
+        <div className="mx-auto h-10 w-10 rounded-full border border-[color:var(--hairline)] flex items-center justify-center">
+          <Download className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <p className="tracked-caps text-[10px] text-muted-foreground">Empty queue</p>
+        <p className="font-display text-[18px]">Booth is idle.</p>
       </div>
     );
   }
 
   return (
     <>
-      <div className="space-y-2 animate-list-in">
+      <div className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden animate-list-in" style={{ borderRadius: 'calc(var(--radius) - 1px)' }}>
         {sorted.map((item) => {
           const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
           return (
             <button
               key={`${item.source}-${item.id}`}
               onClick={() => setSelectedItem(item)}
-              className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
+              className="group w-full text-left px-3.5 py-3 space-y-2 border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/30 transition-colors"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{item.title}</p>
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <Badge
-                      variant="secondary"
-                      className={`text-[10px] px-1.5 py-0 ${statusColor(item.status, item.trackedDownloadStatus)}`}
+                  <p className="font-display text-[14px] truncate group-hover:text-[color:var(--amber)] transition-colors" style={{ letterSpacing: '-0.012em' }}>
+                    {item.title}
+                  </p>
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    <span
+                      className="tracked-caps text-[8.5px] px-1.5 py-0.5"
+                      style={statusPillStyle(item.status, item.trackedDownloadStatus)}
                     >
                       {statusLabel(item)}
-                    </Badge>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                    </span>
+                    <span
+                      className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                      style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                    >
                       {item.source}
-                    </Badge>
+                    </span>
                   </div>
                 </div>
                 {item.timeleft && (
-                  <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                  <span className="font-mono tabular text-[10px] text-muted-foreground/85 shrink-0 mt-0.5">
                     {item.timeleft}
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <Progress value={progress} className="h-1.5 flex-1" />
-                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                <div className="relative h-1 flex-1 bg-muted/40 overflow-hidden" style={{ borderRadius: '999px' }}>
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[color:var(--amber)] transition-all"
+                    style={{ width: `${progress}%`, boxShadow: '0 0 8px var(--amber-glow)' }}
+                  />
+                </div>
+                <span className="font-mono tabular text-[10px] text-[color:var(--amber)] shrink-0">
                   {progress.toFixed(0)}%
                 </span>
               </div>
@@ -452,68 +517,71 @@ function QueueTab({
 
             return (
               <>
-                <DrawerHeader className="text-left">
-                  <Badge
-                    variant="secondary"
-                    className={`w-fit text-[10px] px-2 py-0.5 ${statusColor(selectedItem.status, selectedItem.trackedDownloadStatus)}`}
+                <DrawerHeader className="text-left space-y-1.5">
+                  <span
+                    className="w-fit tracked-caps text-[9px] px-1.5 py-0.5"
+                    style={statusPillStyle(selectedItem.status, selectedItem.trackedDownloadStatus)}
                   >
                     {statusLabel(selectedItem)}
-                  </Badge>
-                  <DrawerTitle className="text-sm break-all leading-snug mt-1">
+                  </span>
+                  <DrawerTitle className="font-display text-[18px] break-all leading-snug" style={{ letterSpacing: '-0.018em' }}>
                     {selectedItem.title}
                   </DrawerTitle>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-mono tabular text-[11px] text-muted-foreground/85">
                     {qualityName && `${qualityName} · `}
                     {formatBytes(selectedItem.size)}
                   </p>
                 </DrawerHeader>
 
-                <div className="px-4 space-y-4 pb-6">
+                <div className="px-4 space-y-5 pb-6">
                   {/* Tags row */}
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {selectedItem.source && (
-                      <Badge variant="outline" className="text-[10px]">
+                      <span className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground" style={{ borderRadius: '3px', letterSpacing: '0.22em' }}>
                         {selectedItem.source?.toUpperCase()}
-                      </Badge>
+                      </span>
                     )}
                     {selectedItem.indexer && (
-                      <Badge variant="outline" className="text-[10px]">
+                      <span className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground" style={{ borderRadius: '3px', letterSpacing: '0.22em' }}>
                         {selectedItem.indexer}
-                      </Badge>
+                      </span>
                     )}
                   </div>
 
                   {/* Progress bar */}
                   <div>
-                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                      <span>{progress.toFixed(1)}%</span>
+                    <div className="flex justify-between font-mono tabular text-[10.5px] text-muted-foreground/85 mb-1.5">
+                      <span className="text-[color:var(--amber)]">{progress.toFixed(1)}%</span>
                       {selectedItem.timeleft && <span>{selectedItem.timeleft}</span>}
                     </div>
-                    <Progress value={progress} className="h-2" />
+                    <div className="relative h-1.5 bg-muted/40 overflow-hidden" style={{ borderRadius: '999px' }}>
+                      <div
+                        className="absolute inset-y-0 left-0 bg-[color:var(--amber)] transition-all"
+                        style={{ width: `${progress}%`, boxShadow: '0 0 10px var(--amber-glow)' }}
+                      />
+                    </div>
                   </div>
 
-                  {/* Remove button */}
                   <Button
                     variant="outline"
-                    className="w-full border-destructive text-destructive hover:bg-destructive/10"
+                    className="w-full h-11 border-destructive/40 text-destructive hover:bg-destructive/10"
                     onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr')}
                     disabled={removing}
                   >
                     {removing ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Trash2 className="mr-2 h-4 w-4" />
+                      <Trash2 className="h-4 w-4" />
                     )}
-                    Remove
+                    <span className="tracked-caps text-[10px]">Remove</span>
                   </Button>
 
-                  {/* Information section */}
-                  <div>
-                    <h3 className="font-semibold text-sm mb-2">Information</h3>
-                    <div className="space-y-0 rounded-lg border divide-y">
-                      <InfoRow label="Protocol" value={selectedItem.protocol || '-'} />
-                      <InfoRow label="Client" value={selectedItem.downloadClient || '-'} />
-                      <InfoRow label="Indexer" value={selectedItem.indexer || '-'} />
+                  <div className="space-y-2">
+                    <p className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>Information</p>
+                    <div className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden" style={{ borderRadius: 'calc(var(--radius) - 1px)' }}>
+                      <InfoRow label="Protocol" value={selectedItem.protocol || '—'} />
+                      <InfoRow label="Client" value={selectedItem.downloadClient || '—'} />
+                      <InfoRow label="Indexer" value={selectedItem.indexer || '—'} />
                       <InfoRow label="Size" value={formatBytes(selectedItem.size)} />
                       <InfoRow label="Remaining" value={formatBytes(selectedItem.sizeleft)} />
                       {selectedItem.estimatedCompletionTime && (
@@ -544,9 +612,13 @@ function QueueTab({
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between px-3 py-2">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs text-right max-w-[60%] break-words">{value}</span>
+    <div className="flex items-baseline justify-between gap-3 px-3.5 py-2.5 border-b border-[color:var(--hairline)] last:border-b-0">
+      <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>
+        {label}
+      </span>
+      <span className="font-mono tabular text-[12px] text-right max-w-[60%] break-words">
+        {value}
+      </span>
     </div>
   );
 }
@@ -615,34 +687,42 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
 
   if (queue.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground">
-        <FileWarning className="h-8 w-8 mx-auto mb-2 opacity-40" />
-        <p className="text-sm">No failed imports</p>
+      <div
+        className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+        style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+      >
+        <div className="mx-auto h-10 w-10 rounded-full border border-[color:var(--hairline)] flex items-center justify-center">
+          <FileWarning className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <p className="tracked-caps text-[10px] text-muted-foreground">No failed imports</p>
+        <p className="font-display text-[18px]">Clean booth.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2 animate-list-in">
+    <div className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden animate-list-in" style={{ borderRadius: 'calc(var(--radius) - 1px)' }}>
       {queue.map((item) => (
-        <div key={`${item.source}-${item.id}`} className="rounded-xl bg-muted/30 p-3 space-y-2">
+        <div key={`${item.source}-${item.id}`} className="px-3.5 py-3 space-y-2 border-b border-[color:var(--hairline)] last:border-b-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{item.title}</p>
-              <Badge
-                variant="secondary"
-                className="bg-red-500/10 text-red-500 border-red-500/20 mt-1 text-[10px]"
+              <p className="font-display text-[14px] truncate" style={{ letterSpacing: '-0.012em' }}>{item.title}</p>
+              <span
+                className="inline-flex items-center gap-1 mt-1.5 tracked-caps text-[8.5px] px-1.5 py-0.5"
+                style={statusPillStyle('failed')}
               >
-                <AlertTriangle className="h-3 w-3 mr-1" /> Import Failed
-              </Badge>
+                <AlertTriangle className="h-2.5 w-2.5" />
+                Import Failed
+              </span>
               {item.statusMessages?.map((msg, i) => (
-                <p key={i} className="text-xs text-muted-foreground mt-1 break-words">
-                  {msg.title}: {msg.messages?.join(', ')}
+                <p key={i} className="text-[11.5px] text-muted-foreground/85 mt-1.5 break-words leading-snug">
+                  <span className="text-foreground/90">{msg.title}:</span> {msg.messages?.join(', ')}
                 </p>
               ))}
             </div>
-            <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => openManualImport(item)}>
-              <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
+            <Button size="sm" className="shrink-0 h-8 cta-sheen projector-glow" onClick={() => openManualImport(item)}>
+              <Upload className="h-3 w-3" />
+              <span className="tracked-caps text-[9.5px]">Import</span>
             </Button>
           </div>
         </div>
@@ -728,93 +808,112 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
 
   if (records.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground">
-        {type === 'missing' ? (
-          <>
-            <Download className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm">No missing items</p>
-          </>
-        ) : (
-          <>
-            <Scissors className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm">No cutoff unmet items</p>
-          </>
-        )}
+      <div
+        className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+        style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+      >
+        <div className="mx-auto h-10 w-10 rounded-full border border-[color:var(--hairline)] flex items-center justify-center">
+          {type === 'missing' ? <Download className="h-4 w-4 text-muted-foreground" /> : <Scissors className="h-4 w-4 text-muted-foreground" />}
+        </div>
+        <p className="tracked-caps text-[10px] text-muted-foreground">
+          {type === 'missing' ? 'No missing items' : 'No cutoff items'}
+        </p>
+        <p className="font-display text-[18px]">All caught up.</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-1 animate-list-in">
-      {records.map((record) => {
-        const key = `${record.source}-${record.id}`;
-        const isEpisode = record.mediaType === 'episode';
-        const displayTitle = isEpisode
-          ? `${record.series?.title || 'Unknown'} - S${String(record.seasonNumber ?? 0).padStart(2, '0')}E${String(record.episodeNumber ?? 0).padStart(2, '0')} - ${record.title || 'TBA'}`
-          : `${record.title || 'Unknown'} (${record.year || '?'})`;
-        const dateStr = isEpisode ? record.airDateUtc || record.airDate : record.added;
+    <div className="space-y-2 animate-list-in">
+      <div className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden" style={{ borderRadius: 'calc(var(--radius) - 1px)' }}>
+        {records.map((record) => {
+          const key = `${record.source}-${record.id}`;
+          const isEpisode = record.mediaType === 'episode';
+          const displayTitle = isEpisode
+            ? `${record.series?.title || 'Unknown'} - S${String(record.seasonNumber ?? 0).padStart(2, '0')}E${String(record.episodeNumber ?? 0).padStart(2, '0')} - ${record.title || 'TBA'}`
+            : `${record.title || 'Unknown'} (${record.year || '?'})`;
+          const dateStr = isEpisode ? record.airDateUtc || record.airDate : record.added;
 
-        const hasSeriesId = Number.isFinite(record.seriesId);
-        const hasSeasonNumber = Number.isFinite(record.seasonNumber);
-        const href = isEpisode && hasSeriesId && hasSeasonNumber
-          ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
-          : isEpisode && hasSeriesId
-            ? `/series/${record.seriesId}`
-            : !isEpisode
-              ? `/movies/${record.id}`
-              : null;
+          const hasSeriesId = Number.isFinite(record.seriesId);
+          const hasSeasonNumber = Number.isFinite(record.seasonNumber);
+          const href = isEpisode && hasSeriesId && hasSeasonNumber
+            ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
+            : isEpisode && hasSeriesId
+              ? `/series/${record.seriesId}`
+              : !isEpisode
+                ? `/movies/${record.id}`
+                : null;
 
-        return (
-          <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
-            {href ? (
-              <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
-                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
-              </Link>
-            ) : (
-              <div className="p-1.5 rounded bg-muted">
-                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
+          return (
+            <div
+              key={key}
+              className="group flex items-center gap-3 py-2.5 px-3.5 border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/30 transition-colors"
+            >
               {href ? (
-                <Link href={href} className="block">
-                  <p className="text-sm truncate">{displayTitle}</p>
+                <Link
+                  href={href}
+                  className="h-8 w-8 inline-flex items-center justify-center bg-card/60 border border-[color:var(--hairline)] hover:border-[color:var(--amber-soft)] transition-colors shrink-0"
+                  style={{ borderRadius: 'calc(var(--radius) - 3px)' }}
+                >
+                  {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
                 </Link>
               ) : (
-                <p className="text-sm truncate">{displayTitle}</p>
+                <div
+                  className="h-8 w-8 inline-flex items-center justify-center bg-card/40 border border-[color:var(--hairline)] shrink-0"
+                  style={{ borderRadius: 'calc(var(--radius) - 3px)' }}
+                >
+                  {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
+                </div>
               )}
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
-                {dateStr && (
-                  <span>{formatDistanceToNow(new Date(dateStr), { addSuffix: true })}</span>
+              <div className="flex-1 min-w-0">
+                {href ? (
+                  <Link href={href} className="block">
+                    <p className="font-display text-[13.5px] truncate group-hover:text-[color:var(--amber)] transition-colors" style={{ letterSpacing: '-0.012em' }}>
+                      {displayTitle}
+                    </p>
+                  </Link>
+                ) : (
+                  <p className="font-display text-[13.5px] truncate" style={{ letterSpacing: '-0.012em' }}>{displayTitle}</p>
                 )}
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span
+                    className="tracked-caps text-[8px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                    style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                  >
+                    {record.source}
+                  </span>
+                  {dateStr && (
+                    <span className="font-mono tabular text-[10px] text-muted-foreground/85">
+                      {formatDistanceToNow(new Date(dateStr), { addSuffix: true })}
+                    </span>
+                  )}
+                </div>
               </div>
+              <button
+                className="press-feedback h-8 w-8 inline-flex items-center justify-center shrink-0 hover:text-[color:var(--amber)] transition-colors"
+                onClick={() => handleSearch(record)}
+                disabled={searching === key}
+                aria-label="Search"
+              >
+                {searching === key ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-[color:var(--amber)]" />
+                ) : (
+                  <Search className="h-3.5 w-3.5" />
+                )}
+              </button>
             </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0 shrink-0"
-              onClick={() => handleSearch(record)}
-              disabled={searching === key}
-            >
-              {searching === key ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Search className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
       {records.length < total && (
         <Button
-          variant="ghost"
-          className="w-full"
+          variant="outline"
+          className="w-full h-10 cta-sheen"
           onClick={() => { const next = page + 1; setPage(next); fetchWanted(next); }}
           disabled={loading}
         >
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Load more
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          <span className="tracked-caps text-[10px]">Load more</span>
         </Button>
       )}
     </div>

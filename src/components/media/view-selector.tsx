@@ -18,22 +18,33 @@ export function ViewSelector({
   onChange: (view: MediaViewMode) => void;
 }) {
   return (
-    <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
+    <div
+      className="flex items-center bg-card/40 border border-[color:var(--hairline)] p-0.5 gap-0.5"
+      style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+    >
       {views.map(({ value: v, icon: Icon, label, hideOnMobile }) => (
         <button
           key={v}
           onClick={() => onChange(v)}
           className={cn(
-            'p-1.5 rounded-md transition-colors',
+            'relative h-8 w-8 inline-flex items-center justify-center transition-colors',
             value === v
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
-            hideOnMobile && 'hidden md:block'
+              ? 'text-[color:var(--amber)]'
+              : 'text-muted-foreground/70 hover:text-foreground',
+            hideOnMobile && 'hidden md:inline-flex'
           )}
+          style={{ borderRadius: 'calc(var(--radius) - 3px)' }}
           aria-label={label}
           title={label}
         >
-          <Icon className="h-4 w-4" />
+          {value === v && (
+            <span
+              aria-hidden
+              className="absolute inset-0 bg-[color:var(--amber-soft)] border border-[color:var(--amber)]/30"
+              style={{ borderRadius: 'inherit' }}
+            />
+          )}
+          <Icon className="relative h-4 w-4" />
         </button>
       ))}
     </div>

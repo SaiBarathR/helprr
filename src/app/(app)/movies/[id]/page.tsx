@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PageHeader } from '@/components/layout/page-header';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
@@ -485,72 +484,105 @@ export default function MovieDetailPage() {
         }
       />
 
-      <div className="space-y-6 animate-content-in">
+      <div className="space-y-7 animate-content-in">
         {/* Hero: Backdrop or flat poster layout */}
         {tmdbData?.backdropPath ? (
-          <div>
-            {/* Backdrop image */}
-            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 -mx-2 md:-mx-6">
+          <div className="relative">
+            {/* Backdrop */}
+            <div className="relative w-full h-[260px] sm:h-[340px] lg:h-[420px] overflow-hidden bg-[color:var(--ink-deep)] -mx-3 md:-mx-8">
               <Image
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
                 alt=""
                 fill
                 sizes="100vw"
-                className="object-cover"
+                className="object-cover animate-hero-zoom"
                 priority
                 unoptimized
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/75 to-background/15" />
+              <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-background/40" />
+              <div aria-hidden className="cinema-grain" />
+              {/* Marquee strip on backdrop */}
+              <div className="absolute top-3 left-3 md:left-8 right-3 md:right-8 flex items-center gap-2">
+                <span className="marquee-dot" aria-hidden />
+                <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/90">
+                  {movie.hasFile ? 'In Library \u00B7 On Disk' : movie.monitored ? 'Monitored \u00B7 Awaiting' : 'Idle'}
+                </span>
+                <span className="hairline flex-1" aria-hidden />
+                <span className="tracked-caps text-[9.5px] text-white/70 font-mono tabular hidden sm:inline" style={{ letterSpacing: '0.22em' }}>
+                  Feature \u00B7 Film
+                </span>
+              </div>
             </div>
-            {/* Poster + info overlapping backdrop */}
-            <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
-              <div className="w-[100px] shrink-0">
-                <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
+
+            {/* Poster + info overlapping */}
+            <div className="relative -mt-[120px] sm:-mt-[150px] lg:-mt-[180px] px-3 md:px-8 flex gap-4 sm:gap-5">
+              <div className="w-[120px] sm:w-[150px] lg:w-[180px] shrink-0">
+                <div
+                  className="relative aspect-[2/3] overflow-hidden bg-muted/60"
+                  style={{
+                    borderRadius: 'calc(var(--radius) - 1px)',
+                    boxShadow: '0 24px 48px -16px rgba(0,0,0,0.65), 0 0 0 1px var(--hairline)',
+                  }}
+                >
                   {poster ? (
                     <Image
                       src={poster}
                       alt={movie.title}
                       fill
-                      sizes="100px"
+                      sizes="(max-width: 640px) 120px, 180px"
                       className="object-cover"
                       unoptimized={isProtectedApiImageSrc(poster)}
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                      <Film className="h-8 w-8" />
+                      <Film className="h-9 w-9" />
                     </div>
                   )}
                 </div>
               </div>
-              <div className="flex-1 min-w-0 pt-[60px]">
-                <Badge
-                  className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
-                    movie.hasFile
-                      ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                      : 'bg-red-500/20 text-red-400 border-red-500/30'
-                  }`}
-                  variant="outline"
+              <div className="flex-1 min-w-0 pt-[60px] sm:pt-[80px] lg:pt-[100px]">
+                <div className="inline-flex items-center gap-1.5 mb-2 px-2 py-0.5 border tracked-caps text-[9px]"
+                  style={{
+                    borderRadius: '3px',
+                    letterSpacing: '0.22em',
+                    background: movie.hasFile ? 'oklch(0.78 0.13 162 / 0.16)' : 'oklch(0.66 0.20 25 / 0.16)',
+                    borderColor: movie.hasFile ? 'oklch(0.78 0.13 162 / 0.4)' : 'oklch(0.66 0.20 25 / 0.4)',
+                    color: movie.hasFile ? 'oklch(0.78 0.13 162)' : 'oklch(0.78 0.18 25)',
+                  }}
                 >
+                  <span
+                    className="inline-block h-1.5 w-1.5 rounded-full"
+                    style={{ background: movie.hasFile ? 'oklch(0.78 0.13 162)' : 'oklch(0.66 0.20 25)' }}
+                  />
                   {movie.hasFile ? 'Downloaded' : 'Missing'}
-                </Badge>
-                <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
-                <p className="text-sm text-muted-foreground mt-1">
+                </div>
+                <h1 className="font-display text-[26px] sm:text-[34px] lg:text-[44px] leading-[1.02] tracking-[-0.025em] line-clamp-3 hero-title-rise">
+                  {movie.title}
+                </h1>
+                <p className="font-mono tabular tracked-mid text-[10.5px] text-muted-foreground/80 mt-2 hero-meta-fade" style={{ letterSpacing: '0.16em' }}>
                   {[
                     movie.year,
-                    movie.runtime > 0 ? `${movie.runtime} min` : null,
+                    movie.runtime > 0 ? `${movie.runtime} MIN` : null,
                     movie.certification || null,
                   ]
                     .filter(Boolean)
-                    .join(' \u00B7 ')}
+                    .join('  \u00B7  ')}
                 </p>
                 {ratingItems.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3 hero-meta-fade">
                     {ratingItems.map((ri) => (
                       <div key={ri.label} className="flex items-center gap-1">
                         <Star className={`h-3 w-3 ${ri.color}`} />
-                        <span className="text-sm font-semibold">{ri.score}</span>
-                        <span className="text-[10px] text-muted-foreground">{ri.label}</span>
-                        {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
+                        <span className="font-mono tabular text-[13px] font-semibold">{ri.score}</span>
+                        <span className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.18em' }}>
+                          {ri.label}
+                        </span>
+                        {ri.votes > 0 && (
+                          <span className="font-mono tabular text-[9px] text-muted-foreground/55">
+                            {formatRatingVotes(ri.votes)}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -558,19 +590,27 @@ export default function MovieDetailPage() {
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <div className="mt-4 flex items-start gap-3 px-1">
+                <span className="font-display text-[28px] leading-none text-[color:var(--amber)]/70">&ldquo;</span>
+                <p className="font-display italic text-[15px] sm:text-[17px] leading-snug text-muted-foreground/95 pt-1">
+                  {tmdbData.tagline}
+                </p>
+              </div>
             )}
           </div>
         ) : (
           <div className="flex gap-4">
-            <div className="w-[120px] shrink-0">
-              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+            <div className="w-[120px] sm:w-[140px] shrink-0">
+              <div
+                className="relative aspect-[2/3] overflow-hidden bg-muted/60"
+                style={{ borderRadius: 'calc(var(--radius) - 1px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+              >
                 {poster ? (
                   <Image
                     src={poster}
                     alt={movie.title}
                     fill
-                    sizes="120px"
+                    sizes="140px"
                     className="object-cover"
                     unoptimized={isProtectedApiImageSrc(poster)}
                   />
@@ -582,34 +622,51 @@ export default function MovieDetailPage() {
               </div>
             </div>
             <div className="flex-1 min-w-0 pt-1">
-              <Badge
-                className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
-                  movie.hasFile
-                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                    : 'bg-red-500/20 text-red-400 border-red-500/30'
-                }`}
-                variant="outline"
+              <div className="flex items-center gap-2 mb-2">
+                <span className="marquee-dot" aria-hidden />
+                <span className="tracked-caps text-[9px] text-[color:var(--amber)]/85" style={{ letterSpacing: '0.22em' }}>
+                  Feature \u00B7 Film
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 mb-2 px-2 py-0.5 border tracked-caps text-[9px]"
+                style={{
+                  borderRadius: '3px',
+                  letterSpacing: '0.22em',
+                  background: movie.hasFile ? 'oklch(0.78 0.13 162 / 0.16)' : 'oklch(0.66 0.20 25 / 0.16)',
+                  borderColor: movie.hasFile ? 'oklch(0.78 0.13 162 / 0.4)' : 'oklch(0.66 0.20 25 / 0.4)',
+                  color: movie.hasFile ? 'oklch(0.78 0.13 162)' : 'oklch(0.78 0.18 25)',
+                }}
               >
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ background: movie.hasFile ? 'oklch(0.78 0.13 162)' : 'oklch(0.66 0.20 25)' }}
+                />
                 {movie.hasFile ? 'Downloaded' : 'Missing'}
-              </Badge>
-              <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              </div>
+              <h1 className="font-display text-[24px] sm:text-[28px] leading-[1.04] tracking-[-0.022em] line-clamp-3">{movie.title}</h1>
+              <p className="font-mono tabular tracked-mid text-[10.5px] text-muted-foreground/80 mt-2" style={{ letterSpacing: '0.16em' }}>
                 {[
                   movie.year,
-                  movie.runtime > 0 ? `${movie.runtime} min` : null,
+                  movie.runtime > 0 ? `${movie.runtime} MIN` : null,
                   movie.certification || null,
                 ]
                   .filter(Boolean)
-                  .join(' \u00B7 ')}
+                  .join('  \u00B7  ')}
               </p>
               {ratingItems.length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3">
                   {ratingItems.map((ri) => (
                     <div key={ri.label} className="flex items-center gap-1">
                       <Star className={`h-3 w-3 ${ri.color}`} />
-                      <span className="text-sm font-semibold">{ri.score}</span>
-                      <span className="text-[10px] text-muted-foreground">{ri.label}</span>
-                      {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
+                      <span className="font-mono tabular text-[13px] font-semibold">{ri.score}</span>
+                      <span className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.18em' }}>
+                        {ri.label}
+                      </span>
+                      {ri.votes > 0 && (
+                        <span className="font-mono tabular text-[9px] text-muted-foreground/55">
+                          {formatRatingVotes(ri.votes)}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -618,29 +675,38 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        {/* Metadata rows - borderless key-value */}
+        {/* Metadata rows */}
         {metadataRows.length > 0 && (
-          <div>
+          <div className="border-t border-b border-[color:var(--hairline)] py-1">
             {metadataRows.map((row) => (
               <div
                 key={row.label}
-                className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+                className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)] last:border-b-0"
               >
-                <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase shrink-0">
+                <span className="tracked-caps text-[9px] text-muted-foreground shrink-0" style={{ letterSpacing: '0.24em' }}>
                   {row.label}
                 </span>
-                <span className="text-sm text-right ml-4 truncate">{row.value}</span>
+                <span className="text-[13px] text-right truncate font-mono tabular text-foreground/95" style={{ letterSpacing: '0.01em' }}>
+                  {row.value}
+                </span>
               </div>
             ))}
           </div>
         )}
 
-        {/* Overview - collapsible */}
+        {/* Overview */}
         {movie.overview && (
-          <div>
-            <div className="relative">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Synopsis
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
+            <div className="relative pl-1">
               <p
-                className={`text-sm text-muted-foreground leading-relaxed ${
+                className={`text-[14px] text-foreground/85 leading-relaxed ${
                   !overviewExpanded ? 'line-clamp-3' : ''
                 }`}
               >
@@ -648,9 +714,9 @@ export default function MovieDetailPage() {
               </p>
               <button
                 onClick={() => setOverviewExpanded(!overviewExpanded)}
-                className="text-sm text-primary font-medium mt-1"
+                className="press-feedback tracked-caps text-[9.5px] text-[color:var(--amber)] mt-2 hover:underline"
               >
-                {overviewExpanded ? 'less' : 'more...'}
+                {overviewExpanded ? '\u2014 Show less' : '\u2014 Read more'}
               </button>
             </div>
           </div>
@@ -659,52 +725,64 @@ export default function MovieDetailPage() {
         {/* Cast & Crew */}
         {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} />}
 
-        {/* Pill buttons */}
-        <div className="flex gap-3">
-          <Button
-            onClick={handleSearch}
-            disabled={!!actionLoading}
-            className="flex-1 rounded-full h-10"
-            variant="secondary"
-          >
-            {actionLoading === 'search' ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Search className="h-4 w-4 mr-2" />
-            )}
-            Automatic
-          </Button>
-          <Button
-            onClick={() => setInteractiveSearch(true)}
-            className="flex-1 rounded-full h-10"
-            variant="secondary"
-          >
-            <Search className="h-4 w-4 mr-2" />
-            Interactive
-          </Button>
-        </div>
-        <div>
+        {/* Action buttons */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              Operate \u00B7 Booth
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSearch}
+              disabled={!!actionLoading}
+              className="flex-1 h-11 cta-sheen projector-glow"
+            >
+              {actionLoading === 'search' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+              <span className="tracked-caps text-[10px]">Auto Search</span>
+            </Button>
+            <Button
+              onClick={() => setInteractiveSearch(true)}
+              className="flex-1 h-11"
+              variant="outline"
+            >
+              <Search className="h-4 w-4" />
+              <span className="tracked-caps text-[10px]">Interactive</span>
+            </Button>
+          </div>
           <Button
             onClick={() => router.push(`/movies/${movie.id}/files`)}
-            className="w-full rounded-full h-10"
-            variant="secondary"
+            className="w-full h-11"
+            variant="outline"
           >
-            <FileText className="h-4 w-4 mr-2" />
-            Files &amp; information
+            <FileText className="h-4 w-4" />
+            <span className="tracked-caps text-[10px]">Files &amp; Media Info</span>
           </Button>
         </div>
 
         {/* Information section */}
-        <div>
-          <h2 className="text-base font-semibold mb-2">Information</h2>
-          <div>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              Booth Sheet
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
+          <div className="border-t border-b border-[color:var(--hairline)] py-1">
             {infoRows.map((row) => (
               <div
                 key={row.label}
-                className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+                className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)] last:border-b-0"
               >
-                <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                <span className="text-sm text-right ml-4 truncate max-w-[60%]">{row.value}</span>
+                <span className="text-[12px] text-muted-foreground/85 shrink-0">{row.label}</span>
+                <span className="text-[13px] text-right truncate max-w-[60%] font-mono tabular">{row.value}</span>
               </div>
             ))}
           </div>
@@ -722,7 +800,7 @@ export default function MovieDetailPage() {
             )}
 
             {tmdbData.similar.length > 0 && (
-              <DiscoverMediaRail title="Similar Movies" items={tmdbData.similar} />
+              <DiscoverMediaRail title="Similar Films" items={tmdbData.similar} />
             )}
 
             {tmdbData.watchProviders && (
@@ -730,8 +808,14 @@ export default function MovieDetailPage() {
             )}
 
             {tmdbData.productionCompanies.length > 0 && (
-              <div>
-                <h2 className="text-base font-semibold mb-2">Production</h2>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="reel" aria-hidden />
+                  <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                    Production
+                  </h2>
+                  <span className="hairline flex-1" aria-hidden />
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {tmdbData.productionCompanies.map((company) => {
                     const logoSrc = company.logoPath
@@ -744,7 +828,8 @@ export default function MovieDetailPage() {
                       <Link
                         key={company.id}
                         href={`/discover?companies=${company.id}&contentType=movie`}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
+                        className="press-feedback flex items-center gap-2 px-2.5 py-1.5 border border-[color:var(--hairline)] bg-card/40 hover:border-[color:var(--amber-soft)] hover:bg-card/70 transition-colors"
+                        style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                       >
                         {logoSrc && (
                           <div className="relative h-5 w-8">
@@ -758,7 +843,7 @@ export default function MovieDetailPage() {
                             />
                           </div>
                         )}
-                        <span className="text-xs font-medium">{company.name}</span>
+                        <span className="text-[11.5px] font-medium">{company.name}</span>
                       </Link>
                     );
                   })}
@@ -767,13 +852,24 @@ export default function MovieDetailPage() {
             )}
 
             {tmdbData.collection && (
-              <div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="reel" aria-hidden />
+                  <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                    Collection
+                  </h2>
+                  <span className="hairline flex-1" aria-hidden />
+                </div>
                 <Link
                   href={`/discover/collection/${tmdbData.collection.id}`}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-muted/60 border border-border/40 hover:bg-muted transition-colors"
+                  className="group press-feedback flex items-center gap-3 p-3 bg-card/40 border border-[color:var(--hairline)] hover:border-[color:var(--amber-soft)] hover:bg-card/70 transition-colors"
+                  style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
                 >
                   {tmdbData.collection.posterPath && (
-                    <div className="relative w-12 h-[72px] rounded-lg overflow-hidden shrink-0">
+                    <div
+                      className="relative w-12 h-[72px] overflow-hidden shrink-0"
+                      style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                    >
                       <Image
                         src={toCachedImageSrc(tmdbData.collection.posterPath, 'tmdb') || tmdbData.collection.posterPath}
                         alt=""
@@ -785,8 +881,12 @@ export default function MovieDetailPage() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Part of</p>
-                    <p className="text-sm font-medium line-clamp-1">{tmdbData.collection.name}</p>
+                    <p className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.22em' }}>
+                      Part of saga
+                    </p>
+                    <p className="font-display text-[15px] line-clamp-1 mt-0.5 group-hover:text-[color:var(--amber)] transition-colors">
+                      {tmdbData.collection.name}
+                    </p>
                   </div>
                 </Link>
               </div>

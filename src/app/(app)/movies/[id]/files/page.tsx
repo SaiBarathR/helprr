@@ -5,7 +5,6 @@ import { useParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ExternalLink } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Drawer,
@@ -96,11 +95,21 @@ type DrawerRow = {
 
 function DetailRows({ rows }: { rows: DrawerRow[] }) {
   return (
-    <div className="rounded-lg border overflow-hidden divide-y">
+    <div
+      className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
       {rows.map((row) => (
-        <div key={`${row.label}-${row.value}`} className="flex justify-between items-start px-4 py-2.5">
-          <span className="text-xs text-muted-foreground uppercase tracking-wide">{row.label}</span>
-          <span className={`text-sm text-right ml-4 ${row.breakValue ? 'break-all' : ''}`}>{row.value}</span>
+        <div
+          key={`${row.label}-${row.value}`}
+          className="flex justify-between items-baseline gap-3 px-3.5 py-2.5 border-b border-[color:var(--hairline)] last:border-b-0"
+        >
+          <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>
+            {row.label}
+          </span>
+          <span className={`text-[12.5px] font-mono tabular text-right ${row.breakValue ? 'break-all' : 'truncate max-w-[60%]'}`}>
+            {row.value}
+          </span>
         </div>
       ))}
     </div>
@@ -242,56 +251,99 @@ export default function MovieFilesPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={movie.title} />
+      <PageHeader title={movie.title} subtitle="Files & History" />
 
-      <div className="space-y-6 pb-8">
-        <section className="space-y-2">
-          <h2 className="text-3xl font-bold leading-tight">Files</h2>
+      <div className="space-y-7 pb-8">
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              File \u00b7 On Disk
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
           {movie.hasFile && movieFile ? (
             <button
               onClick={() => setFileDrawerOpen(true)}
-              className="w-full rounded-2xl border bg-card p-4 text-left active:bg-muted/50 transition-colors"
+              className="press-feedback w-full p-4 text-left bg-card/40 border border-[color:var(--hairline)] hover:border-[color:var(--amber-soft)] hover:bg-card/70 transition-colors"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
             >
-              <p className="text-xl font-semibold break-words leading-tight">{movieFile.relativePath}</p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {[qualityName, fileLanguages, formatBytes(movieFile.size)].filter(Boolean).join(' \u00b7 ')}
+              <p className="font-display text-[18px] sm:text-[20px] break-words leading-tight" style={{ letterSpacing: '-0.018em' }}>
+                {movieFile.relativePath}
               </p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
+                <span className="tracked-caps text-[9px] text-[color:var(--amber)] px-1.5 py-0.5 bg-[color:var(--amber-soft)]" style={{ borderRadius: '3px', letterSpacing: '0.22em' }}>
+                  {qualityName}
+                </span>
+                {fileLanguages && (
+                  <span className="font-mono tabular text-[11px] text-muted-foreground/80">{fileLanguages}</span>
+                )}
+                <span className="font-mono tabular text-[11px] text-[color:var(--amber)]/85">{formatBytes(movieFile.size)}</span>
+              </div>
             </button>
           ) : (
-            <div className="rounded-2xl border px-4 py-6 text-sm text-muted-foreground text-center">
-              No file on disk
+            <div
+              className="px-4 py-8 text-center bg-card/40 border border-[color:var(--hairline)]"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+            >
+              <p className="tracked-caps text-[10px] text-muted-foreground">No file</p>
+              <p className="font-display text-[16px] mt-1">Reel not yet pressed.</p>
             </div>
           )}
         </section>
 
-        <section className="space-y-2">
-          <h2 className="text-3xl font-bold leading-tight">History</h2>
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              Booth Log \u00b7 History
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
           {historyLoading ? (
             <PageSpinner />
           ) : history.length === 0 ? (
-            <div className="rounded-2xl border px-4 py-6 text-center text-sm text-muted-foreground">
-              No history available
+            <div
+              className="px-4 py-8 text-center bg-card/40 border border-[color:var(--hairline)]"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+            >
+              <p className="tracked-caps text-[10px] text-muted-foreground">No history</p>
+              <p className="font-display text-[16px] mt-1">Booth log empty.</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div
+              className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+            >
               {history.map((item, index) => (
                 <button
                   key={`${item.id}-${item.date}-${index}`}
                   onClick={() => setSelectedHistoryItem(item)}
-                  className="w-full rounded-2xl border bg-card px-4 py-3 text-left active:bg-muted/50 transition-colors"
+                  className="group w-full px-3.5 py-3 border-b border-[color:var(--hairline)] last:border-b-0 text-left hover:bg-[color:var(--amber-soft)]/40 transition-colors"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <Badge variant={eventTypeBadgeVariant(item.eventType)} className="text-[10px]">
+                    <span
+                      className="tracked-caps text-[8.5px] px-1.5 py-0.5 border"
+                      style={{
+                        borderRadius: '3px',
+                        letterSpacing: '0.22em',
+                        ...(eventTypeBadgeVariant(item.eventType) === 'destructive'
+                          ? { background: 'oklch(0.66 0.20 25 / 0.16)', borderColor: 'oklch(0.66 0.20 25 / 0.4)', color: 'oklch(0.78 0.18 25)' }
+                          : eventTypeBadgeVariant(item.eventType) === 'default'
+                            ? { background: 'oklch(0.78 0.13 162 / 0.16)', borderColor: 'oklch(0.78 0.13 162 / 0.4)', color: 'oklch(0.78 0.13 162)' }
+                            : { background: 'var(--amber-soft)', borderColor: 'var(--amber-soft)', color: 'var(--amber)' }),
+                      }}
+                    >
                       {eventTypeLabel(item.eventType)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
+                    </span>
+                    <span className="font-mono tabular text-[10px] text-muted-foreground/80">
                       {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
                     </span>
                   </div>
-                  <p className="text-sm mt-2 break-all leading-tight">
+                  <p className="font-mono tabular text-[12px] mt-2 break-all leading-tight text-foreground/90">
                     {item.sourceTitle}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-[11px] text-muted-foreground mt-1">
                     {[
                       item.quality?.quality?.name,
                       item.data?.languages,
@@ -312,38 +364,41 @@ export default function MovieFilesPage() {
               {movieFile?.relativePath || movie.title}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-4 space-y-4 overflow-y-auto max-h-[60vh]">
+          <div className="px-4 pb-4 space-y-5 overflow-y-auto max-h-[60vh]">
             {informationRows.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Information</h3>
+                <p className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>Information</p>
                 <DetailRows rows={informationRows} />
               </div>
             )}
 
             {videoRows.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Video</h3>
+                <p className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>Video</p>
                 <DetailRows rows={videoRows} />
               </div>
             )}
 
             {audioRows.length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Audio</h3>
+                <p className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>Audio</p>
                 <DetailRows rows={audioRows} />
               </div>
             )}
 
             {!movieFile && (
-              <div className="rounded-lg border px-4 py-6 text-center text-sm text-muted-foreground">
-                No file information available
+              <div
+                className="px-4 py-6 text-center bg-card/40 border border-[color:var(--hairline)]"
+                style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+              >
+                <p className="tracked-caps text-[10px] text-muted-foreground">No file</p>
               </div>
             )}
 
             <div className="pt-1">
               <DrawerClose asChild>
                 <Button variant="ghost" className="w-full">
-                  Close
+                  <span className="tracked-caps text-[10px]">Close</span>
                 </Button>
               </DrawerClose>
             </div>

@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import {
@@ -249,60 +248,65 @@ function ManualImportContent() {
 
     return (
       <div className="flex flex-col h-[100dvh] bg-background">
-        {/* Header */}
         <PageHeader
           title="Select Episode"
           subtitle={currentFile?.name || currentFile?.relativePath || 'File'}
           onBack={() => { setView('files'); setEpisodeSearch(''); }}
           rightContent={
             isSonarr && seriesId ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
+              <button
+                className="press-feedback h-9 w-9 inline-flex items-center justify-center hover:text-[color:var(--amber)] transition-colors"
                 onClick={handleRefreshEpisodes}
                 disabled={refreshingEpisodes}
+                aria-label="Refresh episodes"
               >
                 {refreshingEpisodes ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin text-[color:var(--amber)]" />
                 ) : (
                   <RefreshCw className="h-4 w-4" />
                 )}
-              </Button>
+              </button>
             ) : undefined
           }
         />
 
-        {/* Search bar */}
-        <div className="py-2 border-b border-border">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <div className="py-2.5 border-b border-[color:var(--hairline)]">
+          <div className="relative group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70 group-focus-within:text-[color:var(--amber)] transition-colors pointer-events-none" />
             <input
               type="text"
-              placeholder="Search episodes..."
+              placeholder="Search episodes…"
               value={episodeSearch}
               onChange={(e) => setEpisodeSearch(e.target.value)}
-              className="w-full text-sm bg-muted/40 rounded-lg pl-9 pr-3 py-2.5 outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/40 transition-shadow"
+              className="w-full text-[14px] bg-card/40 border border-[color:var(--hairline)] pl-10 pr-3 py-2.5 outline-none placeholder:text-muted-foreground/70 focus:border-[color:var(--amber)]/50 focus:ring-2 focus:ring-[color:var(--amber)]/20 transition-all"
+              style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
               autoFocus
             />
           </div>
         </div>
 
-        {/* Episode list */}
         <div className="flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
           {filteredSeasons.length === 0 ? (
-            <p className="text-center py-12 text-sm text-muted-foreground">No episodes match</p>
+            <div className="px-4 py-16 text-center">
+              <p className="tracked-caps text-[10px] text-muted-foreground">No matches</p>
+              <p className="font-display text-[16px] mt-1">Empty reel.</p>
+            </div>
           ) : (
             filteredSeasons.map(([season, episodes]) => (
               <div key={season}>
-                {/* Season header */}
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border/50">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                <div className="sticky top-0 z-10 bg-background/85 backdrop-blur-xl py-2 border-b border-[color:var(--hairline)] flex items-center gap-2">
+                  <span
+                    className="font-mono tabular tracked-mid text-[10px] text-[color:var(--amber)]"
+                    style={{ letterSpacing: '0.2em' }}
+                  >
+                    S{String(season).padStart(2, '0')}
+                  </span>
+                  <span className="font-display text-[13px]" style={{ letterSpacing: '-0.01em' }}>
                     {season === 0 ? 'Specials' : `Season ${season}`}
                   </span>
+                  <span className="hairline flex-1" aria-hidden />
                 </div>
 
-                {/* Episodes */}
                 {episodes.map((ep) => {
                   const isSelected = ep.id === selectedEpId;
                   const isTBA = !ep.title || ep.title === 'TBA';
@@ -310,28 +314,25 @@ function ManualImportContent() {
                     <button
                       key={ep.id}
                       onClick={() => selectEpisode(ep)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors active:bg-muted/60 ${
-                        isSelected ? 'bg-primary/8' : 'hover:bg-muted/40'
+                      className={`group w-full flex items-center gap-3 px-1 py-3 text-left border-b border-[color:var(--hairline)] transition-colors ${
+                        isSelected ? 'bg-[color:var(--amber-soft)]/40' : 'hover:bg-[color:var(--amber-soft)]/30'
                       }`}
                     >
-                      {/* Episode number */}
-                      <span className="text-xs text-muted-foreground tabular-nums w-8 shrink-0 font-medium">
+                      <span className="font-mono tabular tracked-mid text-[10px] text-[color:var(--amber)]/85 w-10 shrink-0 text-center" style={{ letterSpacing: '0.18em' }}>
                         E{String(ep.episodeNumber).padStart(2, '0')}
                       </span>
 
-                      {/* Title + airdate */}
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm truncate ${isTBA ? 'text-muted-foreground italic' : ''}`}>
+                        <p className={`font-display text-[13.5px] truncate ${isTBA ? 'text-muted-foreground italic' : ''}`} style={{ letterSpacing: '-0.012em' }}>
                           {ep.title || 'TBA'}
                         </p>
                         {ep.airDate && (
-                          <p className="text-[11px] text-muted-foreground mt-0.5">{ep.airDate}</p>
+                          <p className="font-mono tabular text-[10px] text-muted-foreground/85 mt-0.5">{ep.airDate}</p>
                         )}
                       </div>
 
-                      {/* Selection indicator */}
                       {isSelected && (
-                        <Check className="h-4 w-4 text-primary shrink-0" />
+                        <Check className="h-4 w-4 text-[color:var(--amber)] shrink-0" strokeWidth={3} />
                       )}
                     </button>
                   );
@@ -358,121 +359,136 @@ function ManualImportContent() {
         {loading ? (
           <PageSpinner />
         ) : files.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <p className="text-sm">No files detected</p>
+          <div
+            className="mt-6 border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
+            <p className="tracked-caps text-[10px] text-muted-foreground">No files detected</p>
+            <p className="font-display text-[16px]">Reel not yet pressed.</p>
           </div>
         ) : (
           <div className="py-3 space-y-3">
-            {/* Refresh episodes button (Sonarr only) */}
             {isSonarr && seriesId && (
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full"
+                className="w-full h-9"
                 onClick={handleRefreshEpisodes}
                 disabled={refreshingEpisodes}
               >
                 {refreshingEpisodes ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  <RefreshCw className="h-3.5 w-3.5" />
                 )}
-                Refresh Episodes
+                <span className="tracked-caps text-[9.5px]">Refresh Episodes</span>
               </Button>
             )}
 
-            {/* File cards */}
-            {files.map((f, i) => {
-              const override = fileOverrides.get(i);
-              const currentEpisodes = override || f.episodes || [];
-              const hasEpisode = currentEpisodes.length > 0;
+            <div className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden" style={{ borderRadius: 'calc(var(--radius) - 1px)' }}>
+              {files.map((f, i) => {
+                const override = fileOverrides.get(i);
+                const currentEpisodes = override || f.episodes || [];
+                const hasEpisode = currentEpisodes.length > 0;
 
-              return (
-                <div key={i} className="rounded-xl bg-muted/30 border border-border/40 overflow-hidden">
-                  {/* File info */}
-                  <div className="p-3.5 space-y-2">
-                    {/* Filename */}
-                    <p className="text-sm font-medium leading-snug break-words">
-                      {f.name || f.relativePath}
-                    </p>
+                return (
+                  <div key={i} className="border-b border-[color:var(--hairline)] last:border-b-0">
+                    <div className="px-3.5 py-3 space-y-2">
+                      <p className="font-mono tabular text-[12px] leading-snug break-words text-foreground/95">
+                        {f.name || f.relativePath}
+                      </p>
 
-                    {/* Metadata badges */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {f.quality?.quality?.name && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {f.quality.quality.name}
-                        </Badge>
-                      )}
-                      {f.series && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {f.series.title}
-                        </Badge>
-                      )}
-                      {f.movie && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {f.movie.title}
-                        </Badge>
-                      )}
-                      {f.languages && f.languages.length > 0 && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {f.languages.map((l) => l.name).join(', ')}
-                        </Badge>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {f.quality?.quality?.name && (
+                          <span
+                            className="tracked-caps text-[8.5px] px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)]"
+                            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                          >
+                            {f.quality.quality.name}
+                          </span>
+                        )}
+                        {f.series && (
+                          <span
+                            className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                          >
+                            {f.series.title}
+                          </span>
+                        )}
+                        {f.movie && (
+                          <span
+                            className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                          >
+                            {f.movie.title}
+                          </span>
+                        )}
+                        {f.languages && f.languages.length > 0 && (
+                          <span
+                            className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground"
+                            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                          >
+                            {f.languages.map((l) => l.name).join(' · ')}
+                          </span>
+                        )}
+                      </div>
+
+                      {f.rejections?.length > 0 && (
+                        <div className="text-[11.5px] text-destructive space-y-0.5">
+                          {f.rejections.map((r, ri) => <p key={ri}>· {r.reason}</p>)}
+                        </div>
                       )}
                     </div>
 
-                    {/* Rejections */}
-                    {f.rejections?.length > 0 && (
-                      <div className="text-xs text-destructive space-y-0.5">
-                        {f.rejections.map((r, ri) => <p key={ri}>{r.reason}</p>)}
-                      </div>
+                    {isSonarr && (
+                      <button
+                        onClick={() => openEpisodePicker(i)}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 bg-[color:var(--amber-soft)]/20 border-t border-[color:var(--hairline)] transition-colors hover:bg-[color:var(--amber-soft)]/40"
+                      >
+                        <div className="flex-1 min-w-0 text-left">
+                          {hasEpisode ? (
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="tracked-caps text-[8.5px] px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)] shrink-0"
+                                style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+                              >
+                                S{String(currentEpisodes[0].seasonNumber).padStart(2, '0')}E
+                                {currentEpisodes.map((e) => String(e.episodeNumber).padStart(2, '0')).join(', E')}
+                              </span>
+                              <span className="font-display text-[12.5px] text-muted-foreground truncate" style={{ letterSpacing: '-0.01em' }}>
+                                {currentEpisodes[0].title || 'TBA'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="tracked-caps text-[9.5px] text-destructive">No episode assigned</span>
+                          )}
+                        </div>
+                        <span className="tracked-caps text-[9.5px] text-[color:var(--amber)] shrink-0">Change</span>
+                        <ChevronRight className="h-3.5 w-3.5 text-[color:var(--amber)] shrink-0" />
+                      </button>
                     )}
                   </div>
-
-                  {/* Episode assignment row (Sonarr only) */}
-                  {isSonarr && (
-                    <button
-                      onClick={() => openEpisodePicker(i)}
-                      className="w-full flex items-center gap-2 px-3.5 py-2.5 bg-muted/20 border-t border-border/30 transition-colors active:bg-muted/40"
-                    >
-                      <div className="flex-1 min-w-0 text-left">
-                        {hasEpisode ? (
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-[10px] shrink-0">
-                              S{String(currentEpisodes[0].seasonNumber).padStart(2, '0')}E
-                              {currentEpisodes.map((e) => String(e.episodeNumber).padStart(2, '0')).join(', E')}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground truncate">
-                              {currentEpisodes[0].title || 'TBA'}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-destructive font-medium">No episode assigned</span>
-                        )}
-                      </div>
-                      <span className="text-xs text-primary font-medium shrink-0">Change</span>
-                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Bottom action bar */}
       {!loading && files.length > 0 && (
         <div
-          className="fixed md:sticky left-0 right-0 bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 md:z-30 border-t border-border bg-background/95 backdrop-blur-sm px-4 py-3"
+          className="fixed md:sticky left-0 right-0 bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 md:z-30 border-t border-[color:var(--hairline)] bg-background/85 backdrop-blur-xl px-4 py-3"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
         >
           <Button
             onClick={submitImport}
             disabled={submitting}
-            className="w-full h-11"
+            className="w-full h-11 cta-sheen projector-glow"
           >
-            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Import {files.length === 1 ? 'File' : `${files.length} Files`}
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span className="tracked-caps text-[10px]">
+              Import {files.length === 1 ? 'File' : `${files.length} Files`}
+            </span>
           </Button>
         </div>
       )}

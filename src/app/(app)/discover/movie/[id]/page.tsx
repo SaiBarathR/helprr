@@ -99,7 +99,7 @@ export default function DiscoverMovieDetailPage() {
     <>
       <PageHeader title={movie.title} />
 
-      <div className="space-y-5 animate-content-in">
+      <div className="space-y-6 animate-content-in">
         <DiscoverHero
           title={movie.title}
           backdropPath={movie.backdropPath}
@@ -118,11 +118,17 @@ export default function DiscoverMovieDetailPage() {
 
         {/* Overview */}
         {movie.overview && (
-          <div>
-            <h2 className="text-base font-semibold mb-1">Overview</h2>
-            <div className="relative">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Synopsis
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
+            <div className="relative pl-1">
               <p
-                className={`text-sm text-muted-foreground leading-relaxed ${
+                className={`text-[14px] text-foreground/85 leading-relaxed ${
                   !overviewExpanded ? 'line-clamp-3' : ''
                 }`}
               >
@@ -131,9 +137,9 @@ export default function DiscoverMovieDetailPage() {
               {movie.overview.length > 180 && (
                 <button
                   onClick={() => setOverviewExpanded(!overviewExpanded)}
-                  className="text-sm text-primary font-medium mt-1"
+                  className="press-feedback tracked-caps text-[9.5px] text-[color:var(--amber)] mt-2 hover:underline"
                 >
-                  {overviewExpanded ? 'less' : 'more...'}
+                  {overviewExpanded ? '— Show less' : '— Read more'}
                 </button>
               )}
             </div>
@@ -186,14 +192,24 @@ export default function DiscoverMovieDetailPage() {
 
         {/* Collection */}
         {movie.collection && (
-          <div>
-            <h2 className="text-base font-semibold mb-2">Collection</h2>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Collection · Saga
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
             <Link
               href={`/discover/collection/${movie.collection.id}`}
-              className="flex gap-3 rounded-xl border border-border/50 bg-accent/30 p-3 items-center"
+              className="group press-feedback flex gap-3 p-3 items-center bg-card/40 border border-[color:var(--hairline)] hover:border-[color:var(--amber-soft)] hover:bg-card/70 transition-colors"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
             >
               {movie.collection.posterPath && (
-                <div className="relative w-[60px] h-[90px] rounded-lg overflow-hidden bg-muted shrink-0">
+                <div
+                  className="relative w-[60px] h-[90px] overflow-hidden bg-muted shrink-0"
+                  style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                >
                   <Image
                     src={toCachedImageSrc(movie.collection.posterPath, 'tmdb') || movie.collection.posterPath}
                     alt={movie.collection.name}
@@ -207,8 +223,9 @@ export default function DiscoverMovieDetailPage() {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold line-clamp-2">{movie.collection.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">View all movies in this collection</p>
+                <p className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.22em' }}>Part of saga</p>
+                <p className="font-display text-[15px] line-clamp-2 mt-0.5 group-hover:text-[color:var(--amber)] transition-colors">{movie.collection.name}</p>
+                <p className="text-[11px] text-muted-foreground/75 mt-0.5">View all titles in this collection</p>
               </div>
             </Link>
           </div>
@@ -216,15 +233,26 @@ export default function DiscoverMovieDetailPage() {
 
         {/* Production Companies */}
         {movie.productionCompanies.length > 0 && (
-          <div>
-            <h2 className="text-base font-semibold mb-2">Production Companies</h2>
-            <div className="flex gap-3 flex-wrap">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Production
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
+            <div className="flex gap-2 flex-wrap">
               {movie.productionCompanies.map((company) => {
                 const logoSrc = company.logoPath
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${company.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={company.id} href={`/discover?companies=${company.id}&contentType=movie`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link
+                    key={company.id}
+                    href={`/discover?companies=${company.id}&contentType=movie`}
+                    className="press-feedback inline-flex items-center gap-2 px-2.5 py-1.5 border border-[color:var(--hairline)] bg-card/40 hover:border-[color:var(--amber-soft)] hover:bg-card/70 transition-colors"
+                    style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                  >
                     {logoSrc && (
                       <div className="relative h-5 w-8">
                         <Image
@@ -237,7 +265,7 @@ export default function DiscoverMovieDetailPage() {
                         />
                       </div>
                     )}
-                    <span className="text-xs font-medium">{company.name}</span>
+                    <span className="text-[11.5px] font-medium">{company.name}</span>
                   </Link>
                 );
               })}

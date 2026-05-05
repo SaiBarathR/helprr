@@ -129,7 +129,7 @@ export default function DiscoverTvDetailPage() {
     <>
       <PageHeader title={show.title} />
 
-      <div className="space-y-5 animate-content-in">
+      <div className="space-y-6 animate-content-in">
         <DiscoverHero
           title={show.title}
           backdropPath={show.backdropPath}
@@ -148,11 +148,17 @@ export default function DiscoverTvDetailPage() {
 
         {/* Overview */}
         {show.overview && (
-          <div>
-            <h2 className="text-base font-semibold mb-1">Overview</h2>
-            <div className="relative">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Synopsis
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
+            <div className="relative pl-1">
               <p
-                className={`text-sm text-muted-foreground leading-relaxed ${
+                className={`text-[14px] text-foreground/85 leading-relaxed ${
                   !overviewExpanded ? 'line-clamp-3' : ''
                 }`}
               >
@@ -161,9 +167,9 @@ export default function DiscoverTvDetailPage() {
               {show.overview.length > 180 && (
                 <button
                   onClick={() => setOverviewExpanded(!overviewExpanded)}
-                  className="text-sm text-primary font-medium mt-1"
+                  className="press-feedback tracked-caps text-[9.5px] text-[color:var(--amber)] mt-2 hover:underline"
                 >
-                  {overviewExpanded ? 'less' : 'more...'}
+                  {overviewExpanded ? '— Show less' : '— Read more'}
                 </button>
               )}
             </div>
@@ -172,32 +178,43 @@ export default function DiscoverTvDetailPage() {
 
         {/* Created By */}
         {show.createdBy.length > 0 && (
-          <div>
-            <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Created by </span>
-              {show.createdBy.map((c, i) => (
-                <span key={c.id}>
-                  {i > 0 && ', '}
-                  <Link href={`/discover/person/${c.id}`} className="text-primary font-medium">
-                    {c.name}
-                  </Link>
-                </span>
-              ))}
-            </p>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>
+              Created by
+            </span>
+            {show.createdBy.map((c, i) => (
+              <span key={c.id} className="text-[13px]">
+                {i > 0 && <span className="text-muted-foreground/40 mx-1">·</span>}
+                <Link href={`/discover/person/${c.id}`} className="font-display text-[color:var(--amber)] hover:underline" style={{ letterSpacing: '-0.01em' }}>
+                  {c.name}
+                </Link>
+              </span>
+            ))}
           </div>
         )}
 
         {/* Networks */}
         {show.networks.length > 0 && (
-          <div>
-            <h2 className="text-base font-semibold mb-2">Networks</h2>
-            <div className="flex gap-3 flex-wrap">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Networks
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
+            <div className="flex gap-2 flex-wrap">
               {show.networks.map((network) => {
                 const logoSrc = network.logoPath
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${network.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={network.id} href={`/discover?networks=${network.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link
+                    key={network.id}
+                    href={`/discover?networks=${network.id}&contentType=show`}
+                    className="press-feedback inline-flex items-center gap-2 px-2.5 py-1.5 border border-[color:var(--hairline)] bg-card/40 hover:border-[color:var(--amber-soft)] hover:bg-card/70 transition-colors"
+                    style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                  >
                     {logoSrc && (
                       <div className="relative h-5 w-8">
                         <Image
@@ -210,7 +227,7 @@ export default function DiscoverTvDetailPage() {
                         />
                       </div>
                     )}
-                    <span className="text-xs font-medium">{network.name}</span>
+                    <span className="text-[11.5px] font-medium">{network.name}</span>
                   </Link>
                 );
               })}
@@ -220,15 +237,26 @@ export default function DiscoverTvDetailPage() {
 
         {/* Production Companies */}
         {show.productionCompanies.length > 0 && (
-          <div>
-            <h2 className="text-base font-semibold mb-2">Production Companies</h2>
-            <div className="flex gap-3 flex-wrap">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Production
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
+            <div className="flex gap-2 flex-wrap">
               {show.productionCompanies.map((company) => {
                 const logoSrc = company.logoPath
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${company.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={company.id} href={`/discover?companies=${company.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link
+                    key={company.id}
+                    href={`/discover?companies=${company.id}&contentType=show`}
+                    className="press-feedback inline-flex items-center gap-2 px-2.5 py-1.5 border border-[color:var(--hairline)] bg-card/40 hover:border-[color:var(--amber-soft)] hover:bg-card/70 transition-colors"
+                    style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                  >
                     {logoSrc && (
                       <div className="relative h-5 w-8">
                         <Image
@@ -241,7 +269,7 @@ export default function DiscoverTvDetailPage() {
                         />
                       </div>
                     )}
-                    <span className="text-xs font-medium">{company.name}</span>
+                    <span className="text-[11.5px] font-medium">{company.name}</span>
                   </Link>
                 );
               })}
@@ -283,8 +311,14 @@ export default function DiscoverTvDetailPage() {
 
         {/* Seasons */}
         {show.seasons.length > 0 && (
-          <div>
-            <h2 className="text-base font-semibold mb-2">Seasons</h2>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Seasons · {show.seasons.length}
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
             <div className="space-y-2">
               {show.seasons.map((season) => (
                 <SeasonCard
@@ -347,47 +381,62 @@ function SeasonCard({
     : null;
 
   return (
-    <div className="rounded-xl border border-border/50 overflow-hidden">
+    <div
+      className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden transition-colors hover:border-[color:var(--amber-soft)]"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-3 p-3 text-left"
+        className="press-feedback w-full flex items-center gap-3 p-3 text-left"
       >
-        {posterSrc && (
-          <div className="relative w-[45px] h-[67px] rounded-md overflow-hidden bg-muted shrink-0">
+        {posterSrc ? (
+          <div
+            className="relative w-[48px] h-[72px] overflow-hidden bg-muted/40 shrink-0"
+            style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+          >
             <Image
               src={posterSrc}
               alt={season.name}
               fill
-              sizes="45px"
+              sizes="48px"
               className="object-cover"
               unoptimized={isProtectedApiImageSrc(posterSrc)}
             />
           </div>
+        ) : (
+          <div
+            className="w-[48px] h-[72px] bg-muted/30 shrink-0 flex items-center justify-center"
+            style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+          >
+            <span className="font-mono tabular tracked-mid text-[11px] text-[color:var(--amber)]" style={{ letterSpacing: '0.18em' }}>
+              S{String(season.seasonNumber).padStart(2, '0')}
+            </span>
+          </div>
         )}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold line-clamp-1">{season.name}</p>
-          <p className="text-xs text-muted-foreground">
+          <p className="font-display text-[14.5px] line-clamp-1" style={{ letterSpacing: '-0.012em' }}>{season.name}</p>
+          <p className="font-mono tabular text-[10.5px] text-muted-foreground/85 mt-0.5">
             {season.episodeCount} episodes
             {season.airDate ? ` · ${season.airDate.slice(0, 4)}` : ''}
           </p>
           {season.voteAverage > 0 && (
-            <div className="flex items-center gap-0.5 mt-0.5">
-              <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
-              <span className="text-[10px] text-muted-foreground">{season.voteAverage.toFixed(1)}</span>
+            <div className="flex items-center gap-0.5 mt-1">
+              <Star className="h-2.5 w-2.5 fill-[color:var(--amber)] text-[color:var(--amber)]" />
+              <span className="font-mono tabular text-[10px] text-[color:var(--amber)]">{season.voteAverage.toFixed(1)}</span>
             </div>
           )}
         </div>
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+          <Loader2 className="h-4 w-4 animate-spin text-[color:var(--amber)] shrink-0" />
         ) : expanded ? (
-          <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+          <ChevronUp className="h-4 w-4 text-[color:var(--amber)] shrink-0" />
         ) : (
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         )}
       </button>
 
       {expanded && seasonDetail && (
-        <div className="border-t border-border/40">
+        <div className="border-t border-[color:var(--hairline)]">
           {seasonDetail.episodes.map((ep) => {
             const stillSrc = ep.stillPath
               ? toCachedImageSrc(ep.stillPath, 'tmdb') || ep.stillPath
@@ -395,48 +444,55 @@ function SeasonCard({
             return (
               <div
                 key={ep.id}
-                className="flex gap-3 p-3 border-b border-border/30 last:border-b-0"
+                className="flex gap-3 p-3 border-b border-[color:var(--hairline)] last:border-b-0"
               >
                 {stillSrc ? (
-                  <div className="relative w-[90px] h-[50px] rounded-md overflow-hidden bg-muted shrink-0">
+                  <div
+                    className="relative w-[100px] h-[56px] overflow-hidden bg-muted shrink-0"
+                    style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                  >
                     <Image
                       src={stillSrc}
                       alt={ep.name}
                       fill
-                      sizes="90px"
+                      sizes="100px"
                       className="object-cover"
                       unoptimized={isProtectedApiImageSrc(stillSrc)}
                     />
                   </div>
                 ) : (
-                  <div className="w-[90px] h-[50px] rounded-md bg-muted shrink-0 flex items-center justify-center text-xs text-muted-foreground">
-                    E{ep.episodeNumber}
+                  <div
+                    className="w-[100px] h-[56px] bg-muted/30 shrink-0 flex items-center justify-center font-mono tabular text-[11px] text-muted-foreground"
+                    style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                  >
+                    E{String(ep.episodeNumber).padStart(2, '0')}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold line-clamp-1">
-                    {ep.episodeNumber}. {ep.name}
+                  <p className="font-display text-[12.5px] line-clamp-1" style={{ letterSpacing: '-0.01em' }}>
+                    <span className="text-[color:var(--amber)] font-mono tabular text-[10px] mr-1.5">E{String(ep.episodeNumber).padStart(2, '0')}</span>
+                    {ep.name}
                   </p>
-                  <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
+                  <div className="flex items-center gap-1.5 mt-1 font-mono tabular text-[10px] text-muted-foreground/80">
                     {ep.airDate && <span>{ep.airDate}</span>}
                     {ep.runtime != null && ep.runtime > 0 && (
                       <>
-                        <span>·</span>
+                        <span className="text-muted-foreground/40">·</span>
                         <span>{ep.runtime}m</span>
                       </>
                     )}
                     {ep.voteAverage > 0 && (
                       <>
-                        <span>·</span>
-                        <span className="inline-flex items-center gap-0.5">
-                          <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
+                        <span className="text-muted-foreground/40">·</span>
+                        <span className="inline-flex items-center gap-0.5 text-[color:var(--amber)]">
+                          <Star className="h-2 w-2 fill-[color:var(--amber)]" />
                           {ep.voteAverage.toFixed(1)}
                         </span>
                       </>
                     )}
                   </div>
                   {ep.overview && (
-                    <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2 leading-tight">
+                    <p className="text-[10.5px] text-muted-foreground/85 mt-1 line-clamp-2 leading-snug">
                       {ep.overview}
                     </p>
                   )}
@@ -449,7 +505,7 @@ function SeasonCard({
 
       {expanded && loading && !seasonDetail && (
         <div className="p-4 flex justify-center">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Loader2 className="h-5 w-5 animate-spin text-[color:var(--amber)]" />
         </div>
       )}
     </div>

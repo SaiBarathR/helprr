@@ -27,7 +27,7 @@ interface CreditsListPageProps {
   error?: string | null;
 }
 
-const ROW_HEIGHT = 72;
+const ROW_HEIGHT = 76;
 
 export function CreditsListPage({
   mediaTitle,
@@ -61,7 +61,7 @@ export function CreditsListPage({
   if (loading) {
     return (
       <div>
-        <PageHeader title={mediaTitle} />
+        <PageHeader title={mediaTitle} subtitle="Cast & Crew" />
         <PageSpinner />
       </div>
     );
@@ -69,39 +69,57 @@ export function CreditsListPage({
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={mediaTitle} />
+      <PageHeader title={mediaTitle} subtitle="Cast & Crew" />
 
-      <div className="py-2 flex items-center gap-2">
+      <div className="py-3 flex items-center gap-1">
         {(['cast', 'crew'] as const).map((t) => {
           const count = t === 'cast' ? cast.length : crew.length;
+          const active = tab === t;
           return (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize ${
-                tab === t
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-accent/50 text-muted-foreground'
+              className={`relative px-3 py-2 inline-flex items-center gap-1.5 transition-colors ${
+                active ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'
               }`}
             >
-              {t} ({count})
+              <span className="font-display text-[15px] capitalize" style={{ letterSpacing: '-0.01em' }}>
+                {t}
+              </span>
+              <span className="font-mono tabular text-[10px] text-muted-foreground/65">
+                · {count}
+              </span>
+              <span
+                aria-hidden
+                className={`absolute left-2 right-2 -bottom-px h-px transition-all ${
+                  active ? 'bg-[color:var(--amber)] opacity-100' : 'bg-foreground/20 opacity-0'
+                }`}
+              />
             </button>
           );
         })}
       </div>
+      <div className="hairline" aria-hidden />
 
       {error ? (
-        <div className="py-12 text-center text-sm text-destructive">
+        <div
+          className="mt-4 p-8 border border-[color:var(--hairline)] bg-card/40 text-center text-sm text-destructive"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
           {error}
         </div>
       ) : items.length === 0 ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">
-          No {tab} credits found
+        <div
+          className="mt-4 p-10 border border-[color:var(--hairline)] bg-card/40 text-center"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <p className="tracked-caps text-[10px] text-muted-foreground">No {tab} credits</p>
+          <p className="font-display text-[18px] mt-2">Empty roll.</p>
         </div>
       ) : (
         <div
           ref={handleListRef}
-          className="relative w-full"
+          className="relative w-full mt-2"
           style={{ height: virtualizer.getTotalSize() }}
         >
           {virtualizer.getVirtualItems().map((virtualItem) => {

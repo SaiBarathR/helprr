@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -36,6 +35,7 @@ import {
   X,
   User,
   Check,
+  ArrowUpRight,
 } from 'lucide-react';
 
 const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' }> = {
@@ -58,20 +58,16 @@ const SORT_OPTIONS = [
   { value: 'upcoming', label: 'Upcoming', icon: ChevronRight },
 ] as const;
 
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'All', code: 'M+TV', icon: Compass },
+  { value: 'movie', label: 'Movies', code: 'M', icon: Film },
+  { value: 'show', label: 'Shows', code: 'TV', icon: Tv },
+] as const;
+
 interface RateLimitInfo {
   message: string;
   retryAfterSeconds: number | null;
   retryAt: string | null;
-}
-
-function cardTypeIcon(type: 'movie' | 'tv') {
-  return (
-    <div className="flex items-center justify-center h-5 w-5 rounded-md bg-black/60">
-      {type === 'movie'
-        ? <Film className="h-3 w-3 text-blue-400" />
-        : <Tv className="h-3 w-3 text-violet-400" />}
-    </div>
-  );
 }
 
 function parsePositiveInt(value: string) {
@@ -158,6 +154,10 @@ function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
   return count;
 }
 
+function reelNumber(index: number) {
+  return String(index + 1).padStart(2, '0');
+}
+
 function MediaPoster({
   item,
   onClick,
@@ -174,38 +174,78 @@ function MediaPoster({
   return (
     <button
       onClick={() => onClick(item)}
-      className={isGrid
-        ? 'group relative w-full min-w-0 text-left'
-        : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] text-left'}
+      className={`group relative block text-left press-feedback ${
+        isGrid
+          ? 'w-full min-w-0'
+          : 'min-w-[124px] w-[124px] sm:min-w-[148px] sm:w-[148px] lg:min-w-[172px] lg:w-[172px]'
+      }`}
     >
-      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
+      <div
+        className="relative aspect-[2/3] overflow-hidden bg-muted/40 transition-all duration-500 ease-out group-hover:shadow-[0_18px_38px_-18px_var(--amber-glow)]"
+        style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+      >
+        {/* Hairline frame */}
+        <div
+          aria-hidden
+          className="absolute inset-0 z-20 pointer-events-none transition-colors duration-300 group-hover:border-[color:var(--amber-soft)]"
+          style={{ borderRadius: 'inherit', border: '1px solid var(--hairline)' }}
+        />
+
         {posterSrc ? (
           <Image
             src={posterSrc}
             alt={item.title}
             fill
-            sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, 140px'}
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1024px) 22vw, (max-width: 1536px) 16vw, 180px' : '(max-width: 640px) 35vw, 172px'}
+            className="object-cover transition-transform duration-[700ms] ease-out group-hover:scale-[1.06]"
             unoptimized={isProtectedApiImageSrc(posterSrc)}
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/70">
             {item.mediaType === 'movie' ? <Film className="h-7 w-7" /> : <Tv className="h-7 w-7" />}
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-        <div className="absolute top-1.5 left-1.5">{cardTypeIcon(item.mediaType)}</div>
+
+        {/* Cinematic gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[color:var(--ink-deep)]/95 via-[color:var(--ink-deep)]/35 to-transparent" />
+
+        {/* Amber sheen on hover */}
+        <div className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-to-tr from-[color:var(--amber-soft)] via-transparent to-transparent" />
+
+        {/* Top-left: media type tracked-caps tag */}
+        <div className="absolute top-2 left-2 z-10">
+          <span
+            className="tracked-caps text-[8.5px] px-1.5 py-0.5 bg-black/60 text-white/90 backdrop-blur-sm border border-white/10"
+            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+          >
+            {item.mediaType === 'movie' ? 'Film' : 'Series'}
+          </span>
+        </div>
+
+        {/* Top-right: in-library badge */}
         {item.library?.exists && (
-          <div className="absolute top-1.5 right-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
-            <Check className="h-3 w-3 text-white" />
+          <div
+            className="absolute top-2 right-2 z-10 flex items-center justify-center h-5 w-5 backdrop-blur-sm"
+            style={{
+              borderRadius: '3px',
+              background: 'oklch(0.72 0.13 162 / 0.92)',
+              boxShadow: '0 0 0 1px oklch(0.72 0.13 162 / 0.6), 0 4px 10px -3px oklch(0.72 0.13 162 / 0.5)',
+            }}
+            title="In your library"
+          >
+            <Check className="h-3 w-3 text-[color:var(--ink-deep)]" strokeWidth={3} />
           </div>
         )}
-        <div className="absolute bottom-0 left-0 right-0 p-2">
-          <p className="text-xs text-white font-medium line-clamp-2 leading-tight">{item.title}</p>
-          <div className="mt-1 flex items-center justify-between text-[10px] text-white/80">
-            <span>{item.year ?? '----'}</span>
-            <span className="inline-flex items-center gap-1">
-              <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+
+        {/* Bottom: title + meta */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 p-2.5 space-y-1">
+          <p className="font-display text-[13px] sm:text-[14px] leading-tight text-white line-clamp-2" style={{ letterSpacing: '-0.015em' }}>
+            {item.title}
+          </p>
+          <div className="flex items-center justify-between text-[10px] text-white/75">
+            <span className="font-mono tabular tracked-mid text-[9px]">{item.year ?? '----'}</span>
+            <span className="inline-flex items-center gap-1 font-mono tabular">
+              <Star className="h-2.5 w-2.5 fill-[color:var(--amber)] text-[color:var(--amber)]" />
               {item.rating.toFixed(1)}
             </span>
           </div>
@@ -215,91 +255,231 @@ function MediaPoster({
   );
 }
 
+function ReelHeader({
+  index,
+  title,
+  eyebrow,
+  onSeeAll,
+}: {
+  index: number;
+  title: string;
+  eyebrow?: string;
+  onSeeAll?: () => void;
+}) {
+  return (
+    <div className="flex items-end justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="flex flex-col items-start gap-0.5 shrink-0">
+          <span className="tracked-caps text-[9px] text-[color:var(--amber)]/85" style={{ letterSpacing: '0.28em' }}>
+            Reel · {reelNumber(index)}
+          </span>
+          <span className="reel mt-1" aria-hidden />
+        </div>
+        <div className="hairline-v hidden sm:block self-stretch" aria-hidden />
+        <div className="min-w-0">
+          {eyebrow && (
+            <p className="tracked-caps text-[9.5px] text-muted-foreground/80 mb-0.5">
+              {eyebrow}
+            </p>
+          )}
+          <h2 className="font-display text-[20px] sm:text-[24px] lg:text-[28px] leading-[1.05] truncate">
+            {title}
+          </h2>
+        </div>
+      </div>
+      {onSeeAll && (
+        <button
+          onClick={onSeeAll}
+          className="press-feedback group/all shrink-0 flex items-center gap-1.5 tracked-caps text-[10px] text-muted-foreground hover:text-[color:var(--amber)] transition-colors"
+        >
+          <span className="hidden sm:inline">See all</span>
+          <span className="sm:hidden">All</span>
+          <ArrowUpRight className="h-3 w-3 transition-transform group-hover/all:translate-x-0.5 group-hover/all:-translate-y-0.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function GenreChip({
+  name,
+  type,
+  onClick,
+}: {
+  name: string;
+  type: 'movie' | 'tv';
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative shrink-0 min-w-[170px] sm:min-w-[195px] press-feedback text-left overflow-hidden bg-card/50 hover:bg-[color:var(--amber-soft)] backdrop-blur-sm border border-[color:var(--hairline)] hover:border-[color:var(--amber-soft)] transition-all duration-300"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <ArrowUpRight className="h-3 w-3 text-[color:var(--amber)]" />
+      </div>
+      <div className="px-3.5 py-3 sm:px-4 sm:py-3.5 space-y-1">
+        <span className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.26em' }}>
+          {type === 'movie' ? 'Genre · Film' : 'Genre · Series'}
+        </span>
+        <p className="font-display text-[15px] sm:text-[17px] leading-tight truncate group-hover:text-[color:var(--amber)] transition-colors">
+          {name}
+        </p>
+      </div>
+      {/* sprocket-hole strip */}
+      <div className="absolute left-0 top-0 bottom-0 w-1 bg-[color:var(--amber)]/0 group-hover:bg-[color:var(--amber)] transition-colors" />
+    </button>
+  );
+}
+
+function ProviderChip({
+  name,
+  logoSrc,
+  type,
+  onClick,
+}: {
+  name: string;
+  logoSrc: string | null;
+  type: 'movie' | 'tv';
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group shrink-0 min-w-[195px] press-feedback bg-card/50 hover:bg-card backdrop-blur-sm border border-[color:var(--hairline)] hover:border-[color:var(--amber-soft)] transition-all duration-300 px-3 py-2.5 flex items-center gap-3"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
+      <div
+        className="relative h-10 w-10 shrink-0 overflow-hidden bg-[color:var(--ink-deep)]"
+        style={{ borderRadius: '4px', border: '1px solid var(--hairline)' }}
+      >
+        {logoSrc ? (
+          <Image
+            src={logoSrc}
+            alt={name}
+            fill
+            sizes="40px"
+            className="object-contain p-1"
+            unoptimized={isProtectedApiImageSrc(logoSrc)}
+          />
+        ) : null}
+      </div>
+      <div className="min-w-0 flex-1 text-left">
+        <p className="tracked-caps text-[8.5px] text-muted-foreground/70" style={{ letterSpacing: '0.26em' }}>
+          Stream · {type === 'movie' ? 'Film' : 'Series'}
+        </p>
+        <p className="text-sm font-medium leading-tight truncate group-hover:text-[color:var(--amber)] transition-colors">
+          {name}
+        </p>
+      </div>
+      <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 group-hover:text-[color:var(--amber)] transition-colors" />
+    </button>
+  );
+}
+
 function SectionRow({
+  index,
   section,
   onOpenItem,
   onSeeAll,
   onPickGenre,
   onPickProvider,
 }: {
+  index: number;
   section: DiscoverSection;
   onOpenItem: (item: DiscoverItem) => void;
   onSeeAll: (section: DiscoverSection) => void;
   onPickGenre: (genreId: number, type: 'movie' | 'show') => void;
   onPickProvider: (providerId: number, type: 'movie' | 'show') => void;
 }) {
+  const eyebrow =
+    section.type === 'media'
+      ? section.mediaType === 'movie'
+        ? 'Film selection'
+        : section.mediaType === 'tv'
+          ? 'Series selection'
+          : 'Mixed programme'
+      : section.type === 'genre'
+        ? 'Browse by genre'
+        : 'Streaming services';
+
   return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between px-0.5">
-        <h2 className="text-base font-semibold">{section.title}</h2>
-        {section.type === 'media' && (
-          <button
-            onClick={() => onSeeAll(section)}
-            className="text-xs text-primary font-medium inline-flex items-center gap-1"
-          >
-            See all
-            <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
+    <section className="space-y-3 sm:space-y-4">
+      <ReelHeader
+        index={index}
+        title={section.title}
+        eyebrow={eyebrow}
+        onSeeAll={section.type === 'media' ? () => onSeeAll(section) : undefined}
+      />
+      <div className="hairline" aria-hidden />
 
       {section.type === 'media' && (
-        <div className="flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
-          {(section.items as DiscoverItem[]).map((item) => (
-            <div key={`${item.mediaType}-${item.tmdbId}`} className="snap-start">
-              <MediaPoster item={item} onClick={onOpenItem} />
-            </div>
-          ))}
+        <div className="-mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide">
+            {(section.items as DiscoverItem[]).map((item) => (
+              <div key={`${item.mediaType}-${item.tmdbId}`} className="snap-start">
+                <MediaPoster item={item} onClick={onOpenItem} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {section.type === 'genre' && (
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {(section.items as Array<{ id: number; name: string; type: 'movie' | 'tv' }>).map((genre) => (
-            <button
-              key={`${genre.type}-${genre.id}`}
-              onClick={() => onPickGenre(genre.id, genre.type === 'movie' ? 'movie' : 'show')}
-              className="px-4 py-3 rounded-xl border border-border/50 bg-accent/40 min-w-[150px] text-left"
-            >
-              <p className="text-sm font-semibold truncate">{genre.name}</p>
-            </button>
-          ))}
+        <div className="-mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
+            {(section.items as Array<{ id: number; name: string; type: 'movie' | 'tv' }>).map((genre) => (
+              <GenreChip
+                key={`${genre.type}-${genre.id}`}
+                name={genre.name}
+                type={genre.type}
+                onClick={() => onPickGenre(genre.id, genre.type === 'movie' ? 'movie' : 'show')}
+              />
+            ))}
+          </div>
         </div>
       )}
 
       {section.type === 'provider' && (
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          {(section.items as Array<{ id: number; name: string; logoPath: string | null; type: 'movie' | 'tv' }>).map((provider) => {
-            const providerLogoPath = provider.logoPath ? `https://image.tmdb.org/t/p/w185${provider.logoPath}` : null;
-            const providerLogoSrc = providerLogoPath
-              ? (toCachedImageSrc(providerLogoPath, 'tmdb') || providerLogoPath)
-              : null;
-
-            return (
-              <button
-                key={`${provider.type}-${provider.id}`}
-                onClick={() => onPickProvider(provider.id, provider.type === 'movie' ? 'movie' : 'show')}
-                className="min-w-[160px] rounded-xl border border-border/50 bg-accent/40 p-3 flex items-center gap-3"
-              >
-                <div className="relative h-8 w-8 rounded bg-background/70 overflow-hidden shrink-0">
-                  {providerLogoSrc ? (
-                    <Image
-                      src={providerLogoSrc}
-                      alt={provider.name}
-                      fill
-                      sizes="32px"
-                      className="object-contain"
-                      unoptimized={isProtectedApiImageSrc(providerLogoSrc)}
-                    />
-                  ) : null}
-                </div>
-                <p className="text-sm font-semibold text-left truncate">{provider.name}</p>
-              </button>
-            );
-          })}
+        <div className="-mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-hide">
+            {(section.items as Array<{ id: number; name: string; logoPath: string | null; type: 'movie' | 'tv' }>).map((provider) => {
+              const providerLogoPath = provider.logoPath ? `https://image.tmdb.org/t/p/w185${provider.logoPath}` : null;
+              const providerLogoSrc = providerLogoPath
+                ? (toCachedImageSrc(providerLogoPath, 'tmdb') || providerLogoPath)
+                : null;
+              return (
+                <ProviderChip
+                  key={`${provider.type}-${provider.id}`}
+                  name={provider.name}
+                  type={provider.type}
+                  logoSrc={providerLogoSrc}
+                  onClick={() => onPickProvider(provider.id, provider.type === 'movie' ? 'movie' : 'show')}
+                />
+              );
+            })}
+          </div>
         </div>
       )}
     </section>
+  );
+}
+
+function DiscoverMarquee({ year }: { year: number }) {
+  return (
+    <div className="relative -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
+      <div className="flex items-center gap-2 pt-1.5 pb-2">
+        <span className="marquee-dot" aria-hidden />
+        <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+          Now Showing · Live from TMDB
+        </span>
+        <div className="hairline flex-1" aria-hidden />
+        <span className="tracked-caps text-[9.5px] text-muted-foreground/60 font-mono tabular hidden sm:inline" style={{ letterSpacing: '0.22em' }}>
+          MMXXVI · {year}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -318,6 +498,7 @@ export default function DiscoverPage() {
 
   const [personFilter, setPersonFilter] = useState<{ id: number; name: string } | null>(null);
   const [query, setQuery] = useState('');
+  const [internalQuery, setInternalQuery] = useState('');
   const [sections, setSections] = useState<DiscoverSection[]>([]);
   const [items, setItems] = useState<DiscoverItem[]>([]);
   const [page, setPage] = useState(1);
@@ -338,6 +519,7 @@ export default function DiscoverPage() {
   const loadMoreControllerRef = useRef<AbortController | null>(null);
 
   const router = useRouter();
+  const currentYear = useMemo(() => new Date().getFullYear(), []);
 
   const applyRateLimit = useCallback((payload: unknown) => {
     const data = payload as {
@@ -363,7 +545,8 @@ export default function DiscoverPage() {
   );
 
   const gridClassName = useMemo(
-    () => 'grid grid-cols-[repeat(auto-fill,minmax(122px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(138px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(154px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-2.5 sm:gap-3.5 md:gap-4',
+    () =>
+      'grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(170px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(186px,1fr))] gap-3 sm:gap-4 lg:gap-5',
     []
   );
 
@@ -386,7 +569,6 @@ export default function DiscoverPage() {
       if (!section.mediaType || section.mediaType === 'all') {
         return section.key === 'providers';
       }
-
       if (discoverContentType === 'movie') return section.mediaType === 'movie';
       if (discoverContentType === 'show') return section.mediaType === 'tv';
       return true;
@@ -514,6 +696,16 @@ export default function DiscoverPage() {
       }
     }
   }, [buildQueryString, applyRateLimit]);
+
+  // Debounced search
+  useEffect(() => {
+    if (internalQuery === '') {
+      setQuery('');
+      return;
+    }
+    const t = setTimeout(() => setQuery(internalQuery), 700);
+    return () => clearTimeout(t);
+  }, [internalQuery]);
 
   useEffect(() => {
     fetchSections();
@@ -687,6 +879,7 @@ export default function DiscoverPage() {
     setDiscoverContentType('all');
     setActiveSectionKey(null);
     setQuery('');
+    setInternalQuery('');
     setManualBrowseMode(false);
     setPersonFilter(null);
   }, [setDiscoverFilters, setDiscoverSort, setDiscoverSortDirection, setDiscoverContentType]);
@@ -746,97 +939,161 @@ export default function DiscoverPage() {
   }, [filtersMeta, discoverContentType]);
 
   return (
-    <div className="space-y-4 animate-content-in">
-      <div className="sticky z-30 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
-        <div className="flex items-center gap-2">
-          <div className="flex-1">
-            <SearchBar
-              value={query}
-              onChange={setQuery}
-              placeholder="Search movies and shows"
+    <div className="space-y-3 sm:space-y-4 animate-content-in">
+      <DiscoverMarquee year={currentYear} />
+
+      {/* ─── Sticky controls strip ─────────────────────────────────────── */}
+      <div
+        className="sticky z-30 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 pt-2 pb-3 bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70"
+        style={{ top: 'var(--header-height, 0px)' }}
+      >
+        <div
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-px"
+          style={{ background: 'var(--hairline)' }}
+        />
+
+        {/* Search row */}
+        <div className="flex items-stretch gap-2.5">
+          <div className="relative flex-1 group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/70 group-focus-within:text-[color:var(--amber)] transition-colors" />
+            <Input
+              placeholder="Search the archive — title, person, genre…"
+              value={internalQuery}
+              onChange={(e) => setInternalQuery(e.target.value)}
+              className="pl-10 pr-10 h-11 text-[14px] bg-card/40"
             />
+            {internalQuery && (
+              <button
+                onClick={() => {
+                  setInternalQuery('');
+                  setQuery('');
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-md hover:bg-accent flex items-center justify-center"
+                aria-label="Clear"
+              >
+                <X className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
+            )}
           </div>
           <button
             onClick={handleOpenFilters}
-            className="relative h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
+            className="press-feedback relative h-11 px-3.5 inline-flex items-center gap-2 border border-[color:var(--hairline)] bg-card/50 backdrop-blur-sm hover:bg-[color:var(--amber-soft)] hover:border-[color:var(--amber-soft)] transition-colors"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
             aria-label="Advanced filters"
           >
             <Filter className="h-4 w-4" />
+            <span className="tracked-caps text-[10px] hidden sm:inline">Filters</span>
             {activeAdvancedFilterCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+              <span
+                className="ml-0.5 inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 text-[10px] font-mono tabular font-semibold bg-[color:var(--amber)] text-[color:var(--primary-foreground)]"
+                style={{ borderRadius: '3px' }}
+              >
                 {activeAdvancedFilterCount > 9 ? '9+' : activeAdvancedFilterCount}
               </span>
             )}
           </button>
         </div>
 
-        <div className="mt-2 space-y-2">
-          {/* <p className="text-[11px] font-medium text-muted-foreground">Type</p> */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-            {[
-              { value: 'all', label: 'All', icon: Compass },
-              { value: 'movie', label: 'Movies', icon: Film },
-              { value: 'show', label: 'Shows', icon: Tv },
-            ].map((option) => {
+        {/* Type tabs — editorial underline strip */}
+        <div className="mt-3 flex items-end justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            {TYPE_OPTIONS.map((option) => {
               const Icon = option.icon;
               const active = discoverContentType === option.value;
               return (
                 <button
                   key={option.value}
                   onClick={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
-                    active ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground'
+                  className={`relative px-3 py-2 inline-flex items-center gap-2 whitespace-nowrap transition-colors ${
+                    active ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  {option.label}
+                  <Icon className={`h-3.5 w-3.5 ${active ? 'text-[color:var(--amber)]' : ''}`} />
+                  <span className="font-display text-[14px] sm:text-[15px]" style={{ letterSpacing: '-0.01em' }}>
+                    {option.label}
+                  </span>
+                  <span className="tracked-caps text-[8.5px] text-muted-foreground/60 font-mono tabular hidden sm:inline" style={{ letterSpacing: '0.22em' }}>
+                    · {option.code}
+                  </span>
+                  <span
+                    aria-hidden
+                    className={`absolute left-2 right-2 -bottom-px h-px transition-all duration-300 ${
+                      active ? 'bg-[color:var(--amber)] opacity-100' : 'bg-foreground/30 opacity-0'
+                    }`}
+                  />
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-1 h-1 rounded-full bg-[color:var(--amber)]"
+                      style={{ boxShadow: '0 0 8px var(--amber-glow)' }}
+                    />
+                  )}
                 </button>
               );
             })}
           </div>
-          {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-            {SORT_OPTIONS.map((option) => {
+
+          {/* Sort selector — inline marquee row */}
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1">
+            <span className="tracked-caps text-[9px] text-muted-foreground/60 mr-1 hidden sm:inline" style={{ letterSpacing: '0.24em' }}>
+              Sort ·
+            </span>
+            {SORT_OPTIONS.map((option, i) => {
               const active = discoverSort === option.value;
               const Icon = option.icon;
               return (
-                <button
-                  key={option.value}
-                  onClick={() => handleSelectSort(option.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
-                    active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {option.label}
-                </button>
+                <div key={option.value} className="flex items-center">
+                  {i > 0 && <span className="text-muted-foreground/30 mx-0.5 text-[10px]">·</span>}
+                  <button
+                    onClick={() => handleSelectSort(option.value)}
+                    className={`px-2 py-1 inline-flex items-center gap-1.5 whitespace-nowrap transition-colors ${
+                      active ? 'text-[color:var(--amber)]' : 'text-muted-foreground/75 hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="h-3 w-3" />
+                    <span className="tracked-caps text-[10px]" style={{ letterSpacing: '0.2em' }}>
+                      {option.label}
+                    </span>
+                  </button>
+                </div>
               );
             })}
           </div>
         </div>
 
         {rateLimitInfo && (
-          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-            <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">TMDB rate limit reached</p>
-            <p className="text-xs text-amber-800/90 dark:text-amber-200/90">
-              {rateLimitCountdown != null
-                ? `Please wait ${formatWait(rateLimitCountdown)} before retrying.`
-                : rateLimitInfo.retryAt
-                  ? `Please retry around ${new Date(rateLimitInfo.retryAt).toLocaleTimeString()}.`
-                  : `${rateLimitInfo.message}. Please wait and try again.`}
-            </p>
+          <div
+            className="mt-3 flex items-center gap-3 px-3 py-2 border border-[color:var(--amber)]/30 bg-[color:var(--amber-soft)]"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
+            <span className="marquee-dot shrink-0" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="tracked-caps text-[9.5px] text-[color:var(--amber)]">
+                Reel jam · TMDB rate limit
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {rateLimitCountdown != null
+                  ? `Re-spool in ${formatWait(rateLimitCountdown)}.`
+                  : rateLimitInfo.retryAt
+                    ? `Retry around ${new Date(rateLimitInfo.retryAt).toLocaleTimeString()}.`
+                    : `${rateLimitInfo.message}. Please wait and try again.`}
+              </p>
+            </div>
           </div>
         )}
       </div>
 
+      {/* ─── Sections (browse home) ────────────────────────────────────── */}
       {!gridMode && (
-        <div className="space-y-5">
+        <div className="space-y-7 sm:space-y-10 lg:space-y-12">
           {loadingSections ? (
             <PageSpinner />
           ) : (
-            visibleSections.map((section) => (
+            visibleSections.map((section, i) => (
               <SectionRow
                 key={section.key}
+                index={i}
                 section={section}
                 onOpenItem={handleOpenItem}
                 onSeeAll={handleSeeAll}
@@ -848,26 +1105,52 @@ export default function DiscoverPage() {
         </div>
       )}
 
+      {/* ─── Grid mode (search / filtered) ─────────────────────────────── */}
       {gridMode && (
-        <div className="space-y-3">
+        <div className="space-y-5">
           {personFilter && (
-            <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
-              <User className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-sm font-medium flex-1 truncate">Movies with {personFilter.name}</span>
+            <div
+              className="flex items-center gap-3 px-3.5 py-2.5 border border-[color:var(--amber)]/30 bg-[color:var(--amber-soft)]"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+            >
+              <User className="h-4 w-4 text-[color:var(--amber)] shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="tracked-caps text-[9px] text-[color:var(--amber)]/80" style={{ letterSpacing: '0.24em' }}>
+                  Filtered by person
+                </p>
+                <p className="font-display text-[15px] truncate">{personFilter.name}</p>
+              </div>
               <button
                 onClick={() => setPersonFilter(null)}
-                className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center hover:bg-accent"
+                className="press-feedback shrink-0 h-7 w-7 rounded-md flex items-center justify-center hover:bg-background/40"
+                aria-label="Clear person"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm text-muted-foreground">Discover Results</p>
-              <p className="text-xs text-muted-foreground">
-                {personFilter ? `Filtered by: ${personFilter.name}` : activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
-              </p>
+
+          <div className="flex items-end justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="reel" aria-hidden />
+              <div className="hairline-v hidden sm:block self-stretch" aria-hidden />
+              <div className="min-w-0">
+                <p className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85" style={{ letterSpacing: '0.26em' }}>
+                  {personFilter
+                    ? `With ${personFilter.name}`
+                    : activeSectionKey
+                      ? `Section · ${activeSectionKey.replaceAll('_', ' ')}`
+                      : query
+                        ? 'Search results'
+                        : 'Custom selection'}
+                </p>
+                <h2 className="font-display text-[22px] sm:text-[28px] leading-tight">
+                  {query ? <>&ldquo;{query}&rdquo;</> : 'Discover Results'}
+                </h2>
+                <p className="font-mono tabular text-[10px] text-muted-foreground/70 mt-0.5">
+                  {items.length} {items.length === 1 ? 'title' : 'titles'} · page {page} of {totalPages}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {activeSectionKey && (
@@ -880,37 +1163,62 @@ export default function DiscoverPage() {
                   Clear section
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={goToDiscoverHome} className="h-8 px-2 text-xs">
+              <Button variant="outline" size="sm" onClick={goToDiscoverHome} className="h-8 px-3 text-xs">
                 Back to Discover
               </Button>
             </div>
           </div>
 
+          <div className="hairline" aria-hidden />
+
           {loadingItems ? (
             <PageSpinner />
           ) : items.length === 0 ? (
-            <div className="rounded-xl border border-border/60 bg-card p-8 text-center space-y-2">
-              <Search className="h-6 w-6 mx-auto text-muted-foreground" />
-              <p className="font-semibold">No matches found</p>
-              <p className="text-sm text-muted-foreground">Try adjusting filters or search query.</p>
-              <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
+            <div
+              className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+            >
+              <div className="mx-auto h-10 w-10 rounded-full border border-[color:var(--hairline)] flex items-center justify-center">
+                <Search className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="tracked-caps text-[10px] text-muted-foreground">No matches found</p>
+              <p className="font-display text-[18px]">Empty reel.</p>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                The booth came back empty. Try loosening the filters or a different title.
+              </p>
+              <Button variant="outline" onClick={resetFilters} className="mt-2">
+                Reset filters
+              </Button>
             </div>
           ) : (
             <>
               <div className={gridClassName}>
                 {items.map((item) => (
-                  <MediaPoster key={`${item.mediaType}-${item.tmdbId}`} item={item} onClick={handleOpenItem} variant="grid" />
+                  <MediaPoster
+                    key={`${item.mediaType}-${item.tmdbId}`}
+                    item={item}
+                    onClick={handleOpenItem}
+                    variant="grid"
+                  />
                 ))}
               </div>
 
               {page < totalPages && (
-                <div className="flex justify-center pt-2">
+                <div className="flex justify-center pt-4">
                   <Button
                     variant="outline"
                     onClick={handleLoadMore}
                     disabled={loadingMore}
+                    className="cta-sheen min-w-[180px]"
                   >
-                    {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load more'}
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="tracked-caps text-[10px]">Loading reel</span>
+                      </>
+                    ) : (
+                      <span className="tracked-caps text-[10px]">Next reel ↓</span>
+                    )}
                   </Button>
                 </div>
               )}
@@ -919,229 +1227,316 @@ export default function DiscoverPage() {
         </div>
       )}
 
+      {/* ─── Advanced Filters Sheet ────────────────────────────────────── */}
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <SheetContent side="right" className="w-[92vw] sm:max-w-md p-0">
-          <SheetHeader>
-            <SheetTitle>Advanced Filters</SheetTitle>
+        <SheetContent side="right" className="w-[92vw] sm:max-w-md p-0 flex flex-col bg-background">
+          <SheetHeader className="px-5 pt-5 pb-3 space-y-1 border-b border-[color:var(--hairline)]">
+            <div className="flex items-center gap-2">
+              <span className="marquee-dot" aria-hidden />
+              <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+                Projection settings
+              </span>
+            </div>
+            <SheetTitle className="font-display text-[24px] leading-tight tracking-[-0.02em]">
+              Advanced Filters
+            </SheetTitle>
+            <p className="text-[12px] text-muted-foreground">
+              Refine the booth — by year, runtime, rating, language, providers and more.
+            </p>
           </SheetHeader>
 
-          <div className="px-4 pb-4 overflow-y-auto space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Sort</label>
+          <div className="px-5 py-5 overflow-y-auto flex-1 space-y-6">
+            <div className="space-y-2">
+              <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Sort by</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {SORT_OPTIONS.map((option) => {
+                  const active = draftSort === option.value;
+                  const Icon = option.icon;
+                  return (
+                    <button
+                      key={option.value}
+                      onClick={() => setDraftSort(option.value)}
+                      className={`px-3 py-2.5 border text-left text-sm flex items-center gap-2 transition-all ${
+                        active
+                          ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                          : 'border-[color:var(--hairline)] text-muted-foreground hover:border-foreground/30'
+                      }`}
+                      style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="font-medium">{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Direction</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['desc', 'asc'] as const).map((dir) => {
+                  const active = draftSortDirection === dir;
+                  return (
+                    <button
+                      key={dir}
+                      onClick={() => setDraftSortDirection(dir)}
+                      className={`px-3 py-2.5 border tracked-caps text-[10px] transition-all ${
+                        active
+                          ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                          : 'border-[color:var(--hairline)] text-muted-foreground hover:border-foreground/30'
+                      }`}
+                      style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                    >
+                      {dir === 'desc' ? '↓ Descending' : '↑ Ascending'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="hairline" aria-hidden />
+
+            <div className="space-y-3">
+              <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Year window</p>
               <div className="grid grid-cols-2 gap-2">
-                {SORT_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => {
-                      setDraftSort(option.value);
-                    }}
-                    className={`px-3 py-2 rounded-lg border text-sm ${draftSort === option.value ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+                <div>
+                  <label className="tracked-caps text-[8.5px] text-muted-foreground/70 mb-1 block">From</label>
+                  <Input
+                    value={draftFilters.yearFrom}
+                    onChange={(e) => setDraftFilters({ ...draftFilters, yearFrom: e.target.value })}
+                    placeholder="1995"
+                    inputMode="numeric"
+                    className="font-mono tabular"
+                  />
+                </div>
+                <div>
+                  <label className="tracked-caps text-[8.5px] text-muted-foreground/70 mb-1 block">To</label>
+                  <Input
+                    value={draftFilters.yearTo}
+                    onChange={(e) => setDraftFilters({ ...draftFilters, yearTo: e.target.value })}
+                    placeholder="2026"
+                    inputMode="numeric"
+                    className="font-mono tabular"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Sort Direction</label>
+            <div className="space-y-3">
+              <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Runtime · minutes</p>
               <div className="grid grid-cols-2 gap-2">
-                {['desc', 'asc'].map((dir) => (
-                  <button
-                    key={dir}
-                    onClick={() => setDraftSortDirection(dir as 'asc' | 'desc')}
-                    className={`px-3 py-2 rounded-lg border text-sm uppercase ${draftSortDirection === dir ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
-                  >
-                    {dir}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Year From</label>
-                <Input
-                  value={draftFilters.yearFrom}
-                  onChange={(e) => setDraftFilters({ ...draftFilters, yearFrom: e.target.value })}
-                  placeholder="1995"
-                  inputMode="numeric"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Year To</label>
-                <Input
-                  value={draftFilters.yearTo}
-                  onChange={(e) => setDraftFilters({ ...draftFilters, yearTo: e.target.value })}
-                  placeholder="2026"
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Runtime Min</label>
                 <Input
                   value={draftFilters.runtimeMin}
                   onChange={(e) => setDraftFilters({ ...draftFilters, runtimeMin: e.target.value })}
-                  placeholder="45"
+                  placeholder="Min · 45"
                   inputMode="numeric"
+                  className="font-mono tabular"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Runtime Max</label>
                 <Input
                   value={draftFilters.runtimeMax}
                   onChange={(e) => setDraftFilters({ ...draftFilters, runtimeMax: e.target.value })}
-                  placeholder="180"
+                  placeholder="Max · 180"
                   inputMode="numeric"
+                  className="font-mono tabular"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Rating Min</label>
+            <div className="space-y-3">
+              <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Rating</p>
+              <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={draftFilters.ratingMin}
                   onChange={(e) => setDraftFilters({ ...draftFilters, ratingMin: e.target.value })}
-                  placeholder="7.5"
+                  placeholder="Min · 7.5"
                   inputMode="decimal"
+                  className="font-mono tabular"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Rating Max</label>
                 <Input
                   value={draftFilters.ratingMax}
                   onChange={(e) => setDraftFilters({ ...draftFilters, ratingMax: e.target.value })}
-                  placeholder="10"
+                  placeholder="Max · 10"
                   inputMode="decimal"
+                  className="font-mono tabular"
                 />
               </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Vote Count Min</label>
               <Input
                 value={draftFilters.voteCountMin}
                 onChange={(e) => setDraftFilters({ ...draftFilters, voteCountMin: e.target.value })}
-                placeholder="500"
+                placeholder="Vote count min · 500"
                 inputMode="numeric"
+                className="font-mono tabular"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Language</label>
+            <div className="space-y-3">
+              <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Locale</p>
+              <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={draftFilters.language}
                   onChange={(e) => setDraftFilters({ ...draftFilters, language: e.target.value })}
-                  placeholder="en"
+                  placeholder="Language · en"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Region</label>
                 <Input
                   value={draftFilters.region}
                   onChange={(e) => setDraftFilters({ ...draftFilters, region: e.target.value })}
-                  placeholder="US"
+                  placeholder="Region · US"
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Release State</label>
-              <div className="grid grid-cols-2 gap-2">
-                {['', 'released', 'upcoming', 'airing', 'ended'].map((state) => (
+            <div className="hairline" aria-hidden />
+
+            <div className="space-y-2">
+              <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Release state</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {(['', 'released', 'upcoming', 'airing', 'ended'] as const).map((state) => {
+                  const active = draftFilters.releaseState === state;
+                  return (
+                    <button
+                      key={state || 'all'}
+                      onClick={() =>
+                        setDraftFilters({
+                          ...draftFilters,
+                          releaseState: state,
+                        })
+                      }
+                      className={`px-2 py-2 border tracked-caps text-[9.5px] transition-all ${
+                        active
+                          ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                          : 'border-[color:var(--hairline)] text-muted-foreground hover:border-foreground/30'
+                      }`}
+                      style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+                    >
+                      {state || 'Any'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-end justify-between">
+                <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Genres</p>
+                {draftFilters.genres.length > 0 && (
                   <button
-                    key={state || 'all'}
-                    onClick={() => setDraftFilters({ ...draftFilters, releaseState: state as '' | 'released' | 'upcoming' | 'airing' | 'ended' })}
-                    className={`px-3 py-2 rounded-lg border text-sm ${draftFilters.releaseState === state ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
+                    onClick={() => setDraftFilters({ ...draftFilters, genres: [] })}
+                    className="tracked-caps text-[9px] text-muted-foreground hover:text-[color:var(--amber)]"
                   >
-                    {state || 'Any'}
+                    Clear · {draftFilters.genres.length}
                   </button>
-                ))}
+                )}
               </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Genres</label>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
-                <div className="flex flex-wrap gap-2">
-                {genreChoices.slice(0, 28).map((genre) => {
-                  const active = draftFilters.genres.includes(genre.id);
-                  return (
-                    <button
-                      key={`${genre.type}-${genre.id}`}
-                      onClick={() => {
-                        const set = new Set(draftFilters.genres);
-                        if (set.has(genre.id)) set.delete(genre.id);
-                        else set.add(genre.id);
-                        setDraftFilters({ ...draftFilters, genres: [...set] });
-                      }}
-                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
-                    >
-                      {genre.name}
-                    </button>
-                  );
-                })}
+              <div className="rounded-md border border-[color:var(--hairline)] p-2.5 bg-card/40">
+                <div className="flex flex-wrap gap-1.5">
+                  {genreChoices.slice(0, 28).map((genre) => {
+                    const active = draftFilters.genres.includes(genre.id);
+                    return (
+                      <button
+                        key={`${genre.type}-${genre.id}`}
+                        onClick={() => {
+                          const set = new Set(draftFilters.genres);
+                          if (set.has(genre.id)) set.delete(genre.id);
+                          else set.add(genre.id);
+                          setDraftFilters({ ...draftFilters, genres: [...set] });
+                        }}
+                        className={`px-2.5 py-1 text-[11px] border transition-all ${
+                          active
+                            ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                            : 'border-[color:var(--hairline)] text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                        }`}
+                        style={{ borderRadius: '999px' }}
+                      >
+                        {genre.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Providers</label>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
-                <div className="flex flex-wrap gap-2">
-                {providerChoices.slice(0, 28).map((provider) => {
-                  const active = draftFilters.providers.includes(provider.id);
-                  return (
-                    <button
-                      key={`${provider.type}-${provider.id}`}
-                      onClick={() => {
-                        const set = new Set(draftFilters.providers);
-                        if (set.has(provider.id)) set.delete(provider.id);
-                        else set.add(provider.id);
-                        setDraftFilters({ ...draftFilters, providers: [...set] });
-                      }}
-                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
-                    >
-                      {provider.name}
-                    </button>
-                  );
-                })}
+            <div className="space-y-2">
+              <div className="flex items-end justify-between">
+                <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Streaming providers</p>
+                {draftFilters.providers.length > 0 && (
+                  <button
+                    onClick={() => setDraftFilters({ ...draftFilters, providers: [] })}
+                    className="tracked-caps text-[9px] text-muted-foreground hover:text-[color:var(--amber)]"
+                  >
+                    Clear · {draftFilters.providers.length}
+                  </button>
+                )}
+              </div>
+              <div className="rounded-md border border-[color:var(--hairline)] p-2.5 bg-card/40">
+                <div className="flex flex-wrap gap-1.5">
+                  {providerChoices.slice(0, 28).map((provider) => {
+                    const active = draftFilters.providers.includes(provider.id);
+                    return (
+                      <button
+                        key={`${provider.type}-${provider.id}`}
+                        onClick={() => {
+                          const set = new Set(draftFilters.providers);
+                          if (set.has(provider.id)) set.delete(provider.id);
+                          else set.add(provider.id);
+                          setDraftFilters({ ...draftFilters, providers: [...set] });
+                        }}
+                        className={`px-2.5 py-1 text-[11px] border transition-all ${
+                          active
+                            ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                            : 'border-[color:var(--hairline)] text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                        }`}
+                        style={{ borderRadius: '999px' }}
+                      >
+                        {provider.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">Networks</label>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
-                <div className="flex flex-wrap gap-2">
-                {(filtersMeta?.networks || []).slice(0, 24).map((network) => {
-                  const active = draftFilters.networks.includes(network.id);
-                  return (
-                    <button
-                      key={network.id}
-                      onClick={() => {
-                        const set = new Set(draftFilters.networks);
-                        if (set.has(network.id)) set.delete(network.id);
-                        else set.add(network.id);
-                        setDraftFilters({ ...draftFilters, networks: [...set] });
-                      }}
-                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${active ? 'border-primary text-primary' : 'border-border text-muted-foreground'}`}
-                    >
-                      {network.name}
-                    </button>
-                  );
-                })}
+            <div className="space-y-2">
+              <div className="flex items-end justify-between">
+                <p className="tracked-caps text-[9.5px] text-muted-foreground/80">Networks</p>
+                {draftFilters.networks.length > 0 && (
+                  <button
+                    onClick={() => setDraftFilters({ ...draftFilters, networks: [] })}
+                    className="tracked-caps text-[9px] text-muted-foreground hover:text-[color:var(--amber)]"
+                  >
+                    Clear · {draftFilters.networks.length}
+                  </button>
+                )}
+              </div>
+              <div className="rounded-md border border-[color:var(--hairline)] p-2.5 bg-card/40">
+                <div className="flex flex-wrap gap-1.5">
+                  {(filtersMeta?.networks || []).slice(0, 24).map((network) => {
+                    const active = draftFilters.networks.includes(network.id);
+                    return (
+                      <button
+                        key={network.id}
+                        onClick={() => {
+                          const set = new Set(draftFilters.networks);
+                          if (set.has(network.id)) set.delete(network.id);
+                          else set.add(network.id);
+                          setDraftFilters({ ...draftFilters, networks: [...set] });
+                        }}
+                        className={`px-2.5 py-1 text-[11px] border transition-all ${
+                          active
+                            ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                            : 'border-[color:var(--hairline)] text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                        }`}
+                        style={{ borderRadius: '999px' }}
+                      >
+                        {network.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
           </div>
 
-          <SheetFooter className="border-t">
+          <SheetFooter className="border-t border-[color:var(--hairline)] px-5 py-4">
             <div className="grid grid-cols-2 gap-2 w-full">
               <Button
                 variant="outline"
@@ -1151,31 +1546,33 @@ export default function DiscoverPage() {
                   setDraftSortDirection('desc');
                 }}
               >
-                Reset
+                <span className="tracked-caps text-[10px]">Reset</span>
               </Button>
-              <Button onClick={() => {
-                const normalized = normalizeFilterValues(draftFilters);
-                setDiscoverFilters(normalized);
-                setDiscoverSort(draftSort);
-                setDiscoverSortDirection(draftSortDirection);
-                setActiveSectionKey(null);
-                setManualBrowseMode(
-                  Boolean(
-                    query.trim()
-                    || !isDefaultFilters(normalized)
-                    || draftSort !== 'trending'
-                    || discoverContentType !== 'all'
-                  )
-                );
-                setFiltersOpen(false);
-              }}>
-                Apply
+              <Button
+                className="cta-sheen projector-glow"
+                onClick={() => {
+                  const normalized = normalizeFilterValues(draftFilters);
+                  setDiscoverFilters(normalized);
+                  setDiscoverSort(draftSort);
+                  setDiscoverSortDirection(draftSortDirection);
+                  setActiveSectionKey(null);
+                  setManualBrowseMode(
+                    Boolean(
+                      query.trim()
+                      || !isDefaultFilters(normalized)
+                      || draftSort !== 'trending'
+                      || discoverContentType !== 'all'
+                    )
+                  );
+                  setFiltersOpen(false);
+                }}
+              >
+                <span className="tracked-caps text-[10px]">Roll Reel</span>
               </Button>
             </div>
           </SheetFooter>
         </SheetContent>
       </Sheet>
-
     </div>
   );
 }

@@ -27,7 +27,7 @@ import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rai
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
+  Pencil, Trash2, Loader2, Tv, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
   Clock, Trophy, TrendingUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -795,92 +795,142 @@ export default function SeriesDetailPage() {
             studios={animeDetail.studios}
           />
         ) : tmdbData?.backdropPath ? (
-          <div>
-            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 -mx-2 md:-mx-6">
+          <div className="relative">
+            <div className="relative w-full h-[260px] sm:h-[340px] lg:h-[420px] overflow-hidden bg-[color:var(--ink-deep)] -mx-3 md:-mx-8">
               <Image
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
                 alt=""
                 fill
                 sizes="100vw"
-                className="object-cover"
+                className="object-cover animate-hero-zoom"
                 priority
                 unoptimized
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/75 to-background/15" />
+              <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-background/40" />
+              <div aria-hidden className="cinema-grain" />
+              <div className="absolute top-3 left-3 md:left-8 right-3 md:right-8 flex items-center gap-2">
+                <span className="marquee-dot" aria-hidden />
+                <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/90">
+                  {series.monitored ? 'Monitored · Slate' : 'Idle'}
+                </span>
+                <span className="hairline flex-1" aria-hidden />
+                <span className="tracked-caps text-[9.5px] text-white/70 font-mono tabular hidden sm:inline" style={{ letterSpacing: '0.22em' }}>
+                  Series · TV
+                </span>
+              </div>
             </div>
-            <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
-              <div className="w-[100px] shrink-0">
-                <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
+            <div className="relative -mt-[120px] sm:-mt-[150px] lg:-mt-[180px] px-3 md:px-8 flex gap-4 sm:gap-5">
+              <div className="w-[120px] sm:w-[150px] lg:w-[180px] shrink-0">
+                <div
+                  className="relative aspect-[2/3] overflow-hidden bg-muted/60"
+                  style={{
+                    borderRadius: 'calc(var(--radius) - 1px)',
+                    boxShadow: '0 24px 48px -16px rgba(0,0,0,0.65), 0 0 0 1px var(--hairline)',
+                  }}
+                >
                   {poster ? (
                     <Image
                       src={poster}
                       alt={series.title}
                       fill
-                      sizes="100px"
+                      sizes="(max-width: 640px) 120px, 180px"
                       className="object-cover"
                       unoptimized={isProtectedApiImageSrc(poster)}
                     />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                      <Tv className="h-8 w-8" />
+                      <Tv className="h-9 w-9" />
                     </div>
                   )}
                 </div>
               </div>
-              <div className="flex-1 min-w-0 pt-[60px]">
-                <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
+              <div className="flex-1 min-w-0 pt-[60px] sm:pt-[80px] lg:pt-[100px]">
+                <span className={`inline-flex items-center gap-1.5 mb-2 px-2 py-0.5 tracked-caps text-[9px] ${statusColor}`}
+                  style={{ borderRadius: '3px', letterSpacing: '0.22em' }}>
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                   {statusLabel}
                 </span>
-                <h1 className="text-lg font-bold leading-tight">{series.title}</h1>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {series.year}
-                  {series.runtime > 0 && <> &middot; {series.runtime}m</>}
-                  {series.certification && <> &middot; {series.certification}</>}
+                <h1 className="font-display text-[26px] sm:text-[34px] lg:text-[44px] leading-[1.02] tracking-[-0.025em] line-clamp-3 hero-title-rise">
+                  {series.title}
+                </h1>
+                <p className="font-mono tabular tracked-mid text-[10.5px] text-muted-foreground/80 mt-2 hero-meta-fade" style={{ letterSpacing: '0.16em' }}>
+                  {[
+                    series.year || null,
+                    series.runtime > 0 ? `${series.runtime} MIN` : null,
+                    series.certification || null,
+                  ].filter(Boolean).join('  ·  ')}
                 </p>
                 {series.ratings && series.ratings.value > 0 && (
-                  <div className="flex items-center gap-1 mt-1.5">
-                    <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" />
-                    <span className="text-sm font-medium">{Math.round(series.ratings.value * 10)}%</span>
+                  <div className="flex items-center gap-1.5 mt-3 hero-meta-fade">
+                    <Star className="h-3 w-3 text-[color:var(--amber)] fill-[color:var(--amber)]" />
+                    <span className="font-mono tabular text-[13px] font-semibold">{Math.round(series.ratings.value * 10)}%</span>
+                    <span className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.18em' }}>
+                      Trakt
+                    </span>
                   </div>
                 )}
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="px-2 md:px-6 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <div className="mt-4 px-3 md:px-8 flex items-start gap-3">
+                <span className="font-display text-[28px] leading-none text-[color:var(--amber)]/70">&ldquo;</span>
+                <p className="font-display italic text-[15px] sm:text-[17px] leading-snug text-muted-foreground/95 pt-1">
+                  {tmdbData.tagline}
+                </p>
+              </div>
             )}
           </div>
         ) : (
           <div className="flex gap-4 pt-3 pb-4">
-            <div className="w-28 shrink-0">
-              {poster ? (
-                <Image
-                  src={poster}
-                  alt={series.title}
-                  width={112}
-                  height={168}
-                  className="w-full h-auto aspect-[2/3] object-cover rounded-lg"
-                  unoptimized={isProtectedApiImageSrc(poster)}
-                />
-              ) : (
-                <div className="w-full aspect-[2/3] rounded-lg bg-muted flex items-center justify-center">
-                  <Tv className="h-10 w-10 text-muted-foreground" />
-                </div>
-              )}
+            <div className="w-[120px] sm:w-[140px] shrink-0">
+              <div
+                className="relative aspect-[2/3] overflow-hidden bg-muted/60"
+                style={{ borderRadius: 'calc(var(--radius) - 1px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+              >
+                {poster ? (
+                  <Image
+                    src={poster}
+                    alt={series.title}
+                    fill
+                    sizes="140px"
+                    className="object-cover"
+                    unoptimized={isProtectedApiImageSrc(poster)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                    <Tv className="h-10 w-10" />
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex-1 min-w-0 pt-1">
-              <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="marquee-dot" aria-hidden />
+                <span className="tracked-caps text-[9px] text-[color:var(--amber)]/85" style={{ letterSpacing: '0.22em' }}>
+                  Series · TV
+                </span>
+              </div>
+              <span className={`inline-flex items-center gap-1.5 mb-2 px-2 py-0.5 tracked-caps text-[9px] ${statusColor}`}
+                style={{ borderRadius: '3px', letterSpacing: '0.22em' }}>
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                 {statusLabel}
               </span>
-              <h1 className="text-lg font-bold leading-tight">{series.title}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {series.year}
-                {series.runtime > 0 && <> &middot; {series.runtime}m</>}
-                {series.certification && <> &middot; {series.certification}</>}
+              <h1 className="font-display text-[24px] sm:text-[28px] leading-[1.04] tracking-[-0.022em] line-clamp-3">{series.title}</h1>
+              <p className="font-mono tabular tracked-mid text-[10.5px] text-muted-foreground/80 mt-2" style={{ letterSpacing: '0.16em' }}>
+                {[
+                  series.year || null,
+                  series.runtime > 0 ? `${series.runtime} MIN` : null,
+                  series.certification || null,
+                ].filter(Boolean).join('  ·  ')}
               </p>
               {series.ratings && series.ratings.value > 0 && (
-                <div className="flex items-center gap-1 mt-1.5">
-                  <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" />
-                  <span className="text-sm font-medium">{Math.round(series.ratings.value * 10)}%</span>
+                <div className="flex items-center gap-1.5 mt-3">
+                  <Star className="h-3 w-3 text-[color:var(--amber)] fill-[color:var(--amber)]" />
+                  <span className="font-mono tabular text-[13px] font-semibold">{Math.round(series.ratings.value * 10)}%</span>
+                  <span className="tracked-caps text-[8.5px] text-muted-foreground/80" style={{ letterSpacing: '0.18em' }}>
+                    Trakt
+                  </span>
                 </div>
               )}
             </div>
@@ -908,37 +958,44 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Borderless metadata rows */}
-        <div className="space-y-0">
-          <div className="flex py-2 border-b border-border/30">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Status</span>
-            <span className="text-sm capitalize">{series.status}</span>
+        {/* Metadata rows */}
+        <div className="border-t border-b border-[color:var(--hairline)] py-1 mt-4">
+          <div className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)]">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Status</span>
+            <span className="text-[13px] font-mono tabular capitalize">{series.status}</span>
           </div>
           {series.network && (
-            <div className="flex py-2 border-b border-border/30">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Network</span>
-              <span className="text-sm">{series.network}</span>
+            <div className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)]">
+              <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Network</span>
+              <span className="text-[13px] font-mono tabular truncate">{series.network}</span>
             </div>
           )}
           {series.genres && series.genres.length > 0 && (
-            <div className="flex py-2 border-b border-border/30">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Genre</span>
-              <span className="text-sm">{series.genres.join(', ')}</span>
+            <div className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)]">
+              <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Genre</span>
+              <span className="text-[13px] truncate max-w-[60%]">{series.genres.join(' · ')}</span>
             </div>
           )}
           {nextAiring && (
-            <div className="flex py-2 border-b border-border/30">
-              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Airing</span>
-              <span className="text-sm">{nextAiring}</span>
+            <div className="flex justify-between items-baseline gap-3 py-2.5">
+              <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Airing</span>
+              <span className="text-[13px] font-mono tabular text-[color:var(--amber)]">{nextAiring}</span>
             </div>
           )}
         </div>
 
         {/* Overview */}
         {series.overview && (
-          <div className="pt-4 pb-2">
+          <div className="space-y-2 pt-4">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Synopsis
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
+            </div>
             <p
-              className={`text-sm text-muted-foreground leading-relaxed ${
+              className={`text-[14px] text-foreground/85 leading-relaxed pl-1 ${
                 !overviewExpanded ? 'line-clamp-3' : ''
               }`}
             >
@@ -947,9 +1004,9 @@ export default function SeriesDetailPage() {
             {series.overview.length > 150 && (
               <button
                 onClick={() => setOverviewExpanded(!overviewExpanded)}
-                className="text-sm text-primary mt-1"
+                className="press-feedback tracked-caps text-[9.5px] text-[color:var(--amber)] mt-2 hover:underline pl-1"
               >
-                {overviewExpanded ? 'Show less' : 'More...'}
+                {overviewExpanded ? '— Show less' : '— Read more'}
               </button>
             )}
           </div>
@@ -957,26 +1014,35 @@ export default function SeriesDetailPage() {
 
         {/* Created By */}
         {tmdbData && tmdbData.createdBy.length > 0 && (
-          <div className="pt-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Created By</p>
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {tmdbData.createdBy.map((creator) => (
+          <div className="flex items-baseline gap-2 flex-wrap pt-3">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>
+              Created by
+            </span>
+            {tmdbData.createdBy.map((creator, i) => (
+              <span key={creator.id} className="text-[13px]">
+                {i > 0 && <span className="text-muted-foreground/40 mx-1">·</span>}
                 <Link
-                  key={creator.id}
                   href={`/discover/person/${creator.id}`}
-                  className="text-sm font-medium text-primary"
+                  className="font-display text-[color:var(--amber)] hover:underline"
+                  style={{ letterSpacing: '-0.01em' }}
                 >
                   {creator.name}
                 </Link>
-              ))}
-            </div>
+              </span>
+            ))}
           </div>
         )}
 
         {/* Seasons list */}
-        <div className="mt-4">
-          <h2 className="text-lg font-bold mb-2">Seasons</h2>
-          <div>
+        <div className="mt-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              Seasons · {seasonNumbers.length}
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
+          <div className="border-t border-[color:var(--hairline)]">
             {seasonNumbers.map((sn) => {
               const seasonEps = episodes.filter((e) => e.seasonNumber === sn);
               const fileCount = seasonEps.filter((e) => e.hasFile).length;
@@ -989,57 +1055,69 @@ export default function SeriesDetailPage() {
               const epData = seasonEpisodes.get(sn);
 
               return (
-                <div key={sn} className="border-b border-border/50">
-                  <div className="flex items-center py-3.5 gap-2">
-                    {/* TMDB season poster */}
-                    {tmdbSeason?.posterPath && (
-                      <div className="relative w-[45px] h-[67px] rounded overflow-hidden shrink-0">
+                <div key={sn} className="border-b border-[color:var(--hairline)]">
+                  <div className="flex items-center py-3 gap-3 group">
+                    {/* TMDB season poster or sprocket card */}
+                    {tmdbSeason?.posterPath ? (
+                      <div
+                        className="relative w-[48px] h-[72px] overflow-hidden shrink-0 bg-muted/30"
+                        style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                      >
                         <Image
                           src={toCachedImageSrc(tmdbSeason.posterPath, 'tmdb') || tmdbSeason.posterPath}
                           alt=""
                           fill
-                          sizes="45px"
+                          sizes="48px"
                           className="object-cover"
                           unoptimized
                         />
+                      </div>
+                    ) : (
+                      <div
+                        className="w-[48px] h-[72px] bg-muted/30 shrink-0 flex items-center justify-center"
+                        style={{ borderRadius: 'calc(var(--radius) - 3px)', boxShadow: '0 0 0 1px var(--hairline)' }}
+                      >
+                        <span className="font-mono tabular tracked-mid text-[11px] text-[color:var(--amber)]/85" style={{ letterSpacing: '0.18em' }}>
+                          S{String(sn).padStart(2, '0')}
+                        </span>
                       </div>
                     )}
                     <Link href={`/series/${id}/season/${sn}`} className="flex-1 min-w-0 flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
-                          <span className="text-sm text-muted-foreground">{fileCount}/{total}</span>
+                          <span className="font-display text-[15px] group-hover:text-[color:var(--amber)] transition-colors" style={{ letterSpacing: '-0.012em' }}>
+                            {sn === 0 ? 'Specials' : `Season ${sn}`}
+                          </span>
+                          <span className="font-mono tabular text-[10.5px] text-muted-foreground/85">{fileCount}/{total}</span>
                         </div>
                         {tmdbSeason && tmdbSeason.voteAverage > 0 && (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                            <span className="text-xs text-muted-foreground">{tmdbSeason.voteAverage.toFixed(1)}</span>
+                          <div className="flex items-center gap-1 mt-1">
+                            <Star className="h-2.5 w-2.5 fill-[color:var(--amber)] text-[color:var(--amber)]" />
+                            <span className="font-mono tabular text-[10px] text-[color:var(--amber)]">{tmdbSeason.voteAverage.toFixed(1)}</span>
                           </div>
                         )}
                         {tmdbSeason?.overview && (
-                          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{tmdbSeason.overview}</p>
+                          <p className="text-[11.5px] text-muted-foreground/85 line-clamp-2 mt-1 leading-snug">{tmdbSeason.overview}</p>
                         )}
                       </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/60 shrink-0 group-hover:translate-x-0.5 group-hover:text-[color:var(--amber)] transition-all" />
                     </Link>
-                    {/* Expand/collapse for TMDB episodes (not for anime) */}
                     {tmdbData && !isAnime && (
                       <button
                         onClick={() => toggleSeasonExpand(sn)}
-                        className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                        className="press-feedback min-w-[36px] min-h-[44px] flex items-center justify-center hover:text-[color:var(--amber)] transition-colors"
                       >
-                        {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </button>
                     )}
-                    {/* Monitor toggle */}
                     <button
                       onClick={() => handleToggleSeasonMonitor(sn, !isMonitored)}
-                      className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                      className="press-feedback min-w-[36px] min-h-[44px] flex items-center justify-center"
                     >
                       {isMonitored ? (
-                        <Bookmark className="h-5 w-5 fill-current text-foreground" />
+                        <Bookmark className="h-4 w-4 fill-[color:var(--amber)] text-[color:var(--amber)]" />
                       ) : (
-                        <Bookmark className="h-5 w-5 text-muted-foreground" />
+                        <Bookmark className="h-4 w-4 text-muted-foreground/60" />
                       )}
                     </button>
                   </div>

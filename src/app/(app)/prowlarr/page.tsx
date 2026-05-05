@@ -643,44 +643,69 @@ function IndexersTab() {
 
   return (
     <>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm text-muted-foreground">{indexers.length} indexer{indexers.length !== 1 ? 's' : ''}</p>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="reel" aria-hidden />
+        <p className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+          {indexers.length} {indexers.length !== 1 ? 'indexers' : 'indexer'}
+        </p>
+        <span className="hairline flex-1" aria-hidden />
       </div>
 
       {indexers.length === 0 ? (
-        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-          No indexers configured.
+        <div
+          className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <p className="tracked-caps text-[10px] text-muted-foreground">No indexers</p>
+          <p className="font-display text-[18px]">Empty rack.</p>
         </div>
       ) : (
-        <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
+        <div
+          className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
           {indexers.map((indexer) => {
             const blockedStatus = getActiveBlockedStatus(indexer.id, statuses);
+            const isTorrent = indexer.protocol === 'torrent';
             return (
-              <div key={indexer.id} className="px-4 py-3 flex items-center gap-3">
+              <div key={indexer.id} className="group px-4 py-3 flex items-center gap-3 border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/20 transition-colors">
                 <IndexerStatusDot indexer={indexer} statuses={statuses} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{indexer.name}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] px-1.5 py-0 ${indexer.protocol === 'torrent' ? 'border-green-500/50 text-green-400' : 'border-blue-500/50 text-blue-400'}`}
+                  <p className="font-display text-[14px] truncate" style={{ letterSpacing: '-0.012em' }}>{indexer.name}</p>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <span
+                      className="tracked-caps text-[8.5px] px-1.5 py-0.5 border"
+                      style={{
+                        borderRadius: '3px',
+                        letterSpacing: '0.22em',
+                        ...(isTorrent
+                          ? { background: 'oklch(0.78 0.13 162 / 0.16)', borderColor: 'oklch(0.78 0.13 162 / 0.4)', color: 'oklch(0.78 0.13 162)' }
+                          : { background: 'oklch(0.72 0.13 220 / 0.14)', borderColor: 'oklch(0.72 0.13 220 / 0.4)', color: 'oklch(0.80 0.13 220)' }),
+                      }}
                     >
                       {indexer.protocol}
-                    </Badge>
-                    <span className="text-[11px] text-muted-foreground">
-                      Priority: {indexer.priority}
+                    </span>
+                    <span className="font-mono tabular text-[10px] text-muted-foreground/85">
+                      <span className="tracked-caps text-[8px] text-muted-foreground/60 mr-0.5" style={{ letterSpacing: '0.2em' }}>P</span>
+                      {indexer.priority}
                     </span>
                     {indexer.privacy && (
-                      <span className="text-[11px] text-muted-foreground capitalize">{indexer.privacy}</span>
+                      <span className="tracked-caps text-[8.5px] text-muted-foreground/80 capitalize" style={{ letterSpacing: '0.22em' }}>{indexer.privacy}</span>
                     )}
                     {blockedStatus && (
                       <>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] px-1.5 py-0 border-rose-500/40 text-rose-400"
+                        <span
+                          className="tracked-caps text-[8.5px] px-1.5 py-0.5"
+                          style={{
+                            borderRadius: '3px',
+                            letterSpacing: '0.22em',
+                            background: 'oklch(0.66 0.20 25 / 0.16)',
+                            border: '1px solid oklch(0.66 0.20 25 / 0.4)',
+                            color: 'oklch(0.78 0.18 25)',
+                          }}
                         >
                           Blocked
-                        </Badge>
+                        </span>
                         <BlockedStatusTrigger status={blockedStatus} />
                       </>
                     )}
@@ -690,14 +715,14 @@ function IndexersTab() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 px-2 text-xs"
+                    className="h-8 px-2.5"
                     onClick={() => handleTest(indexer.id)}
                     disabled={testingId === indexer.id}
                   >
                     {testingId === indexer.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[color:var(--amber)]" />
                     ) : (
-                      'Test'
+                      <span className="tracked-caps text-[9.5px]">Test</span>
                     )}
                   </Button>
                   <Button
@@ -852,15 +877,23 @@ interface StatCardProps {
  * @param iconBg - CSS class(es) applied to the icon container for background styling
  * @returns A JSX element representing the statistic card
  */
-function StatCard({ label, value, icon, iconBg }: StatCardProps) {
+function StatCard({ label, value, icon }: StatCardProps) {
   return (
-    <div className="rounded-xl bg-card border border-border p-3 sm:p-4 flex items-center gap-3">
-      <div className={`rounded-lg p-2 shrink-0 ${iconBg}`}>
+    <div
+      className="border border-[color:var(--hairline)] bg-card/40 p-3 sm:p-4 flex items-center gap-3 transition-colors hover:border-[color:var(--amber-soft)]"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
+      <div
+        className="bg-[color:var(--amber-soft)] p-2 shrink-0 border border-[color:var(--amber)]/30"
+        style={{ borderRadius: 'calc(var(--radius) - 3px)' }}
+      >
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-widest leading-none mb-1">{label}</p>
-        <p className="text-xl sm:text-2xl font-bold tabular-nums tracking-tight">{value}</p>
+        <p className="tracked-caps text-[8.5px] text-muted-foreground/85 leading-none mb-1.5" style={{ letterSpacing: '0.24em' }}>
+          {label}
+        </p>
+        <p className="font-display text-[20px] sm:text-[24px] font-medium tabular-nums leading-none tracking-[-0.02em]">{value}</p>
       </div>
     </div>
   );
@@ -962,20 +995,28 @@ function StatsTab() {
 
   return (
     <div className="space-y-4">
-      {/* Date range pill selector */}
-      <div className="flex bg-card border border-border rounded-lg p-1 gap-0.5 w-fit">
-        {DATE_RANGES.map((r) => (
-          <button
-            key={r.value}
-            onClick={() => setDateRange(r.value)}
-            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all ${dateRange === r.value
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
+      {/* Date range tracked-caps pill selector */}
+      <div
+        className="inline-flex items-center bg-card/40 border border-[color:var(--hairline)] p-0.5 gap-0.5 w-fit"
+        style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
+      >
+        {DATE_RANGES.map((r) => {
+          const active = dateRange === r.value;
+          return (
+            <button
+              key={r.value}
+              onClick={() => setDateRange(r.value)}
+              className={`px-3.5 py-1.5 tracked-caps text-[9.5px] transition-all ${
+                active
+                  ? 'bg-[color:var(--amber-soft)] text-[color:var(--amber)] border border-[color:var(--amber)]/30'
+                  : 'text-muted-foreground/80 hover:text-foreground'
               }`}
-          >
-            {r.label}
-          </button>
-        ))}
+              style={{ borderRadius: 'calc(var(--radius) - 3px)', letterSpacing: '0.22em' }}
+            >
+              {r.label}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -1446,38 +1487,54 @@ function HistoryTab() {
     <div className="space-y-3">
       {/* Filter pills */}
       <div className="flex gap-1.5 flex-wrap">
-        {HISTORY_FILTERS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setActiveFilter(f.value)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${activeFilter === f.value
-              ? 'bg-primary text-primary-foreground'
-              : 'bg-card border border-border text-muted-foreground hover:text-foreground'
+        {HISTORY_FILTERS.map((f) => {
+          const active = activeFilter === f.value;
+          return (
+            <button
+              key={f.value}
+              onClick={() => setActiveFilter(f.value)}
+              className={`px-2.5 py-1 tracked-caps text-[9.5px] border transition-all ${
+                active
+                  ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                  : 'border-[color:var(--hairline)] text-muted-foreground hover:text-foreground hover:border-foreground/30'
               }`}
-          >
-            {f.label}
-          </button>
-        ))}
+              style={{ borderRadius: '999px', letterSpacing: '0.22em' }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Loader2 className="h-6 w-6 animate-spin text-[color:var(--amber)]" />
         </div>
       ) : error ? (
-        <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
-          {error}
+        <div
+          className="border border-[color:var(--hairline)] bg-card/40 p-8 text-center"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <p className="tracked-caps text-[10px] text-destructive">Error</p>
+          <p className="font-display text-[16px] mt-1">{error}</p>
         </div>
       ) : records.length === 0 ? (
-        <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
-          No records for this filter.
+        <div
+          className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <p className="tracked-caps text-[10px] text-muted-foreground">No records</p>
+          <p className="font-display text-[18px]">Booth log empty.</p>
         </div>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">
-            Showing {records.length} of {totalRecords} records
+          <p className="tracked-caps text-[9px] text-muted-foreground/85" style={{ letterSpacing: '0.22em' }}>
+            Showing <span className="font-mono normal-case text-foreground">{records.length}</span> of <span className="font-mono normal-case text-foreground">{totalRecords}</span>
           </p>
-          <div className="rounded-xl bg-card border border-border overflow-hidden divide-y divide-border/50">
+          <div
+            className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
             {records.map((record) => {
               const d = record.data ?? {};
               const query = d.query || record.query || d?.grabTitle || '';
@@ -1491,41 +1548,46 @@ function HistoryTab() {
                 <button
                   key={record.id}
                   onClick={() => setSelectedRecord(record)}
-                  className="w-full px-4 py-3 flex items-start gap-2.5 text-left hover:bg-accent/50 transition-colors"
+                  className="group w-full px-3.5 py-3 flex items-start gap-2.5 text-left border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/30 transition-colors"
                 >
                   <div className="mt-0.5 shrink-0">
                     <EventIcon eventType={record.eventType} />
                   </div>
                   <div className="flex-1 min-w-0 space-y-1">
-                    {/* Query + queryType badge */}
-                    <div className="flex items-center gap-1.5">
-                      {query ? <span className="text-sm font-medium truncate">{query}</span> : null}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {query ? (
+                        <span className="font-display text-[13.5px] truncate group-hover:text-[color:var(--amber)] transition-colors" style={{ letterSpacing: '-0.012em' }}>
+                          {query}
+                        </span>
+                      ) : null}
                       {queryType && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono shrink-0">
+                        <span
+                          className="tracked-caps text-[8.5px] px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)] font-mono shrink-0"
+                          style={{ borderRadius: '3px', letterSpacing: '0.2em' }}
+                        >
                           {queryType}
                         </span>
                       )}
                     </div>
-                    {/* Category chips */}
                     {uniqueCategories.length > 0 && (
                       <div className="flex items-center gap-1 flex-wrap">
                         {uniqueCategories.slice(0, 3).map((cat) => (
                           <span
                             key={cat}
-                            className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${categoryColor(categoryIds.find((id) => categoryLabel(id) === cat) ?? 0)}`}
+                            className={`tracked-caps text-[8.5px] px-1.5 py-0.5 ${categoryColor(categoryIds.find((id) => categoryLabel(id) === cat) ?? 0)}`}
+                            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
                           >
                             {cat}
                           </span>
                         ))}
                       </div>
                     )}
-                    {/* Source · Indexer · elapsed · time */}
-                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground flex-wrap">
+                    <div className="flex items-center gap-1 font-mono tabular text-[10px] text-muted-foreground/80 flex-wrap">
                       {[source, indexerMap[record.indexerId] ?? record.indexer ?? null, elapsed ? `${elapsed}ms` : null, formatTime(record.date)]
                         .filter(Boolean)
                         .map((item, i) => (
                           <span key={i} className="flex items-center gap-1">
-                            {i > 0 && <span className="opacity-30">·</span>}
+                            {i > 0 && <span className="text-muted-foreground/40">·</span>}
                             <span className="truncate max-w-[110px]">{item}</span>
                           </span>
                         ))}
@@ -1672,6 +1734,15 @@ export default function ProwlarrPage() {
 
   return (
     <div className="space-y-4 animate-content-in">
+      {/* Status strip */}
+      <div className="flex items-center gap-2">
+        <span className="marquee-dot" aria-hidden />
+        <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+          Prowlarr · Indexer Booth
+        </span>
+        <span className="hairline flex-1" aria-hidden />
+      </div>
+
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button
@@ -1682,11 +1753,11 @@ export default function ProwlarrPage() {
           disabled={syncing}
         >
           {syncing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin text-[color:var(--amber)]" />
           ) : (
             <RefreshCw className="h-4 w-4" />
           )}
-          Sync All
+          <span className="tracked-caps text-[9.5px]">Sync All</span>
         </Button>
         <Button
           variant="outline"
@@ -1696,11 +1767,11 @@ export default function ProwlarrPage() {
           disabled={testingAll}
         >
           {testingAll ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin text-[color:var(--amber)]" />
           ) : (
             <CheckCircle className="h-4 w-4" />
           )}
-          Test All
+          <span className="tracked-caps text-[9.5px]">Test All</span>
         </Button>
       </div>
 
@@ -1751,11 +1822,34 @@ export default function ProwlarrPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="indexers">
-        <div className="sticky z-30 -mx-4 px-4 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
-          <TabsList className="w-full">
-            <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
-            <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>
-            <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
+        <div className="sticky z-30 -mx-4 px-4 pb-2.5 bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70" style={{ top: 'var(--header-height, 0px)' }}>
+          <div
+            aria-hidden
+            className="absolute inset-x-0 bottom-0 h-px"
+            style={{ background: 'var(--hairline)' }}
+          />
+          <TabsList className="w-full bg-transparent gap-0 p-0">
+            <TabsTrigger
+              value="indexers"
+              className="flex-1 relative bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/70 hover:text-foreground font-display text-[14px] py-2 data-[state=active]:after:absolute data-[state=active]:after:left-2 data-[state=active]:after:right-2 data-[state=active]:after:-bottom-px data-[state=active]:after:h-px data-[state=active]:after:bg-[color:var(--amber)]"
+              style={{ letterSpacing: '-0.01em' }}
+            >
+              Indexers
+            </TabsTrigger>
+            <TabsTrigger
+              value="stats"
+              className="flex-1 relative bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/70 hover:text-foreground font-display text-[14px] py-2 data-[state=active]:after:absolute data-[state=active]:after:left-2 data-[state=active]:after:right-2 data-[state=active]:after:-bottom-px data-[state=active]:after:h-px data-[state=active]:after:bg-[color:var(--amber)]"
+              style={{ letterSpacing: '-0.01em' }}
+            >
+              Stats
+            </TabsTrigger>
+            <TabsTrigger
+              value="history"
+              className="flex-1 relative bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground text-muted-foreground/70 hover:text-foreground font-display text-[14px] py-2 data-[state=active]:after:absolute data-[state=active]:after:left-2 data-[state=active]:after:right-2 data-[state=active]:after:-bottom-px data-[state=active]:after:h-px data-[state=active]:after:bg-[color:var(--amber)]"
+              style={{ letterSpacing: '-0.01em' }}
+            >
+              History
+            </TabsTrigger>
           </TabsList>
         </div>
 

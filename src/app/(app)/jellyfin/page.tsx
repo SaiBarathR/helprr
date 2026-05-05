@@ -159,24 +159,57 @@ export default function JellyfinPage() {
         </Button>
       </div> */}
 
-      <div className="sticky z-30 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
-        <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              id={`tab-${t.key}`}
-              role="tab"
-              type="button"
-              aria-selected={tab === t.key}
-              aria-controls={`panel-${t.key}`}
-              tabIndex={tab === t.key ? 0 : -1}
-              onClick={() => setTab(t.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+      <div className="sticky z-30 -mx-3 px-3 md:-mx-8 md:px-8 pb-2.5 pt-2 bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70" style={{ top: 'var(--header-height, 0px)' }}>
+        <div
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-px"
+          style={{ background: 'var(--hairline)' }}
+        />
+
+        <div className="flex items-center gap-2 pt-1.5 pb-2">
+          <span className="marquee-dot" aria-hidden />
+          <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+            Jellyfin · Streaming Booth
+          </span>
+          <span className="hairline flex-1" aria-hidden />
+        </div>
+
+        <div role="tablist" aria-label="Jellyfin sections" className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto scrollbar-hide -mx-1 px-1">
+          {TABS.map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                id={`tab-${t.key}`}
+                role="tab"
+                type="button"
+                aria-selected={active}
+                aria-controls={`panel-${t.key}`}
+                tabIndex={active ? 0 : -1}
+                onClick={() => setTab(t.key)}
+                className={`relative px-3 py-2 inline-flex items-center gap-2 whitespace-nowrap transition-colors ${
+                  active ? 'text-foreground' : 'text-muted-foreground/70 hover:text-foreground'
                 }`}
-            >
-              {t.label}
-            </button>
-          ))}
+              >
+                <span className="font-display text-[14px] sm:text-[15px]" style={{ letterSpacing: '-0.01em' }}>
+                  {t.label}
+                </span>
+                <span
+                  aria-hidden
+                  className={`absolute left-2 right-2 -bottom-px h-px transition-all ${
+                    active ? 'bg-[color:var(--amber)] opacity-100' : 'bg-foreground/20 opacity-0'
+                  }`}
+                />
+                {active && (
+                  <span
+                    aria-hidden
+                    className="absolute left-1/2 -translate-x-1/2 -bottom-1 w-1 h-1 rounded-full bg-[color:var(--amber)]"
+                    style={{ boxShadow: '0 0 8px var(--amber-glow)' }}
+                  />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -207,9 +240,12 @@ function Carousel({ children, className = '' }: { children: React.ReactNode; cla
 
 function SectionHeader({ title, badge, trailing }: { title: string; badge?: React.ReactNode; trailing?: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between mb-2.5">
-      <div className="flex items-center gap-2">
-        <h2 className="text-base font-semibold">{title}</h2>
+    <div className="flex items-end justify-between mb-3 gap-3">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <span className="reel" aria-hidden />
+        <h2 className="font-display text-[17px] sm:text-[19px] leading-tight tracking-[-0.018em] truncate">
+          {title}
+        </h2>
         {badge}
       </div>
       {trailing}
@@ -219,10 +255,16 @@ function SectionHeader({ title, badge, trailing }: { title: string; badge?: Reac
 
 function PluginNotice() {
   return (
-    <div className="rounded-xl bg-muted/30 p-6 text-center">
-      <AlertCircle className="h-8 w-8 mx-auto mb-2 text-muted-foreground/40" />
-      <p className="text-sm font-medium text-muted-foreground">Playback Reporting Plugin not detected</p>
-      <p className="text-xs text-muted-foreground/70 mt-1">Install the Jellyfin Playback Reporting Plugin for watch history and statistics.</p>
+    <div
+      className="border border-[color:var(--hairline)] bg-card/40 p-8 text-center space-y-2"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
+      <div className="mx-auto h-10 w-10 rounded-full border border-[color:var(--hairline)] flex items-center justify-center">
+        <AlertCircle className="h-4 w-4 text-muted-foreground/60" />
+      </div>
+      <p className="tracked-caps text-[10px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>Plugin missing</p>
+      <p className="font-display text-[16px]">Playback Reporting not detected.</p>
+      <p className="text-[12px] text-muted-foreground/85 max-w-sm mx-auto">Install the Jellyfin Playback Reporting Plugin for watch history and statistics.</p>
     </div>
   );
 }
@@ -347,51 +389,97 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
 
       {system && (
-        <div className="rounded-xl bg-card overflow-hidden">
-          <div className="p-3 flex items-center gap-3">
-            <div className="rounded-lg bg-[#00a4dc]/10 p-2"><Server className="h-4 w-4 text-[#00a4dc]" /></div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{system.ServerName}</p>
-              <p className="text-xs text-muted-foreground">v{system.Version}</p>
+        <div
+          className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden"
+          style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+        >
+          <div className="p-3.5 flex items-center gap-3">
+            <div
+              className="bg-[color:var(--amber-soft)] p-2 border border-[color:var(--amber)]/30"
+              style={{ borderRadius: 'calc(var(--radius) - 3px)' }}
+            >
+              <Server className="h-4 w-4 text-[color:var(--amber)]" />
             </div>
-            <div className="flex gap-1.5">
-              {system.HasPendingRestart && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-500 border-amber-500/30">Restart needed</Badge>}
-              {system.HasUpdateAvailable && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-blue-500 border-blue-500/30">Update available</Badge>}
+            <div className="flex-1 min-w-0">
+              <p className="font-display text-[15px] truncate" style={{ letterSpacing: '-0.012em' }}>{system.ServerName}</p>
+              <p className="font-mono tabular text-[10.5px] text-muted-foreground/85">v{system.Version}</p>
+            </div>
+            <div className="flex gap-1.5 flex-wrap justify-end">
+              {system.HasPendingRestart && (
+                <span
+                  className="tracked-caps text-[8.5px] px-1.5 py-0.5"
+                  style={{
+                    borderRadius: '3px',
+                    letterSpacing: '0.22em',
+                    background: 'oklch(0.78 0.16 78 / 0.16)',
+                    border: '1px solid oklch(0.78 0.16 78 / 0.4)',
+                    color: 'oklch(0.80 0.16 78)',
+                  }}
+                >
+                  Restart needed
+                </span>
+              )}
+              {system.HasUpdateAvailable && (
+                <span
+                  className="tracked-caps text-[8.5px] px-1.5 py-0.5"
+                  style={{
+                    borderRadius: '3px',
+                    letterSpacing: '0.22em',
+                    background: 'oklch(0.72 0.13 220 / 0.14)',
+                    border: '1px solid oklch(0.72 0.13 220 / 0.4)',
+                    color: 'oklch(0.80 0.13 220)',
+                  }}
+                >
+                  Update available
+                </span>
+              )}
               {!system.HasPendingRestart && !system.HasUpdateAvailable && (
-                <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-green-500 border-green-500/30"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Healthy</Badge>
+                <span
+                  className="inline-flex items-center gap-1 tracked-caps text-[8.5px] px-1.5 py-0.5"
+                  style={{
+                    borderRadius: '3px',
+                    letterSpacing: '0.22em',
+                    background: 'oklch(0.78 0.13 162 / 0.16)',
+                    border: '1px solid oklch(0.78 0.13 162 / 0.4)',
+                    color: 'oklch(0.78 0.13 162)',
+                  }}
+                >
+                  <CheckCircle2 className="h-2.5 w-2.5" />
+                  Healthy
+                </span>
               )}
             </div>
           </div>
-          <div className="border-t border-border/50 px-3 py-2 flex gap-1.5">
+          <div className="border-t border-[color:var(--hairline)] px-2 py-2 flex gap-1">
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-[#00a4dc] hover:bg-[#00a4dc]/10"
+              className="h-8 flex-1 gap-1.5 text-muted-foreground hover:text-[color:var(--amber)] hover:bg-[color:var(--amber-soft)]/40"
               disabled={serverAction !== null || scanRunning}
               onClick={() => handleServerAction('scan-libraries')}
             >
               {serverAction === 'scan-libraries' || scanRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <FolderSync className="h-3 w-3" />}
-              {scanRunning ? 'Scanning…' : 'Scan Libraries'}
+              <span className="tracked-caps text-[9px]">{scanRunning ? 'Scanning…' : 'Scan'}</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
+              className="h-8 flex-1 gap-1.5 text-muted-foreground hover:text-[color:var(--amber)] hover:bg-[color:var(--amber-soft)]/40"
               disabled={serverAction !== null}
               onClick={() => handleServerAction('restart')}
             >
               {serverAction === 'restart' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
-              Restart
+              <span className="tracked-caps text-[9px]">Restart</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+              className="h-8 flex-1 gap-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               disabled={serverAction !== null}
               onClick={() => handleServerAction('shutdown')}
             >
               {serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
-              Shutdown
+              <span className="tracked-caps text-[9px]">Shutdown</span>
             </Button>
           </div>
         </div>
@@ -438,41 +526,71 @@ function PosterCard({ item, showProgress, jellyfinUrl }: { item: JellyfinItem; s
 
   const content = (
     <>
-      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
-        {hasImage ? <Image src={posterSrc} alt={item.Name} fill sizes="110px" className="object-cover" unoptimized={isProtectedApiImageSrc(posterSrc)} /> : (
-          <div className="w-full h-full flex items-center justify-center"><MonitorPlay className="h-6 w-6 text-muted-foreground/20" /></div>
+      <div
+        className="group relative aspect-[2/3] overflow-hidden bg-muted/40 mb-1.5 transition-all duration-500 hover:shadow-[0_18px_38px_-18px_var(--amber-glow)]"
+        style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+      >
+        <div
+          aria-hidden
+          className="absolute inset-0 z-20 pointer-events-none transition-colors duration-300 group-hover:border-[color:var(--amber-soft)]"
+          style={{ borderRadius: 'inherit', border: '1px solid var(--hairline)' }}
+        />
+        {hasImage ? (
+          <Image src={posterSrc} alt={item.Name} fill sizes="120px" className="object-cover transition-transform duration-[700ms] ease-out group-hover:scale-[1.06]" unoptimized={isProtectedApiImageSrc(posterSrc)} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center"><MonitorPlay className="h-6 w-6 text-muted-foreground/40" /></div>
         )}
-        <div className="absolute top-1.5 left-1.5">
-          <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${item.Type === 'Movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
-            {item.Type === 'Movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
+        <div className="absolute inset-0 bg-gradient-to-t from-[color:var(--ink-deep)]/85 via-transparent to-transparent" />
+        <div className="absolute top-1.5 left-1.5 z-10">
+          <span
+            className="tracked-caps text-[8px] px-1 py-0.5 bg-black/65 text-white/90 backdrop-blur-sm border border-white/10"
+            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+          >
+            {item.Type === 'Movie' ? 'F' : 'TV'}
           </span>
         </div>
         {showProgress && progress > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10"><div className="h-full bg-[#00a4dc]" style={{ width: `${progress}%` }} /></div>
+          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10 z-10">
+            <div className="h-full bg-[color:var(--amber)]" style={{ width: `${progress}%`, boxShadow: '0 0 6px var(--amber-glow)' }} />
+          </div>
         )}
       </div>
-      <p className="text-[11px] font-medium truncate leading-tight">{item.SeriesName || item.Name}</p>
-      {item.Type === 'Episode' && item.ParentIndexNumber != null && <p className="text-[10px] text-muted-foreground truncate">S{item.ParentIndexNumber}E{item.IndexNumber}</p>}
+      <p className="font-display text-[11.5px] truncate leading-tight" style={{ letterSpacing: '-0.012em' }}>{item.SeriesName || item.Name}</p>
+      {item.Type === 'Episode' && item.ParentIndexNumber != null && (
+        <p className="font-mono tabular text-[9.5px] text-[color:var(--amber)]/85 truncate">
+          S{item.ParentIndexNumber}E{item.IndexNumber}
+        </p>
+      )}
     </>
   );
 
   return href ? (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="snap-start shrink-0 w-[110px]">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="snap-start shrink-0 w-[120px]">
       {content}
     </a>
   ) : (
-    <div className="snap-start shrink-0 w-[110px]">
+    <div className="snap-start shrink-0 w-[120px]">
       {content}
     </div>
   );
 }
 
-function StatCard({ icon: Icon, color, value, label }: { icon: React.ElementType; color: string; value: number; label: string }) {
-  const c: Record<string, string> = { blue: 'bg-blue-500/10 text-blue-500', purple: 'bg-purple-500/10 text-purple-500', green: 'bg-green-500/10 text-green-500', indigo: 'bg-indigo-500/10 text-indigo-500' };
+function StatCard({ icon: Icon, value, label }: { icon: React.ElementType; color: string; value: number; label: string }) {
   return (
-    <div className="rounded-xl bg-card p-4 flex items-center gap-3">
-      <div className={`rounded-lg p-2.5 ${c[color] || c.blue}`}><Icon className="h-5 w-5" /></div>
-      <div><p className="text-2xl font-bold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>
+    <div
+      className="border border-[color:var(--hairline)] bg-card/40 p-4 flex items-center gap-3"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
+      <div
+        className="bg-[color:var(--amber-soft)] p-2.5 border border-[color:var(--amber)]/30"
+        style={{ borderRadius: 'calc(var(--radius) - 3px)' }}
+      >
+        <Icon className="h-4 w-4 text-[color:var(--amber)]" />
+      </div>
+      <div>
+        <p className="font-display text-[24px] leading-none tracking-[-0.02em]">{value}</p>
+        <p className="tracked-caps text-[8.5px] text-muted-foreground/85 mt-0.5" style={{ letterSpacing: '0.22em' }}>{label}</p>
+      </div>
     </div>
   );
 }
@@ -481,11 +599,22 @@ function LibraryCard({ library }: { library: JellyfinLibrary }) {
   const m: Record<string, React.ElementType> = { movies: Film, tvshows: Tv, music: Clapperboard, homevideos: MonitorPlay };
   const Icon = m[library.CollectionType || ''] || Library;
   return (
-    <div className="rounded-xl bg-card p-3 flex items-center gap-3">
-      <div className="rounded-lg bg-[#00a4dc]/10 p-2"><Icon className="h-4 w-4 text-[#00a4dc]" /></div>
+    <div
+      className="border border-[color:var(--hairline)] bg-card/40 p-3 flex items-center gap-3 transition-colors hover:border-[color:var(--amber-soft)]"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
+      <div
+        className="bg-[color:var(--amber-soft)] p-2 border border-[color:var(--amber)]/30"
+        style={{ borderRadius: 'calc(var(--radius) - 3px)' }}
+      >
+        <Icon className="h-4 w-4 text-[color:var(--amber)]" />
+      </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{library.Name}</p>
-        <p className="text-xs text-muted-foreground">{library.CollectionType || 'Mixed'}{library.ChildCount != null && ` \u00B7 ${library.ChildCount} items`}</p>
+        <p className="font-display text-[14px] truncate" style={{ letterSpacing: '-0.012em' }}>{library.Name}</p>
+        <p className="tracked-caps text-[8.5px] text-muted-foreground/85 mt-0.5" style={{ letterSpacing: '0.22em' }}>
+          {library.CollectionType || 'Mixed'}
+          {library.ChildCount != null && <span className="font-mono normal-case ml-1">\u00B7 {library.ChildCount}</span>}
+        </p>
       </div>
     </div>
   );
@@ -573,31 +702,50 @@ function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
   if (loading) return <PageSpinner />;
   if (!pluginAvailable) return <PluginNotice />;
-  if (users.length === 0) return <div className="text-center py-16 text-muted-foreground"><Users className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">No user activity found</p></div>;
+  if (users.length === 0) return (
+    <div
+      className="border border-[color:var(--hairline)] bg-card/40 p-10 text-center space-y-3"
+      style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+    >
+      <div className="mx-auto h-10 w-10 rounded-full border border-[color:var(--hairline)] flex items-center justify-center">
+        <Users className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <p className="tracked-caps text-[10px] text-muted-foreground">No activity</p>
+      <p className="font-display text-[18px]">Empty audience.</p>
+    </div>
+  );
 
   return (
     <>
-      <div className="space-y-2">
+      <div className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden" style={{ borderRadius: 'calc(var(--radius) - 1px)' }}>
         {users.map((user) => {
           const jfUser = jellyfinUsers.find((u) => u.Id === user.user_id);
           const avatarSrc = jfUser?.PrimaryImageTag ? `/api/jellyfin/image?itemId=${user.user_id}&type=Primary&maxWidth=80&quality=80` : null;
           return (
-            <button key={user.user_id} onClick={() => openUserHistory(user)} className="w-full text-left rounded-xl bg-muted/30 p-3 active:bg-muted/50 transition-colors">
+            <button
+              key={user.user_id}
+              onClick={() => openUserHistory(user)}
+              className="group w-full text-left p-3.5 border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/30 transition-colors"
+            >
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-[#00a4dc]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                <div className="h-10 w-10 rounded-full bg-[color:var(--amber-soft)] flex items-center justify-center shrink-0 overflow-hidden border border-[color:var(--amber)]/30">
                   {avatarSrc ? <Image src={avatarSrc} alt={user.user_name} width={40} height={40} className="object-cover" unoptimized /> : (
-                    <span className="text-sm font-bold text-[#00a4dc]">{user.user_name.charAt(0).toUpperCase()}</span>
+                    <span className="font-display text-[15px] text-[color:var(--amber)]">{user.user_name.charAt(0).toUpperCase()}</span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{user.user_name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{user.item_name || 'No recent activity'} &middot; {user.client_name}</p>
+                  <p className="font-display text-[14.5px] truncate group-hover:text-[color:var(--amber)] transition-colors" style={{ letterSpacing: '-0.012em' }}>{user.user_name}</p>
+                  <p className="font-mono tabular text-[10.5px] text-muted-foreground/85 truncate mt-0.5">{user.item_name || 'No recent activity'} &middot; {user.client_name}</p>
                 </div>
-                <div className="text-right shrink-0"><p className="text-xs text-muted-foreground">{user.last_seen}</p></div>
+                <div className="text-right shrink-0"><p className="font-mono tabular text-[10px] text-muted-foreground/85">{user.last_seen}</p></div>
               </div>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{user.total_count} plays</Badge>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{user.total_play_time}</Badge>
+              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                <span className="tracked-caps text-[8.5px] px-1.5 py-0.5 bg-[color:var(--amber-soft)] text-[color:var(--amber)]" style={{ borderRadius: '3px', letterSpacing: '0.22em' }}>
+                  {user.total_count} plays
+                </span>
+                <span className="tracked-caps text-[8.5px] px-1.5 py-0.5 border border-[color:var(--hairline)] bg-card/50 text-muted-foreground" style={{ borderRadius: '3px', letterSpacing: '0.22em' }}>
+                  {user.total_play_time}
+                </span>
               </div>
             </button>
           );

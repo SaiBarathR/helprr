@@ -4,7 +4,7 @@
 import { useRef } from 'react';
 import Link from 'next/link';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronRight } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { PersonCard } from '@/components/media/person-card';
 import type { ImageServiceHint } from '@/lib/image';
 
@@ -23,25 +23,26 @@ interface VirtualizedPersonRailProps {
   titleTextClassName?: string;
   headerClassName?: string;
   viewAllHref?: string;
+  eyebrow?: string;
 }
 
-// PersonCard height: p-2 (8px) + h-10 image (40px) + p-2 (8px) = 56px
 const CARD_HEIGHT = 56;
 
 export function VirtualizedPersonRail({
   title,
   items,
   cacheService,
-  titleTextClassName = 'text-base font-semibold',
-  headerClassName = 'mb-2',
+  titleTextClassName,
+  headerClassName = 'mb-3',
   viewAllHref,
+  eyebrow,
 }: VirtualizedPersonRailProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 180,
+    estimateSize: () => 200,
     horizontal: true,
     overscan: 5,
     gap: 10,
@@ -49,23 +50,32 @@ export function VirtualizedPersonRail({
 
   if (!items.length) return null;
 
+  const titleClass = titleTextClassName || 'font-display text-[18px] sm:text-[20px] leading-tight tracking-[-0.018em]';
+
   return (
     <div>
-      {viewAllHref ? (
-        <div className={`flex items-center justify-between ${headerClassName}`}>
-          <h2 className={titleTextClassName}>
-            {title}
-          </h2>
-          <Link href={viewAllHref} className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
+      <div className={`flex items-end justify-between gap-3 ${headerClassName}`}>
+        <div className="min-w-0 flex items-end gap-2.5">
+          <span className="reel mb-1.5" aria-hidden />
+          <div className="min-w-0">
+            {eyebrow && (
+              <p className="tracked-caps text-[8.5px] text-muted-foreground/80 mb-0.5" style={{ letterSpacing: '0.22em' }}>
+                {eyebrow}
+              </p>
+            )}
+            <h2 className={titleClass}>{title}</h2>
+          </div>
+        </div>
+        {viewAllHref && (
+          <Link
+            href={viewAllHref}
+            className="press-feedback group/all shrink-0 inline-flex items-center gap-1 tracked-caps text-[10px] text-muted-foreground hover:text-[color:var(--amber)] transition-colors"
+          >
             View All
-            <ChevronRight className="h-3.5 w-3.5" />
+            <ArrowUpRight className="h-3 w-3 transition-transform group-hover/all:translate-x-0.5 group-hover/all:-translate-y-0.5" />
           </Link>
-        </div>
-      ) : (
-        <div className={headerClassName}>
-          <h2 className={titleTextClassName}>{title}</h2>
-        </div>
-      )}
+        )}
+      </div>
       <div
         ref={scrollRef}
         className="overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide"

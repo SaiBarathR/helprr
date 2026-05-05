@@ -1,4 +1,4 @@
-import { ExternalLink } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 
 interface ExternalLinkItem {
   label: string;
@@ -34,19 +34,28 @@ export function DiscoverExternalLinks({ tmdbId, mediaType, imdbId, homepage }: D
   if (!links.length) return null;
 
   return (
-    <div>
-      <h2 className="text-base font-semibold mb-2">External Links</h2>
-      <div className="flex gap-2 flex-wrap">
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="reel" aria-hidden />
+        <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+          External Links
+        </h2>
+        <span className="hairline flex-1" aria-hidden />
+      </div>
+      <div className="flex gap-1.5 flex-wrap">
         {links.map((link) => (
           <a
             key={link.label}
             href={link.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/60 bg-accent/40 text-xs font-semibold"
+            className="press-feedback inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+            style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
           >
-            {link.label}
-            <ExternalLink className="h-3 w-3" />
+            <span className="tracked-caps text-[9.5px]" style={{ letterSpacing: '0.22em' }}>
+              {link.label}
+            </span>
+            <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
           </a>
         ))}
       </div>

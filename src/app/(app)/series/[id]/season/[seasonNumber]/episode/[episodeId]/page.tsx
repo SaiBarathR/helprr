@@ -11,7 +11,6 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
@@ -472,98 +471,134 @@ export default function EpisodeDetailPage() {
         }
       />
 
-      {/* Episode still image */}
-      {tmdbEpisode?.stillPath && (
-        <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
+      {/* Episode still image — cinematic hero */}
+      {tmdbEpisode?.stillPath ? (
+        <div className="relative -mx-3 md:-mx-8 w-[calc(100%+1.5rem)] md:w-[calc(100%+4rem)] h-[220px] sm:h-[280px] lg:h-[340px] overflow-hidden bg-[color:var(--ink-deep)]">
           <Image
             src={toCachedImageSrc(tmdbEpisode.stillPath, 'tmdb') || tmdbEpisode.stillPath}
             alt=""
             fill
             sizes="100vw"
-            className="object-cover"
+            className="object-cover animate-hero-zoom"
             priority
             unoptimized
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+          <div aria-hidden className="cinema-grain" />
+          <div className="absolute top-3 left-3 md:left-8 right-3 md:right-8 flex items-center gap-2">
+            <span className="marquee-dot" aria-hidden />
+            <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/90">
+              Episode · {epCode}
+            </span>
+            <span className="hairline flex-1" aria-hidden />
+            <span className="tracked-caps text-[9.5px] text-white/70 font-mono tabular hidden sm:inline" style={{ letterSpacing: '0.22em' }}>
+              {episode.hasFile ? 'On Disk' : episode.monitored ? 'Awaiting' : 'Idle'}
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span className="marquee-dot" aria-hidden />
+          <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">Episode · {epCode}</span>
+          <span className="hairline flex-1" aria-hidden />
         </div>
       )}
 
-      {/* Status badge + rating */}
-      <div className="flex items-center gap-2">
+      {/* Status pill row */}
+      <div className="flex items-center gap-2 flex-wrap">
         {episode.hasFile ? (
-          <Badge className="bg-green-600 hover:bg-green-600 text-white">DOWNLOADED</Badge>
+          <span
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 tracked-caps text-[9px] border"
+            style={{
+              borderRadius: '3px',
+              letterSpacing: '0.22em',
+              background: 'oklch(0.78 0.13 162 / 0.16)',
+              borderColor: 'oklch(0.78 0.13 162 / 0.4)',
+              color: 'oklch(0.78 0.13 162)',
+            }}
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'oklch(0.78 0.13 162)' }} />
+            Downloaded
+          </span>
         ) : episode.monitored ? (
-          <Badge variant="destructive">MISSING</Badge>
+          <span
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 tracked-caps text-[9px] border"
+            style={{
+              borderRadius: '3px',
+              letterSpacing: '0.22em',
+              background: 'oklch(0.66 0.20 25 / 0.16)',
+              borderColor: 'oklch(0.66 0.20 25 / 0.4)',
+              color: 'oklch(0.78 0.18 25)',
+            }}
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: 'oklch(0.66 0.20 25)' }} />
+            Missing
+          </span>
         ) : (
-          <Badge variant="secondary">UNMONITORED</Badge>
-        )}
-        {tmdbEpisode && tmdbEpisode.voteAverage > 0 && (
-          <span className="inline-flex items-center gap-1 text-sm">
-            <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
-            <span className="font-medium">{tmdbEpisode.voteAverage.toFixed(1)}</span>
+          <span
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 tracked-caps text-[9px] border border-[color:var(--hairline)] bg-card/40 text-muted-foreground"
+            style={{ borderRadius: '3px', letterSpacing: '0.22em' }}
+          >
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
+            Unmonitored
           </span>
         )}
-      </div>
-
-      {/* Episode code + runtime + air date line */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">{epCode}</span>
-        {(tmdbEpisode?.runtime || series.runtime > 0) && (
-          <>
-            <span className="text-muted-foreground/40">|</span>
-            <span>{tmdbEpisode?.runtime || series.runtime} min</span>
-          </>
+        {tmdbEpisode && tmdbEpisode.voteAverage > 0 && (
+          <span className="inline-flex items-center gap-1 font-mono tabular text-[12px] text-[color:var(--amber)]">
+            <Star className="h-3 w-3 fill-[color:var(--amber)]" />
+            {tmdbEpisode.voteAverage.toFixed(1)}
+          </span>
         )}
-        {episode.airDate && (
-          <>
-            <span className="text-muted-foreground/40">|</span>
-            <span>{format(new Date(episode.airDate), 'MMM d, yyyy')}</span>
-          </>
-        )}
+        <span className="font-mono tabular tracked-mid text-[10px] text-muted-foreground/85" style={{ letterSpacing: '0.16em' }}>
+          {[
+            tmdbEpisode?.runtime || series.runtime > 0 ? `${tmdbEpisode?.runtime || series.runtime} MIN` : null,
+            episode.airDate ? format(new Date(episode.airDate), 'MMM d, yyyy').toUpperCase() : null,
+          ].filter(Boolean).join('  ·  ')}
+        </span>
       </div>
 
       {/* Metadata rows */}
-      <div className="space-y-0 rounded-lg border overflow-hidden">
+      <div className="border-t border-b border-[color:var(--hairline)]">
         {series.network && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Network</span>
-            <span className="text-sm">{series.network}</span>
+          <div className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)]">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Network</span>
+            <span className="text-[13px] font-mono tabular truncate">{series.network}</span>
           </div>
         )}
         {series.genres && series.genres.length > 0 && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Genre</span>
-            <span className="text-sm truncate max-w-[200px]">{series.genres.join(', ')}</span>
+          <div className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)]">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Genre</span>
+            <span className="text-[13px] truncate max-w-[60%]">{series.genres.join(' · ')}</span>
           </div>
         )}
         {mediaInfo?.videoCodec && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Video</span>
-            <span className="text-sm">
+          <div className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)]">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Video</span>
+            <span className="text-[13px] font-mono tabular text-right truncate">
               {mediaInfo.videoCodec}
-              {mediaInfo.resolution ? ` ${mediaInfo.resolution}` : ''}
-              {mediaInfo.videoDynamicRangeType ? ` ${mediaInfo.videoDynamicRangeType}` : ''}
+              {mediaInfo.resolution ? ` · ${mediaInfo.resolution}` : ''}
+              {mediaInfo.videoDynamicRangeType ? ` · ${mediaInfo.videoDynamicRangeType}` : ''}
             </span>
           </div>
         )}
         {mediaInfo?.audioCodec && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Audio</span>
-            <span className="text-sm">
+          <div className="flex justify-between items-baseline gap-3 py-2.5 border-b border-[color:var(--hairline)]">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Audio</span>
+            <span className="text-[13px] font-mono tabular text-right truncate">
               {mediaInfo.audioCodec}
-              {mediaInfo.audioChannels ? ` ${mediaInfo.audioChannels}ch` : ''}
+              {mediaInfo.audioChannels ? ` · ${mediaInfo.audioChannels}ch` : ''}
               {mediaInfo.audioLanguages ? ` (${mediaInfo.audioLanguages})` : ''}
             </span>
           </div>
         )}
         {mediaInfo?.subtitles && (
-          <div className="flex justify-between items-center px-4 py-2.5">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Subtitles</span>
-            <span className="text-sm truncate max-w-[200px]">{mediaInfo.subtitles}</span>
+          <div className="flex justify-between items-baseline gap-3 py-2.5">
+            <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Subtitles</span>
+            <span className="text-[13px] font-mono tabular truncate max-w-[60%]">{mediaInfo.subtitles}</span>
           </div>
         )}
         {!mediaInfo && !series.network && (!series.genres || series.genres.length === 0) && (
-          <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+          <div className="px-1 py-3 text-sm text-muted-foreground text-center">
             No metadata available
           </div>
         )}
@@ -571,83 +606,94 @@ export default function EpisodeDetailPage() {
 
       {/* Overview */}
       {episode.overview && (
-        <div>
-          <p className="text-sm text-muted-foreground leading-relaxed">{episode.overview}</p>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              Synopsis
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
+          <p className="text-[14px] text-foreground/85 leading-relaxed pl-1">{episode.overview}</p>
         </div>
       )}
 
-      {/* Pill buttons */}
+      {/* Action buttons */}
       <div className="flex gap-2">
         <Button
-          variant="secondary"
-          className="rounded-full flex-1"
+          className="flex-1 h-11 cta-sheen projector-glow"
           onClick={handleAutomaticSearch}
           disabled={!!actionLoading}
         >
           {actionLoading === 'search' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <Search className="mr-2 h-4 w-4" />
+            <Search className="h-4 w-4" />
           )}
-          Automatic
+          <span className="tracked-caps text-[10px]">Auto Search</span>
         </Button>
         <Button
-          variant="secondary"
-          className="rounded-full flex-1"
+          variant="outline"
+          className="flex-1 h-11"
           onClick={() => setInteractiveSearch(true)}
         >
-          <Search className="mr-2 h-4 w-4" />
-          Interactive
+          <Search className="h-4 w-4" />
+          <span className="tracked-caps text-[10px]">Interactive</span>
         </Button>
       </div>
 
       {/* File section */}
       {episode.hasFile && episodeFile && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              File
-            </h3>
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              File · On Disk
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
             <button
               onClick={() => setFileDrawerOpen(true)}
               type="button"
               aria-label="Open file details"
               aria-expanded={fileDrawerOpen}
               aria-controls="episode-file-details-drawer"
-              className="min-w-[44px] min-h-[44px] inline-flex items-center justify-center rounded-md hover:bg-muted transition-colors"
+              className="press-feedback min-w-[36px] min-h-[36px] inline-flex items-center justify-center hover:text-[color:var(--amber)] transition-colors"
               title="File details"
             >
               <Info className="h-4 w-4 text-muted-foreground" />
             </button>
           </div>
-          <div className="rounded-lg border overflow-hidden">
-            <div className="px-4 py-2.5 border-b">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Filename</span>
-              <p className="text-sm mt-0.5 break-all leading-tight">
+          <div
+            className="border border-[color:var(--hairline)] bg-card/40"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
+            <div className="px-3.5 py-2.5 border-b border-[color:var(--hairline)]">
+              <span className="tracked-caps text-[8.5px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Filename</span>
+              <p className="font-mono tabular text-[12px] mt-0.5 break-all leading-tight text-foreground/90">
                 {episodeFile.relativePath || episodeFile.path}
               </p>
             </div>
-            <div className="flex justify-between items-center px-4 py-2.5 border-b">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
-              <span className="text-sm">{episodeFile.quality?.quality?.name || 'Unknown'}</span>
+            <div className="flex justify-between items-baseline gap-3 px-3.5 py-2.5 border-b border-[color:var(--hairline)]">
+              <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Quality</span>
+              <span className="tracked-caps text-[10px] text-[color:var(--amber)]">{episodeFile.quality?.quality?.name || 'Unknown'}</span>
             </div>
             {episodeFile.languages && episodeFile.languages.length > 0 && (
-              <div className="flex justify-between items-center px-4 py-2.5 border-b">
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Language</span>
-                <span className="text-sm">
-                  {episodeFile.languages.map((l) => l.name).join(', ')}
+              <div className="flex justify-between items-baseline gap-3 px-3.5 py-2.5 border-b border-[color:var(--hairline)]">
+                <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Language</span>
+                <span className="text-[12.5px]">
+                  {episodeFile.languages.map((l) => l.name).join(' · ')}
                 </span>
               </div>
             )}
             {!episodeFile.languages && episodeFile.language && (
-              <div className="flex justify-between items-center px-4 py-2.5 border-b">
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Language</span>
-                <span className="text-sm">{episodeFile.language.name}</span>
+              <div className="flex justify-between items-baseline gap-3 px-3.5 py-2.5 border-b border-[color:var(--hairline)]">
+                <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Language</span>
+                <span className="text-[12.5px]">{episodeFile.language.name}</span>
               </div>
             )}
-            <div className="flex justify-between items-center px-4 py-2.5">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Size</span>
-              <span className="text-sm">{formatBytes(episodeFile.size)}</span>
+            <div className="flex justify-between items-baseline gap-3 px-3.5 py-2.5">
+              <span className="tracked-caps text-[9px] text-muted-foreground" style={{ letterSpacing: '0.24em' }}>Size</span>
+              <span className="font-mono tabular text-[12.5px] text-[color:var(--amber)]">{formatBytes(episodeFile.size)}</span>
             </div>
           </div>
         </div>
@@ -655,32 +701,54 @@ export default function EpisodeDetailPage() {
 
       {/* History section */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          History
-        </h3>
+        <div className="flex items-center gap-2">
+          <span className="reel" aria-hidden />
+          <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+            Booth Log · History
+          </h2>
+          <span className="hairline flex-1" aria-hidden />
+        </div>
         {historyLoading ? (
           <PageSpinner />
         ) : history.length === 0 ? (
-          <div className="rounded-lg border px-4 py-6 text-center text-sm text-muted-foreground">
-            No history available
+          <div
+            className="border border-[color:var(--hairline)] bg-card/40 px-4 py-8 text-center"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
+            <p className="tracked-caps text-[10px] text-muted-foreground">No history</p>
+            <p className="font-display text-[15px] mt-1">Booth log empty.</p>
           </div>
         ) : (
-          <div className="rounded-lg border overflow-hidden divide-y">
+          <div
+            className="border border-[color:var(--hairline)] bg-card/40 overflow-hidden"
+            style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+          >
             {history.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setSelectedHistoryItem(item)}
-                className="w-full text-left px-4 py-3 active:bg-muted/50 transition-colors"
+                className="group w-full text-left px-3.5 py-3 border-b border-[color:var(--hairline)] last:border-b-0 hover:bg-[color:var(--amber-soft)]/40 transition-colors"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <Badge variant={eventTypeBadgeVariant(item.eventType)} className="text-[10px]">
+                  <span
+                    className="tracked-caps text-[8.5px] px-1.5 py-0.5 border"
+                    style={{
+                      borderRadius: '3px',
+                      letterSpacing: '0.22em',
+                      ...(eventTypeBadgeVariant(item.eventType) === 'destructive'
+                        ? { background: 'oklch(0.66 0.20 25 / 0.16)', borderColor: 'oklch(0.66 0.20 25 / 0.4)', color: 'oklch(0.78 0.18 25)' }
+                        : eventTypeBadgeVariant(item.eventType) === 'default'
+                          ? { background: 'oklch(0.78 0.13 162 / 0.16)', borderColor: 'oklch(0.78 0.13 162 / 0.4)', color: 'oklch(0.78 0.13 162)' }
+                          : { background: 'var(--amber-soft)', borderColor: 'var(--amber-soft)', color: 'var(--amber)' }),
+                    }}
+                  >
                     {eventTypeLabel(item.eventType)}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
+                  </span>
+                  <span className="font-mono tabular text-[10px] text-muted-foreground/80">
                     {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1 truncate">
+                <p className="text-[12px] font-mono tabular text-muted-foreground/80 mt-1.5 truncate">
                   {item.sourceTitle}
                 </p>
               </button>

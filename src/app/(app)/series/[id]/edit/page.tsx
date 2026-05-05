@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
@@ -98,22 +97,27 @@ export default function SeriesEditPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={`Edit ${series.title}`} />
+      <PageHeader title={series.title} subtitle="Edit · Series Sheet" />
 
-      <div className="px-4 pt-4 pb-8 space-y-6">
-        {/* Quality Profile */}
-        <div className="grouped-section">
-          <p className="grouped-section-title">Quality Profile</p>
-          <div className="grouped-section-content">
-            <div className="grouped-row">
-              <Label htmlFor="quality-profile" className="text-sm shrink-0">
-                Profile
+      <div className="pt-4 pb-8 space-y-6">
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="reel" aria-hidden />
+            <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+              Settings
+            </h2>
+            <span className="hairline flex-1" aria-hidden />
+          </div>
+          <div className="border-t border-b border-[color:var(--hairline)]">
+            <div className="flex justify-between items-center gap-3 py-3 border-b border-[color:var(--hairline)]">
+              <Label htmlFor="quality-profile" className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Quality Profile
               </Label>
               <Select
                 value={String(qualityProfileId)}
                 onValueChange={(v) => setQualityProfileId(Number(v))}
               >
-                <SelectTrigger id="quality-profile" className="w-[180px] border-0 bg-transparent text-right">
+                <SelectTrigger id="quality-profile" className="w-[200px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -125,19 +129,13 @@ export default function SeriesEditPage() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-        </div>
 
-        {/* Series Type */}
-        <div className="grouped-section">
-          <p className="grouped-section-title">Series Type</p>
-          <div className="grouped-section-content">
-            <div className="grouped-row">
-              <Label htmlFor="series-type" className="text-sm shrink-0">
-                Type
+            <div className="flex justify-between items-center gap-3 py-3">
+              <Label htmlFor="series-type" className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Series Type
               </Label>
               <Select value={seriesType} onValueChange={setSeriesType}>
-                <SelectTrigger id="series-type" className="w-[180px] border-0 bg-transparent text-right">
+                <SelectTrigger id="series-type" className="w-[200px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -148,48 +146,55 @@ export default function SeriesEditPage() {
               </Select>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Tags */}
         {tags.length > 0 && (
-          <div className="grouped-section">
-            <p className="grouped-section-title">Tags</p>
-            <div className="grouped-section-content">
-              <div className="px-4 py-3">
-                <div className="flex flex-wrap gap-2">
-                  {tags.map((t) => (
-                    <Badge
-                      key={t.id}
-                      variant={selectedTags.includes(t.id) ? 'default' : 'outline'}
-                      className="cursor-pointer select-none transition-colors"
-                      onClick={() => toggleTag(t.id)}
-                    >
-                      {t.label}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="reel" aria-hidden />
+              <h2 className="tracked-caps text-[9.5px] text-muted-foreground" style={{ letterSpacing: '0.22em' }}>
+                Tags · {selectedTags.length}
+              </h2>
+              <span className="hairline flex-1" aria-hidden />
             </div>
-          </div>
+            <div className="flex flex-wrap gap-1.5">
+              {tags.map((t) => {
+                const active = selectedTags.includes(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => toggleTag(t.id)}
+                    className={`px-2.5 py-1 text-[11px] border transition-all ${
+                      active
+                        ? 'border-[color:var(--amber)] text-[color:var(--amber)] bg-[color:var(--amber-soft)]'
+                        : 'border-[color:var(--hairline)] text-muted-foreground hover:text-foreground hover:border-foreground/30'
+                    }`}
+                    style={{ borderRadius: '999px' }}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
-        {/* Actions */}
-        <div className="flex gap-3 pt-2">
+        <div className="flex gap-2 pt-2">
           <Button
-            variant="secondary"
-            className="flex-1"
+            variant="outline"
+            className="flex-1 h-11"
             onClick={() => router.back()}
             disabled={saving}
           >
-            Cancel
+            <span className="tracked-caps text-[10px]">Cancel</span>
           </Button>
           <Button
-            className="flex-1"
+            className="flex-1 h-11 cta-sheen projector-glow"
             onClick={handleSave}
             disabled={saving}
           >
-            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            <span className="tracked-caps text-[10px]">Save</span>
           </Button>
         </div>
       </div>

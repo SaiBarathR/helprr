@@ -552,17 +552,42 @@ export default function MoviesPage() {
   const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
+  const totalCount = movies.length;
+  const filteredCount = filtered.length;
+
   return (
     <div className="space-y-3 animate-content-in">
-      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
-        <div className="flex items-center gap-2">
+      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2.5 bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 md:-mx-6 md:px-6 space-y-2.5" style={{ top: 'var(--header-height, 0px)' }}>
+        <div
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-px"
+          style={{ background: 'var(--hairline)' }}
+        />
+
+        {/* Status strip */}
+        <div className="flex items-center gap-2 pt-1.5">
+          <span className="marquee-dot" aria-hidden />
+          <span className="tracked-caps text-[9.5px] text-[color:var(--amber)]/85">
+            Now Showing · {totalCount} {totalCount === 1 ? 'film' : 'films'}
+          </span>
+          <span className="hairline flex-1" aria-hidden />
+          {filter !== 'all' && (
+            <span className="tracked-caps text-[9px] text-muted-foreground/70 font-mono tabular" style={{ letterSpacing: '0.22em' }}>
+              {activeFilterLabel} · {filteredCount}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="press-feedback h-10 px-2.5 inline-flex items-center gap-1.5 border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 aria-label={`Filter: ${activeFilterLabel}`}
               >
-                <Filter className="h-5 w-5" />
+                <Filter className="h-3.5 w-3.5" />
+                <span className="tracked-caps text-[9.5px] hidden sm:inline">{activeFilterLabel}</span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -583,10 +608,13 @@ export default function MoviesPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="press-feedback h-10 px-2.5 inline-flex items-center gap-1.5 border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 aria-label={`Sort: ${activeSortLabel} ${sortDir === 'asc' ? 'Ascending' : 'Descending'}`}
               >
-                <ArrowUpDown className="h-5 w-5" />
+                <ArrowUpDown className="h-3.5 w-3.5" />
+                <span className="tracked-caps text-[9.5px] hidden sm:inline">{activeSortLabel}</span>
+                <span className="hidden sm:inline text-[10px] text-[color:var(--amber)]">{sortDir === 'asc' ? '↑' : '↓'}</span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-52">
@@ -633,10 +661,11 @@ export default function MoviesPage() {
               <button
                 onClick={() => fetchData(true)}
                 disabled={refreshing}
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="press-feedback h-10 w-10 flex items-center justify-center border border-[color:var(--hairline)] bg-card/40 hover:bg-card/70 hover:border-[color:var(--amber-soft)] transition-colors"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 aria-label="Refresh Movies"
               >
-                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin text-[color:var(--amber)]' : ''}`} />
               </button>
             </TooltipTrigger>
             <TooltipContent>Refresh Movies</TooltipContent>
@@ -646,17 +675,19 @@ export default function MoviesPage() {
             <TooltipTrigger asChild>
               <Link
                 href="/movies/add"
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                className="press-feedback projector-glow cta-sheen h-10 px-3.5 inline-flex items-center gap-1.5 bg-[color:var(--amber)] text-[color:var(--primary-foreground)] hover:translate-y-[-1px] transition-transform"
+                style={{ borderRadius: 'calc(var(--radius) - 2px)' }}
                 aria-label="Add Movie"
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-4 w-4" />
+                <span className="tracked-caps text-[10px] hidden sm:inline">Add</span>
               </Link>
             </TooltipTrigger>
             <TooltipContent>Add Movie</TooltipContent>
           </Tooltip>
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." />
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search the marquee — by title…" />
       </div>
 
       {(() => {
@@ -666,10 +697,24 @@ export default function MoviesPage() {
 
         if (filtered.length === 0) {
           return (
-            <div className="text-center py-12 text-muted-foreground">
-              {movies.length === 0
-                ? 'No movies found. Add your Radarr connection in Settings.'
-                : 'No movies match your filters.'}
+            <div
+              className="mt-6 p-10 border border-[color:var(--hairline)] bg-card/40 text-center space-y-3"
+              style={{ borderRadius: 'calc(var(--radius) - 1px)' }}
+            >
+              <div className="mx-auto h-10 w-10 rounded-full border border-[color:var(--hairline)] flex items-center justify-center">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="tracked-caps text-[10px] text-muted-foreground">
+                {movies.length === 0 ? 'No films catalogued' : 'Empty marquee'}
+              </p>
+              <p className="font-display text-[18px]">
+                {movies.length === 0 ? 'The reel is empty.' : 'Nothing matches.'}
+              </p>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+                {movies.length === 0
+                  ? 'Connect your Radarr server in Settings to populate the booth.'
+                  : 'Try clearing filters or adjusting the search.'}
+              </p>
             </div>
           );
         }
