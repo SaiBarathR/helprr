@@ -50,6 +50,7 @@ import {
   setMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { formatBytes } from '@/lib/format';
 import Link from 'next/link';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
@@ -329,6 +330,7 @@ export default function MovieDetailPage() {
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
   const rootFolder = movie.path ? movie.path.split('/').slice(0, -1).join('/') : '';
+  const movieFileSize = movie.movieFile?.size ?? movie.sizeOnDisk;
 
   // Extract media info from movie file if available
   const mediaInfo = movie.movieFile as (RadarrMovie['movieFile'] & {
@@ -380,6 +382,9 @@ export default function MovieDetailPage() {
       label: 'Min. Availability',
       value: movie.minimumAvailability.charAt(0).toUpperCase() + movie.minimumAvailability.slice(1),
     },
+    ...(movie.certification ? [{ label: 'Certification', value: movie.certification }] : []),
+    ...(movie.runtime > 0 ? [{ label: 'Runtime', value: `${movie.runtime} min` }] : []),
+    ...(movieFileSize > 0 ? [{ label: 'File Size', value: formatBytes(movieFileSize) }] : []),
     ...(movieTags.length > 0
       ? [{ label: 'Tags', value: movieTags.map((t) => t.label).join(', ') }]
       : []),
