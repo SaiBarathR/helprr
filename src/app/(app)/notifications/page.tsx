@@ -1,21 +1,71 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Bell, Check, Download, X, AlertTriangle, Clock, Settings2, Loader2, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import type { HistoryItem, QueueItem } from '@/types';
+
+type NotificationSource = 'sonarr' | 'radarr' | 'qbittorrent' | 'jellyfin';
+
+interface NotificationMetadata {
+  source?: NotificationSource;
+  id?: number;
+  movieId?: number;
+  seriesId?: number;
+  seasonNumber?: number;
+  episodeId?: number;
+  hash?: string;
+  sessionId?: string;
+  sentCount?: number;
+}
 
 interface Notification {
   id: string;
   eventType: string;
   title: string;
   body: string;
+  metadata?: NotificationMetadata | null;
   read: boolean;
   createdAt: string;
+}
+
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function getMediaHrefFromIds(args: {
+  seriesId?: unknown;
+  seasonNumber?: unknown;
+  episodeId?: unknown;
+  movieId?: unknown;
+}): string | null {
+  const movieId = toNumber(args.movieId);
+  if (movieId) return `/movies/${movieId}`;
+
+  const seriesId = toNumber(args.seriesId);
+  const seasonNumber = toNumber(args.seasonNumber);
+  const episodeId = toNumber(args.episodeId);
+  if (seriesId && seasonNumber && episodeId) {
+    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}`;
+  }
+  if (seriesId && seasonNumber) {
+    return `/series/${seriesId}/season/${seasonNumber}`;
+  }
+  if (seriesId) {
+    return `/series/${seriesId}`;
+  }
+  return null;
 }
 
 function eventIcon(type: string) {
@@ -55,6 +105,7 @@ function eventColor(type: string) {
  * @returns The Notifications (History) page JSX element
  */
 export default function NotificationsPage() {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -75,12 +126,113 @@ export default function NotificationsPage() {
 
   useEffect(() => { fetchNotifications(1); }, []);
 
-  async function markAsRead(id: string) {
+  const markAsRead = useCallback(async (id: string) => {
     try {
       await fetch(`/api/notifications/${id}`, { method: 'PUT' });
       setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
     } catch { }
-  }
+  }, []);
+
+  const resolveQueueNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
+    try {
+      const res = await fetch('/api/activity/queue');
+      if (!res.ok) return null;
+      const data = await res.json();
+      const queueItem = (data.records || []).find(
+        (record: QueueItem & { source?: string }) => record.id === id && record.source === source
+      );
+      if (!queueItem) return null;
+      return getMediaHrefFromIds({
+        movieId: queueItem.movieId,
+        seriesId: queueItem.seriesId,
+        seasonNumber: queueItem.seasonNumber ?? queueItem.episode?.seasonNumber,
+        episodeId: queueItem.episodeId ?? queueItem.episode?.id,
+      });
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const resolveHistoryNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
+    try {
+      const params = new URLSearchParams({
+        source,
+        eventType: 'imported',
+        page: '1',
+        pageSize: '500',
+      });
+      const res = await fetch(`/api/activity/history?${params.toString()}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const historyItem = (data.records || []).find((record: HistoryItem) => record.id === id);
+      if (!historyItem) return null;
+      return getMediaHrefFromIds({
+        movieId: historyItem.movieId,
+        seriesId: historyItem.seriesId,
+        seasonNumber: historyItem.episode?.seasonNumber,
+        episodeId: historyItem.episodeId ?? historyItem.episode?.id,
+      });
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const resolveNotificationHref = useCallback(async (notification: Notification) => {
+    const metadata = notification.metadata;
+    const directMediaHref = getMediaHrefFromIds({
+      movieId: metadata?.movieId,
+      seriesId: metadata?.seriesId,
+      seasonNumber: metadata?.seasonNumber,
+      episodeId: metadata?.episodeId,
+    });
+    if (directMediaHref) {
+      return directMediaHref;
+    }
+
+    const source = metadata?.source;
+    const metadataId = toNumber(metadata?.id);
+    if ((source === 'sonarr' || source === 'radarr') && metadataId) {
+      if (notification.eventType === 'imported') {
+        const historyHref = await resolveHistoryNotificationHref(source, metadataId);
+        if (historyHref) return historyHref;
+      }
+
+      const queueHref = await resolveQueueNotificationHref(source, metadataId);
+      if (queueHref) return queueHref;
+
+      return `/activity?tab=queue&source=${source}`;
+    }
+
+    if (source === 'qbittorrent') return '/torrents';
+    if (source === 'jellyfin') return '/jellyfin';
+
+    if (notification.eventType === 'healthWarning') return '/settings';
+    if (notification.eventType === 'upcomingPremiere') return '/calendar';
+    if (
+      notification.eventType === 'grabbed'
+      || notification.eventType === 'downloadFailed'
+      || notification.eventType === 'importFailed'
+    ) {
+      return '/activity?tab=queue';
+    }
+    if (notification.eventType === 'imported') return '/activity/history';
+    if (
+      notification.eventType === 'torrentAdded'
+      || notification.eventType === 'torrentCompleted'
+      || notification.eventType === 'torrentDeleted'
+    ) {
+      return '/torrents';
+    }
+    return '/activity';
+  }, [resolveHistoryNotificationHref, resolveQueueNotificationHref]);
+
+  const handleNotificationClick = useCallback(async (notification: Notification) => {
+    if (!notification.read) {
+      await markAsRead(notification.id);
+    }
+    const href = await resolveNotificationHref(notification);
+    router.push(href);
+  }, [markAsRead, resolveNotificationHref, router]);
 
   async function markAllRead() {
     setMarkingAll(true);
@@ -129,10 +281,9 @@ export default function NotificationsPage() {
             {notifications.map((n) => (
               <button
                 key={n.id}
-                onClick={() => !n.read && markAsRead(n.id)}
-                className={`w-full text-left flex items-start gap-3 py-3 transition-colors active:bg-muted/50 ${
-                  !n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
-                }`}
+                onClick={() => void handleNotificationClick(n)}
+                className={`w-full text-left flex items-start gap-3 py-3 transition-colors active:bg-muted/50 ${!n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
+                  }`}
               >
                 <div className={`p-1.5 rounded-lg mt-0.5 ${eventColor(n.eventType)}`}>
                   {eventIcon(n.eventType)}

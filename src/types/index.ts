@@ -274,6 +274,31 @@ export interface MediaImage {
   remoteUrl: string;
 }
 
+export interface QueueLanguage {
+  id: number;
+  name: string;
+}
+
+export interface QueueQuality {
+  quality: {
+    id: number;
+    name: string;
+    source?: string;
+    resolution?: number;
+    modifier?: string;
+  };
+  revision?: {
+    version?: number;
+    real?: number;
+    isRepack?: boolean;
+  };
+}
+
+export interface QueueCustomFormat {
+  id: number;
+  name: string;
+}
+
 export interface QueueItem {
   id: number;
   downloadId: string;
@@ -287,14 +312,23 @@ export interface QueueItem {
   estimatedCompletionTime: string;
   size: number;
   sizeleft: number;
+  added?: string;
   protocol: string;
   downloadClient: string;
+  downloadClientHasPostImportCategory?: boolean;
   indexer: string;
   outputPath: string;
   downloadForced: boolean;
+  quality?: QueueQuality;
+  customFormats?: QueueCustomFormat[];
+  customFormatScore?: number;
+  languages?: QueueLanguage[];
+  source?: 'sonarr' | 'radarr';
   // Sonarr-specific
   seriesId?: number;
   episodeId?: number;
+  seasonNumber?: number;
+  episodeNumber?: number;
   series?: SonarrSeries;
   episode?: SonarrEpisode;
   // Radarr-specific

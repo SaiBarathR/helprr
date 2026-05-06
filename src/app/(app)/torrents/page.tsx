@@ -58,6 +58,11 @@ import type {
   QBittorrentTransferInfo,
 } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
+import {
+  useUIStore,
+  type TorrentsFilterPreference as FilterType,
+  type TorrentsSortKeyPreference as SortKey,
+} from '@/lib/store';
 
 const TORRENT_ROW_HEIGHT = 160;
 
@@ -123,9 +128,6 @@ function getStateBadge(state: string) {
   return <Badge variant={s.variant} className="text-[10px] px-1.5 py-0">{s.label}</Badge>;
 }
 
-type FilterType = 'all' | 'downloading' | 'seeding' | 'completed' | 'paused' | 'active';
-const TORRENTS_FILTER_STORAGE_KEY = 'helprr-torrents-filter';
-
 const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'all', label: 'All' },
   { value: 'downloading', label: 'Downloading' },
@@ -134,14 +136,6 @@ const filterOptions: { value: FilterType; label: string }[] = [
   { value: 'paused', label: 'Paused' },
   { value: 'active', label: 'Active' },
 ];
-
-type SortKey = 'name' | 'size' | 'progress' | 'dlspeed' | 'upspeed' | 'eta' | 'ratio' | 'added_on' | 'completion_on' | 'num_seeds' | 'num_leechs' | 'priority' | 'category' | 'state' | 'uploaded' | 'downloaded' | 'amount_left' | 'time_active' | 'seeding_time';
-type SortDir = 'asc' | 'desc';
-const TORRENTS_SORT_KEY_STORAGE_KEY = 'helprr-torrents-sort-key';
-const TORRENTS_SORT_DIR_STORAGE_KEY = 'helprr-torrents-sort-dir';
-const DEFAULT_FILTER: FilterType = 'all';
-const DEFAULT_SORT_KEY: SortKey = 'added_on';
-const DEFAULT_SORT_DIR: SortDir = 'desc';
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Name' },
@@ -191,18 +185,6 @@ function compareTorrents(a: QBittorrentTorrent, b: QBittorrentTorrent, key: Sort
       return 0;
     }
   }
-}
-
-function isFilterType(value: string): value is FilterType {
-  return filterOptions.some((option) => option.value === value);
-}
-
-function isSortKey(value: string): value is SortKey {
-  return SORT_OPTIONS.some((option) => option.key === value);
-}
-
-function isSortDir(value: string): value is SortDir {
-  return value === 'asc' || value === 'desc';
 }
 
 function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
@@ -509,6 +491,13 @@ const TorrentRow = memo(function TorrentRow({
 
 export default function TorrentsPage() {
   const router = useRouter();
+  const hasHydrated = useUIStore((s) => s.hasHydrated);
+  const filter = useUIStore((s) => s.torrentsFilter);
+  const setFilter = useUIStore((s) => s.setTorrentsFilter);
+  const sortKey = useUIStore((s) => s.torrentsSortKey);
+  const setSortKey = useUIStore((s) => s.setTorrentsSortKey);
+  const sortDir = useUIStore((s) => s.torrentsSortDir);
+  const setSortDir = useUIStore((s) => s.setTorrentsSortDir);
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
@@ -517,9 +506,6 @@ export default function TorrentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterType>(DEFAULT_FILTER);
-  const [sortKey, setSortKey] = useState<SortKey>(DEFAULT_SORT_KEY);
-  const [sortDir, setSortDir] = useState<SortDir>(DEFAULT_SORT_DIR);
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
   const [listOffsetTop, setListOffsetTop] = useState(0);
 
@@ -556,10 +542,9 @@ export default function TorrentsPage() {
 
   // Bulk speed limit drawer
   const [bulkSpeedDrawer, setBulkSpeedDrawer] = useState(false);
-  const [preferencesLoaded, setPreferencesLoaded] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
-  const filterRef = useRef<FilterType>(DEFAULT_FILTER);
+  const filterRef = useRef<FilterType>(filter);
   const pollInFlightRef = useRef(false);
   const pendingPollRef = useRef(false);
 
@@ -642,40 +627,12 @@ export default function TorrentsPage() {
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const storedFilter = localStorage.getItem(TORRENTS_FILTER_STORAGE_KEY);
-    const storedSortKey = localStorage.getItem(TORRENTS_SORT_KEY_STORAGE_KEY);
-    const storedSortDir = localStorage.getItem(TORRENTS_SORT_DIR_STORAGE_KEY);
-
-    if (storedFilter && isFilterType(storedFilter)) {
-      setFilter(storedFilter);
-    }
-    if (storedSortKey && isSortKey(storedSortKey)) {
-      setSortKey(storedSortKey);
-    }
-    if (storedSortDir && isSortDir(storedSortDir)) {
-      setSortDir(storedSortDir);
-    }
-
-    setPreferencesLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    if (!preferencesLoaded || typeof window === 'undefined') return;
-
-    localStorage.setItem(TORRENTS_FILTER_STORAGE_KEY, filter);
-    localStorage.setItem(TORRENTS_SORT_KEY_STORAGE_KEY, sortKey);
-    localStorage.setItem(TORRENTS_SORT_DIR_STORAGE_KEY, sortDir);
-  }, [filter, preferencesLoaded, sortDir, sortKey]);
-
-  useEffect(() => {
-    if (!preferencesLoaded || typeof window === 'undefined') return;
+    if (!hasHydrated || typeof window === 'undefined') return;
 
     filterRef.current = filter;
     setLoading(true);
     void fetchSummary();
-  }, [fetchSummary, filter, preferencesLoaded]);
+  }, [fetchSummary, filter, hasHydrated]);
 
   useEffect(() => {
     async function loadRefreshInterval() {
@@ -946,12 +903,12 @@ export default function TorrentsPage() {
                 <DropdownMenuCheckboxItem
                   key={opt.key}
                   checked={sortKey === opt.key}
-                  onCheckedChange={() => {
-                    if (sortKey === opt.key) {
-                      setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
-                    } else {
-                      setSortKey(opt.key);
-                      setSortDir(opt.key === 'name' || opt.key === 'category' || opt.key === 'state' ? 'asc' : 'desc');
+                    onCheckedChange={() => {
+                      if (sortKey === opt.key) {
+                        setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setSortKey(opt.key);
+                        setSortDir(opt.key === 'name' || opt.key === 'category' || opt.key === 'state' ? 'asc' : 'desc');
                     }
                   }}
                 >

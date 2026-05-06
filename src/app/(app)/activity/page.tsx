@@ -23,12 +23,13 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import {
   Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
-  Clock, Filter, ArrowUpDown,
+  Clock, Filter, ArrowUpDown, ChevronRight,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { useUIStore } from '@/lib/store';
 
 // --- Status helpers ---
 
@@ -58,6 +59,35 @@ function formatBytes(bytes: number) {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function getQueueItemQuality(item: QueueItem): string | undefined {
+  return item.quality?.quality?.name || item.movie?.movieFile?.quality?.quality?.name;
+}
+
+function getQueueCustomFormats(item: QueueItem): string | undefined {
+  const names = item.customFormats?.map((format) => format.name).filter(Boolean);
+  return names && names.length > 0 ? names.join(', ') : undefined;
+}
+
+function getQueueMediaHref(item: QueueItem & { source?: string }): string | null {
+  const seriesId = item.seriesId ?? item.series?.id;
+  const seasonNumber = item.seasonNumber ?? item.episode?.seasonNumber;
+  const episodeId = item.episodeId ?? item.episode?.id;
+  if (seriesId && seasonNumber && episodeId) {
+    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}`;
+  }
+  if (seriesId && seasonNumber) {
+    return `/series/${seriesId}/season/${seasonNumber}`;
+  }
+  if (seriesId) {
+    return `/series/${seriesId}`;
+  }
+  const movieId = item.movieId ?? item.movie?.id;
+  if (movieId) {
+    return `/movies/${movieId}`;
+  }
+  return null;
 }
 
 // --- Tabs definition ---
@@ -93,6 +123,10 @@ const SORT_OPTIONS_BY_TAB: Record<TabKey, { key: SortKey; label: string }[]> = {
   cutoff: [],
 };
 
+function isSortKey(value: string): value is SortKey {
+  return SORT_OPTIONS.some((option) => option.key === value);
+}
+
 // --- Filter options ---
 
 type FilterKey = 'all' | 'sonarr' | 'radarr';
@@ -102,6 +136,10 @@ const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
   { key: 'sonarr', label: 'Sonarr' },
   { key: 'radarr', label: 'Radarr' },
 ];
+
+function isFilterKey(value: string): value is FilterKey {
+  return FILTER_OPTIONS.some((option) => option.key === value);
+}
 
 /**
  * Renders the Activity page with header controls (filter, sort, history, refresh) and tabbed views for Queue, Failed imports, Missing, and Cutoff items.
@@ -114,23 +152,41 @@ const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
 export default function ActivityPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<TabKey>('queue');
+  const hasHydrated = useUIStore((s) => s.hasHydrated);
+  const activityTab = useUIStore((s) => s.activityTab);
+  const setActivityTab = useUIStore((s) => s.setActivityTab);
+  const sortBy = useUIStore((s) => s.activitySortBy);
+  const setSortBy = useUIStore((s) => s.setActivitySortBy);
+  const filterBy = useUIStore((s) => s.activityFilterBy);
+  const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
+  const urlTab = searchParams.get('tab');
+  const searchParamsKey = searchParams.toString();
+  const tab = urlTab && isTabKey(urlTab) ? urlTab : activityTab;
   const [refreshing, setRefreshing] = useState(false);
-  const [sortBy, setSortBy] = useState<SortKey>('progress');
-  const [filterBy, setFilterBy] = useState<FilterKey>('all');
   const [queueCount, setQueueCount] = useState(0);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
   useEffect(() => {
-    const requestedTab = searchParams.get('tab');
-    if (requestedTab && isTabKey(requestedTab)) {
-      setTab(requestedTab);
+    if (!hasHydrated) return;
+    const params = new URLSearchParams(searchParamsKey);
+    const requestedTab = params.get('tab');
+    const requestedSource = params.get('source');
+    const requestedSort = params.get('sort');
+    const currentState = useUIStore.getState();
+    if (requestedTab && isTabKey(requestedTab) && requestedTab !== currentState.activityTab) {
+      setActivityTab(requestedTab);
     }
-  }, [searchParams]);
+    if (requestedSource && isFilterKey(requestedSource) && requestedSource !== currentState.activityFilterBy) {
+      setFilterBy(requestedSource);
+    }
+    if (requestedSort && isSortKey(requestedSort) && requestedSort !== currentState.activitySortBy) {
+      setSortBy(requestedSort);
+    }
+  }, [hasHydrated, searchParamsKey, setActivityTab, setFilterBy, setSortBy]);
 
   function handleTabChange(nextTab: TabKey) {
     if (!isTabKey(nextTab)) return;
-    setTab(nextTab);
+    setActivityTab(nextTab);
 
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', nextTab);
@@ -401,6 +457,7 @@ function QueueTab({
       <div className="space-y-2 animate-list-in">
         {sorted.map((item) => {
           const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
+          const qualityName = getQueueItemQuality(item);
           return (
             <button
               key={`${item.source}-${item.id}`}
@@ -420,6 +477,16 @@ function QueueTab({
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                       {item.source}
                     </Badge>
+                    {qualityName && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {qualityName}
+                      </Badge>
+                    )}
+                    {typeof item.customFormatScore === 'number' && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        CF {item.customFormatScore}
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 {item.timeleft && (
@@ -434,6 +501,10 @@ function QueueTab({
                   {progress.toFixed(0)}%
                 </span>
               </div>
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                <span>Left: {formatBytes(item.sizeleft)}</span>
+                <span>Total: {formatBytes(item.size)}</span>
+              </div>
             </button>
           );
         })}
@@ -446,9 +517,18 @@ function QueueTab({
             const progress = selectedItem.size > 0
               ? ((selectedItem.size - selectedItem.sizeleft) / selectedItem.size) * 100
               : 0;
-            const qualityName = selectedItem.episode
-              ? undefined
-              : selectedItem.movie?.movieFile?.quality?.quality?.name;
+            const qualityName = getQueueItemQuality(selectedItem);
+            const customFormats = getQueueCustomFormats(selectedItem);
+            const languageNames = selectedItem.languages?.map((language) => language.name).filter(Boolean).join(', ');
+            const mediaHref = getQueueMediaHref(selectedItem);
+            const mediaTitle = selectedItem.series?.title || selectedItem.movie?.title || undefined;
+            const mediaSubtitle = selectedItem.episode
+              ? `S${String(selectedItem.episode.seasonNumber).padStart(2, '0')}E${String(selectedItem.episode.episodeNumber).padStart(2, '0')} - ${selectedItem.episode.title}`
+              : selectedItem.movie?.year
+                ? String(selectedItem.movie.year)
+                : selectedItem.seasonNumber
+                  ? `Season ${selectedItem.seasonNumber}`
+                  : undefined;
 
             return (
               <>
@@ -483,6 +563,21 @@ function QueueTab({
                     )}
                   </div>
 
+                  {mediaHref && (
+                    <Link
+                      href={mediaHref}
+                      className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{mediaTitle || selectedItem.title}</p>
+                        {mediaSubtitle && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{mediaSubtitle}</p>
+                        )}
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                    </Link>
+                  )}
+
                   {/* Progress bar */}
                   <div>
                     <div className="flex justify-between text-xs text-muted-foreground mb-1">
@@ -514,8 +609,14 @@ function QueueTab({
                       <InfoRow label="Protocol" value={selectedItem.protocol || '-'} />
                       <InfoRow label="Client" value={selectedItem.downloadClient || '-'} />
                       <InfoRow label="Indexer" value={selectedItem.indexer || '-'} />
-                      <InfoRow label="Size" value={formatBytes(selectedItem.size)} />
-                      <InfoRow label="Remaining" value={formatBytes(selectedItem.sizeleft)} />
+                      {qualityName && <InfoRow label="Quality" value={qualityName} />}
+                      {typeof selectedItem.customFormatScore === 'number' && (
+                        <InfoRow label="Custom Format Score" value={String(selectedItem.customFormatScore)} />
+                      )}
+                      {customFormats && <InfoRow label="Custom Formats" value={customFormats} />}
+                      {languageNames && <InfoRow label="Languages" value={languageNames} />}
+                      <InfoRow label="Total Size" value={formatBytes(selectedItem.size)} />
+                      <InfoRow label="Size Left" value={formatBytes(selectedItem.sizeleft)} />
                       {selectedItem.estimatedCompletionTime && (
                         <InfoRow
                           label="ETA"
