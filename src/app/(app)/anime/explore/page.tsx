@@ -104,30 +104,34 @@ export default function AnimePage() {
     const urlFormat = urlParams.get('format');
     const urlGenres = urlParams.get('genres');
 
-    let hasChanges = false;
-    const newFilters = { ...animeFilters };
+    const hasUrlFilters = Boolean(
+      urlSeason || urlYear || urlYearMin || urlYearMax || urlStatus || urlFormat || urlGenres
+    );
 
-    if (urlSort) {
-      setAnimeSort(urlSort);
-      hasChanges = true;
-    }
+    if (!urlSort && !hasUrlFilters) return;
 
-    if (urlSeason || urlYear || urlYearMin || urlYearMax || urlStatus || urlFormat || urlGenres) {
-      if (urlSeason) newFilters.season = urlSeason;
-      if (urlYear) newFilters.year = urlYear;
-      if (urlYearMin) newFilters.yearMin = urlYearMin;
-      if (urlYearMax) newFilters.yearMax = urlYearMax;
-      if (urlStatus) newFilters.status = urlStatus;
-      if (urlFormat) newFilters.formats = urlFormat.split(',') as AniListMediaFormat[];
-      if (urlGenres) newFilters.genres = urlGenres.split(',');
-      setAnimeFilters(newFilters);
-      hasChanges = true;
-    }
+    setAnimeSort(urlSort ?? 'seasonal');
 
-    if (hasChanges) {
-      // The store updates will trigger a re-render. We can rely on the fetch effect below.
+    const nextFilters: AnimeFiltersState = { ...DEFAULT_ANIME_FILTERS };
+    if (urlSeason) nextFilters.season = urlSeason;
+    if (urlYear) nextFilters.year = urlYear;
+    if (urlYearMin) nextFilters.yearMin = urlYearMin;
+    if (urlYearMax) nextFilters.yearMax = urlYearMax;
+    if (urlStatus) nextFilters.status = urlStatus;
+    if (urlFormat) {
+      nextFilters.formats = urlFormat
+        .split(',')
+        .map((format) => format.trim())
+        .filter(Boolean) as AniListMediaFormat[];
     }
-  }, [hasHydrated, urlParams, setAnimeSort, setAnimeFilters, animeFilters]);
+    if (urlGenres) {
+      nextFilters.genres = urlGenres
+        .split(',')
+        .map((genre) => genre.trim())
+        .filter(Boolean);
+    }
+    setAnimeFilters(nextFilters);
+  }, [hasHydrated, urlParams, setAnimeSort, setAnimeFilters]);
 
   const [draftFilters, setDraftFilters] = useState<AnimeFiltersState>(animeFilters);
   const [draftSort, setDraftSort] = useState(animeSort);
