@@ -8,6 +8,7 @@ import type {
   AniListDetailResponse,
   AniListMangaDetailResponse,
   AniListExternalLink,
+  AniListRanking,
 } from '@/types/anilist';
 
 export function getPreferredTitle(title: { romaji: string | null; english: string | null; native: string | null }): string {
@@ -243,6 +244,37 @@ export function normalizeAniListMangaDetail(media: AniListMangaDetail): AniListM
     reviews,
     externalLinks: media.externalLinks || [],
   };
+}
+
+function normalizeFormatLabel(format: string | null | undefined): string | null {
+  if (!format) return null;
+  return format.replace(/_/g, ' ');
+}
+
+function rankingTypeLabel(type: AniListRanking['type'], fallbackContext?: string | null): string {
+  if (type === 'RATED') return 'highest rated';
+  if (type === 'POPULAR') return 'most popular';
+  return fallbackContext?.toLowerCase().trim() || 'ranked';
+}
+
+export function formatAniListRankingLabel(ranking: AniListRanking): string {
+  const base = rankingTypeLabel(ranking.type, ranking.context);
+
+  if (ranking.allTime) {
+    return `${base} all time`;
+  }
+
+  const formatLabel = normalizeFormatLabel(ranking.format);
+  const shouldIncludeFormat = formatLabel && formatLabel !== 'TV';
+  const seasonLabel = ranking.season ? ranking.season.toLowerCase() : null;
+  const yearLabel = ranking.year ? String(ranking.year) : null;
+  const scope = [
+    shouldIncludeFormat ? formatLabel : null,
+    seasonLabel,
+    yearLabel,
+  ].filter((part): part is string => Boolean(part)).join(' ');
+
+  return scope ? `${base} ${scope}` : base;
 }
 
 export function extractYouTubeTrailerFallback(

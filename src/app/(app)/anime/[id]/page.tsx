@@ -20,6 +20,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListDetailResponse, AniListFuzzyDate } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { formatAniListRankingLabel } from '@/lib/anilist-helpers';
 
 type DetailWithLibrary = AniListDetailResponse & {
   library?: DiscoverLibraryStatus | null;
@@ -481,23 +482,23 @@ export default function AnimeDetailPage() {
           <div>
             <h2 className="text-base font-semibold mb-2">Rankings</h2>
             <div className="space-y-1.5">
-              {rankings.map((ranking) => (
-                <div
-                  key={ranking.id}
-                  className="flex items-center gap-2 bg-muted/20 rounded-lg px-3 py-2 border border-border/30"
-                >
+                  {rankings.map((ranking) => (
+                    <div
+                      key={ranking.id}
+                      className="flex items-center gap-2 bg-muted/20 rounded-lg px-3 py-2 border border-border/30"
+                    >
                   {ranking.type === 'RATED' ? (
                     <Trophy className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
                   ) : (
                     <TrendingUp className="h-3.5 w-3.5 text-blue-400 shrink-0" />
                   )}
-                  <span className="text-sm">
-                    <span className="font-semibold">#{ranking.rank}</span>
-                    {' '}{ranking.context}
-                  </span>
+                      <span className="text-sm">
+                        <span className="font-semibold">#{ranking.rank}</span>
+                        {' '}{formatAniListRankingLabel(ranking)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
           </div>
         )}
 

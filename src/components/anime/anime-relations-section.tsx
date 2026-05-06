@@ -52,86 +52,73 @@ function formatRelationType(type: string): string {
 export function AnimeRelationsSection({ relations }: AnimeRelationsSectionProps) {
   if (!relations.length) return null;
 
-  const grouped = new Map<string, Relation[]>();
-  for (const rel of relations) {
-    const list = grouped.get(rel.relationType) || [];
-    list.push(rel);
-    grouped.set(rel.relationType, list);
-  }
-
-  const sortedGroups = [...grouped.entries()].sort(
-    (a, b) => {
-      const fallbackIndex = RELATION_ORDER.length;
-      const indexA = RELATION_ORDER.indexOf(a[0]);
-      const indexB = RELATION_ORDER.indexOf(b[0]);
-      return (indexA === -1 ? fallbackIndex : indexA) - (indexB === -1 ? fallbackIndex : indexB);
-    }
-  );
+  const sortedRelations = [...relations].sort((a, b) => {
+    const fallbackIndex = RELATION_ORDER.length;
+    const indexA = RELATION_ORDER.indexOf(a.relationType);
+    const indexB = RELATION_ORDER.indexOf(b.relationType);
+    return (indexA === -1 ? fallbackIndex : indexA) - (indexB === -1 ? fallbackIndex : indexB);
+  });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <h2 className="text-base font-semibold">Relations</h2>
-      {sortedGroups.map(([type, items]) => (
-        <div key={type}>
-          <h3 className="text-sm font-medium text-muted-foreground mb-1.5">
-            {formatRelationType(type)}
-          </h3>
-          <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
-            {items.map((rel) => {
-              const imgSrc = rel.coverImage
-                ? toCachedImageSrc(rel.coverImage, 'anilist') || rel.coverImage
-                : null;
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
+        {sortedRelations.map((rel) => {
+          const imgSrc = rel.coverImage
+            ? toCachedImageSrc(rel.coverImage, 'anilist') || rel.coverImage
+            : null;
 
-              const isManga = rel.type === 'MANGA';
-              const href = isManga ? `/anime/manga/${rel.id}` : `/anime/${rel.id}`;
+          const isManga = rel.type === 'MANGA';
+          const href = isManga ? `/anime/manga/${rel.id}` : `/anime/${rel.id}`;
 
-              return (
-                <Link
-                  key={rel.id}
-                  href={href}
-                  className="flex-shrink-0 w-[110px] group"
-                >
-                  <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
-                    {imgSrc ? (
-                      <Image
-                        src={imgSrc}
-                        alt={rel.title}
-                        fill
-                        sizes="110px"
-                        className="object-cover"
-                        unoptimized={isProtectedApiImageSrc(imgSrc)}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
-                        {rel.title}
-                      </div>
-                    )}
-                    {rel.format && (
-                      <Badge className="absolute top-1 left-1 text-[9px] bg-black/60 text-white">
-                        {rel.format.replace('_', ' ')}
-                      </Badge>
-                    )}
+          return (
+            <Link
+              key={`${rel.id}-${rel.relationType}`}
+              href={href}
+              className="flex-shrink-0 w-[110px] group"
+            >
+              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
+                {imgSrc ? (
+                  <Image
+                    src={imgSrc}
+                    alt={rel.title}
+                    fill
+                    sizes="110px"
+                    className="object-cover"
+                    unoptimized={isProtectedApiImageSrc(imgSrc)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
+                    {rel.title}
                   </div>
-                  <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{rel.title}</p>
-                  {isManga ? (
-                    rel.volumes != null || rel.chapters != null ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        {rel.volumes != null && `${rel.volumes} vols`}
-                        {rel.volumes != null && rel.chapters != null && ' · '}
-                        {rel.chapters != null && `${rel.chapters} chs`}
-                      </p>
-                    ) : null
-                  ) : (
-                    rel.seasonYear && (
-                      <p className="text-[11px] text-muted-foreground">{rel.seasonYear}</p>
-                    )
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+                )}
+                <Badge className="absolute top-1 left-1 text-[9px] bg-black/60 text-white">
+                  {formatRelationType(rel.relationType)}
+                </Badge>
+                {rel.format && (
+                  <Badge className="absolute top-1 right-1 text-[9px] bg-black/60 text-white">
+                    {rel.format.replace('_', ' ')}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{rel.title}</p>
+              {isManga ? (
+                rel.volumes != null || rel.chapters != null ? (
+                  <p className="text-[11px] text-muted-foreground">
+                    {rel.volumes != null && `${rel.volumes} vols`}
+                    {rel.volumes != null && rel.chapters != null && ' · '}
+                    {rel.chapters != null && `${rel.chapters} chs`}
+                  </p>
+                ) : null
+              ) : (
+                rel.seasonYear && (
+                  <p className="text-[11px] text-muted-foreground">{rel.seasonYear}</p>
+                )
+              )}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

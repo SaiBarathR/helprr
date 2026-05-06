@@ -45,6 +45,7 @@ import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { formatBytes } from '@/lib/format';
+import { formatAniListRankingLabel } from '@/lib/anilist-helpers';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -1378,7 +1379,7 @@ export default function SeriesDetailPage() {
                         <TrendingUp className="h-3.5 w-3.5 text-blue-400 shrink-0" />
                       )}
                       <span className="text-sm">
-                        <span className="font-semibold">#{ranking.rank}</span> {ranking.context}
+                        <span className="font-semibold">#{ranking.rank}</span> {formatAniListRankingLabel(ranking)}
                       </span>
                     </div>
                   ))}
