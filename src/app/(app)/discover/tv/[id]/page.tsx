@@ -111,13 +111,13 @@ export default function DiscoverTvDetailPage() {
   }, [show]);
 
   if (loading) {
-    return <><PageHeader title="TV Show" /><PageSpinner /></>;
+    return <><PageHeader className='-mx-2 md:-mx-6' title="TV Show" /><PageSpinner /></>;
   }
 
   if (error || !show) {
     return (
       <>
-        <PageHeader title="TV Show" />
+        <PageHeader className='-mx-2 md:-mx-6' title="TV Show" />
         <div className="text-center py-12 text-muted-foreground">
           {error || 'Show not found'}
         </div>
@@ -127,7 +127,7 @@ export default function DiscoverTvDetailPage() {
 
   return (
     <>
-      <PageHeader title={show.title} />
+      <PageHeader className='-mx-2 md:-mx-6' title={show.title} />
 
       <div className="space-y-5 animate-content-in">
         <DiscoverHero

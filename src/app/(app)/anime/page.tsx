@@ -27,6 +27,12 @@ interface HomeData {
   top: AnimeItemWithLibrary[];
 }
 
+function getHomePerPageFromWidth(width: number): number {
+  if (width >= 1536) return 40;
+  if (width >= 768) return 30;
+  return 10;
+}
+
 function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
   const bannerSrc = anime.bannerImage
     ? toCachedImageSrc(anime.bannerImage, 'anilist') || anime.bannerImage
@@ -102,7 +108,9 @@ export default function AnimeHomePage() {
   useEffect(() => {
     async function fetchHome() {
       try {
-        const res = await fetch('/api/anime/home');
+        const perPage = getHomePerPageFromWidth(window.innerWidth);
+        const params = new URLSearchParams({ perPage: String(perPage) });
+        const res = await fetch(`/api/anime/home?${params.toString()}`);
         if (!res.ok) throw new Error('Failed to fetch home data');
         const json = await res.json();
         setData(json);
@@ -141,46 +149,47 @@ export default function AnimeHomePage() {
           {error}
         </div>
       ) : data ? (
-        <div className="space-y-5">
+        <div className="-mx-2 md:-mx-6">
           {/* Hero Banner */}
           {heroAnime && <HeroBanner anime={heroAnime} />}
-
-          {/* Carousels */}
-          <AnimeMediaRail
-            title="Trending Now"
-            items={trendingItems}
-            viewAllHref="/anime/explore?sort=trending"
-            size="large"
-          />
-          <AnimeMediaRail
-            title="Popular This Season"
-            items={data.season}
-            viewAllHref={
-              currentSeason
-                ? `/anime/explore?sort=seasonal&season=${currentSeason.season}&year=${currentSeason.year}`
-                : '/anime/explore?sort=seasonal'
-            }
-            size="large"
-          />
-          <AnimeMediaRail
-            title="Upcoming Next Season"
-            items={data.nextSeason}
-            viewAllHref={
-              nextSeasonInfo
-                ? `/anime/explore?sort=seasonal&season=${nextSeasonInfo.season}&year=${nextSeasonInfo.year}`
-                : '/anime/explore?sort=seasonal'
-            }
-          />
-          <AnimeMediaRail
-            title="All Time Popular"
-            items={data.popular}
-            viewAllHref="/anime/explore?sort=popularity"
-          />
-          <AnimeMediaRail
-            title="Top 100"
-            items={data.top}
-            viewAllHref="/anime/explore?sort=score"
-          />
+          <div className="space-y-5 px-2 md:p-6 md:px-8">
+            {/* Carousels */}
+            <AnimeMediaRail
+              title="Trending Now"
+              items={trendingItems}
+              viewAllHref="/anime/explore?sort=trending"
+              size="large"
+            />
+            <AnimeMediaRail
+              title="Popular This Season"
+              items={data.season}
+              viewAllHref={
+                currentSeason
+                  ? `/anime/explore?sort=seasonal&season=${currentSeason.season}&year=${currentSeason.year}`
+                  : '/anime/explore?sort=seasonal'
+              }
+              size="large"
+            />
+            <AnimeMediaRail
+              title="Upcoming Next Season"
+              items={data.nextSeason}
+              viewAllHref={
+                nextSeasonInfo
+                  ? `/anime/explore?sort=seasonal&season=${nextSeasonInfo.season}&year=${nextSeasonInfo.year}`
+                  : '/anime/explore?sort=seasonal'
+              }
+            />
+            <AnimeMediaRail
+              title="All Time Popular"
+              items={data.popular}
+              viewAllHref="/anime/explore?sort=popularity"
+            />
+            <AnimeMediaRail
+              title="Top 100"
+              items={data.top}
+              viewAllHref="/anime/explore?sort=score"
+            />
+          </div>
         </div>
       ) : null}
     </div>

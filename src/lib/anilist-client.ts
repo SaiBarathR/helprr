@@ -586,31 +586,32 @@ export async function getAnimeHome(
   season: AniListMediaSeason,
   seasonYear: number,
   nextSeason: AniListMediaSeason,
-  nextYear: number
+  nextYear: number,
+  perPage = 10
 ): Promise<AnimeHomeData> {
   const gqlQuery = `
-    query($season: MediaSeason, $seasonYear: Int, $nextSeason: MediaSeason, $nextYear: Int) {
-      trending: Page(page: 1, perPage: 10) {
+    query($season: MediaSeason, $seasonYear: Int, $nextSeason: MediaSeason, $nextYear: Int, $perPage: Int) {
+      trending: Page(page: 1, perPage: $perPage) {
         media(sort: TRENDING_DESC, type: ANIME, isAdult: false) {
           ${MEDIA_LIST_FRAGMENT}
         }
       }
-      season: Page(page: 1, perPage: 10) {
+      season: Page(page: 1, perPage: $perPage) {
         media(season: $season, seasonYear: $seasonYear, sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
           ${MEDIA_LIST_FRAGMENT}
         }
       }
-      nextSeason: Page(page: 1, perPage: 10) {
+      nextSeason: Page(page: 1, perPage: $perPage) {
         media(season: $nextSeason, seasonYear: $nextYear, sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
           ${MEDIA_LIST_FRAGMENT}
         }
       }
-      popular: Page(page: 1, perPage: 10) {
+      popular: Page(page: 1, perPage: $perPage) {
         media(sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
           ${MEDIA_LIST_FRAGMENT}
         }
       }
-      top: Page(page: 1, perPage: 10) {
+      top: Page(page: 1, perPage: $perPage) {
         media(sort: SCORE_DESC, type: ANIME, isAdult: false) {
           ${MEDIA_LIST_FRAGMENT}
         }
@@ -618,7 +619,7 @@ export async function getAnimeHome(
     }
   `;
 
-  const variables = { season, seasonYear, nextSeason, nextYear };
+  const variables = { season, seasonYear, nextSeason, nextYear, perPage };
 
   interface HomeResponse {
     trending: { media: AniListMedia[] };

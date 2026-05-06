@@ -188,13 +188,13 @@ export default function AnimeDetailPage() {
     : null;
 
   if (loading) {
-    return <><PageHeader title="Anime" /><PageSpinner /></>;
+    return <><PageHeader className='-mx-2 md:-mx-6' title="Anime" /><PageSpinner /></>;
   }
 
   if (error || !detail) {
     return (
       <div>
-        <PageHeader title="Error" />
+        <PageHeader className='-mx-2 md:-mx-6' title="Error" />
         <div className="p-4 text-center text-muted-foreground">
           {error || 'Failed to load anime details'}
         </div>
@@ -313,7 +313,7 @@ export default function AnimeDetailPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={detail.title} />
+      <PageHeader className='-mx-2 md:-mx-6' title={detail.title} />
 
       {/* Hero */}
       <AnimeHero
@@ -482,23 +482,23 @@ export default function AnimeDetailPage() {
           <div>
             <h2 className="text-base font-semibold mb-2">Rankings</h2>
             <div className="space-y-1.5">
-                  {rankings.map((ranking) => (
-                    <div
-                      key={ranking.id}
-                      className="flex items-center gap-2 bg-muted/20 rounded-lg px-3 py-2 border border-border/30"
-                    >
+              {rankings.map((ranking) => (
+                <div
+                  key={ranking.id}
+                  className="flex items-center gap-2 bg-muted/20 rounded-lg px-3 py-2 border border-border/30"
+                >
                   {ranking.type === 'RATED' ? (
                     <Trophy className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
                   ) : (
                     <TrendingUp className="h-3.5 w-3.5 text-blue-400 shrink-0" />
                   )}
-                      <span className="text-sm">
-                        <span className="font-semibold">#{ranking.rank}</span>
-                        {' '}{formatAniListRankingLabel(ranking)}
-                      </span>
-                    </div>
-                  ))}
+                  <span className="text-sm">
+                    <span className="font-semibold">#{ranking.rank}</span>
+                    {' '}{formatAniListRankingLabel(ranking)}
+                  </span>
                 </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -567,7 +567,9 @@ export default function AnimeDetailPage() {
         <AnimeRelationsSection relations={detail.relations} />
 
         {/* Recommendations */}
-        <AnimeMediaRail title="Recommendations" items={detail.recommendations} />
+        <div className='md:px-2'>
+          <AnimeMediaRail title="Recommendations" items={detail.recommendations} />
+        </div>
 
         {/* Reviews */}
         <AnimeReviewCard reviews={detail.reviews} />

@@ -81,13 +81,13 @@ export default function DiscoverMovieDetailPage() {
   }, [movie]);
 
   if (loading) {
-    return <><PageHeader title="Movie" /><PageSpinner /></>;
+    return <><PageHeader className='-mx-2 md:-mx-6' title="Movie" /><PageSpinner /></>;
   }
 
   if (error || !movie) {
     return (
       <>
-        <PageHeader title="Movie" />
+        <PageHeader className='-mx-2 md:-mx-6' title="Movie" />
         <div className="text-center py-12 text-muted-foreground">
           {error || 'Movie not found'}
         </div>
@@ -97,7 +97,7 @@ export default function DiscoverMovieDetailPage() {
 
   return (
     <>
-      <PageHeader title={movie.title} />
+      <PageHeader className="-mx-2 md:-mx-6" title={movie.title} />
 
       <div className="space-y-5 animate-content-in">
         <DiscoverHero
@@ -122,9 +122,8 @@ export default function DiscoverMovieDetailPage() {
             <h2 className="text-base font-semibold mb-1">Overview</h2>
             <div className="relative">
               <p
-                className={`text-sm text-muted-foreground leading-relaxed ${
-                  !overviewExpanded ? 'line-clamp-3' : ''
-                }`}
+                className={`text-sm text-muted-foreground leading-relaxed ${!overviewExpanded ? 'line-clamp-3' : ''
+                  }`}
               >
                 {movie.overview}
               </p>

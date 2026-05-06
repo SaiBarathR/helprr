@@ -12,6 +12,8 @@ interface SeasonWindow {
   year: number;
 }
 
+const HOME_PER_PAGE_VALUES = new Set([10, 30, 40]);
+
 async function getLibraries() {
   const [movies, series] = await Promise.all([
     (async () => {
@@ -81,16 +83,22 @@ function getNextSeasonClient(currentSeason: AniListMediaSeason, currentYear: num
   return { season: 'WINTER', year: currentYear + 1 };
 }
 
-export async function GET() {
+function getHomePerPage(request: Request): number {
+  const perPage = Number(new URL(request.url).searchParams.get('perPage'));
+  return HOME_PER_PAGE_VALUES.has(perPage) ? perPage : 10;
+}
+
+export async function GET(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
 
   try {
     const current = getCurrentSeasonClient();
     const next = getNextSeasonClient(current.season, current.year);
+    const perPage = getHomePerPage(request);
 
     const [result, { movies, series }] = await Promise.all([
-      getAnimeHome(current.season, current.year, next.season, next.year),
+      getAnimeHome(current.season, current.year, next.season, next.year, perPage),
       getLibraries(),
     ]);
 

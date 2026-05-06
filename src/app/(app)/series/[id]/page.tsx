@@ -393,7 +393,7 @@ export default function SeriesDetailPage() {
                 setSeasonEpisodes((prev) => new Map(prev).set(seasonNumber, data));
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       }
       return next;
@@ -690,10 +690,10 @@ export default function SeriesDetailPage() {
   const runtimeValue = series.runtime > 0 ? `${series.runtime} min` : null;
   const tmdbNextEpisode = tmdbData?.nextEpisode
     ? [
-        `S${tmdbData.nextEpisode.seasonNumber}E${tmdbData.nextEpisode.episodeNumber}`,
-        tmdbData.nextEpisode.name,
-        formatDateValue(tmdbData.nextEpisode.airDate),
-      ].filter((part): part is string => Boolean(part)).join(' · ')
+      `S${tmdbData.nextEpisode.seasonNumber}E${tmdbData.nextEpisode.episodeNumber}`,
+      tmdbData.nextEpisode.name,
+      formatDateValue(tmdbData.nextEpisode.airDate),
+    ].filter((part): part is string => Boolean(part)).join(' · ')
     : null;
   const animeNextEpisode = (() => {
     if (!animeDetail?.nextAiringEpisode) return null;
@@ -773,7 +773,7 @@ export default function SeriesDetailPage() {
   ];
 
   return (
-    <div className="flex flex-col min-h-0 animate-content-in">
+    <div className="flex flex-col min-h-0 animate-content-in -mx-2 md:-mx-6">
       {/* Page Header */}
       <PageHeader
         title={series.title}
@@ -878,7 +878,7 @@ export default function SeriesDetailPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto px-2 md:p-6">
         {/* Hero: Backdrop or flat poster layout */}
         {isAnimeSeries && animeDetail ? (
           <AnimeHero
@@ -1037,9 +1037,8 @@ export default function SeriesDetailPage() {
         {series.overview && (
           <div className="pt-4 pb-2">
             <p
-              className={`text-sm text-muted-foreground leading-relaxed ${
-                !overviewExpanded ? 'line-clamp-3' : ''
-              }`}
+              className={`text-sm text-muted-foreground leading-relaxed ${!overviewExpanded ? 'line-clamp-3' : ''
+                }`}
             >
               {series.overview}
             </p>
@@ -1447,7 +1446,7 @@ export default function SeriesDetailPage() {
             )}
 
             {animeDetail && <div><AnimeRelationsSection relations={animeDetail.relations} /></div>}
-            {animeDetail && <div><AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} /></div>}
+            {animeDetail && <div className='md:px-4'><AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} /></div>}
 
             {(animeLinks.length > 0 || (externalUrls.JELLYFIN && (series.imdbId || series.tvdbId))) && (
               <div>
@@ -1545,9 +1544,9 @@ export default function SeriesDetailPage() {
                       {tmdbData.networks.map((network) => {
                         const logoSrc = network.logoPath
                           ? toCachedImageSrc(
-                              network.logoPath.startsWith('http') ? network.logoPath : `https://image.tmdb.org/t/p/w185${network.logoPath}`,
-                              'tmdb'
-                            )
+                            network.logoPath.startsWith('http') ? network.logoPath : `https://image.tmdb.org/t/p/w185${network.logoPath}`,
+                            'tmdb'
+                          )
                           : null;
                         return (
                           <Link
@@ -1582,9 +1581,9 @@ export default function SeriesDetailPage() {
                       {tmdbData.productionCompanies.map((company) => {
                         const logoSrc = company.logoPath
                           ? toCachedImageSrc(
-                              company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
-                              'tmdb'
-                            )
+                            company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
+                            'tmdb'
+                          )
                           : null;
                         return (
                           <Link
@@ -1644,9 +1643,8 @@ export default function SeriesDetailPage() {
                   <button
                     key={option.value}
                     onClick={() => setMonitorOption(option.value)}
-                    className={`grouped-row w-full text-left active:bg-white/5 transition-colors ${
-                      monitorOption === option.value ? 'text-primary' : ''
-                    }`}
+                    className={`grouped-row w-full text-left active:bg-white/5 transition-colors ${monitorOption === option.value ? 'text-primary' : ''
+                      }`}
                   >
                     <span className="text-sm">{option.label}</span>
                     {monitorOption === option.value && (
