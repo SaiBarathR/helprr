@@ -71,13 +71,13 @@ export default function MangaDetailPage() {
   const error = state.id === id ? state.error : null;
 
   if (loading) {
-    return <><PageHeader title="Manga" /><PageSpinner /></>;
+    return <><PageHeader className='-mx-2 md:-mx-6' title="Manga" /><PageSpinner /></>;
   }
 
   if (error || !detail) {
     return (
       <div>
-        <PageHeader title="Error" />
+        <PageHeader className='-mx-2 md:-mx-6' title="Error" />
         <div className="p-4 text-center text-muted-foreground">
           {error || 'Failed to load manga details'}
         </div>
@@ -129,7 +129,7 @@ export default function MangaDetailPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title={detail.title} />
+      <PageHeader className='-mx-2 md:-mx-6' title={detail.title} />
 
       {/* Hero */}
       <AnimeHero
@@ -213,7 +213,6 @@ export default function MangaDetailPage() {
 
         {/* Recommendations */}
         <AnimeMediaRail title="Recommendations" items={detail.recommendations} />
-
         {/* Reviews */}
         <AnimeReviewCard reviews={detail.reviews} />
 
