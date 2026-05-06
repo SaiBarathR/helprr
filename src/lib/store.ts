@@ -67,6 +67,38 @@ export interface AnimeFiltersState {
   status: string;
 }
 
+export type TorrentsFilterPreference =
+  | 'all'
+  | 'downloading'
+  | 'seeding'
+  | 'completed'
+  | 'paused'
+  | 'active';
+export type TorrentsSortKeyPreference =
+  | 'name'
+  | 'size'
+  | 'progress'
+  | 'dlspeed'
+  | 'upspeed'
+  | 'eta'
+  | 'ratio'
+  | 'added_on'
+  | 'completion_on'
+  | 'num_seeds'
+  | 'num_leechs'
+  | 'priority'
+  | 'category'
+  | 'state'
+  | 'uploaded'
+  | 'downloaded'
+  | 'amount_left'
+  | 'time_active'
+  | 'seeding_time';
+export type TorrentsSortDirectionPreference = 'asc' | 'desc';
+export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
+export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
+export type ActivityFilterPreference = 'all' | 'sonarr' | 'radarr';
+
 export const DEFAULT_ANIME_FILTERS: AnimeFiltersState = {
   genres: [],
   year: '',
@@ -165,6 +197,20 @@ interface UIState {
   setAnimeSort: (sort: string) => void;
   animeFilters: AnimeFiltersState;
   setAnimeFilters: (filters: AnimeFiltersState) => void;
+  // Torrents preferences
+  torrentsFilter: TorrentsFilterPreference;
+  setTorrentsFilter: (filter: TorrentsFilterPreference) => void;
+  torrentsSortKey: TorrentsSortKeyPreference;
+  setTorrentsSortKey: (sortKey: TorrentsSortKeyPreference) => void;
+  torrentsSortDir: TorrentsSortDirectionPreference;
+  setTorrentsSortDir: (dir: TorrentsSortDirectionPreference) => void;
+  // Activity preferences
+  activityTab: ActivityTabPreference;
+  setActivityTab: (tab: ActivityTabPreference) => void;
+  activitySortBy: ActivitySortPreference;
+  setActivitySortBy: (sortBy: ActivitySortPreference) => void;
+  activityFilterBy: ActivityFilterPreference;
+  setActivityFilterBy: (filterBy: ActivityFilterPreference) => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
@@ -251,6 +297,20 @@ export const useUIStore = create<UIState>()(
       setAnimeSort: (sort) => set({ animeSort: sort }),
       animeFilters: cloneAnimeFilters(DEFAULT_ANIME_FILTERS),
       setAnimeFilters: (filters) => set({ animeFilters: cloneAnimeFilters(filters) }),
+      // Torrents
+      torrentsFilter: 'all',
+      setTorrentsFilter: (filter) => set({ torrentsFilter: filter }),
+      torrentsSortKey: 'added_on',
+      setTorrentsSortKey: (sortKey) => set({ torrentsSortKey: sortKey }),
+      torrentsSortDir: 'desc',
+      setTorrentsSortDir: (dir) => set({ torrentsSortDir: dir }),
+      // Activity
+      activityTab: 'queue',
+      setActivityTab: (tab) => set({ activityTab: tab }),
+      activitySortBy: 'progress',
+      setActivitySortBy: (sortBy) => set({ activitySortBy: sortBy }),
+      activityFilterBy: 'all',
+      setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
@@ -327,7 +387,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 12,
+      version: 13,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -427,6 +487,14 @@ export const useUIStore = create<UIState>()(
             filters.companies = [];
           }
         }
+        if (version < 13) {
+          state.torrentsFilter = 'all';
+          state.torrentsSortKey = 'added_on';
+          state.torrentsSortDir = 'desc';
+          state.activityTab = 'queue';
+          state.activitySortBy = 'progress';
+          state.activityFilterBy = 'all';
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -452,6 +520,12 @@ export const useUIStore = create<UIState>()(
         discoverFilters: state.discoverFilters,
         animeSort: state.animeSort,
         animeFilters: state.animeFilters,
+        torrentsFilter: state.torrentsFilter,
+        torrentsSortKey: state.torrentsSortKey,
+        torrentsSortDir: state.torrentsSortDir,
+        activityTab: state.activityTab,
+        activitySortBy: state.activitySortBy,
+        activityFilterBy: state.activityFilterBy,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
         navPosition: state.navPosition,
