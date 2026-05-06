@@ -20,6 +20,8 @@ export interface SonarrSeries {
   tvRageId: number;
   tvMazeId: number;
   firstAired: string;
+  lastAired?: string;
+  releaseDate?: string;
   seriesType: string;
   cleanTitle: string;
   imdbId: string;
@@ -38,6 +40,7 @@ export interface SonarrSeries {
     episodeCount: number;
     totalEpisodeCount: number;
     sizeOnDisk: number;
+    releaseGroups?: string[];
     percentOfEpisodes: number;
     latestSeasonHasFiles?: boolean;
   };
@@ -71,10 +74,12 @@ export interface SonarrSeason {
   seasonNumber: number;
   monitored: boolean;
   statistics?: {
+    previousAiring?: string;
     episodeFileCount: number;
     episodeCount: number;
     totalEpisodeCount: number;
     sizeOnDisk: number;
+    releaseGroups?: string[];
     percentOfEpisodes: number;
   };
 }

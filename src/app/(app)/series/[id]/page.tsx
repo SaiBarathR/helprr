@@ -44,6 +44,7 @@ import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
+import { formatBytes } from '@/lib/format';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -71,6 +72,13 @@ function formatCountdown(seconds: number): string {
   if (hours > 0) parts.push(`${hours}h`);
   parts.push(`${mins}m`);
   return parts.join(' ');
+}
+
+function formatDateValue(value: string | null | undefined, includeTime = false): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return format(date, includeTime ? "MMM d, yyyy 'at' h:mm a" : 'MMM d, yyyy');
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -672,6 +680,96 @@ export default function SeriesDetailPage() {
     { label: 'AniList', url: `https://anilist.co/anime/${animeDetail.id}` },
     ...(animeDetail.malId ? [{ label: 'MyAnimeList', url: `https://myanimelist.net/anime/${animeDetail.malId}` }] : []),
   ] : [];
+  const firstAired = formatDateValue(series.firstAired);
+  const lastAired = formatDateValue(series.lastAired);
+  const previousAiring = formatDateValue(series.previousAiring, true);
+  const releaseDate = formatDateValue(tmdbData?.releaseDate ?? series.releaseDate ?? null) ?? animeStartDate;
+  const originCountry = tmdbData?.originCountry?.filter(Boolean)?.join(', ') || null;
+  const showType = tmdbData?.showType ?? (isAnimeSeries && animeDetail?.format ? animeDetail.format.replace(/_/g, ' ') : null);
+  const runtimeValue = series.runtime > 0 ? `${series.runtime} min` : null;
+  const tmdbNextEpisode = tmdbData?.nextEpisode
+    ? [
+        `S${tmdbData.nextEpisode.seasonNumber}E${tmdbData.nextEpisode.episodeNumber}`,
+        tmdbData.nextEpisode.name,
+        formatDateValue(tmdbData.nextEpisode.airDate),
+      ].filter((part): part is string => Boolean(part)).join(' · ')
+    : null;
+  const animeNextEpisode = (() => {
+    if (!animeDetail?.nextAiringEpisode) return null;
+    const airDate = new Date(animeDetail.nextAiringEpisode.airingAt * 1000);
+    const airDateText = Number.isFinite(airDate.getTime())
+      ? format(airDate, "MMM d, yyyy 'at' h:mm a")
+      : null;
+    return [
+      `Episode ${animeDetail.nextAiringEpisode.episode}`,
+      airDateText,
+    ].filter((part): part is string => Boolean(part)).join(' · ');
+  })();
+  const nextEpisode = tmdbNextEpisode || animeNextEpisode || nextAiring;
+
+  const statisticsRows: Array<{ label: string; value: string }> = [];
+  if (series.statistics) {
+    statisticsRows.push({ label: 'Season Count', value: String(series.statistics.seasonCount) });
+    statisticsRows.push({ label: 'Episode File Count', value: String(series.statistics.episodeFileCount) });
+    statisticsRows.push({ label: 'Episode Count', value: String(series.statistics.episodeCount) });
+    statisticsRows.push({ label: 'Total Episode Count', value: String(series.statistics.totalEpisodeCount) });
+    if (series.statistics.sizeOnDisk > 0) {
+      statisticsRows.push({ label: 'Size on Disk', value: formatBytes(series.statistics.sizeOnDisk) });
+    }
+    if (series.statistics.releaseGroups?.length) {
+      statisticsRows.push({ label: 'Release Groups', value: series.statistics.releaseGroups.join(', ') });
+    }
+    if (series.statistics.percentOfEpisodes != null) {
+      statisticsRows.push({ label: 'Percent of Episodes', value: `${series.statistics.percentOfEpisodes}%` });
+    }
+  }
+
+  const seasonDetailRows = series.seasons
+    .map((season) => {
+      const stats = season.statistics;
+      if (!stats) return null;
+      const previousSeasonAiring = formatDateValue(stats.previousAiring, true);
+
+      const parts = [
+        `Files ${stats.episodeFileCount}/${stats.episodeCount}`,
+        `Total ${stats.totalEpisodeCount}`,
+        stats.sizeOnDisk > 0 ? `Size ${formatBytes(stats.sizeOnDisk)}` : null,
+        stats.percentOfEpisodes != null ? `Coverage ${stats.percentOfEpisodes}%` : null,
+        previousSeasonAiring ? `Previous ${previousSeasonAiring}` : null,
+        stats.releaseGroups?.length ? `Groups ${stats.releaseGroups.join(', ')}` : null,
+      ].filter((part): part is string => Boolean(part));
+
+      if (parts.length === 0) return null;
+
+      return {
+        label: season.seasonNumber === 0 ? 'Season 0 (Specials)' : `Season ${season.seasonNumber}`,
+        value: parts.join(' · '),
+      };
+    })
+    .filter((row): row is { label: string; value: string } => row !== null);
+
+  const infoRows: Array<{ label: string; value: string }> = [
+    { label: 'Quality Profile', value: qualityProfile?.name || 'Unknown' },
+    { label: 'Series Type', value: series.seriesType.charAt(0).toUpperCase() + series.seriesType.slice(1) },
+    ...(showType ? [{ label: 'Show Type', value: showType }] : []),
+    ...(series.certification ? [{ label: 'Certification', value: series.certification }] : []),
+    ...(runtimeValue ? [{ label: 'Runtime', value: runtimeValue }] : []),
+    ...(firstAired ? [{ label: 'First Aired', value: firstAired }] : []),
+    ...(lastAired ? [{ label: 'Last Aired', value: lastAired }] : []),
+    ...(previousAiring ? [{ label: 'Previous Airing', value: previousAiring }] : []),
+    ...(releaseDate ? [{ label: 'Release Date', value: releaseDate }] : []),
+    ...(originCountry ? [{ label: 'Origin Country', value: originCountry }] : []),
+    ...(nextEpisode ? [{ label: 'Next Episode', value: nextEpisode }] : []),
+    ...(seriesTags.length > 0 ? [{ label: 'Tags', value: seriesTags.map((t) => t.label).join(', ') }] : []),
+    ...(rootFolder ? [{ label: 'Root Folder', value: rootFolder.path }] : []),
+    { label: 'New Seasons', value: series.monitored ? 'Monitored' : 'Not Monitored' },
+    { label: 'Season Folders', value: series.seasonFolder ? 'Yes' : 'No' },
+    ...statisticsRows,
+    {
+      label: 'Added',
+      value: series.added ? format(new Date(series.added), 'MMM d, yyyy') : 'Unknown',
+    },
+  ];
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
@@ -1125,40 +1223,23 @@ export default function SeriesDetailPage() {
         <div className="mt-6">
           <h2 className="text-lg font-bold mb-2">Information</h2>
           <div className="space-y-0">
-            <div className="flex justify-between py-2.5 border-b border-border/30">
-              <span className="text-sm text-muted-foreground">Quality Profile</span>
-              <span className="text-sm">{qualityProfile?.name || 'Unknown'}</span>
-            </div>
-            <div className="flex justify-between py-2.5 border-b border-border/30">
-              <span className="text-sm text-muted-foreground">Series Type</span>
-              <span className="text-sm capitalize">{series.seriesType}</span>
-            </div>
-            {seriesTags.length > 0 && (
-              <div className="flex justify-between py-2.5 border-b border-border/30">
-                <span className="text-sm text-muted-foreground">Tags</span>
-                <span className="text-sm">{seriesTags.map((t) => t.label).join(', ')}</span>
+            {infoRows.map((row) => (
+              <div key={row.label} className="flex justify-between py-2.5 border-b border-border/30 items-start">
+                <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
+                <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
               </div>
+            ))}
+            {seasonDetailRows.length > 0 && (
+              <>
+                <div className="pt-3 pb-1 text-xs uppercase tracking-wider text-muted-foreground">Season Details</div>
+                {seasonDetailRows.map((row) => (
+                  <div key={row.label} className="flex justify-between py-2.5 border-b border-border/30 items-start">
+                    <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
+                    <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                  </div>
+                ))}
+              </>
             )}
-            {rootFolder && (
-              <div className="flex justify-between py-2.5 border-b border-border/30">
-                <span className="text-sm text-muted-foreground shrink-0">Root Folder</span>
-                <span className="text-sm text-right truncate ml-4">{rootFolder.path}</span>
-              </div>
-            )}
-            <div className="flex justify-between py-2.5 border-b border-border/30">
-              <span className="text-sm text-muted-foreground">New Seasons</span>
-              <span className="text-sm">{series.monitored ? 'Monitored' : 'Not Monitored'}</span>
-            </div>
-            <div className="flex justify-between py-2.5 border-b border-border/30">
-              <span className="text-sm text-muted-foreground">Season Folders</span>
-              <span className="text-sm">{series.seasonFolder ? 'Yes' : 'No'}</span>
-            </div>
-            <div className="flex justify-between py-2.5 border-b border-border/30">
-              <span className="text-sm text-muted-foreground">Added</span>
-              <span className="text-sm">
-                {series.added ? format(new Date(series.added), 'MMM d, yyyy') : 'Unknown'}
-              </span>
-            </div>
             {isAnimeSeries && (
               <button
                 onClick={() => setShowAniListRemap(true)}
