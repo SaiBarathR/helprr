@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
@@ -164,10 +164,11 @@ export default function ActivityPage() {
   const tab = urlTab && isTabKey(urlTab) ? urlTab : activityTab;
   const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const initRef = useRef(false);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
   useEffect(() => {
-    if (!hasHydrated) return;
+    if (!hasHydrated || initRef.current) return;
     const params = new URLSearchParams(searchParamsKey);
     const requestedTab = params.get('tab');
     const requestedSource = params.get('source');
@@ -182,6 +183,7 @@ export default function ActivityPage() {
     if (requestedSort && isSortKey(requestedSort) && requestedSort !== currentState.activitySortBy) {
       setSortBy(requestedSort);
     }
+    initRef.current = true;
   }, [hasHydrated, searchParamsKey, setActivityTab, setFilterBy, setSortBy]);
 
   function handleTabChange(nextTab: TabKey) {
