@@ -31,7 +31,13 @@ export async function POST(request: Request) {
         result = await client.renameSeries(body.seriesId);
         break;
       case 'RenameFiles':
-        result = await client.renameFiles(body.seriesId, body.files ?? []);
+        if (!Array.isArray(body.files) || body.files.length === 0) {
+          return NextResponse.json(
+            { error: 'files must be a non-empty array' },
+            { status: 400 }
+          );
+        }
+        result = await client.renameFiles(body.seriesId, body.files);
         break;
       case 'ManualImport':
         result = await client.submitManualImport(body.files);

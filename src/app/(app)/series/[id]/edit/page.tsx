@@ -77,8 +77,11 @@ export default function SeriesEditPage() {
       };
 
       if (rootFolder && series.path) {
-        const seriesFolder = series.path.split('/').pop();
-        updatedSeries.path = `${rootFolder}/${seriesFolder}`;
+        const segments = series.path.split('/').filter(Boolean);
+        const seriesFolder = segments[segments.length - 1];
+        if (seriesFolder) {
+          updatedSeries.path = `${rootFolder}/${seriesFolder}`;
+        }
       }
 
       const moveFiles = rootFolderTouched;
