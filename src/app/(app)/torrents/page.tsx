@@ -903,12 +903,13 @@ export default function TorrentsPage() {
                 <DropdownMenuCheckboxItem
                   key={opt.key}
                   checked={sortKey === opt.key}
-                    onCheckedChange={() => {
-                      if (sortKey === opt.key) {
-                        setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-                      } else {
-                        setSortKey(opt.key);
-                        setSortDir(opt.key === 'name' || opt.key === 'category' || opt.key === 'state' ? 'asc' : 'desc');
+                  onCheckedChange={() => {
+                    if (sortKey === opt.key) {
+                      const latestSortDir = useUIStore.getState().torrentsSortDir;
+                      setSortDir(latestSortDir === 'asc' ? 'desc' : 'asc');
+                    } else {
+                      setSortKey(opt.key);
+                      setSortDir(opt.key === 'name' || opt.key === 'category' || opt.key === 'state' ? 'asc' : 'desc');
                     }
                   }}
                 >
