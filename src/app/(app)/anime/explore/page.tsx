@@ -11,6 +11,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer,
   DrawerContent,
+  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
@@ -321,43 +322,43 @@ export default function AnimePage() {
           placeholder="Search anime..."
         />
 
-      {/* Sort pills + Filter button */}
-      {viewMode !== 'search' && (
-        <div className="py-2 flex gap-2 overflow-x-auto scrollbar-hide">
-          <Button
-            variant={hasFilters ? 'default' : 'outline'}
-            size="sm"
-            className="shrink-0 gap-1.5 h-8 text-xs relative"
-            onClick={() => {
-              setDraftFilters(animeFilters);
-              setDraftSort(animeSort);
-              setFilterOpen(true);
-            }}
-          >
-            <Filter className="h-3 w-3" />
-            {activeFilterCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-          {SORT_OPTIONS.map((opt) => {
-            const active = animeSort === opt.value;
-            return (
-              <Button
-                key={opt.value}
-                variant={active ? 'default' : 'outline'}
-                size="sm"
-                className="shrink-0 gap-1.5 h-8 text-xs"
-                onClick={() => handleSortChange(opt.value)}
-              >
-                <opt.icon className="h-3 w-3" />
-                {opt.label}
-              </Button>
-            );
-          })}
-        </div>
-      )}
+        {/* Sort pills + Filter button */}
+        {viewMode !== 'search' && (
+          <div className="py-2 flex gap-2 overflow-x-auto scrollbar-hide">
+            <Button
+              variant={hasFilters ? 'default' : 'outline'}
+              size="sm"
+              className="shrink-0 gap-1.5 h-8 text-xs relative"
+              onClick={() => {
+                setDraftFilters(animeFilters);
+                setDraftSort(animeSort);
+                setFilterOpen(true);
+              }}
+            >
+              <Filter className="h-3 w-3" />
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
+            {SORT_OPTIONS.map((opt) => {
+              const active = animeSort === opt.value;
+              return (
+                <Button
+                  key={opt.value}
+                  variant={active ? 'default' : 'outline'}
+                  size="sm"
+                  className="shrink-0 gap-1.5 h-8 text-xs"
+                  onClick={() => handleSortChange(opt.value)}
+                >
+                  <opt.icon className="h-3 w-3" />
+                  {opt.label}
+                </Button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -385,12 +386,12 @@ export default function AnimePage() {
 
       {/* Filter Drawer */}
       <Drawer open={filterOpen} onOpenChange={setFilterOpen}>
-        <DrawerContent className="max-h-[85vh]">
+        <DrawerContent className="max-h-[95vh]">
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Filters</DrawerTitle>
+          </DrawerHeader>
           <div className="overflow-y-auto px-4 pb-10">
-            <DrawerHeader className="px-0 py-4">
-              <DrawerTitle>Filters</DrawerTitle>
-            </DrawerHeader>
-            <div className="space-y-6">
+            <div className="space-y-3">
               {/* Sort */}
               <div>
                 <label className="text-sm font-medium mb-1.5 block">Sort</label>
@@ -561,18 +562,20 @@ export default function AnimePage() {
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <Button variant="outline" className="flex-1" onClick={clearFilters}>
-                  <X className="h-4 w-4 mr-1" />
-                  Clear
-                </Button>
-                <Button className="flex-1" onClick={applyFilters}>
-                  <Check className="h-4 w-4 mr-1" />
-                  Apply
-                </Button>
-              </div>
             </div>
           </div>
+          <DrawerFooter>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" className="flex-1" onClick={clearFilters}>
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+              <Button className="flex-1" onClick={applyFilters}>
+                <Check className="h-4 w-4 mr-1" />
+                Apply
+              </Button>
+            </div>
+          </DrawerFooter>
         </DrawerContent>
       </Drawer>
     </div>
