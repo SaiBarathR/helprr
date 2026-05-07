@@ -98,6 +98,27 @@ export type TorrentsSortDirectionPreference = 'asc' | 'desc';
 export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
 export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
 export type ActivityFilterPreference = 'all' | 'sonarr' | 'radarr';
+export type NotificationsReadStatePreference = 'all' | 'unread' | 'read';
+
+export interface NotificationsFiltersState {
+  search: string;
+  eventTypes: string[];
+  readState: NotificationsReadStatePreference;
+  dateFrom: string | null;
+  dateTo: string | null;
+}
+
+export const DEFAULT_NOTIFICATIONS_FILTERS: NotificationsFiltersState = {
+  search: '',
+  eventTypes: [],
+  readState: 'all',
+  dateFrom: null,
+  dateTo: null,
+};
+
+function cloneNotificationsFilters(filters: NotificationsFiltersState): NotificationsFiltersState {
+  return { ...filters, eventTypes: [...filters.eventTypes] };
+}
 
 export const DEFAULT_ANIME_FILTERS: AnimeFiltersState = {
   genres: [],
@@ -211,6 +232,13 @@ interface UIState {
   setActivitySortBy: (sortBy: ActivitySortPreference) => void;
   activityFilterBy: ActivityFilterPreference;
   setActivityFilterBy: (filterBy: ActivityFilterPreference) => void;
+  // Notifications filters
+  notificationsFilters: NotificationsFiltersState;
+  setNotificationsSearch: (search: string) => void;
+  setNotificationsEventTypes: (eventTypes: string[]) => void;
+  setNotificationsReadState: (state: NotificationsReadStatePreference) => void;
+  setNotificationsDateRange: (from: string | null, to: string | null) => void;
+  resetNotificationsFilters: () => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
@@ -311,6 +339,18 @@ export const useUIStore = create<UIState>()(
       setActivitySortBy: (sortBy) => set({ activitySortBy: sortBy }),
       activityFilterBy: 'all',
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
+      // Notifications filters
+      notificationsFilters: cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS),
+      setNotificationsSearch: (search) =>
+        set((state) => ({ notificationsFilters: { ...state.notificationsFilters, search } })),
+      setNotificationsEventTypes: (eventTypes) =>
+        set((state) => ({ notificationsFilters: { ...state.notificationsFilters, eventTypes: [...eventTypes] } })),
+      setNotificationsReadState: (readState) =>
+        set((state) => ({ notificationsFilters: { ...state.notificationsFilters, readState } })),
+      setNotificationsDateRange: (dateFrom, dateTo) =>
+        set((state) => ({ notificationsFilters: { ...state.notificationsFilters, dateFrom, dateTo } })),
+      resetNotificationsFilters: () =>
+        set({ notificationsFilters: cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS) }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
@@ -387,7 +427,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 13,
+      version: 14,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -495,6 +535,9 @@ export const useUIStore = create<UIState>()(
           state.activitySortBy = 'progress';
           state.activityFilterBy = 'all';
         }
+        if (version < 14) {
+          state.notificationsFilters = cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS);
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -526,6 +569,7 @@ export const useUIStore = create<UIState>()(
         activityTab: state.activityTab,
         activitySortBy: state.activitySortBy,
         activityFilterBy: state.activityFilterBy,
+        notificationsFilters: state.notificationsFilters,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
         navPosition: state.navPosition,

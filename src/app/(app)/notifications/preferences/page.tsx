@@ -10,38 +10,7 @@ import { Separator } from '@/components/ui/separator';
 import { Bell, BellOff, Smartphone, ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
-
-const EVENT_SECTIONS: {
-  title: string;
-  events: Record<string, { label: string; description: string }>;
-}[] = [
-  {
-    title: 'Sonarr / Radarr',
-    events: {
-      grabbed: { label: 'Download Grabbed', description: 'When Sonarr/Radarr grabs a download' },
-      imported: { label: 'Media Imported', description: 'When a download is imported to library' },
-      downloadFailed: { label: 'Download Failed', description: 'When a download fails' },
-      importFailed: { label: 'Import Failed', description: 'When an import fails' },
-      upcomingPremiere: { label: 'Upcoming Premiere', description: 'Upcoming episode or movie release' },
-      healthWarning: { label: 'Health Warning', description: 'When a service has health issues' },
-    },
-  },
-  {
-    title: 'qBittorrent',
-    events: {
-      torrentAdded: { label: 'Torrent Added', description: 'When a new torrent is added' },
-      torrentCompleted: { label: 'Download Complete', description: 'When a torrent finishes downloading' },
-      torrentDeleted: { label: 'Torrent Removed', description: 'When a torrent is removed' },
-    },
-  },
-  {
-    title: 'Jellyfin',
-    events: {
-      jellyfinItemAdded: { label: 'Media Added', description: 'New media added to Jellyfin library' },
-      jellyfinPlaybackStart: { label: 'Playback Started', description: 'Someone started streaming' },
-    },
-  },
-];
+import { EVENT_GROUPS, EVENT_META } from '@/lib/notification-events';
 
 interface Preference {
   id: string;
@@ -175,17 +144,18 @@ export default function NotificationPreferencesPage() {
             {prefsLoading ? (
               <p className="text-sm text-muted-foreground">Loading preferences...</p>
             ) : (
-              EVENT_SECTIONS.map((section, i) => (
-                <div key={section.title} className="space-y-3">
+              EVENT_GROUPS.map((group, i) => (
+                <div key={group.id} className="space-y-3">
                   {i > 0 && <Separator />}
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{section.title}</p>
-                  {Object.entries(section.events).map(([eventType, { label, description }]) => {
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{group.title}</p>
+                  {group.types.map((eventType) => {
+                    const meta = EVENT_META[eventType];
                     const pref = preferences.find((p) => p.eventType === eventType);
                     return (
                       <div key={eventType} className="flex items-center justify-between">
                         <div>
-                          <Label className="text-sm font-medium">{label}</Label>
-                          <p className="text-xs text-muted-foreground">{description}</p>
+                          <Label className="text-sm font-medium">{meta.label}</Label>
+                          <p className="text-xs text-muted-foreground">{meta.description}</p>
                         </div>
                         <Switch
                           checked={pref?.enabled ?? true}

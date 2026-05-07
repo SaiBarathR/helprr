@@ -379,41 +379,6 @@ export class PollingService {
       create: { serviceType: 'JELLYFIN', lastQueueIds: [] },
     });
 
-    // Activity log polling (new library items)
-    try {
-      const minDate = state.lastHistoryDate?.toISOString();
-      const activity = await client.getActivityLog({ limit: 50, minDate });
-      const lastDate = state.lastHistoryDate;
-      const newEntries = lastDate
-        ? activity.Items.filter((a) => new Date(a.Date) > new Date(lastDate))
-        : [];
-
-      for (const entry of newEntries) {
-        if (entry.Type === 'ItemAdded' || entry.Name.includes('added to library')) {
-          await notifyEvent({
-            eventType: 'jellyfinItemAdded',
-            title: 'Media Added to Jellyfin',
-            body: entry.Overview || entry.Name,
-            metadata: { source: 'jellyfin', id: entry.Id, redirect: '/jellyfin' },
-            url: '/jellyfin',
-          });
-        }
-      }
-
-      const latestDate = activity.Items.length > 0
-        ? new Date(activity.Items[0].Date)
-        : state.lastHistoryDate;
-
-      await prisma.pollingState.update({
-        where: { serviceType: 'JELLYFIN' },
-        data: {
-          lastHistoryDate: latestDate,
-        },
-      });
-    } catch (e) {
-      console.error('[Polling] Jellyfin activity error:', e);
-    }
-
     // Session polling (new playback)
     try {
       const sessions = await client.getActiveSessions();
