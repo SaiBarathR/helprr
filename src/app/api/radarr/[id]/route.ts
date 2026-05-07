@@ -26,8 +26,9 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
+    const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const client = await getRadarrClient();
-    const result = await client.updateMovie(body);
+    const result = await client.updateMovie(body, moveFiles);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update movie';

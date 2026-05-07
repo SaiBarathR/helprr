@@ -3,6 +3,7 @@ import type {
   RadarrMovie,
   RadarrCalendarEntry,
   RadarrCredit,
+  RadarrRenamePreview,
   QueueResponse,
   HistoryItem,
   HistoryResponse,
@@ -100,8 +101,9 @@ export class RadarrClient {
     return this.post<RadarrMovie>('/api/v3/movie', body);
   }
 
-  async updateMovie(body: RadarrMovie): Promise<RadarrMovie> {
-    return this.put<RadarrMovie>(`/api/v3/movie/${body.id}`, body);
+  async updateMovie(body: RadarrMovie, moveFiles: boolean = false): Promise<RadarrMovie> {
+    const endpoint = `/api/v3/movie/${body.id}${moveFiles ? '?moveFiles=true' : ''}`;
+    return this.put<RadarrMovie>(endpoint, body);
   }
 
   async deleteMovie(
@@ -229,6 +231,18 @@ export class RadarrClient {
       name: 'RenameFiles',
       movieId,
     });
+  }
+
+  async renameMovieFiles(movieId: number, files: number[]): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'RenameFiles',
+      movieId,
+      files,
+    });
+  }
+
+  async getRenamePreview(movieId: number): Promise<RadarrRenamePreview[]> {
+    return this.get<RadarrRenamePreview[]>('/api/v3/rename', { movieId });
   }
 
   // Configuration

@@ -7,10 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { SonarrSeries, QualityProfile, Tag } from '@/types';
+import type { SonarrSeries, QualityProfile, RootFolder, Tag } from '@/types';
 
 export default function SeriesEditPage() {
   const { id } = useParams();
@@ -18,6 +19,7 @@ export default function SeriesEditPage() {
 
   const [series, setSeries] = useState<SonarrSeries | null>(null);
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
+  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -25,22 +27,29 @@ export default function SeriesEditPage() {
   // Edit form state
   const [qualityProfileId, setQualityProfileId] = useState<number>(0);
   const [seriesType, setSeriesType] = useState('');
+  const [seasonFolder, setSeasonFolder] = useState(true);
+  const [rootFolder, setRootFolder] = useState('');
+  const [rootFolderTouched, setRootFolderTouched] = useState(false);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
   useEffect(() => {
     Promise.all([
       fetch(`/api/sonarr/${id}`).then((r) => (r.ok ? r.json() : null)),
       fetch('/api/sonarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
+      fetch('/api/sonarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
       fetch('/api/sonarr/tags').then((r) => (r.ok ? r.json() : [])),
     ])
-      .then(([s, qp, t]) => {
+      .then(([s, qp, rf, t]) => {
         setSeries(s);
         setQualityProfiles(qp);
+        setRootFolders(rf);
         setTags(t);
         if (s) {
           setQualityProfileId(s.qualityProfileId);
           setSeriesType(s.seriesType);
+          setSeasonFolder(s.seasonFolder);
           setSelectedTags([...s.tags]);
+          setRootFolder(s.path ? s.path.split('/').slice(0, -1).join('/') : '');
         }
       })
       .catch(() => {
@@ -59,13 +68,23 @@ export default function SeriesEditPage() {
     if (!series) return;
     setSaving(true);
     try {
-      const updatedSeries = {
+      const updatedSeries: SonarrSeries = {
         ...series,
         qualityProfileId,
         seriesType,
+        seasonFolder,
         tags: selectedTags,
       };
-      const res = await fetch(`/api/sonarr/${series.id}`, {
+
+      if (rootFolder && series.path) {
+        const seriesFolder = series.path.split('/').pop();
+        updatedSeries.path = `${rootFolder}/${seriesFolder}`;
+      }
+
+      const moveFiles = rootFolderTouched;
+      const url = `/api/sonarr/${series.id}${moveFiles ? '?moveFiles=true' : ''}`;
+
+      const res = await fetch(url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
@@ -148,6 +167,51 @@ export default function SeriesEditPage() {
               </Select>
             </div>
           </div>
+        </div>
+
+        {/* Folder */}
+        <div className="grouped-section">
+          <p className="grouped-section-title">Folder</p>
+          <div className="grouped-section-content">
+            <div className="grouped-row">
+              <Label htmlFor="season-folder" className="text-sm shrink-0">
+                Use Season Folder
+              </Label>
+              <Switch
+                id="season-folder"
+                checked={seasonFolder}
+                onCheckedChange={setSeasonFolder}
+              />
+            </div>
+            {rootFolders.length > 0 && (
+              <div className="grouped-row">
+                <Label htmlFor="root-folder" className="text-sm shrink-0">
+                  Root Folder
+                </Label>
+                <Select
+                  value={rootFolder}
+                  onValueChange={(v) => {
+                    setRootFolder(v);
+                    setRootFolderTouched(true);
+                  }}
+                >
+                  <SelectTrigger id="root-folder" className="w-[180px] border-0 bg-transparent text-right">
+                    <SelectValue placeholder="Select folder" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rootFolders.map((rf) => (
+                      <SelectItem key={rf.id} value={rf.path}>
+                        {rf.path}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <p className="px-4 pt-2 text-xs text-muted-foreground">
+            Moving series to the same root folder can be used to rename series folders to match updated title or naming format.
+          </p>
         </div>
 
         {/* Tags */}

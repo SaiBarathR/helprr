@@ -150,6 +150,15 @@ export interface SonarrCalendarEntry extends SonarrEpisode {
   series: SonarrSeries;
 }
 
+export interface SonarrRenamePreview {
+  seriesId: number;
+  seasonNumber: number;
+  episodeNumbers: number[];
+  episodeFileId: number;
+  existingPath: string;
+  newPath: string;
+}
+
 // Radarr Types
 export interface RadarrMovie {
   id: number;
@@ -266,6 +275,13 @@ export type RadarrMovieListItem = Pick<
 >;
 
 export type RadarrCalendarEntry = RadarrMovie;
+
+export interface RadarrRenamePreview {
+  movieId: number;
+  movieFileId: number;
+  existingPath: string;
+  newPath: string;
+}
 
 // Shared Types
 export interface MediaImage {
