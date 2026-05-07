@@ -52,6 +52,10 @@ export async function notifyEvent(event: {
   metadata?: Record<string, unknown>;
   url?: string;
 }): Promise<number> {
+  const metadata = { ...(event.metadata ?? {}) };
+  const metadataRedirect = typeof metadata.redirect === 'string' ? metadata.redirect : undefined;
+  const targetUrl = metadataRedirect ?? event.url;
+
   const subscriptions = await prisma.pushSubscription.findMany({
     include: { preferences: true },
   });
@@ -64,18 +68,22 @@ export async function notifyEvent(event: {
 
     const success = await sendPushNotification(
       { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-      { title: event.title, body: event.body, tag: event.eventType, url: event.url }
+      { title: event.title, body: event.body, tag: event.eventType, url: targetUrl }
     );
     if (success) sent++;
   }
 
   if (sent > 0) {
+    if (!metadataRedirect && targetUrl) {
+      metadata.redirect = targetUrl;
+    }
+
     await prisma.notificationHistory.create({
       data: {
         eventType: event.eventType,
         title: event.title,
         body: event.body,
-        metadata: JSON.parse(JSON.stringify({ ...(event.metadata ?? {}), sentCount: sent })),
+        metadata: JSON.parse(JSON.stringify({ ...metadata, sentCount: sent })),
       },
     });
   }
