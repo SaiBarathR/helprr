@@ -1,9 +1,11 @@
 # Helprr
 
-Entire site was built using Claude code with Opus and Gemini. Using it daily, I haven’t found any issues in functionality so far, but I’ll update the README if I come across any bugs that I’m unable to fix. The UI is mobile-first, as I needed an Iphone app to control radarr, sonarr and qbittorrent with push notifications. I have only added features which I wanted to use myself to use from mobile, not all the options and features present in arr stack and qbittorrent is added.
+Entire site was built using Codex, Opus and Gemini. Using it daily, I haven’t found any issues in functionality so far, but I’ll update the README if I come across any bugs that I’m unable to fix. The UI is mobile-first, as I needed an Iphone app to control radarr, sonarr and qbittorrent with push notifications. I have only added features which I wanted to use myself to use from mobile, not all the options and features present in arr stack and qbittorrent is added. UI may not be the best, but I have opted for functionality and cramped as much info as possible in the dashboard and activity feed pages, so that I can get all the info at a glance on mobile. 
 
-Helprr is a self-hosted web dashboard (PWA) that connects to **Sonarr**, **Radarr**, and **qBittorrent**.
-It polls those services on an interval and can send **Web Push** notifications for common events (downloads starting/completing/failing, health warnings, upcoming releases, etc.).
+Helprr is a self-hosted web dashboard (PWA) that connects to **Sonarr**, **Radarr**, **Prowlarr**, **Jellyfin**, **TMDb**, **AniList** and **qBittorrent**.
+It polls those services on an interval and can send **Web Push** notifications for common events (downloads starting/completing/failing, health warnings, upcoming releases, etc.) with per-device notification preferences. Provides pages to discover new content using TMDb and AniList APIs, and add it to Sonarr/Radarr. The UI is password-protected with a single shared app password (no user accounts), and the app can be used on mobile as PWA for push notifications or desktop or just in browser.
+
+End Goal: A simple, mobile-friendly app to monitor and control your media server with push notifications, without needing to pay subscriptions for mobile apps.
 
 <details>
 <summary>📱 App Screenshots</summary>
