@@ -31,7 +31,7 @@ import {
   Clock, Trophy, TrendingUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag, DiscoverTvFullDetail, DiscoverSeasonDetailResponse } from '@/types';
 import type { AniListFuzzyDate, SeriesAniListResponse } from '@/types/anilist';
 import {
@@ -77,7 +77,9 @@ function formatCountdown(seconds: number): string {
 
 function formatDateValue(value: string | null | undefined, includeTime = false): string | null {
   if (!value) return null;
-  const date = new Date(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? parse(value, 'yyyy-MM-dd', new Date())
+    : new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
   return format(date, includeTime ? "MMM d, yyyy 'at' h:mm a" : 'MMM d, yyyy');
 }

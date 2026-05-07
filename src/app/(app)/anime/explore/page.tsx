@@ -110,7 +110,7 @@ export default function AnimePage() {
 
     if (!urlSort && !hasUrlFilters) return;
 
-    setAnimeSort(urlSort ?? 'seasonal');
+    if (urlSort) setAnimeSort(urlSort);
 
     const nextFilters: AnimeFiltersState = { ...DEFAULT_ANIME_FILTERS };
     if (urlSeason) nextFilters.season = urlSeason;
