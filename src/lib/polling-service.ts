@@ -4,6 +4,39 @@ import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
 
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+function getMediaHrefFromIds(args: {
+  seriesId?: unknown;
+  seasonNumber?: unknown;
+  episodeId?: unknown;
+  movieId?: unknown;
+}): string | null {
+  const movieId = toNumber(args.movieId);
+  if (movieId) return `/movies/${movieId}`;
+
+  const seriesId = toNumber(args.seriesId);
+  const seasonNumber = toNumber(args.seasonNumber);
+  const episodeId = toNumber(args.episodeId);
+  if (seriesId && seasonNumber && episodeId) {
+    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}`;
+  }
+  if (seriesId && seasonNumber) {
+    return `/series/${seriesId}/season/${seasonNumber}`;
+  }
+  if (seriesId) {
+    return `/series/${seriesId}`;
+  }
+  return null;
+}
+
 export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
@@ -89,29 +122,38 @@ export class PollingService {
     const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
 
     for (const item of newItems) {
+      const metadata = {
+        source: 'sonarr' as const,
+        id: item.id,
+        seriesId: item.seriesId,
+        seasonNumber: item.seasonNumber ?? item.episode?.seasonNumber,
+        episodeId: item.episodeId ?? item.episode?.id,
+      };
+      const redirect = getMediaHrefFromIds(metadata) ?? '/activity?tab=queue&source=sonarr';
+
       if (item.trackedDownloadState === 'importFailed') {
         await notifyEvent({
           eventType: 'importFailed',
           title: 'Import Failed',
           body: `${item.title}`,
-          metadata: { source: 'sonarr', id: item.id },
-          url: '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
         await notifyEvent({
           eventType: 'downloadFailed',
           title: 'Download Failed',
           body: `${item.title}`,
-          metadata: { source: 'sonarr', id: item.id },
-          url: '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       } else {
         await notifyEvent({
           eventType: 'grabbed',
           title: 'Download Started',
           body: `${item.title}`,
-          metadata: { source: 'sonarr', id: item.id },
-          url: '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       }
     }
@@ -125,12 +167,21 @@ export class PollingService {
 
     for (const item of newHistory) {
       if (item.eventType === 'downloadFolderImported' || item.eventType === 'episodeFileImported') {
+        const metadata = {
+          source: 'sonarr' as const,
+          id: item.id,
+          seriesId: item.seriesId,
+          seasonNumber: item.episode?.seasonNumber,
+          episodeId: item.episodeId ?? item.episode?.id,
+        };
+        const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
+
         await notifyEvent({
           eventType: 'imported',
           title: 'Episode Imported',
           body: `${item.sourceTitle}`,
-          metadata: { source: 'sonarr', id: item.id },
-          url: item.seriesId ? `/series/${item.seriesId}` : '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       }
     }
@@ -174,29 +225,36 @@ export class PollingService {
     const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
 
     for (const item of newItems) {
+      const metadata = {
+        source: 'radarr' as const,
+        id: item.id,
+        movieId: item.movieId,
+      };
+      const redirect = getMediaHrefFromIds(metadata) ?? '/activity?tab=queue&source=radarr';
+
       if (item.trackedDownloadState === 'importFailed') {
         await notifyEvent({
           eventType: 'importFailed',
           title: 'Movie Import Failed',
           body: `${item.title}`,
-          metadata: { source: 'radarr', id: item.id },
-          url: '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
         await notifyEvent({
           eventType: 'downloadFailed',
           title: 'Movie Download Failed',
           body: `${item.title}`,
-          metadata: { source: 'radarr', id: item.id },
-          url: '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       } else {
         await notifyEvent({
           eventType: 'grabbed',
           title: 'Movie Download Started',
           body: `${item.title}`,
-          metadata: { source: 'radarr', id: item.id },
-          url: '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       }
     }
@@ -209,12 +267,19 @@ export class PollingService {
 
     for (const item of newHistory) {
       if (item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported') {
+        const metadata = {
+          source: 'radarr' as const,
+          id: item.id,
+          movieId: item.movieId,
+        };
+        const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
+
         await notifyEvent({
           eventType: 'imported',
           title: 'Movie Imported',
           body: `${item.sourceTitle}`,
-          metadata: { source: 'radarr', id: item.id },
-          url: item.movieId ? `/movies/${item.movieId}` : '/activity',
+          metadata: { ...metadata, redirect },
+          url: redirect,
         });
       }
     }
@@ -265,7 +330,7 @@ export class PollingService {
           eventType: 'torrentAdded',
           title: 'Torrent Added',
           body: torrent.name,
-          metadata: { source: 'qbittorrent', hash: torrent.hash },
+          metadata: { source: 'qbittorrent', hash: torrent.hash, redirect: '/torrents' },
           url: '/torrents',
         });
       }
@@ -276,7 +341,7 @@ export class PollingService {
           eventType: 'torrentCompleted',
           title: 'Download Complete',
           body: torrent.name,
-          metadata: { source: 'qbittorrent', hash: torrent.hash },
+          metadata: { source: 'qbittorrent', hash: torrent.hash, redirect: '/torrents' },
           url: '/torrents',
         });
       }
@@ -289,7 +354,7 @@ export class PollingService {
           eventType: 'torrentDeleted',
           title: 'Torrent Removed',
           body: prev.name,
-          metadata: { source: 'qbittorrent', hash: prev.hash },
+          metadata: { source: 'qbittorrent', hash: prev.hash, redirect: '/torrents' },
           url: '/torrents',
         });
       }
@@ -329,8 +394,8 @@ export class PollingService {
             eventType: 'jellyfinItemAdded',
             title: 'Media Added to Jellyfin',
             body: entry.Overview || entry.Name,
-            metadata: { source: 'jellyfin', id: entry.Id },
-            url: '/dashboard',
+            metadata: { source: 'jellyfin', id: entry.Id, redirect: '/jellyfin' },
+            url: '/jellyfin',
           });
         }
       }
@@ -367,8 +432,8 @@ export class PollingService {
             eventType: 'jellyfinPlaybackStart',
             title: 'Playback Started',
             body: `${session.UserName} is watching ${title}`,
-            metadata: { source: 'jellyfin', sessionId: session.Id },
-            url: '/dashboard',
+            metadata: { source: 'jellyfin', sessionId: session.Id, redirect: '/jellyfin' },
+            url: '/jellyfin',
           });
         }
       }
@@ -441,6 +506,13 @@ export class PollingService {
             eventType: 'upcomingPremiere',
             title: 'Upcoming Episode',
             body,
+            metadata: {
+              source: 'sonarr',
+              seriesId: ep.seriesId,
+              seasonNumber: ep.seasonNumber,
+              episodeId: ep.id,
+              redirect: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`,
+            },
             url: `/series/${ep.seriesId}`,
           });
         }
@@ -474,6 +546,11 @@ export class PollingService {
             eventType: 'upcomingPremiere',
             title: 'Upcoming Movie',
             body,
+            metadata: {
+              source: 'radarr',
+              movieId: movie.id,
+              redirect: `/movies/${movie.id}`,
+            },
             url: `/movies/${movie.id}`,
           });
         }

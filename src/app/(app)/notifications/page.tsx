@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -20,6 +20,7 @@ interface NotificationMetadata {
   seriesId?: number;
   seasonNumber?: number;
   episodeId?: number;
+  redirect?: string;
   hash?: string;
   sessionId?: string;
   sentCount?: number;
@@ -111,6 +112,12 @@ export default function NotificationsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [markingAll, setMarkingAll] = useState(false);
+  const queueItemsByKeyRef = useRef<Map<string, QueueItem & { source?: string }>>(new Map());
+  const queueCacheLoadedRef = useRef(false);
+  const historyItemsByKeyRef = useRef<Map<string, HistoryItem>>(new Map());
+  const historyCacheLoadedBySourceRef = useRef<Set<'sonarr' | 'radarr'>>(new Set());
+  const resolvedHrefByNotificationRef = useRef<Map<string, string>>(new Map());
+  const resolvingHrefPromisesRef = useRef<Map<string, Promise<string>>>(new Map());
 
   async function fetchNotifications(p: number) {
     try {
@@ -134,13 +141,30 @@ export default function NotificationsPage() {
   }, []);
 
   const resolveQueueNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
+    const cacheKey = `${source}:${id}`;
+    const cachedQueueItem = queueItemsByKeyRef.current.get(cacheKey);
+    if (cachedQueueItem) {
+      return getMediaHrefFromIds({
+        movieId: cachedQueueItem.movieId,
+        seriesId: cachedQueueItem.seriesId,
+        seasonNumber: cachedQueueItem.seasonNumber ?? cachedQueueItem.episode?.seasonNumber,
+        episodeId: cachedQueueItem.episodeId ?? cachedQueueItem.episode?.id,
+      });
+    }
+    if (queueCacheLoadedRef.current) return null;
+
     try {
       const res = await fetch('/api/activity/queue');
       if (!res.ok) return null;
       const data = await res.json();
-      const queueItem = (data.records || []).find(
-        (record: QueueItem & { source?: string }) => record.id === id && record.source === source
-      );
+      for (const record of (data.records || []) as (QueueItem & { source?: string })[]) {
+        if (record.source === 'sonarr' || record.source === 'radarr') {
+          queueItemsByKeyRef.current.set(`${record.source}:${record.id}`, record);
+        }
+      }
+      queueCacheLoadedRef.current = true;
+
+      const queueItem = queueItemsByKeyRef.current.get(cacheKey);
       if (!queueItem) return null;
       return getMediaHrefFromIds({
         movieId: queueItem.movieId,
@@ -154,6 +178,18 @@ export default function NotificationsPage() {
   }, []);
 
   const resolveHistoryNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
+    const cacheKey = `${source}:${id}`;
+    const cachedHistoryItem = historyItemsByKeyRef.current.get(cacheKey);
+    if (cachedHistoryItem) {
+      return getMediaHrefFromIds({
+        movieId: cachedHistoryItem.movieId,
+        seriesId: cachedHistoryItem.seriesId,
+        seasonNumber: cachedHistoryItem.episode?.seasonNumber,
+        episodeId: cachedHistoryItem.episodeId ?? cachedHistoryItem.episode?.id,
+      });
+    }
+    if (historyCacheLoadedBySourceRef.current.has(source)) return null;
+
     try {
       const params = new URLSearchParams({
         source,
@@ -164,7 +200,12 @@ export default function NotificationsPage() {
       const res = await fetch(`/api/activity/history?${params.toString()}`);
       if (!res.ok) return null;
       const data = await res.json();
-      const historyItem = (data.records || []).find((record: HistoryItem) => record.id === id);
+      for (const record of (data.records || []) as HistoryItem[]) {
+        historyItemsByKeyRef.current.set(`${source}:${record.id}`, record);
+      }
+      historyCacheLoadedBySourceRef.current.add(source);
+
+      const historyItem = historyItemsByKeyRef.current.get(cacheKey);
       if (!historyItem) return null;
       return getMediaHrefFromIds({
         movieId: historyItem.movieId,
@@ -178,52 +219,74 @@ export default function NotificationsPage() {
   }, []);
 
   const resolveNotificationHref = useCallback(async (notification: Notification) => {
-    const metadata = notification.metadata;
-    const directMediaHref = getMediaHrefFromIds({
-      movieId: metadata?.movieId,
-      seriesId: metadata?.seriesId,
-      seasonNumber: metadata?.seasonNumber,
-      episodeId: metadata?.episodeId,
-    });
-    if (directMediaHref) {
-      return directMediaHref;
-    }
+    const cachedHref = resolvedHrefByNotificationRef.current.get(notification.id);
+    if (cachedHref) return cachedHref;
 
-    const source = metadata?.source;
-    const metadataId = toNumber(metadata?.id);
-    if ((source === 'sonarr' || source === 'radarr') && metadataId) {
-      if (notification.eventType === 'imported') {
-        const historyHref = await resolveHistoryNotificationHref(source, metadataId);
-        if (historyHref) return historyHref;
+    const inFlightHrefPromise = resolvingHrefPromisesRef.current.get(notification.id);
+    if (inFlightHrefPromise) return inFlightHrefPromise;
+
+    const resolveHrefPromise = (async () => {
+      const metadata = notification.metadata;
+      if (typeof metadata?.redirect === 'string' && metadata.redirect.length > 0) {
+        return metadata.redirect;
       }
 
-      const queueHref = await resolveQueueNotificationHref(source, metadataId);
-      if (queueHref) return queueHref;
+      const directMediaHref = getMediaHrefFromIds({
+        movieId: metadata?.movieId,
+        seriesId: metadata?.seriesId,
+        seasonNumber: metadata?.seasonNumber,
+        episodeId: metadata?.episodeId,
+      });
+      if (directMediaHref) {
+        return directMediaHref;
+      }
 
-      return `/activity?tab=queue&source=${source}`;
-    }
+      const source = metadata?.source;
+      const metadataId = toNumber(metadata?.id);
+      if ((source === 'sonarr' || source === 'radarr') && metadataId) {
+        if (notification.eventType === 'imported') {
+          const historyHref = await resolveHistoryNotificationHref(source, metadataId);
+          if (historyHref) return historyHref;
+        }
 
-    if (source === 'qbittorrent') return '/torrents';
-    if (source === 'jellyfin') return '/jellyfin';
+        const queueHref = await resolveQueueNotificationHref(source, metadataId);
+        if (queueHref) return queueHref;
 
-    if (notification.eventType === 'healthWarning') return '/settings';
-    if (notification.eventType === 'upcomingPremiere') return '/calendar';
-    if (
-      notification.eventType === 'grabbed'
-      || notification.eventType === 'downloadFailed'
-      || notification.eventType === 'importFailed'
-    ) {
-      return '/activity?tab=queue';
+        return `/activity?tab=queue&source=${source}`;
+      }
+
+      if (source === 'qbittorrent') return '/torrents';
+      if (source === 'jellyfin') return '/jellyfin';
+
+      if (notification.eventType === 'healthWarning') return '/settings';
+      if (notification.eventType === 'upcomingPremiere') return '/calendar';
+      if (
+        notification.eventType === 'grabbed'
+        || notification.eventType === 'downloadFailed'
+        || notification.eventType === 'importFailed'
+      ) {
+        return '/activity?tab=queue';
+      }
+      if (notification.eventType === 'imported') return '/activity/history';
+      if (
+        notification.eventType === 'torrentAdded'
+        || notification.eventType === 'torrentCompleted'
+        || notification.eventType === 'torrentDeleted'
+      ) {
+        return '/torrents';
+      }
+      return '/activity';
+    })();
+
+    resolvingHrefPromisesRef.current.set(notification.id, resolveHrefPromise);
+
+    try {
+      const resolvedHref = await resolveHrefPromise;
+      resolvedHrefByNotificationRef.current.set(notification.id, resolvedHref);
+      return resolvedHref;
+    } finally {
+      resolvingHrefPromisesRef.current.delete(notification.id);
     }
-    if (notification.eventType === 'imported') return '/activity/history';
-    if (
-      notification.eventType === 'torrentAdded'
-      || notification.eventType === 'torrentCompleted'
-      || notification.eventType === 'torrentDeleted'
-    ) {
-      return '/torrents';
-    }
-    return '/activity';
   }, [resolveHistoryNotificationHref, resolveQueueNotificationHref]);
 
   const handleNotificationClick = useCallback(async (notification: Notification) => {
