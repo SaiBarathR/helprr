@@ -22,9 +22,17 @@ export async function POST(request: Request) {
         result = await client.refreshMonitoredDownloads();
         break;
       case 'RenameFiles':
-        result = Array.isArray(body.files) && body.files.length > 0
-          ? await client.renameMovieFiles(body.movieId, body.files)
-          : await client.renameMovie(body.movieId);
+        if (Array.isArray(body.files)) {
+          if (body.files.length === 0) {
+            return NextResponse.json(
+              { error: 'files must be a non-empty array' },
+              { status: 400 }
+            );
+          }
+          result = await client.renameMovieFiles(body.movieId, body.files);
+        } else {
+          result = await client.renameMovie(body.movieId);
+        }
         break;
       case 'ManualImport':
         result = await client.submitManualImport(body.files);
