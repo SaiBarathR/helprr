@@ -762,6 +762,7 @@ export default function SeriesDetailPage() {
     ...(originCountry ? [{ label: 'Origin Country', value: originCountry }] : []),
     ...(nextEpisode ? [{ label: 'Next Episode', value: nextEpisode }] : []),
     ...(seriesTags.length > 0 ? [{ label: 'Tags', value: seriesTags.map((t) => t.label).join(', ') }] : []),
+    ...(series.path ? [{ label: 'Path', value: series.path }] : []),
     ...(rootFolder ? [{ label: 'Root Folder', value: rootFolder.path }] : []),
     { label: 'New Seasons', value: series.monitored ? 'Monitored' : 'Not Monitored' },
     { label: 'Season Folders', value: series.seasonFolder ? 'Yes' : 'No' },
