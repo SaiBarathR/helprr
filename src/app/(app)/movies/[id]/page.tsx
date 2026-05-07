@@ -388,6 +388,7 @@ export default function MovieDetailPage() {
     ...(movieTags.length > 0
       ? [{ label: 'Tags', value: movieTags.map((t) => t.label).join(', ') }]
       : []),
+    ...(movie.path ? [{ label: 'Path', value: movie.path }] : []),
     ...(rootFolder ? [{ label: 'Root Folder', value: rootFolder }] : []),
     ...(movie.inCinemas
       ? [{ label: 'In Cinemas', value: format(new Date(movie.inCinemas), 'MMM d, yyyy') }]
