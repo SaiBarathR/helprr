@@ -1,14 +1,51 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { format, subDays } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { Bell, Check, Download, X, AlertTriangle, Clock, Settings2, Loader2, Trash2 } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from '@/components/ui/drawer';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Bell,
+  Check,
+  Download,
+  X,
+  AlertTriangle,
+  Clock,
+  Settings2,
+  Loader2,
+  Trash2,
+  Play,
+  Search,
+  SlidersHorizontal,
+  Calendar as CalendarIcon,
+} from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import { useUIStore } from '@/lib/store';
+import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 import type { HistoryItem, QueueItem } from '@/types';
 
 type NotificationSource = 'sonarr' | 'radarr' | 'qbittorrent' | 'jellyfin';
@@ -34,6 +71,21 @@ interface Notification {
   metadata?: NotificationMetadata | null;
   read: boolean;
   createdAt: string;
+}
+
+const ICON_MAP = {
+  Download, Check, X, AlertTriangle, Clock, Trash2, Play, Bell,
+} as const;
+
+function eventIcon(type: string) {
+  const meta = EVENT_META[type as NotificationEventType];
+  const Icon = meta ? ICON_MAP[meta.iconName] : Bell;
+  return <Icon className="h-4 w-4" />;
+}
+
+function eventColor(type: string) {
+  const meta = EVENT_META[type as NotificationEventType];
+  return meta?.colorClass ?? 'bg-muted text-muted-foreground';
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -69,49 +121,47 @@ function getMediaHrefFromIds(args: {
   return null;
 }
 
-function eventIcon(type: string) {
-  switch (type) {
-    case 'grabbed': return <Download className="h-4 w-4" />;
-    case 'imported': return <Check className="h-4 w-4" />;
-    case 'downloadFailed': case 'importFailed': return <X className="h-4 w-4" />;
-    case 'healthWarning': return <AlertTriangle className="h-4 w-4" />;
-    case 'upcomingPremiere': return <Clock className="h-4 w-4" />;
-    case 'torrentAdded': return <Download className="h-4 w-4" />;
-    case 'torrentCompleted': return <Check className="h-4 w-4" />;
-    case 'torrentDeleted': return <Trash2 className="h-4 w-4" />;
-    default: return <Bell className="h-4 w-4" />;
-  }
+function toIsoDate(value: Date): string {
+  return format(value, 'yyyy-MM-dd');
 }
 
-function eventColor(type: string) {
-  switch (type) {
-    case 'grabbed': return 'bg-blue-500/10 text-blue-500';
-    case 'imported': return 'bg-green-500/10 text-green-500';
-    case 'downloadFailed': case 'importFailed': return 'bg-red-500/10 text-red-500';
-    case 'healthWarning': return 'bg-orange-500/10 text-orange-500';
-    case 'upcomingPremiere': return 'bg-purple-500/10 text-purple-500';
-    case 'torrentAdded': return 'bg-cyan-500/10 text-cyan-500';
-    case 'torrentCompleted': return 'bg-emerald-500/10 text-emerald-500';
-    case 'torrentDeleted': return 'bg-zinc-500/10 text-zinc-400';
-    default: return 'bg-muted text-muted-foreground';
-  }
+function parseIsoDate(value: string | null): Date | undefined {
+  if (!value) return undefined;
+  const d = new Date(`${value}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
-/**
- * Renders the History (notifications) page and manages loading, pagination, and read state for notifications.
- *
- * The component fetches notifications on mount, displays loading and empty states, supports loading additional
- * pages, allows marking individual notifications as read, and provides a control to mark all notifications as read.
- *
- * @returns The Notifications (History) page JSX element
- */
+const QUICK_RANGES = [
+  { label: '7d', days: 7 },
+  { label: '30d', days: 30 },
+  { label: '3m', days: 90 },
+];
+
+type DeleteMode = 'all' | 'filtered';
+
 export default function NotificationsPage() {
   const router = useRouter();
+
+  const filters = useUIStore((s) => s.notificationsFilters);
+  const setSearch = useUIStore((s) => s.setNotificationsSearch);
+  const setEventTypes = useUIStore((s) => s.setNotificationsEventTypes);
+  const setReadState = useUIStore((s) => s.setNotificationsReadState);
+  const setDateRange = useUIStore((s) => s.setNotificationsDateRange);
+  const resetFilters = useUIStore((s) => s.resetNotificationsFilters);
+  const hasHydrated = useUIStore((s) => s.hasHydrated);
+
+  const [searchInput, setSearchInput] = useState(filters.search);
+  const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [markingAll, setMarkingAll] = useState(false);
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
   const queueItemsByKeyRef = useRef<Map<string, QueueItem & { source?: string }>>(new Map());
   const queueCacheLoadedRef = useRef(false);
   const historyItemsByKeyRef = useRef<Map<string, HistoryItem>>(new Map());
@@ -119,19 +169,56 @@ export default function NotificationsPage() {
   const resolvedHrefByNotificationRef = useRef<Map<string, string>>(new Map());
   const resolvingHrefPromisesRef = useRef<Map<string, Promise<string>>>(new Map());
 
-  async function fetchNotifications(p: number) {
+  // Sync local search input with persisted store on hydration
+  useEffect(() => {
+    if (hasHydrated) {
+      setSearchInput(filters.search);
+      setDebouncedSearch(filters.search);
+    }
+  }, [hasHydrated, filters.search]);
+
+  // Debounce search input → persisted store
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchInput);
+      setSearch(searchInput);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput, setSearch]);
+
+  const buildParams = useCallback((p: number) => {
+    const params = new URLSearchParams({ page: String(p), pageSize: '30' });
+    const q = debouncedSearch.trim();
+    if (q) params.set('q', q);
+    if (filters.eventTypes.length) params.set('eventType', filters.eventTypes.join(','));
+    if (filters.readState !== 'all') {
+      params.set('read', filters.readState === 'read' ? 'true' : 'false');
+    }
+    if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+    if (filters.dateTo) params.set('dateTo', filters.dateTo);
+    return params;
+  }, [debouncedSearch, filters.eventTypes, filters.readState, filters.dateFrom, filters.dateTo]);
+
+  const fetchNotifications = useCallback(async (p: number, append: boolean) => {
+    if (!append) setLoading(true);
     try {
-      const res = await fetch(`/api/notifications?page=${p}&pageSize=30`);
+      const res = await fetch(`/api/notifications?${buildParams(p).toString()}`);
       if (res.ok) {
         const data = await res.json();
-        if (p === 1) setNotifications(data.records);
-        else setNotifications((prev) => [...prev, ...data.records]);
-        setTotal(data.totalRecords);
+        setNotifications((prev) => append ? [...prev, ...(data.records || [])] : (data.records || []));
+        setTotal(data.totalRecords ?? 0);
       }
-    } catch { } finally { setLoading(false); }
-  }
+    } catch { } finally {
+      setLoading(false);
+    }
+  }, [buildParams]);
 
-  useEffect(() => { fetchNotifications(1); }, []);
+  // Refetch whenever filters change
+  useEffect(() => {
+    if (!hasHydrated) return;
+    setPage(1);
+    fetchNotifications(1, false);
+  }, [hasHydrated, debouncedSearch, filters.eventTypes, filters.readState, filters.dateFrom, filters.dateTo, fetchNotifications]);
 
   const markAsRead = useCallback(async (id: string) => {
     try {
@@ -307,16 +394,102 @@ export default function NotificationsPage() {
     finally { setMarkingAll(false); }
   }
 
+  // Filter helpers
+  const toggleEventType = useCallback((type: string) => {
+    const next = filters.eventTypes.includes(type)
+      ? filters.eventTypes.filter((t) => t !== type)
+      : [...filters.eventTypes, type];
+    setEventTypes(next);
+  }, [filters.eventTypes, setEventTypes]);
+
+  const dateRangeForCalendar: DateRange | undefined = useMemo(() => {
+    const from = parseIsoDate(filters.dateFrom);
+    const to = parseIsoDate(filters.dateTo);
+    if (!from && !to) return undefined;
+    return { from, to };
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const applyQuickRange = useCallback((days: number) => {
+    const to = new Date();
+    const from = subDays(to, days - 1);
+    setDateRange(toIsoDate(from), toIsoDate(to));
+  }, [setDateRange]);
+
+  const dateRangeLabel = useMemo(() => {
+    if (!filters.dateFrom && !filters.dateTo) return 'Any time';
+    const fromStr = filters.dateFrom ? format(parseIsoDate(filters.dateFrom)!, 'MMM d, yyyy') : '…';
+    const toStr = filters.dateTo ? format(parseIsoDate(filters.dateTo)!, 'MMM d, yyyy') : 'now';
+    return fromStr === toStr ? fromStr : `${fromStr} → ${toStr}`;
+  }, [filters.dateFrom, filters.dateTo]);
+
+  const hasActiveFilters =
+    debouncedSearch.trim().length > 0
+    || filters.eventTypes.length > 0
+    || filters.readState !== 'all'
+    || filters.dateFrom !== null
+    || filters.dateTo !== null;
+
+  // Bulk delete
+  const [deleteMode, setDeleteMode] = useState<DeleteMode>('all');
+
+  async function performDelete() {
+    setDeleting(true);
+    try {
+      let url = '/api/notifications';
+      if (deleteMode === 'all') {
+        url += '?all=true';
+      } else {
+        const params = new URLSearchParams();
+        const q = debouncedSearch.trim();
+        if (q) params.set('q', q);
+        if (filters.eventTypes.length) params.set('eventType', filters.eventTypes.join(','));
+        if (filters.readState !== 'all') {
+          params.set('read', filters.readState === 'read' ? 'true' : 'false');
+        }
+        if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
+        if (filters.dateTo) params.set('dateTo', filters.dateTo);
+        if ([...params.keys()].length === 0) params.set('all', 'true');
+        url += `?${params.toString()}`;
+      }
+      const res = await fetch(url, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Delete failed');
+      }
+      const data = await res.json();
+      toast.success(`Deleted ${data.deletedCount} notification${data.deletedCount === 1 ? '' : 's'}`);
+      setDeleteDialogOpen(false);
+      setPage(1);
+      await fetchNotifications(1, false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
-    <div className="space-y-4 animate-content-in">
+    <div className="space-y-3 animate-content-in">
       <PageHeader
         showBack={false}
         title="History"
         rightContent={
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setFilterDrawerOpen(true)}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary relative"
+              aria-label="Filter notifications"
+            >
+              <SlidersHorizontal className="h-5 w-5" />
+              {hasActiveFilters && (
+                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
+              )}
+            </button>
             <Link
               href="/notifications/preferences"
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+              aria-label="Notification preferences"
             >
               <Settings2 className="h-5 w-5" />
             </Link>
@@ -324,6 +497,7 @@ export default function NotificationsPage() {
               onClick={markAllRead}
               disabled={markingAll}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+              aria-label="Mark all as read"
             >
               {markingAll ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
             </button>
@@ -331,12 +505,83 @@ export default function NotificationsPage() {
         }
       />
 
+      <div className="relative">
+        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search notifications…"
+          className="pl-9 pr-9 h-10"
+        />
+        {searchInput.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSearchInput('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+            aria-label="Clear search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {filters.eventTypes.map((type) => (
+            <Badge key={type} variant="secondary" className="gap-1 pr-1">
+              {EVENT_META[type as NotificationEventType]?.label ?? type}
+              <button
+                type="button"
+                onClick={() => toggleEventType(type)}
+                className="ml-1 p-0.5 hover:bg-muted-foreground/20 rounded"
+                aria-label={`Remove ${type} filter`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+          {filters.readState !== 'all' && (
+            <Badge variant="secondary" className="gap-1 pr-1">
+              {filters.readState === 'unread' ? 'Unread' : 'Read'}
+              <button
+                type="button"
+                onClick={() => setReadState('all')}
+                className="ml-1 p-0.5 hover:bg-muted-foreground/20 rounded"
+                aria-label="Clear read state filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {(filters.dateFrom || filters.dateTo) && (
+            <Badge variant="secondary" className="gap-1 pr-1">
+              {dateRangeLabel}
+              <button
+                type="button"
+                onClick={() => setDateRange(null, null)}
+                className="ml-1 p-0.5 hover:bg-muted-foreground/20 rounded"
+                aria-label="Clear date filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          <button
+            type="button"
+            onClick={() => { resetFilters(); setSearchInput(''); }}
+            className="text-xs text-muted-foreground underline ml-1"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <PageSpinner />
       ) : notifications.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>No notifications yet</p>
+          <p>{hasActiveFilters ? 'No notifications match your filters' : 'No notifications yet'}</p>
         </div>
       ) : (
         <>
@@ -362,12 +607,212 @@ export default function NotificationsPage() {
             ))}
           </div>
           {notifications.length < total && (
-            <Button variant="ghost" className="w-full" onClick={() => { const next = page + 1; setPage(next); fetchNotifications(next); }}>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => { const next = page + 1; setPage(next); fetchNotifications(next, true); }}
+            >
               Load more
             </Button>
           )}
         </>
       )}
+
+      {/* Filter drawer */}
+      <Drawer open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>Filter notifications</DrawerTitle>
+          </DrawerHeader>
+          <div className="px-4 pb-2 space-y-5 overflow-y-auto max-h-[70vh]">
+            {/* Event types */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Event types</p>
+              {EVENT_GROUPS.map((group) => (
+                <div key={group.id} className="space-y-1.5">
+                  <p className="text-[11px] font-medium text-muted-foreground">{group.title}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.types.map((type) => {
+                      const selected = filters.eventTypes.includes(type);
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => toggleEventType(type)}
+                          className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors min-h-[32px] ${selected
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-muted/40 text-foreground border-transparent hover:bg-muted'
+                            }`}
+                        >
+                          {EVENT_META[type].label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Separator />
+
+            {/* Read state */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Read state</p>
+              <div className="grid grid-cols-3 gap-1 p-1 rounded-md bg-muted/40">
+                {(['all', 'unread', 'read'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setReadState(opt)}
+                    className={`py-2 rounded text-xs font-medium capitalize transition-colors ${filters.readState === opt
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground'
+                      }`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Date range */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date range</p>
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_RANGES.map((r) => (
+                  <button
+                    key={r.label}
+                    type="button"
+                    onClick={() => applyQuickRange(r.days)}
+                    className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {r.label}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setDateRange(null, null)}
+                  className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  All time
+                </button>
+              </div>
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-left text-xs h-9 font-normal">
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+                    {dateRangeLabel}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    selected={dateRangeForCalendar}
+                    onSelect={(range) => {
+                      setDateRange(
+                        range?.from ? toIsoDate(range.from) : null,
+                        range?.to ? toIsoDate(range.to) : null,
+                      );
+                      if (range?.to) setCalendarOpen(false);
+                    }}
+                    disabled={{ after: new Date() }}
+                    numberOfMonths={1}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <DrawerFooter className="flex-row gap-2">
+            <Button
+              variant="outline"
+              className="h-11"
+              onClick={() => {
+                setFilterDrawerOpen(false);
+                setDeleteMode(hasActiveFilters ? 'filtered' : 'all');
+                setDeleteDialogOpen(true);
+              }}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete…
+            </Button>
+            <div className="flex-1" />
+            <Button
+              variant="ghost"
+              className="h-11"
+              onClick={() => { resetFilters(); setSearchInput(''); }}
+            >
+              Reset
+            </Button>
+            <Button className="h-11" onClick={() => setFilterDrawerOpen(false)}>
+              Done
+            </Button>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+
+      {/* Bulk delete confirmation */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete notification history</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-muted/30">
+              <input
+                type="radio"
+                name="delete-mode"
+                checked={deleteMode === 'all'}
+                onChange={() => setDeleteMode('all')}
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium">All notifications</p>
+                <p className="text-xs text-muted-foreground">Permanently delete every notification.</p>
+              </div>
+            </label>
+
+            <label className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-muted/30 ${!hasActiveFilters ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <input
+                type="radio"
+                name="delete-mode"
+                checked={deleteMode === 'filtered'}
+                onChange={() => setDeleteMode('filtered')}
+                disabled={!hasActiveFilters}
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Notifications matching current filters</p>
+                <p className="text-xs text-muted-foreground">
+                  {hasActiveFilters
+                    ? `Will delete the ${total} notification${total === 1 ? '' : 's'} currently matched. Use the date-range filter to delete by date.`
+                    : 'Set filters first (event type, date range, etc.) to delete a subset.'}
+                </p>
+              </div>
+            </label>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              className="h-11"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              className="h-11"
+              onClick={performDelete}
+              disabled={deleting || (deleteMode === 'filtered' && !hasActiveFilters)}
+            >
+              {deleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
