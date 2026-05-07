@@ -30,6 +30,9 @@ export async function POST(request: Request) {
       case 'RenameSeries':
         result = await client.renameSeries(body.seriesId);
         break;
+      case 'RenameFiles':
+        result = await client.renameFiles(body.seriesId, body.files ?? []);
+        break;
       case 'ManualImport':
         result = await client.submitManualImport(body.files);
         break;

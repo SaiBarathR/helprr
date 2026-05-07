@@ -37,6 +37,7 @@ import {
   Star,
   Film,
   FileText,
+  FileEdit,
   ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -55,6 +56,7 @@ import Link from 'next/link';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
+import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 
 type RatingItem = {
   label: string;
@@ -81,6 +83,7 @@ export default function MovieDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
+  const [showRenamePreview, setShowRenamePreview] = useState(false);
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(null);
@@ -478,6 +481,10 @@ export default function MovieDetailPage() {
                   <Pencil className="h-4 w-4" />
                   Edit
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
+                  <FileEdit className="h-4 w-4" />
+                  Preview Rename
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
@@ -810,6 +817,14 @@ export default function MovieDetailPage() {
         title={movie.title}
         service="radarr"
         searchParams={{ movieId: movie.id }}
+      />
+
+      <RenamePreviewDialog
+        open={showRenamePreview}
+        onOpenChange={setShowRenamePreview}
+        service="radarr"
+        mediaId={movie.id}
+        mediaTitle={movie.title}
       />
 
       {/* Delete Drawer (bottom sheet) */}

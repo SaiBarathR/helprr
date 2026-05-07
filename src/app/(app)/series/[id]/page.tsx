@@ -28,7 +28,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
-  Clock, Trophy, TrendingUp,
+  Clock, Trophy, TrendingUp, FileEdit,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
@@ -44,6 +44,7 @@ import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
+import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { formatBytes } from '@/lib/format';
 import { formatAniListRankingLabel } from '@/lib/anilist-helpers';
 
@@ -120,6 +121,7 @@ export default function SeriesDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showMonitorEdit, setShowMonitorEdit] = useState(false);
+  const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [monitorOption, setMonitorOption] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
@@ -870,6 +872,10 @@ export default function SeriesDetailPage() {
                 <DropdownMenuItem onClick={() => router.push(`/series/${id}/edit`)}>
                   <Pencil className="h-4 w-4" />
                   Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
+                  <FileEdit className="h-4 w-4" />
+                  Preview Rename
                 </DropdownMenuItem>
                 <DropdownMenuItem variant="destructive" onClick={() => setShowDelete(true)}>
                   <Trash2 className="h-4 w-4" />
@@ -1694,6 +1700,14 @@ export default function SeriesDetailPage() {
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
+
+      <RenamePreviewDialog
+        open={showRenamePreview}
+        onOpenChange={setShowRenamePreview}
+        service="sonarr"
+        mediaId={series.id}
+        mediaTitle={series.title}
+      />
     </div>
   );
 }

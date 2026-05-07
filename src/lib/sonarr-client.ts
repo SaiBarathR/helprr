@@ -3,6 +3,7 @@ import type {
   SonarrSeries,
   SonarrEpisode,
   SonarrCalendarEntry,
+  SonarrRenamePreview,
   QueueResponse,
   HistoryResponse,
   ManualImportItem,
@@ -99,8 +100,9 @@ export class SonarrClient {
     return this.post<SonarrSeries>('/api/v3/series', body);
   }
 
-  async updateSeries(body: SonarrSeries): Promise<SonarrSeries> {
-    return this.put<SonarrSeries>(`/api/v3/series/${body.id}`, body);
+  async updateSeries(body: SonarrSeries, moveFiles: boolean = false): Promise<SonarrSeries> {
+    const endpoint = `/api/v3/series/${body.id}${moveFiles ? '?moveFiles=true' : ''}`;
+    return this.put<SonarrSeries>(endpoint, body);
   }
 
   async deleteSeries(id: number, deleteFiles: boolean = false): Promise<void> {
@@ -168,6 +170,18 @@ export class SonarrClient {
       name: 'RenameSeries',
       seriesId,
     });
+  }
+
+  async renameFiles(seriesId: number, files: number[]): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'RenameFiles',
+      seriesId,
+      files,
+    });
+  }
+
+  async getRenamePreview(seriesId: number): Promise<SonarrRenamePreview[]> {
+    return this.get<SonarrRenamePreview[]>('/api/v3/rename', { seriesId });
   }
 
   // Release (Interactive Search)
