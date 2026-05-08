@@ -8,6 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Search, Star, Sparkles } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { useUIStore } from '@/lib/store';
+import {
+  type AnimeCarouselId,
+  reconcileAnimeCarouselOrder,
+} from '@/lib/anime-carousel-config';
 import type { AniListMediaSeason, AniListListItem } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 import type {
@@ -206,6 +211,9 @@ export default function AnimeHomePage() {
     };
   }, []);
 
+  const animeCarouselOrder = useUIStore((s) => s.animeCarouselOrder);
+  const disabledAnimeCarousels = useUIStore((s) => s.disabledAnimeCarousels);
+
   const heroAnime = data?.trending?.[0] ?? null;
   const trendingItems = data?.trending?.slice(1) ?? [];
   const currentSeason = data?.currentSeason;
@@ -213,6 +221,95 @@ export default function AnimeHomePage() {
 
   const watchingItems = useMemo(() => watchingEntries.map(entryToRailItem), [watchingEntries]);
   const planningItems = useMemo(() => planningEntries.map(entryToRailItem), [planningEntries]);
+
+  const disabledSet = useMemo(() => new Set(disabledAnimeCarousels), [disabledAnimeCarousels]);
+  const orderedCarouselIds = useMemo(
+    () => reconcileAnimeCarouselOrder(animeCarouselOrder),
+    [animeCarouselOrder]
+  );
+
+  function renderCarousel(id: AnimeCarouselId) {
+    switch (id) {
+      case 'continueWatching':
+        if (!viewer?.connected || watchingItems.length === 0) return null;
+        return (
+          <AnimeMediaRail
+            key={id}
+            title="Continue Watching"
+            items={watchingItems}
+            viewAllHref="/anime/library?status=CURRENT"
+            size="large"
+          />
+        );
+      case 'planToWatch':
+        if (!viewer?.connected || planningItems.length === 0) return null;
+        return (
+          <AnimeMediaRail
+            key={id}
+            title="Plan to Watch"
+            items={planningItems}
+            viewAllHref="/anime/library?status=PLANNING"
+          />
+        );
+      case 'trending':
+        return (
+          <AnimeMediaRail
+            key={id}
+            title="Trending Now"
+            items={trendingItems}
+            viewAllHref="/anime/explore?sort=trending"
+            size="large"
+          />
+        );
+      case 'popularThisSeason':
+        return (
+          <AnimeMediaRail
+            key={id}
+            title="Popular This Season"
+            items={data?.season ?? []}
+            viewAllHref={
+              currentSeason
+                ? `/anime/explore?sort=seasonal&season=${currentSeason.season}&year=${currentSeason.year}`
+                : '/anime/explore?sort=seasonal'
+            }
+            size="large"
+          />
+        );
+      case 'upcomingNextSeason':
+        return (
+          <AnimeMediaRail
+            key={id}
+            title="Upcoming Next Season"
+            items={data?.nextSeason ?? []}
+            viewAllHref={
+              nextSeasonInfo
+                ? `/anime/explore?sort=seasonal&season=${nextSeasonInfo.season}&year=${nextSeasonInfo.year}`
+                : '/anime/explore?sort=seasonal'
+            }
+          />
+        );
+      case 'allTimePopular':
+        return (
+          <AnimeMediaRail
+            key={id}
+            title="All Time Popular"
+            items={data?.popular ?? []}
+            viewAllHref="/anime/explore?sort=popularity"
+          />
+        );
+      case 'top100':
+        return (
+          <AnimeMediaRail
+            key={id}
+            title="Top 100"
+            items={data?.top ?? []}
+            viewAllHref="/anime/explore?sort=score"
+          />
+        );
+      default:
+        return null;
+    }
+  }
 
   return (
     <div className="flex flex-col animate-content-in">
@@ -247,57 +344,9 @@ export default function AnimeHomePage() {
           {/* Hero Banner */}
           {heroAnime && <HeroBanner anime={heroAnime} />}
           <div className="space-y-5 px-2 md:p-6 md:px-8">
-            {viewer?.connected && watchingItems.length > 0 && (
-              <AnimeMediaRail
-                title="Continue Watching"
-                items={watchingItems}
-                viewAllHref="/anime/library?status=CURRENT"
-                size="large"
-              />
-            )}
-            {viewer?.connected && planningItems.length > 0 && (
-              <AnimeMediaRail
-                title="Plan to Watch"
-                items={planningItems}
-                viewAllHref="/anime/library?status=PLANNING"
-              />
-            )}
-            {/* Carousels */}
-            <AnimeMediaRail
-              title="Trending Now"
-              items={trendingItems}
-              viewAllHref="/anime/explore?sort=trending"
-              size="large"
-            />
-            <AnimeMediaRail
-              title="Popular This Season"
-              items={data.season}
-              viewAllHref={
-                currentSeason
-                  ? `/anime/explore?sort=seasonal&season=${currentSeason.season}&year=${currentSeason.year}`
-                  : '/anime/explore?sort=seasonal'
-              }
-              size="large"
-            />
-            <AnimeMediaRail
-              title="Upcoming Next Season"
-              items={data.nextSeason}
-              viewAllHref={
-                nextSeasonInfo
-                  ? `/anime/explore?sort=seasonal&season=${nextSeasonInfo.season}&year=${nextSeasonInfo.year}`
-                  : '/anime/explore?sort=seasonal'
-              }
-            />
-            <AnimeMediaRail
-              title="All Time Popular"
-              items={data.popular}
-              viewAllHref="/anime/explore?sort=popularity"
-            />
-            <AnimeMediaRail
-              title="Top 100"
-              items={data.top}
-              viewAllHref="/anime/explore?sort=score"
-            />
+            {orderedCarouselIds
+              .filter((id) => !disabledSet.has(id))
+              .map((id) => renderCarousel(id))}
           </div>
         </div>
       ) : null}
