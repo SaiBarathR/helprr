@@ -28,7 +28,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
-  Clock, Trophy, TrendingUp, FileEdit,
+  Clock, Trophy, TrendingUp, FileEdit, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
@@ -819,6 +819,20 @@ export default function SeriesDetailPage() {
                   <Search className="h-4 w-4" />
                   Search Monitored
                 </DropdownMenuItem>
+                {isAnimeSeries && (
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href={
+                        animeDetail?.id
+                          ? `/anime/${animeDetail.id}`
+                          : `/anime/explore?search=${encodeURIComponent(series.title)}`
+                      }
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      Open in Anime
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 {isAnimeSeries && (
                   <DropdownMenuItem onClick={() => setShowAniListRemap(true)}>
                     <Search className="h-4 w-4" />

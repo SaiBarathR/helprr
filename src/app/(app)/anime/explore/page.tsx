@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,14 @@ import {
 } from '@/components/ui/drawer';
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import {
+  getCachedListData,
+  getListViewState,
+  isListDataFresh,
+  setCachedListData,
+  setListViewState,
+  type MediaListKey,
+} from '@/lib/media-list-cache';
 import {
   ArrowDownAZ,
   CalendarDays,
@@ -39,6 +47,56 @@ interface ListResponse {
   mode: 'browse' | 'search';
   items: AnimeItemWithLibrary[];
   pageInfo: AniListPageInfo | null;
+}
+
+interface ExploreCacheData {
+  viewMode: 'browse' | 'search';
+  searchQuery: string;
+  sort: string;
+  filters: AnimeFiltersState;
+  items: AnimeItemWithLibrary[];
+  pageInfo: AniListPageInfo | null;
+}
+
+const EXPLORE_CACHE_KEY: MediaListKey = 'anime-explore:current';
+
+function buildStateSignature(
+  viewMode: 'browse' | 'search',
+  searchQuery: string,
+  sort: string,
+  filters: AnimeFiltersState
+): string {
+  const trimmedSearch = searchQuery.trim();
+  if (viewMode === 'search') {
+    return `search:${trimmedSearch.toLowerCase()}`;
+  }
+  const f = filters;
+  return [
+    'browse',
+    sort,
+    f.genres.slice().sort().join(','),
+    f.year,
+    f.yearMin,
+    f.yearMax,
+    f.season,
+    f.formats.slice().sort().join(','),
+    f.status,
+  ].join('|');
+}
+
+function ensureHeightReached(targetScrollY: number, timeoutMs = 1200, pollMs = 50) {
+  return new Promise<void>((resolve) => {
+    const startedAt = Date.now();
+    const tick = () => {
+      const maxScroll = Math.max(0, document.body.scrollHeight - window.innerHeight);
+      if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
+        resolve();
+        return;
+      }
+      window.setTimeout(tick, pollMs);
+    };
+    tick();
+  });
 }
 
 const SORT_OPTIONS = [
@@ -75,27 +133,35 @@ const ALL_GENRES = [
 
 export default function AnimePage() {
   const urlParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const animeSort = useUIStore((s) => s.animeSort);
   const setAnimeSort = useUIStore((s) => s.setAnimeSort);
   const animeFilters = useUIStore((s) => s.animeFilters);
   const setAnimeFilters = useUIStore((s) => s.setAnimeFilters);
   const hasHydrated = useUIStore((s) => s.hasHydrated);
 
-  const [viewMode, setViewMode] = useState<'browse' | 'search'>('browse');
-  const [items, setItems] = useState<AnimeItemWithLibrary[]>([]);
-  const [pageInfo, setPageInfo] = useState<AniListPageInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const cached = typeof window !== 'undefined' ? getCachedListData<ExploreCacheData>(EXPLORE_CACHE_KEY) : null;
+  const cachedData = cached?.data ?? null;
+
+  const [viewMode, setViewMode] = useState<'browse' | 'search'>(cachedData?.viewMode ?? 'browse');
+  const [items, setItems] = useState<AnimeItemWithLibrary[]>(cachedData?.items ?? []);
+  const [pageInfo, setPageInfo] = useState<AniListPageInfo | null>(cachedData?.pageInfo ?? null);
+  const [loading, setLoading] = useState(!cachedData);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(cachedData?.searchQuery ?? '');
   const [filterOpen, setFilterOpen] = useState(false);
+  const [urlInitialized, setUrlInitialized] = useState(false);
 
   const initRef = useRef(false);
+  const hasRestoredScrollRef = useRef(false);
 
   // Initialize from URL params exactly once
   useEffect(() => {
     if (!hasHydrated || initRef.current) return;
     initRef.current = true;
 
+    const urlSearch = urlParams.get('search');
     const urlSort = urlParams.get('sort');
     const urlSeason = urlParams.get('season');
     const urlYear = urlParams.get('year');
@@ -109,7 +175,20 @@ export default function AnimePage() {
       urlSeason || urlYear || urlYearMin || urlYearMax || urlStatus || urlFormat || urlGenres
     );
 
-    if (!urlSort && !hasUrlFilters) return;
+    if (urlSearch) {
+      setSearchQuery(urlSearch);
+      setViewMode('search');
+    } else if (urlSort || hasUrlFilters) {
+      // URL signals browse intent — override any cached search mode.
+      // The browse fetcher's signature check below decides whether a refetch is needed.
+      setSearchQuery('');
+      setViewMode('browse');
+    }
+
+    if (!urlSort && !hasUrlFilters) {
+      setUrlInitialized(true);
+      return;
+    }
 
     if (urlSort) setAnimeSort(urlSort);
 
@@ -132,7 +211,39 @@ export default function AnimePage() {
         .filter(Boolean);
     }
     setAnimeFilters(nextFilters);
+    setUrlInitialized(true);
   }, [hasHydrated, urlParams, setAnimeSort, setAnimeFilters]);
+
+  // Keep the active explore state reflected in the current history entry.
+  // Without this, browser back can rehydrate from the original URL
+  // (for example sort=score) after the user switched to another sort.
+  useEffect(() => {
+    if (!hasHydrated || !urlInitialized) return;
+
+    const params = new URLSearchParams();
+    const trimmedSearch = searchQuery.trim();
+
+    if (viewMode === 'search' && trimmedSearch) {
+      params.set('search', trimmedSearch);
+    } else {
+      if (animeSort !== 'seasonal') params.set('sort', animeSort);
+      if (animeFilters.season) params.set('season', animeFilters.season);
+      if (animeFilters.year) params.set('year', animeFilters.year);
+      if (animeFilters.yearMin) params.set('yearMin', animeFilters.yearMin);
+      if (animeFilters.yearMax) params.set('yearMax', animeFilters.yearMax);
+      if (animeFilters.status) params.set('status', animeFilters.status);
+      if (animeFilters.formats.length) params.set('format', animeFilters.formats.join(','));
+      if (animeFilters.genres.length) params.set('genres', animeFilters.genres.join(','));
+    }
+
+    const query = params.toString();
+    const target = query ? `${pathname}?${query}` : pathname;
+    const current = `${pathname}${urlParams.toString() ? `?${urlParams.toString()}` : ''}`;
+    if (target !== current) {
+      router.replace(target, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHydrated, urlInitialized, viewMode, searchQuery, animeSort, animeFilters, pathname]);
 
   const [draftFilters, setDraftFilters] = useState<AnimeFiltersState>(animeFilters);
   const [draftSort, setDraftSort] = useState(animeSort);
@@ -155,6 +266,13 @@ export default function AnimePage() {
     + (animeFilters.status !== '' ? 1 : 0);
 
   const hasFilters = activeFilterCount > 0;
+
+  const writeCache = useCallback(
+    (next: ExploreCacheData) => {
+      setCachedListData(EXPLORE_CACHE_KEY, next);
+    },
+    []
+  );
 
   const fetchBrowse = useCallback(async (page = 1, append = false) => {
     abortRef.current?.abort();
@@ -180,9 +298,18 @@ export default function AnimePage() {
       const data: ListResponse = await res.json();
 
       if (!controller.signal.aborted) {
-        setItems((prev) => append ? [...prev, ...data.items] : data.items);
+        const nextItems = append ? [...items, ...data.items] : data.items;
+        setItems(nextItems);
         setPageInfo(data.pageInfo);
         setViewMode('browse');
+        writeCache({
+          viewMode: 'browse',
+          searchQuery: '',
+          sort: animeSort,
+          filters: animeFilters,
+          items: nextItems,
+          pageInfo: data.pageInfo,
+        });
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -193,7 +320,7 @@ export default function AnimePage() {
         setLoadingMore(false);
       }
     }
-  }, [animeSort, animeFilters]);
+  }, [animeSort, animeFilters, items, writeCache]);
 
   const fetchSearch = useCallback(async (query: string, page = 1, append = false) => {
     abortRef.current?.abort();
@@ -209,9 +336,18 @@ export default function AnimePage() {
       const data: ListResponse = await res.json();
 
       if (!controller.signal.aborted) {
-        setItems((prev) => append ? [...prev, ...data.items] : data.items);
+        const nextItems = append ? [...items, ...data.items] : data.items;
+        setItems(nextItems);
         setPageInfo(data.pageInfo);
         setViewMode('search');
+        writeCache({
+          viewMode: 'search',
+          searchQuery: query,
+          sort: animeSort,
+          filters: animeFilters,
+          items: nextItems,
+          pageInfo: data.pageInfo,
+        });
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -222,18 +358,30 @@ export default function AnimePage() {
         setLoadingMore(false);
       }
     }
-  }, []);
+  }, [animeSort, animeFilters, items, writeCache]);
 
-  // Initial load
+  // Search effect — debounced search query handler.
+  // Signature check ensures back-nav doesn't refetch when the cached search payload
+  // already matches the current query.
   useEffect(() => {
-    if (!hasHydrated) return;
-    fetchBrowse(1);
-  }, [hasHydrated, fetchBrowse]);
-
-  // Search effect
-  useEffect(() => {
-    if (!hasHydrated) return;
+    if (!hasHydrated || !urlInitialized) return;
     const trimmedQuery = searchQuery.trim();
+
+    // If we're in search mode and the live cache matches this query, skip the debounce/fetch
+    if (viewMode === 'search' && trimmedQuery.length >= 3) {
+      const live = getCachedListData<ExploreCacheData>(EXPLORE_CACHE_KEY);
+      if (live?.data && isListDataFresh(live, 5 * 60 * 1000)) {
+        const cachedSig = buildStateSignature(
+          live.data.viewMode,
+          live.data.searchQuery,
+          live.data.sort,
+          live.data.filters
+        );
+        const currentSig = buildStateSignature('search', trimmedQuery, animeSort, animeFilters);
+        if (cachedSig === currentSig) return;
+      }
+    }
+
     const timeoutId = window.setTimeout(() => {
       if (!trimmedQuery) {
         if (viewMode === 'search') fetchBrowse(1);
@@ -246,7 +394,8 @@ export default function AnimePage() {
     }, 300);
 
     return () => window.clearTimeout(timeoutId);
-  }, [searchQuery, hasHydrated, fetchSearch, fetchBrowse, viewMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, hasHydrated, urlInitialized, fetchSearch, fetchBrowse, viewMode]);
 
   // Infinite scroll
   useEffect(() => {
@@ -269,18 +418,78 @@ export default function AnimePage() {
     return () => observer.disconnect();
   }, [viewMode, pageInfo, loadingMore, loading, searchQuery, fetchSearch, fetchBrowse]);
 
+  const resetExploreScroll = useCallback(() => {
+    setListViewState(EXPLORE_CACHE_KEY, { scrollY: 0, search: '' });
+    hasRestoredScrollRef.current = true;
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
+
   const handleSortChange = (sort: string) => {
+    if (sort === animeSort && viewMode === 'browse') return;
     setAnimeSort(sort);
     setSearchQuery('');
     setViewMode('browse');
+    resetExploreScroll();
   };
 
-  // Re-fetch browse when sort or filters change
+  // Browse fetcher — runs on mount and when sort/filters change.
+  // Signature check is the single source of truth: if the live cache matches current state
+  // and is still fresh, skip the fetch entirely. This survives reference-only changes from
+  // the URL init effect (e.g. setAnimeFilters with the same values).
   useEffect(() => {
-    if (!hasHydrated || viewMode === 'search') return;
+    if (!hasHydrated || !urlInitialized || viewMode === 'search') return;
+    const live = getCachedListData<ExploreCacheData>(EXPLORE_CACHE_KEY);
+    if (live?.data && isListDataFresh(live, 5 * 60 * 1000)) {
+      const cachedSig = buildStateSignature(
+        live.data.viewMode,
+        live.data.searchQuery,
+        live.data.sort,
+        live.data.filters
+      );
+      const currentSig = buildStateSignature('browse', '', animeSort, animeFilters);
+      if (cachedSig === currentSig) return;
+    }
     fetchBrowse(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animeSort, animeFilters]);
+  }, [hasHydrated, urlInitialized, animeSort, animeFilters, viewMode]);
+
+  // Restore scroll once items are rendered
+  useEffect(() => {
+    if (loading || hasRestoredScrollRef.current) return;
+    const saved = getListViewState(EXPLORE_CACHE_KEY);
+    if (!saved || saved.scrollY <= 0) {
+      hasRestoredScrollRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      await ensureHeightReached(saved.scrollY);
+      if (cancelled) return;
+      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      hasRestoredScrollRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, items.length]);
+
+  // Persist scroll while user scrolls
+  useEffect(() => {
+    let lastSaved = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - lastSaved < 150) return;
+      lastSaved = now;
+      setListViewState(EXPLORE_CACHE_KEY, {
+        scrollY: window.scrollY,
+        search: searchQuery,
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [searchQuery]);
 
   const applyFilters = () => {
     setAnimeSort(draftSort);
@@ -288,6 +497,7 @@ export default function AnimePage() {
     setFilterOpen(false);
     setSearchQuery('');
     setViewMode('browse');
+    resetExploreScroll();
   };
 
   const clearFilters = () => {
@@ -297,6 +507,7 @@ export default function AnimePage() {
     setDraftSort('seasonal');
     setViewMode('browse');
     setFilterOpen(false);
+    resetExploreScroll();
   };
 
   if (!hasHydrated) {
@@ -371,7 +582,17 @@ export default function AnimePage() {
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
               {items.map((item) => (
-                <AnimeCard key={item.id} item={item} grid />
+                <AnimeCard
+                  key={item.id}
+                  item={item}
+                  grid
+                  onNavigate={() => {
+                    setListViewState(EXPLORE_CACHE_KEY, {
+                      scrollY: window.scrollY,
+                      search: searchQuery,
+                    });
+                  }}
+                />
               ))}
             </div>
           )}
@@ -582,7 +803,15 @@ export default function AnimePage() {
   );
 }
 
-function AnimeCard({ item, grid }: { item: AnimeItemWithLibrary; grid?: boolean }) {
+function AnimeCard({
+  item,
+  grid,
+  onNavigate,
+}: {
+  item: AnimeItemWithLibrary;
+  grid?: boolean;
+  onNavigate?: () => void;
+}) {
   const imgSrc = item.coverImage
     ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
     : null;
@@ -591,6 +820,7 @@ function AnimeCard({ item, grid }: { item: AnimeItemWithLibrary; grid?: boolean 
     <Link
       href={`/anime/${item.id}`}
       className={`${grid ? '' : 'flex-shrink-0 w-[110px]'} group`}
+      onClick={onNavigate}
     >
       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-sm group-hover:shadow-md transition-shadow">
         {imgSrc ? (

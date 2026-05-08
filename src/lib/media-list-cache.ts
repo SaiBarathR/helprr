@@ -1,6 +1,10 @@
 export const MEDIA_LIST_CACHE_TTL_MS = 60_000;
 
-export type MediaListKey = 'movies' | 'series';
+export type MediaListKey =
+  | 'movies'
+  | 'series'
+  | `anime-library:${string}`
+  | `anime-explore:${string}`;
 
 export interface MediaListDataCache<T> {
   data: T;
@@ -11,6 +15,7 @@ export interface MediaListViewState {
   scrollY: number;
   search: string;
   updatedAt: number;
+  extras?: Record<string, unknown>;
 }
 
 const dataCache: Partial<Record<MediaListKey, MediaListDataCache<unknown>>> = {};
@@ -57,6 +62,7 @@ export function getListViewState(key: MediaListKey): MediaListViewState | null {
       scrollY: parsed.scrollY,
       search: parsed.search,
       updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now(),
+      extras: parsed.extras && typeof parsed.extras === 'object' ? parsed.extras as Record<string, unknown> : undefined,
     };
 
     viewCache[key] = restored;

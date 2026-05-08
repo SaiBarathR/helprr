@@ -11,7 +11,7 @@ export function maskApiKey(key: string): string {
 }
 
 export function isServiceType(value: string): value is ServiceType {
-  return ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB'].includes(
+  return ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST'].includes(
     value
   );
 }

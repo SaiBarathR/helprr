@@ -18,6 +18,7 @@ import {
 import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle, Compass, ExternalLink } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
+import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 
 interface ServiceForm {
@@ -889,6 +890,8 @@ export default function SettingsPage() {
           })}
         </div>
       </div>
+
+      <AnilistConnectionCard />
 
       {/* ── External URLs ── */}
       {(isConfigured('SONARR') || isConfigured('RADARR') || isConfigured('JELLYFIN')) && (
