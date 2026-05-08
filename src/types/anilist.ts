@@ -456,6 +456,138 @@ export interface AniListPageResponse {
   media: AniListMedia[];
 }
 
+// --- Staff Detail ---
+
+export interface AniListStaffMediaEdge {
+  staffRole: string;
+  node: {
+    id: number;
+    title: string;
+    coverImage: string | null;
+    format: AniListMediaFormat | null;
+    type: AniListMediaType | null;
+    averageScore: number | null;
+    popularity: number | null;
+    favourites: number | null;
+    seasonYear: number | null;
+    startDate: AniListFuzzyDate | null;
+    episodes: number | null;
+    chapters: number | null;
+  };
+}
+
+export interface AniListStaffVoiceActingEdge {
+  characterRole: string;
+  characterName: string | null;
+  characters: Array<{
+    id: number;
+    name: string;
+    image: string | null;
+  }>;
+  node: AniListStaffMediaEdge['node'];
+}
+
+export interface AniListStaffDetailResponse {
+  id: number;
+  name: string;
+  nameNative: string | null;
+  nameAlternative: string[];
+  image: string | null;
+  description: string | null;
+  primaryOccupations: string[];
+  gender: string | null;
+  dateOfBirth: AniListFuzzyDate | null;
+  dateOfDeath: AniListFuzzyDate | null;
+  age: number | null;
+  yearsActive: number[];
+  homeTown: string | null;
+  bloodType: string | null;
+  languageV2: string | null;
+  favourites: number | null;
+  siteUrl: string | null;
+  animeMedia: AniListStaffMediaEdge[];
+  animePageInfo: AniListPageInfo;
+  mangaMedia: AniListStaffMediaEdge[];
+  mangaPageInfo: AniListPageInfo;
+  voiceActingMedia: AniListStaffVoiceActingEdge[];
+  voiceActingPageInfo: AniListPageInfo;
+}
+
+// --- Character Detail ---
+
+export interface AniListCharacterMediaEdge {
+  characterRole: string;
+  voiceActors: Array<{
+    id: number;
+    name: string;
+    image: string | null;
+    language: string | null;
+  }>;
+  node: {
+    id: number;
+    title: string;
+    coverImage: string | null;
+    format: AniListMediaFormat | null;
+    type: AniListMediaType | null;
+    averageScore: number | null;
+    popularity: number | null;
+    favourites: number | null;
+    seasonYear: number | null;
+    startDate: AniListFuzzyDate | null;
+    episodes: number | null;
+    chapters: number | null;
+  };
+}
+
+export interface AniListCharacterDetailResponse {
+  id: number;
+  name: string;
+  nameNative: string | null;
+  nameAlternative: string[];
+  nameSpoiler: string[];
+  image: string | null;
+  description: string | null;
+  gender: string | null;
+  dateOfBirth: AniListFuzzyDate | null;
+  age: string | null;
+  bloodType: string | null;
+  favourites: number | null;
+  siteUrl: string | null;
+  media: AniListCharacterMediaEdge[];
+  mediaPageInfo: AniListPageInfo;
+}
+
+// --- Studio Detail ---
+
+export interface AniListStudioMediaNode {
+  id: number;
+  title: string;
+  coverImage: string | null;
+  format: AniListMediaFormat | null;
+  type: AniListMediaType | null;
+  averageScore: number | null;
+  popularity: number | null;
+  favourites: number | null;
+  seasonYear: number | null;
+  startDate: AniListFuzzyDate | null;
+  episodes: number | null;
+  chapters: number | null;
+  status: AniListMediaStatus | null;
+  season: AniListMediaSeason | null;
+  nextAiringEpisode: AniListNextAiringEpisode | null;
+  genres: string[];
+}
+
+export interface AniListStudioDetailResponse {
+  id: number;
+  name: string;
+  isAnimationStudio: boolean;
+  favourites: number | null;
+  siteUrl: string | null;
+  media: AniListStudioMediaNode[];
+  mediaPageInfo: AniListPageInfo;
+}
+
 export type AniListSort =
   | 'TRENDING_DESC'
   | 'POPULARITY_DESC'

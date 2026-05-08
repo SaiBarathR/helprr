@@ -644,3 +644,595 @@ export async function getAnimeHome(
     top: result.top.media,
   };
 }
+
+// --- Staff Detail ---
+
+const STAFF_MEDIA_NODE_FRAGMENT = `
+  id
+  title { romaji english native }
+  coverImage { extraLarge large medium color }
+  format
+  type
+  averageScore
+  popularity
+  favourites
+  seasonYear
+  startDate { year month day }
+  episodes
+  chapters
+`;
+
+interface StaffMediaEdgeRaw {
+  staffRole: string;
+  node: {
+    id: number;
+    title: { romaji: string | null; english: string | null; native: string | null };
+    coverImage: { extraLarge: string | null; large: string | null; medium: string | null; color: string | null };
+    format: string | null;
+    type: string | null;
+    averageScore: number | null;
+    popularity: number | null;
+    favourites: number | null;
+    seasonYear: number | null;
+    startDate: { year: number | null; month: number | null; day: number | null } | null;
+    episodes: number | null;
+    chapters: number | null;
+  };
+}
+
+interface StaffCharacterMediaEdgeRaw {
+  characterRole: string | null;
+  characterName: string | null;
+  node: StaffMediaEdgeRaw['node'];
+  characters: Array<{
+    id: number;
+    name: { full: string | null };
+    image: { large: string | null; medium: string | null } | null;
+  }> | null;
+}
+
+function normalizeStaffMediaEdge(e: StaffMediaEdgeRaw) {
+  return {
+    staffRole: e.staffRole,
+    node: {
+      id: e.node.id,
+      title: e.node.title.english || e.node.title.romaji || e.node.title.native || 'Unknown',
+      coverImage: e.node.coverImage.extraLarge || e.node.coverImage.large || null,
+      format: e.node.format,
+      type: e.node.type,
+      averageScore: e.node.averageScore,
+      popularity: e.node.popularity,
+      favourites: e.node.favourites,
+      seasonYear: e.node.seasonYear,
+      startDate: e.node.startDate ?? null,
+      episodes: e.node.episodes,
+      chapters: e.node.chapters,
+    },
+  };
+}
+
+function normalizeStaffCharacterMediaEdge(e: StaffCharacterMediaEdgeRaw) {
+  return {
+    characterRole: e.characterRole ?? '',
+    characterName: e.characterName ?? null,
+    characters: (e.characters ?? []).map((c) => ({
+      id: c.id,
+      name: c.name.full || '',
+      image: c.image?.large || c.image?.medium || null,
+    })),
+    node: {
+      id: e.node.id,
+      title: e.node.title.english || e.node.title.romaji || e.node.title.native || 'Unknown',
+      coverImage: e.node.coverImage.extraLarge || e.node.coverImage.large || null,
+      format: e.node.format,
+      type: e.node.type,
+      averageScore: e.node.averageScore,
+      popularity: e.node.popularity,
+      favourites: e.node.favourites,
+      seasonYear: e.node.seasonYear,
+      startDate: e.node.startDate ?? null,
+      episodes: e.node.episodes,
+      chapters: e.node.chapters,
+    },
+  };
+}
+
+export async function getStaffDetail(
+  id: number,
+  animePage = 1,
+  mangaPage = 1,
+  vaPage = 1,
+  sort: string = 'POPULARITY_DESC',
+  perPage = 25
+) {
+  const gqlQuery = `
+    query ($id: Int, $animePage: Int, $mangaPage: Int, $vaPage: Int, $perPage: Int, $sort: [MediaSort]) {
+      Staff(id: $id) {
+        id
+        name { full native alternative }
+        image { large medium }
+        description(asHtml: true)
+        primaryOccupations
+        gender
+        dateOfBirth { year month day }
+        dateOfDeath { year month day }
+        age
+        yearsActive
+        homeTown
+        bloodType
+        languageV2
+        favourites
+        siteUrl
+        staffMedia(page: $animePage, perPage: $perPage, type: ANIME, sort: $sort) {
+          pageInfo { total currentPage lastPage hasNextPage perPage }
+          edges {
+            staffRole
+            node { ${STAFF_MEDIA_NODE_FRAGMENT} }
+          }
+        }
+        mangaMedia: staffMedia(page: $mangaPage, perPage: $perPage, type: MANGA, sort: $sort) {
+          pageInfo { total currentPage lastPage hasNextPage perPage }
+          edges {
+            staffRole
+            node { ${STAFF_MEDIA_NODE_FRAGMENT} }
+          }
+        }
+        characterMedia(page: $vaPage, perPage: $perPage, sort: $sort) {
+          pageInfo { total currentPage lastPage hasNextPage perPage }
+          edges {
+            characterRole
+            characterName
+            node { ${STAFF_MEDIA_NODE_FRAGMENT} }
+            characters {
+              id
+              name { full }
+              image { large medium }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  interface StaffResponse {
+    Staff: {
+      id: number;
+      name: { full: string | null; native: string | null; alternative: string[] | null };
+      image: { large: string | null; medium: string | null };
+      description: string | null;
+      primaryOccupations: string[] | null;
+      gender: string | null;
+      dateOfBirth: { year: number | null; month: number | null; day: number | null } | null;
+      dateOfDeath: { year: number | null; month: number | null; day: number | null } | null;
+      age: number | null;
+      yearsActive: number[] | null;
+      homeTown: string | null;
+      bloodType: string | null;
+      languageV2: string | null;
+      favourites: number | null;
+      siteUrl: string | null;
+      staffMedia: {
+        pageInfo: AniListPageInfo;
+        edges: StaffMediaEdgeRaw[];
+      };
+      mangaMedia: {
+        pageInfo: AniListPageInfo;
+        edges: StaffMediaEdgeRaw[];
+      };
+      characterMedia: {
+        pageInfo: AniListPageInfo;
+        edges: StaffCharacterMediaEdgeRaw[];
+      };
+    };
+  }
+
+  const variables = { id, animePage, mangaPage, vaPage, perPage, sort: [sort] };
+
+  // Only cache when fetching the first pages (initial load)
+  const isInitial = animePage === 1 && mangaPage === 1 && vaPage === 1;
+
+  const fetcher = () => gqlRequest<StaffResponse>(gqlQuery, variables);
+
+  const result = isInitial
+    ? await getAnilistJsonWithCache<StaffResponse>({
+        endpoint: 'staffDetail',
+        params: variables,
+        policy: getCachePolicy('detail'),
+        fetcher,
+      })
+    : await fetcher();
+
+  const s = result.Staff;
+
+  return {
+    id: s.id,
+    name: s.name.full || 'Unknown',
+    nameNative: s.name.native,
+    nameAlternative: s.name.alternative ?? [],
+    image: s.image.large || s.image.medium || null,
+    description: s.description,
+    primaryOccupations: s.primaryOccupations ?? [],
+    gender: s.gender,
+    dateOfBirth: s.dateOfBirth ?? null,
+    dateOfDeath: s.dateOfDeath ?? null,
+    age: s.age,
+    yearsActive: s.yearsActive ?? [],
+    homeTown: s.homeTown,
+    bloodType: s.bloodType,
+    languageV2: s.languageV2,
+    favourites: s.favourites,
+    siteUrl: s.siteUrl,
+    animeMedia: s.staffMedia.edges.map(normalizeStaffMediaEdge),
+    animePageInfo: s.staffMedia.pageInfo,
+    mangaMedia: s.mangaMedia.edges.map(normalizeStaffMediaEdge),
+    mangaPageInfo: s.mangaMedia.pageInfo,
+    voiceActingMedia: s.characterMedia.edges.map(normalizeStaffCharacterMediaEdge),
+    voiceActingPageInfo: s.characterMedia.pageInfo,
+  };
+}
+
+export async function getStaffMediaPage(
+  id: number,
+  type: 'ANIME' | 'MANGA',
+  page: number,
+  sort: string = 'POPULARITY_DESC',
+  perPage = 25
+) {
+  const gqlQuery = `
+    query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort], $type: MediaType) {
+      Staff(id: $id) {
+        staffMedia(page: $page, perPage: $perPage, type: $type, sort: $sort) {
+          pageInfo { total currentPage lastPage hasNextPage perPage }
+          edges {
+            staffRole
+            node { ${STAFF_MEDIA_NODE_FRAGMENT} }
+          }
+        }
+      }
+    }
+  `;
+
+  interface StaffPageResponse {
+    Staff: {
+      staffMedia: {
+        pageInfo: AniListPageInfo;
+        edges: StaffMediaEdgeRaw[];
+      };
+    };
+  }
+
+  const variables = { id, page, perPage, sort: [sort], type };
+  const result = await gqlRequest<StaffPageResponse>(gqlQuery, variables);
+
+  return {
+    pageInfo: result.Staff.staffMedia.pageInfo,
+    edges: result.Staff.staffMedia.edges.map(normalizeStaffMediaEdge),
+  };
+}
+
+export async function getStaffCharacterMediaPage(
+  id: number,
+  page: number,
+  sort: string = 'POPULARITY_DESC',
+  perPage = 25
+) {
+  const gqlQuery = `
+    query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
+      Staff(id: $id) {
+        characterMedia(page: $page, perPage: $perPage, sort: $sort) {
+          pageInfo { total currentPage lastPage hasNextPage perPage }
+          edges {
+            characterRole
+            characterName
+            node { ${STAFF_MEDIA_NODE_FRAGMENT} }
+            characters {
+              id
+              name { full }
+              image { large medium }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  interface StaffCharacterMediaPageResponse {
+    Staff: {
+      characterMedia: {
+        pageInfo: AniListPageInfo;
+        edges: StaffCharacterMediaEdgeRaw[];
+      };
+    };
+  }
+
+  const variables = { id, page, perPage, sort: [sort] };
+  const result = await gqlRequest<StaffCharacterMediaPageResponse>(gqlQuery, variables);
+
+  return {
+    pageInfo: result.Staff.characterMedia.pageInfo,
+    edges: result.Staff.characterMedia.edges.map(normalizeStaffCharacterMediaEdge),
+  };
+}
+
+// --- Character Detail ---
+
+export async function getCharacterDetail(
+  id: number,
+  page = 1,
+  sort: string = 'POPULARITY_DESC',
+  perPage = 25
+) {
+  const gqlQuery = `
+    query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
+      Character(id: $id) {
+        id
+        name { full native alternative alternativeSpoiler }
+        image { large medium }
+        description(asHtml: true)
+        gender
+        dateOfBirth { year month day }
+        age
+        bloodType
+        favourites
+        siteUrl
+        media(page: $page, perPage: $perPage, sort: $sort) {
+          pageInfo { total currentPage lastPage hasNextPage perPage }
+          edges {
+            characterRole
+            voiceActors(language: JAPANESE) {
+              id
+              name { full }
+              image { large medium }
+              language
+            }
+            node {
+              id
+              title { romaji english native }
+              coverImage { extraLarge large medium color }
+              format
+              type
+              averageScore
+              popularity
+              favourites
+              seasonYear
+              startDate { year month day }
+              episodes
+              chapters
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  interface CharacterEdgeRaw {
+    characterRole: string;
+    voiceActors: Array<{
+      id: number;
+      name: { full: string | null };
+      image: { large: string | null; medium: string | null };
+      language: string | null;
+    }>;
+    node: {
+      id: number;
+      title: { romaji: string | null; english: string | null; native: string | null };
+      coverImage: { extraLarge: string | null; large: string | null; medium: string | null; color: string | null };
+      format: string | null;
+      type: string | null;
+      averageScore: number | null;
+      popularity: number | null;
+      favourites: number | null;
+      seasonYear: number | null;
+      startDate: { year: number | null; month: number | null; day: number | null } | null;
+      episodes: number | null;
+      chapters: number | null;
+    };
+  }
+
+  interface CharacterResponse {
+    Character: {
+      id: number;
+      name: { full: string | null; native: string | null; alternative: string[] | null; alternativeSpoiler: string[] | null };
+      image: { large: string | null; medium: string | null };
+      description: string | null;
+      gender: string | null;
+      dateOfBirth: { year: number | null; month: number | null; day: number | null } | null;
+      age: string | null;
+      bloodType: string | null;
+      favourites: number | null;
+      siteUrl: string | null;
+      media: {
+        pageInfo: AniListPageInfo;
+        edges: CharacterEdgeRaw[];
+      };
+    };
+  }
+
+  const variables = { id, page, perPage, sort: [sort] };
+
+  const fetcher = () => gqlRequest<CharacterResponse>(gqlQuery, variables);
+
+  const result = page === 1
+    ? await getAnilistJsonWithCache<CharacterResponse>({
+        endpoint: 'characterDetail',
+        params: variables,
+        policy: getCachePolicy('detail'),
+        fetcher,
+      })
+    : await fetcher();
+
+  const c = result.Character;
+
+  return {
+    id: c.id,
+    name: c.name.full || 'Unknown',
+    nameNative: c.name.native,
+    nameAlternative: c.name.alternative ?? [],
+    nameSpoiler: c.name.alternativeSpoiler ?? [],
+    image: c.image.large || c.image.medium || null,
+    description: c.description,
+    gender: c.gender,
+    dateOfBirth: c.dateOfBirth ?? null,
+    age: c.age,
+    bloodType: c.bloodType,
+    favourites: c.favourites,
+    siteUrl: c.siteUrl,
+    media: c.media.edges.map((e) => ({
+      characterRole: e.characterRole,
+      voiceActors: e.voiceActors.map((va) => ({
+        id: va.id,
+        name: va.name.full || '',
+        image: va.image.large || va.image.medium || null,
+        language: va.language,
+      })),
+      node: {
+        id: e.node.id,
+        title: e.node.title.english || e.node.title.romaji || e.node.title.native || 'Unknown',
+        coverImage: e.node.coverImage.extraLarge || e.node.coverImage.large || null,
+        format: e.node.format,
+        type: e.node.type,
+        averageScore: e.node.averageScore,
+        popularity: e.node.popularity,
+        favourites: e.node.favourites,
+        seasonYear: e.node.seasonYear,
+        startDate: e.node.startDate ?? null,
+        episodes: e.node.episodes,
+        chapters: e.node.chapters,
+      },
+    })),
+    mediaPageInfo: c.media.pageInfo,
+  };
+}
+
+// --- Studio Detail ---
+
+export async function getStudioDetail(
+  id: number,
+  page = 1,
+  sort: string = 'START_DATE_DESC',
+  perPage = 25
+) {
+  const gqlQuery = `
+    query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
+      Studio(id: $id) {
+        id
+        name
+        isAnimationStudio
+        favourites
+        siteUrl
+        media(page: $page, perPage: $perPage, sort: $sort) {
+          pageInfo { total currentPage lastPage hasNextPage perPage }
+          edges {
+            isMainStudio
+            node {
+              id
+              title { romaji english native }
+              coverImage { extraLarge large medium color }
+              format
+              type
+              averageScore
+              popularity
+              favourites
+              seasonYear
+              startDate { year month day }
+              episodes
+              chapters
+              status
+              season
+              nextAiringEpisode { airingAt episode }
+              genres
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  interface StudioEdgeRaw {
+    isMainStudio: boolean;
+    node: {
+      id: number;
+      title: { romaji: string | null; english: string | null; native: string | null };
+      coverImage: { extraLarge: string | null; large: string | null; medium: string | null; color: string | null };
+      format: string | null;
+      type: string | null;
+      averageScore: number | null;
+      popularity: number | null;
+      favourites: number | null;
+      seasonYear: number | null;
+      startDate: { year: number | null; month: number | null; day: number | null } | null;
+      episodes: number | null;
+      chapters: number | null;
+      status: string | null;
+      season: string | null;
+      nextAiringEpisode: { airingAt: number; episode: number } | null;
+      genres: string[];
+    };
+  }
+
+  interface StudioResponse {
+    Studio: {
+      id: number;
+      name: string;
+      isAnimationStudio: boolean;
+      favourites: number | null;
+      siteUrl: string | null;
+      media: {
+        pageInfo: AniListPageInfo;
+        edges: StudioEdgeRaw[];
+      };
+    };
+  }
+
+  const variables = { id, page, perPage, sort: [sort] };
+
+  const fetcher = () => gqlRequest<StudioResponse>(gqlQuery, variables);
+
+  const result = page === 1
+    ? await getAnilistJsonWithCache<StudioResponse>({
+        endpoint: 'studioDetail.v2',
+        params: variables,
+        policy: getCachePolicy('detail'),
+        fetcher,
+      })
+    : await fetcher();
+
+  const st = result.Studio;
+
+  // AniList can return the same media twice when a studio has multiple roles
+  // (e.g., main + producer). Collapse by node id, preferring the main-studio edge.
+  const seen = new Map<number, StudioEdgeRaw>();
+  for (const edge of st.media.edges) {
+    const existing = seen.get(edge.node.id);
+    if (!existing || (!existing.isMainStudio && edge.isMainStudio)) {
+      seen.set(edge.node.id, edge);
+    }
+  }
+
+  return {
+    id: st.id,
+    name: st.name,
+    isAnimationStudio: st.isAnimationStudio,
+    favourites: st.favourites,
+    siteUrl: st.siteUrl,
+    media: Array.from(seen.values()).map(({ node: n }) => ({
+      id: n.id,
+      title: n.title.english || n.title.romaji || n.title.native || 'Unknown',
+      coverImage: n.coverImage.extraLarge || n.coverImage.large || null,
+      format: n.format,
+      type: n.type,
+      averageScore: n.averageScore,
+      popularity: n.popularity,
+      favourites: n.favourites,
+      seasonYear: n.seasonYear,
+      startDate: n.startDate ?? null,
+      episodes: n.episodes,
+      chapters: n.chapters,
+      status: n.status,
+      season: n.season,
+      nextAiringEpisode: n.nextAiringEpisode,
+      genres: n.genres || [],
+    })),
+    mediaPageInfo: st.media.pageInfo,
+  };
+}
