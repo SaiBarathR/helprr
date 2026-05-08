@@ -66,7 +66,12 @@ export function waitForScrollY(targetScrollY: number, timeoutMs = 1200, pollMs =
 
     const startedAt = Date.now();
     const tick = () => {
-      const maxScroll = Math.max(0, document.body.scrollHeight - window.innerHeight);
+      const maxScroll = Math.max(
+        0,
+        (document.scrollingElement?.scrollHeight ??
+          document.documentElement.scrollHeight ??
+          document.body.scrollHeight) - window.innerHeight
+      );
       if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
         resolve();
         return;
