@@ -1,4 +1,5 @@
-import type { WidgetDefinition } from './types';
+import type { WidgetDefinition, WidgetProps } from './types';
+import * as React from 'react';
 
 // Existing widgets (refactored from dashboard)
 import { StatsGridWidget } from '@/components/widgets/stats-grid-widget';
@@ -19,6 +20,9 @@ import { StorageUsageWidget } from '@/components/widgets/storage-usage-widget';
 import { JellyfinLibraryWidget } from '@/components/widgets/jellyfin-library-widget';
 import { PlaybackChartWidget } from '@/components/widgets/playback-chart-widget';
 import { ActivityHistoryWidget } from '@/components/widgets/activity-history-widget';
+
+import { AnimeCarouselWidget } from '@/components/widgets/anime-carousel-widget';
+import { ANIME_CAROUSEL_MAP, DEFAULT_ANIME_CAROUSEL_ORDER } from '@/lib/anime-carousel-config';
 
 export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
   // ── Existing ──
@@ -191,3 +195,18 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     component: ActivityHistoryWidget,
   },
 ];
+
+// Dynamically add anime carousel widgets
+for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
+  const config = ANIME_CAROUSEL_MAP[id];
+  ALL_WIDGET_DEFINITIONS.push({
+    id: `anime-${id}`,
+    name: `Anime - ${config.label}`,
+    description: `Anime carousel: ${config.label}`,
+    icon: 'PlayCircle',
+    category: 'media',
+    sizes: ['medium', 'large'],
+    defaultSize: 'large',
+    component: (props: WidgetProps) => React.createElement(AnimeCarouselWidget, { carouselId: id, ...props }),
+  } as WidgetDefinition);
+}
