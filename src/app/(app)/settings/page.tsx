@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle, Compass, ExternalLink } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
+import { AnimeCarouselSettings } from '@/components/settings/anime-carousel-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
@@ -1110,6 +1111,9 @@ export default function SettingsPage() {
 
       {/* ── Navigation ── */}
       <NavOrderSettings />
+
+      {/* ── Anime Carousels ── */}
+      <AnimeCarouselSettings />
 
       {/* ── Notifications ── */}
       <div className="grouped-section mb-6">

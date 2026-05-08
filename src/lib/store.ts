@@ -3,6 +3,10 @@ import { persist } from 'zustand/middleware';
 import {
   type NavItemId, DEFAULT_NAV_ORDER, NAV_ITEM_MAP, reconcileNavOrder,
 } from '@/lib/nav-config';
+import {
+  type AnimeCarouselId,
+  DEFAULT_ANIME_CAROUSEL_ORDER,
+} from '@/lib/anime-carousel-config';
 import type { DiscoverContentType } from '@/types';
 import type { WidgetInstance, WidgetSize } from '@/lib/widgets/types';
 import { DEFAULT_LAYOUT, getWidgetDefinition } from '@/lib/widgets/registry';
@@ -254,6 +258,12 @@ interface UIState {
   toggleNavItem: (id: NavItemId) => void;
   setDefaultPage: (id: NavItemId) => void;
   resetNavConfig: () => void;
+  // Anime carousel order
+  animeCarouselOrder: AnimeCarouselId[];
+  disabledAnimeCarousels: AnimeCarouselId[];
+  setAnimeCarouselOrder: (order: AnimeCarouselId[]) => void;
+  toggleAnimeCarousel: (id: AnimeCarouselId) => void;
+  resetAnimeCarouselConfig: () => void;
   // Dashboard widget layout
   dashboardLayout: WidgetInstance[];
   dashboardEditMode: boolean;
@@ -395,6 +405,19 @@ export const useUIStore = create<UIState>()(
         }),
       setDefaultPage: (id) => set({ defaultPage: id }),
       resetNavConfig: () => set({ navOrder: [...DEFAULT_NAV_ORDER], disabledNavItems: [], defaultPage: 'dashboard' as NavItemId }),
+      // Anime carousel order
+      animeCarouselOrder: [...DEFAULT_ANIME_CAROUSEL_ORDER],
+      disabledAnimeCarousels: [],
+      setAnimeCarouselOrder: (order) => set({ animeCarouselOrder: order }),
+      toggleAnimeCarousel: (id) =>
+        set((state) => {
+          const isDisabled = state.disabledAnimeCarousels.includes(id);
+          if (isDisabled) {
+            return { disabledAnimeCarousels: state.disabledAnimeCarousels.filter((i) => i !== id) };
+          }
+          return { disabledAnimeCarousels: [...state.disabledAnimeCarousels, id] };
+        }),
+      resetAnimeCarouselConfig: () => set({ animeCarouselOrder: [...DEFAULT_ANIME_CAROUSEL_ORDER], disabledAnimeCarousels: [] }),
       // Dashboard widgets
       dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w }))),
       dashboardEditMode: false,
@@ -427,7 +450,8 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'helprr-ui-prefs',
-      version: 14,
+      // Bump version whenever new persisted fields are added
+      version: 15,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -538,6 +562,10 @@ export const useUIStore = create<UIState>()(
         if (version < 14) {
           state.notificationsFilters = cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS);
         }
+        if (version < 15) {
+          state.animeCarouselOrder = [...DEFAULT_ANIME_CAROUSEL_ORDER];
+          state.disabledAnimeCarousels = [];
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -577,6 +605,8 @@ export const useUIStore = create<UIState>()(
         disabledNavItems: state.disabledNavItems,
         defaultPage: state.defaultPage,
         dashboardLayout: state.dashboardLayout,
+        animeCarouselOrder: state.animeCarouselOrder,
+        disabledAnimeCarousels: state.disabledAnimeCarousels,
       }),
     }
   )
