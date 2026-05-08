@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import type { ReactNode } from 'react';
 import { Star, Check } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListMediaFormat, AniListMediaStatus, AniListMediaSeason } from '@/types/anilist';
@@ -17,6 +18,7 @@ interface AnimeHeroProps {
   seasonYear: number | null;
   studios: Array<{ name: string; isMain: boolean }>;
   inLibrary?: boolean;
+  bannerAction?: ReactNode;
 }
 
 function formatStatus(status: AniListMediaStatus | null): string {
@@ -51,6 +53,7 @@ export function AnimeHero({
   seasonYear,
   studios,
   inLibrary,
+  bannerAction,
 }: AnimeHeroProps) {
   const bannerSrc = bannerImage
     ? toCachedImageSrc(bannerImage, 'anilist') || bannerImage
@@ -111,12 +114,15 @@ export function AnimeHero({
           <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 via-black to-zinc-950" />
         )}
 
-        {inLibrary && (
-          <div className="absolute top-3 right-3 md:top-5 md:right-6 hero-meta-fade">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/70 backdrop-blur-md text-emerald-300 px-3 py-1.5 text-[11px] font-medium status-pill-glow">
-              <Check className="h-3 w-3" strokeWidth={2.5} />
-              <span className="tracked-caps">In Library</span>
-            </span>
+        {(inLibrary || bannerAction) && (
+          <div className="absolute top-3 right-3 md:top-5 md:right-6 hero-meta-fade flex flex-col items-end gap-2">
+            {bannerAction}
+            {inLibrary && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/70 backdrop-blur-md text-emerald-300 px-3 py-1.5 text-[11px] font-medium status-pill-glow">
+                <Check className="h-3 w-3" strokeWidth={2.5} />
+                <span className="tracked-caps">In Library</span>
+              </span>
+            )}
           </div>
         )}
 

@@ -711,6 +711,9 @@ export default function SeriesDetailPage() {
     { label: 'AniList', url: `https://anilist.co/anime/${animeDetail.id}` },
     ...(animeDetail.malId ? [{ label: 'MyAnimeList', url: `https://myanimelist.net/anime/${animeDetail.malId}` }] : []),
   ] : [];
+  const openInAnimeHref = animeDetail?.id
+    ? `/anime/${animeDetail.id}`
+    : `/anime/explore?search=${encodeURIComponent(series.title)}`;
   const firstAired = formatDateValue(series.firstAired);
   const lastAired = formatDateValue(series.lastAired);
   const previousAiring = formatDateValue(series.previousAiring, true);
@@ -847,13 +850,7 @@ export default function SeriesDetailPage() {
                 </DropdownMenuItem>
                 {isAnimeSeries && (
                   <DropdownMenuItem asChild>
-                    <Link
-                      href={
-                        animeDetail?.id
-                          ? `/anime/${animeDetail.id}`
-                          : `/anime/explore?search=${encodeURIComponent(series.title)}`
-                      }
-                    >
+                    <Link href={openInAnimeHref}>
                       <Sparkles className="h-4 w-4" />
                       Open in Anime
                     </Link>
@@ -941,6 +938,15 @@ export default function SeriesDetailPage() {
             season={animeDetail.season}
             seasonYear={animeDetail.seasonYear}
             studios={animeDetail.studios}
+            bannerAction={(
+              <Link
+                href={openInAnimeHref}
+                className="inline-flex items-center gap-1.5 rounded-full bg-black/55 backdrop-blur-md text-white px-3 py-1.5 text-[11px] font-medium hover:bg-black/70 transition-colors"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span className="tracked-caps">Open in Anime</span>
+              </Link>
+            )}
           />
         ) : tmdbData?.backdropPath ? (
           <div>
