@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import DOMPurify from 'isomorphic-dompurify';
 import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
@@ -225,11 +226,37 @@ export default function AnimeDetailPage() {
   if (detail.favourites != null) infoRows.push({ label: 'Favorites', value: detail.favourites.toLocaleString() });
   const mainStudios = detail.studios.filter((s) => s.isMain);
   if (mainStudios.length) {
-    infoRows.push({ label: 'Studios', value: mainStudios.map((s) => s.name).join(', ') });
+    infoRows.push({
+      label: 'Studios',
+      value: mainStudios.map((s) => s.name).join(', '),
+      valueNode: (
+        <span>
+          {mainStudios.map((s, i) => (
+            <span key={s.id}>
+              {i > 0 && ', '}
+              <Link href={`/anime/studio/${s.id}`} className="text-primary hover:underline">{s.name}</Link>
+            </span>
+          ))}
+        </span>
+      ),
+    });
   }
   const producers = detail.studios.filter((s) => !s.isMain);
   if (producers.length) {
-    infoRows.push({ label: 'Producers', value: producers.map((s) => s.name).join(', ') });
+    infoRows.push({
+      label: 'Producers',
+      value: producers.map((s) => s.name).join(', '),
+      valueNode: (
+        <span>
+          {producers.map((s, i) => (
+            <span key={s.id}>
+              {i > 0 && ', '}
+              <Link href={`/anime/studio/${s.id}`} className="text-primary hover:underline">{s.name}</Link>
+            </span>
+          ))}
+        </span>
+      ),
+    });
   }
   if (detail.source) {
     infoRows.push({ label: 'Source', value: detail.source.replace(/_/g, ' ').split(' ').map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ') });
@@ -454,9 +481,10 @@ export default function AnimeDetailPage() {
                   ? toCachedImageSrc(person.image, 'anilist') || person.image
                   : null;
                 return (
-                  <div
+                  <Link
                     key={`${person.id}-${person.role}-${index}`}
-                    className="flex items-center gap-2 bg-muted/20 rounded-lg p-2 border border-border/30"
+                    href={`/anime/staff/${person.id}`}
+                    className="flex items-center gap-2 bg-muted/20 rounded-lg p-2 border border-border/30 hover:border-primary/40 transition-colors"
                   >
                     <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
                       {staffImgSrc ? (
@@ -478,7 +506,7 @@ export default function AnimeDetailPage() {
                       <p className="text-sm font-medium truncate">{person.name}</p>
                       <p className="text-xs text-muted-foreground truncate">{person.role}</p>
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
             </div>

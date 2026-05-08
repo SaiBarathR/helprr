@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
 import { useParams, useRouter } from 'next/navigation';
@@ -635,7 +635,7 @@ export default function SeriesDetailPage() {
     ? Math.max(0, animeDetail.nextAiringEpisode.airingAt - Math.floor(animeNowMs / 1000))
     : null;
   const animeDescription = animeDetail?.description ? DOMPurify.sanitize(animeDetail.description) : '';
-  const animeInfoRows: Array<{ label: string; value: string }> = [];
+  const animeInfoRows: Array<{ label: string; value: string; valueNode?: ReactNode }> = [];
   if (animeDetail?.format) animeInfoRows.push({ label: 'Format', value: animeDetail.format.replace(/_/g, ' ') });
   if (animeDetail?.episodes != null) animeInfoRows.push({ label: 'Episodes', value: String(animeDetail.episodes) });
   if (animeDetail?.duration != null) animeInfoRows.push({ label: 'Episode Duration', value: `${animeDetail.duration} mins` });
@@ -653,11 +653,37 @@ export default function SeriesDetailPage() {
   if (animeDetail?.favourites != null) animeInfoRows.push({ label: 'Favorites', value: animeDetail.favourites.toLocaleString() });
   const mainStudios = animeDetail?.studios.filter((studio) => studio.isMain) ?? [];
   if (mainStudios.length > 0) {
-    animeInfoRows.push({ label: 'Studios', value: mainStudios.map((studio) => studio.name).join(', ') });
+    animeInfoRows.push({
+      label: 'Studios',
+      value: mainStudios.map((studio) => studio.name).join(', '),
+      valueNode: (
+        <span>
+          {mainStudios.map((studio, index) => (
+            <span key={studio.id}>
+              {index > 0 && ', '}
+              <Link href={`/anime/studio/${studio.id}`} className="text-primary hover:underline">{studio.name}</Link>
+            </span>
+          ))}
+        </span>
+      ),
+    });
   }
   const producers = animeDetail?.studios.filter((studio) => !studio.isMain) ?? [];
   if (producers.length > 0) {
-    animeInfoRows.push({ label: 'Producers', value: producers.map((studio) => studio.name).join(', ') });
+    animeInfoRows.push({
+      label: 'Producers',
+      value: producers.map((studio) => studio.name).join(', '),
+      valueNode: (
+        <span>
+          {producers.map((studio, index) => (
+            <span key={studio.id}>
+              {index > 0 && ', '}
+              <Link href={`/anime/studio/${studio.id}`} className="text-primary hover:underline">{studio.name}</Link>
+            </span>
+          ))}
+        </span>
+      ),
+    });
   }
   if (animeDetail?.source) {
     animeInfoRows.push({
@@ -1355,9 +1381,10 @@ export default function SeriesDetailPage() {
                       : null;
 
                     return (
-                      <div
+                      <Link
                         key={`${person.id}-${person.role}-${index}`}
-                        className="flex items-center gap-2 rounded-lg border border-border/30 bg-muted/20 p-2"
+                        href={`/anime/staff/${person.id}`}
+                        className="flex items-center gap-2 rounded-lg border border-border/30 bg-muted/20 p-2 hover:border-primary/40 transition-colors"
                       >
                         <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
                           {staffImgSrc ? (
@@ -1379,7 +1406,7 @@ export default function SeriesDetailPage() {
                           <p className="text-sm font-medium truncate">{person.name}</p>
                           <p className="text-xs text-muted-foreground truncate">{person.role}</p>
                         </div>
-                      </div>
+                      </Link>
                     );
                   })}
                 </div>

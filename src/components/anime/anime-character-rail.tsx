@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
@@ -26,7 +27,7 @@ export function AnimeCharacterRail({ characters }: AnimeCharacterRailProps) {
 
   return (
     <div>
-      <h2 className="text-base font-semibold mb-2">Characters & Voice Actors</h2>
+      <h2 className="text-base font-semibold mb-2">Characters &amp; Voice Actors</h2>
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide animate-rail-in">
         {characters.map((char) => {
           const charImgSrc = char.image
@@ -42,8 +43,8 @@ export function AnimeCharacterRail({ characters }: AnimeCharacterRailProps) {
               className="flex-shrink-0 w-[140px] bg-muted/30 rounded-lg overflow-hidden border border-border/30"
             >
               <div className="relative h-[100px] bg-muted/50 flex">
-                {/* Character image */}
-                <div className="relative w-1/2 h-full">
+                {/* Character image — clickable */}
+                <Link href={`/anime/character/${char.id}`} className="relative w-1/2 h-full hover:opacity-80 transition-opacity">
                   {charImgSrc ? (
                     <Image
                       src={charImgSrc}
@@ -58,18 +59,26 @@ export function AnimeCharacterRail({ characters }: AnimeCharacterRailProps) {
                       ?
                     </div>
                   )}
-                </div>
-                {/* Voice actor image */}
+                </Link>
+                {/* Voice actor image — clickable */}
                 <div className="relative w-1/2 h-full border-l border-border/20">
-                  {vaImgSrc ? (
-                    <Image
-                      src={vaImgSrc}
-                      alt={char.voiceActor?.name || ''}
-                      fill
-                      sizes="70px"
-                      className="object-cover"
-                      unoptimized={isProtectedApiImageSrc(vaImgSrc)}
-                    />
+                  {char.voiceActor ? (
+                    <Link href={`/anime/staff/${char.voiceActor.id}`} className="block relative w-full h-full hover:opacity-80 transition-opacity">
+                      {vaImgSrc ? (
+                        <Image
+                          src={vaImgSrc}
+                          alt={char.voiceActor.name}
+                          fill
+                          sizes="70px"
+                          className="object-cover"
+                          unoptimized={isProtectedApiImageSrc(vaImgSrc)}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-[10px] bg-muted/30">
+                          —
+                        </div>
+                      )}
+                    </Link>
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-[10px] bg-muted/30">
                       —
@@ -84,9 +93,13 @@ export function AnimeCharacterRail({ characters }: AnimeCharacterRailProps) {
                 >
                   {char.role}
                 </Badge>
-                <p className="text-xs font-medium leading-tight truncate">{char.name}</p>
+                <Link href={`/anime/character/${char.id}`} className="block">
+                  <p className="text-xs font-medium leading-tight truncate hover:text-primary transition-colors">{char.name}</p>
+                </Link>
                 {char.voiceActor && (
-                  <p className="text-[11px] text-muted-foreground truncate">{char.voiceActor.name}</p>
+                  <Link href={`/anime/staff/${char.voiceActor.id}`} className="block">
+                    <p className="text-[11px] text-muted-foreground truncate hover:text-primary transition-colors">{char.voiceActor.name}</p>
+                  </Link>
                 )}
               </div>
             </div>
