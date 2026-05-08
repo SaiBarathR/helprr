@@ -115,7 +115,7 @@ export function AnimeHero({
         )}
 
         {(inLibrary || bannerAction) && (
-          <div className="absolute top-3 right-3 md:top-5 md:right-6 hero-meta-fade flex flex-col items-end gap-2">
+          <div className="absolute top-1.5 right-1.5 md:top-5 md:right-6 hero-meta-fade flex flex-col items-end gap-2">
             {bannerAction}
             {inLibrary && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/70 backdrop-blur-md text-emerald-300 px-3 py-1.5 text-[11px] font-medium status-pill-glow">
