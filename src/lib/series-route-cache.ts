@@ -1,4 +1,6 @@
 import type {
+  DiscoverSeasonDetailResponse,
+  DiscoverTvFullDetail,
   EpisodeWithFile,
   HistoryItem,
   QualityProfile,
@@ -8,6 +10,7 @@ import type {
   SonarrSeries,
   Tag,
 } from '@/types';
+import type { SeriesAniListResponse } from '@/types/anilist';
 
 export interface SeriesDetailSnapshot {
   series: SonarrSeries | null;
@@ -15,6 +18,13 @@ export interface SeriesDetailSnapshot {
   qualityProfiles: QualityProfile[];
   rootFolders: RootFolder[];
   tags: Tag[];
+  animeData?: SeriesAniListResponse | null;
+  tmdbData?: DiscoverTvFullDetail | null;
+  credits?: {
+    cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
+    crew: { id: number; name: string; profilePath: string | null; job: string }[];
+  };
+  seasonEpisodes?: Map<number, DiscoverSeasonDetailResponse>;
   fetchedAt: number;
 }
 

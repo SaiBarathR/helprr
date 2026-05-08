@@ -39,6 +39,12 @@ import {
   patchSeasonAcrossSnapshots,
   setSeriesDetailSnapshot,
 } from '@/lib/series-route-cache';
+import {
+  getDetailViewState,
+  setDetailViewState,
+  waitForScrollY,
+  type DetailViewKey,
+} from '@/lib/detail-view-state';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
@@ -97,15 +103,40 @@ function formatAniListMappingState(state: SeriesAniListResponse['mapping']['stat
   return 'Not mapped';
 }
 
+function waitForElementScrollY(
+  element: HTMLElement,
+  targetScrollY: number,
+  timeoutMs = 1200,
+  pollMs = 50
+): Promise<void> {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const tick = () => {
+      const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
+      if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
+        resolve();
+        return;
+      }
+      window.setTimeout(tick, pollMs);
+    };
+    tick();
+  });
+}
+
 export default function SeriesDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const seriesId = Number(id);
+  const initialSnapshot = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId) : null;
+  const detailViewKey: DetailViewKey = `series:${seriesId}`;
   const currentSeriesIdRef = useRef(seriesId);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const scrollReadyRef = useRef(false);
+  const hasRestoredScrollRef = useRef(false);
   currentSeriesIdRef.current = seriesId;
-  const [series, setSeries] = useState<SonarrSeries | null>(null);
-  const [episodes, setEpisodes] = useState<SonarrEpisode[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [series, setSeries] = useState<SonarrSeries | null>(() => initialSnapshot?.series ?? null);
+  const [episodes, setEpisodes] = useState<SonarrEpisode[]>(() => initialSnapshot?.episodes ?? []);
+  const [loading, setLoading] = useState(() => !initialSnapshot);
   const [refreshing, setRefreshing] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [showMonitorEdit, setShowMonitorEdit] = useState(false);
@@ -116,14 +147,16 @@ export default function SeriesDetailPage() {
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
-  const [credits, setCredits] = useState<SeriesCredits>({ cast: [], crew: [] });
-  const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(null);
-  const [animeData, setAnimeData] = useState<SeriesAniListResponse | null>(null);
+  const [credits, setCredits] = useState<SeriesCredits>(() => initialSnapshot?.credits ?? { cast: [], crew: [] });
+  const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
+  const [animeData, setAnimeData] = useState<SeriesAniListResponse | null>(() => initialSnapshot?.animeData ?? null);
   const [animeLoading, setAnimeLoading] = useState(false);
   const [animeOverviewExpanded, setAnimeOverviewExpanded] = useState(false);
   const [showAniListRemap, setShowAniListRemap] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
-  const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(new Map());
+  const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(
+    () => initialSnapshot?.seasonEpisodes ?? new Map()
+  );
   const [animeNowMs, setAnimeNowMs] = useState(() => Date.now());
 
   const MONITOR_OPTIONS = [
@@ -141,9 +174,24 @@ export default function SeriesDetailPage() {
   ];
 
   // Reference data
-  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
+  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>(
+    () => initialSnapshot?.qualityProfiles ?? []
+  );
+  const [rootFolders, setRootFolders] = useState<RootFolder[]>(
+    () => initialSnapshot?.rootFolders ?? []
+  );
+  const [tags, setTags] = useState<Tag[]>(() => initialSnapshot?.tags ?? []);
+
+  const getCurrentScrollY = useCallback(() => {
+    const content = contentScrollRef.current;
+    if (content) {
+      const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
+      if (maxScroll > 0 || content.scrollTop > 0) return content.scrollTop;
+    }
+
+    if (typeof window === 'undefined') return 0;
+    return window.scrollY;
+  }, []);
 
   const persistSeriesSnapshot = useCallback((next: {
     series?: SonarrSeries | null;
@@ -151,6 +199,10 @@ export default function SeriesDetailPage() {
     qualityProfiles?: QualityProfile[];
     rootFolders?: RootFolder[];
     tags?: Tag[];
+    animeData?: SeriesAniListResponse | null;
+    tmdbData?: DiscoverTvFullDetail | null;
+    credits?: SeriesCredits;
+    seasonEpisodes?: Map<number, DiscoverSeasonDetailResponse>;
   } = {}) => {
     if (!Number.isFinite(seriesId)) return;
     setSeriesDetailSnapshot(seriesId, {
@@ -159,8 +211,12 @@ export default function SeriesDetailPage() {
       qualityProfiles: next.qualityProfiles ?? qualityProfiles,
       rootFolders: next.rootFolders ?? rootFolders,
       tags: next.tags ?? tags,
+      animeData: next.animeData ?? animeData,
+      tmdbData: next.tmdbData ?? tmdbData,
+      credits: next.credits ?? credits,
+      seasonEpisodes: next.seasonEpisodes ?? seasonEpisodes,
     });
-  }, [episodes, qualityProfiles, rootFolders, series, seriesId, tags]);
+  }, [animeData, credits, episodes, qualityProfiles, rootFolders, seasonEpisodes, series, seriesId, tags, tmdbData]);
 
   const loadData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId)) {
@@ -182,6 +238,7 @@ export default function SeriesDetailPage() {
 
       if (activeSeriesId !== currentSeriesIdRef.current) return;
 
+      const existingSnapshot = getSeriesDetailSnapshot(seriesId);
       setSeries(nextSeries);
       setEpisodes(nextEpisodes);
       setQualityProfiles(nextQualityProfiles);
@@ -194,6 +251,10 @@ export default function SeriesDetailPage() {
         qualityProfiles: nextQualityProfiles,
         rootFolders: nextRootFolders,
         tags: nextTags,
+        animeData: existingSnapshot?.animeData ?? null,
+        tmdbData: existingSnapshot?.tmdbData ?? null,
+        credits: existingSnapshot?.credits,
+        seasonEpisodes: existingSnapshot?.seasonEpisodes,
       });
     } catch {
       if (activeSeriesId !== currentSeriesIdRef.current) return;
@@ -215,6 +276,8 @@ export default function SeriesDetailPage() {
 
   useEffect(() => {
     const cached = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId) : null;
+    scrollReadyRef.current = false;
+    hasRestoredScrollRef.current = false;
 
     if (cached) {
       setSeries(cached.series);
@@ -222,6 +285,10 @@ export default function SeriesDetailPage() {
       setQualityProfiles(cached.qualityProfiles);
       setRootFolders(cached.rootFolders);
       setTags(cached.tags);
+      setAnimeData(cached.animeData ?? null);
+      setTmdbData(cached.tmdbData ?? null);
+      setCredits(cached.credits ?? { cast: [], crew: [] });
+      setSeasonEpisodes(cached.seasonEpisodes ?? new Map());
       setLoading(false);
       setRefreshing(true);
     } else {
@@ -233,10 +300,73 @@ export default function SeriesDetailPage() {
   }, [loadData, seriesId]);
 
   useEffect(() => {
-    setTmdbData(null);
-    setAnimeData(null);
+    if (loading || !series || hasRestoredScrollRef.current) return;
+    const saved = getDetailViewState(detailViewKey);
+    if (!saved || saved.scrollY <= 0) {
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const content = contentScrollRef.current;
+      const shouldUseContentScroll = Boolean(
+        content && Math.max(0, content.scrollHeight - content.clientHeight) > 0
+      );
+
+      if (shouldUseContentScroll && content) {
+        await waitForElementScrollY(content, saved.scrollY);
+      } else {
+        await waitForScrollY(saved.scrollY);
+      }
+
+      if (cancelled) return;
+      if (shouldUseContentScroll && content) {
+        content.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      } else {
+        window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      }
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailViewKey, loading, series]);
+
+  useEffect(() => {
+    const persistScroll = () => {
+      if (!scrollReadyRef.current) return;
+      setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() });
+    };
+
+    let lastSaved = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - lastSaved < 150) return;
+      lastSaved = now;
+      persistScroll();
+    };
+
+    const content = contentScrollRef.current;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    content?.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('pagehide', persistScroll);
+    return () => {
+      persistScroll();
+      window.removeEventListener('scroll', onScroll);
+      content?.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pagehide', persistScroll);
+    };
+  }, [detailViewKey, getCurrentScrollY, loading, series]);
+
+  useEffect(() => {
     setExpandedSeasons(new Set());
-    setSeasonEpisodes(new Map());
+    if (!getSeriesDetailSnapshot(seriesId)?.seasonEpisodes) {
+      setSeasonEpisodes(new Map());
+    }
   }, [seriesId]);
 
   useEffect(() => {
@@ -245,11 +375,27 @@ export default function SeriesDetailPage() {
       return;
     }
 
-    setCredits({ cast: [], crew: [] });
+    if (!getSeriesDetailSnapshot(seriesId)?.credits) {
+      setCredits({ cast: [], crew: [] });
+    }
     const controller = new AbortController();
     fetch(`/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
       .then((r) => r.ok ? r.json() : { cast: [], crew: [] })
-      .then((data: SeriesCredits) => setCredits(data))
+      .then((data: SeriesCredits) => {
+        setCredits(data);
+        const cached = getSeriesDetailSnapshot(seriesId);
+        setSeriesDetailSnapshot(seriesId, {
+          series: cached?.series ?? null,
+          episodes: cached?.episodes ?? [],
+          qualityProfiles: cached?.qualityProfiles ?? [],
+          rootFolders: cached?.rootFolders ?? [],
+          tags: cached?.tags ?? [],
+          animeData: cached?.animeData ?? null,
+          tmdbData: cached?.tmdbData ?? null,
+          credits: data,
+          seasonEpisodes: cached?.seasonEpisodes,
+        });
+      })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
       });
@@ -266,16 +412,32 @@ export default function SeriesDetailPage() {
       return;
     }
     const controller = new AbortController();
-    setTmdbData(null);
+    if (!getSeriesDetailSnapshot(seriesId)?.tmdbData) {
+      setTmdbData(null);
+    }
     fetch(`/api/discover/tv/${series.tmdbId}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: DiscoverTvFullDetail | null) => setTmdbData(data))
+      .then((data: DiscoverTvFullDetail | null) => {
+        setTmdbData(data);
+        const cached = getSeriesDetailSnapshot(seriesId);
+        setSeriesDetailSnapshot(seriesId, {
+          series: cached?.series ?? null,
+          episodes: cached?.episodes ?? [],
+          qualityProfiles: cached?.qualityProfiles ?? [],
+          rootFolders: cached?.rootFolders ?? [],
+          tags: cached?.tags ?? [],
+          animeData: cached?.animeData ?? null,
+          tmdbData: data,
+          credits: cached?.credits,
+          seasonEpisodes: cached?.seasonEpisodes,
+        });
+      })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setTmdbData(null);
+        setTmdbData((prev) => prev ?? null);
       });
     return () => controller.abort();
-  }, [series?.seriesType, series?.tmdbId]);
+  }, [series?.seriesType, series?.tmdbId, seriesId]);
 
   useEffect(() => {
     if (!series?.id || series.seriesType !== 'anime') {
@@ -285,8 +447,14 @@ export default function SeriesDetailPage() {
     }
 
     const controller = new AbortController();
-    setAnimeData(null);
-    setAnimeLoading(true);
+    const cached = getSeriesDetailSnapshot(seriesId);
+    if (cached?.animeData) {
+      setAnimeData(cached.animeData);
+      setAnimeLoading(false);
+    } else {
+      setAnimeData(null);
+      setAnimeLoading(true);
+    }
 
     fetch(`/api/sonarr/${series.id}/anime`, { signal: controller.signal })
       .then(async (response) => {
@@ -299,12 +467,24 @@ export default function SeriesDetailPage() {
       .then((data: SeriesAniListResponse) => {
         if (!controller.signal.aborted) {
           setAnimeData(data);
+          const current = getSeriesDetailSnapshot(seriesId);
+          setSeriesDetailSnapshot(seriesId, {
+            series: current?.series ?? null,
+            episodes: current?.episodes ?? [],
+            qualityProfiles: current?.qualityProfiles ?? [],
+            rootFolders: current?.rootFolders ?? [],
+            tags: current?.tags ?? [],
+            animeData: data,
+            tmdbData: current?.tmdbData ?? null,
+            credits: current?.credits,
+            seasonEpisodes: current?.seasonEpisodes,
+          });
         }
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
         if (!controller.signal.aborted) {
-          setAnimeData(null);
+          if (!cached?.animeData) setAnimeData(null);
           toast.error(error instanceof Error ? error.message : 'Failed to load AniList details');
         }
       })
@@ -315,7 +495,7 @@ export default function SeriesDetailPage() {
       });
 
     return () => controller.abort();
-  }, [series?.id, series?.seriesType]);
+  }, [series?.id, series?.seriesType, seriesId]);
 
   useEffect(() => {
     if (series?.seriesType !== 'anime' || !series?.id) return;
@@ -329,6 +509,18 @@ export default function SeriesDetailPage() {
         const data: SeriesAniListResponse = await response.json();
         if (!cancelled) {
           setAnimeData(data);
+          const cached = getSeriesDetailSnapshot(seriesId);
+          setSeriesDetailSnapshot(seriesId, {
+            series: cached?.series ?? null,
+            episodes: cached?.episodes ?? [],
+            qualityProfiles: cached?.qualityProfiles ?? [],
+            rootFolders: cached?.rootFolders ?? [],
+            tags: cached?.tags ?? [],
+            animeData: data,
+            tmdbData: cached?.tmdbData ?? null,
+            credits: cached?.credits,
+            seasonEpisodes: cached?.seasonEpisodes,
+          });
         }
       } catch {
         // Keep the current detail on background refresh failures.
@@ -353,7 +545,7 @@ export default function SeriesDetailPage() {
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [series?.id, series?.seriesType]);
+  }, [series?.id, series?.seriesType, seriesId]);
 
   useEffect(() => {
     setAnimeNowMs(Date.now());
@@ -795,7 +987,10 @@ export default function SeriesDetailPage() {
   ];
 
   return (
-    <div className="flex flex-col min-h-0 animate-content-in -mx-2 md:-mx-6">
+    <div
+      className="flex flex-col min-h-0 animate-content-in -mx-2 md:-mx-6"
+      onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() })}
+    >
       {/* Page Header */}
       <PageHeader
         title={series.title}
@@ -912,7 +1107,7 @@ export default function SeriesDetailPage() {
         }
       />
 
-      <div className="flex-1 overflow-y-auto px-2 md:p-6">
+      <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-2 md:p-6">
         {/* Hero: Backdrop or flat poster layout */}
         {isAnimeSeries && animeDetail ? (
           <AnimeHero
