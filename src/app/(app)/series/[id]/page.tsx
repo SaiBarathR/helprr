@@ -311,18 +311,15 @@ export default function SeriesDetailPage() {
     let cancelled = false;
     void (async () => {
       const content = contentScrollRef.current;
-      const shouldUseContentScroll = Boolean(
-        content && Math.max(0, content.scrollHeight - content.clientHeight) > 0
-      );
 
-      if (shouldUseContentScroll && content) {
+      if (content) {
         await waitForElementScrollY(content, saved.scrollY);
       } else {
         await waitForScrollY(saved.scrollY);
       }
 
       if (cancelled) return;
-      if (shouldUseContentScroll && content) {
+      if (content) {
         content.scrollTo({ top: saved.scrollY, behavior: 'instant' });
       } else {
         window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
@@ -574,7 +571,20 @@ export default function SeriesDetailPage() {
             .then((r) => (r.ok ? r.json() : null))
             .then((data: DiscoverSeasonDetailResponse | null) => {
               if (data && activeSeriesId === currentSeriesIdRef.current) {
-                setSeasonEpisodes((prev) => new Map(prev).set(seasonNumber, data));
+                const cached = getSeriesDetailSnapshot(activeSeriesId);
+                const nextSeasonEpisodes = new Map(cached?.seasonEpisodes ?? seasonEpisodes).set(seasonNumber, data);
+                setSeasonEpisodes(nextSeasonEpisodes);
+                setSeriesDetailSnapshot(activeSeriesId, {
+                  series: cached?.series ?? series,
+                  episodes: cached?.episodes ?? episodes,
+                  qualityProfiles: cached?.qualityProfiles ?? qualityProfiles,
+                  rootFolders: cached?.rootFolders ?? rootFolders,
+                  tags: cached?.tags ?? tags,
+                  animeData: cached?.animeData ?? animeData,
+                  tmdbData: cached?.tmdbData ?? tmdbData,
+                  credits: cached?.credits ?? credits,
+                  seasonEpisodes: nextSeasonEpisodes,
+                });
               }
             })
             .catch(() => { });

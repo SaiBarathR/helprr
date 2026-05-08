@@ -326,6 +326,16 @@ export default function MovieDetailPage() {
   useEffect(() => {
     if (!movie?.tmdbId) {
       setTmdbData(null);
+      const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
+      if (cached) {
+        setMovieDetailSnapshot(movieId, {
+          movie: cached.movie,
+          qualityProfiles: cached.qualityProfiles,
+          tags: cached.tags,
+          tmdbData: null,
+          credits: cached.credits ?? [],
+        });
+      }
       return;
     }
     const controller = new AbortController();
