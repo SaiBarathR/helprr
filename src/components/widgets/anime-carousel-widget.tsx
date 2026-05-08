@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { PlayCircle, Star } from 'lucide-react';
@@ -85,33 +85,38 @@ async function fetchHomeDataCached() {
     return globalHomeDataPromise;
   }
   globalHomeDataPromiseTime = now;
-  globalHomeDataPromise = fetch('/api/anime/home?perPage=15').then((res) => {
-    if (!res.ok) throw new Error('Failed to fetch anime home data');
-    return res.json() as Promise<HomeData>;
-  });
+  globalHomeDataPromise = fetch('/api/anime/home?perPage=15')
+    .then((res) => {
+      if (!res.ok) throw new Error('Failed to fetch anime home data');
+      return res.json() as Promise<HomeData>;
+    })
+    .catch((error) => {
+      globalHomeDataPromise = null;
+      globalHomeDataPromiseTime = 0;
+      throw error;
+    });
   return globalHomeDataPromise;
 }
 
 export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMode }: AnimeCarouselWidgetProps) {
   const safeInterval = Math.max(refreshInterval, 5 * 60 * 1000);
 
-  const [viewerConnected, setViewerConnected] = useState<boolean | null>(null);
+  const requiresViewer = carouselId === 'continueWatching' || carouselId === 'planToWatch';
+  const [anilistViewerConnected, setAnilistViewerConnected] = useState<boolean | null>(null);
+  const viewerConnected = requiresViewer ? anilistViewerConnected : true;
 
   useEffect(() => {
-    if (carouselId === 'continueWatching' || carouselId === 'planToWatch') {
-      fetch('/api/anilist/viewer')
-        .then((res) => res.json())
-        .then((data) => setViewerConnected(!!data.connected))
-        .catch(() => setViewerConnected(false));
-    } else {
-      setViewerConnected(true);
-    }
-  }, [carouselId]);
+    if (!requiresViewer) return;
+    fetch('/api/anilist/viewer')
+      .then((res) => res.json())
+      .then((data) => setAnilistViewerConnected(!!data.connected))
+      .catch(() => setAnilistViewerConnected(false));
+  }, [requiresViewer]);
 
   const { data: homeData, loading: homeLoading, error: homeError } = useWidgetData<HomeData>({
     fetchFn: fetchHomeDataCached,
     refreshInterval: safeInterval,
-    enabled: carouselId !== 'continueWatching' && carouselId !== 'planToWatch' && viewerConnected === true,
+    enabled: !requiresViewer && viewerConnected === true,
   });
 
   const { data: listData, loading: listLoading, error: listError } = useWidgetData<AniListMediaListEntry[]>({
@@ -123,7 +128,7 @@ export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMod
       return flattenEntries(json.collection);
     },
     refreshInterval: safeInterval,
-    enabled: (carouselId === 'continueWatching' || carouselId === 'planToWatch') && viewerConnected === true,
+    enabled: requiresViewer && viewerConnected === true,
   });
 
   if (viewerConnected === false) {
@@ -134,8 +139,8 @@ export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMod
     );
   }
 
-  const loading = carouselId === 'continueWatching' || carouselId === 'planToWatch' ? listLoading : homeLoading;
-  const error = carouselId === 'continueWatching' || carouselId === 'planToWatch' ? listError : homeError;
+  const loading = requiresViewer ? listLoading : homeLoading;
+  const error = requiresViewer ? listError : homeError;
 
   let title = '';
   let viewAllHref = '';

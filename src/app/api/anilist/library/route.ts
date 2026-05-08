@@ -26,7 +26,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const conn = await loadAniListConnection();
   if (!conn || !conn.accessToken || !conn.anilistUserId) {
     return NextResponse.json(
-      { error: 'AniList not connected', requiresReauth: !!conn && !conn.accessToken },
+      { error: 'AniList not connected', requiresReauth: !!conn && (!conn.accessToken || !conn.anilistUserId) },
       { status: 400 }
     );
   }

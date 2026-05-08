@@ -30,6 +30,17 @@ function settingsRedirect(request: NextRequest, params: Record<string, string>):
   return response;
 }
 
+function trustedOrigin(request: NextRequest): string {
+  if (process.env.NODE_ENV !== 'production') return originFromRequest(request);
+  const configured = process.env.APP_ORIGIN;
+  if (!configured) return originFromRequest(request);
+  try {
+    return new URL(configured).origin;
+  } catch {
+    return originFromRequest(request);
+  }
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -56,7 +67,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return settingsRedirect(request, { anilist: 'error', reason: 'not_configured' });
   }
 
-  const redirectUri = `${originFromRequest(request)}/api/services/anilist/callback`;
+  const redirectUri = `${trustedOrigin(request)}/api/services/anilist/callback`;
+  let viewerUnavailable = false;
 
   try {
     const token = await exchangeCodeForToken({
@@ -78,15 +90,19 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       });
     } catch (viewerError) {
       console.error('AniList viewer fetch failed after token exchange', viewerError);
+      viewerUnavailable = true;
     }
 
-    return settingsRedirect(request, { anilist: 'connected' });
+    return settingsRedirect(request, {
+      anilist: 'connected',
+      ...(viewerUnavailable ? { reason: 'viewer_unavailable' } : {}),
+    });
   } catch (error) {
     console.error('AniList token exchange failed', error);
     // Clear any tokens that may exist from a previous attempt
     await prisma.serviceConnection.update({
       where: { type: 'ANILIST' },
-      data: { accessToken: null, refreshToken: null, tokenExpiresAt: null },
+      data: { accessToken: null, refreshToken: null, tokenExpiresAt: null, metadata: {}, username: null },
     }).catch(() => undefined);
     return settingsRedirect(request, { anilist: 'error', reason: 'exchange_failed' });
   }

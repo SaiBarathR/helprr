@@ -26,35 +26,45 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
 };
 
 async function checkServiceHealth(connection: ServiceConnection): Promise<void> {
-  const baseUrl = connection.url.replace(/\/+$/, '');
-
   switch (connection.type) {
     case 'SONARR': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('Sonarr URL is not configured');
       const client = new SonarrClient(baseUrl, connection.apiKey);
       await client.getSystemStatus();
       return;
     }
     case 'RADARR': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('Radarr URL is not configured');
       const client = new RadarrClient(baseUrl, connection.apiKey);
       await client.getSystemStatus();
       return;
     }
     case 'QBITTORRENT': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('qBittorrent URL is not configured');
       const client = new QBittorrentClient(baseUrl, connection.apiKey, connection.username || 'admin');
       await client.getVersion();
       return;
     }
     case 'PROWLARR': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('Prowlarr URL is not configured');
       const client = new ProwlarrClient(baseUrl, connection.apiKey);
       await client.getSystemStatus();
       return;
     }
     case 'JELLYFIN': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('Jellyfin URL is not configured');
       const client = new JellyfinClient(baseUrl, connection.apiKey, connection.username || '');
       await client.getSystemInfo();
       return;
     }
     case 'TMDB': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('TMDB URL is not configured');
       const client = new TmdbClient(baseUrl, connection.apiKey);
       await client.validateConnection();
       return;

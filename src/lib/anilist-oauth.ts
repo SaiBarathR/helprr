@@ -1,4 +1,5 @@
 import axios from 'axios';
+import crypto from 'crypto';
 import { prisma } from '@/lib/db';
 
 export const ANILIST_AUTHORIZE_URL = 'https://anilist.co/api/v2/oauth/authorize';
@@ -6,6 +7,8 @@ export const ANILIST_TOKEN_URL = 'https://anilist.co/api/v2/oauth/token';
 export const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
 
 const REFRESH_SAFETY_MARGIN_MS = 60_000;
+const ENCRYPTED_TOKEN_PREFIX = 'enc:v1:';
+let refreshPromise: Promise<{ accessToken: string; connection: AniListConnectionRow }> | null = null;
 
 export class AniListReauthRequiredError extends Error {
   constructor(message = 'AniList re-authentication required') {
@@ -39,6 +42,46 @@ function parseMetadata(value: unknown): ConnectionMetadata {
   return value as ConnectionMetadata;
 }
 
+function getTokenEncryptionKey(): Buffer {
+  const secret = process.env.JWT_SECRET || process.env.APP_PASSWORD;
+  if (!secret) {
+    throw new Error('JWT_SECRET or APP_PASSWORD is required to store AniList tokens securely');
+  }
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+function encryptToken(value: string): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getTokenEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${ENCRYPTED_TOKEN_PREFIX}${Buffer.concat([iv, tag, encrypted]).toString('base64')}`;
+}
+
+function decryptToken(value: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith(ENCRYPTED_TOKEN_PREFIX)) return value;
+  const payload = Buffer.from(value.slice(ENCRYPTED_TOKEN_PREFIX.length), 'base64');
+  const iv = payload.subarray(0, 12);
+  const tag = payload.subarray(12, 28);
+  const encrypted = payload.subarray(28);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getTokenEncryptionKey(), iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+}
+
+function isDefinitiveRefreshAuthFailure(error: unknown): boolean {
+  if (error instanceof AniListReauthRequiredError) return true;
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    const data = error.response?.data as { error?: unknown; message?: unknown } | undefined;
+    const code = typeof data?.error === 'string' ? data.error : '';
+    const message = typeof data?.message === 'string' ? data.message : '';
+    return status === 400 && /invalid_grant|expired_refresh_token/i.test(`${code} ${message}`);
+  }
+  return false;
+}
+
 export async function loadAniListConnection(): Promise<AniListConnectionRow | null> {
   const row = await prisma.serviceConnection.findUnique({ where: { type: 'ANILIST' } });
   if (!row) return null;
@@ -52,8 +95,8 @@ export async function loadAniListConnection(): Promise<AniListConnectionRow | nu
   return {
     clientId,
     clientSecret,
-    accessToken: row.accessToken ?? null,
-    refreshToken: row.refreshToken ?? null,
+    accessToken: decryptToken(row.accessToken ?? null),
+    refreshToken: decryptToken(row.refreshToken ?? null),
     tokenExpiresAt: row.tokenExpiresAt ?? null,
     username: row.username ?? null,
     anilistUserId: typeof meta.anilistUserId === 'number' ? meta.anilistUserId : null,
@@ -137,8 +180,8 @@ export async function persistTokenResponse(token: TokenResponse): Promise<void> 
   await prisma.serviceConnection.update({
     where: { type: 'ANILIST' },
     data: {
-      accessToken: token.access_token,
-      refreshToken: token.refresh_token ?? undefined,
+      accessToken: encryptToken(token.access_token),
+      refreshToken: token.refresh_token ? encryptToken(token.refresh_token) : undefined,
       tokenExpiresAt: expiresAt,
     },
   });
@@ -180,6 +223,20 @@ export async function getValidAccessToken(options: { forceRefresh?: boolean } = 
     throw new AniListReauthRequiredError('AniList access token expired and no refresh token available');
   }
 
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = refreshAniListToken({ ...conn, refreshToken: conn.refreshToken });
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+async function refreshAniListToken(conn: AniListConnectionRow & { refreshToken: string }): Promise<{
+  accessToken: string;
+  connection: AniListConnectionRow;
+}> {
   try {
     const refreshed = await refreshAccessToken({
       clientId: conn.clientId,
@@ -193,9 +250,13 @@ export async function getValidAccessToken(options: { forceRefresh?: boolean } = 
     }
     return { accessToken: fresh.accessToken, connection: fresh };
   } catch (error) {
-    await clearAniListTokens();
-    if (error instanceof AniListReauthRequiredError) throw error;
-    throw new AniListReauthRequiredError('Failed to refresh AniList token');
+    if (isDefinitiveRefreshAuthFailure(error)) {
+      await clearAniListTokens();
+      throw error instanceof AniListReauthRequiredError
+        ? error
+        : new AniListReauthRequiredError('Failed to refresh AniList token');
+    }
+    throw error;
   }
 }
 

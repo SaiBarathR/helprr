@@ -20,6 +20,19 @@ function originFromRequest(request: NextRequest): string {
   return request.nextUrl.origin;
 }
 
+function trustedOrigin(request: NextRequest): string | null {
+  if (process.env.NODE_ENV !== 'production') return originFromRequest(request);
+  const configured = process.env.APP_ORIGIN;
+  if (!configured) return null;
+  try {
+    const url = new URL(configured);
+    if (url.protocol !== 'https:') return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -61,8 +74,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     },
   });
 
+  const origin = trustedOrigin(request);
+  if (!origin) {
+    return NextResponse.json(
+      { error: 'APP_ORIGIN must be configured as a valid HTTPS origin in production' },
+      { status: 500 }
+    );
+  }
+
   const state = randomBytes(24).toString('hex');
-  const redirectUri = `${originFromRequest(request)}/api/services/anilist/callback`;
+  const redirectUri = `${origin}/api/services/anilist/callback`;
   const authorizeUrl = buildAuthorizeUrl({
     clientId: trimmedClientId,
     redirectUri,

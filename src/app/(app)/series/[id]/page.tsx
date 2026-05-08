@@ -33,7 +33,7 @@ import {
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag, DiscoverTvFullDetail, DiscoverSeasonDetailResponse } from '@/types';
-import type { AniListFuzzyDate, SeriesAniListResponse } from '@/types/anilist';
+import type { SeriesAniListResponse } from '@/types/anilist';
 import {
   getSeriesDetailSnapshot,
   patchSeasonAcrossSnapshots,
@@ -46,23 +46,11 @@ import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { formatBytes } from '@/lib/format';
-import { formatAniListRankingLabel } from '@/lib/anilist-helpers';
+import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
   crew: { id: number; name: string; profilePath: string | null; job: string }[];
-}
-
-function formatFuzzyDate(date: AniListFuzzyDate | null): string | null {
-  if (!date || !date.year) return null;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  if (date.month && date.day) {
-    return `${months[date.month - 1]} ${date.day}, ${date.year}`;
-  }
-  if (date.month) {
-    return `${months[date.month - 1]} ${date.year}`;
-  }
-  return String(date.year);
 }
 
 function formatCountdown(seconds: number): string {
@@ -944,7 +932,7 @@ export default function SeriesDetailPage() {
                 className="inline-flex items-center gap-1.5 rounded-full bg-black/55 backdrop-blur-md text-white px-3 py-1.5 text-[11px] font-medium hover:bg-black/70 transition-colors"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                <span className="tracked-caps">Open in Anime</span>
+                <span className="tracking-widest uppercase">Open in Anime</span>
               </Link>
             )}
           />

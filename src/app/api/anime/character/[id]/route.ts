@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getCharacterDetail } from '@/lib/anilist-client';
+import type { AniListSort } from '@/types/anilist';
+
+const VALID_SORTS = new Set<AniListSort>([
+  'POPULARITY_DESC',
+  'SCORE_DESC',
+  'FAVOURITES_DESC',
+  'START_DATE_DESC',
+  'START_DATE',
+  'TITLE_ROMAJI',
+]);
+
+function parsePage(value: string | null): number {
+  return Math.max(1, parseInt(value || '1', 10) || 1);
+}
 
 export async function GET(
   request: NextRequest,
@@ -17,8 +31,12 @@ export async function GET(
     }
 
     const url = new URL(request.url);
-    const page = Math.max(1, Number(url.searchParams.get('page') || '1'));
-    const sort = url.searchParams.get('sort') || 'POPULARITY_DESC';
+    const page = parsePage(url.searchParams.get('page'));
+    const sortParam = url.searchParams.get('sort') || 'POPULARITY_DESC';
+    if (!VALID_SORTS.has(sortParam as AniListSort)) {
+      return NextResponse.json({ error: 'Invalid sort' }, { status: 400 });
+    }
+    const sort = sortParam as AniListSort;
 
     const detail = await getCharacterDetail(id, page, sort);
     return NextResponse.json(detail);

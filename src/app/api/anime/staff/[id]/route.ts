@@ -5,6 +5,32 @@ import {
   getStaffDetail,
   getStaffMediaPage,
 } from '@/lib/anilist-client';
+import type { AniListSort } from '@/types/anilist';
+
+const VALID_SORTS = new Set<AniListSort>([
+  'POPULARITY_DESC',
+  'SCORE_DESC',
+  'FAVOURITES_DESC',
+  'START_DATE_DESC',
+  'START_DATE',
+  'TITLE_ROMAJI',
+]);
+
+type StaffMediaType = 'ANIME' | 'MANGA' | 'VOICE_ACTING';
+
+function parsePage(value: string | null): number {
+  return Math.max(1, parseInt(value || '1', 10) || 1);
+}
+
+function parseSort(value: string | null): AniListSort | null {
+  const sort = value || 'POPULARITY_DESC';
+  return VALID_SORTS.has(sort as AniListSort) ? (sort as AniListSort) : null;
+}
+
+function parseType(value: string | null): StaffMediaType | null {
+  if (value === 'ANIME' || value === 'MANGA' || value === 'VOICE_ACTING') return value;
+  return null;
+}
 
 export async function GET(
   request: NextRequest,
@@ -21,13 +47,15 @@ export async function GET(
     }
 
     const url = new URL(request.url);
-    const page = Math.max(1, Number(url.searchParams.get('page') || '1'));
-    const sort = url.searchParams.get('sort') || 'POPULARITY_DESC';
-    const type = url.searchParams.get('type') as
-      | 'ANIME'
-      | 'MANGA'
-      | 'VOICE_ACTING'
-      | null;
+    const page = parsePage(url.searchParams.get('page'));
+    const sort = parseSort(url.searchParams.get('sort'));
+    if (!sort) return NextResponse.json({ error: 'Invalid sort' }, { status: 400 });
+
+    const rawType = url.searchParams.get('type');
+    const type = parseType(rawType);
+    if (rawType && !type) {
+      return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
+    }
 
     // Paginated request for a specific section
     if (page > 1 || type) {
@@ -41,7 +69,13 @@ export async function GET(
     }
 
     // Initial load — full staff detail with first page of anime/manga/voice-acting
-    const detail = await getStaffDetail(id, 1, 1, 1, sort);
+    const animeSort = parseSort(url.searchParams.get('animeSort'));
+    const mangaSort = parseSort(url.searchParams.get('mangaSort'));
+    const vaSort = parseSort(url.searchParams.get('vaSort'));
+    if (!animeSort || !mangaSort || !vaSort) {
+      return NextResponse.json({ error: 'Invalid sort' }, { status: 400 });
+    }
+    const detail = await getStaffDetail(id, 1, 1, 1, animeSort, mangaSort, vaSort);
     return NextResponse.json(detail);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load staff detail';

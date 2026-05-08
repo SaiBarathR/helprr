@@ -7,8 +7,14 @@ import type {
   AniListNextAiringEpisode,
   AniListMediaSeason,
   AniListMediaStatus,
+  AniListMediaType,
   AniListPageInfo,
   AniListSort,
+  AniListStaffDetailResponse,
+  AniListStaffMediaEdge,
+  AniListStaffVoiceActingEdge,
+  AniListCharacterDetailResponse,
+  AniListStudioDetailResponse,
   AnimeBrowseSort,
 } from '@/types/anilist';
 import { getAnilistJsonWithCache, type AnilistCachePolicy } from '@/lib/cache/anilist-api-cache';
@@ -668,8 +674,8 @@ interface StaffMediaEdgeRaw {
     id: number;
     title: { romaji: string | null; english: string | null; native: string | null };
     coverImage: { extraLarge: string | null; large: string | null; medium: string | null; color: string | null };
-    format: string | null;
-    type: string | null;
+    format: AniListMediaFormat | null;
+    type: AniListMediaType | null;
     averageScore: number | null;
     popularity: number | null;
     favourites: number | null;
@@ -691,7 +697,7 @@ interface StaffCharacterMediaEdgeRaw {
   }> | null;
 }
 
-function normalizeStaffMediaEdge(e: StaffMediaEdgeRaw) {
+function normalizeStaffMediaEdge(e: StaffMediaEdgeRaw): AniListStaffMediaEdge {
   return {
     staffRole: e.staffRole,
     node: {
@@ -711,7 +717,7 @@ function normalizeStaffMediaEdge(e: StaffMediaEdgeRaw) {
   };
 }
 
-function normalizeStaffCharacterMediaEdge(e: StaffCharacterMediaEdgeRaw) {
+function normalizeStaffCharacterMediaEdge(e: StaffCharacterMediaEdgeRaw): AniListStaffVoiceActingEdge {
   return {
     characterRole: e.characterRole ?? '',
     characterName: e.characterName ?? null,
@@ -742,11 +748,13 @@ export async function getStaffDetail(
   animePage = 1,
   mangaPage = 1,
   vaPage = 1,
-  sort: string = 'POPULARITY_DESC',
+  animeSort: AniListSort = 'POPULARITY_DESC',
+  mangaSort: AniListSort = 'POPULARITY_DESC',
+  vaSort: AniListSort = 'POPULARITY_DESC',
   perPage = 25
-) {
+): Promise<AniListStaffDetailResponse> {
   const gqlQuery = `
-    query ($id: Int, $animePage: Int, $mangaPage: Int, $vaPage: Int, $perPage: Int, $sort: [MediaSort]) {
+    query ($id: Int, $animePage: Int, $mangaPage: Int, $vaPage: Int, $perPage: Int, $animeSort: [MediaSort], $mangaSort: [MediaSort], $vaSort: [MediaSort]) {
       Staff(id: $id) {
         id
         name { full native alternative }
@@ -763,21 +771,21 @@ export async function getStaffDetail(
         languageV2
         favourites
         siteUrl
-        staffMedia(page: $animePage, perPage: $perPage, type: ANIME, sort: $sort) {
+        staffMedia(page: $animePage, perPage: $perPage, type: ANIME, sort: $animeSort) {
           pageInfo { total currentPage lastPage hasNextPage perPage }
           edges {
             staffRole
             node { ${STAFF_MEDIA_NODE_FRAGMENT} }
           }
         }
-        mangaMedia: staffMedia(page: $mangaPage, perPage: $perPage, type: MANGA, sort: $sort) {
+        mangaMedia: staffMedia(page: $mangaPage, perPage: $perPage, type: MANGA, sort: $mangaSort) {
           pageInfo { total currentPage lastPage hasNextPage perPage }
           edges {
             staffRole
             node { ${STAFF_MEDIA_NODE_FRAGMENT} }
           }
         }
-        characterMedia(page: $vaPage, perPage: $perPage, sort: $sort) {
+        characterMedia(page: $vaPage, perPage: $perPage, sort: $vaSort) {
           pageInfo { total currentPage lastPage hasNextPage perPage }
           edges {
             characterRole
@@ -823,10 +831,10 @@ export async function getStaffDetail(
         pageInfo: AniListPageInfo;
         edges: StaffCharacterMediaEdgeRaw[];
       };
-    };
+    } | null;
   }
 
-  const variables = { id, animePage, mangaPage, vaPage, perPage, sort: [sort] };
+  const variables = { id, animePage, mangaPage, vaPage, perPage, animeSort: [animeSort], mangaSort: [mangaSort], vaSort: [vaSort] };
 
   // Only cache when fetching the first pages (initial load)
   const isInitial = animePage === 1 && mangaPage === 1 && vaPage === 1;
@@ -843,6 +851,7 @@ export async function getStaffDetail(
     : await fetcher();
 
   const s = result.Staff;
+  if (!s) throw new Error('Staff not found');
 
   return {
     id: s.id,
@@ -875,9 +884,9 @@ export async function getStaffMediaPage(
   id: number,
   type: 'ANIME' | 'MANGA',
   page: number,
-  sort: string = 'POPULARITY_DESC',
+  sort: AniListSort = 'POPULARITY_DESC',
   perPage = 25
-) {
+): Promise<{ pageInfo: AniListPageInfo; edges: AniListStaffMediaEdge[] }> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort], $type: MediaType) {
       Staff(id: $id) {
@@ -898,11 +907,13 @@ export async function getStaffMediaPage(
         pageInfo: AniListPageInfo;
         edges: StaffMediaEdgeRaw[];
       };
-    };
+    } | null;
   }
 
   const variables = { id, page, perPage, sort: [sort], type };
   const result = await gqlRequest<StaffPageResponse>(gqlQuery, variables);
+
+  if (!result.Staff) throw new Error('Staff not found');
 
   return {
     pageInfo: result.Staff.staffMedia.pageInfo,
@@ -913,9 +924,9 @@ export async function getStaffMediaPage(
 export async function getStaffCharacterMediaPage(
   id: number,
   page: number,
-  sort: string = 'POPULARITY_DESC',
+  sort: AniListSort = 'POPULARITY_DESC',
   perPage = 25
-) {
+): Promise<{ pageInfo: AniListPageInfo; edges: AniListStaffVoiceActingEdge[] }> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
       Staff(id: $id) {
@@ -942,11 +953,13 @@ export async function getStaffCharacterMediaPage(
         pageInfo: AniListPageInfo;
         edges: StaffCharacterMediaEdgeRaw[];
       };
-    };
+    } | null;
   }
 
   const variables = { id, page, perPage, sort: [sort] };
   const result = await gqlRequest<StaffCharacterMediaPageResponse>(gqlQuery, variables);
+
+  if (!result.Staff) throw new Error('Staff not found');
 
   return {
     pageInfo: result.Staff.characterMedia.pageInfo,
@@ -959,9 +972,9 @@ export async function getStaffCharacterMediaPage(
 export async function getCharacterDetail(
   id: number,
   page = 1,
-  sort: string = 'POPULARITY_DESC',
+  sort: AniListSort = 'POPULARITY_DESC',
   perPage = 25
-) {
+): Promise<AniListCharacterDetailResponse> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
       Character(id: $id) {
@@ -1017,8 +1030,8 @@ export async function getCharacterDetail(
       id: number;
       title: { romaji: string | null; english: string | null; native: string | null };
       coverImage: { extraLarge: string | null; large: string | null; medium: string | null; color: string | null };
-      format: string | null;
-      type: string | null;
+      format: AniListMediaFormat | null;
+      type: AniListMediaType | null;
       averageScore: number | null;
       popularity: number | null;
       favourites: number | null;
@@ -1045,7 +1058,7 @@ export async function getCharacterDetail(
         pageInfo: AniListPageInfo;
         edges: CharacterEdgeRaw[];
       };
-    };
+    } | null;
   }
 
   const variables = { id, page, perPage, sort: [sort] };
@@ -1062,6 +1075,7 @@ export async function getCharacterDetail(
     : await fetcher();
 
   const c = result.Character;
+  if (!c) throw new Error('Character not found');
 
   return {
     id: c.id,
@@ -1109,9 +1123,9 @@ export async function getCharacterDetail(
 export async function getStudioDetail(
   id: number,
   page = 1,
-  sort: string = 'START_DATE_DESC',
+  sort: AniListSort = 'START_DATE_DESC',
   perPage = 25
-) {
+): Promise<AniListStudioDetailResponse> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
       Studio(id: $id) {
@@ -1154,8 +1168,8 @@ export async function getStudioDetail(
       id: number;
       title: { romaji: string | null; english: string | null; native: string | null };
       coverImage: { extraLarge: string | null; large: string | null; medium: string | null; color: string | null };
-      format: string | null;
-      type: string | null;
+      format: AniListMediaFormat | null;
+      type: AniListMediaType | null;
       averageScore: number | null;
       popularity: number | null;
       favourites: number | null;
@@ -1163,8 +1177,8 @@ export async function getStudioDetail(
       startDate: { year: number | null; month: number | null; day: number | null } | null;
       episodes: number | null;
       chapters: number | null;
-      status: string | null;
-      season: string | null;
+      status: AniListMediaStatus | null;
+      season: AniListMediaSeason | null;
       nextAiringEpisode: { airingAt: number; episode: number } | null;
       genres: string[];
     };
@@ -1181,7 +1195,7 @@ export async function getStudioDetail(
         pageInfo: AniListPageInfo;
         edges: StudioEdgeRaw[];
       };
-    };
+    } | null;
   }
 
   const variables = { id, page, perPage, sort: [sort] };
@@ -1198,6 +1212,7 @@ export async function getStudioDetail(
     : await fetcher();
 
   const st = result.Studio;
+  if (!st) throw new Error('Studio not found');
 
   // AniList can return the same media twice when a studio has multiple roles
   // (e.g., main + producer). Collapse by node id, preferring the main-studio edge.

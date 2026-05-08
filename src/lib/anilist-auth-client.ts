@@ -32,7 +32,6 @@ async function performRequest<T>(
           Accept: 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
-        validateStatus: () => true,
       }
     );
     return { status: response.status, data: response.data };
@@ -60,10 +59,8 @@ export async function gqlRequestAuthenticated<T>(
   try {
     refreshed = await getValidAccessToken({ forceRefresh: true });
   } catch (error) {
-    await clearAniListTokens();
-    throw error instanceof AniListReauthRequiredError
-      ? error
-      : new AniListReauthRequiredError('AniList rejected token and refresh failed');
+    if (error instanceof AniListReauthRequiredError) throw error;
+    throw error;
   }
 
   const second = await performRequest<T>(query, variables, refreshed.accessToken);
@@ -75,11 +72,12 @@ export async function gqlRequestAuthenticated<T>(
 }
 
 function processResult<T>(result: { status: number; data: GqlResponse<T> | undefined }): T {
-  if (result.status >= 500) {
-    throw new Error(`AniList server error: ${result.status}`);
-  }
   if (!result.data) {
     throw new Error(`AniList returned no body (status ${result.status})`);
+  }
+  if (result.status >= 400) {
+    const message = result.data.errors?.map((error) => error.message).join('; ');
+    throw new Error(message ? `AniList API error: ${message}` : `AniList API error: ${result.status}`);
   }
   if (result.data.errors?.length) {
     const message = result.data.errors.map((error) => error.message).join('; ');

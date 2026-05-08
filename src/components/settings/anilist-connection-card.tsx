@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Sparkles, Loader2, ChevronRight, ExternalLink, AlertTriangle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,10 +28,13 @@ const REASON_MESSAGES: Record<string, string> = {
   exchange_failed: 'AniList rejected the authorization code. Double-check your client ID and secret.',
   not_configured: 'AniList connection was lost mid-flight. Re-enter credentials.',
   missing_code: 'AniList did not return an authorization code.',
+  viewer_unavailable: 'Connected to AniList, but profile details could not be fetched yet.',
 };
 
 export function AnilistConnectionCard() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewer, setViewer] = useState<ViewerResponse | null>(null);
@@ -82,6 +85,11 @@ export function AnilistConnectionCard() {
       const message = reason && REASON_MESSAGES[reason] ? REASON_MESSAGES[reason] : 'AniList connection failed';
       toast.error(message, { icon: <AlertTriangle className="h-4 w-4 text-red-500" /> });
     }
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('anilist');
+    params.delete('reason');
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, reason]);
 
