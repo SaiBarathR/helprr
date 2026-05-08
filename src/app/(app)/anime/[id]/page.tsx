@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -19,18 +19,21 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ExternalLink, Tv, Film, Loader2, Clock, Trophy, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import type { AniListDetailResponse } from '@/types/anilist';
-import type { DiscoverLibraryStatus } from '@/types';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
+import {
+  getAnimeDetailSnapshot,
+  setAnimeDetailSnapshot,
+  type AnimeDetailSnapshotData,
+} from '@/lib/anilist-detail-cache';
+import {
+  getDetailViewState,
+  setDetailViewState,
+  waitForScrollY,
+  type DetailViewKey,
+} from '@/lib/detail-view-state';
 
-type DetailWithLibrary = AniListDetailResponse & {
-  library?: DiscoverLibraryStatus | null;
-  libraryAvailability?: {
-    radarr: 'ok' | 'unavailable';
-    sonarr: 'ok' | 'unavailable';
-  };
-};
+type DetailWithLibrary = AnimeDetailSnapshotData;
 interface DetailState {
   id: string;
   detail: DetailWithLibrary | null;
@@ -68,11 +71,14 @@ const STATUS_LABELS: Record<string, string> = {
 export default function AnimeDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const detailViewKey: DetailViewKey = `anime:${id}`;
+  const scrollReadyRef = useRef(false);
+  const hasRestoredScrollRef = useRef(false);
   const [state, setState] = useState<DetailState>(() => ({
     id,
-    detail: null,
+    detail: getAnimeDetailSnapshot(id)?.detail ?? null,
     error: null,
-    loading: true,
+    loading: !getAnimeDetailSnapshot(id)?.detail,
   }));
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const externalUrls = useExternalUrls();
@@ -81,6 +87,27 @@ export default function AnimeDetailPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+    const cached = getAnimeDetailSnapshot(id);
+
+    scrollReadyRef.current = false;
+    hasRestoredScrollRef.current = false;
+    queueMicrotask(() => {
+      if (cached?.detail) {
+        setState({
+          id,
+          detail: cached.detail,
+          error: null,
+          loading: false,
+        });
+      } else {
+        setState({
+          id,
+          detail: null,
+          error: null,
+          loading: true,
+        });
+      }
+    });
 
     fetch(`/api/anime/${id}`, { signal: controller.signal })
       .then(async (res) => {
@@ -98,10 +125,15 @@ export default function AnimeDetailPage() {
             error: null,
             loading: false,
           });
+          setAnimeDetailSnapshot(id, { detail: data });
         }
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') return;
+        if (cached?.detail) {
+          setState((prev) => (prev.id === id ? { ...prev, loading: false } : prev));
+          return;
+        }
         setState({
           id,
           detail: null,
@@ -112,6 +144,52 @@ export default function AnimeDetailPage() {
 
     return () => controller.abort();
   }, [id]);
+
+  useEffect(() => {
+    if (state.id !== id || state.loading || !state.detail || hasRestoredScrollRef.current) return;
+    const saved = getDetailViewState(detailViewKey);
+    if (!saved || saved.scrollY <= 0) {
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      await waitForScrollY(saved.scrollY);
+      if (cancelled) return;
+      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailViewKey, id, state.detail, state.id, state.loading]);
+
+  useEffect(() => {
+    const persistScroll = () => {
+      if (!scrollReadyRef.current) return;
+      setDetailViewState(detailViewKey, { scrollY: window.scrollY });
+    };
+
+    let lastSaved = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - lastSaved < 150) return;
+      lastSaved = now;
+      persistScroll();
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('pagehide', persistScroll);
+    return () => {
+      persistScroll();
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pagehide', persistScroll);
+    };
+  }, [detailViewKey]);
 
   useEffect(() => {
     setNowMs(Date.now());
@@ -144,6 +222,7 @@ export default function AnimeDetailPage() {
             error: null,
             loading: false,
           } : prev));
+          setAnimeDetailSnapshot(id, { detail: data });
         }
       } catch {
         // Keep the current detail on background refresh failures.
@@ -328,7 +407,7 @@ export default function AnimeDetailPage() {
   ];
 
   return (
-    <div className="animate-content-in">
+    <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
       <PageHeader className='-mx-2 md:-mx-6' title={detail.title} />
 
       {/* Hero */}
@@ -343,20 +422,18 @@ export default function AnimeDetailPage() {
         season={detail.season}
         seasonYear={detail.seasonYear}
         studios={detail.studios}
-        inLibrary={detail.library?.exists}
-      />
-
-      <div className="space-y-5 mt-4">
-        {/* Add Button */}
-        <AnimeAddButton
+        bannerAction={<AnimeAddButton
           title={detail.title}
           format={detail.format}
           tvdbId={detail.tvdbId}
           tmdbId={detail.tmdbId}
           library={detail.library ?? undefined}
           libraryAvailability={detail.libraryAvailability}
-        />
+        />}
+      />
 
+      <div className="space-y-5 mt-4">
+        {/* Anilist update form */}
         <AnilistStatusPanel
           mediaId={detail.id}
           mediaTitle={detail.title}

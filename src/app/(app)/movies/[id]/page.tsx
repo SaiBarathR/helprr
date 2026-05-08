@@ -51,6 +51,12 @@ import {
   getMovieDetailSnapshot,
   setMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
+import {
+  getDetailViewState,
+  setDetailViewState,
+  waitForScrollY,
+  type DetailViewKey,
+} from '@/lib/detail-view-state';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import Link from 'next/link';
@@ -66,6 +72,26 @@ type RatingItem = {
   color: string;
 };
 
+function waitForElementScrollY(
+  element: HTMLElement,
+  targetScrollY: number,
+  timeoutMs = 1200,
+  pollMs = 50
+): Promise<void> {
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const tick = () => {
+      const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
+      if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
+        resolve();
+        return;
+      }
+      window.setTimeout(tick, pollMs);
+    };
+    tick();
+  });
+}
+
 function formatRatingVotes(votes: number): string {
   if (!votes) return '';
   if (votes >= 1_000_000) return `${(votes / 1_000_000).toFixed(1)}M`;
@@ -76,9 +102,14 @@ function formatRatingVotes(votes: number): string {
 export default function MovieDetailPage() {
   const { id } = useParams();
   const movieId = Number(id);
+  const initialSnapshot = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
+  const detailViewKey: DetailViewKey = `movie:${movieId}`;
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const scrollReadyRef = useRef(false);
+  const hasRestoredScrollRef = useRef(false);
   const router = useRouter();
-  const [movie, setMovie] = useState<RadarrMovie | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [movie, setMovie] = useState<RadarrMovie | null>(() => initialSnapshot?.movie ?? null);
+  const [loading, setLoading] = useState(() => !initialSnapshot);
   const [deleting, setDeleting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
@@ -87,29 +118,44 @@ export default function MovieDetailPage() {
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
-  const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(null);
+  const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
 
   // Reference data
-  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [credits, setCredits] = useState<RadarrCredit[]>([]);
+  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>(() => initialSnapshot?.qualityProfiles ?? []);
+  const [tags, setTags] = useState<Tag[]>(() => initialSnapshot?.tags ?? []);
+  const [credits, setCredits] = useState<RadarrCredit[]>(() => initialSnapshot?.credits ?? []);
   const creditsRequestIdRef = useRef(0);
+
+  const getCurrentScrollY = useCallback(() => {
+    const content = contentScrollRef.current;
+    if (content) {
+      const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
+      if (maxScroll > 0 || content.scrollTop > 0) return content.scrollTop;
+    }
+
+    if (typeof window === 'undefined') return 0;
+    return window.scrollY;
+  }, []);
 
   const persistMovieSnapshot = useCallback((next: {
     movie?: RadarrMovie | null;
     qualityProfiles?: QualityProfile[];
     tags?: Tag[];
+    tmdbData?: DiscoverMovieFullDetail | null;
+    credits?: RadarrCredit[];
   } = {}) => {
     if (!Number.isFinite(movieId)) return;
     setMovieDetailSnapshot(movieId, {
       movie: next.movie ?? movie,
       qualityProfiles: next.qualityProfiles ?? qualityProfiles,
       tags: next.tags ?? tags,
+      tmdbData: next.tmdbData ?? tmdbData,
+      credits: next.credits ?? credits,
     });
-  }, [movie, movieId, qualityProfiles, tags]);
+  }, [credits, movie, movieId, qualityProfiles, tags, tmdbData]);
 
   const loadData = useCallback(async (hasCachedData: boolean) => {
-    setCredits([]);
+    if (!hasCachedData) setCredits([]);
     const creditsRequestId = ++creditsRequestIdRef.current;
 
     if (!Number.isFinite(movieId)) {
@@ -149,6 +195,7 @@ export default function MovieDetailPage() {
       ]);
 
       const nextMovie = movieResult.movie;
+      const existingSnapshot = getMovieDetailSnapshot(movieId);
       setMovie(nextMovie);
       setQualityProfiles(nextQualityProfiles);
       setTags(nextTags);
@@ -156,6 +203,8 @@ export default function MovieDetailPage() {
         movie: nextMovie,
         qualityProfiles: nextQualityProfiles,
         tags: nextTags,
+        tmdbData: existingSnapshot?.tmdbData ?? null,
+        credits: existingSnapshot?.credits ?? [],
       });
 
       if (movieResult.notFound) {
@@ -168,10 +217,17 @@ export default function MovieDetailPage() {
         .then((nextCredits) => {
           if (creditsRequestId !== creditsRequestIdRef.current) return;
           setCredits(nextCredits);
+          setMovieDetailSnapshot(movieId, {
+            movie: nextMovie,
+            qualityProfiles: nextQualityProfiles,
+            tags: nextTags,
+            tmdbData: getMovieDetailSnapshot(movieId)?.tmdbData ?? null,
+            credits: nextCredits,
+          });
         })
         .catch(() => {
           if (creditsRequestId !== creditsRequestIdRef.current) return;
-          setCredits([]);
+          if (!hasCachedData) setCredits([]);
         });
     } catch {
       if (!hasCachedData) {
@@ -186,11 +242,15 @@ export default function MovieDetailPage() {
 
   useEffect(() => {
     const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
+    scrollReadyRef.current = false;
+    hasRestoredScrollRef.current = false;
 
     if (cached) {
       setMovie(cached.movie);
       setQualityProfiles(cached.qualityProfiles);
       setTags(cached.tags);
+      setTmdbData(cached.tmdbData ?? null);
+      setCredits(cached.credits ?? []);
       setLoading(false);
     } else {
       setLoading(true);
@@ -198,6 +258,69 @@ export default function MovieDetailPage() {
 
     void loadData(Boolean(cached));
   }, [loadData, movieId]);
+
+  useEffect(() => {
+    if (loading || !movie || hasRestoredScrollRef.current) return;
+    const saved = getDetailViewState(detailViewKey);
+    if (!saved || saved.scrollY <= 0) {
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const content = contentScrollRef.current;
+      const shouldUseContentScroll = Boolean(
+        content && Math.max(0, content.scrollHeight - content.clientHeight) > 0
+      );
+
+      if (shouldUseContentScroll && content) {
+        await waitForElementScrollY(content, saved.scrollY);
+      } else {
+        await waitForScrollY(saved.scrollY);
+      }
+
+      if (cancelled) return;
+      if (shouldUseContentScroll && content) {
+        content.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      } else {
+        window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      }
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailViewKey, loading, movie]);
+
+  useEffect(() => {
+    const persistScroll = () => {
+      if (!scrollReadyRef.current) return;
+      setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() });
+    };
+
+    let lastSaved = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - lastSaved < 150) return;
+      lastSaved = now;
+      persistScroll();
+    };
+
+    const content = contentScrollRef.current;
+    window.addEventListener('scroll', onScroll, { passive: true });
+    content?.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('pagehide', persistScroll);
+    return () => {
+      persistScroll();
+      window.removeEventListener('scroll', onScroll);
+      content?.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pagehide', persistScroll);
+    };
+  }, [detailViewKey, getCurrentScrollY, loading, movie]);
 
   // Background-fetch TMDB enrichment data
   useEffect(() => {
@@ -208,13 +331,23 @@ export default function MovieDetailPage() {
     const controller = new AbortController();
     fetch(`/api/discover/movie/${movie.tmdbId}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: DiscoverMovieFullDetail | null) => setTmdbData(data))
+      .then((data: DiscoverMovieFullDetail | null) => {
+        setTmdbData(data);
+        const cached = getMovieDetailSnapshot(movieId);
+        setMovieDetailSnapshot(movieId, {
+          movie: cached?.movie ?? null,
+          qualityProfiles: cached?.qualityProfiles ?? [],
+          tags: cached?.tags ?? [],
+          tmdbData: data,
+          credits: cached?.credits ?? [],
+        });
+      })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        setTmdbData(null);
+        setTmdbData((prev) => prev ?? null);
       });
     return () => controller.abort();
-  }, [movie?.tmdbId]);
+  }, [movie?.tmdbId, movieId]);
 
   async function handleOpenInJellyfin() {
     if (!movie || !externalUrls.JELLYFIN) return;
@@ -508,7 +641,11 @@ export default function MovieDetailPage() {
         }
       />
 
-      <div className="space-y-6 animate-content-in">
+      <div
+        ref={contentScrollRef}
+        className="space-y-6 animate-content-in"
+        onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() })}
+      >
         {/* Hero: Backdrop or flat poster layout */}
         {tmdbData?.backdropPath ? (
           <div>

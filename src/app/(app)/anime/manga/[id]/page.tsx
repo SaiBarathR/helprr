@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'isomorphic-dompurify';
@@ -15,6 +15,13 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ExternalLink } from 'lucide-react';
 import type { AniListMangaDetailResponse } from '@/types/anilist';
+import { getMangaDetailSnapshot, setMangaDetailSnapshot } from '@/lib/anilist-detail-cache';
+import {
+  getDetailViewState,
+  setDetailViewState,
+  waitForScrollY,
+  type DetailViewKey,
+} from '@/lib/detail-view-state';
 
 interface DetailState {
   id: string;
@@ -26,16 +33,40 @@ interface DetailState {
 export default function MangaDetailPage() {
   const params = useParams();
   const id = params.id as string;
+  const detailViewKey: DetailViewKey = `manga:${id}`;
+  const scrollReadyRef = useRef(false);
+  const hasRestoredScrollRef = useRef(false);
   const [state, setState] = useState<DetailState>(() => ({
     id,
-    detail: null,
+    detail: getMangaDetailSnapshot(id)?.detail ?? null,
     error: null,
-    loading: true,
+    loading: !getMangaDetailSnapshot(id)?.detail,
   }));
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
+    const cached = getMangaDetailSnapshot(id);
+
+    scrollReadyRef.current = false;
+    hasRestoredScrollRef.current = false;
+    queueMicrotask(() => {
+      if (cached?.detail) {
+        setState({
+          id,
+          detail: cached.detail,
+          error: null,
+          loading: false,
+        });
+      } else {
+        setState({
+          id,
+          detail: null,
+          error: null,
+          loading: true,
+        });
+      }
+    });
 
     fetch(`/api/anime/manga/${id}`, { signal: controller.signal })
       .then(async (res) => {
@@ -53,10 +84,15 @@ export default function MangaDetailPage() {
             error: null,
             loading: false,
           });
+          setMangaDetailSnapshot(id, { detail: data });
         }
       })
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') return;
+        if (cached?.detail) {
+          setState((prev) => (prev.id === id ? { ...prev, loading: false } : prev));
+          return;
+        }
         setState({
           id,
           detail: null,
@@ -67,6 +103,52 @@ export default function MangaDetailPage() {
 
     return () => controller.abort();
   }, [id]);
+
+  useEffect(() => {
+    if (state.id !== id || state.loading || !state.detail || hasRestoredScrollRef.current) return;
+    const saved = getDetailViewState(detailViewKey);
+    if (!saved || saved.scrollY <= 0) {
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      await waitForScrollY(saved.scrollY);
+      if (cancelled) return;
+      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
+      hasRestoredScrollRef.current = true;
+      scrollReadyRef.current = true;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailViewKey, id, state.detail, state.id, state.loading]);
+
+  useEffect(() => {
+    const persistScroll = () => {
+      if (!scrollReadyRef.current) return;
+      setDetailViewState(detailViewKey, { scrollY: window.scrollY });
+    };
+
+    let lastSaved = 0;
+    const onScroll = () => {
+      const now = Date.now();
+      if (now - lastSaved < 150) return;
+      lastSaved = now;
+      persistScroll();
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('pagehide', persistScroll);
+    return () => {
+      persistScroll();
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pagehide', persistScroll);
+    };
+  }, [detailViewKey]);
 
   const detail = state.id === id ? state.detail : null;
   const loading = state.id === id ? state.loading : true;
@@ -130,7 +212,7 @@ export default function MangaDetailPage() {
   ];
 
   return (
-    <div className="animate-content-in">
+    <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
       <PageHeader className='-mx-2 md:-mx-6' title={detail.title} />
 
       {/* Hero */}

@@ -1,9 +1,11 @@
-import type { QualityProfile, RadarrMovie, Tag } from '@/types';
+import type { DiscoverMovieFullDetail, QualityProfile, RadarrCredit, RadarrMovie, Tag } from '@/types';
 
 export interface MovieDetailSnapshot {
   movie: RadarrMovie | null;
   qualityProfiles: QualityProfile[];
   tags: Tag[];
+  tmdbData?: DiscoverMovieFullDetail | null;
+  credits?: RadarrCredit[];
   fetchedAt: number;
 }
 
