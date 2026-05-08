@@ -26,8 +26,9 @@ import type {
 
 interface ViewerResponse {
   configured: boolean;
-  connected: boolean;
+  connected: boolean | null;
   requiresReauth: boolean;
+  transientError?: boolean;
   user?: {
     id: number;
     name: string;
@@ -147,34 +148,16 @@ export default function AnimeLibraryPage() {
   const router = useRouter();
   const pathname = usePathname();
 
-  const sharedView = typeof window !== 'undefined' ? getListViewState(SHARED_VIEW_KEY) : null;
-  const sharedExtras = (sharedView?.extras ?? {}) as SharedExtras;
-
   const urlType = urlParams.get('type');
   const urlStatus = urlParams.get('status');
 
-  const initialType: AniListMediaType =
-    urlType === 'MANGA' || urlType === 'ANIME'
-      ? urlType
-      : sharedExtras.type === 'MANGA' || sharedExtras.type === 'ANIME'
-        ? sharedExtras.type
-        : 'ANIME';
-
-  const initialStatus: AniListMediaListStatus | 'ALL' = (() => {
-    if (urlStatus && VALID_STATUS_VALUES.has(urlStatus)) {
-      return urlStatus as AniListMediaListStatus | 'ALL';
-    }
-    if (sharedExtras.status && VALID_STATUS_VALUES.has(sharedExtras.status)) {
-      return sharedExtras.status;
-    }
-    return 'ALL';
-  })();
-
-  const [type, setType] = useState<AniListMediaType>(initialType);
-  const [status, setStatus] = useState<AniListMediaListStatus | 'ALL'>(initialStatus);
+  const [type, setType] = useState<AniListMediaType>('ANIME');
+  const [status, setStatus] = useState<AniListMediaListStatus | 'ALL'>('ALL');
+  const [hydrated, setHydrated] = useState(false);
 
   // Keep URL in sync with selected tab/type so back navigation lands on the same view
   useEffect(() => {
+    if (!hydrated) return;
     const params = new URLSearchParams();
     if (type !== 'ANIME') params.set('type', type);
     if (status !== 'ALL') params.set('status', status);
@@ -185,37 +168,57 @@ export default function AnimeLibraryPage() {
       router.replace(target, { scroll: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, status, pathname]);
+  }, [hydrated, type, status, pathname]);
 
-  const initialCacheKey = tabKey(initialType, initialStatus);
-  const initialCachedCollection =
-    typeof window !== 'undefined'
-      ? getCachedListData<AniListMediaListCollection>(initialCacheKey)?.data ?? null
-      : null;
-  const initialCachedViewer =
-    typeof window !== 'undefined'
-      ? getCachedListData<ViewerResponse>(VIEWER_CACHE_KEY)?.data ?? null
-      : null;
-
-  const [viewer, setViewer] = useState<ViewerResponse | null>(initialCachedViewer);
-  const [collection, setCollection] = useState<AniListMediaListCollection | null>(initialCachedCollection);
-  const [loading, setLoading] = useState(!initialCachedCollection);
+  const [viewer, setViewer] = useState<ViewerResponse | null>(null);
+  const [collection, setCollection] = useState<AniListMediaListCollection | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const cacheKey = tabKey(type, status);
 
-  const [renderedCount, setRenderedCount] = useState<number>(() => {
-    const cached = typeof window !== 'undefined' ? getListViewState(initialCacheKey) : null;
-    const extras = (cached?.extras ?? {}) as PerTabExtras;
-    return extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE;
-  });
+  const [renderedCount, setRenderedCount] = useState<number>(PAGE_SIZE);
 
   const firstTabRunRef = useRef(true);
-  const initialHydrationRef = useRef(Boolean(initialCachedCollection));
+  const initialHydrationRef = useRef(false);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   const hasRestoredScrollRef = useRef(false);
+
+  useEffect(() => {
+    const sharedView = getListViewState(SHARED_VIEW_KEY);
+    const sharedExtras = (sharedView?.extras ?? {}) as SharedExtras;
+
+    const restoredType: AniListMediaType =
+      urlType === 'MANGA' || urlType === 'ANIME'
+        ? urlType
+        : sharedExtras.type === 'MANGA' || sharedExtras.type === 'ANIME'
+          ? sharedExtras.type
+          : 'ANIME';
+
+    const restoredStatus: AniListMediaListStatus | 'ALL' =
+      urlStatus && VALID_STATUS_VALUES.has(urlStatus)
+        ? (urlStatus as AniListMediaListStatus | 'ALL')
+        : sharedExtras.status && VALID_STATUS_VALUES.has(sharedExtras.status)
+          ? sharedExtras.status
+          : 'ALL';
+
+    const restoredCacheKey = tabKey(restoredType, restoredStatus);
+    const cachedCollection = getCachedListData<AniListMediaListCollection>(restoredCacheKey)?.data ?? null;
+    const cachedViewer = getCachedListData<ViewerResponse>(VIEWER_CACHE_KEY)?.data ?? null;
+    const cachedView = getListViewState(restoredCacheKey);
+    const extras = (cachedView?.extras ?? {}) as PerTabExtras;
+
+    setType(restoredType);
+    setStatus(restoredStatus);
+    setViewer(cachedViewer);
+    setCollection(cachedCollection);
+    setLoading(!cachedCollection);
+    setRenderedCount(extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE);
+    initialHydrationRef.current = Boolean(cachedCollection);
+    setHydrated(true);
+  }, [urlStatus, urlType]);
 
   const persistShared = useCallback(
     (nextType: AniListMediaType, nextStatus: AniListMediaListStatus | 'ALL') => {

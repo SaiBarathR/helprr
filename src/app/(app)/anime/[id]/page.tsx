@@ -19,10 +19,10 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ExternalLink, Tv, Film, Loader2, Clock, Trophy, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import type { AniListDetailResponse, AniListFuzzyDate } from '@/types/anilist';
+import type { AniListDetailResponse } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
-import { formatAniListRankingLabel } from '@/lib/anilist-helpers';
+import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
 
 type DetailWithLibrary = AniListDetailResponse & {
   library?: DiscoverLibraryStatus | null;
@@ -36,18 +36,6 @@ interface DetailState {
   detail: DetailWithLibrary | null;
   error: string | null;
   loading: boolean;
-}
-
-function formatFuzzyDate(date: AniListFuzzyDate | null): string | null {
-  if (!date || !date.year) return null;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  if (date.month && date.day) {
-    return `${months[date.month - 1]} ${date.day}, ${date.year}`;
-  }
-  if (date.month) {
-    return `${months[date.month - 1]} ${date.year}`;
-  }
-  return String(date.year);
 }
 
 function formatCountdown(seconds: number): string {

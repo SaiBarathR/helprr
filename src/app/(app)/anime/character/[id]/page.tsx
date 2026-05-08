@@ -10,11 +10,11 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Heart, Loader2, Star, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { formatFavourites, formatFuzzyDate } from '@/lib/anilist-helpers';
 import type {
   AniListCharacterDetailResponse,
   AniListCharacterMediaEdge,
   AniListPageInfo,
-  AniListFuzzyDate,
 } from '@/types/anilist';
 
 const SORT_OPTIONS = [
@@ -25,21 +25,6 @@ const SORT_OPTIONS = [
   { value: 'START_DATE', label: 'Oldest' },
   { value: 'TITLE_ROMAJI', label: 'Title' },
 ];
-
-function formatFuzzyDate(date: AniListFuzzyDate | null): string | null {
-  if (!date) return null;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  if (date.month && date.day) return `${months[date.month - 1]} ${date.day}${date.year ? `, ${date.year}` : ''}`;
-  if (date.month) return `${months[date.month - 1]}${date.year ? ` ${date.year}` : ''}`;
-  if (date.year) return String(date.year);
-  return null;
-}
-
-function formatFavourites(n: number | null): string {
-  if (n == null) return '0';
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
-  return n.toLocaleString();
-}
 
 export default function CharacterDetailPage() {
   const params = useParams();
@@ -61,12 +46,12 @@ export default function CharacterDetailPage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const sortDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Initial load
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setError(null);
 
-    fetch(`/api/anime/character/${id}`, { signal: controller.signal })
+    fetch(`/api/anime/character/${id}?page=1&sort=${sort}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load');
         return res.json();
@@ -86,24 +71,7 @@ export default function CharacterDetailPage() {
       });
 
     return () => controller.abort();
-  }, [id]);
-
-  // Refetch on sort change
-  useEffect(() => {
-    if (!detail) return;
-    const controller = new AbortController();
-    fetch(`/api/anime/character/${id}?page=1&sort=${sort}`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((data: AniListCharacterDetailResponse) => {
-        if (!controller.signal.aborted) {
-          setMedia(data.media);
-          setPageInfo(data.mediaPageInfo);
-        }
-      })
-      .catch(() => {});
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sort]);
+  }, [id, sort]);
 
   // Fetch more media
   const fetchMore = useCallback(async () => {

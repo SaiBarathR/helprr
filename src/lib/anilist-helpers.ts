@@ -277,6 +277,20 @@ export function formatAniListRankingLabel(ranking: AniListRanking): string {
   return scope ? `${base} ${scope}` : base;
 }
 
+export function formatFuzzyDate(date: { year?: number | null; month?: number | null; day?: number | null } | null): string | null {
+  if (!date || !date.year) return null;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  if (date.month && date.day) return `${months[date.month - 1]} ${date.day}, ${date.year}`;
+  if (date.month) return `${months[date.month - 1]} ${date.year}`;
+  return String(date.year);
+}
+
+export function formatFavourites(n: number | null): string {
+  if (n == null) return '0';
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  return n.toLocaleString();
+}
+
 export function extractYouTubeTrailerFallback(
   externalLinks: AniListExternalLink[]
 ): { id: string; site: string; thumbnail: string | null } | null {

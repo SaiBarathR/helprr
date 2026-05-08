@@ -33,10 +33,27 @@ function parseFuzzyDate(value: unknown): { year?: number; month?: number; day?: 
   if (!value || typeof value !== 'object') return undefined;
   const v = value as Record<string, unknown>;
   const result: { year?: number; month?: number; day?: number } = {};
-  if (isFiniteNumber(v.year)) result.year = v.year;
-  if (isFiniteNumber(v.month)) result.month = v.month;
-  if (isFiniteNumber(v.day)) result.day = v.day;
+  if (isFiniteNumber(v.year)) result.year = Math.trunc(v.year);
+  if (isFiniteNumber(v.month)) result.month = Math.trunc(v.month);
+  if (isFiniteNumber(v.day)) result.day = Math.trunc(v.day);
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function isValidFuzzyDate(value: { year?: number; month?: number; day?: number }): boolean {
+  if (value.year !== undefined && (value.year < 1 || value.year > 9999)) return false;
+  if (value.month !== undefined && (value.month < 1 || value.month > 12)) return false;
+  if (value.day !== undefined) {
+    if (value.day < 1) return false;
+    const daysInMonth = value.year && value.month
+      ? new Date(value.year, value.month, 0).getDate()
+      : 31;
+    if (value.day > daysInMonth) return false;
+  }
+  return true;
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -92,18 +109,47 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const input: SaveMediaListEntryInput = { mediaId };
 
-  if (typeof b.status === 'string' && (VALID_STATUSES as string[]).includes(b.status)) {
+  if (hasOwn(b, 'status')) {
+    if (typeof b.status !== 'string' || !(VALID_STATUSES as string[]).includes(b.status)) {
+      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    }
     input.status = b.status as AniListMediaListStatus;
   }
-  if (isFiniteNumber(b.score)) input.score = b.score;
-  if (isFiniteNumber(b.progress)) input.progress = b.progress;
-  if (isFiniteNumber(b.progressVolumes)) input.progressVolumes = b.progressVolumes;
-  if (isFiniteNumber(b.repeat)) input.repeat = b.repeat;
+  if (hasOwn(b, 'score')) {
+    if (!isFiniteNumber(b.score) || b.score < 0 || b.score > 100) {
+      return NextResponse.json({ error: 'Invalid score' }, { status: 400 });
+    }
+    input.score = b.score;
+  }
+  if (hasOwn(b, 'progress')) {
+    if (!isFiniteNumber(b.progress) || b.progress < 0) {
+      return NextResponse.json({ error: 'Invalid progress' }, { status: 400 });
+    }
+    input.progress = Math.trunc(b.progress);
+  }
+  if (hasOwn(b, 'progressVolumes')) {
+    if (!isFiniteNumber(b.progressVolumes) || b.progressVolumes < 0) {
+      return NextResponse.json({ error: 'Invalid progressVolumes' }, { status: 400 });
+    }
+    input.progressVolumes = Math.trunc(b.progressVolumes);
+  }
+  if (hasOwn(b, 'repeat')) {
+    if (!isFiniteNumber(b.repeat) || b.repeat < 0) {
+      return NextResponse.json({ error: 'Invalid repeat' }, { status: 400 });
+    }
+    input.repeat = Math.trunc(b.repeat);
+  }
   if (typeof b.notes === 'string') input.notes = b.notes;
 
   const startedAt = parseFuzzyDate(b.startedAt);
+  if (hasOwn(b, 'startedAt') && (!startedAt || !isValidFuzzyDate(startedAt))) {
+    return NextResponse.json({ error: 'Invalid startedAt' }, { status: 400 });
+  }
   if (startedAt) input.startedAt = startedAt;
   const completedAt = parseFuzzyDate(b.completedAt);
+  if (hasOwn(b, 'completedAt') && (!completedAt || !isValidFuzzyDate(completedAt))) {
+    return NextResponse.json({ error: 'Invalid completedAt' }, { status: 400 });
+  }
   if (completedAt) input.completedAt = completedAt;
 
   try {

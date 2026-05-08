@@ -10,14 +10,15 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Heart, Loader2, Star, ChevronDown } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { formatFavourites, formatFuzzyDate } from '@/lib/anilist-helpers';
 import type {
   AniListStaffDetailResponse,
   AniListStaffMediaEdge,
   AniListStaffVoiceActingEdge,
   AniListPageInfo,
-  AniListFuzzyDate,
 } from '@/types/anilist';
 
+const DEFAULT_SORT = 'POPULARITY_DESC';
 const SORT_OPTIONS = [
   { value: 'POPULARITY_DESC', label: 'Popularity' },
   { value: 'SCORE_DESC', label: 'Average Score' },
@@ -26,20 +27,6 @@ const SORT_OPTIONS = [
   { value: 'START_DATE', label: 'Oldest' },
   { value: 'TITLE_ROMAJI', label: 'Title' },
 ];
-
-function formatFuzzyDate(date: AniListFuzzyDate | null): string | null {
-  if (!date || !date.year) return null;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  if (date.month && date.day) return `${months[date.month - 1]} ${date.day}, ${date.year}`;
-  if (date.month) return `${months[date.month - 1]} ${date.year}`;
-  return String(date.year);
-}
-
-function formatFavourites(n: number | null): string {
-  if (n == null) return '0';
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
-  return n.toLocaleString();
-}
 
 export default function StaffDetailPage() {
   const params = useParams();
@@ -53,7 +40,7 @@ export default function StaffDetailPage() {
   // Anime media state
   const [animeMedia, setAnimeMedia] = useState<AniListStaffMediaEdge[]>([]);
   const [animePageInfo, setAnimePageInfo] = useState<AniListPageInfo | null>(null);
-  const [animeSort, setAnimeSort] = useState('POPULARITY_DESC');
+  const [animeSort, setAnimeSort] = useState(DEFAULT_SORT);
   const [animeLoadingMore, setAnimeLoadingMore] = useState(false);
   const [animeSortOpen, setAnimeSortOpen] = useState(false);
   const animeSentinelRef = useRef<HTMLDivElement>(null);
@@ -61,7 +48,7 @@ export default function StaffDetailPage() {
   // Manga media state
   const [mangaMedia, setMangaMedia] = useState<AniListStaffMediaEdge[]>([]);
   const [mangaPageInfo, setMangaPageInfo] = useState<AniListPageInfo | null>(null);
-  const [mangaSort, setMangaSort] = useState('POPULARITY_DESC');
+  const [mangaSort, setMangaSort] = useState(DEFAULT_SORT);
   const [mangaLoadingMore, setMangaLoadingMore] = useState(false);
   const [mangaSortOpen, setMangaSortOpen] = useState(false);
   const mangaSentinelRef = useRef<HTMLDivElement>(null);
@@ -69,17 +56,29 @@ export default function StaffDetailPage() {
   // Voice acting state
   const [vaMedia, setVaMedia] = useState<AniListStaffVoiceActingEdge[]>([]);
   const [vaPageInfo, setVaPageInfo] = useState<AniListPageInfo | null>(null);
-  const [vaSort, setVaSort] = useState('POPULARITY_DESC');
+  const [vaSort, setVaSort] = useState(DEFAULT_SORT);
   const [vaLoadingMore, setVaLoadingMore] = useState(false);
   const [vaSortOpen, setVaSortOpen] = useState(false);
   const vaSentinelRef = useRef<HTMLDivElement>(null);
 
-  // Initial load
+  useEffect(() => {
+    setAnimeSort(DEFAULT_SORT);
+    setMangaSort(DEFAULT_SORT);
+    setVaSort(DEFAULT_SORT);
+  }, [id]);
+
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setError(null);
 
-    fetch(`/api/anime/staff/${id}`, { signal: controller.signal })
+    const params = new URLSearchParams({
+      animeSort,
+      mangaSort,
+      vaSort,
+    });
+
+    fetch(`/api/anime/staff/${id}?${params.toString()}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load');
         return res.json();
@@ -103,7 +102,7 @@ export default function StaffDetailPage() {
       });
 
     return () => controller.abort();
-  }, [id]);
+  }, [id, animeSort, mangaSort, vaSort]);
 
   // Fetch more anime
   const fetchMoreAnime = useCallback(async () => {
@@ -158,57 +157,6 @@ export default function StaffDetailPage() {
       setVaLoadingMore(false);
     }
   }, [id, vaPageInfo, vaLoadingMore, vaSort]);
-
-  // Refetch anime on sort change
-  useEffect(() => {
-    if (!detail) return;
-    const controller = new AbortController();
-    fetch(`/api/anime/staff/${id}?page=1&sort=${animeSort}&type=ANIME`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setAnimeMedia(data.edges);
-          setAnimePageInfo(data.pageInfo);
-        }
-      })
-      .catch(() => {});
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animeSort]);
-
-  // Refetch manga on sort change
-  useEffect(() => {
-    if (!detail) return;
-    const controller = new AbortController();
-    fetch(`/api/anime/staff/${id}?page=1&sort=${mangaSort}&type=MANGA`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setMangaMedia(data.edges);
-          setMangaPageInfo(data.pageInfo);
-        }
-      })
-      .catch(() => {});
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mangaSort]);
-
-  // Refetch voice acting on sort change
-  useEffect(() => {
-    if (!detail) return;
-    const controller = new AbortController();
-    fetch(`/api/anime/staff/${id}?page=1&sort=${vaSort}&type=VOICE_ACTING`, { signal: controller.signal })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!controller.signal.aborted) {
-          setVaMedia(data.edges);
-          setVaPageInfo(data.pageInfo);
-        }
-      })
-      .catch(() => {});
-    return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vaSort]);
 
   // Anime infinite scroll
   useEffect(() => {
@@ -556,7 +504,7 @@ function StaffMediaSection({
                 )}
               </div>
               <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{edge.node.title}</p>
-              <p className="text-[11px] text-muted-foreground line-clamp-2">{roles.join('\n')}</p>
+              <p className="text-[11px] text-muted-foreground line-clamp-2 whitespace-pre-line">{roles.join('\n')}</p>
             </Link>
           );
         })}

@@ -8,8 +8,9 @@ import { fetchViewer } from '@/lib/anilist-mutations';
 
 interface ViewerResponse {
   configured: boolean;
-  connected: boolean;
+  connected: boolean | null;
   requiresReauth: boolean;
+  transientError?: boolean;
   user?: {
     id: number;
     name: string;
@@ -71,6 +72,9 @@ export async function GET(): Promise<NextResponse<ViewerResponse>> {
       return NextResponse.json({ configured: true, connected: false, requiresReauth: true });
     }
     console.error('AniList viewer fetch failed', error);
-    return NextResponse.json({ configured: true, connected: false, requiresReauth: false });
+    return NextResponse.json(
+      { configured: true, connected: null, requiresReauth: false, transientError: true },
+      { status: 503 }
+    );
   }
 }

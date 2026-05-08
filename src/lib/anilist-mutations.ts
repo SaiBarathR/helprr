@@ -51,7 +51,7 @@ export interface AniListListMediaSummary {
   seasonYear: number | null;
 }
 
-export interface AniListMediaListEntry {
+export interface AniListMediaListEntryBase {
   id: number;
   status: AniListMediaListStatus;
   score: number;
@@ -62,6 +62,9 @@ export interface AniListMediaListEntry {
   startedAt: { year: number | null; month: number | null; day: number | null } | null;
   completedAt: { year: number | null; month: number | null; day: number | null } | null;
   updatedAt: number | null;
+}
+
+export interface AniListMediaListEntry extends AniListMediaListEntryBase {
   media: AniListListMediaSummary;
 }
 
@@ -202,7 +205,7 @@ export async function fetchMediaListCollection(params: {
   type: AniListMediaType;
   status?: AniListMediaListStatus;
 }): Promise<AniListMediaListCollection> {
-  const data = await gqlRequestAuthenticated<{ MediaListCollection: AniListMediaListCollection }>(
+  const data = await gqlRequestAuthenticated<{ MediaListCollection: AniListMediaListCollection | null }>(
     MEDIA_LIST_COLLECTION_QUERY,
     {
       userId: params.userId,
@@ -210,11 +213,11 @@ export async function fetchMediaListCollection(params: {
       ...(params.status ? { status: params.status } : {}),
     }
   );
-  return data.MediaListCollection;
+  return data.MediaListCollection ?? { lists: [] };
 }
 
-export async function saveMediaListEntry(input: SaveMediaListEntryInput) {
-  const data = await gqlRequestAuthenticated<{ SaveMediaListEntry: AniListMediaListEntry & { mediaId: number } }>(
+export async function saveMediaListEntry(input: SaveMediaListEntryInput): Promise<AniListMediaListEntryBase & { mediaId: number }> {
+  const data = await gqlRequestAuthenticated<{ SaveMediaListEntry: AniListMediaListEntryBase & { mediaId: number } }>(
     SAVE_MEDIA_LIST_ENTRY_MUTATION,
     input as unknown as Record<string, unknown>
   );
@@ -232,10 +235,10 @@ export async function deleteMediaListEntry(id: number): Promise<{ deleted: boole
 export async function fetchUserMediaListEntry(params: {
   userId: number;
   mediaId: number;
-}): Promise<AniListMediaListEntry | null> {
+}): Promise<AniListMediaListEntryBase | null> {
   try {
     const data = await gqlRequestAuthenticated<{
-      MediaList: AniListMediaListEntry | null;
+      MediaList: AniListMediaListEntryBase | null;
     }>(MEDIA_LIST_ENTRY_QUERY, params);
     return data.MediaList ?? null;
   } catch (error) {

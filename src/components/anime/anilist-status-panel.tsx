@@ -2,14 +2,18 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Sparkles, Pencil, Plus, Loader2 } from 'lucide-react';
+import { Sparkles, Pencil, Plus, Loader2, AlertTriangle } from 'lucide-react';
 import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
-import type { AniListMediaListEntry, AniListMediaListStatus } from '@/lib/anilist-mutations';
+import type { AniListMediaListEntryBase, AniListMediaListStatus } from '@/lib/anilist-mutations';
 
 interface ViewerSummary {
   configured: boolean;
-  connected: boolean;
+  connected: boolean | null;
   requiresReauth: boolean;
+  transientError?: boolean;
+  user?: {
+    scoreFormat: string | null;
+  };
 }
 
 interface AnilistStatusPanelProps {
@@ -57,21 +61,27 @@ export function AnilistStatusPanel({
   totalVolumes,
 }: AnilistStatusPanelProps) {
   const [viewer, setViewer] = useState<ViewerSummary | null>(null);
-  const [entry, setEntry] = useState<AniListMediaListEntry | null>(null);
+  const [entry, setEntry] = useState<AniListMediaListEntryBase | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const loadEntry = useCallback(async () => {
     try {
       const res = await fetch(`/api/anilist/list-entry?mediaId=${mediaId}`);
+      if (res.status === 401) {
+        setViewer((prev) => prev ? { ...prev, connected: false, requiresReauth: true } : { configured: true, connected: false, requiresReauth: true });
+        return;
+      }
       if (!res.ok) {
-        setEntry(null);
+        setLoadError(true);
         return;
       }
       const data = await res.json();
+      setLoadError(false);
       setEntry(data.entry ?? null);
     } catch {
-      setEntry(null);
+      setLoadError(true);
     }
   }, [mediaId]);
 
@@ -132,10 +142,17 @@ export function AnilistStatusPanel({
 
   const labels = mediaType === 'MANGA' ? STATUS_LABELS_MANGA : STATUS_LABELS_ANIME;
   const total = mediaType === 'MANGA' ? totalChapters : totalEpisodes;
+  const loadErrorBanner = loadError ? (
+    <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200 flex items-center gap-2">
+      <AlertTriangle className="h-3.5 w-3.5" />
+      AniList status is temporarily unavailable.
+    </div>
+  ) : null;
 
   if (!entry) {
     return (
       <>
+        {loadErrorBanner}
         <button
           onClick={() => setDrawerOpen(true)}
           className="group relative w-full flex items-center justify-between gap-4 rounded-lg border border-pink-500/30 bg-pink-500/10 px-5 py-3 hover:bg-pink-500/20 transition-colors press-feedback"
@@ -161,6 +178,7 @@ export function AnilistStatusPanel({
           totalChapters={totalChapters}
           totalVolumes={totalVolumes}
           entry={null}
+          scoreFormat={viewer.user?.scoreFormat ?? null}
           onSaved={(saved) => setEntry(saved)}
           onDeleted={() => setEntry(null)}
         />
@@ -173,6 +191,7 @@ export function AnilistStatusPanel({
 
   return (
     <>
+      {loadErrorBanner}
       <button
         onClick={() => setDrawerOpen(true)}
         className="group relative w-full flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card/40 backdrop-blur-sm px-5 py-3 hover:border-pink-500/40 hover:bg-pink-500/5 transition-colors press-feedback"
@@ -203,6 +222,7 @@ export function AnilistStatusPanel({
         totalChapters={totalChapters}
         totalVolumes={totalVolumes}
         entry={entry}
+        scoreFormat={viewer.user?.scoreFormat ?? null}
         onSaved={(saved) => setEntry(saved)}
         onDeleted={() => setEntry(null)}
       />

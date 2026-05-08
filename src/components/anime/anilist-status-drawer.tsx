@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2, Trash2 } from 'lucide-react';
-import type { AniListMediaListEntry, AniListMediaListStatus } from '@/lib/anilist-mutations';
+import type { AniListMediaListEntryBase, AniListMediaListStatus } from '@/lib/anilist-mutations';
 
 const STATUS_LABELS_ANIME: Record<AniListMediaListStatus, string> = {
   CURRENT: 'Watching',
@@ -58,13 +58,30 @@ interface AnilistStatusDrawerProps {
   totalEpisodes?: number | null;
   totalChapters?: number | null;
   totalVolumes?: number | null;
-  entry: AniListMediaListEntry | null;
-  onSaved: (entry: AniListMediaListEntry) => void;
+  entry: AniListMediaListEntryBase | null;
+  scoreFormat?: string | null;
+  onSaved: (entry: AniListMediaListEntryBase) => void;
   onDeleted: () => void;
 }
 
 function formatProgressTotal(total: number | null | undefined): string {
   return total != null ? `/ ${total}` : '';
+}
+
+function getScoreConfig(scoreFormat: string | null | undefined) {
+  switch (scoreFormat) {
+    case 'POINT_100':
+      return { min: 0, max: 100, step: 1, label: 'Score (0-100)' };
+    case 'POINT_10_DECIMAL':
+      return { min: 0, max: 10, step: 0.1, label: 'Score (0-10)' };
+    case 'POINT_5':
+      return { min: 0, max: 5, step: 1, label: 'Score (0-5)' };
+    case 'POINT_3':
+      return { min: 0, max: 3, step: 1, label: 'Score (0-3)' };
+    case 'POINT_10':
+    default:
+      return { min: 0, max: 10, step: 1, label: 'Score (0-10)' };
+  }
 }
 
 export function AnilistStatusDrawer({
@@ -77,11 +94,13 @@ export function AnilistStatusDrawer({
   totalChapters,
   totalVolumes,
   entry,
+  scoreFormat,
   onSaved,
   onDeleted,
 }: AnilistStatusDrawerProps) {
   const isManga = mediaType === 'MANGA';
   const labels = isManga ? STATUS_LABELS_MANGA : STATUS_LABELS_ANIME;
+  const scoreConfig = getScoreConfig(scoreFormat);
 
   const [form, setForm] = useState<FormState>(() => ({
     status: entry?.status || 'PLANNING',
@@ -113,7 +132,13 @@ export function AnilistStatusDrawer({
         status: form.status,
       };
       const score = Number(form.score);
-      if (form.score.trim() !== '' && Number.isFinite(score)) body.score = score;
+      if (form.score.trim() !== '') {
+        if (!Number.isFinite(score) || score < scoreConfig.min || score > scoreConfig.max) {
+          toast.error(`Score must be between ${scoreConfig.min} and ${scoreConfig.max}`);
+          return;
+        }
+        body.score = score;
+      }
       const progress = Number(form.progress);
       if (form.progress.trim() !== '' && Number.isFinite(progress)) body.progress = progress;
       if (isManga && form.progressVolumes.trim() !== '') {
@@ -136,6 +161,8 @@ export function AnilistStatusDrawer({
       toast.success('Saved to AniList');
       onSaved(data.entry);
       onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Network error');
     } finally {
       setSaving(false);
     }
@@ -154,6 +181,8 @@ export function AnilistStatusDrawer({
       toast.success('Removed from AniList');
       onDeleted();
       onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Network error');
     } finally {
       setDeleting(false);
     }
@@ -184,12 +213,12 @@ export function AnilistStatusDrawer({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Score (0–10)</Label>
+            <Label className="text-xs text-muted-foreground">{scoreConfig.label}</Label>
             <Input
               type="number"
-              min="0"
-              max="10"
-              step="0.5"
+              min={String(scoreConfig.min)}
+              max={String(scoreConfig.max)}
+              step={String(scoreConfig.step)}
               placeholder="—"
               value={form.score}
               onChange={(e) => setForm((prev) => ({ ...prev, score: e.target.value }))}

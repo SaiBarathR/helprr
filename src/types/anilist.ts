@@ -593,6 +593,7 @@ export type AniListSort =
   | 'POPULARITY_DESC'
   | 'SCORE_DESC'
   | 'START_DATE_DESC'
+  | 'START_DATE'
   | 'TITLE_ROMAJI'
   | 'FAVOURITES_DESC'
   | 'ID_DESC';

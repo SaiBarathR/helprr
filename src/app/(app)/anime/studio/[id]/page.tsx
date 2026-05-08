@@ -9,6 +9,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Heart, Loader2, Star, ChevronDown } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { formatFavourites } from '@/lib/anilist-helpers';
 import type {
   AniListStudioDetailResponse,
   AniListStudioMediaNode,
@@ -23,12 +24,6 @@ const SORT_OPTIONS = [
   { value: 'START_DATE', label: 'Oldest' },
   { value: 'TITLE_ROMAJI', label: 'Title' },
 ];
-
-function formatFavourites(n: number | null): string {
-  if (n == null) return '0';
-  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, '')}K`;
-  return n.toLocaleString();
-}
 
 function getMediaYear(item: AniListStudioMediaNode): string {
   if (item.status === 'NOT_YET_RELEASED' && !item.seasonYear && !item.startDate?.year) {
@@ -59,6 +54,7 @@ export default function StudioDetailPage() {
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setError(null);
 
     fetch(`/api/anime/studio/${id}?page=1&sort=${sort}`, { signal: controller.signal })
       .then(async (res) => {
@@ -70,6 +66,7 @@ export default function StudioDetailPage() {
         setDetail(data);
         setMedia(data.media);
         setPageInfo(data.mediaPageInfo);
+        setError(null);
         setLoading(false);
       })
       .catch((e) => {
