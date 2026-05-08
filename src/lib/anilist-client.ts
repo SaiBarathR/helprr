@@ -22,7 +22,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 85; // leave a small buffer
 const requestTimestamps: number[] = [];
 
-async function rateLimitWait(): Promise<void> {
+export async function rateLimitWait(): Promise<void> {
   const now = Date.now();
   // Remove timestamps older than the window
   while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
@@ -38,7 +38,7 @@ async function rateLimitWait(): Promise<void> {
   requestTimestamps.push(Date.now());
 }
 
-const MEDIA_LIST_FRAGMENT = `
+export const MEDIA_LIST_FRAGMENT = `
   id
   title { romaji english native }
   coverImage { extraLarge large medium color }

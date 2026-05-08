@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import DOMPurify from 'isomorphic-dompurify';
 import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
+import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { AnimeRelationsSection } from '@/components/anime/anime-relations-section';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { AnimeReviewCard } from '@/components/anime/anime-review-card';
@@ -146,6 +147,14 @@ export default function MangaDetailPage() {
       />
 
       <div className="space-y-5 mt-4">
+        <AnilistStatusPanel
+          mediaId={detail.id}
+          mediaTitle={detail.title}
+          mediaType="MANGA"
+          totalChapters={detail.chapters}
+          totalVolumes={detail.volumes}
+        />
+
         {/* Synopsis */}
         {sanitizedDescription && (
           <div>

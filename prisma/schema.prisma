@@ -14,17 +14,22 @@ enum ServiceType {
   PROWLARR
   JELLYFIN
   TMDB
+  ANILIST
 }
 
 model ServiceConnection {
-  id          String      @id @default(cuid())
-  type        ServiceType @unique
-  url         String
-  apiKey      String
-  username    String?
-  externalUrl String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id             String      @id @default(cuid())
+  type           ServiceType @unique
+  url            String
+  apiKey         String
+  username       String?
+  externalUrl    String?
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  metadata       Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 }
 
 model PushSubscription {

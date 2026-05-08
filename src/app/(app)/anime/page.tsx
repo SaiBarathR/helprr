@@ -1,15 +1,19 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { Search, Star } from 'lucide-react';
+import { Search, Star, Sparkles } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListMediaSeason, AniListListItem } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
+import type {
+  AniListMediaListCollection,
+  AniListMediaListEntry,
+} from '@/lib/anilist-mutations';
 
 type AnimeItemWithLibrary = AniListListItem & { library?: DiscoverLibraryStatus };
 interface SeasonWindow {
@@ -31,6 +35,34 @@ function getHomePerPageFromWidth(width: number): number {
   if (width >= 1536) return 40;
   if (width >= 768) return 30;
   return 10;
+}
+
+function flattenEntries(collection: AniListMediaListCollection): AniListMediaListEntry[] {
+  const seen = new Set<number>();
+  const result: AniListMediaListEntry[] = [];
+  for (const list of collection.lists) {
+    for (const entry of list.entries) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      result.push(entry);
+    }
+  }
+  return result;
+}
+
+function entryToRailItem(entry: AniListMediaListEntry) {
+  const media = entry.media;
+  const title = media.title.english || media.title.romaji || media.title.native || `#${media.id}`;
+  const cover = media.coverImage?.large || media.coverImage?.medium || media.coverImage?.extraLarge || null;
+  return {
+    id: media.id,
+    title,
+    coverImage: cover,
+    format: (media.format as never) ?? null,
+    averageScore: media.averageScore,
+    episodes: media.episodes ?? null,
+    seasonYear: media.seasonYear ?? null,
+  };
 }
 
 function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
@@ -100,10 +132,18 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
   );
 }
 
+interface ViewerSummary {
+  connected: boolean;
+  user?: { name: string };
+}
+
 export default function AnimeHomePage() {
   const [data, setData] = useState<HomeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<ViewerSummary | null>(null);
+  const [watchingEntries, setWatchingEntries] = useState<AniListMediaListEntry[]>([]);
+  const [planningEntries, setPlanningEntries] = useState<AniListMediaListEntry[]>([]);
 
   useEffect(() => {
     async function fetchHome() {
@@ -124,15 +164,60 @@ export default function AnimeHomePage() {
     fetchHome();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadViewer() {
+      try {
+        const res = await fetch('/api/anilist/viewer');
+        if (!res.ok) {
+          if (!cancelled) setViewer({ connected: false });
+          return;
+        }
+        const json = await res.json();
+        if (cancelled) return;
+        setViewer({ connected: !!json.connected, user: json.user });
+
+        if (!json.connected) {
+          setWatchingEntries([]);
+          setPlanningEntries([]);
+          return;
+        }
+
+        const [watchingRes, planningRes] = await Promise.allSettled([
+          fetch('/api/anilist/library?type=ANIME&status=CURRENT'),
+          fetch('/api/anilist/library?type=ANIME&status=PLANNING'),
+        ]);
+
+        if (!cancelled && watchingRes.status === 'fulfilled' && watchingRes.value.ok) {
+          const lib = (await watchingRes.value.json()) as { collection: AniListMediaListCollection };
+          setWatchingEntries(flattenEntries(lib.collection));
+        }
+        if (!cancelled && planningRes.status === 'fulfilled' && planningRes.value.ok) {
+          const lib = (await planningRes.value.json()) as { collection: AniListMediaListCollection };
+          setPlanningEntries(flattenEntries(lib.collection));
+        }
+      } catch {
+        if (!cancelled) setViewer({ connected: false });
+      }
+    }
+    void loadViewer();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const heroAnime = data?.trending?.[0] ?? null;
   const trendingItems = data?.trending?.slice(1) ?? [];
   const currentSeason = data?.currentSeason;
   const nextSeasonInfo = data?.nextSeasonInfo;
 
+  const watchingItems = useMemo(() => watchingEntries.map(entryToRailItem), [watchingEntries]);
+  const planningItems = useMemo(() => planningEntries.map(entryToRailItem), [planningEntries]);
+
   return (
     <div className="flex flex-col animate-content-in">
       {/* Search Link — always visible */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between gap-2 mb-5">
         <Link
           href="/anime/explore"
           className="flex-1 flex items-center gap-2 bg-muted/50 border border-border/50 text-muted-foreground rounded-full px-4 py-2 text-sm hover:bg-muted transition-colors"
@@ -140,6 +225,15 @@ export default function AnimeHomePage() {
           <Search className="h-4 w-4" />
           <span>Search or browse anime...</span>
         </Link>
+        {viewer?.connected && (
+          <Link
+            href="/anime/library"
+            className="shrink-0 flex items-center gap-1.5 bg-pink-500/15 border border-pink-500/30 text-pink-300 rounded-full px-4 py-2 text-sm hover:bg-pink-500/25 transition-colors"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>My Library</span>
+          </Link>
+        )}
       </div>
 
       {loading ? (
@@ -153,6 +247,21 @@ export default function AnimeHomePage() {
           {/* Hero Banner */}
           {heroAnime && <HeroBanner anime={heroAnime} />}
           <div className="space-y-5 px-2 md:p-6 md:px-8">
+            {viewer?.connected && watchingItems.length > 0 && (
+              <AnimeMediaRail
+                title="Continue Watching"
+                items={watchingItems}
+                viewAllHref="/anime/library?status=CURRENT"
+                size="large"
+              />
+            )}
+            {viewer?.connected && planningItems.length > 0 && (
+              <AnimeMediaRail
+                title="Plan to Watch"
+                items={planningItems}
+                viewAllHref="/anime/library?status=PLANNING"
+              />
+            )}
             {/* Carousels */}
             <AnimeMediaRail
               title="Trending Now"

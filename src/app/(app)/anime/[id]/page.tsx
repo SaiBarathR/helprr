@@ -7,6 +7,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
 import { AnimeAddButton } from '@/components/anime/anime-add-button';
+import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { AnimeCharacterRail } from '@/components/anime/anime-character-rail';
 import { AnimeRelationsSection } from '@/components/anime/anime-relations-section';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
@@ -339,6 +340,13 @@ export default function AnimeDetailPage() {
           tmdbId={detail.tmdbId}
           library={detail.library ?? undefined}
           libraryAvailability={detail.libraryAvailability}
+        />
+
+        <AnilistStatusPanel
+          mediaId={detail.id}
+          mediaTitle={detail.title}
+          mediaType="ANIME"
+          totalEpisodes={detail.episodes}
         />
 
         {/* Airing Countdown */}

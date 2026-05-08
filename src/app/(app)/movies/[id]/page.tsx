@@ -39,6 +39,7 @@ import {
   FileText,
   FileEdit,
   ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
@@ -453,6 +454,14 @@ export default function MovieDetailPage() {
                   <Search className="h-4 w-4" />
                   Automatic Search
                 </DropdownMenuItem>
+                {movie.genres?.includes('Animation') && (
+                  <DropdownMenuItem asChild>
+                    <Link href={`/anime/explore?search=${encodeURIComponent(movie.title)}`}>
+                      <Sparkles className="h-4 w-4" />
+                      Search on AniList
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 {movie.imdbId && (
                   <DropdownMenuItem
                     onClick={() => window.open(`https://www.imdb.com/title/${movie.imdbId}`, '_blank')}

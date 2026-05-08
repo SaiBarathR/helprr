@@ -22,6 +22,7 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   PROWLARR: 'Prowlarr',
   JELLYFIN: 'Jellyfin',
   TMDB: 'TMDB',
+  ANILIST: 'AniList',
 };
 
 async function checkServiceHealth(connection: ServiceConnection): Promise<void> {
@@ -56,6 +57,14 @@ async function checkServiceHealth(connection: ServiceConnection): Promise<void> 
     case 'TMDB': {
       const client = new TmdbClient(baseUrl, connection.apiKey);
       await client.validateConnection();
+      return;
+    }
+    case 'ANILIST': {
+      // OAuth-based; consider healthy if an access token is stored and not obviously expired.
+      if (!connection.accessToken) throw new Error('AniList not authorized');
+      if (connection.tokenExpiresAt && connection.tokenExpiresAt.getTime() < Date.now()) {
+        throw new Error('AniList token expired');
+      }
       return;
     }
     default:
