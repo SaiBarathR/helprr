@@ -2,9 +2,9 @@
 
 import Image from 'next/image';
 import type { ReactNode } from 'react';
-import { Star, Check } from 'lucide-react';
+import { Star, Check, Clock } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import type { AniListMediaFormat, AniListMediaStatus, AniListMediaSeason } from '@/types/anilist';
+import type { AniListMediaFormat, AniListMediaStatus, AniListMediaSeason, AniListNextAiringEpisode } from '@/types/anilist';
 
 interface AnimeHeroProps {
   title: string;
@@ -19,6 +19,8 @@ interface AnimeHeroProps {
   studios: Array<{ name: string; isMain: boolean }>;
   inLibrary?: boolean;
   bannerAction?: ReactNode;
+  nextAiringSeconds?: string
+  nextAiringEpisode?: AniListNextAiringEpisode | null
 }
 
 function formatStatus(status: AniListMediaStatus | null): string {
@@ -54,6 +56,8 @@ export function AnimeHero({
   studios,
   inLibrary,
   bannerAction,
+  nextAiringSeconds,
+  nextAiringEpisode
 }: AnimeHeroProps) {
   const bannerSrc = bannerImage
     ? toCachedImageSrc(bannerImage, 'anilist') || bannerImage
@@ -198,6 +202,17 @@ export function AnimeHero({
               <p className="font-display text-foreground/90 leading-snug text-sm md:text-base lg:text-lg">
                 {mainStudios.join(' · ')}
               </p>
+            </div>
+          )}
+          {/* Airing Countdown */}
+          {nextAiringEpisode && (
+            <div className="flex items-center gap-2 py-1">
+              <Clock className="h-4 w-4 text-blue-400 shrink-0" />
+              <div className="text-sm">
+                <span className="font-medium">Ep {nextAiringEpisode.episode}</span>
+                <span className="text-muted-foreground"> airing in </span>
+                <span className="font-medium text-blue-400">{nextAiringSeconds}</span>
+              </div>
             </div>
           )}
         </div>
