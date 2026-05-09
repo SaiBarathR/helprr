@@ -53,6 +53,7 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { formatBytes } from '@/lib/format';
 import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
+import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -1140,6 +1141,8 @@ export default function SeriesDetailPage() {
                 <span className="tracking-widest uppercase">Open in Anime</span>
               </Link>
             )}
+            nextAiringSeconds={formatCountdown(nextAiringSeconds ?? 0)}
+            nextAiringEpisode={animeDetail.nextAiringEpisode}
           />
         ) : tmdbData?.backdropPath ? (
           <div className='-mx-2 md:-mx-6'>
@@ -1236,13 +1239,29 @@ export default function SeriesDetailPage() {
 
         {isAnimeSeries && (
           <div className="pt-3 space-y-3">
-            {animeDetail?.nextAiringEpisode && (
-              <div className="flex items-center gap-2 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2.5">
-                <Clock className="h-4 w-4 text-blue-400 shrink-0" />
-                <div className="text-sm">
-                  <span className="font-medium">Ep {animeDetail.nextAiringEpisode.episode}</span>
-                  <span className="text-muted-foreground"> airing in </span>
-                  <span className="font-medium text-blue-400">{formatCountdown(nextAiringSeconds ?? 0)}</span>
+            {/* Anilist update form */}
+            {!animeLoading && animeDetail && <AnilistStatusPanel
+              mediaId={animeDetail.id}
+              mediaTitle={animeDetail.title}
+              mediaType="ANIME"
+              totalEpisodes={animeDetail.episodes}
+            />}
+
+            {/* Trailer */}
+            {!animeLoading && animeDetail && animeDetail.trailer?.id && (animeDetail.trailer.site === 'youtube' || animeDetail.trailer.site === 'dailymotion') && (
+              <div className='max-w-[1280px] max-h-[720px]'>
+                <div className="aspect-video rounded-lg overflow-hidden">
+                  <iframe
+                    src={
+                      animeDetail.trailer.site === 'youtube'
+                        ? `https://www.youtube.com/embed/${animeDetail.trailer.id}`
+                        : `https://www.dailymotion.com/embed/video/${animeDetail.trailer.id}`
+                    }
+                    title="Trailer"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="w-full h-full"
+                  />
                 </div>
               </div>
             )}
@@ -1721,6 +1740,18 @@ export default function SeriesDetailPage() {
                     >
                       <ExternalLink className="h-3 w-3" />
                       {link.label}
+                    </a>
+                  ))}
+                  {animeDetail && animeDetail.externalLinks && animeDetail.externalLinks?.length > 0 && animeDetail.externalLinks.map((link) => (
+                    <a
+                      key={link.id}
+                      href={link.url ?? ''}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-lg border border-border/30 bg-muted/30 px-3 py-1.5 text-sm text-primary hover:bg-muted/50 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      {link.site}
                     </a>
                   ))}
                 </div>

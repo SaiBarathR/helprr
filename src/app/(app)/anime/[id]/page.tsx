@@ -402,7 +402,6 @@ export default function AnimeDetailPage() {
     { label: 'AniList', url: anilistLink },
     ...(malLink ? [{ label: 'MyAnimeList', url: malLink }] : []),
     ...detail.externalLinks
-      .filter((l) => l.url && ['Crunchyroll', 'Funimation', 'HIDIVE', 'Netflix', 'YouTube'].includes(l.site))
       .map((l) => ({ label: l.site, url: l.url! })),
   ];
 
@@ -429,6 +428,8 @@ export default function AnimeDetailPage() {
           library={detail.library ?? undefined}
           libraryAvailability={detail.libraryAvailability}
         />}
+        nextAiringSeconds={formatCountdown(nextAiringSeconds ?? 0)}
+        nextAiringEpisode={detail.nextAiringEpisode}
       />
 
       <div className="space-y-5 mt-4">
@@ -440,22 +441,9 @@ export default function AnimeDetailPage() {
           totalEpisodes={detail.episodes}
         />
 
-        {/* Airing Countdown */}
-        {detail.nextAiringEpisode && (
-          <div className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2.5">
-            <Clock className="h-4 w-4 text-blue-400 shrink-0" />
-            <div className="text-sm">
-              <span className="font-medium">Ep {detail.nextAiringEpisode.episode}</span>
-              <span className="text-muted-foreground"> airing in </span>
-              <span className="font-medium text-blue-400">{formatCountdown(nextAiringSeconds ?? 0)}</span>
-            </div>
-          </div>
-        )}
-
         {/* Trailer */}
         {detail.trailer?.id && (detail.trailer.site === 'youtube' || detail.trailer.site === 'dailymotion') && (
           <div>
-            <h2 className="text-base font-semibold mb-2">Trailer</h2>
             <div className="aspect-video rounded-lg overflow-hidden">
               <iframe
                 src={
