@@ -54,7 +54,7 @@ services:
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
     volumes:
-      - helprr-logs:/app/logs
+      - helprr-logs:${LOG_DIR:-/app/logs}
     networks:
       - helprr-net
 

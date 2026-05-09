@@ -8,7 +8,7 @@ import { withApiLogging } from '@/lib/api-logger';
  *
  * @returns The JSON response containing the list of download clients on success, or an error object `{ error: string }` with HTTP status 500 on failure.
  */
-async function getHandler() {
+async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

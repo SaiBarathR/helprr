@@ -3,7 +3,7 @@ import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function getHandler() {
+async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

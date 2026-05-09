@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import readline from 'readline';
 import util from 'util';
 import { formatInTimeZone, getEnvTimeZone, normalizeTimeZone } from '@/lib/timezone';
 import {
@@ -56,7 +57,7 @@ const LOG_FILE = 'helprr.jsonl';
 const MAX_LOG_VALUE_LENGTH = 8_000;
 const MAX_SEARCH_LINE_LENGTH = 500_000;
 const SENSITIVE_KEY_PATTERN = /api[-_ ]?key|password|passwd|pwd|secret|token|auth|authorization|cookie|session|vapid|jwt|p256dh|endpoint/i;
-const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+/gi;
+const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+/gi;
 
 const originalConsole = {
   debug: console.debug.bind(console),
@@ -110,8 +111,8 @@ export function configureLogger(next: Partial<LoggerConfig>): void {
 }
 
 function redactString(value: string): string {
-  return value.replace(SENSITIVE_VALUE_PATTERN, (_match, bearer, apiKey, apikey, password, token, sid) => {
-    const prefix = bearer || apiKey || apikey || password || token || sid || '';
+  return value.replace(SENSITIVE_VALUE_PATTERN, (_match, bearer, apiKey, apikey, password, token, sid, code, state) => {
+    const prefix = bearer || apiKey || apikey || password || token || sid || code || state || '';
     return `${prefix}[REDACTED]`;
   });
 }
@@ -301,14 +302,24 @@ export function initializeServerLogging(next?: Partial<LoggerConfig>): void {
 
   process.on('uncaughtException', (error) => {
     writeLog('error', 'Uncaught exception', error, { scope: 'process' });
+    void flushPendingWrites().finally(() => process.exit(1));
   });
   process.on('unhandledRejection', (reason) => {
     writeLog('error', 'Unhandled rejection', reason, { scope: 'process' });
+    void flushPendingWrites().finally(() => process.exit(1));
   });
 }
 
+export async function flushPendingWrites(): Promise<void> {
+  try {
+    await writeQueue;
+  } catch {
+    // Errors are already surfaced via the queue's catch handler.
+  }
+}
+
 function assertSafeLogFile(file: string): string {
-  if (!/^[A-Za-z0-9_.-]+\.jsonl$/.test(file)) {
+  if (!/^helprr(?:-[A-Za-z0-9_.-]+)?\.jsonl$/.test(file)) {
     throw new Error('Invalid log file');
   }
   return path.join(getLogDir(), file);
@@ -352,6 +363,31 @@ function matchesFilters(entry: LogEntry, filters: LogSearchFilters): boolean {
   return true;
 }
 
+async function streamMatchesFromFile(
+  fullPath: string,
+  filters: LogSearchFilters,
+  limit: number
+): Promise<LogEntry[]> {
+  const ring: LogEntry[] = [];
+  const stream = fs.createReadStream(fullPath, { encoding: 'utf8' });
+  stream.on('error', () => {
+    // The readline interface will close; the caller treats this as zero matches.
+  });
+  const reader = readline.createInterface({ input: stream, crlfDelay: Infinity });
+  for await (const line of reader) {
+    if (!line || line.length > MAX_SEARCH_LINE_LENGTH) continue;
+    try {
+      const entry = JSON.parse(line) as LogEntry;
+      if (!matchesFilters(entry, filters)) continue;
+      ring.push(entry);
+      if (ring.length > limit) ring.shift();
+    } catch {
+      // Ignore malformed partial lines from interrupted writes.
+    }
+  }
+  return ring.reverse();
+}
+
 export async function searchLogs(filters: LogSearchFilters): Promise<LogEntry[]> {
   const limit = clampInt(filters.limit, 200, 1, 1_000);
   const files = filters.file
@@ -361,18 +397,10 @@ export async function searchLogs(filters: LogSearchFilters): Promise<LogEntry[]>
 
   for (const file of files) {
     const fullPath = assertSafeLogFile(file);
-    const content = await fs.promises.readFile(fullPath, 'utf8').catch(() => '');
-    const lines = content.split('\n').filter(Boolean);
-    for (let index = lines.length - 1; index >= 0; index -= 1) {
-      const line = lines[index];
-      if (line.length > MAX_SEARCH_LINE_LENGTH) continue;
-      try {
-        const entry = JSON.parse(line) as LogEntry;
-        if (matchesFilters(entry, filters)) matches.push(entry);
-        if (matches.length >= limit) return matches;
-      } catch {
-        // Ignore malformed partial lines from interrupted writes.
-      }
+    const fileMatches = await streamMatchesFromFile(fullPath, filters, limit).catch(() => []);
+    for (const entry of fileMatches) {
+      matches.push(entry);
+      if (matches.length >= limit) return matches;
     }
   }
 

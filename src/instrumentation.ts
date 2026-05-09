@@ -17,9 +17,16 @@ export async function register() {
       const settings = await getOrCreateAppSettings();
       const { setAppTimeZone } = await import('@/lib/timezone');
       setAppTimeZone(settings.timeZone);
+      const VALID_LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
+      let level: 'debug' | 'info' | 'warn' | 'error' = 'info';
+      if (typeof settings.logLevel === 'string' && VALID_LOG_LEVELS.has(settings.logLevel)) {
+        level = settings.logLevel as 'debug' | 'info' | 'warn' | 'error';
+      } else {
+        console.warn(`[Helprr] Invalid logLevel "${settings.logLevel}", defaulting to "info"`);
+      }
       configureLogger({
         timeZone: settings.timeZone,
-        level: settings.logLevel as 'debug' | 'info' | 'warn' | 'error',
+        level,
         maxFileMb: settings.logMaxFileMb,
         retentionDays: settings.logRetentionDays,
       });

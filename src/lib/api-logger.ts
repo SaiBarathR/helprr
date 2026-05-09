@@ -7,8 +7,8 @@ interface ApiLoggingPrefs {
 }
 
 let prefs: ApiLoggingPrefs = {
-  failedRequestBodies: true,
-  failedResponseBodies: true,
+  failedRequestBodies: false,
+  failedResponseBodies: false,
 };
 
 const MAX_BODY_PREVIEW_CHARS = 20_000;
@@ -54,7 +54,19 @@ function requestMetadata(request: Request | null) {
   };
 }
 
-export function withApiLogging<T extends (...args: never[]) => Promise<Response> | Response>(handler: T, scope?: string): T {
+export interface ApiLoggingOptions {
+  // When false, never log request or response bodies for this route, regardless
+  // of the global pref. Use for credential-handling routes (auth, service config,
+  // OAuth callbacks).
+  logBodies?: boolean;
+}
+
+export function withApiLogging<T extends (...args: never[]) => Promise<Response> | Response>(
+  handler: T,
+  scope?: string,
+  options: ApiLoggingOptions = {}
+): T {
+  const allowBodies = options.logBodies !== false;
   return (async (...args: Parameters<T>) => {
     const requestArg = (args as unknown[])[0];
     const request = getRequest(requestArg);
@@ -74,10 +86,10 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
         durationMs,
       };
 
-      if (failed && requestClone && prefs.failedRequestBodies) {
+      if (failed && allowBodies && requestClone && prefs.failedRequestBodies) {
         extra.requestBody = await readBodyPreview(requestClone);
       }
-      if (failed && prefs.failedResponseBodies) {
+      if (failed && allowBodies && prefs.failedResponseBodies) {
         extra.responseBody = await readBodyPreview(response.clone());
       }
 
@@ -96,7 +108,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
         durationMs,
         error,
       };
-      if (requestClone && prefs.failedRequestBodies) {
+      if (allowBodies && requestClone && prefs.failedRequestBodies) {
         extra.requestBody = await readBodyPreview(requestClone);
       }
       logger.error('API request failed', extra, {

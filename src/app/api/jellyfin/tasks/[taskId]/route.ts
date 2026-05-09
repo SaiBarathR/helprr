@@ -6,7 +6,7 @@ import { withApiLogging } from '@/lib/api-logger';
 async function postHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
-) {
+): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -24,7 +24,7 @@ async function postHandler(
 async function deleteHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
-) {
+): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

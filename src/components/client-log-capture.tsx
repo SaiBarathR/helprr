@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -13,8 +13,6 @@ interface BufferedLog {
 
 const SENSITIVE_KEY_PATTERN = /api[-_ ]?key|password|passwd|pwd|secret|token|auth|authorization|cookie|session|vapid|jwt|p256dh|endpoint/i;
 const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+/gi;
-
-let installed = false;
 
 function redact(value: unknown, depth = 0, seen = new WeakSet<object>()): unknown {
   if (value == null) return value;
@@ -52,50 +50,33 @@ function stringify(value: unknown): string {
   }
 }
 
+type ClientCaptureState = {
+  enabled: boolean;
+  buffer: BufferedLog[];
+  flushTimer: ReturnType<typeof setTimeout> | null;
+};
+
+type ConsoleOriginals = Pick<Console, 'debug' | 'log' | 'info' | 'warn' | 'error'>;
+
 export function ClientLogCapture() {
+  const originalsRef = useRef<ConsoleOriginals | null>(null);
+  const stateRef = useRef<ClientCaptureState>({
+    enabled: true,
+    buffer: [],
+    flushTimer: null,
+  });
+
   useEffect(() => {
-    if (installed) return;
-    installed = true;
+    const state = stateRef.current;
 
-    let enabled = true;
-    let flushTimer: ReturnType<typeof setTimeout> | null = null;
-    let buffer: BufferedLog[] = [];
-    const originals = {
-      debug: console.debug.bind(console),
-      log: console.log.bind(console),
-      info: console.info.bind(console),
-      warn: console.warn.bind(console),
-      error: console.error.bind(console),
-    };
-
-    function enqueue(level: LogLevel, args: unknown[], source: 'client' | 'service-worker' = 'client') {
-      if (!enabled) return;
-      const [first, ...rest] = args;
-      buffer.push({
-        level,
-        message: stringify(first ?? ''),
-        source,
-        metadata: {
-          args: rest.map((item) => redact(item)),
-          page: window.location.href,
-          userAgent: navigator.userAgent,
-        },
-      });
-      if (buffer.length >= 25) {
-        void flush();
-      } else if (!flushTimer) {
-        flushTimer = setTimeout(() => void flush(), 2_000);
+    async function flush(): Promise<void> {
+      if (state.flushTimer) {
+        clearTimeout(state.flushTimer);
+        state.flushTimer = null;
       }
-    }
-
-    async function flush() {
-      if (flushTimer) {
-        clearTimeout(flushTimer);
-        flushTimer = null;
-      }
-      if (buffer.length === 0) return;
-      const logs = buffer;
-      buffer = [];
+      if (state.buffer.length === 0) return;
+      const logs = state.buffer;
+      state.buffer = [];
       try {
         await fetch('/api/logs/client', {
           method: 'POST',
@@ -108,14 +89,34 @@ export function ClientLogCapture() {
       }
     }
 
-    void fetch('/api/settings')
-      .then((response) => response.ok ? response.json() : null)
-      .then((settings) => {
-        if (settings && typeof settings.logClientConsoleEnabled === 'boolean') {
-          enabled = settings.logClientConsoleEnabled;
-        }
-      })
-      .catch(() => {});
+    function enqueue(level: LogLevel, args: unknown[], source: 'client' | 'service-worker' = 'client') {
+      if (!state.enabled) return;
+      const [first, ...rest] = args;
+      state.buffer.push({
+        level,
+        message: stringify(first ?? ''),
+        source,
+        metadata: {
+          args: rest.map((item) => redact(item)),
+          page: window.location.href,
+          userAgent: navigator.userAgent,
+        },
+      });
+      if (state.buffer.length >= 25) {
+        void flush();
+      } else if (!state.flushTimer) {
+        state.flushTimer = setTimeout(() => void flush(), 2_000);
+      }
+    }
+
+    const originals: ConsoleOriginals = {
+      debug: console.debug.bind(console),
+      log: console.log.bind(console),
+      info: console.info.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console),
+    };
+    originalsRef.current = originals;
 
     console.debug = (...args: unknown[]) => {
       originals.debug(...args);
@@ -138,6 +139,15 @@ export function ClientLogCapture() {
       enqueue('error', args);
     };
 
+    void fetch('/api/settings')
+      .then((response) => response.ok ? response.json() : null)
+      .then((settings) => {
+        if (settings && typeof settings.logClientConsoleEnabled === 'boolean') {
+          state.enabled = settings.logClientConsoleEnabled;
+        }
+      })
+      .catch(() => {});
+
     const onError = (event: ErrorEvent) => {
       enqueue('error', [event.error || event.message, { filename: event.filename, lineno: event.lineno, colno: event.colno }]);
     };
@@ -152,18 +162,35 @@ export function ClientLogCapture() {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') void flush();
     };
+    const onBeforeUnload = () => {
+      void flush();
+    };
 
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onUnhandledRejection);
     navigator.serviceWorker?.addEventListener('message', onMessage);
     document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('beforeunload', () => void flush());
+    window.addEventListener('beforeunload', onBeforeUnload);
 
     return () => {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onUnhandledRejection);
       navigator.serviceWorker?.removeEventListener('message', onMessage);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      if (state.flushTimer) {
+        clearTimeout(state.flushTimer);
+        state.flushTimer = null;
+      }
+      const originalConsole = originalsRef.current;
+      if (originalConsole) {
+        console.debug = originalConsole.debug;
+        console.log = originalConsole.log;
+        console.info = originalConsole.info;
+        console.warn = originalConsole.warn;
+        console.error = originalConsole.error;
+        originalsRef.current = null;
+      }
     };
   }, []);
 

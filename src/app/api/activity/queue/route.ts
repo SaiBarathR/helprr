@@ -4,7 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import type { QueueItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

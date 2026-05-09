@@ -61,6 +61,7 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
   const [fromTime, setFromTime] = useState(toTimeInput(fromDate) || '00:00:00');
   const [toTime, setToTime] = useState(toTimeInput(toDate) || '23:59:59');
   const [isDesktop, setIsDesktop] = useState(false);
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -130,6 +131,11 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
   function handleApply() {
     const nextFrom = combineDateTime(range?.from, fromTime);
     const nextTo = combineDateTime(range?.to ?? range?.from, toTime);
+    if (nextFrom && nextTo && nextFrom > nextTo) {
+      setRangeError('“From” must be before “To”.');
+      return;
+    }
+    setRangeError(null);
     if (!nextFrom && !nextTo) {
       onChange('', '');
     } else {
@@ -142,6 +148,7 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
     setRange(undefined);
     setFromTime('00:00:00');
     setToTime('23:59:59');
+    setRangeError(null);
     onChange('', '');
     setOpen(false);
   }
@@ -239,6 +246,11 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
           />
         </label>
       </div>
+      {rangeError && (
+        <p role="alert" className="text-xs text-destructive">
+          {rangeError}
+        </p>
+      )}
       <div className="flex justify-between gap-2 py-4 max-w-fit">
         <Button
           variant="secondary"

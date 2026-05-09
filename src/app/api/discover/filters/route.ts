@@ -55,7 +55,7 @@ async function safeTmdb<T>(
   }
 }
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

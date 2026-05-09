@@ -227,4 +227,4 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 export const GET = withApiLogging(getHandler, 'api/services');
-export const POST = withApiLogging(postHandler, 'api/services');
+export const POST = withApiLogging(postHandler, 'api/services', { logBodies: false });

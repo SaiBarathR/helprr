@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { getAnimeHome } from '@/lib/anilist-client';
@@ -84,12 +84,12 @@ function getNextSeasonClient(currentSeason: AniListMediaSeason, currentYear: num
   return { season: 'WINTER', year: currentYear + 1 };
 }
 
-function getHomePerPage(request: Request): number {
+function getHomePerPage(request: NextRequest): number {
   const perPage = Number(new URL(request.url).searchParams.get('perPage'));
   return HOME_PER_PAGE_VALUES.has(perPage) ? perPage : 10;
 }
 
-async function getHandler(request: Request) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

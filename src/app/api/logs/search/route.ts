@@ -3,7 +3,18 @@ import { requireAuth } from '@/lib/auth';
 import { searchLogs } from '@/lib/logger';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function getHandler(request: NextRequest) {
+const DEFAULT_LIMIT = 200;
+const MIN_LIMIT = 1;
+const MAX_LIMIT = 1000;
+
+function parseLimit(raw: string | null): number {
+  if (!raw) return DEFAULT_LIMIT;
+  const parsed = parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_LIMIT;
+  return Math.max(MIN_LIMIT, Math.min(MAX_LIMIT, parsed));
+}
+
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -15,7 +26,7 @@ async function getHandler(request: NextRequest) {
     file: params.get('file') || undefined,
     from: params.get('from') || undefined,
     to: params.get('to') || undefined,
-    limit: Number(params.get('limit') || 200),
+    limit: parseLimit(params.get('limit')),
   });
 
   return NextResponse.json({ entries });
