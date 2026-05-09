@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowUpRight, Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import type { DiscoverDetail } from '@/types';
 
 interface DiscoverAddButtonProps {
@@ -39,50 +39,29 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
   if (detail.addTarget.exists) {
     const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
     return (
-      <Link
-        href={href}
-        className="group relative flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card/40 backdrop-blur-sm px-5 py-4 transition-all hover:border-emerald-500/40 hover:bg-emerald-950/10 press-feedback"
-      >
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400" />
-          </span>
-          <div className="min-w-0">
-            <p className="tracked-caps text-emerald-400/90">In Library</p>
-            <p className="font-display font-medium text-lg leading-tight">
-              Open in {targetService}
-            </p>
-          </div>
-        </div>
-        <ArrowUpRight
-          className="h-5 w-5 text-muted-foreground shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-foreground"
-          strokeWidth={1.5}
-        />
-      </Link>
+      <div className="absolute top-1 right-1 md:top-2 md:right-1.5 hero-meta-fade">
+        <Link
+          href={href}
+          className="inline-flex items-center gap-1.5 rounded-full bg-black/55 backdrop-blur-md text-white px-3 py-1.5 text-[11px] font-medium hover:bg-black/70 transition-colors"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span className="tracking-widest uppercase">Open in {targetService}</span>
+        </Link>
+      </div>
     );
   }
 
   return (
-    <Link
-      href={href}
-      className="group relative flex items-center justify-between gap-4 rounded-lg overflow-hidden border border-foreground/15 bg-foreground text-background px-5 py-4 cta-sheen press-feedback transition-shadow shadow-[0_8px_30px_-10px_rgba(0,0,0,0.4)] hover:shadow-[0_12px_40px_-10px_rgba(0,0,0,0.55)]"
-    >
-      <div className="flex items-center gap-3 min-w-0">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-background/10 ring-1 ring-background/20">
-          <Plus className="h-4 w-4" strokeWidth={2.5} />
+    <div className="absolute top-1 right-1 md:top-2 md:right-2 hero-meta-fade">
+      <Link
+        href={href}
+        className="inline-flex items-center gap-1.5 rounded-full bg-black/25 backdrop-blur-md text-white px-2 py-1.5 text-[11px] font-medium hover:bg-black/70 transition-colors"
+      >
+        <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+        <span className="tracking-widest">
+          Add to  {service}
         </span>
-        <div className="min-w-0">
-          <p className="tracked-caps text-background/55">New Request</p>
-          <p className="font-display font-medium text-lg leading-tight">
-            Add to {service}
-          </p>
-        </div>
-      </div>
-      <ArrowUpRight
-        className="h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-        strokeWidth={1.5}
-      />
-    </Link>
+      </Link>
+    </div>
   );
 }

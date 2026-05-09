@@ -1,8 +1,10 @@
 'use client';
 
 import Image from 'next/image';
-import { Star, Check } from 'lucide-react';
+import { Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { DiscoverDetail } from '@/types';
+import { DiscoverAddButton } from './discover-add-button';
 
 interface DiscoverHeroProps {
   title: string;
@@ -16,6 +18,7 @@ interface DiscoverHeroProps {
   mediaType: 'movie' | 'tv';
   inLibrary?: boolean;
   genres?: string[];
+  detail: DiscoverDetail
 }
 
 export function DiscoverHero({
@@ -30,6 +33,7 @@ export function DiscoverHero({
   mediaType,
   inLibrary,
   genres,
+  detail
 }: DiscoverHeroProps) {
   const backdropSrc = backdropPath
     ? toCachedImageSrc(backdropPath, 'tmdb') || backdropPath
@@ -70,15 +74,8 @@ export function DiscoverHero({
           <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 via-black to-zinc-950" />
         )}
 
-        {/* In-library status pill — top right */}
-        {inLibrary && (
-          <div className="absolute top-3 right-3 md:top-5 md:right-6 hero-meta-fade">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-950/70 backdrop-blur-md text-emerald-300 px-3 py-1.5 text-[11px] font-medium status-pill-glow">
-              <Check className="h-3 w-3" strokeWidth={2.5} />
-              <span className="tracked-caps">In Library</span>
-            </span>
-          </div>
-        )}
+        {/* Open in / Add to button top right */}
+        <DiscoverAddButton detail={detail} />
 
         {/* Editorial slug — top left */}
         <div className="absolute top-3 left-3 md:top-5 md:left-6 hero-meta-fade">
