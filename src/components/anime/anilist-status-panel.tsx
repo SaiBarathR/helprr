@@ -66,7 +66,7 @@ export function AnilistStatusPanel({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
-  const loadEntry = useCallback(async () => {
+  const loadEntry = useCallback(async (viewData: ViewerSummary) => {
     try {
       const res = await fetch(`/api/anilist/list-entry?mediaId=${mediaId}`);
       if (res.status === 401) {
@@ -79,6 +79,9 @@ export function AnilistStatusPanel({
       }
       const data = await res.json();
       setLoadError(false);
+      if (viewData && data && viewData.user?.scoreFormat === "POINT_10_DECIMAL" && data?.entry && data.entry?.score > 10) {
+        data.entry.score = (data.entry.score / 10);
+      }
       setEntry(data.entry ?? null);
     } catch {
       setLoadError(true);
@@ -98,7 +101,7 @@ export function AnilistStatusPanel({
         if (cancelled) return;
         setViewer(data);
         if (data.connected) {
-          await loadEntry();
+          await loadEntry(data);
         }
       } finally {
         if (!cancelled) setLoading(false);

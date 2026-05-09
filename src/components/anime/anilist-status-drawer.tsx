@@ -198,7 +198,11 @@ export function AnilistStatusDrawer({
         <div className="px-4 pb-2 space-y-4 overflow-y-auto">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Status</Label>
-            <Select value={form.status} onValueChange={(v) => setForm((prev) => ({ ...prev, status: v as AniListMediaListStatus }))}>
+            <Select value={form.status} onValueChange={(v) => setForm((prev) => ({
+              ...prev,
+              status: v as AniListMediaListStatus,
+              progress: (v as AniListMediaListStatus === "COMPLETED" && totalEpisodes) ? String(totalEpisodes) : prev.progress
+            }))}>
               <SelectTrigger className="h-10">
                 <SelectValue />
               </SelectTrigger>

@@ -499,13 +499,13 @@ export default function AnimeLibraryPage() {
           {type === 'ANIME' ? (
             <>
               <StatCard icon={<Sparkles className="h-3.5 w-3.5" />} label="Anime" value={String(stats.anime.count)} />
-              <StatCard icon={<Star className="h-3.5 w-3.5" />} label="Mean Score" value={stats.anime.meanScore ? stats.anime.meanScore.toFixed(1) : '—'} />
+              <StatCard icon={<Star className="h-3.5 w-3.5" />} label="Avg Score" value={stats.anime.meanScore ? stats.anime.meanScore.toFixed(1) : '—'} />
               <StatCard icon={<Clock className="h-3.5 w-3.5" />} label="Watched" value={formatHours(stats.anime.minutesWatched)} />
             </>
           ) : (
             <>
               <StatCard icon={<BookOpen className="h-3.5 w-3.5" />} label="Manga" value={String(stats.manga.count)} />
-              <StatCard icon={<Star className="h-3.5 w-3.5" />} label="Mean Score" value={stats.manga.meanScore ? stats.manga.meanScore.toFixed(1) : '—'} />
+                <StatCard icon={<Star className="h-3.5 w-3.5" />} label="Avg Score" value={stats.manga.meanScore ? stats.manga.meanScore.toFixed(1) : '—'} />
               <StatCard icon={<BookOpen className="h-3.5 w-3.5" />} label="Chapters" value={stats.manga.chaptersRead.toLocaleString()} />
             </>
           )}
@@ -591,12 +591,12 @@ export default function AnimeLibraryPage() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-border/40 bg-card/30 px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-muted-foreground tracked-caps">
+    <div className="md:px-3 px-2 md:py-2.5 py-2">
+      <div className="flex items-center gap-1 md:gap-1.5 text-muted-foreground tracked-caps">
         {icon}
         {label}
       </div>
-      <p className="font-display font-semibold text-base mt-0.5 tabular-nums">{value}</p>
+      <p className="font-semibold text-base mt-0.5 tabular-nums">{value}</p>
     </div>
   );
 }
