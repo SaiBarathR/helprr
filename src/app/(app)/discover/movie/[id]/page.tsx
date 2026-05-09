@@ -11,7 +11,6 @@ import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rai
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
-import { DiscoverAddButton } from '@/components/discover/discover-add-button';
 import { DiscoverExternalLinks } from '@/components/discover/discover-external-links';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { formatCurrency } from '@/lib/format';
@@ -112,9 +111,8 @@ export default function DiscoverMovieDetailPage() {
           mediaType="movie"
           inLibrary={movie.addTarget?.exists}
           genres={movie.genreNames}
+          detail={movie}
         />
-
-        <DiscoverAddButton detail={movie} />
 
         {/* Overview */}
         {movie.overview && (

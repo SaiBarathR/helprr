@@ -658,9 +658,9 @@ export default function MovieDetailPage() {
       >
         {/* Hero: Backdrop or flat poster layout */}
         {tmdbData?.backdropPath ? (
-          <div>
+          <div className='-mx-2 md:-mx-6'>
             {/* Backdrop image */}
-            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 -mx-2 md:-mx-6">
+            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
               <Image
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
                 alt=""
