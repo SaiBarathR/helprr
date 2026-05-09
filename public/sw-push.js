@@ -1,5 +1,5 @@
 // Lightweight service worker for development - push notifications only, no precaching.
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
@@ -7,9 +7,23 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+function logToClients(level, message, metadata) {
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    for (const client of clients) {
+      client.postMessage({ type: 'helprr-sw-log', level, message, metadata });
+    }
+  });
+}
+
 self.addEventListener('push', (event) => {
   if (!event.data) return;
-  const data = event.data.json();
+  let data;
+  try {
+    data = event.data.json();
+  } catch (error) {
+    logToClients('error', 'Service worker push payload parse failed', { error: String(error) });
+    return;
+  }
   const options = {
     body: data.body,
     icon: '/icons/icon-192.png',
@@ -35,4 +49,16 @@ self.addEventListener('notificationclick', (event) => {
       return self.clients.openWindow(url);
     })
   );
+});
+
+self.addEventListener('error', (event) => {
+  logToClients('error', event.message || 'Service worker error', {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+self.addEventListener('unhandledrejection', (event) => {
+  logToClients('error', 'Service worker unhandled rejection', { reason: String(event.reason) });
 });

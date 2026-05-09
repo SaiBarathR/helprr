@@ -6,6 +6,7 @@ import { normalizeAniListItem, isMovieFormat } from '@/lib/anilist-helpers';
 import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import type { AniListMediaSeason, AniListListItem, AniListMedia } from '@/types/anilist';
+import { withApiLogging } from '@/lib/api-logger';
 
 interface SeasonWindow {
   season: AniListMediaSeason;
@@ -88,7 +89,7 @@ function getHomePerPage(request: Request): number {
   return HOME_PER_PAGE_VALUES.has(perPage) ? perPage : 10;
 }
 
-export async function GET(request: Request) {
+async function getHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -123,3 +124,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anime/home');

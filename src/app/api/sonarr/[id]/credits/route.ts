@@ -3,10 +3,11 @@ import { getSonarrClient, getTMDBClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { tmdbImageUrl } from '@/lib/discover';
 import { crewRolePriority } from '@/lib/crew-priority';
+import { withApiLogging } from '@/lib/api-logger';
 
 const EMPTY = { cast: [], crew: [] };
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -65,3 +66,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/sonarr/[id]/credits');

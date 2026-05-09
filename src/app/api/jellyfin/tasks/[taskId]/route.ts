@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function POST(
+async function postHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
@@ -20,7 +21,7 @@ export async function POST(
   }
 }
 
-export async function DELETE(
+async function deleteHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ) {
@@ -37,3 +38,6 @@ export async function DELETE(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withApiLogging(postHandler, 'api/jellyfin/tasks/[taskId]');
+export const DELETE = withApiLogging(deleteHandler, 'api/jellyfin/tasks/[taskId]');

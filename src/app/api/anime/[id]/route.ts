@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth';
 import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { getAnimeDetail, getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { normalizeAniListDetail, isMovieFormat } from '@/lib/anilist-helpers';
+import { withApiLogging } from '@/lib/api-logger';
 import {
   buildLibraryLookups,
   matchMovieInLibrary,
@@ -33,7 +34,7 @@ async function getLibraries() {
   };
 }
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
@@ -93,3 +94,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anime/[id]');

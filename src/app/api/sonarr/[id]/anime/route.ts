@@ -9,6 +9,7 @@ import {
 } from '@/lib/anilist-series-mapping';
 import type { SonarrSeries } from '@/types';
 import type { SeriesAniListResponse } from '@/types/anilist';
+import { withApiLogging } from '@/lib/api-logger';
 
 interface PutPayload {
   anilistMediaId?: number | string | null;
@@ -41,7 +42,7 @@ async function getAnimeSeries(id: string) {
   return series;
 }
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -60,7 +61,7 @@ export async function GET(
   }
 }
 
-export async function PUT(
+async function putHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -89,7 +90,7 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
+async function deleteHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -107,3 +108,7 @@ export async function DELETE(
     return NextResponse.json({ error: message }, { status });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/sonarr/[id]/anime');
+export const PUT = withApiLogging(putHandler, 'api/sonarr/[id]/anime');
+export const DELETE = withApiLogging(deleteHandler, 'api/sonarr/[id]/anime');

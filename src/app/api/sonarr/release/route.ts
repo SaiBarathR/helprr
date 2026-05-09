@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
  *   - `downloadClientId` (optional): the download client ID to route the grab through
  * @returns A NextResponse with `{ success: true }` on success, or `{ error: string }` on failure. Responses use status 400 for missing required fields and 500 for server errors.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -66,3 +67,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/sonarr/release');
+export const POST = withApiLogging(postHandler, 'api/sonarr/release');

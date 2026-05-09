@@ -3,6 +3,7 @@ import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { SonarrSeries, SonarrSeriesListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
+import { withApiLogging } from '@/lib/api-logger';
 
 function toListItem(series: SonarrSeries): SonarrSeriesListItem {
   return {
@@ -29,7 +30,7 @@ function toListItem(series: SonarrSeries): SonarrSeriesListItem {
   };
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const startedAt = performance.now();
   const authError = await requireAuth();
   if (authError) {
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -68,3 +69,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to add series' }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/sonarr');
+export const POST = withApiLogging(postHandler, 'api/sonarr');

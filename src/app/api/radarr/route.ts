@@ -3,6 +3,7 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
+import { withApiLogging } from '@/lib/api-logger';
 
 function toListItem(movie: RadarrMovie): RadarrMovieListItem {
   const poster = movie.images.find((img) => img.coverType === 'poster');
@@ -35,7 +36,7 @@ function toListItem(movie: RadarrMovie): RadarrMovieListItem {
   };
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const startedAt = performance.now();
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
   const startedAt = performance.now();
@@ -75,3 +76,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/radarr');
+export const POST = withApiLogging(postHandler, 'api/radarr');

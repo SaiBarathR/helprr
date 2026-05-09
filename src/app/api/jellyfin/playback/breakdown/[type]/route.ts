@@ -8,8 +8,9 @@ import {
   escapeSqlLiteral,
 } from '@/lib/jellyfin-playback-query';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(
+async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ type: string }> }
 ) {
@@ -102,3 +103,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/jellyfin/playback/breakdown/[type]');

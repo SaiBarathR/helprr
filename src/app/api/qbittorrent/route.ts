@@ -4,6 +4,7 @@ import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { MagnetParseError, parseMagnetInfoHash } from '@/lib/magnet';
 import { logApiDuration } from '@/lib/server-perf';
+import { withApiLogging } from '@/lib/api-logger';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
@@ -41,7 +42,7 @@ async function waitForTorrentHash(client: QBittorrentClient, hash: string): Prom
   return false;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const startedAt = performance.now();
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const startedAt = performance.now();
@@ -197,3 +198,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/qbittorrent');
+export const POST = withApiLogging(postHandler, 'api/qbittorrent');

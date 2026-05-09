@@ -8,6 +8,7 @@ import { TmdbClient } from '@/lib/tmdb-client';
 import { requireAuth } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import type { ServiceType } from '@prisma/client';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Handle POST requests to check connectivity and retrieve version information from supported services.
@@ -18,7 +19,7 @@ import type { ServiceType } from '@prisma/client';
  * @param request - Incoming NextRequest whose JSON body contains the service check parameters
  * @returns An object with `success` boolean and, on success, `version` (string); on failure, `error` (string)
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -205,3 +206,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const POST = withApiLogging(postHandler, 'api/services/test');

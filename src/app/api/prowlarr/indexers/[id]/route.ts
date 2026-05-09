@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Deletes the Prowlarr indexer identified by the route `id` parameter.
@@ -8,7 +9,7 @@ import { requireAuth } from '@/lib/auth';
  * @param params - Promise that resolves to route parameters; must include `id` as the indexer identifier string.
  * @returns A JSON response: `{ success: true }` on success, or `{ error: string }` with HTTP status 500 on failure.
  */
-export async function DELETE(
+async function deleteHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -29,3 +30,5 @@ export async function DELETE(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const DELETE = withApiLogging(deleteHandler, 'api/prowlarr/indexers/[id]');

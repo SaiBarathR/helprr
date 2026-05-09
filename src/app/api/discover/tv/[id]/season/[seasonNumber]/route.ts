@@ -4,8 +4,9 @@ import { requireAuth } from '@/lib/auth';
 import { tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverSeasonDetailResponse } from '@/types';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string; seasonNumber: string }> }
 ): Promise<NextResponse> {
@@ -62,3 +63,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/discover/tv/[id]/season/[seasonNumber]');

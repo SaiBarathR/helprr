@@ -4,8 +4,9 @@ import { requireAuth } from '@/lib/auth';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { searchSeriesAniListCandidates } from '@/lib/anilist-series-mapping';
 import type { SonarrSeries } from '@/types';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(
+async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -50,3 +51,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/sonarr/[id]/anime/candidates');

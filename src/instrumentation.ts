@@ -1,5 +1,8 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    const { initializeServerLogging, configureLogger } = await import('@/lib/logger');
+    initializeServerLogging();
+
     const { getJwtSecret } = await import('@/lib/jwt-secret');
     const { registerRedisShutdownHandlers } = await import('@/lib/redis');
 
@@ -7,13 +10,22 @@ export async function register() {
     registerRedisShutdownHandlers();
 
     const { pollingService } = await import('@/lib/polling-service');
-    const { prisma } = await import('@/lib/db');
+    const { getOrCreateAppSettings } = await import('@/lib/app-settings');
+    const { configureApiLogging } = await import('@/lib/api-logger');
 
     try {
-      const settings = await prisma.appSettings.upsert({
-        where: { id: 'singleton' },
-        update: {},
-        create: {},
+      const settings = await getOrCreateAppSettings();
+      const { setAppTimeZone } = await import('@/lib/timezone');
+      setAppTimeZone(settings.timeZone);
+      configureLogger({
+        timeZone: settings.timeZone,
+        level: settings.logLevel as 'debug' | 'info' | 'warn' | 'error',
+        maxFileMb: settings.logMaxFileMb,
+        retentionDays: settings.logRetentionDays,
+      });
+      configureApiLogging({
+        failedRequestBodies: settings.logFailedRequestBodies,
+        failedResponseBodies: settings.logFailedResponseBodies,
       });
 
       const intervalMs = settings.pollingIntervalSecs * 1000;

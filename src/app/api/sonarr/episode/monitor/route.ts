@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function PUT(request: Request) {
+async function putHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -31,3 +32,5 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const PUT = withApiLogging(putHandler, 'api/sonarr/episode/monitor');

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Handle POST requests to trigger a Prowlarr indexer test for the route `.../indexers/[id]/test`.
@@ -9,7 +10,7 @@ import { requireAuth } from '@/lib/auth';
  * @param params - A promise resolving to route parameters; must include `id` (the indexer id).
  * @returns On success, a JSON response containing the indexer test result (or `{ success: true }` when the result is falsy). On failure, a JSON response `{ error: string }` with HTTP status 500.
  */
-export async function POST(
+async function postHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -26,3 +27,5 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withApiLogging(postHandler, 'api/prowlarr/indexers/[id]/test');

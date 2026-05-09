@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { ensureNotificationPreferences } from '@/lib/notification-events';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function deleteHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -47,3 +48,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   }
 }
+
+export const POST = withApiLogging(postHandler, 'api/push/subscribe');
+export const DELETE = withApiLogging(deleteHandler, 'api/push/subscribe');

@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/db';
 import { getSonarrClient, getRadarrClient, getQBittorrentClient, getJellyfinClient } from '@/lib/service-helpers';
 import { notifyEvent, initVapid } from '@/lib/notification-service';
+import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
 
@@ -415,21 +417,17 @@ export class PollingService {
   }
 
   private async checkUpcoming() {
-    const settings = await prisma.appSettings.upsert({
-      where: { id: 'singleton' },
-      update: {},
-      create: {},
-    });
+    const settings = await getOrCreateAppSettings();
+    const timeZone = settings.timeZone;
 
     const mode = settings.upcomingNotifyMode || 'before_air';
 
     // Daily digest: only run at the configured hour, once per day
     if (mode === 'daily_digest') {
       const now = new Date();
-      if (now.getHours() !== settings.upcomingDailyNotifyHour) return;
+      if (toZonedDate(now, timeZone).getHours() !== settings.upcomingDailyNotifyHour) return;
 
-      const todayStart = new Date(now);
-      todayStart.setHours(0, 0, 0, 0);
+      const todayStart = startOfLocalDay(now, timeZone);
       const alreadySentToday = await prisma.notificationHistory.findFirst({
         where: {
           eventType: 'upcomingPremiere',

@@ -5,6 +5,7 @@ import {
   loadAniListConnection,
 } from '@/lib/anilist-oauth';
 import { fetchViewer } from '@/lib/anilist-mutations';
+import { withApiLogging } from '@/lib/api-logger';
 
 interface ViewerResponse {
   configured: boolean;
@@ -24,7 +25,7 @@ interface ViewerResponse {
   };
 }
 
-export async function GET(): Promise<NextResponse<ViewerResponse>> {
+async function getHandler(): Promise<NextResponse<ViewerResponse>> {
   const authError = await requireAuth();
   if (authError) return authError as unknown as NextResponse<ViewerResponse>;
 
@@ -78,3 +79,5 @@ export async function GET(): Promise<NextResponse<ViewerResponse>> {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anilist/viewer');

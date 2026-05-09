@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { COOKIE_NAME } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function POST() {
+async function postHandler() {
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,
@@ -12,3 +13,5 @@ export async function POST() {
   });
   return response;
 }
+
+export const POST = withApiLogging(postHandler, 'api/auth/logout');

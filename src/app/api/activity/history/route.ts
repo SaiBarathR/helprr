@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { HistoryItem } from '@/types';
+import { withApiLogging } from '@/lib/api-logger';
 
 type HistorySource = 'sonarr' | 'radarr';
 type CanonicalHistoryEvent =
@@ -105,7 +106,7 @@ function resolveUpstreamEventType(
  * @param request - NextRequest whose URL search params control filtering, sorting, and pagination.
  * @returns An object with `page`, `pageSize`, `totalRecords`, and `records` (the page of merged history items).
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -243,3 +244,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/activity/history');

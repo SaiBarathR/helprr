@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverDetail, RadarrMovie, SonarrSeries } from '@/types';
+import { withApiLogging } from '@/lib/api-logger';
 
 function toYear(value?: string | null) {
   if (!value) return null;
@@ -34,7 +35,7 @@ async function getLibraries() {
   return { movies, series };
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -174,3 +175,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/discover/item');

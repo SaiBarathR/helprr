@@ -8,6 +8,7 @@ import {
   setAniListConnectionMetadata,
 } from '@/lib/anilist-oauth';
 import { fetchViewer } from '@/lib/anilist-mutations';
+import { withApiLogging } from '@/lib/api-logger';
 
 const STATE_COOKIE_NAME = 'helprr-anilist-oauth-state';
 
@@ -41,7 +42,7 @@ function trustedOrigin(request: NextRequest): string {
   }
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -107,3 +108,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return settingsRedirect(request, { anilist: 'error', reason: 'exchange_failed' });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/services/anilist/callback');

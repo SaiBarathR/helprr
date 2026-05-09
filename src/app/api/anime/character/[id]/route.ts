@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getCharacterDetail } from '@/lib/anilist-client';
 import type { AniListSort } from '@/types/anilist';
+import { withApiLogging } from '@/lib/api-logger';
 
 const VALID_SORTS = new Set<AniListSort>([
   'POPULARITY_DESC',
@@ -16,7 +17,7 @@ function parsePage(value: string | null): number {
   return Math.max(1, parseInt(value || '1', 10) || 1);
 }
 
-export async function GET(
+async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
@@ -46,3 +47,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anime/character/[id]');

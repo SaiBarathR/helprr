@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Handle GET requests for Prowlarr indexer statuses.
  *
  * @returns The indexer statuses as JSON, or on failure a JSON object with an `error` message and HTTP status 500.
  */
-export async function GET() {
+async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -20,3 +21,5 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/prowlarr/status');

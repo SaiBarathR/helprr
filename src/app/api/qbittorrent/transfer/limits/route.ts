@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET() {
+async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
   const startedAt = performance.now();
@@ -28,7 +29,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const startedAt = performance.now();
@@ -64,3 +65,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/qbittorrent/transfer/limits');
+export const POST = withApiLogging(postHandler, 'api/qbittorrent/transfer/limits');

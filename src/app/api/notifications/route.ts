@@ -4,6 +4,7 @@ import { endOfDay } from 'date-fns';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { isKnownEventType } from '@/lib/notification-events';
+import { withApiLogging } from '@/lib/api-logger';
 
 function buildWhere(searchParams: URLSearchParams): Prisma.NotificationHistoryWhereInput {
   const where: Prisma.NotificationHistoryWhereInput = {};
@@ -49,7 +50,7 @@ function buildWhere(searchParams: URLSearchParams): Prisma.NotificationHistoryWh
   return where;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function deleteHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -98,3 +99,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/notifications');
+export const DELETE = withApiLogging(deleteHandler, 'api/notifications');

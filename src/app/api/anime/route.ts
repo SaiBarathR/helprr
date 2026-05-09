@@ -15,6 +15,7 @@ import {
   matchSeriesInLibrary,
 } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
+import { withApiLogging } from '@/lib/api-logger';
 import type {
   AniListMediaFormat,
   AniListMediaSeason,
@@ -119,7 +120,7 @@ function parseOptionalYear(value: string | null) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -218,3 +219,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anime');

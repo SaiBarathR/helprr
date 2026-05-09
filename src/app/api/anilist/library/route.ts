@@ -8,6 +8,7 @@ import {
   type AniListMediaType,
 } from '@/lib/anilist-mutations';
 import { getAnilistJsonWithCache } from '@/lib/cache/anilist-api-cache';
+import { withApiLogging } from '@/lib/api-logger';
 
 const VALID_TYPES: AniListMediaType[] = ['ANIME', 'MANGA'];
 const VALID_STATUSES: AniListMediaListStatus[] = [
@@ -19,7 +20,7 @@ const VALID_STATUSES: AniListMediaListStatus[] = [
   'REPEATING',
 ];
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -65,3 +66,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anilist/library');
