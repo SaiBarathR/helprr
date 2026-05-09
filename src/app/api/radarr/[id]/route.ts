@@ -6,7 +6,7 @@ import { withApiLogging } from '@/lib/api-logger';
 async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -21,12 +21,26 @@ async function getHandler(
   }
 }
 
-async function putHandler(request: NextRequest) {
+async function putHandler(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
   try {
+    const { id } = await params;
+    const pathId = Number(id);
+    if (!Number.isInteger(pathId) || pathId <= 0) {
+      return NextResponse.json({ error: 'Invalid movie id' }, { status: 400 });
+    }
     const body = await request.json();
+    if (body && typeof body === 'object' && 'id' in body && Number(body.id) !== pathId) {
+      return NextResponse.json(
+        { error: 'Path id and body id must match' },
+        { status: 400 }
+      );
+    }
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const client = await getRadarrClient();
     const result = await client.updateMovie(body, moveFiles);
@@ -40,7 +54,7 @@ async function putHandler(request: NextRequest) {
 async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

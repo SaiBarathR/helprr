@@ -10,6 +10,26 @@ import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
 import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
+const THEMES = new Set(['dark', 'light', 'system']);
+const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
+
+function parseIntegerSetting(
+  value: unknown,
+  label: string,
+  min: number,
+  max: number
+): { value: number } | { error: NextResponse } {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    return {
+      error: NextResponse.json(
+        { error: `${label} must be between ${min} and ${max}` },
+        { status: 400 }
+      ),
+    };
+  }
+  return { value: parsed };
+}
 
 /**
  * Retrieve the singleton application settings, creating a record with defaults if none exists.
@@ -71,23 +91,59 @@ async function putHandler(request: NextRequest) {
     });
 
     const data: Record<string, unknown> = {};
-    if (pollingIntervalSecs !== undefined)
-      data.pollingIntervalSecs = pollingIntervalSecs;
-    if (dashboardRefreshIntervalSecs !== undefined)
-      data.dashboardRefreshIntervalSecs = dashboardRefreshIntervalSecs;
-    if (activityRefreshIntervalSecs !== undefined)
-      data.activityRefreshIntervalSecs = activityRefreshIntervalSecs;
-    if (torrentsRefreshIntervalSecs !== undefined)
-      data.torrentsRefreshIntervalSecs = torrentsRefreshIntervalSecs;
-    if (theme !== undefined) data.theme = theme;
-    if (upcomingAlertHours !== undefined)
-      data.upcomingAlertHours = upcomingAlertHours;
-    if (upcomingNotifyMode !== undefined)
+    if (pollingIntervalSecs !== undefined) {
+      const parsed = parseIntegerSetting(pollingIntervalSecs, 'Polling interval', 1, 86_400);
+      if ('error' in parsed) return parsed.error;
+      data.pollingIntervalSecs = parsed.value;
+    }
+    if (dashboardRefreshIntervalSecs !== undefined) {
+      const parsed = parseIntegerSetting(dashboardRefreshIntervalSecs, 'Dashboard refresh interval', 1, 86_400);
+      if ('error' in parsed) return parsed.error;
+      data.dashboardRefreshIntervalSecs = parsed.value;
+    }
+    if (activityRefreshIntervalSecs !== undefined) {
+      const parsed = parseIntegerSetting(activityRefreshIntervalSecs, 'Activity refresh interval', 1, 86_400);
+      if ('error' in parsed) return parsed.error;
+      data.activityRefreshIntervalSecs = parsed.value;
+    }
+    if (torrentsRefreshIntervalSecs !== undefined) {
+      const parsed = parseIntegerSetting(torrentsRefreshIntervalSecs, 'Torrents refresh interval', 1, 86_400);
+      if ('error' in parsed) return parsed.error;
+      data.torrentsRefreshIntervalSecs = parsed.value;
+    }
+    if (theme !== undefined) {
+      if (typeof theme !== 'string' || !THEMES.has(theme)) {
+        return NextResponse.json(
+          { error: 'Invalid theme' },
+          { status: 400 }
+        );
+      }
+      data.theme = theme;
+    }
+    if (upcomingAlertHours !== undefined) {
+      const parsed = parseIntegerSetting(upcomingAlertHours, 'Upcoming alert hours', 1, 8_760);
+      if ('error' in parsed) return parsed.error;
+      data.upcomingAlertHours = parsed.value;
+    }
+    if (upcomingNotifyMode !== undefined) {
+      if (typeof upcomingNotifyMode !== 'string' || !UPCOMING_NOTIFY_MODES.has(upcomingNotifyMode)) {
+        return NextResponse.json(
+          { error: 'Invalid upcoming notification mode' },
+          { status: 400 }
+        );
+      }
       data.upcomingNotifyMode = upcomingNotifyMode;
-    if (upcomingNotifyBeforeMins !== undefined)
-      data.upcomingNotifyBeforeMins = upcomingNotifyBeforeMins;
-    if (upcomingDailyNotifyHour !== undefined)
-      data.upcomingDailyNotifyHour = upcomingDailyNotifyHour;
+    }
+    if (upcomingNotifyBeforeMins !== undefined) {
+      const parsed = parseIntegerSetting(upcomingNotifyBeforeMins, 'Upcoming notification lead time', 1, 10_080);
+      if ('error' in parsed) return parsed.error;
+      data.upcomingNotifyBeforeMins = parsed.value;
+    }
+    if (upcomingDailyNotifyHour !== undefined) {
+      const parsed = parseIntegerSetting(upcomingDailyNotifyHour, 'Upcoming daily notification hour', 0, 23);
+      if ('error' in parsed) return parsed.error;
+      data.upcomingDailyNotifyHour = parsed.value;
+    }
     if (cacheImagesEnabled !== undefined)
       data.cacheImagesEnabled = Boolean(cacheImagesEnabled);
     if (timeZone !== undefined) {
@@ -143,23 +199,23 @@ async function putHandler(request: NextRequest) {
       update: data,
       create: {
         id: 'singleton',
-        pollingIntervalSecs: pollingIntervalSecs ?? 30,
-        dashboardRefreshIntervalSecs: dashboardRefreshIntervalSecs ?? 5,
-        activityRefreshIntervalSecs: activityRefreshIntervalSecs ?? 5,
-        torrentsRefreshIntervalSecs: torrentsRefreshIntervalSecs ?? 5,
-        cacheImagesEnabled: cacheImagesEnabled ?? true,
-        theme: theme ?? 'dark',
-        timeZone: timeZone ?? getEnvTimeZone(),
-        logLevel: logLevel ?? 'debug',
-        logMaxFileMb: logMaxFileMb ?? 50,
-        logRetentionDays: logRetentionDays ?? 30,
-        logClientConsoleEnabled: logClientConsoleEnabled ?? true,
-        logFailedRequestBodies: logFailedRequestBodies ?? true,
-        logFailedResponseBodies: logFailedResponseBodies ?? true,
-        upcomingAlertHours: upcomingAlertHours ?? 24,
-        upcomingNotifyMode: upcomingNotifyMode ?? 'before_air',
-        upcomingNotifyBeforeMins: upcomingNotifyBeforeMins ?? 60,
-        upcomingDailyNotifyHour: upcomingDailyNotifyHour ?? 9,
+        pollingIntervalSecs: (data.pollingIntervalSecs as number | undefined) ?? 30,
+        dashboardRefreshIntervalSecs: (data.dashboardRefreshIntervalSecs as number | undefined) ?? 5,
+        activityRefreshIntervalSecs: (data.activityRefreshIntervalSecs as number | undefined) ?? 5,
+        torrentsRefreshIntervalSecs: (data.torrentsRefreshIntervalSecs as number | undefined) ?? 5,
+        cacheImagesEnabled: (data.cacheImagesEnabled as boolean | undefined) ?? true,
+        theme: (data.theme as string | undefined) ?? 'dark',
+        timeZone: (data.timeZone as string | undefined) ?? getEnvTimeZone(),
+        logLevel: (data.logLevel as string | undefined) ?? 'debug',
+        logMaxFileMb: (data.logMaxFileMb as number | undefined) ?? 50,
+        logRetentionDays: (data.logRetentionDays as number | undefined) ?? 30,
+        logClientConsoleEnabled: (data.logClientConsoleEnabled as boolean | undefined) ?? true,
+        logFailedRequestBodies: (data.logFailedRequestBodies as boolean | undefined) ?? false,
+        logFailedResponseBodies: (data.logFailedResponseBodies as boolean | undefined) ?? false,
+        upcomingAlertHours: (data.upcomingAlertHours as number | undefined) ?? 24,
+        upcomingNotifyMode: (data.upcomingNotifyMode as string | undefined) ?? 'before_air',
+        upcomingNotifyBeforeMins: (data.upcomingNotifyBeforeMins as number | undefined) ?? 60,
+        upcomingDailyNotifyHour: (data.upcomingDailyNotifyHour as number | undefined) ?? 9,
       },
     });
 

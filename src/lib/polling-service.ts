@@ -3,8 +3,26 @@ import { getSonarrClient, getRadarrClient, getQBittorrentClient, getJellyfinClie
 import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { logger } from '@/lib/logger';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
+
+type NotificationEventInput = {
+  eventType: string;
+  title: string;
+  body: string;
+  metadata?: Record<string, unknown>;
+  url?: string;
+};
+
+type PollNotificationContext = Record<string, unknown> & {
+  service: string;
+  reason: string;
+};
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function toNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -43,6 +61,23 @@ export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
 
+  private async notifyAndLog(
+    event: NotificationEventInput,
+    context: PollNotificationContext
+  ): Promise<number> {
+    const sentCount = await notifyEvent(event);
+    logger.info('Polling notification processed', {
+      ...context,
+      eventType: event.eventType,
+      title: event.title,
+      body: event.body,
+      url: event.url,
+      metadata: event.metadata,
+      sentCount,
+    }, { scope: 'polling' });
+    return sentCount;
+  }
+
   start(intervalMs: number): void {
     if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
       throw new Error('Invalid polling interval');
@@ -55,7 +90,7 @@ export class PollingService {
       return;
     }
     initVapid();
-    console.log(`[Polling] Starting with interval ${intervalMs}ms`);
+    logger.info('Polling service starting', { intervalMs }, { scope: 'polling' });
     this.currentIntervalMs = intervalMs;
     this.intervalId = setInterval(() => void this.poll(), intervalMs);
     void this.poll();
@@ -71,12 +106,13 @@ export class PollingService {
       clearInterval(this.intervalId);
       this.intervalId = null;
       this.currentIntervalMs = null;
-      console.log('[Polling] Stopped');
+      logger.info('Polling service stopped', {}, { scope: 'polling' });
     }
   }
 
   private async poll(): Promise<void> {
     try {
+      const startedAt = performance.now();
       const pollSources = [
         'pollSonarr',
         'pollRadarr',
@@ -84,6 +120,7 @@ export class PollingService {
         'pollJellyfin',
         'checkUpcoming',
       ] as const;
+      logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled([
         this.pollSonarr(),
         this.pollRadarr(),
@@ -94,22 +131,34 @@ export class PollingService {
 
       const rejected = results.flatMap((result, index) => {
         if (result.status !== 'rejected') return [];
-        const reason = result.reason instanceof Error
-          ? result.reason.message
-          : String(result.reason);
-        return [{ source: pollSources[index], reason }];
+        return [{ source: pollSources[index], reason: errorMessage(result.reason) }];
       });
+      const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
+      logger.debug('Polling cycle completed', {
+        durationMs,
+        sources: results.map((result, index) => ({
+          source: pollSources[index],
+          status: result.status,
+          reason: result.status === 'rejected' ? errorMessage(result.reason) : undefined,
+        })),
+        failures: rejected,
+      }, { scope: 'polling' });
       if (rejected.length > 0) {
-        console.error('[Polling] Failures:', rejected);
+        logger.error('Polling source failures', { failures: rejected }, { scope: 'polling' });
       }
     } catch (e) {
-      console.error('[Polling] Error:', e);
+      logger.error('Polling cycle failed', e, { scope: 'polling' });
     }
   }
 
   private async pollSonarr() {
     let client;
-    try { client = await getSonarrClient(); } catch { return; }
+    try {
+      client = await getSonarrClient();
+    } catch (error) {
+      logger.debug('Skipping Sonarr poll because client is unavailable', { error }, { scope: 'polling' });
+      return;
+    }
 
     const state = await prisma.pollingState.upsert({
       where: { serviceType: 'SONARR' },
@@ -122,6 +171,11 @@ export class PollingService {
     const currentIds = queue.records.map((r) => r.id);
     const prevIds = (state.lastQueueIds as number[]) || [];
     const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
+    logger.debug('Sonarr queue polled', {
+      queueCount: queue.records.length,
+      previousQueueCount: prevIds.length,
+      newQueueCount: newItems.length,
+    }, { scope: 'polling' });
 
     for (const item of newItems) {
       const metadata = {
@@ -134,29 +188,29 @@ export class PollingService {
       const redirect = getMediaHrefFromIds(metadata) ?? '/activity?tab=queue&source=sonarr';
 
       if (item.trackedDownloadState === 'importFailed') {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'importFailed',
           title: 'Import Failed',
           body: `${item.title}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'sonarr', reason: 'queue-import-failed', itemId: item.id });
       } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'downloadFailed',
           title: 'Download Failed',
           body: `${item.title}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'sonarr', reason: 'queue-download-failed', itemId: item.id });
       } else {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'grabbed',
           title: 'Download Started',
           body: `${item.title}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'sonarr', reason: 'queue-new-item', itemId: item.id });
       }
     }
 
@@ -166,6 +220,11 @@ export class PollingService {
     const newHistory = lastDate
       ? history.records.filter((r) => new Date(r.date) > new Date(lastDate))
       : [];
+    logger.debug('Sonarr history polled', {
+      historyCount: history.records.length,
+      lastHistoryDate: lastDate,
+      newHistoryCount: newHistory.length,
+    }, { scope: 'polling' });
 
     for (const item of newHistory) {
       if (item.eventType === 'downloadFolderImported' || item.eventType === 'episodeFileImported') {
@@ -178,26 +237,30 @@ export class PollingService {
         };
         const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'imported',
           title: 'Episode Imported',
           body: `${item.sourceTitle}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'sonarr', reason: 'history-imported', historyId: item.id });
       }
     }
 
     // Health check
     const health = await client.getHealth();
     const healthHash = crypto.createHash('md5').update(JSON.stringify(health)).digest('hex');
+    logger.debug('Sonarr health polled', {
+      healthCount: health.length,
+      changed: Boolean(state.lastHealthHash && healthHash !== state.lastHealthHash),
+    }, { scope: 'polling' });
     if (state.lastHealthHash && healthHash !== state.lastHealthHash && health.length > 0) {
-      await notifyEvent({
+      await this.notifyAndLog({
         eventType: 'healthWarning',
         title: 'Sonarr Health Warning',
         body: health.map((h) => h.message).join('; ').slice(0, 200),
         url: '/settings',
-      });
+      }, { service: 'sonarr', reason: 'health-changed', healthCount: health.length });
     }
 
     // Update state
@@ -209,11 +272,21 @@ export class PollingService {
         lastHealthHash: healthHash,
       },
     });
+    logger.debug('Sonarr polling state updated', {
+      queueCount: currentIds.length,
+      lastHistoryDate: history.records[0]?.date ?? state.lastHistoryDate,
+      healthHash,
+    }, { scope: 'polling' });
   }
 
   private async pollRadarr() {
     let client;
-    try { client = await getRadarrClient(); } catch { return; }
+    try {
+      client = await getRadarrClient();
+    } catch (error) {
+      logger.debug('Skipping Radarr poll because client is unavailable', { error }, { scope: 'polling' });
+      return;
+    }
 
     const state = await prisma.pollingState.upsert({
       where: { serviceType: 'RADARR' },
@@ -225,6 +298,11 @@ export class PollingService {
     const currentIds = queue.records.map((r) => r.id);
     const prevIds = (state.lastQueueIds as number[]) || [];
     const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
+    logger.debug('Radarr queue polled', {
+      queueCount: queue.records.length,
+      previousQueueCount: prevIds.length,
+      newQueueCount: newItems.length,
+    }, { scope: 'polling' });
 
     for (const item of newItems) {
       const metadata = {
@@ -235,29 +313,29 @@ export class PollingService {
       const redirect = getMediaHrefFromIds(metadata) ?? '/activity?tab=queue&source=radarr';
 
       if (item.trackedDownloadState === 'importFailed') {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'importFailed',
           title: 'Movie Import Failed',
           body: `${item.title}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'radarr', reason: 'queue-import-failed', itemId: item.id });
       } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'downloadFailed',
           title: 'Movie Download Failed',
           body: `${item.title}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'radarr', reason: 'queue-download-failed', itemId: item.id });
       } else {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'grabbed',
           title: 'Movie Download Started',
           body: `${item.title}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'radarr', reason: 'queue-new-item', itemId: item.id });
       }
     }
 
@@ -266,6 +344,11 @@ export class PollingService {
     const newHistory = lastDate
       ? history.records.filter((r) => new Date(r.date) > new Date(lastDate))
       : [];
+    logger.debug('Radarr history polled', {
+      historyCount: history.records.length,
+      lastHistoryDate: lastDate,
+      newHistoryCount: newHistory.length,
+    }, { scope: 'polling' });
 
     for (const item of newHistory) {
       if (item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported') {
@@ -276,25 +359,29 @@ export class PollingService {
         };
         const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'imported',
           title: 'Movie Imported',
           body: `${item.sourceTitle}`,
           metadata: { ...metadata, redirect },
           url: redirect,
-        });
+        }, { service: 'radarr', reason: 'history-imported', historyId: item.id });
       }
     }
 
     const health = await client.getHealth();
     const healthHash = crypto.createHash('md5').update(JSON.stringify(health)).digest('hex');
+    logger.debug('Radarr health polled', {
+      healthCount: health.length,
+      changed: Boolean(state.lastHealthHash && healthHash !== state.lastHealthHash),
+    }, { scope: 'polling' });
     if (state.lastHealthHash && healthHash !== state.lastHealthHash && health.length > 0) {
-      await notifyEvent({
+      await this.notifyAndLog({
         eventType: 'healthWarning',
         title: 'Radarr Health Warning',
         body: health.map((h) => h.message).join('; ').slice(0, 200),
         url: '/settings',
-      });
+      }, { service: 'radarr', reason: 'health-changed', healthCount: health.length });
     }
 
     await prisma.pollingState.update({
@@ -305,11 +392,21 @@ export class PollingService {
         lastHealthHash: healthHash,
       },
     });
+    logger.debug('Radarr polling state updated', {
+      queueCount: currentIds.length,
+      lastHistoryDate: history.records[0]?.date ?? state.lastHistoryDate,
+      healthHash,
+    }, { scope: 'polling' });
   }
 
   private async pollQBittorrent() {
     let client;
-    try { client = await getQBittorrentClient(); } catch { return; }
+    try {
+      client = await getQBittorrentClient();
+    } catch (error) {
+      logger.debug('Skipping qBittorrent poll because client is unavailable', { error }, { scope: 'polling' });
+      return;
+    }
 
     const state = await prisma.pollingState.upsert({
       where: { serviceType: 'QBITTORRENT' },
@@ -323,42 +420,48 @@ export class PollingService {
     // Previous state: array of {hash, progress, name}
     const prevEntries = (state.lastQueueIds as { hash: string; progress: number; name: string }[]) || [];
     const prevMap = new Map(prevEntries.map((e) => [e.hash, e]));
+    logger.debug('qBittorrent torrents polled', {
+      torrentCount: torrents.length,
+      previousTorrentCount: prevEntries.length,
+      newTorrentCount: torrents.filter((torrent) => !prevMap.has(torrent.hash)).length,
+      deletedTorrentCount: prevEntries.filter((entry) => !currentMap.has(entry.hash)).length,
+    }, { scope: 'polling' });
 
     // Detect new torrents (added)
     for (const torrent of torrents) {
       const prev = prevMap.get(torrent.hash);
       if (!prev) {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'torrentAdded',
           title: 'Torrent Added',
           body: torrent.name,
           metadata: { source: 'qbittorrent', hash: torrent.hash, redirect: '/torrents' },
           url: '/torrents',
-        });
+        }, { service: 'qbittorrent', reason: 'torrent-added', hash: torrent.hash });
       }
 
       // Detect completed (progress went from <1 to 1)
       if (torrent.progress >= 1 && prev && prev.progress < 1) {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'torrentCompleted',
           title: 'Download Complete',
           body: torrent.name,
           metadata: { source: 'qbittorrent', hash: torrent.hash, redirect: '/torrents' },
           url: '/torrents',
-        });
+        }, { service: 'qbittorrent', reason: 'torrent-completed', hash: torrent.hash });
       }
     }
 
     // Detect deleted (was in previous state but gone now)
     for (const prev of prevEntries) {
       if (!currentMap.has(prev.hash)) {
-        await notifyEvent({
+        await this.notifyAndLog({
           eventType: 'torrentDeleted',
           title: 'Torrent Removed',
           body: prev.name,
           metadata: { source: 'qbittorrent', hash: prev.hash, redirect: '/torrents' },
           url: '/torrents',
-        });
+        }, { service: 'qbittorrent', reason: 'torrent-deleted', hash: prev.hash });
       }
     }
 
@@ -369,11 +472,19 @@ export class PollingService {
         lastQueueIds: torrents.map((t) => ({ hash: t.hash, progress: t.progress, name: t.name })),
       },
     });
+    logger.debug('qBittorrent polling state updated', {
+      torrentCount: torrents.length,
+    }, { scope: 'polling' });
   }
 
   private async pollJellyfin() {
     let client;
-    try { client = await getJellyfinClient(); } catch { return; }
+    try {
+      client = await getJellyfinClient();
+    } catch (error) {
+      logger.debug('Skipping Jellyfin poll because client is unavailable', { error }, { scope: 'polling' });
+      return;
+    }
 
     const state = await prisma.pollingState.upsert({
       where: { serviceType: 'JELLYFIN' },
@@ -388,6 +499,11 @@ export class PollingService {
       const prevSessionIds = (state.lastQueueIds as string[]) || [];
 
       const newSessions = sessions.filter((s) => !prevSessionIds.includes(s.Id));
+      logger.debug('Jellyfin sessions polled', {
+        sessionCount: sessions.length,
+        previousSessionCount: prevSessionIds.length,
+        newSessionCount: newSessions.length,
+      }, { scope: 'polling' });
 
       for (const session of newSessions) {
         const item = session.NowPlayingItem;
@@ -395,13 +511,13 @@ export class PollingService {
           const title = item.SeriesName
             ? `${item.SeriesName} - ${item.Name}`
             : item.Name;
-          await notifyEvent({
+          await this.notifyAndLog({
             eventType: 'jellyfinPlaybackStart',
             title: 'Playback Started',
             body: `${session.UserName} is watching ${title}`,
             metadata: { source: 'jellyfin', sessionId: session.Id, redirect: '/jellyfin' },
             url: '/jellyfin',
-          });
+          }, { service: 'jellyfin', reason: 'playback-start', sessionId: session.Id });
         }
       }
 
@@ -411,8 +527,11 @@ export class PollingService {
           lastQueueIds: currentSessionIds,
         },
       });
+      logger.debug('Jellyfin polling state updated', {
+        sessionCount: currentSessionIds.length,
+      }, { scope: 'polling' });
     } catch (e) {
-      console.error('[Polling] Jellyfin sessions error:', e);
+      logger.warn('Jellyfin session poll failed', e, { scope: 'polling' });
     }
   }
 
@@ -421,11 +540,26 @@ export class PollingService {
     const timeZone = settings.timeZone;
 
     const mode = settings.upcomingNotifyMode || 'before_air';
+    const now = new Date();
+    logger.debug('Upcoming poll started', {
+      mode,
+      timeZone,
+      alertHours: settings.upcomingAlertHours,
+      dailyNotifyHour: settings.upcomingDailyNotifyHour,
+      notifyBeforeMins: settings.upcomingNotifyBeforeMins,
+    }, { scope: 'polling' });
 
     // Daily digest: only run at the configured hour, once per day
     if (mode === 'daily_digest') {
-      const now = new Date();
-      if (toZonedDate(now, timeZone).getHours() !== settings.upcomingDailyNotifyHour) return;
+      const localHour = toZonedDate(now, timeZone).getHours();
+      if (localHour !== settings.upcomingDailyNotifyHour) {
+        logger.debug('Skipping upcoming daily digest outside configured hour', {
+          localHour,
+          dailyNotifyHour: settings.upcomingDailyNotifyHour,
+          timeZone,
+        }, { scope: 'polling' });
+        return;
+      }
 
       const todayStart = startOfLocalDay(now, timeZone);
       const alreadySentToday = await prisma.notificationHistory.findFirst({
@@ -434,10 +568,22 @@ export class PollingService {
           createdAt: { gte: todayStart },
         },
       });
-      if (alreadySentToday) return;
+      if (alreadySentToday) {
+        logger.debug('Skipping upcoming daily digest because one was already sent today', {
+          todayStart,
+          historyId: alreadySentToday.id,
+        }, { scope: 'polling' });
+        return;
+      }
     }
 
-    const now = new Date();
+    // Per-item dedupe cutoff: align with daily_digest's local-day boundary so
+    // items already sent in today's digest don't slip past, and use a 24h
+    // rolling window for before_air mode where the digest concept doesn't apply.
+    const dedupeSince = mode === 'daily_digest'
+      ? startOfLocalDay(now, timeZone)
+      : new Date(Date.now() - 24 * 60 * 60 * 1000);
+
     const alertEnd = addHours(now, settings.upcomingAlertHours);
     const start = now.toISOString();
     const end = alertEnd.toISOString();
@@ -446,6 +592,12 @@ export class PollingService {
     try {
       const client = await getSonarrClient();
       const calendar = await client.getCalendar(start, end);
+      logger.debug('Sonarr upcoming calendar polled', {
+        calendarCount: calendar.length,
+        start,
+        end,
+        mode,
+      }, { scope: 'polling' });
       for (const ep of calendar) {
         if (!ep.series) continue;
 
@@ -453,7 +605,15 @@ export class PollingService {
         if (mode === 'before_air' && ep.airDateUtc) {
           const airTime = new Date(ep.airDateUtc);
           const minsUntilAir = (airTime.getTime() - now.getTime()) / 60000;
-          if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) continue;
+          if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) {
+            logger.debug('Skipping Sonarr upcoming item outside before-air window', {
+              seriesId: ep.seriesId,
+              episodeId: ep.id,
+              minsUntilAir,
+              notifyBeforeMins: settings.upcomingNotifyBeforeMins,
+            }, { scope: 'polling' });
+            continue;
+          }
         }
 
         const body = `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
@@ -461,11 +621,11 @@ export class PollingService {
           where: {
             eventType: 'upcomingPremiere',
             body,
-            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            createdAt: { gte: dedupeSince },
           },
         });
         if (!already) {
-          await notifyEvent({
+          await this.notifyAndLog({
             eventType: 'upcomingPremiere',
             title: 'Upcoming Episode',
             body,
@@ -477,22 +637,50 @@ export class PollingService {
               redirect: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`,
             },
             url: `/series/${ep.seriesId}`,
+          }, {
+            service: 'sonarr',
+            reason: 'upcoming-premiere',
+            seriesId: ep.seriesId,
+            episodeId: ep.id,
+            dedupeSince,
           });
+        } else {
+          logger.debug('Skipping duplicate Sonarr upcoming notification', {
+            seriesId: ep.seriesId,
+            episodeId: ep.id,
+            dedupeSince,
+            historyId: already.id,
+          }, { scope: 'polling' });
         }
       }
-    } catch {}
+    } catch (error) {
+      logger.warn('Sonarr upcoming calendar poll failed', error, { scope: 'polling' });
+    }
 
     // Radarr calendar
     try {
       const client = await getRadarrClient();
       const calendar = await client.getCalendar(start, end);
+      logger.debug('Radarr upcoming calendar polled', {
+        calendarCount: calendar.length,
+        start,
+        end,
+        mode,
+      }, { scope: 'polling' });
       for (const movie of calendar) {
         if (mode === 'before_air') {
           const releaseDate = movie.digitalRelease || movie.physicalRelease || movie.inCinemas;
           if (releaseDate) {
             const airTime = new Date(releaseDate);
             const minsUntilAir = (airTime.getTime() - now.getTime()) / 60000;
-            if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) continue;
+            if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) {
+              logger.debug('Skipping Radarr upcoming item outside before-air window', {
+                movieId: movie.id,
+                minsUntilAir,
+                notifyBeforeMins: settings.upcomingNotifyBeforeMins,
+              }, { scope: 'polling' });
+              continue;
+            }
           }
         }
 
@@ -501,11 +689,11 @@ export class PollingService {
           where: {
             eventType: 'upcomingPremiere',
             body,
-            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            createdAt: { gte: dedupeSince },
           },
         });
         if (!already) {
-          await notifyEvent({
+          await this.notifyAndLog({
             eventType: 'upcomingPremiere',
             title: 'Upcoming Movie',
             body,
@@ -515,10 +703,23 @@ export class PollingService {
               redirect: `/movies/${movie.id}`,
             },
             url: `/movies/${movie.id}`,
+          }, {
+            service: 'radarr',
+            reason: 'upcoming-premiere',
+            movieId: movie.id,
+            dedupeSince,
           });
+        } else {
+          logger.debug('Skipping duplicate Radarr upcoming notification', {
+            movieId: movie.id,
+            dedupeSince,
+            historyId: already.id,
+          }, { scope: 'polling' });
         }
       }
-    } catch {}
+    } catch (error) {
+      logger.warn('Radarr upcoming calendar poll failed', error, { scope: 'polling' });
+    }
   }
 }
 

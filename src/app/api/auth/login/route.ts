@@ -122,4 +122,4 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   return response;
 }
 
-export const POST = withApiLogging(postHandler, 'api/auth/login');
+export const POST = withApiLogging(postHandler, 'api/auth/login', { logBodies: false });

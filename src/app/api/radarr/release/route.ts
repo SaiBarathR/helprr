@@ -3,7 +3,7 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -11,12 +11,22 @@ async function getHandler(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const movieId = searchParams.get('movieId');
 
-    if (!movieId) {
-      return NextResponse.json({ error: 'movieId is required' }, { status: 400 });
+    if (!movieId || !/^\d+$/.test(movieId)) {
+      return NextResponse.json(
+        { error: 'movieId must be a positive integer' },
+        { status: 400 }
+      );
+    }
+    const movieIdNum = Number(movieId);
+    if (!Number.isInteger(movieIdNum) || movieIdNum <= 0) {
+      return NextResponse.json(
+        { error: 'movieId must be a positive integer' },
+        { status: 400 }
+      );
     }
 
     const client = await getRadarrClient();
-    const releases = await client.getReleases(Number(movieId));
+    const releases = await client.getReleases(movieIdNum);
     return NextResponse.json(releases);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to search releases';

@@ -109,4 +109,4 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export const GET = withApiLogging(getHandler, 'api/services/anilist/callback');
+export const GET = withApiLogging(getHandler, 'api/services/anilist/callback', { logBodies: false });

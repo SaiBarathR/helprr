@@ -102,4 +102,4 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   return response;
 }
 
-export const POST = withApiLogging(postHandler, 'api/services/anilist/authorize');
+export const POST = withApiLogging(postHandler, 'api/services/anilist/authorize', { logBodies: false });

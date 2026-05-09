@@ -13,7 +13,7 @@ import { withApiLogging } from '@/lib/api-logger';
 async function postHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
-) {
+): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

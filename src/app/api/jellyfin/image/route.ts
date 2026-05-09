@@ -7,7 +7,7 @@ import { withApiLogging } from '@/lib/api-logger';
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
 const ALLOWED_IMAGE_TYPES = new Set(['Primary', 'Backdrop', 'Banner', 'Thumb', 'Logo']);
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 

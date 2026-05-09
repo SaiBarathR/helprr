@@ -79,14 +79,19 @@ export function formatInTimeZone(
   }).format(date);
 }
 
-export function getLocalDateParts(input: Date | string | number, timeZone: string) {
+export function getLocalDateParts(
+  input: Date | string | number,
+  timeZone: string
+): { year: number; month: number; day: number } | undefined {
+  const date = toDate(input);
+  if (!Number.isFinite(date.getTime())) return undefined;
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: normalizeTimeZone(timeZone),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   });
-  const parts = formatter.formatToParts(toDate(input));
+  const parts = formatter.formatToParts(date);
   const get = (type: string) => Number(parts.find((part) => part.type === type)?.value);
   return {
     year: get('year'),
@@ -96,13 +101,17 @@ export function getLocalDateParts(input: Date | string | number, timeZone: strin
 }
 
 export function getLocalDateKey(input: Date | string | number, timeZone: string): string {
-  const { year, month, day } = getLocalDateParts(input, timeZone);
+  const parts = getLocalDateParts(input, timeZone);
+  if (!parts) return '';
+  const { year, month, day } = parts;
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 export function startOfLocalDay(input: Date | string | number, timeZone: string): Date {
-  const { year, month, day } = getLocalDateParts(input, timeZone);
-  return new TZDate(year, month - 1, day, 0, 0, 0, 0, normalizeTimeZone(timeZone));
+  const tz = normalizeTimeZone(timeZone);
+  const parts = getLocalDateParts(input, timeZone) ?? getLocalDateParts(new Date(), tz)!;
+  const { year, month, day } = parts;
+  return new TZDate(year, month - 1, day, 0, 0, 0, 0, tz);
 }
 
 export function dateInTimeZone(

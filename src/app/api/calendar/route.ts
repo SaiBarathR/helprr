@@ -10,7 +10,7 @@ import type {
   RadarrCalendarEntry,
 } from '@/types';
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -28,16 +28,48 @@ async function getHandler(request: NextRequest) {
       const settings = await getOrCreateAppSettings();
       const parsedDays = days ? parseInt(days, 10) : 30;
       const daysNum = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : 30;
+      const tz = settings.timeZone;
 
-      const startDate = fullDay ? startOfLocalDay(new Date(), settings.timeZone) : new Date();
-      const endDate = toZonedDate(startDate, settings.timeZone);
+      let startDate: Date;
+      let endDate: Date;
 
-      if (fullDay) {
-        endDate.setTime(startDate.getTime());
-        endDate.setDate(endDate.getDate() + daysNum);
-        endDate.setMilliseconds(endDate.getMilliseconds() - 1);
+      if (start && !end) {
+        // Anchor on caller-provided start; derive end forward by daysNum.
+        const parsedStart = new Date(start);
+        if (!Number.isFinite(parsedStart.getTime())) {
+          return NextResponse.json({ error: 'Invalid start date' }, { status: 400 });
+        }
+        startDate = fullDay ? startOfLocalDay(parsedStart, tz) : parsedStart;
+        const candidateEnd = toZonedDate(startDate, tz);
+        candidateEnd.setDate(candidateEnd.getDate() + daysNum);
+        if (fullDay) candidateEnd.setMilliseconds(candidateEnd.getMilliseconds() - 1);
+        endDate = candidateEnd;
+      } else if (!start && end) {
+        // Anchor on caller-provided end; derive start backward by daysNum.
+        const parsedEnd = new Date(end);
+        if (!Number.isFinite(parsedEnd.getTime())) {
+          return NextResponse.json({ error: 'Invalid end date' }, { status: 400 });
+        }
+        endDate = parsedEnd;
+        const candidateStart = toZonedDate(parsedEnd, tz);
+        candidateStart.setDate(candidateStart.getDate() - daysNum);
+        if (fullDay) {
+          startDate = startOfLocalDay(candidateStart, tz);
+          // Adjust the supplied end to end-of-day inclusive when fullDay is set.
+          const adjustedEnd = toZonedDate(parsedEnd, tz);
+          adjustedEnd.setDate(adjustedEnd.getDate() + 1);
+          adjustedEnd.setMilliseconds(adjustedEnd.getMilliseconds() - 1);
+          endDate = adjustedEnd;
+        } else {
+          startDate = candidateStart;
+        }
       } else {
-        endDate.setDate(endDate.getDate() + daysNum);
+        // Both missing — default to a window starting now.
+        startDate = fullDay ? startOfLocalDay(new Date(), tz) : new Date();
+        const candidateEnd = toZonedDate(startDate, tz);
+        candidateEnd.setDate(candidateEnd.getDate() + daysNum);
+        if (fullDay) candidateEnd.setMilliseconds(candidateEnd.getMilliseconds() - 1);
+        endDate = candidateEnd;
       }
 
       start = startDate.toISOString();
