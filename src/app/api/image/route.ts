@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
+import { withApiLogging } from '@/lib/api-logger';
 
 type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist';
 
@@ -157,7 +158,7 @@ function sortConnectionsByHint(connections: ConnectionLike[], hint: ServiceHint 
   });
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -264,3 +265,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Failed to proxy image' }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/image');

@@ -34,6 +34,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
@@ -50,5 +51,6 @@ USER nextjs
 EXPOSE 3050
 ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
+ENV LOG_DIR=/app/logs
 
 CMD ["sh", "-c", "npx prisma db push --skip-generate && node server.js"]

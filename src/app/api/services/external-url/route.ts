@@ -3,8 +3,9 @@ import { ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { isServiceType } from '@/lib/service-connection-secrets';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function PUT(request: NextRequest): Promise<NextResponse> {
+async function putHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -43,3 +44,5 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Failed to update external URL' }, { status: 500 });
   }
 }
+
+export const PUT = withApiLogging(putHandler, 'api/services/external-url');

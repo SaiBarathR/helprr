@@ -12,6 +12,7 @@ import type {
   SonarrSeries,
 } from '@/types';
 import type { TmdbDiscoverParams, TmdbListItem } from '@/lib/tmdb-client';
+import { withApiLogging } from '@/lib/api-logger';
 type DiscoverSections = NonNullable<DiscoverResponse['sections']>;
 
 const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder: 'asc' | 'desc'; contentType: DiscoverContentType }>> = {
@@ -519,7 +520,7 @@ async function discoverItems(params: {
   };
 }
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -628,3 +629,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/discover');

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getMangaDetail } from '@/lib/anilist-client';
 import { normalizeAniListMangaDetail } from '@/lib/anilist-helpers';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
@@ -27,3 +28,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anime/manga/[id]');

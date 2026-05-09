@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Retrieve the list of indexers from the Prowlarr client and return them as JSON.
  *
  * @returns The fetched indexers as a JSON response; on failure returns a JSON object with an `error` message and HTTP status 500.
  */
-export async function GET() {
+async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -27,7 +28,7 @@ export async function GET() {
  * @param request - Incoming HTTP request whose JSON body should be either `{ action: "testall" }` to run tests for all indexers, or an indexer configuration object to be added.
  * @returns A JSON HTTP response containing normalized test results or the added indexer on success; on error, a JSON object with an `error` message and HTTP status 500.
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -48,3 +49,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/prowlarr/indexers');
+export const POST = withApiLogging(postHandler, 'api/prowlarr/indexers');

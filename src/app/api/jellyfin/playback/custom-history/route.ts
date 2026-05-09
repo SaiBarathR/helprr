@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Efficient history endpoint using submit_custom_query against PlaybackActivity table.
@@ -23,7 +24,7 @@ function escapeSQL(val: string): string {
   return val.replace(/'/g, "''");
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -107,3 +108,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/jellyfin/playback/custom-history');

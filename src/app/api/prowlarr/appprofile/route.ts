@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Handle GET requests to fetch Prowlarr application profiles.
@@ -9,7 +10,7 @@ import { requireAuth } from '@/lib/auth';
  *
  * @returns A NextResponse with the application profiles as JSON, or a NextResponse with a JSON object `{ error: string }` and HTTP status 500 when retrieval fails.
  */
-export async function GET() {
+async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -22,3 +23,5 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/prowlarr/appprofile');

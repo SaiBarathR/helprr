@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -20,7 +21,7 @@ export async function GET(
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -36,7 +37,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(
+async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -55,3 +56,7 @@ export async function DELETE(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/sonarr/[id]');
+export const PUT = withApiLogging(putHandler, 'api/sonarr/[id]');
+export const DELETE = withApiLogging(deleteHandler, 'api/sonarr/[id]');

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSession, verifyPassword, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
 import { getRedisClient } from '@/lib/redis';
+import { withApiLogging } from '@/lib/api-logger';
 
 const LOGIN_WINDOW_MS = 60_000;
 const LOGIN_WINDOW_SECONDS = Math.max(1, Math.ceil(LOGIN_WINDOW_MS / 1000));
@@ -62,7 +63,7 @@ async function clearAttempts(ip: string): Promise<void> {
   await redis.del(attemptsKey(ip));
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(request);
   const rateLimitKey = ip ?? 'unknown';
 
@@ -120,3 +121,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   return response;
 }
+
+export const POST = withApiLogging(postHandler, 'api/auth/login');

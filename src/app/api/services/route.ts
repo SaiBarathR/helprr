@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { requireAuth } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
+import { withApiLogging } from '@/lib/api-logger';
 
 function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
   return {
@@ -39,7 +40,7 @@ function getUpstream4xxMessage(error: unknown): string {
   return 'Failed to save service connection';
 }
 
-export async function GET(): Promise<NextResponse> {
+async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -73,7 +74,7 @@ export async function GET(): Promise<NextResponse> {
  *
  * @returns The saved service connection object with `apiKey` obscured, or an error object `{ error: string }` when validation or saving fails (returned with an appropriate HTTP status).
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -224,3 +225,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/services');
+export const POST = withApiLogging(postHandler, 'api/services');

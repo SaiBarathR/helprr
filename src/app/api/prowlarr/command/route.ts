@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Handle POST requests that send a named command to a Prowlarr instance.
@@ -9,7 +10,7 @@ import { requireAuth } from '@/lib/auth';
  *
  * @returns On success, the JSON response from Prowlarr. If `name` is missing, a 400 response with `{ error: 'Command name is required' }`. On other failures, a 500 response with `{ error: string }` describing the failure.
  */
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -29,3 +30,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withApiLogging(postHandler, 'api/prowlarr/command');

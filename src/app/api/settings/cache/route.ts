@@ -6,8 +6,9 @@ import {
   purgeActiveCache,
 } from '@/lib/cache/admin';
 import { getCacheImagesEnabled } from '@/lib/cache/state';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET() {
+async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -30,7 +31,7 @@ export async function GET() {
   }
 }
 
-export async function DELETE() {
+async function deleteHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -48,3 +49,6 @@ export async function DELETE() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/settings/cache');
+export const DELETE = withApiLogging(deleteHandler, 'api/settings/cache');

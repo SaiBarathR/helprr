@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
+import { withApiLogging } from '@/lib/api-logger';
 
 const VALID_PRIORITIES = new Set([0, 1, 6, 7]);
 
-export async function POST(
+async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ hash: string }> }
 ) {
@@ -55,3 +56,5 @@ export async function POST(
     );
   }
 }
+
+export const POST = withApiLogging(postHandler, 'api/qbittorrent/[hash]/files/priority');

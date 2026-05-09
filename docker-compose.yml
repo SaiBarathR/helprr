@@ -45,6 +45,7 @@ services:
         condition: service_healthy
     environment:
       - TZ=${TZ:-UTC}
+      - LOG_DIR=${LOG_DIR:-/app/logs}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@helprr-db:5432/helprr}
       - REDIS_URL=${REDIS_URL:-redis://helprr-redis:6379}
       - APP_PASSWORD=${APP_PASSWORD}
@@ -52,6 +53,8 @@ services:
       - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
+    volumes:
+      - helprr-logs:/app/logs
     networks:
       - helprr-net
 
@@ -61,3 +64,4 @@ networks:
 
 volumes:
   helprr-db-data:
+  helprr-logs:

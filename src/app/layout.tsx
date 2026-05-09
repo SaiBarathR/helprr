@@ -4,6 +4,7 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { ServiceWorkerRegister } from '@/components/sw-register';
+import { ClientLogCapture } from '@/components/client-log-capture';
 import './globals.css';
 
 const geistSans = Geist({
@@ -67,6 +68,7 @@ export default function RootLayout({
           </TooltipProvider>
           <Toaster />
           <ServiceWorkerRegister />
+          <ClientLogCapture />
         </ThemeProvider>
       </body>
     </html>

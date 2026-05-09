@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ hash: string }> }
 ) {
@@ -35,3 +36,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/qbittorrent/[hash]/details');

@@ -1,0 +1,43 @@
+import type { Prisma } from '@prisma/client';
+import { prisma } from '@/lib/db';
+import { getEnvTimeZone, normalizeTimeZone } from '@/lib/timezone';
+
+export const DEFAULT_LOG_LEVEL = 'debug';
+export const DEFAULT_LOG_MAX_FILE_MB = 50;
+export const DEFAULT_LOG_RETENTION_DAYS = 30;
+
+export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
+  return {
+    id: 'singleton',
+    pollingIntervalSecs: 30,
+    dashboardRefreshIntervalSecs: 5,
+    activityRefreshIntervalSecs: 5,
+    torrentsRefreshIntervalSecs: 5,
+    cacheImagesEnabled: true,
+    theme: 'dark',
+    timeZone: getEnvTimeZone(),
+    logLevel: DEFAULT_LOG_LEVEL,
+    logMaxFileMb: DEFAULT_LOG_MAX_FILE_MB,
+    logRetentionDays: DEFAULT_LOG_RETENTION_DAYS,
+    logClientConsoleEnabled: true,
+    logFailedRequestBodies: true,
+    logFailedResponseBodies: true,
+    upcomingAlertHours: 24,
+    upcomingNotifyMode: 'before_air',
+    upcomingNotifyBeforeMins: 60,
+    upcomingDailyNotifyHour: 9,
+  };
+}
+
+export async function getOrCreateAppSettings() {
+  const settings = await prisma.appSettings.upsert({
+    where: { id: 'singleton' },
+    update: {},
+    create: buildDefaultAppSettings(),
+  });
+
+  return {
+    ...settings,
+    timeZone: normalizeTimeZone(settings.timeZone),
+  };
+}

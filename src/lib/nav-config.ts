@@ -11,6 +11,7 @@ import {
   Bell,
   Settings,
   Sparkles,
+  ScrollText,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -26,6 +27,7 @@ export type NavItemId =
   | 'jellyfin'
   | 'activity'
   | 'notifications'
+  | 'logs'
   | 'settings';
 
 export interface NavItemDef {
@@ -50,6 +52,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts' },
+  { id: 'logs', href: '/logs', icon: ScrollText, label: 'Logs', shortLabel: 'Logs' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },
 ];
 

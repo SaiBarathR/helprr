@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -30,3 +31,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const POST = withApiLogging(postHandler, 'api/jellyfin/system/control');

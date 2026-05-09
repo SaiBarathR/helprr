@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { EVENT_TYPES, ensureNotificationPreferences } from '@/lib/notification-events';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -108,3 +109,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/notifications/preferences');
+export const POST = withApiLogging(postHandler, 'api/notifications/preferences');

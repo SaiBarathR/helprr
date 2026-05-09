@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getJellyfinClientContext } from '@/lib/service-helpers';
+import { withApiLogging } from '@/lib/api-logger';
 import {
   getCachedJellyfinLookup,
   setCachedJellyfinLookup,
   type JellyfinLookupProvider,
 } from '@/lib/cache/jellyfin-lookup-cache';
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -81,3 +82,5 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Jellyfin lookup failed' }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/jellyfin/lookup');

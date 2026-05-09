@@ -10,6 +10,7 @@ import {
 } from '@/lib/discover';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
+import { withApiLogging } from '@/lib/api-logger';
 import type {
   DiscoverMovieFullDetail,
   DiscoverItem,
@@ -45,7 +46,7 @@ async function getLibraries() {
   return { movies, series };
 }
 
-export async function GET(
+async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
@@ -229,3 +230,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/discover/movie/[id]');

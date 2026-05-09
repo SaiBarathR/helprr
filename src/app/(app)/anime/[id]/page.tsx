@@ -409,7 +409,6 @@ export default function AnimeDetailPage() {
   return (
     <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
       <PageHeader className='-mx-2 md:-mx-6' title={detail.title} />
-
       {/* Hero */}
       <AnimeHero
         title={detail.title}

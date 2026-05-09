@@ -3,8 +3,9 @@ import { getTMDBClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import { tmdbImageUrl } from '@/lib/discover';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -104,3 +105,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/discover/person');

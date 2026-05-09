@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
  * @param request - The incoming HTTP request whose JSON body contains `{ guid, indexerId, downloadClientId? }`
  * @returns A JSON response: `{ success: true }` on success; otherwise `{ error: string }` with status `400` for missing/invalid input or `500` for internal failures.
  */
-export async function POST(request: Request) {
+async function postHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -51,3 +52,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/radarr/release');
+export const POST = withApiLogging(postHandler, 'api/radarr/release');

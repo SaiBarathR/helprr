@@ -83,6 +83,13 @@ model AppSettings {
   torrentsRefreshIntervalSecs  Int @default(5)
   cacheImagesEnabled       Boolean @default(true)
   theme                    String  @default("dark")
+  timeZone                 String  @default("UTC")
+  logLevel                 String  @default("debug")
+  logMaxFileMb             Int     @default(50)
+  logRetentionDays         Int     @default(30)
+  logClientConsoleEnabled  Boolean @default(true)
+  logFailedRequestBodies   Boolean @default(true)
+  logFailedResponseBodies  Boolean @default(true)
   upcomingAlertHours       Int     @default(24)
   upcomingNotifyMode       String  @default("before_air") // "once_in_window" | "before_air" | "daily_digest"
   upcomingNotifyBeforeMins Int     @default(60)

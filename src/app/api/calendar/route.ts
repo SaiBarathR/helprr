@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
+import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import type {
   CalendarEvent,
   SonarrCalendarEntry,
   RadarrCalendarEntry,
 } from '@/types';
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -22,14 +25,14 @@ export async function GET(request: NextRequest) {
     // If days provided without start/end, allow opting into full local day boundaries.
     // fullDay=true respects process TZ (e.g. TZ=Asia/Kolkata) for date-only widgets.
     if (!start || !end) {
+      const settings = await getOrCreateAppSettings();
       const parsedDays = days ? parseInt(days, 10) : 30;
       const daysNum = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : 30;
 
-      const startDate = new Date();
-      const endDate = new Date(startDate);
+      const startDate = fullDay ? startOfLocalDay(new Date(), settings.timeZone) : new Date();
+      const endDate = toZonedDate(startDate, settings.timeZone);
 
       if (fullDay) {
-        startDate.setHours(0, 0, 0, 0);
         endDate.setTime(startDate.getTime());
         endDate.setDate(endDate.getDate() + daysNum);
         endDate.setMilliseconds(endDate.getMilliseconds() - 1);
@@ -115,3 +118,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/calendar');

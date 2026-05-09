@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { AniListReauthRequiredError, loadAniListConnection } from '@/lib/anilist-oauth';
+import { withApiLogging } from '@/lib/api-logger';
 import {
   deleteMediaListEntry,
   fetchUserMediaListEntry,
@@ -56,7 +57,7 @@ function hasOwn(value: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -86,7 +87,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -165,7 +166,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export async function DELETE(request: NextRequest): Promise<NextResponse> {
+async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -187,3 +188,7 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anilist/list-entry');
+export const POST = withApiLogging(postHandler, 'api/anilist/list-entry');
+export const DELETE = withApiLogging(deleteHandler, 'api/anilist/list-entry');

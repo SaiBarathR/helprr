@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { ANILIST_GRAPHQL_URL, buildAuthorizeUrl } from '@/lib/anilist-oauth';
+import { withApiLogging } from '@/lib/api-logger';
 import {
   isNonEmptyString,
   resolveApiKeyForService,
@@ -33,7 +34,7 @@ function trustedOrigin(request: NextRequest): string | null {
   }
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -100,3 +101,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
   return response;
 }
+
+export const POST = withApiLogging(postHandler, 'api/services/anilist/authorize');

@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Handles GET requests for Sonarr download clients.
  *
  * @returns The JSON response containing the list of download clients on success, or an error object `{ error: string }` with HTTP status 500 on failure.
  */
-export async function GET() {
+async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -20,3 +21,5 @@ export async function GET() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/sonarr/downloadclient');

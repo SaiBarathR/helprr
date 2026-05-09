@@ -226,6 +226,13 @@ const THEME_OPTIONS = [
   { value: 'system', label: 'System' },
 ];
 
+const LOG_LEVEL_OPTIONS = [
+  { value: 'debug', label: 'Debug' },
+  { value: 'info', label: 'Info' },
+  { value: 'warn', label: 'Warn' },
+  { value: 'error', label: 'Error' },
+];
+
 const ALERT_WINDOW_OPTIONS = [
   { value: '6', label: '6 hours' },
   { value: '12', label: '12 hours' },
@@ -274,6 +281,8 @@ export default function SettingsPage() {
   const [dashboardRefreshInterval, setDashboardRefreshInterval] = useState('5');
   const [activityRefreshInterval, setActivityRefreshInterval] = useState('5');
   const [torrentsRefreshInterval, setTorrentsRefreshInterval] = useState('5');
+  const [timeZone, setTimeZone] = useState('');
+  const [envTimeZone, setEnvTimeZone] = useState('UTC');
   const [cacheImagesEnabled, setCacheImagesEnabled] = useState(true);
   const [cacheUsage, setCacheUsage] = useState<CacheUsageStats | null>(null);
   const [cacheStatus, setCacheStatus] = useState<'idle' | 'purging'>('idle');
@@ -284,6 +293,12 @@ export default function SettingsPage() {
   const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
   const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
   const [upcomingDailyNotifyHour, setUpcomingDailyNotifyHour] = useState('9');
+  const [logLevel, setLogLevel] = useState('debug');
+  const [logMaxFileMb, setLogMaxFileMb] = useState('50');
+  const [logRetentionDays, setLogRetentionDays] = useState('30');
+  const [logClientConsoleEnabled, setLogClientConsoleEnabled] = useState(true);
+  const [logFailedRequestBodies, setLogFailedRequestBodies] = useState(true);
+  const [logFailedResponseBodies, setLogFailedResponseBodies] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [externalUrls, setExternalUrls] = useState<Record<string, string>>({});
@@ -367,7 +382,19 @@ export default function SettingsPage() {
           setDashboardRefreshInterval(String(settings.dashboardRefreshIntervalSecs ?? 5));
           setActivityRefreshInterval(String(settings.activityRefreshIntervalSecs ?? 5));
           setTorrentsRefreshInterval(String(settings.torrentsRefreshIntervalSecs ?? 5));
+          if (typeof settings.envTimeZone === 'string') {
+            setEnvTimeZone(settings.envTimeZone);
+          }
+          if (typeof settings.timeZone === 'string') {
+            setTimeZone(settings.timeZone);
+          }
           setCacheImagesEnabled(settings.cacheImagesEnabled !== false);
+          if (settings.logLevel) setLogLevel(settings.logLevel);
+          if (settings.logMaxFileMb != null) setLogMaxFileMb(String(settings.logMaxFileMb));
+          if (settings.logRetentionDays != null) setLogRetentionDays(String(settings.logRetentionDays));
+          setLogClientConsoleEnabled(settings.logClientConsoleEnabled !== false);
+          setLogFailedRequestBodies(settings.logFailedRequestBodies !== false);
+          setLogFailedResponseBodies(settings.logFailedResponseBodies !== false);
           setUpcomingAlertHours(String(settings.upcomingAlertHours));
           if (settings.upcomingNotifyMode) setUpcomingNotifyMode(settings.upcomingNotifyMode);
           if (settings.upcomingNotifyBeforeMins != null) setUpcomingNotifyBeforeMins(String(settings.upcomingNotifyBeforeMins));
@@ -576,7 +603,14 @@ export default function SettingsPage() {
           dashboardRefreshIntervalSecs: parseInt(dashboardRefreshInterval, 10),
           activityRefreshIntervalSecs: parseInt(activityRefreshInterval, 10),
           torrentsRefreshIntervalSecs: parseInt(torrentsRefreshInterval, 10),
+          timeZone: timeZone.trim(),
           cacheImagesEnabled,
+          logLevel,
+          logMaxFileMb: parseInt(logMaxFileMb, 10),
+          logRetentionDays: parseInt(logRetentionDays, 10),
+          logClientConsoleEnabled,
+          logFailedRequestBodies,
+          logFailedResponseBodies,
           theme,
           upcomingAlertHours: parseInt(upcomingAlertHours, 10),
           upcomingNotifyMode,
@@ -704,6 +738,10 @@ export default function SettingsPage() {
   function getThemeLabel(value: string | undefined) {
     if (!value) return 'System';
     return THEME_OPTIONS.find((o) => o.value === value)?.label ?? value;
+  }
+
+  function getLogLevelLabel(value: string) {
+    return LOG_LEVEL_OPTIONS.find((o) => o.value === value)?.label ?? value;
   }
 
   function getAlertWindowLabel(value: string) {
@@ -949,6 +987,19 @@ export default function SettingsPage() {
       <div className="grouped-section mb-6">
         <div className="grouped-section-title">Preferences</div>
         <div className="grouped-section-content">
+          <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Timezone</Label>
+            <Input
+              placeholder={envTimeZone}
+              value={timeZone}
+              onChange={(event) => setTimeZone(event.target.value)}
+              className="h-10"
+            />
+            <div className="text-xs text-muted-foreground">
+              Env default: {envTimeZone}
+            </div>
+          </div>
+
           <div className="grouped-row">
             <span className="text-sm">Polling</span>
             <Select value={pollingInterval} onValueChange={(v) => { setPollingInterval(v); }}>
@@ -1114,6 +1165,77 @@ export default function SettingsPage() {
 
       {/* ── Anime Carousels ── */}
       <AnimeCarouselSettings />
+
+      {/* ── Logging ── */}
+      <div className="grouped-section mb-6">
+        <div className="grouped-section-title">Logging</div>
+        <div className="grouped-section-content">
+          <div className="grouped-row">
+            <span className="text-sm">Level</span>
+            <Select value={logLevel} onValueChange={setLogLevel}>
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue>{getLogLevelLabel(logLevel)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {LOG_LEVEL_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Rotate At (MB)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={1024}
+              value={logMaxFileMb}
+              onChange={(event) => setLogMaxFileMb(event.target.value)}
+              className="h-10"
+            />
+          </div>
+
+          <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Retention (Days)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={3650}
+              value={logRetentionDays}
+              onChange={(event) => setLogRetentionDays(event.target.value)}
+              className="h-10"
+            />
+          </div>
+
+          <div className="grouped-row">
+            <span className="text-sm">Client Console</span>
+            <Switch
+              checked={logClientConsoleEnabled}
+              onCheckedChange={setLogClientConsoleEnabled}
+              aria-label="Client Console Logging"
+            />
+          </div>
+
+          <div className="grouped-row">
+            <span className="text-sm">Failed Request Bodies</span>
+            <Switch
+              checked={logFailedRequestBodies}
+              onCheckedChange={setLogFailedRequestBodies}
+              aria-label="Failed Request Bodies"
+            />
+          </div>
+
+          <div className="grouped-row">
+            <span className="text-sm">Failed Response Bodies</span>
+            <Switch
+              checked={logFailedResponseBodies}
+              onCheckedChange={setLogFailedResponseBodies}
+              aria-label="Failed Response Bodies"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* ── Notifications ── */}
       <div className="grouped-section mb-6">

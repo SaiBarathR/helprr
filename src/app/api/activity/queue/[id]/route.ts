@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
-export async function DELETE(
+async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -48,3 +49,5 @@ export async function DELETE(
     );
   }
 }
+
+export const DELETE = withApiLogging(deleteHandler, 'api/activity/queue/[id]');

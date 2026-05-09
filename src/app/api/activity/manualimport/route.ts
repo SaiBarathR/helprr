@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Retrieve manual import data for a download from Sonarr or Radarr.
@@ -15,7 +16,7 @@ import { requireAuth } from '@/lib/auth';
  *   a JSON error message with status 400 when parameters are invalid;
  *   or a JSON error message with status 500 on internal failure.
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -95,3 +96,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/activity/manualimport');
+export const POST = withApiLogging(postHandler, 'api/activity/manualimport');

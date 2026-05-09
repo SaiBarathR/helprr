@@ -6,6 +6,7 @@ import {
   getStaffMediaPage,
 } from '@/lib/anilist-client';
 import type { AniListSort } from '@/types/anilist';
+import { withApiLogging } from '@/lib/api-logger';
 
 const VALID_SORTS = new Set<AniListSort>([
   'POPULARITY_DESC',
@@ -32,7 +33,7 @@ function parseType(value: string | null): StaffMediaType | null {
   return null;
 }
 
-export async function GET(
+async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
@@ -83,3 +84,5 @@ export async function GET(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/anime/staff/[id]');

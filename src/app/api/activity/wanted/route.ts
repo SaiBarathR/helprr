@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
 
 type WantedType = 'missing' | 'cutoff';
 type WantedSource = 'sonarr' | 'radarr';
@@ -167,7 +168,7 @@ async function fetchWantedCounts(sourceFilter?: WantedSource) {
  *
  * @returns Count totals or a paginated records payload. On failure returns a 500 JSON error object.
  */
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -204,3 +205,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/activity/wanted');

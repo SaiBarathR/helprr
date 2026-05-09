@@ -8,6 +8,7 @@ import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
+import { withApiLogging } from '@/lib/api-logger';
 
 interface ServiceHealthStatus {
   type: ServiceType;
@@ -82,7 +83,7 @@ async function checkServiceHealth(connection: ServiceConnection): Promise<void> 
   }
 }
 
-export async function GET() {
+async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
 
@@ -118,3 +119,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withApiLogging(getHandler, 'api/services/health');
