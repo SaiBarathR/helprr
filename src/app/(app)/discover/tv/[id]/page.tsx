@@ -11,7 +11,6 @@ import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rai
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
-import { DiscoverAddButton } from '@/components/discover/discover-add-button';
 import { DiscoverExternalLinks } from '@/components/discover/discover-external-links';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -142,9 +141,8 @@ export default function DiscoverTvDetailPage() {
           mediaType="tv"
           inLibrary={show.addTarget?.exists}
           genres={show.genreNames}
+          detail={show}
         />
-
-        <DiscoverAddButton detail={show} />
 
         {/* Overview */}
         {show.overview && (
