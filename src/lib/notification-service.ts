@@ -62,7 +62,7 @@ export function buildTag(eventType: string, metadata: Record<string, unknown> | 
   return id !== undefined && id !== null ? `${eventType}-${String(id)}` : eventType;
 }
 
-function safeNotificationMetadata(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
+export function safeNotificationMetadata(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!metadata) return {};
   const safeKeys = [
     'source',
@@ -240,26 +240,31 @@ export async function notifyEvent(event: {
     }
   }
 
-  if (sent > 0) {
-    if (!metadataRedirect && targetUrl) {
-      metadata.redirect = targetUrl;
-    }
+  if (!metadataRedirect && targetUrl) {
+    metadata.redirect = targetUrl;
+  }
 
-    await prisma.notificationHistory.create({
-      data: {
-        eventType: event.eventType,
-        title: event.title,
-        body: event.body,
-        metadata: JSON.parse(JSON.stringify({ ...metadata, sentCount: sent })),
-      },
-    });
+  await prisma.notificationHistory.create({
+    data: {
+      eventType: event.eventType,
+      title: event.title,
+      body: event.body,
+      metadata: JSON.parse(JSON.stringify({
+        ...metadata,
+        sentCount: sent,
+        attempted,
+        skippedByPreference,
+      })),
+    },
+  });
+  if (sent > 0) {
     logger.info('Notification history written', {
       eventType: event.eventType,
       sentCount: sent,
       metadata: safeNotificationMetadata(metadata),
     }, { scope: 'notifications' });
   } else {
-    logger.info('Notification history not written because no pushes were sent', {
+    logger.info('Notification history written with no pushes sent', {
       eventType: event.eventType,
       subscriptionCount: subscriptions.length,
       attempted,
@@ -275,7 +280,7 @@ export async function notifyEvent(event: {
     skippedByPreference,
     attempted,
     sentCount: sent,
-    historyWritten: sent > 0,
+    historyWritten: true,
   }, { scope: 'notifications' });
 
   return sent;

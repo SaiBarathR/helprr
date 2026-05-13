@@ -16,7 +16,6 @@ interface DiscoverHeroProps {
   certification: string | null;
   tagline: string | null;
   mediaType: 'movie' | 'tv';
-  inLibrary?: boolean;
   genres?: string[];
   detail: DiscoverDetail
 }
@@ -31,7 +30,6 @@ export function DiscoverHero({
   certification,
   tagline,
   mediaType,
-  inLibrary,
   genres,
   detail
 }: DiscoverHeroProps) {

@@ -61,7 +61,7 @@ type ConsoleOriginals = Pick<Console, 'debug' | 'log' | 'info' | 'warn' | 'error
 export function ClientLogCapture() {
   const originalsRef = useRef<ConsoleOriginals | null>(null);
   const stateRef = useRef<ClientCaptureState>({
-    enabled: true,
+    enabled: false,
     buffer: [],
     flushTimer: null,
   });
@@ -109,41 +109,44 @@ export function ClientLogCapture() {
       }
     }
 
-    const originals: ConsoleOriginals = {
-      debug: console.debug.bind(console),
-      log: console.log.bind(console),
-      info: console.info.bind(console),
-      warn: console.warn.bind(console),
-      error: console.error.bind(console),
-    };
-    originalsRef.current = originals;
+    function installConsolePatch() {
+      const originals: ConsoleOriginals = {
+        debug: console.debug.bind(console),
+        log: console.log.bind(console),
+        info: console.info.bind(console),
+        warn: console.warn.bind(console),
+        error: console.error.bind(console),
+      };
+      originalsRef.current = originals;
 
-    console.debug = (...args: unknown[]) => {
-      originals.debug(...args);
-      enqueue('debug', args);
-    };
-    console.log = (...args: unknown[]) => {
-      originals.log(...args);
-      enqueue('info', args);
-    };
-    console.info = (...args: unknown[]) => {
-      originals.info(...args);
-      enqueue('info', args);
-    };
-    console.warn = (...args: unknown[]) => {
-      originals.warn(...args);
-      enqueue('warn', args);
-    };
-    console.error = (...args: unknown[]) => {
-      originals.error(...args);
-      enqueue('error', args);
-    };
+      console.debug = (...args: unknown[]) => {
+        originals.debug(...args);
+        enqueue('debug', args);
+      };
+      console.log = (...args: unknown[]) => {
+        originals.log(...args);
+        enqueue('info', args);
+      };
+      console.info = (...args: unknown[]) => {
+        originals.info(...args);
+        enqueue('info', args);
+      };
+      console.warn = (...args: unknown[]) => {
+        originals.warn(...args);
+        enqueue('warn', args);
+      };
+      console.error = (...args: unknown[]) => {
+        originals.error(...args);
+        enqueue('error', args);
+      };
+    }
 
     void fetch('/api/settings')
       .then((response) => response.ok ? response.json() : null)
       .then((settings) => {
-        if (settings && typeof settings.logClientConsoleEnabled === 'boolean') {
-          state.enabled = settings.logClientConsoleEnabled;
+        if (settings && settings.logClientConsoleEnabled === true) {
+          state.enabled = true;
+          installConsolePatch();
         }
       })
       .catch(() => {});
@@ -162,7 +165,7 @@ export function ClientLogCapture() {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') void flush();
     };
-    const onBeforeUnload = () => {
+    const onPageHide = () => {
       void flush();
     };
 
@@ -170,14 +173,14 @@ export function ClientLogCapture() {
     window.addEventListener('unhandledrejection', onUnhandledRejection);
     navigator.serviceWorker?.addEventListener('message', onMessage);
     document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
 
     return () => {
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onUnhandledRejection);
       navigator.serviceWorker?.removeEventListener('message', onMessage);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onPageHide);
       if (state.flushTimer) {
         clearTimeout(state.flushTimer);
         state.flushTimer = null;

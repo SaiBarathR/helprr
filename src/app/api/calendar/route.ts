@@ -22,6 +22,19 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const fullDay = searchParams.get('fullDay') === 'true';
     const type = searchParams.get('type');
 
+    if (start) {
+      const parsed = new Date(start);
+      if (!Number.isFinite(parsed.getTime())) {
+        return NextResponse.json({ error: 'Invalid start date' }, { status: 400 });
+      }
+    }
+    if (end) {
+      const parsed = new Date(end);
+      if (!Number.isFinite(parsed.getTime())) {
+        return NextResponse.json({ error: 'Invalid end date' }, { status: 400 });
+      }
+    }
+
     // If days provided without start/end, allow opting into full local day boundaries.
     // fullDay=true respects process TZ (e.g. TZ=Asia/Kolkata) for date-only widgets.
     if (!start || !end) {
@@ -55,8 +68,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         candidateStart.setDate(candidateStart.getDate() - daysNum);
         if (fullDay) {
           startDate = startOfLocalDay(candidateStart, tz);
-          // Adjust the supplied end to end-of-day inclusive when fullDay is set.
-          const adjustedEnd = toZonedDate(parsedEnd, tz);
+          // Adjust the supplied end to end-of-day inclusive when fullDay is set,
+          // based on the local-day boundary so any time component on parsedEnd
+          // doesn't shrink or extend the day.
+          const adjustedEnd = toZonedDate(startOfLocalDay(parsedEnd, tz), tz);
           adjustedEnd.setDate(adjustedEnd.getDate() + 1);
           adjustedEnd.setMilliseconds(adjustedEnd.getMilliseconds() - 1);
           endDate = adjustedEnd;

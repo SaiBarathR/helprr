@@ -139,7 +139,6 @@ export default function DiscoverTvDetailPage() {
           certification={show.certification}
           tagline={show.tagline}
           mediaType="tv"
-          inLibrary={show.addTarget?.exists}
           genres={show.genreNames}
           detail={show}
         />

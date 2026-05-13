@@ -109,7 +109,6 @@ export default function DiscoverMovieDetailPage() {
           certification={movie.certification}
           tagline={movie.tagline}
           mediaType="movie"
-          inLibrary={movie.addTarget?.exists}
           genres={movie.genreNames}
           detail={movie}
         />

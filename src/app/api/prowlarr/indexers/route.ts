@@ -39,13 +39,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    if (!body || typeof body !== 'object') {
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
-    const action = (body as Record<string, unknown>).action;
+    const record = body as Record<string, unknown>;
     const client = await getProwlarrClient();
 
-    if (typeof action === 'string') {
+    if ('action' in record) {
+      const action = record.action;
+      if (typeof action !== 'string') {
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+      }
       if (action !== 'testall') {
         return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
       }

@@ -19,13 +19,34 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (authError) return authError;
 
   const params = request.nextUrl.searchParams;
+  const fromRaw = params.get('from') || undefined;
+  const toRaw = params.get('to') || undefined;
+
+  let fromMs: number | undefined;
+  let toMs: number | undefined;
+  if (fromRaw) {
+    fromMs = Date.parse(fromRaw);
+    if (!Number.isFinite(fromMs)) {
+      return NextResponse.json({ error: 'Invalid from date' }, { status: 400 });
+    }
+  }
+  if (toRaw) {
+    toMs = Date.parse(toRaw);
+    if (!Number.isFinite(toMs)) {
+      return NextResponse.json({ error: 'Invalid to date' }, { status: 400 });
+    }
+  }
+  if (fromMs !== undefined && toMs !== undefined && fromMs > toMs) {
+    return NextResponse.json({ error: '`from` must be before `to`' }, { status: 400 });
+  }
+
   const entries = await searchLogs({
     q: params.get('q') || undefined,
     level: params.get('level') || undefined,
     source: params.get('source') || undefined,
     file: params.get('file') || undefined,
-    from: params.get('from') || undefined,
-    to: params.get('to') || undefined,
+    from: fromRaw,
+    to: toRaw,
     limit: parseLimit(params.get('limit')),
   });
 
