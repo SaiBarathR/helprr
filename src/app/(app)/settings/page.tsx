@@ -867,7 +867,7 @@ export default function SettingsPage() {
                           <div className="space-y-1.5">
                             <Label className="text-xs text-muted-foreground">Primary Default User</Label>
                             <Select
-                              value={svc.username || undefined}
+                              value={svc.username ?? ''}
                               onValueChange={(value) => updateService(config.type, 'username', value)}
                               disabled={!jellyfinValidated || jellyfinUsers.length === 0}
                             >

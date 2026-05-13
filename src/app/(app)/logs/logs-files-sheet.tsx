@@ -5,6 +5,7 @@ import { Download, Loader2, Trash2 } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
@@ -203,6 +204,9 @@ export function LogsFilesSheet({
         <SheetContent side="right" className="w-3/4 sm:max-w-md p-0 gap-0">
           <SheetHeader className="border-b border-border">
             <SheetTitle asChild>{titleNode}</SheetTitle>
+            <SheetDescription className="sr-only">
+              List of log files available for download.
+            </SheetDescription>
           </SheetHeader>
           {list}
         </SheetContent>

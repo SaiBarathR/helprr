@@ -114,11 +114,14 @@ const serwist = new Serwist({
 });
 
 function logToClients(level: 'debug' | 'info' | 'warn' | 'error', message: string, metadata?: unknown) {
-  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-    for (const client of clients) {
-      client.postMessage({ type: 'helprr-sw-log', level, message, metadata });
-    }
-  });
+  self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clients) => {
+      for (const client of clients) {
+        client.postMessage({ type: 'helprr-sw-log', level, message, metadata });
+      }
+    })
+    .catch(() => {});
 }
 
 // Push notification handler
