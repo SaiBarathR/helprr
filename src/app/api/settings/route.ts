@@ -19,14 +19,23 @@ function parseIntegerSetting(
   min: number,
   max: number
 ): { value: number } | { error: NextResponse } {
-  const parsed = Number(value);
+  const rangeError = {
+    error: NextResponse.json(
+      { error: `${label} must be between ${min} and ${max}` },
+      { status: 400 }
+    ),
+  };
+  let parsed: number;
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value)) return rangeError;
+    parsed = value;
+  } else if (typeof value === 'string' && /^\s*-?\d+\s*$/.test(value)) {
+    parsed = parseInt(value, 10);
+  } else {
+    return rangeError;
+  }
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    return {
-      error: NextResponse.json(
-        { error: `${label} must be between ${min} and ${max}` },
-        { status: 400 }
-      ),
-    };
+    return rangeError;
   }
   return { value: parsed };
 }
@@ -246,20 +255,13 @@ async function putHandler(request: NextRequest) {
       }
     }
 
-    if (pollingIntervalSecs !== undefined) {
-      const validatedPollingIntervalSecs = Number(pollingIntervalSecs);
-      if (Number.isFinite(validatedPollingIntervalSecs) && validatedPollingIntervalSecs > 0) {
-        try {
-          pollingService.restart(validatedPollingIntervalSecs * 1000);
-        } catch (restartError) {
-          console.warn('Failed to restart polling service after settings update', {
-            pollingIntervalSecs: validatedPollingIntervalSecs,
-            error: restartError,
-          });
-        }
-      } else {
-        console.warn('Skipping polling restart due to invalid pollingIntervalSecs', {
-          pollingIntervalSecs,
+    if (data.pollingIntervalSecs !== undefined) {
+      try {
+        pollingService.restart((data.pollingIntervalSecs as number) * 1000);
+      } catch (restartError) {
+        console.warn('Failed to restart polling service after settings update', {
+          pollingIntervalSecs: data.pollingIntervalSecs,
+          error: restartError,
         });
       }
     }

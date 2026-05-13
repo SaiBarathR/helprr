@@ -68,6 +68,7 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
     setRange(fromDate || toDate ? { from: fromDate, to: toDate } : undefined);
     setFromTime(toTimeInput(fromDate) || '00:00:00');
     setToTime(toTimeInput(toDate) || '23:59:59');
+    setRangeError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -89,6 +90,7 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
   })();
 
   function applyPreset(nextFrom: Date, nextTo: Date) {
+    setRangeError(null);
     setRange({ from: nextFrom, to: nextTo });
     setFromTime(format(nextFrom, 'HH:mm:ss'));
     setToTime(format(nextTo, 'HH:mm:ss'));

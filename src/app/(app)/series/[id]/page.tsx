@@ -1742,10 +1742,10 @@ export default function SeriesDetailPage() {
                       {link.label}
                     </a>
                   ))}
-                  {animeDetail && animeDetail.externalLinks && animeDetail.externalLinks?.length > 0 && animeDetail.externalLinks.map((link) => (
+                  {animeDetail && animeDetail.externalLinks && animeDetail.externalLinks?.length > 0 && animeDetail.externalLinks.filter((link) => link.url).map((link) => (
                     <a
                       key={link.id}
-                      href={link.url ?? ''}
+                      href={link.url!}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 rounded-lg border border-border/30 bg-muted/30 px-3 py-1.5 text-sm text-primary hover:bg-muted/50 transition-colors"

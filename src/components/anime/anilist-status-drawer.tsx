@@ -201,7 +201,7 @@ export function AnilistStatusDrawer({
             <Select value={form.status} onValueChange={(v) => setForm((prev) => ({
               ...prev,
               status: v as AniListMediaListStatus,
-              progress: (v as AniListMediaListStatus === "COMPLETED" && totalEpisodes) ? String(totalEpisodes) : prev.progress
+              progress: (v as AniListMediaListStatus === "COMPLETED" && totalEpisodes != null) ? String(totalEpisodes) : prev.progress
             }))}>
               <SelectTrigger className="h-10">
                 <SelectValue />

@@ -402,6 +402,7 @@ export default function AnimeDetailPage() {
     { label: 'AniList', url: anilistLink },
     ...(malLink ? [{ label: 'MyAnimeList', url: malLink }] : []),
     ...detail.externalLinks
+      .filter((l) => l.url)
       .map((l) => ({ label: l.site, url: l.url! })),
   ];
 

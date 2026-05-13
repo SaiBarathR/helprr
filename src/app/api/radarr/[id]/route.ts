@@ -3,6 +3,14 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
+function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
+  const parsed = Number(id);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return { error: NextResponse.json({ error: 'Invalid movie id' }, { status: 400 }) };
+  }
+  return { value: parsed };
+}
+
 async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,8 +20,10 @@ async function getHandler(
 
   try {
     const { id } = await params;
+    const parsed = parsePositiveId(id);
+    if ('error' in parsed) return parsed.error;
     const client = await getRadarrClient();
-    const movie = await client.getMovieById(Number(id));
+    const movie = await client.getMovieById(parsed.value);
     return NextResponse.json(movie);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch movie';
@@ -30,12 +40,14 @@ async function putHandler(
 
   try {
     const { id } = await params;
-    const pathId = Number(id);
-    if (!Number.isInteger(pathId) || pathId <= 0) {
-      return NextResponse.json({ error: 'Invalid movie id' }, { status: 400 });
-    }
+    const parsed = parsePositiveId(id);
+    if ('error' in parsed) return parsed.error;
+    const pathId = parsed.value;
     const body = await request.json();
-    if (body && typeof body === 'object' && 'id' in body && Number(body.id) !== pathId) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+    }
+    if ('id' in body && Number(body.id) !== pathId) {
       return NextResponse.json(
         { error: 'Path id and body id must match' },
         { status: 400 }
@@ -60,10 +72,12 @@ async function deleteHandler(
 
   try {
     const { id } = await params;
+    const parsed = parsePositiveId(id);
+    if ('error' in parsed) return parsed.error;
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
     const client = await getRadarrClient();
-    await client.deleteMovie(Number(id), deleteFiles);
+    await client.deleteMovie(parsed.value, deleteFiles);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete movie';

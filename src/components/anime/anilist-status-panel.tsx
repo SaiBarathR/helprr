@@ -79,10 +79,12 @@ export function AnilistStatusPanel({
       }
       const data = await res.json();
       setLoadError(false);
-      if (viewData && data && viewData.user?.scoreFormat === "POINT_10_DECIMAL" && data?.entry && data.entry?.score > 10) {
-        data.entry.score = (data.entry.score / 10);
+      const entry = data?.entry ?? null;
+      if (entry && viewData?.user?.scoreFormat === "POINT_10_DECIMAL" && entry.score != null && entry.score > 10) {
+        setEntry({ ...entry, score: entry.score / 10 });
+      } else {
+        setEntry(entry);
       }
-      setEntry(data.entry ?? null);
     } catch {
       setLoadError(true);
     }
