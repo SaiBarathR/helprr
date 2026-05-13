@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Bell, BellOff, Smartphone, ArrowLeft, Loader2 } from 'lucide-react';
+import { Bell, BellOff, Smartphone, ArrowLeft, Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { EVENT_GROUPS, EVENT_META } from '@/lib/notification-events';
@@ -21,10 +21,22 @@ interface Preference {
 
 export default function NotificationPreferencesPage() {
   const router = useRouter();
-  const { isSupported, isSubscribed, isStandalone, subscribe, unsubscribe, loading, error: pushError, subscriptionEndpoint } = usePushNotifications();
+  const {
+    isSupported,
+    isSubscribed,
+    isStandalone,
+    subscribe,
+    unsubscribe,
+    loading,
+    error: pushError,
+    subscriptionEndpoint,
+    wasReregistered,
+    dismissReregisteredNotice,
+  } = usePushNotifications();
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [prefsLoading, setPrefsLoading] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   const loadPreferences = useCallback(async () => {
     setPrefsLoading(true);
@@ -61,6 +73,26 @@ export default function NotificationPreferencesPage() {
     await unsubscribe();
     toast.success('Push notifications disabled');
     setPreferences([]);
+  }
+
+  async function handleSendTest() {
+    setTesting(true);
+    try {
+      const res = await fetch('/api/notifications/test', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { sent?: number };
+      const count = data.sent ?? 0;
+      if (count > 0) {
+        toast.success(`Test sent to ${count} device${count === 1 ? '' : 's'}`);
+      } else {
+        toast.error('No devices received the test — check the logs.');
+      }
+    } catch (err) {
+      console.error('send test failed', err);
+      toast.error('Test notification failed');
+    } finally {
+      setTesting(false);
+    }
   }
 
   async function togglePreference(eventType: string, enabled: boolean) {
@@ -119,6 +151,19 @@ export default function NotificationPreferencesPage() {
         </Card>
       )}
 
+      {wasReregistered && (
+        <Card className="border-amber-500/30">
+          <CardContent className="py-3 flex items-center justify-between gap-3 text-sm">
+            <span className="text-amber-300">
+              Notifications were re-registered for this device.
+            </span>
+            <Button variant="ghost" size="sm" onClick={dismissReregisteredNotice}>
+              Dismiss
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {isSupported && !isSubscribed && (
         <Card>
           <CardContent className="py-6 text-center space-y-3">
@@ -169,9 +214,19 @@ export default function NotificationPreferencesPage() {
             )}
 
             <Separator />
-            <Button variant="destructive" size="sm" onClick={handleUnsubscribe} disabled={loading}>
-              <BellOff className="mr-2 h-4 w-4" /> Disable Push Notifications
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={handleSendTest} disabled={testing}>
+                {testing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Send Test Notification
+              </Button>
+              <Button variant="destructive" size="sm" onClick={handleUnsubscribe} disabled={loading}>
+                <BellOff className="mr-2 h-4 w-4" /> Disable Push Notifications
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

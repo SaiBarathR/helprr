@@ -1,5 +1,17 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Disable Happy Eyeballs before anything opens a socket. Node 19+ defaults
+    // autoSelectFamily to true with a 250ms per-attempt budget, which is
+    // shorter than the TCP connect time to some upstream push services
+    // (notably web.push.apple.com from networks without IPv6) and causes
+    // AggregateError: ETIMEDOUT. Restoring Node 18 behaviour keeps every
+    // outbound HTTPS client (web-push, Sonarr/Radarr/qBittorrent/Jellyfin,
+    // Anilist, TMDB) on a single deterministic IPv4 connect.
+    const net = await import('net');
+    const dns = await import('dns');
+    net.setDefaultAutoSelectFamily(false);
+    dns.setDefaultResultOrder('ipv4first');
+
     const { initializeServerLogging, configureLogger } = await import('@/lib/logger');
     initializeServerLogging();
 
@@ -36,6 +48,8 @@ export async function register() {
       });
 
       const intervalMs = settings.pollingIntervalSecs * 1000;
+      const { initVapid } = await import('@/lib/notification-service');
+      initVapid();
       pollingService.start(intervalMs);
       console.log('[Helprr] Polling service started');
     } catch (e) {

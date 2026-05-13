@@ -26,6 +26,22 @@ function waitForServiceWorker(timeoutMs = 10000): Promise<ServiceWorkerRegistrat
   });
 }
 
+async function registerWithServer(sub: PushSubscription): Promise<boolean> {
+  const json = sub.toJSON();
+  const res = await fetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      endpoint: sub.endpoint,
+      keys: {
+        p256dh: json.keys?.p256dh,
+        auth: json.keys?.auth,
+      },
+    }),
+  });
+  return res.ok;
+}
+
 export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -33,6 +49,7 @@ export function usePushNotifications() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [subscriptionEndpoint, setSubscriptionEndpoint] = useState<string | null>(null);
+  const [wasReregistered, setWasReregistered] = useState(false);
 
   useEffect(() => {
     const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -53,8 +70,37 @@ export function usePushNotifications() {
     try {
       const registration = await waitForServiceWorker();
       const sub = await registration.pushManager.getSubscription();
-      setIsSubscribed(!!sub);
-      setSubscriptionEndpoint(sub?.endpoint || null);
+      if (!sub) {
+        setIsSubscribed(false);
+        setSubscriptionEndpoint(null);
+        setLoading(false);
+        return;
+      }
+
+      // The browser still holds the subscription, but the server may have
+      // pruned it (consecutiveFailures cleanup, manual wipe, or a 410). Ask
+      // the server whether the row still exists and silently re-register if
+      // not — otherwise the toggle keeps showing "enabled" while no pushes
+      // ever land.
+      try {
+        const res = await fetch('/api/notifications/subscription/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { exists?: boolean };
+          if (data.exists === false) {
+            const reregistered = await registerWithServer(sub);
+            if (reregistered) setWasReregistered(true);
+          }
+        }
+      } catch (err) {
+        console.warn('[Push] subscription check failed:', err);
+      }
+
+      setIsSubscribed(true);
+      setSubscriptionEndpoint(sub.endpoint);
     } catch (err) {
       console.warn('[Push] Could not check subscription:', err);
     }
@@ -104,20 +150,8 @@ export function usePushNotifications() {
       });
 
       // 5. Send subscription to server
-      const json = sub.toJSON();
-      const res = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endpoint: sub.endpoint,
-          keys: {
-            p256dh: json.keys?.p256dh,
-            auth: json.keys?.auth,
-          },
-        }),
-      });
-
-      if (!res.ok) {
+      const ok = await registerWithServer(sub);
+      if (!ok) {
         const msg = 'Failed to save subscription on server.';
         setError(msg);
         setLoading(false);
@@ -126,6 +160,7 @@ export function usePushNotifications() {
 
       setIsSubscribed(true);
       setSubscriptionEndpoint(sub.endpoint);
+      setWasReregistered(false);
       setLoading(false);
       return { success: true };
     } catch (err) {
@@ -152,6 +187,7 @@ export function usePushNotifications() {
       }
       setIsSubscribed(false);
       setSubscriptionEndpoint(null);
+      setWasReregistered(false);
       setLoading(false);
       return { success: true };
     } catch (err) {
@@ -162,5 +198,18 @@ export function usePushNotifications() {
     }
   }, []);
 
-  return { isSupported, isSubscribed, isStandalone, subscribe, unsubscribe, loading, error, subscriptionEndpoint };
+  const dismissReregisteredNotice = useCallback(() => setWasReregistered(false), []);
+
+  return {
+    isSupported,
+    isSubscribed,
+    isStandalone,
+    subscribe,
+    unsubscribe,
+    loading,
+    error,
+    subscriptionEndpoint,
+    wasReregistered,
+    dismissReregisteredNotice,
+  };
 }
