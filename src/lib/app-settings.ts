@@ -16,6 +16,7 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     cacheImagesEnabled: true,
     theme: 'dark',
     timeZone: getEnvTimeZone(),
+    logEnabled: true,
     logLevel: DEFAULT_LOG_LEVEL,
     logMaxFileMb: DEFAULT_LOG_MAX_FILE_MB,
     logRetentionDays: DEFAULT_LOG_RETENTION_DAYS,

@@ -293,6 +293,7 @@ export default function SettingsPage() {
   const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
   const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
   const [upcomingDailyNotifyHour, setUpcomingDailyNotifyHour] = useState('9');
+  const [logEnabled, setLogEnabled] = useState(true);
   const [logLevel, setLogLevel] = useState('debug');
   const [logMaxFileMb, setLogMaxFileMb] = useState('50');
   const [logRetentionDays, setLogRetentionDays] = useState('30');
@@ -389,6 +390,7 @@ export default function SettingsPage() {
             setTimeZone(settings.timeZone);
           }
           setCacheImagesEnabled(settings.cacheImagesEnabled !== false);
+          setLogEnabled(settings.logEnabled !== false);
           if (settings.logLevel) setLogLevel(settings.logLevel);
           if (settings.logMaxFileMb != null) setLogMaxFileMb(String(settings.logMaxFileMb));
           if (settings.logRetentionDays != null) setLogRetentionDays(String(settings.logRetentionDays));
@@ -605,6 +607,7 @@ export default function SettingsPage() {
           torrentsRefreshIntervalSecs: parseInt(torrentsRefreshInterval, 10),
           timeZone: timeZone.trim(),
           cacheImagesEnabled,
+          logEnabled,
           logLevel,
           logMaxFileMb: parseInt(logMaxFileMb, 10),
           logRetentionDays: parseInt(logRetentionDays, 10),
@@ -1171,6 +1174,19 @@ export default function SettingsPage() {
         <div className="grouped-section-title">Logging</div>
         <div className="grouped-section-content">
           <div className="grouped-row">
+            <span className="text-sm">Enable Logging</span>
+            <Switch
+              checked={logEnabled}
+              onCheckedChange={setLogEnabled}
+              aria-label="Enable Logging"
+            />
+          </div>
+
+          <div
+            className={!logEnabled ? 'opacity-50 pointer-events-none' : undefined}
+            aria-disabled={!logEnabled || undefined}
+          >
+          <div className="grouped-row">
             <span className="text-sm">Level</span>
             <Select value={logLevel} onValueChange={setLogLevel}>
               <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
@@ -1233,6 +1249,7 @@ export default function SettingsPage() {
               onCheckedChange={setLogFailedResponseBodies}
               aria-label="Failed Response Bodies"
             />
+          </div>
           </div>
         </div>
       </div>

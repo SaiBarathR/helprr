@@ -23,10 +23,10 @@ interface LogsToolbarProps {
   files: LogFile[];
   selectedFile: string;
   onSelectFile: (file: string) => void;
-  level: LogLevel;
-  source: LogSource;
-  onLevelChange: (value: LogLevel) => void;
-  onSourceChange: (value: LogSource) => void;
+  levels: Set<LogLevel>;
+  sources: Set<LogSource>;
+  onToggleLevel: (value: LogLevel) => void;
+  onToggleSource: (value: LogSource) => void;
   onResetFilters: () => void;
   from: string;
   to: string;
@@ -35,6 +35,7 @@ interface LogsToolbarProps {
   onRefresh: () => void;
   loading: boolean;
   onDownload: () => void;
+  downloadLabel: string;
 }
 
 const ICON_BUTTON_CLASS =
@@ -46,10 +47,10 @@ export function LogsToolbar({
   files,
   selectedFile,
   onSelectFile,
-  level,
-  source,
-  onLevelChange,
-  onSourceChange,
+  levels,
+  sources,
+  onToggleLevel,
+  onToggleSource,
   onResetFilters,
   from,
   to,
@@ -58,8 +59,8 @@ export function LogsToolbar({
   onRefresh,
   loading,
   onDownload,
+  downloadLabel,
 }: LogsToolbarProps) {
-  const downloadEnabled = selectedFile !== 'all';
 
   return (
     <div
@@ -102,10 +103,10 @@ export function LogsToolbar({
         </Select>
 
         <LogsFilterMenu
-          level={level}
-          source={source}
-          onLevelChange={onLevelChange}
-          onSourceChange={onSourceChange}
+          levels={levels}
+          sources={sources}
+          onToggleLevel={onToggleLevel}
+          onToggleSource={onToggleSource}
           onReset={onResetFilters}
         />
 
@@ -133,11 +134,8 @@ export function LogsToolbar({
         <button
           type="button"
           onClick={onDownload}
-          disabled={!downloadEnabled}
           className={cn(ICON_BUTTON_CLASS)}
-          aria-label={
-            downloadEnabled ? `Download ${selectedFile}` : 'Select a single file to download'
-          }
+          aria-label={downloadLabel}
         >
           <Download className="h-4 w-4" />
         </button>

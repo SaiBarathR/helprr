@@ -87,6 +87,7 @@ async function putHandler(request: NextRequest) {
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
       cacheImagesEnabled,
       timeZone,
+      logEnabled,
       logLevel,
       logMaxFileMb,
       logRetentionDays,
@@ -167,6 +168,7 @@ async function putHandler(request: NextRequest) {
       }
       data.timeZone = nextTimeZone;
     }
+    if (logEnabled !== undefined) data.logEnabled = Boolean(logEnabled);
     if (logLevel !== undefined) {
       if (typeof logLevel !== 'string' || !LOG_LEVELS.has(logLevel)) {
         return NextResponse.json(
@@ -215,6 +217,7 @@ async function putHandler(request: NextRequest) {
         cacheImagesEnabled: (data.cacheImagesEnabled as boolean | undefined) ?? true,
         theme: (data.theme as string | undefined) ?? 'dark',
         timeZone: (data.timeZone as string | undefined) ?? getEnvTimeZone(),
+        logEnabled: (data.logEnabled as boolean | undefined) ?? true,
         logLevel: (data.logLevel as string | undefined) ?? 'debug',
         logMaxFileMb: (data.logMaxFileMb as number | undefined) ?? 50,
         logRetentionDays: (data.logRetentionDays as number | undefined) ?? 30,
@@ -235,8 +238,10 @@ async function putHandler(request: NextRequest) {
       level: settings.logLevel as 'debug' | 'info' | 'warn' | 'error',
       maxFileMb: settings.logMaxFileMb,
       retentionDays: settings.logRetentionDays,
+      enabled: settings.logEnabled,
     });
     configureApiLogging({
+      enabled: settings.logEnabled,
       failedRequestBodies: settings.logFailedRequestBodies,
       failedResponseBodies: settings.logFailedResponseBodies,
     });
