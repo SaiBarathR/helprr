@@ -456,6 +456,53 @@ export interface AniListPageResponse {
   media: AniListMedia[];
 }
 
+// --- Airing Schedule ---
+
+export interface AniListAiringScheduleMedia {
+  id: number;
+  title: AniListTitle;
+  coverImage: AniListCoverImage;
+  format: AniListMediaFormat | null;
+  status: AniListMediaStatus | null;
+  season: AniListMediaSeason | null;
+  seasonYear: number | null;
+  episodes: number | null;
+  averageScore: number | null;
+  isAdult: boolean;
+  genres: string[];
+  studios: { nodes: Array<{ id: number; name: string }> } | null;
+}
+
+export interface AniListAiringSchedule {
+  id: number;
+  episode: number;
+  airingAt: number;
+  media: AniListAiringScheduleMedia;
+}
+
+export interface AniListScheduleEntry {
+  scheduleId: number;
+  episode: number;
+  airingAt: number;
+  media: {
+    id: number;
+    title: string;
+    titleRomaji: string | null;
+    titleNative: string | null;
+    coverImage: string | null;
+    coverImageColor: string | null;
+    format: AniListMediaFormat | null;
+    status: AniListMediaStatus | null;
+    season: AniListMediaSeason | null;
+    seasonYear: number | null;
+    episodes: number | null;
+    averageScore: number | null;
+    genres: string[];
+    studios: string[];
+    year: number | null;
+  };
+}
+
 // --- Staff Detail ---
 
 export interface AniListStaffMediaEdge {

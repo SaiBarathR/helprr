@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type {
+  AniListAiringSchedule,
   AniListMedia,
   AniListMediaDetail,
   AniListMangaDetail,
@@ -348,6 +349,76 @@ export async function getAnimeNextAiringEpisode(id: number): Promise<AniListNext
   });
 
   return result.Media?.nextAiringEpisode ?? null;
+}
+
+interface AiringSchedulePageData {
+  Page: {
+    pageInfo: AniListPageInfo;
+    airingSchedules: AniListAiringSchedule[];
+  };
+}
+
+const SCHEDULE_PAGE_LIMIT = 10;
+const SCHEDULE_PER_PAGE = 50;
+
+export async function getAnimeAiringSchedule(params: {
+  weekStart: number;
+  weekEnd: number;
+}): Promise<AniListAiringSchedule[]> {
+  const gqlQuery = `
+    query ($weekStart: Int, $weekEnd: Int, $page: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { hasNextPage currentPage }
+        airingSchedules(
+          airingAt_greater: $weekStart
+          airingAt_lesser: $weekEnd
+          sort: TIME
+        ) {
+          id
+          episode
+          airingAt
+          media {
+            id
+            title { romaji english native }
+            coverImage { extraLarge large medium color }
+            format
+            status
+            season
+            seasonYear
+            episodes
+            averageScore
+            isAdult
+            genres
+            studios(isMain: true) { nodes { id name } }
+          }
+        }
+      }
+    }
+  `;
+
+  const fetchAllPages = async (): Promise<AniListAiringSchedule[]> => {
+    const collected: AniListAiringSchedule[] = [];
+    for (let page = 1; page <= SCHEDULE_PAGE_LIMIT; page += 1) {
+      const variables = {
+        weekStart: params.weekStart,
+        weekEnd: params.weekEnd,
+        page,
+        perPage: SCHEDULE_PER_PAGE,
+      };
+      const result = await gqlRequest<AiringSchedulePageData>(gqlQuery, variables);
+      const schedules = result.Page?.airingSchedules ?? [];
+      collected.push(...schedules);
+      if (!result.Page?.pageInfo?.hasNextPage) break;
+    }
+    return collected;
+  };
+
+  return getAnilistJsonWithCache<AniListAiringSchedule[]>({
+    endpoint: 'airingSchedule',
+    params: { weekStart: params.weekStart, weekEnd: params.weekEnd },
+    policy: getCachePolicy('airing'),
+    fetcher: fetchAllPages,
+  });
 }
 
 export async function getMangaDetail(id: number): Promise<AniListMangaDetail> {
