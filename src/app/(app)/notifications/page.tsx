@@ -23,6 +23,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -757,6 +758,9 @@ export default function NotificationsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete notification history</DialogTitle>
+            <DialogDescription className="sr-only">
+              Choose whether to delete all notifications or only the filtered ones.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-muted/30">

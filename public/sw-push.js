@@ -8,11 +8,14 @@ self.addEventListener('activate', (event) => {
 });
 
 function logToClients(level, message, metadata) {
-  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-    for (const client of clients) {
-      client.postMessage({ type: 'helprr-sw-log', level, message, metadata });
-    }
-  });
+  self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clients) => {
+      for (const client of clients) {
+        client.postMessage({ type: 'helprr-sw-log', level, message, metadata });
+      }
+    })
+    .catch(() => {});
 }
 
 self.addEventListener('push', (event) => {
