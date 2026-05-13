@@ -6,14 +6,14 @@ import { Badge } from '@/components/ui/badge';
 import type { LogLevel, LogSource } from './logs-filter-menu';
 
 interface LogsActiveFiltersProps {
-  level: LogLevel;
-  source: LogSource;
+  levels: Set<LogLevel>;
+  sources: Set<LogSource>;
   from: string;
   to: string;
   selectedFile: string;
   query: string;
-  onClearLevel: () => void;
-  onClearSource: () => void;
+  onToggleLevel: (value: LogLevel) => void;
+  onToggleSource: (value: LogSource) => void;
   onClearDateRange: () => void;
   onClearFile: () => void;
   onClearQuery: () => void;
@@ -57,14 +57,14 @@ function FilterChip({ label, onClear }: ChipProps) {
 }
 
 export function LogsActiveFilters({
-  level,
-  source,
+  levels,
+  sources,
   from,
   to,
   selectedFile,
   query,
-  onClearLevel,
-  onClearSource,
+  onToggleLevel,
+  onToggleSource,
   onClearDateRange,
   onClearFile,
   onClearQuery,
@@ -72,8 +72,12 @@ export function LogsActiveFilters({
 }: LogsActiveFiltersProps) {
   const chips: { key: string; label: string; onClear: () => void }[] = [];
   if (query) chips.push({ key: 'q', label: `Search: "${query}"`, onClear: onClearQuery });
-  if (level !== 'all') chips.push({ key: 'level', label: `Level: ${level}`, onClear: onClearLevel });
-  if (source !== 'all') chips.push({ key: 'source', label: `Source: ${source}`, onClear: onClearSource });
+  for (const level of levels) {
+    chips.push({ key: `level-${level}`, label: `Level: ${level}`, onClear: () => onToggleLevel(level) });
+  }
+  for (const source of sources) {
+    chips.push({ key: `source-${source}`, label: `Source: ${source}`, onClear: () => onToggleSource(source) });
+  }
   if (from || to) chips.push({ key: 'date', label: formatRange(from, to), onClear: onClearDateRange });
   if (selectedFile !== 'all') chips.push({ key: 'file', label: `File: ${selectedFile}`, onClear: onClearFile });
 

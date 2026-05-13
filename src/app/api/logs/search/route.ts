@@ -6,6 +6,14 @@ import { withApiLogging } from '@/lib/api-logger';
 const DEFAULT_LIMIT = 200;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 1000;
+const ALLOWED_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
+const ALLOWED_SOURCES = new Set(['server', 'client', 'service-worker']);
+
+function parseCsv(raw: string | null, allowed: Set<string>): string[] | undefined {
+  if (!raw) return undefined;
+  const values = raw.split(',').map((v) => v.trim()).filter((v) => v && allowed.has(v));
+  return values.length > 0 ? values : undefined;
+}
 
 function parseLimit(raw: string | null): number {
   if (!raw) return DEFAULT_LIMIT;
@@ -42,8 +50,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   const entries = await searchLogs({
     q: params.get('q') || undefined,
-    level: params.get('level') || undefined,
-    source: params.get('source') || undefined,
+    level: parseCsv(params.get('level'), ALLOWED_LEVELS),
+    source: parseCsv(params.get('source'), ALLOWED_SOURCES),
     file: params.get('file') || undefined,
     from: fromRaw,
     to: toRaw,

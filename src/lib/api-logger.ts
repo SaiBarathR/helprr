@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import { logger, redact } from '@/lib/logger';
 
 interface ApiLoggingPrefs {
+  enabled: boolean;
   failedRequestBodies: boolean;
   failedResponseBodies: boolean;
 }
 
 let prefs: ApiLoggingPrefs = {
+  enabled: true,
   failedRequestBodies: false,
   failedResponseBodies: false,
 };
@@ -77,6 +79,10 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
 
     try {
       const response = await handler(...args);
+      if (!prefs.enabled) {
+        response.headers.set('x-request-id', requestId);
+        return response;
+      }
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       const status = response.status;
       const failed = status >= 400;
@@ -102,19 +108,21 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
       return response;
     } catch (error) {
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
-      const extra: Record<string, unknown> = {
-        ...meta,
-        status: 500,
-        durationMs,
-        error,
-      };
-      if (allowBodies && requestClone && prefs.failedRequestBodies) {
-        extra.requestBody = await readBodyPreview(requestClone);
+      if (prefs.enabled) {
+        const extra: Record<string, unknown> = {
+          ...meta,
+          status: 500,
+          durationMs,
+          error,
+        };
+        if (allowBodies && requestClone && prefs.failedRequestBodies) {
+          extra.requestBody = await readBodyPreview(requestClone);
+        }
+        logger.error('API request failed', extra, {
+          scope: scope ?? 'api',
+          requestId,
+        });
       }
-      logger.error('API request failed', extra, {
-        scope: scope ?? 'api',
-        requestId,
-      });
       return NextResponse.json(
         { error: 'Internal server error', requestId },
         { status: 500, headers: { 'x-request-id': requestId } }

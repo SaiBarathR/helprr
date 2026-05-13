@@ -41,8 +41,10 @@ export async function register() {
         level,
         maxFileMb: settings.logMaxFileMb,
         retentionDays: settings.logRetentionDays,
+        enabled: settings.logEnabled,
       });
       configureApiLogging({
+        enabled: settings.logEnabled,
         failedRequestBodies: settings.logFailedRequestBodies,
         failedResponseBodies: settings.logFailedResponseBodies,
       });

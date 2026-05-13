@@ -6,18 +6,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuCheckboxItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 
-export type LogLevel = 'all' | 'debug' | 'info' | 'warn' | 'error';
-export type LogSource = 'all' | 'server' | 'client' | 'service-worker';
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+export type LogSource = 'server' | 'client' | 'service-worker';
 
 const LEVEL_OPTIONS: { value: LogLevel; label: string }[] = [
-  { value: 'all', label: 'All levels' },
   { value: 'debug', label: 'Debug' },
   { value: 'info', label: 'Info' },
   { value: 'warn', label: 'Warn' },
@@ -25,28 +23,27 @@ const LEVEL_OPTIONS: { value: LogLevel; label: string }[] = [
 ];
 
 const SOURCE_OPTIONS: { value: LogSource; label: string }[] = [
-  { value: 'all', label: 'All sources' },
   { value: 'server', label: 'Server' },
   { value: 'client', label: 'Client' },
   { value: 'service-worker', label: 'Service Worker' },
 ];
 
 interface LogsFilterMenuProps {
-  level: LogLevel;
-  source: LogSource;
-  onLevelChange: (value: LogLevel) => void;
-  onSourceChange: (value: LogSource) => void;
+  levels: Set<LogLevel>;
+  sources: Set<LogSource>;
+  onToggleLevel: (value: LogLevel) => void;
+  onToggleSource: (value: LogSource) => void;
   onReset: () => void;
 }
 
 export function LogsFilterMenu({
-  level,
-  source,
-  onLevelChange,
-  onSourceChange,
+  levels,
+  sources,
+  onToggleLevel,
+  onToggleSource,
   onReset,
 }: LogsFilterMenuProps) {
-  const activeCount = (level !== 'all' ? 1 : 0) + (source !== 'all' ? 1 : 0);
+  const activeCount = levels.size + sources.size;
 
   return (
     <DropdownMenu>
@@ -73,27 +70,30 @@ export function LogsFilterMenu({
         <DropdownMenuLabel className="tracked-caps text-[11px] text-muted-foreground">
           Level
         </DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={level} onValueChange={(value) => onLevelChange(value as LogLevel)}>
-          {LEVEL_OPTIONS.map((option) => (
-            <DropdownMenuRadioItem key={option.value} value={option.value}>
-              {option.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        {LEVEL_OPTIONS.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option.value}
+            checked={levels.has(option.value)}
+            onCheckedChange={() => onToggleLevel(option.value)}
+            onSelect={(event) => event.preventDefault()}
+          >
+            {option.label}
+          </DropdownMenuCheckboxItem>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuLabel className="tracked-caps text-[11px] text-muted-foreground">
           Source
         </DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={source}
-          onValueChange={(value) => onSourceChange(value as LogSource)}
-        >
-          {SOURCE_OPTIONS.map((option) => (
-            <DropdownMenuRadioItem key={option.value} value={option.value}>
-              {option.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        {SOURCE_OPTIONS.map((option) => (
+          <DropdownMenuCheckboxItem
+            key={option.value}
+            checked={sources.has(option.value)}
+            onCheckedChange={() => onToggleSource(option.value)}
+            onSelect={(event) => event.preventDefault()}
+          >
+            {option.label}
+          </DropdownMenuCheckboxItem>
+        ))}
         {activeCount > 0 && (
           <>
             <DropdownMenuSeparator />

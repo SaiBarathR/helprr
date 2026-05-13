@@ -16,6 +16,7 @@ export interface LoggerConfig {
   level: LogLevel;
   maxFileMb: number;
   retentionDays: number;
+  enabled: boolean;
 }
 
 export interface LogEntry {
@@ -38,8 +39,8 @@ export interface LogFileInfo {
 
 export interface LogSearchFilters {
   q?: string;
-  level?: string;
-  source?: string;
+  level?: string | string[];
+  source?: string | string[];
   file?: string;
   from?: string;
   to?: string;
@@ -77,6 +78,7 @@ let config: LoggerConfig = {
   level: DEFAULT_LOG_LEVEL as LogLevel,
   maxFileMb: DEFAULT_LOG_MAX_FILE_MB,
   retentionDays: DEFAULT_LOG_RETENTION_DAYS,
+  enabled: true,
 };
 let initialized = false;
 let writeQueue: Promise<void> = Promise.resolve();
@@ -112,6 +114,7 @@ export function configureLogger(next: Partial<LoggerConfig>): void {
     level: normalizeLevel(next.level ?? config.level),
     maxFileMb: clampInt(next.maxFileMb, config.maxFileMb, 1, 1024),
     retentionDays: clampInt(next.retentionDays, config.retentionDays, 1, 3650),
+    enabled: next.enabled === undefined ? config.enabled : Boolean(next.enabled),
   };
 }
 
@@ -233,6 +236,7 @@ export function writeLog(
   metadata?: unknown,
   options: Partial<Pick<LogEntry, 'source' | 'scope' | 'requestId'>> = {}
 ): void {
+  if (!config.enabled) return;
   const normalizedLevel = normalizeLevel(level);
   if (!shouldWrite(normalizedLevel)) return;
 
@@ -357,9 +361,15 @@ export async function deleteLogFile(file: string): Promise<void> {
   await fs.promises.unlink(fullPath);
 }
 
+function filterMatches(filter: string | string[] | undefined, value: string): boolean {
+  if (!filter) return true;
+  if (Array.isArray(filter)) return filter.length === 0 || filter.includes(value);
+  return filter === value;
+}
+
 function matchesFilters(entry: LogEntry, filters: LogSearchFilters): boolean {
-  if (filters.level && entry.level !== filters.level) return false;
-  if (filters.source && entry.source !== filters.source) return false;
+  if (!filterMatches(filters.level, entry.level)) return false;
+  if (!filterMatches(filters.source, entry.source)) return false;
   const entryTime = Date.parse(entry.timestampUtc);
   if (filters.from && entryTime < Date.parse(filters.from)) return false;
   if (filters.to && entryTime > Date.parse(filters.to)) return false;
@@ -393,6 +403,39 @@ async function streamMatchesFromFile(
     }
   }
   return ring.reverse();
+}
+
+export async function streamFilteredLogs(
+  filters: LogSearchFilters,
+  onLine: (line: string) => void | Promise<void>
+): Promise<void> {
+  const files = filters.file
+    ? [filters.file]
+    : (await listLogFiles()).map((file) => file.name);
+
+  for (const file of files) {
+    const fullPath = assertSafeLogFile(file);
+    const stream = fs.createReadStream(fullPath, { encoding: 'utf8' });
+    stream.on('error', () => {
+      // Skip unreadable files; readline will close.
+    });
+    const reader = readline.createInterface({ input: stream, crlfDelay: Infinity });
+    try {
+      for await (const line of reader) {
+        if (!line || line.length > MAX_SEARCH_LINE_LENGTH) continue;
+        try {
+          const entry = JSON.parse(line) as LogEntry;
+          if (!matchesFilters(entry, filters)) continue;
+          await onLine(line);
+        } catch {
+          // Skip malformed lines.
+        }
+      }
+    } finally {
+      reader.close();
+      stream.destroy();
+    }
+  }
 }
 
 export async function searchLogs(filters: LogSearchFilters): Promise<LogEntry[]> {

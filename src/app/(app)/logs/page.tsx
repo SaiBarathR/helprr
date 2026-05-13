@@ -18,8 +18,8 @@ export default function LogsPage() {
   const [files, setFiles] = useState<LogFile[]>([]);
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [selectedFile, setSelectedFile] = useState('all');
-  const [level, setLevel] = useState<LogLevel>('all');
-  const [source, setSource] = useState<LogSource>('all');
+  const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set());
+  const [sources, setSources] = useState<Set<LogSource>>(() => new Set());
   const [searchInput, setSearchInput] = useState('');
   const [query, setQuery] = useState('');
   const [from, setFrom] = useState('');
@@ -49,8 +49,8 @@ export default function LogsPage() {
     try {
       const params = new URLSearchParams({ limit: '1000' });
       if (selectedFile !== 'all') params.set('file', selectedFile);
-      if (level !== 'all') params.set('level', level);
-      if (source !== 'all') params.set('source', source);
+      if (levels.size > 0) params.set('level', [...levels].join(','));
+      if (sources.size > 0) params.set('source', [...sources].join(','));
       if (query) params.set('q', query);
       if (from) params.set('from', from);
       if (to) params.set('to', to);
@@ -61,7 +61,7 @@ export default function LogsPage() {
     } finally {
       setLoading(false);
     }
-  }, [from, level, query, selectedFile, source, to]);
+  }, [from, levels, query, selectedFile, sources, to]);
 
   useEffect(() => {
     void loadFiles();
@@ -100,10 +100,17 @@ export default function LogsPage() {
     void loadLogs();
   }, [loadFiles, loadLogs]);
 
-  const downloadSelected = useCallback(() => {
-    if (selectedFile === 'all') return;
-    window.location.href = `/api/logs/download?file=${encodeURIComponent(selectedFile)}`;
-  }, [selectedFile]);
+  const downloadCurrent = useCallback(() => {
+    const params = new URLSearchParams();
+    if (selectedFile !== 'all') params.set('file', selectedFile);
+    if (levels.size > 0) params.set('level', [...levels].join(','));
+    if (sources.size > 0) params.set('source', [...sources].join(','));
+    if (query) params.set('q', query);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    window.location.href = qs ? `/api/logs/download?${qs}` : '/api/logs/download';
+  }, [from, levels, query, selectedFile, sources, to]);
 
   const downloadFile = useCallback((file: string) => {
     window.location.href = `/api/logs/download?file=${encodeURIComponent(file)}`;
@@ -129,18 +136,36 @@ export default function LogsPage() {
   );
 
   const handleResetFilters = useCallback(() => {
-    setLevel('all');
-    setSource('all');
+    setLevels(new Set());
+    setSources(new Set());
   }, []);
 
   const handleClearAll = useCallback(() => {
-    setLevel('all');
-    setSource('all');
+    setLevels(new Set());
+    setSources(new Set());
     setSearchInput('');
     setQuery('');
     setFrom('');
     setTo('');
     setSelectedFile('all');
+  }, []);
+
+  const handleToggleLevel = useCallback((value: LogLevel) => {
+    setLevels((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
+  }, []);
+
+  const handleToggleSource = useCallback((value: LogSource) => {
+    setSources((prev) => {
+      const next = new Set(prev);
+      if (next.has(value)) next.delete(value);
+      else next.add(value);
+      return next;
+    });
   }, []);
 
   const handleDateRangeChange = useCallback((nextFrom: string, nextTo: string) => {
@@ -164,14 +189,21 @@ export default function LogsPage() {
   const virtualItems = virtualizer.getVirtualItems();
   const hasFilters = useMemo(
     () =>
-      level !== 'all' ||
-      source !== 'all' ||
+      levels.size > 0 ||
+      sources.size > 0 ||
       query !== '' ||
       from !== '' ||
       to !== '' ||
       selectedFile !== 'all',
-    [from, level, query, selectedFile, source, to]
+    [from, levels, query, selectedFile, sources, to]
   );
+
+  const hasSearchFilters = levels.size > 0 || sources.size > 0 || query !== '' || from !== '' || to !== '';
+  const downloadLabel = hasSearchFilters
+    ? 'Download filtered logs'
+    : selectedFile !== 'all'
+      ? `Download ${selectedFile}`
+      : 'Download all logs';
 
   return (
     <div className="animate-content-in pb-6 space-y-2">
@@ -181,10 +213,10 @@ export default function LogsPage() {
         files={files}
         selectedFile={selectedFile}
         onSelectFile={setSelectedFile}
-        level={level}
-        source={source}
-        onLevelChange={setLevel}
-        onSourceChange={setSource}
+        levels={levels}
+        sources={sources}
+        onToggleLevel={handleToggleLevel}
+        onToggleSource={handleToggleSource}
         onResetFilters={handleResetFilters}
         from={from}
         to={to}
@@ -192,19 +224,20 @@ export default function LogsPage() {
         onOpenFilesSheet={() => setFilesSheetOpen(true)}
         onRefresh={refresh}
         loading={loading}
-        onDownload={downloadSelected}
+        onDownload={downloadCurrent}
+        downloadLabel={downloadLabel}
       />
 
       {hasFilters && (
         <LogsActiveFilters
-          level={level}
-          source={source}
+          levels={levels}
+          sources={sources}
           from={from}
           to={to}
           selectedFile={selectedFile}
           query={query}
-          onClearLevel={() => setLevel('all')}
-          onClearSource={() => setSource('all')}
+          onToggleLevel={handleToggleLevel}
+          onToggleSource={handleToggleSource}
           onClearDateRange={() => handleDateRangeChange('', '')}
           onClearFile={() => setSelectedFile('all')}
           onClearQuery={() => {
