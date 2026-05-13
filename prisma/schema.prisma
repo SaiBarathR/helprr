@@ -33,13 +33,16 @@ model ServiceConnection {
 }
 
 model PushSubscription {
-  id           String                   @id @default(cuid())
-  endpoint     String                   @unique
-  p256dh       String
-  auth         String
-  deviceName   String?
-  createdAt    DateTime                 @default(now())
-  preferences  NotificationPreference[]
+  id                  String                   @id @default(cuid())
+  endpoint            String                   @unique
+  p256dh              String
+  auth                String
+  deviceName          String?
+  consecutiveFailures Int                      @default(0)
+  lastFailedAt        DateTime?
+  lastSucceededAt     DateTime?
+  createdAt           DateTime                 @default(now())
+  preferences         NotificationPreference[]
 }
 
 model NotificationPreference {

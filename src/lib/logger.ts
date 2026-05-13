@@ -56,7 +56,12 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 const LOG_FILE = 'helprr.jsonl';
 const MAX_LOG_VALUE_LENGTH = 8_000;
 const MAX_SEARCH_LINE_LENGTH = 500_000;
-const SENSITIVE_KEY_PATTERN = /api[-_ ]?key|password|passwd|pwd|secret|token|auth|authorization|cookie|session|vapid|jwt|p256dh|endpoint/i;
+const EXACT_SENSITIVE_KEYS = new Set([
+  'endpoint', 'auth', 'authorization', 'cookie', 'session', 'p256dh',
+  'password', 'passwd', 'pwd', 'secret', 'token', 'jwt',
+  'vapid', 'vapidsubject', 'vapidpublickey', 'vapidprivatekey',
+]);
+const SUBSTRING_SENSITIVE_PATTERN = /api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token/i;
 const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+/gi;
 
 const originalConsole = {
@@ -142,7 +147,9 @@ export function redact(value: unknown, depth = 0, seen = new WeakSet<object>()):
 
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 200)) {
-    output[key] = SENSITIVE_KEY_PATTERN.test(key) ? '[REDACTED]' : redact(item, depth + 1, seen);
+    const lower = key.toLowerCase();
+    const isSensitive = EXACT_SENSITIVE_KEYS.has(lower) || SUBSTRING_SENSITIVE_PATTERN.test(key);
+    output[key] = isSensitive ? '[REDACTED]' : redact(item, depth + 1, seen);
   }
   return output;
 }

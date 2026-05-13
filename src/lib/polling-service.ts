@@ -60,6 +60,7 @@ function getMediaHrefFromIds(args: {
 export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
+  private isPolling = false;
 
   private async notifyAndLog(
     event: NotificationEventInput,
@@ -111,6 +112,11 @@ export class PollingService {
   }
 
   private async poll(): Promise<void> {
+    if (this.isPolling) {
+      logger.warn('Polling cycle skipped: previous cycle still running', {}, { scope: 'polling' });
+      return;
+    }
+    this.isPolling = true;
     try {
       const startedAt = performance.now();
       const pollSources = [
@@ -148,6 +154,8 @@ export class PollingService {
       }
     } catch (e) {
       logger.error('Polling cycle failed', e, { scope: 'polling' });
+    } finally {
+      this.isPolling = false;
     }
   }
 
