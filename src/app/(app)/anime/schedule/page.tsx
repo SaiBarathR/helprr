@@ -93,15 +93,17 @@ export default function AnimeSchedulePage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => Math.floor(Date.now() / 1000));
-  const lastFetchKey = useRef<string>('');
+  const requestIdRef = useRef<number>(0);
 
   const weekEnd = useMemo(() => endOfWeek(weekStart), [weekStart]);
   const currentWeekStart = useMemo(() => startOfWeek(new Date()), []);
   const isCurrentWeek = sameLocalDay(weekStart, currentWeekStart);
 
   const load = useCallback(async (start: Date, end: Date) => {
-    const key = `${unixSec(start)}-${unixSec(end)}`;
-    if (lastFetchKey.current === key) return;
+    // Each call gets a unique id; if a newer call comes in mid-flight, the
+    // older response is discarded so prev/next clicks can't race and display
+    // the wrong week.
+    const id = ++requestIdRef.current;
 
     setLoading(true);
     setError(null);
@@ -117,18 +119,16 @@ export default function AnimeSchedulePage() {
         throw new Error(data.error || 'Failed to load schedule');
       }
       const data: ScheduleResponse = await res.json();
-      // Drop the response if a newer load for a different week has started.
-      const currentKey = `${unixSec(start)}-${unixSec(end)}`;
-      if (currentKey !== key) return;
-      lastFetchKey.current = key;
+      if (id !== requestIdRef.current) return;
       setEntries(data.entries || []);
       setNow(Math.floor(Date.now() / 1000));
     } catch (e) {
+      if (id !== requestIdRef.current) return;
       const message = e instanceof Error ? e.message : 'Failed to load schedule';
       setError(message);
       setEntries([]);
     } finally {
-      setLoading(false);
+      if (id === requestIdRef.current) setLoading(false);
     }
   }, []);
 

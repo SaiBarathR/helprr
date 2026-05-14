@@ -358,7 +358,7 @@ interface AiringSchedulePageData {
   };
 }
 
-const SCHEDULE_PAGE_LIMIT = 10;
+const SCHEDULE_PAGE_LIMIT = 20;
 const SCHEDULE_PER_PAGE = 50;
 
 export async function getAnimeAiringSchedule(params: {

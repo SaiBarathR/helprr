@@ -437,6 +437,25 @@ const PERSISTED_KEYS = [
 
 const PERSISTED_KEY_SET: ReadonlySet<string> = new Set(PERSISTED_KEYS);
 
+// Keys whose persisted shape is an array. applyImportedUiPrefs drops values for
+// these keys that aren't arrays — a string slipping in (e.g. an older "monitored"
+// export) would break consumers that call .filter / .some / .includes on it.
+const ARRAY_PERSISTED_KEYS: ReadonlySet<string> = new Set([
+  'moviesFilter',
+  'moviesVisibleFields',
+  'seriesFilter',
+  'seriesVisibleFields',
+  'discoverFilters',
+  'animeFilters',
+  'torrentsFilter',
+  'notificationsFilters',
+  'navOrder',
+  'disabledNavItems',
+  'dashboardLayout',
+  'animeCarouselOrder',
+  'disabledAnimeCarousels',
+]);
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -612,7 +631,12 @@ export const useUIStore = create<UIState>()(
         set((state) => {
           const next: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(partial)) {
-            if (PERSISTED_KEY_SET.has(key)) next[key] = value;
+            if (!PERSISTED_KEY_SET.has(key)) continue;
+            // Imported files can be hand-edited or come from an older export
+            // where a string field has since become an array (e.g. moviesFilter).
+            // Drop values whose shape would break call sites.
+            if (ARRAY_PERSISTED_KEYS.has(key) && !Array.isArray(value)) continue;
+            next[key] = value;
           }
           if ('dashboardLayout' in next && Array.isArray(next.dashboardLayout)) {
             next.dashboardLayout = sanitizeDashboardLayout(next.dashboardLayout as WidgetInstance[]);

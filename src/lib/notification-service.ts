@@ -50,7 +50,17 @@ function ttlForTag(tag: string | undefined): number {
 }
 
 function isRetriableUpstream(statusCode?: number): boolean {
-  return statusCode === 429 || statusCode === 500 || statusCode === 502 || statusCode === 503;
+  // Treat status-less errors (network / DNS / connection reset / timeout) as
+  // retriable — a transient outage shouldn't poison the failure counter and
+  // prune live devices in 10 polls.
+  if (statusCode === undefined) return true;
+  return (
+    statusCode === 429 ||
+    statusCode === 500 ||
+    statusCode === 502 ||
+    statusCode === 503 ||
+    statusCode === 504
+  );
 }
 
 function isImmediateDeletion(statusCode?: number): boolean {
@@ -178,26 +188,39 @@ export async function sendPushNotification(
         statusCode,
       }, { scope: 'notifications' });
     } else if (!isRetriableUpstream(statusCode)) {
-      const existing = await prisma.pushSubscription.findUnique({
-        where: { endpoint: subscription.endpoint },
-        select: { lastFailedAt: true, consecutiveFailures: true },
+      // Atomic increment: only bump consecutiveFailures if lastFailedAt is null
+      // or older than the debounce window. Two concurrent failures against the
+      // same dead endpoint can't both increment because the second updateMany
+      // sees lastFailedAt within the window and matches zero rows.
+      const cutoff = new Date(Date.now() - FAILURE_INCREMENT_DEBOUNCE_MS);
+      const incrementResult = await prisma.pushSubscription.updateMany({
+        where: {
+          endpoint: subscription.endpoint,
+          OR: [{ lastFailedAt: null }, { lastFailedAt: { lt: cutoff } }],
+        },
+        data: { consecutiveFailures: { increment: 1 }, lastFailedAt: new Date() },
       }).catch(() => null);
-      const shouldIncrement = !existing?.lastFailedAt
-        || Date.now() - existing.lastFailedAt.getTime() > FAILURE_INCREMENT_DEBOUNCE_MS;
-      const updated = await prisma.pushSubscription.update({
-        where: { endpoint: subscription.endpoint },
-        data: shouldIncrement
-          ? { consecutiveFailures: { increment: 1 }, lastFailedAt: new Date() }
-          : { lastFailedAt: new Date() },
-      }).catch(() => null);
-      if (updated && updated.consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
-        await prisma.pushSubscription.delete({
+
+      if (incrementResult && incrementResult.count > 0) {
+        const updated = await prisma.pushSubscription.findUnique({
           where: { endpoint: subscription.endpoint },
+          select: { consecutiveFailures: true },
+        }).catch(() => null);
+        if (updated && updated.consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
+          await prisma.pushSubscription.delete({
+            where: { endpoint: subscription.endpoint },
+          }).catch(() => {});
+          logger.info('Deleted stale push subscription (consecutive failures)', {
+            endpointHash,
+            consecutiveFailures: updated.consecutiveFailures,
+          }, { scope: 'notifications' });
+        }
+      } else {
+        // Debounced — bump lastFailedAt only, so the window slides forward.
+        await prisma.pushSubscription.update({
+          where: { endpoint: subscription.endpoint },
+          data: { lastFailedAt: new Date() },
         }).catch(() => {});
-        logger.info('Deleted stale push subscription (consecutive failures)', {
-          endpointHash,
-          consecutiveFailures: updated.consecutiveFailures,
-        }, { scope: 'notifications' });
       }
     }
     return false;

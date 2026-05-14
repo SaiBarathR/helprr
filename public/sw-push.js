@@ -34,7 +34,7 @@ self.addEventListener('push', (event) => {
     tag: data.tag || 'helprr-notification',
     data: { url: data.url || '/notifications' },
   };
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  event.waitUntil(self.registration.showNotification(data.title || 'Helprr', options));
 });
 
 self.addEventListener('notificationclick', (event) => {

@@ -143,7 +143,7 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/notifications' },
   };
 
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  event.waitUntil(self.registration.showNotification(data.title || 'Helprr', options));
 });
 
 // Notification click handler

@@ -11,7 +11,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const body = await request.json().catch(() => ({}));
     const endpoint = (body as { endpoint?: unknown }).endpoint;
     if (typeof endpoint !== 'string' || !endpoint.trim()) {
-      return NextResponse.json({ exists: false });
+      return NextResponse.json({ error: 'Invalid endpoint' }, { status: 400 });
     }
     const row = await prisma.pushSubscription.findUnique({ where: { endpoint } });
     return NextResponse.json({ exists: Boolean(row) });
