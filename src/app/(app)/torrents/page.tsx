@@ -137,11 +137,13 @@ const filterOptions: { value: FilterType; label: string }[] = [
 ];
 
 const DOWNLOADING_STATES = new Set([
-  'downloading', 'metaDL', 'allocating', 'stalledDL', 'queuedDL', 'checkingDL', 'forcedDL', 'pausedDL',
+  'downloading', 'metaDL', 'allocating', 'stalledDL', 'queuedDL', 'checkingDL', 'forcedDL',
 ]);
 const SEEDING_STATES = new Set([
   'uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP', 'pausedUP',
 ]);
+// qBittorrent 5.x renamed pausedDL/pausedUP to stoppedDL/stoppedUP.
+const PAUSED_STATES = new Set(['pausedDL', 'pausedUP', 'stoppedDL', 'stoppedUP']);
 
 function matchesTorrentFilter(t: QBittorrentTorrent, f: FilterType): boolean {
   switch (f) {
@@ -149,7 +151,7 @@ function matchesTorrentFilter(t: QBittorrentTorrent, f: FilterType): boolean {
     case 'downloading': return DOWNLOADING_STATES.has(t.state);
     case 'seeding': return SEEDING_STATES.has(t.state);
     case 'completed': return t.progress >= 1;
-    case 'paused': return t.state === 'pausedDL' || t.state === 'pausedUP';
+    case 'paused': return PAUSED_STATES.has(t.state);
     case 'active': return t.dlspeed > 0 || t.upspeed > 0;
     default: return true;
   }
@@ -575,7 +577,15 @@ export default function TorrentsPage() {
     const startedAt = performance.now();
 
     try {
-      const res = await fetch('/api/qbittorrent/summary');
+      // When exactly one filter is active, push it to qBittorrent so the
+      // server slims the payload. Multi-select uses OR semantics that the
+      // qBit `filter` param doesn't support, so we still fetch all + filter
+      // client-side in that case.
+      const currentFilter = useUIStore.getState().torrentsFilter;
+      const params = new URLSearchParams();
+      if (currentFilter.length === 1) params.set('filter', currentFilter[0]);
+      const qs = params.toString();
+      const res = await fetch(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary');
       if (!res.ok) throw new Error('Failed to fetch');
 
       const data = await res.json() as QBittorrentSummaryResponse & { error?: string };
@@ -657,6 +667,16 @@ export default function TorrentsPage() {
     }, refreshIntervalMs);
     return () => clearInterval(interval);
   }, [fetchSummary, refreshIntervalMs]);
+
+  // Re-fetch immediately when the active filter signature changes, because the
+  // server-side filter only kicks in for single-select — switching needs a
+  // fresh payload rather than waiting for the next poll tick.
+  const filterSignature = filter.length === 1 ? filter[0] : filter.length === 0 ? '__all__' : '__multi__';
+  useEffect(() => {
+    if (!hasHydrated) return;
+    void fetchSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterSignature, hasHydrated]);
 
   useEffect(() => {
     setSelectedTorrents((prev) => {

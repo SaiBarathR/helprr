@@ -16,6 +16,7 @@ import type {
 import { withApiLogging } from '@/lib/api-logger';
 
 const MAX_WINDOW_SECONDS = 14 * 24 * 60 * 60; // 2 weeks safety cap
+const INT32_MAX = 2_147_483_647; // AniList GraphQL Int is 32-bit signed
 
 async function getLibraries() {
   const [movies, series] = await Promise.all([
@@ -105,7 +106,7 @@ function parseTimestamp(value: string | null): number | null {
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   const seconds = Math.floor(n);
-  if (seconds <= 0) return null;
+  if (seconds <= 0 || seconds > INT32_MAX) return null;
   return seconds;
 }
 

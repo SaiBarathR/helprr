@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { ServiceType } from '@prisma/client';
+import type { AppSettings, Prisma, ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
@@ -96,14 +96,24 @@ function buildAppSettingsUpdate(
   return out;
 }
 
-async function applyAppSettings(input: Partial<ExportedAppSettings>): Promise<{ pollingRestarted: boolean }> {
-  const data = buildAppSettingsUpdate(input);
-  if (Object.keys(data).length === 0) return { pollingRestarted: true };
+interface AppSettingsTxnResult {
+  appliedKeys: string[];
+  wasCachingEnabled: boolean;
+  pollingIntervalSecsChanged: number | null;
+  settings: AppSettings;
+}
 
-  const current = await prisma.appSettings.findUnique({ where: { id: 'singleton' } });
+async function applyAppSettingsInTxn(
+  tx: Prisma.TransactionClient,
+  input: Partial<ExportedAppSettings>
+): Promise<AppSettingsTxnResult | null> {
+  const data = buildAppSettingsUpdate(input);
+  if (Object.keys(data).length === 0) return null;
+
+  const current = await tx.appSettings.findUnique({ where: { id: 'singleton' } });
   const wasCachingEnabled = current?.cacheImagesEnabled ?? true;
 
-  const settings = await prisma.appSettings.upsert({
+  const settings = await tx.appSettings.upsert({
     where: { id: 'singleton' },
     update: data,
     create: {
@@ -129,44 +139,17 @@ async function applyAppSettings(input: Partial<ExportedAppSettings>): Promise<{ 
     },
   });
 
-  setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
-  setAppTimeZone(settings.timeZone);
-  configureLogger({
-    timeZone: settings.timeZone,
-    level: settings.logLevel as 'debug' | 'info' | 'warn' | 'error',
-    maxFileMb: settings.logMaxFileMb,
-    retentionDays: settings.logRetentionDays,
-    enabled: settings.logEnabled,
-  });
-  configureApiLogging({
-    enabled: settings.logEnabled,
-    failedRequestBodies: settings.logFailedRequestBodies,
-    failedResponseBodies: settings.logFailedResponseBodies,
-  });
-
-  if (wasCachingEnabled && settings.cacheImagesEnabled === false) {
-    try {
-      await disableCachingAndPurgeCaches();
-    } catch (err) {
-      console.error('Failed to purge cache after import-disable', err);
-    }
-  }
-
-  let pollingRestarted = true;
-  if (data.pollingIntervalSecs !== undefined) {
-    try {
-      pollingService.restart((data.pollingIntervalSecs as number) * 1000);
-    } catch (err) {
-      pollingRestarted = false;
-      console.warn('Failed to restart polling after import', err);
-    }
-  }
-  // Touch to ensure the singleton init path runs (and seeds defaults if absent)
-  await getOrCreateAppSettings();
-  return { pollingRestarted };
+  return {
+    appliedKeys: Object.keys(data),
+    wasCachingEnabled,
+    pollingIntervalSecsChanged:
+      data.pollingIntervalSecs !== undefined ? (data.pollingIntervalSecs as number) : null,
+    settings,
+  };
 }
 
-async function applyServiceConnection(
+async function applyServiceConnectionInTxn(
+  tx: Prisma.TransactionClient,
   conn: ExportedServiceConnection,
   skipped: string[]
 ): Promise<ServiceType | null> {
@@ -186,7 +169,7 @@ async function applyServiceConnection(
     ? conn.username
     : conn.type === 'QBITTORRENT' ? 'admin' : null;
 
-  const existing = await prisma.serviceConnection.findUnique({ where: { type: conn.type } });
+  const existing = await tx.serviceConnection.findUnique({ where: { type: conn.type } });
   const apiKey = typeof conn.apiKey === 'string' && conn.apiKey.length > 0
     ? conn.apiKey
     : existing?.apiKey ?? null;
@@ -203,7 +186,7 @@ async function applyServiceConnection(
     ? conn.refreshToken
     : existing?.refreshToken ?? null;
 
-  await prisma.serviceConnection.upsert({
+  await tx.serviceConnection.upsert({
     where: { type: conn.type },
     update: {
       url, apiKey, username, externalUrl,
@@ -219,7 +202,8 @@ async function applyServiceConnection(
   return conn.type;
 }
 
-async function applyNotificationDevice(
+async function applyNotificationDeviceInTxn(
+  tx: Prisma.TransactionClient,
   device: ExportedNotificationDevice,
   currentDeviceEndpoint: string | undefined,
   skipped: string[]
@@ -228,7 +212,7 @@ async function applyNotificationDevice(
     skipped.push('Notification prefs: no active push subscription on this device');
     return 0;
   }
-  const subscription = await prisma.pushSubscription.findUnique({
+  const subscription = await tx.pushSubscription.findUnique({
     where: { endpoint: currentDeviceEndpoint },
     select: { id: true },
   });
@@ -241,7 +225,7 @@ async function applyNotificationDevice(
     if (typeof rule.eventType !== 'string' || !(EVENT_TYPES as readonly string[]).includes(rule.eventType)) {
       continue;
     }
-    await prisma.notificationPreference.upsert({
+    await tx.notificationPreference.upsert({
       where: {
         subscriptionId_eventType: {
           subscriptionId: subscription.id,
@@ -278,9 +262,23 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // content-length can be spoofed or absent; enforce on the actual read body too.
+  let raw: string;
+  try {
+    raw = await request.text();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+  if (raw.length > MAX_IMPORT_BYTES) {
+    return NextResponse.json(
+      { error: `File too large (max ${MAX_IMPORT_BYTES} bytes)` },
+      { status: 413 }
+    );
+  }
+
   let body: ImportRequestBody;
   try {
-    body = (await request.json()) as ImportRequestBody;
+    body = JSON.parse(raw) as ImportRequestBody;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
@@ -289,42 +287,96 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const result: ImportResult = {
-    applied: { appSettings: false, services: [], notificationRules: 0 },
-    skipped: [],
-    pollingRestarted: true,
-  };
+  const skipped: string[] = [];
+  const appliedServices: ServiceType[] = [];
+  let appliedAppSettings = false;
+  let appliedNotificationRules = 0;
+  let appSettingsTxnResult: AppSettingsTxnResult | null = null;
 
   try {
-    if (body.appSettings && typeof body.appSettings === 'object') {
-      const settingsResult = await applyAppSettings(body.appSettings);
-      result.applied.appSettings = true;
-      result.pollingRestarted = settingsResult.pollingRestarted;
-    }
-
-    if (Array.isArray(body.serviceConnections)) {
-      for (const conn of body.serviceConnections) {
-        const applied = await applyServiceConnection(conn, result.skipped);
-        if (applied) result.applied.services.push(applied);
+    appSettingsTxnResult = await prisma.$transaction(async (tx) => {
+      let innerAppSettings: AppSettingsTxnResult | null = null;
+      if (body.appSettings && typeof body.appSettings === 'object') {
+        innerAppSettings = await applyAppSettingsInTxn(tx, body.appSettings);
+        appliedAppSettings = true;
       }
-    }
 
-    if (body.notificationDevice && typeof body.notificationDevice === 'object') {
-      result.applied.notificationRules = await applyNotificationDevice(
-        body.notificationDevice,
-        body.currentDeviceEndpoint,
-        result.skipped
-      );
-    }
+      if (Array.isArray(body.serviceConnections)) {
+        for (const conn of body.serviceConnections) {
+          const applied = await applyServiceConnectionInTxn(tx, conn, skipped);
+          if (applied) appliedServices.push(applied);
+        }
+      }
 
-    return NextResponse.json(result);
+      if (body.notificationDevice && typeof body.notificationDevice === 'object') {
+        appliedNotificationRules = await applyNotificationDeviceInTxn(
+          tx,
+          body.notificationDevice,
+          body.currentDeviceEndpoint,
+          skipped
+        );
+      }
+
+      return innerAppSettings;
+    });
   } catch (error) {
     console.error('Failed to import settings', error);
     return NextResponse.json(
-      { error: 'Failed to import settings', detail: (error as Error)?.message },
+      { error: 'Failed to import settings' },
       { status: 500 }
     );
   }
+
+  // All DB writes committed — now run side effects. Failures here are logged
+  // but don't roll back the import (the data is already persisted).
+  let pollingRestarted = true;
+  if (appSettingsTxnResult) {
+    const { settings, wasCachingEnabled, pollingIntervalSecsChanged } = appSettingsTxnResult;
+    setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
+    setAppTimeZone(settings.timeZone);
+    configureLogger({
+      timeZone: settings.timeZone,
+      level: settings.logLevel as 'debug' | 'info' | 'warn' | 'error',
+      maxFileMb: settings.logMaxFileMb,
+      retentionDays: settings.logRetentionDays,
+      enabled: settings.logEnabled,
+    });
+    configureApiLogging({
+      enabled: settings.logEnabled,
+      failedRequestBodies: settings.logFailedRequestBodies,
+      failedResponseBodies: settings.logFailedResponseBodies,
+    });
+
+    if (wasCachingEnabled && settings.cacheImagesEnabled === false) {
+      try {
+        await disableCachingAndPurgeCaches();
+      } catch (err) {
+        console.error('Failed to purge cache after import-disable', err);
+      }
+    }
+
+    if (pollingIntervalSecsChanged !== null) {
+      try {
+        pollingService.restart(pollingIntervalSecsChanged * 1000);
+      } catch (err) {
+        pollingRestarted = false;
+        console.warn('Failed to restart polling after import', err);
+      }
+    }
+    // Ensure singleton init path runs and any in-process caches are seeded.
+    await getOrCreateAppSettings();
+  }
+
+  const result: ImportResult = {
+    applied: {
+      appSettings: appliedAppSettings,
+      services: appliedServices,
+      notificationRules: appliedNotificationRules,
+    },
+    skipped,
+    pollingRestarted,
+  };
+  return NextResponse.json(result);
 }
 
 export const POST = withApiLogging(postHandler, 'api/settings/import', { logBodies: false });
