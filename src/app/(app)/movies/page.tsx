@@ -68,7 +68,6 @@ const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: strin
 };
 
 const filterOptions = [
-  { value: 'all', label: 'All' },
   { value: 'monitored', label: 'Monitored' },
   { value: 'unmonitored', label: 'Unmonitored' },
   { value: 'missing', label: 'Missing' },
@@ -367,13 +366,18 @@ export default function MoviesPage() {
       list = list.filter((m) => m.title.toLowerCase().includes(q));
     }
 
-    if (filter === 'monitored') list = list.filter((m) => m.monitored);
-    else if (filter === 'unmonitored') list = list.filter((m) => !m.monitored);
-    else if (filter === 'missing') list = list.filter((m) => m.monitored && !m.hasFile);
-    else if (filter === 'hasFile') list = list.filter((m) => m.hasFile);
-    else if (filter === 'released') list = list.filter((m) => m.status === 'released');
-    else if (filter === 'inCinemas') list = list.filter((m) => m.status === 'inCinemas');
-    else if (filter === 'announced') list = list.filter((m) => m.status === 'announced');
+    if (filter.length > 0) {
+      list = list.filter((m) => filter.some((f) => {
+        if (f === 'monitored') return m.monitored;
+        if (f === 'unmonitored') return !m.monitored;
+        if (f === 'missing') return m.monitored && !m.hasFile;
+        if (f === 'hasFile') return m.hasFile;
+        if (f === 'released') return m.status === 'released';
+        if (f === 'inCinemas') return m.status === 'inCinemas';
+        if (f === 'announced') return m.status === 'announced';
+        return true;
+      }));
+    }
 
     list = [...list].sort((a, b) => {
       let result = 0;
@@ -549,7 +553,11 @@ export default function MoviesPage() {
     scrollMargin: contentOffsetTop,
   });
 
-  const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
+  const activeFilterLabel = filter.length === 0
+    ? 'All'
+    : filter.length === 1
+      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
+      : `${filter.length} filters`;
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
@@ -568,11 +576,23 @@ export default function MoviesPage() {
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuLabel>Filter</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={filter.length === 0}
+                onCheckedChange={() => setFilter([])}
+                onSelect={(e) => e.preventDefault()}
+              >
+                All
+              </DropdownMenuCheckboxItem>
               {filterOptions.map((opt) => (
                 <DropdownMenuCheckboxItem
                   key={opt.value}
-                  checked={filter === opt.value}
-                  onCheckedChange={() => setFilter(opt.value)}
+                  checked={filter.includes(opt.value)}
+                  onCheckedChange={() => setFilter(
+                    filter.includes(opt.value)
+                      ? filter.filter((f) => f !== opt.value)
+                      : [...filter, opt.value]
+                  )}
+                  onSelect={(e) => e.preventDefault()}
                 >
                   {opt.label}
                 </DropdownMenuCheckboxItem>
@@ -597,6 +617,7 @@ export default function MoviesPage() {
                   key={opt.value}
                   checked={sort === opt.value}
                   onCheckedChange={() => setSort(opt.value)}
+                  onSelect={(e) => e.preventDefault()}
                 >
                   {opt.label}
                 </DropdownMenuCheckboxItem>
@@ -605,12 +626,14 @@ export default function MoviesPage() {
               <DropdownMenuCheckboxItem
                 checked={sortDir === 'asc'}
                 onCheckedChange={() => setSortDir('asc')}
+                onSelect={(e) => e.preventDefault()}
               >
                 Ascending
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={sortDir === 'desc'}
                 onCheckedChange={() => setSortDir('desc')}
+                onSelect={(e) => e.preventDefault()}
               >
                 Descending
               </DropdownMenuCheckboxItem>

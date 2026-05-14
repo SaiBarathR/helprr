@@ -189,8 +189,8 @@ interface UIState {
   setMoviesSearch: (search: string) => void;
   moviesSortDirection: 'asc' | 'desc';
   setMoviesSortDirection: (dir: 'asc' | 'desc') => void;
-  moviesFilter: string;
-  setMoviesFilter: (filter: string) => void;
+  moviesFilter: string[];
+  setMoviesFilter: (filter: string[]) => void;
   moviesVisibleFields: VisibleFieldsByMode;
   setMoviesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Series preferences
@@ -204,8 +204,8 @@ interface UIState {
   setSeriesSearch: (search: string) => void;
   seriesSortDirection: 'asc' | 'desc';
   setSeriesSortDirection: (dir: 'asc' | 'desc') => void;
-  seriesFilter: string;
-  setSeriesFilter: (filter: string) => void;
+  seriesFilter: string[];
+  setSeriesFilter: (filter: string[]) => void;
   seriesVisibleFields: VisibleFieldsByMode;
   setSeriesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Discover preferences
@@ -223,8 +223,8 @@ interface UIState {
   animeFilters: AnimeFiltersState;
   setAnimeFilters: (filters: AnimeFiltersState) => void;
   // Torrents preferences
-  torrentsFilter: TorrentsFilterPreference;
-  setTorrentsFilter: (filter: TorrentsFilterPreference) => void;
+  torrentsFilter: TorrentsFilterPreference[];
+  setTorrentsFilter: (filter: TorrentsFilterPreference[]) => void;
   torrentsSortKey: TorrentsSortKeyPreference;
   setTorrentsSortKey: (sortKey: TorrentsSortKeyPreference) => void;
   torrentsSortDir: TorrentsSortDirectionPreference;
@@ -298,7 +298,7 @@ export const useUIStore = create<UIState>()(
       setMoviesSearch: (search) => set({ moviesSearch: search }),
       moviesSortDirection: 'asc',
       setMoviesSortDirection: (dir) => set({ moviesSortDirection: dir }),
-      moviesFilter: 'all',
+      moviesFilter: [],
       setMoviesFilter: (filter) => set({ moviesFilter: filter }),
       moviesVisibleFields: { ...DEFAULT_MOVIES_FIELDS },
       setMoviesVisibleFields: (mode, fields) => set((state) => ({
@@ -315,7 +315,7 @@ export const useUIStore = create<UIState>()(
       setSeriesSearch: (search) => set({ seriesSearch: search }),
       seriesSortDirection: 'asc',
       setSeriesSortDirection: (dir) => set({ seriesSortDirection: dir }),
-      seriesFilter: 'all',
+      seriesFilter: [],
       setSeriesFilter: (filter) => set({ seriesFilter: filter }),
       seriesVisibleFields: { ...DEFAULT_SERIES_FIELDS },
       setSeriesVisibleFields: (mode, fields) => set((state) => ({
@@ -336,7 +336,7 @@ export const useUIStore = create<UIState>()(
       animeFilters: cloneAnimeFilters(DEFAULT_ANIME_FILTERS),
       setAnimeFilters: (filters) => set({ animeFilters: cloneAnimeFilters(filters) }),
       // Torrents
-      torrentsFilter: 'all',
+      torrentsFilter: [],
       setTorrentsFilter: (filter) => set({ torrentsFilter: filter }),
       torrentsSortKey: 'added_on',
       setTorrentsSortKey: (sortKey) => set({ torrentsSortKey: sortKey }),
@@ -451,7 +451,7 @@ export const useUIStore = create<UIState>()(
     {
       name: 'helprr-ui-prefs',
       // Bump version whenever new persisted fields are added
-      version: 15,
+      version: 16,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -565,6 +565,12 @@ export const useUIStore = create<UIState>()(
         if (version < 15) {
           state.animeCarouselOrder = [...DEFAULT_ANIME_CAROUSEL_ORDER];
           state.disabledAnimeCarousels = [];
+        }
+        if (version < 16) {
+          // moviesFilter/seriesFilter/torrentsFilter changed from single string to string[]
+          state.moviesFilter = [];
+          state.seriesFilter = [];
+          state.torrentsFilter = [];
         }
         return state as unknown as UIState;
       },
