@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { LogsToolbar } from './logs-toolbar';
 import { LogsActiveFilters } from './logs-active-filters';
 import { LogsFilesSheet, type LogFile } from './logs-files-sheet';
@@ -12,6 +13,61 @@ import type { LogLevel, LogSource } from './logs-filter-menu';
 
 function entryKey(entry: LogEntry, index: number) {
   return `${entry.timestampUtc}-${entry.requestId ?? index}`;
+}
+
+function isIosDevice() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /iPhone|iPad|iPod/.test(ua)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const match = header.match(/filename="?([^";]+)"?/i);
+  return match?.[1]?.trim() || fallback;
+}
+
+async function downloadOrShare(url: string, fallbackName: string) {
+  const toastId = toast.loading('Preparing download…');
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const blob = await response.blob();
+    const filename = filenameFromContentDisposition(
+      response.headers.get('content-disposition'),
+      fallbackName
+    );
+
+    if (isIosDevice() && typeof navigator !== 'undefined' && 'share' in navigator) {
+      const file = new File([blob], filename, { type: blob.type || 'application/x-ndjson' });
+      if (navigator.canShare?.({ files: [file] })) {
+        toast.dismiss(toastId);
+        try {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        } catch (error) {
+          if ((error as Error).name === 'AbortError') return;
+          // fall through to anchor download
+        }
+      }
+    }
+
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.rel = 'noopener';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    toast.dismiss(toastId);
+  } catch (error) {
+    console.error('[logs download]', error);
+    toast.error('Download failed', { id: toastId });
+  }
 }
 
 export default function LogsPage() {
@@ -109,11 +165,13 @@ export default function LogsPage() {
     if (from) params.set('from', from);
     if (to) params.set('to', to);
     const qs = params.toString();
-    window.location.href = qs ? `/api/logs/download?${qs}` : '/api/logs/download';
+    const url = qs ? `/api/logs/download?${qs}` : '/api/logs/download';
+    void downloadOrShare(url, 'helprr-logs.jsonl');
   }, [from, levels, query, selectedFile, sources, to]);
 
   const downloadFile = useCallback((file: string) => {
-    window.location.href = `/api/logs/download?file=${encodeURIComponent(file)}`;
+    const url = `/api/logs/download?file=${encodeURIComponent(file)}`;
+    void downloadOrShare(url, file);
   }, []);
 
   const deleteFile = useCallback(
