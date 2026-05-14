@@ -53,6 +53,7 @@ interface CommandResponse {
 interface DeleteQueueOptions {
   removeFromClient?: boolean;
   blocklist?: boolean;
+  changeCategory?: boolean;
 }
 
 export class RadarrClient {
@@ -158,10 +159,12 @@ export class RadarrClient {
   }
 
   async deleteQueueItem(id: number, options: DeleteQueueOptions = {}): Promise<void> {
-    await this.delete(`/api/v3/queue/${id}`, {
+    const params: Record<string, unknown> = {
       removeFromClient: options.removeFromClient ?? false,
       blocklist: options.blocklist ?? false,
-    });
+    };
+    if (options.changeCategory) params.changeCategory = true;
+    await this.delete(`/api/v3/queue/${id}`, params);
   }
 
   // History

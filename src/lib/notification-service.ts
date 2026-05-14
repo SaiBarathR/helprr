@@ -36,6 +36,8 @@ const TTL_BY_EVENT: Record<string, number> = {
   jellyfinItemAdded: 3600,
   healthWarning: 3600,
   upcomingPremiere: 86400,
+  cleanupStrike: 60,
+  cleanupRemoved: 60,
 };
 
 function ttlForTag(tag: string | undefined): number {
@@ -74,6 +76,11 @@ export function safeNotificationMetadata(metadata: Record<string, unknown> | und
     'hash',
     'sessionId',
     'redirect',
+    'cleaner',
+    'cleanupRuleName',
+    'cleanupReason',
+    'cleanupAction',
+    'cleanupStrikeType',
   ];
   return Object.fromEntries(
     safeKeys

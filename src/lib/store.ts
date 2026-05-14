@@ -124,6 +124,32 @@ function cloneNotificationsFilters(filters: NotificationsFiltersState): Notifica
   return { ...filters, eventTypes: [...filters.eventTypes] };
 }
 
+export interface CleanupHistoryFiltersState {
+  cleaner: string[];
+  strikeType: string[];
+  ruleId: string[];
+  dateFrom: string | null;
+  dateTo: string | null;
+}
+
+export const DEFAULT_CLEANUP_HISTORY_FILTERS: CleanupHistoryFiltersState = {
+  cleaner: [],
+  strikeType: [],
+  ruleId: [],
+  dateFrom: null,
+  dateTo: null,
+};
+
+function cloneCleanupHistoryFilters(f: CleanupHistoryFiltersState): CleanupHistoryFiltersState {
+  return {
+    cleaner: [...f.cleaner],
+    strikeType: [...f.strikeType],
+    ruleId: [...f.ruleId],
+    dateFrom: f.dateFrom,
+    dateTo: f.dateTo,
+  };
+}
+
 export const DEFAULT_ANIME_FILTERS: AnimeFiltersState = {
   genres: [],
   year: '',
@@ -243,6 +269,10 @@ interface UIState {
   setNotificationsReadState: (state: NotificationsReadStatePreference) => void;
   setNotificationsDateRange: (from: string | null, to: string | null) => void;
   resetNotificationsFilters: () => void;
+  // Cleanup history filters
+  cleanupHistoryFilters: CleanupHistoryFiltersState;
+  setCleanupHistoryFilters: (filters: Partial<CleanupHistoryFiltersState>) => void;
+  resetCleanupHistoryFilters: () => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
@@ -361,6 +391,19 @@ export const useUIStore = create<UIState>()(
         set((state) => ({ notificationsFilters: { ...state.notificationsFilters, dateFrom, dateTo } })),
       resetNotificationsFilters: () =>
         set({ notificationsFilters: cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS) }),
+      cleanupHistoryFilters: cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS),
+      setCleanupHistoryFilters: (partial) =>
+        set((state) => ({
+          cleanupHistoryFilters: {
+            ...state.cleanupHistoryFilters,
+            ...partial,
+            cleaner: partial.cleaner ? [...partial.cleaner] : state.cleanupHistoryFilters.cleaner,
+            strikeType: partial.strikeType ? [...partial.strikeType] : state.cleanupHistoryFilters.strikeType,
+            ruleId: partial.ruleId ? [...partial.ruleId] : state.cleanupHistoryFilters.ruleId,
+          },
+        })),
+      resetCleanupHistoryFilters: () =>
+        set({ cleanupHistoryFilters: cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS) }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
@@ -451,7 +494,7 @@ export const useUIStore = create<UIState>()(
     {
       name: 'helprr-ui-prefs',
       // Bump version whenever new persisted fields are added
-      version: 16,
+      version: 17,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
@@ -572,6 +615,9 @@ export const useUIStore = create<UIState>()(
           state.seriesFilter = [];
           state.torrentsFilter = [];
         }
+        if (version < 17) {
+          state.cleanupHistoryFilters = cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS);
+        }
         return state as unknown as UIState;
       },
       partialize: (state) => ({
@@ -604,6 +650,7 @@ export const useUIStore = create<UIState>()(
         activitySortBy: state.activitySortBy,
         activityFilterBy: state.activityFilterBy,
         notificationsFilters: state.notificationsFilters,
+        cleanupHistoryFilters: state.cleanupHistoryFilters,
         calendarTypeFilter: state.calendarTypeFilter,
         calendarMonitoredOnly: state.calendarMonitoredOnly,
         navPosition: state.navPosition,

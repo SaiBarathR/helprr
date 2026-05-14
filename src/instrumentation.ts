@@ -54,6 +54,14 @@ export async function register() {
       initVapid();
       pollingService.start(intervalMs);
       console.log('[Helprr] Polling service started');
+
+      try {
+        const { startCleanupJobs } = await import('@/lib/cleanup/scheduler');
+        await startCleanupJobs();
+        console.log('[Helprr] Cleanup jobs started');
+      } catch (cleanupErr) {
+        console.warn('[Helprr] Could not start cleanup jobs:', cleanupErr);
+      }
     } catch (e) {
       console.warn('[Helprr] Could not start polling service:', e);
     }

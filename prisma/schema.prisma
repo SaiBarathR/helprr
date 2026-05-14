@@ -115,3 +115,131 @@ model AniListSeriesMapping {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
+
+// ==================== Cleanup: Queue Cleaner ====================
+
+model QueueCleanerConfig {
+  id                            String   @id @default("singleton")
+  enabled                       Boolean  @default(false)
+  intervalMinutes               Int      @default(5)
+  ignoredDownloads              Json     @default("[]")
+  processNoContentId            Boolean  @default(false)
+  downloadingMetadataMaxStrikes Int      @default(0)
+  failedImport                  Json     @default("{}")
+  reSearchAfterRemoval          Boolean  @default(true)
+  updatedAt                     DateTime @updatedAt
+}
+
+model StallRule {
+  id                      String   @id @default(cuid())
+  name                    String
+  enabled                 Boolean  @default(true)
+  priority                Int      @default(0)
+  maxStrikes              Int      @default(3)
+  privacyType             String   @default("public")
+  minCompletionPercentage Int      @default(0)
+  maxCompletionPercentage Int      @default(100)
+  resetStrikesOnProgress  Boolean  @default(true)
+  minimumProgressBytes    BigInt?
+  changeCategory          Boolean  @default(false)
+  deletePrivate           Boolean  @default(false)
+  reSearchOverride        Boolean?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model SlowRule {
+  id                      String   @id @default(cuid())
+  name                    String
+  enabled                 Boolean  @default(true)
+  priority                Int      @default(0)
+  maxStrikes              Int      @default(3)
+  privacyType             String   @default("public")
+  minCompletionPercentage Int      @default(0)
+  maxCompletionPercentage Int      @default(100)
+  minSpeedKbps            Int?
+  maxTimeHours            Float?
+  ignoreAboveSizeBytes    BigInt?
+  resetStrikesOnProgress  Boolean  @default(true)
+  changeCategory          Boolean  @default(false)
+  deletePrivate           Boolean  @default(false)
+  reSearchOverride        Boolean?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+// ==================== Cleanup: Download Cleaner ====================
+
+model DownloadCleanerConfig {
+  id                            String   @id @default("singleton")
+  enabled                       Boolean  @default(false)
+  intervalMinutes               Int      @default(60)
+  ignoredDownloads              Json     @default("[]")
+  autoRemoveImportedEnabled     Boolean  @default(false)
+  autoRemoveImportedCategories  Json     @default("[\"sonarr\",\"radarr\"]")
+  autoRemoveImportedDeleteFiles Boolean  @default(true)
+  updatedAt                     DateTime @updatedAt
+}
+
+model SeedingRule {
+  id                String   @id @default(cuid())
+  name              String
+  enabled           Boolean  @default(true)
+  priority          Int      @default(0)
+  categories        Json     @default("[]")
+  trackerPatterns   Json     @default("[]")
+  tagsAny           Json     @default("[]")
+  tagsAll           Json     @default("[]")
+  privacyType       String   @default("both")
+  maxRatio          Float    @default(-1)
+  minSeedTimeHours  Float    @default(0)
+  maxSeedTimeHours  Float    @default(-1)
+  deleteSourceFiles Boolean  @default(true)
+  isSystem          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// ==================== Cleanup: shared ====================
+
+model CleanupStrike {
+  id                  String   @id @default(cuid())
+  hash                String
+  torrentName         String
+  ruleId              String?
+  strikeType          String
+  count               Int      @default(0)
+  lastDownloadedBytes BigInt?
+  lastSeenAt          DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([hash, strikeType, ruleId])
+  @@index([hash])
+}
+
+model CleanupHistory {
+  id              String   @id @default(cuid())
+  cleaner         String
+  strikeType      String?
+  ruleId          String?
+  ruleName        String?
+  hash            String
+  shortHash       String
+  torrentName     String
+  reason          String
+  action          String
+  filesDeleted    Boolean
+  reSearched      Boolean
+  linkedArrSource String?
+  linkedArrTitle  String?
+  linkedArrItemId Int?
+  torrentSize     BigInt?
+  torrentProgress Float?
+  torrentRatio    Float?
+  triggeredBy     String
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([hash])
+}

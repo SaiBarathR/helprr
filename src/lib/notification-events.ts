@@ -5,11 +5,12 @@ export const EVENT_TYPES = [
   'upcomingPremiere', 'healthWarning',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
+  'cleanupStrike', 'cleanupRemoved',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -81,6 +82,18 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'Someone started streaming',
     iconName: 'Play', colorClass: 'bg-indigo-500/10 text-indigo-400',
   },
+  cleanupStrike: {
+    type: 'cleanupStrike', group: 'cleanup',
+    label: 'Cleanup Strike',
+    description: 'A torrent received a cleanup strike',
+    iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-500',
+  },
+  cleanupRemoved: {
+    type: 'cleanupRemoved', group: 'cleanup',
+    label: 'Cleanup Removed',
+    description: 'A torrent was removed by cleanup',
+    iconName: 'Trash2', colorClass: 'bg-rose-500/10 text-rose-400',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -98,6 +111,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'jellyfin',
     title: 'Jellyfin',
     types: ['jellyfinPlaybackStart'],
+  },
+  {
+    id: 'cleanup',
+    title: 'Cleanup',
+    types: ['cleanupStrike', 'cleanupRemoved'],
   },
 ];
 
