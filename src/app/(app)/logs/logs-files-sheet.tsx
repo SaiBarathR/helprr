@@ -217,7 +217,7 @@ export function LogsFilesSheet({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[85vh]">
+      <DrawerContent>
         <DrawerHeader className="border-b border-border">
           <DrawerTitle asChild>{titleNode}</DrawerTitle>
           <DrawerDescription className="sr-only">

@@ -69,6 +69,15 @@ import { ticksToMinutes, formatDurationSeconds, formatTriggerSchedule, timeAgo, 
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+
+type JellyfinServerAction = 'restart' | 'shutdown' | 'scan-libraries';
+
+const SERVER_ACTION_LABELS: Record<JellyfinServerAction, string> = {
+  restart: 'restart the Jellyfin server',
+  shutdown: 'shut down the Jellyfin server',
+  'scan-libraries': 'scan all libraries',
+};
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 // ─── Helpers ───
@@ -246,6 +255,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
   const [serverAction, setServerAction] = useState<string | null>(null);
+  const [pendingServerAction, setPendingServerAction] = useState<JellyfinServerAction | null>(null);
   const externalUrls = useExternalUrls();
   const jellyfinUrl = externalUrls.JELLYFIN;
 
@@ -275,13 +285,8 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
     }
   }, []);
 
-  const handleServerAction = useCallback(async (action: 'restart' | 'shutdown' | 'scan-libraries') => {
-    const labels: Record<string, string> = {
-      restart: 'restart the Jellyfin server',
-      shutdown: 'shut down the Jellyfin server',
-      'scan-libraries': 'scan all libraries',
-    };
-    if (action !== 'scan-libraries' && !window.confirm(`Are you sure you want to ${labels[action]}?`)) return;
+  const runServerAction = useCallback(async (action: JellyfinServerAction) => {
+    const label = SERVER_ACTION_LABELS[action];
     setServerAction(action);
     try {
       const res = await fetch('/api/jellyfin/system/control', {
@@ -291,18 +296,26 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        toast.error(data?.error || `Failed to ${labels[action]}`);
+        toast.error(data?.error || `Failed to ${label}`);
         return;
       }
       if (action === 'scan-libraries') {
         await refreshTasks();
       }
     } catch {
-      toast.error(`Failed to ${labels[action]}`);
+      toast.error(`Failed to ${label}`);
     } finally {
       setServerAction(null);
     }
   }, [refreshTasks]);
+
+  const handleServerAction = useCallback((action: JellyfinServerAction) => {
+    if (action === 'scan-libraries') {
+      void runServerAction(action);
+      return;
+    }
+    setPendingServerAction(action);
+  }, [runServerAction]);
 
   const scanRunning = useMemo(() => tasks.some((t) => t.Key === 'RefreshLibrary' && t.State === 'Running'), [tasks]);
 
@@ -424,6 +437,21 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       )}
 
       <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
+      <ConfirmDialog
+        open={pendingServerAction !== null}
+        onOpenChange={(open) => { if (!open) setPendingServerAction(null); }}
+        title={pendingServerAction ? `Confirm ${pendingServerAction}` : 'Confirm action'}
+        description={pendingServerAction ? `Are you sure you want to ${SERVER_ACTION_LABELS[pendingServerAction]}?` : undefined}
+        confirmLabel={pendingServerAction === 'shutdown' ? 'Shut down' : pendingServerAction === 'restart' ? 'Restart' : 'Confirm'}
+        destructive
+        busy={serverAction !== null}
+        onConfirm={async () => {
+          if (!pendingServerAction) return;
+          const target = pendingServerAction;
+          setPendingServerAction(null);
+          await runServerAction(target);
+        }}
+      />
     </div>
   );
 }
@@ -612,7 +640,7 @@ function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
                 <DrawerTitle className="text-sm">{selectedUser.user_name} — Recent Plays</DrawerTitle>
                 <p className="text-xs text-muted-foreground">{selectedUser.total_count} total plays &middot; {selectedUser.total_play_time}</p>
               </DrawerHeader>
-              <div className="px-2 pb-6 max-h-[60vh] overflow-y-auto">
+              <div className="px-2 pb-6 flex-1 min-h-0 overflow-y-auto">
                 {historyLoading ? (
                   <PageSpinner />
                 ) : userHistory.length === 0 ? (

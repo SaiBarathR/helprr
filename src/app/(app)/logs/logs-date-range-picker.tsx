@@ -14,8 +14,8 @@ import {
 import type { DateRange } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { TimePicker } from '@/components/ui/time-picker';
 import {
   Drawer,
   DrawerContent,
@@ -227,26 +227,14 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
   const footerNode = (
     <div className="border-t border-border p-3 space-y-2">
       <div className="grid grid-cols-2 gap-2">
-        <label className="space-y-1">
+        <div className="space-y-1">
           <span className="block text-[11px] tracked-caps text-muted-foreground">From time</span>
-          <Input
-            type="time"
-            step={1}
-            value={fromTime}
-            onChange={(event) => setFromTime(event.target.value)}
-            className="h-10 max-w-fit"
-          />
-        </label>
-        <label className="space-y-1">
+          <TimePicker value={fromTime} onChange={setFromTime} />
+        </div>
+        <div className="space-y-1">
           <span className="block text-[11px] tracked-caps text-muted-foreground">To time</span>
-          <Input
-            type="time"
-            step={1}
-            value={toTime}
-            onChange={(event) => setToTime(event.target.value)}
-            className="h-10 max-w-fit"
-          />
-        </label>
+          <TimePicker value={toTime} onChange={setToTime} />
+        </div>
       </div>
       {rangeError && (
         <p role="alert" className="text-xs text-destructive">
@@ -289,13 +277,13 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
   return (
     <Drawer open={open} onOpenChange={setOpen}>
       {triggerWrapper}
-      <DrawerContent className="max-h-[90vh]">
+      <DrawerContent>
         <DrawerHeader className="border-b border-border">
           <DrawerTitle className="tracked-caps text-xs text-muted-foreground">
             Date range
           </DrawerTitle>
         </DrawerHeader>
-        <div className="overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {presetsRow}
           {calendarNode}
         </div>

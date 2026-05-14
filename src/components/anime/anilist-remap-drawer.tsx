@@ -165,7 +165,7 @@ export function AniListRemapDrawer({
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="px-4 pb-2 space-y-3">
+        <div className="px-4 pb-2 space-y-3 flex-1 min-h-0 flex flex-col">
           <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <Input
@@ -199,7 +199,7 @@ export function AniListRemapDrawer({
             </div>
           )}
 
-          <div className="max-h-[52vh] overflow-y-auto space-y-2 pb-2">
+          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pb-2">
             {loading ? (
               Array.from({ length: 4 }).map((_, index) => (
                 <div key={index} className="flex gap-3 rounded-lg border border-border/30 p-3">

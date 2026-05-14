@@ -25,6 +25,13 @@ import {
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   RefreshCw,
   Loader2,
   Trash2,
@@ -373,35 +380,38 @@ function AddIndexerModal({ open, onClose, onAdded }: AddIndexerModalProps) {
 
             {/* Filters */}
             <div className="flex gap-2 flex-wrap">
-              <select
-                value={filterProtocol}
-                onChange={(e) => setFilterProtocol(e.target.value as typeof filterProtocol)}
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-              >
-                <option value="all">All Protocols</option>
-                <option value="torrent">Torrent</option>
-                <option value="usenet">Usenet</option>
-              </select>
-              <select
-                value={filterPrivacy}
-                onChange={(e) => setFilterPrivacy(e.target.value as typeof filterPrivacy)}
-                className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-              >
-                <option value="all">All Privacy</option>
-                <option value="public">Public</option>
-                <option value="private">Private</option>
-                <option value="semiPrivate">Semi-Private</option>
-              </select>
+              <Select value={filterProtocol} onValueChange={(v) => setFilterProtocol(v as typeof filterProtocol)}>
+                <SelectTrigger size="sm" className="text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Protocols</SelectItem>
+                  <SelectItem value="torrent">Torrent</SelectItem>
+                  <SelectItem value="usenet">Usenet</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={filterPrivacy} onValueChange={(v) => setFilterPrivacy(v as typeof filterPrivacy)}>
+                <SelectTrigger size="sm" className="text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Privacy</SelectItem>
+                  <SelectItem value="public">Public</SelectItem>
+                  <SelectItem value="private">Private</SelectItem>
+                  <SelectItem value="semiPrivate">Semi-Private</SelectItem>
+                </SelectContent>
+              </Select>
               {languages.length > 2 && (
-                <select
-                  value={filterLanguage}
-                  onChange={(e) => setFilterLanguage(e.target.value)}
-                  className="h-8 rounded-md border border-input bg-background px-2 text-xs"
-                >
-                  {languages.map((l) => (
-                    <option key={l} value={l}>{l === 'all' ? 'All Languages' : l}</option>
-                  ))}
-                </select>
+                <Select value={filterLanguage} onValueChange={setFilterLanguage}>
+                  <SelectTrigger size="sm" className="text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {languages.map((l) => (
+                      <SelectItem key={l} value={l}>{l === 'all' ? 'All Languages' : l}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
 
@@ -482,19 +492,23 @@ function AddIndexerModal({ open, onClose, onAdded }: AddIndexerModalProps) {
                         />
                       </div>
                     ) : field.type === 'select' && field.selectOptions ? (
-                      <select
+                      <Select
                         value={String(fieldValues[field.name] ?? '')}
-                        onChange={(e) =>
-                          setFieldValues((prev) => ({ ...prev, [field.name]: parseInt(e.target.value, 10) }))
+                        onValueChange={(v) =>
+                          setFieldValues((prev) => ({ ...prev, [field.name]: parseInt(v, 10) }))
                         }
-                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
                       >
-                        {field.selectOptions.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.name}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="w-full h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {field.selectOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={String(opt.value)}>
+                              {opt.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     ) : (
                       <Input
                         type={field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text'}
@@ -1301,7 +1315,7 @@ function HistoryDrawer({
           <DrawerDescription>{record ? formatDate(record.date) : ''}</DrawerDescription>
         </DrawerHeader>
         {record && (
-          <div className="px-4 pb-8 max-h-[70vh] overflow-y-auto space-y-3">
+          <div className="px-4 pb-8 flex-1 min-h-0 overflow-y-auto space-y-3">
             {/* Event type + success badge */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] px-2 py-1 rounded-full bg-muted text-muted-foreground font-mono">

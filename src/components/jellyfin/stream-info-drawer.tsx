@@ -93,7 +93,7 @@ export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
 
   return (
     <Drawer open={session !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DrawerContent className="max-h-[85vh]">
+      <DrawerContent>
         <DrawerHeader className="pb-2">
           <div className="flex items-center gap-2">
             {playState?.IsPaused
@@ -113,7 +113,7 @@ export function StreamInfoDrawer({ session, onClose }: StreamInfoDrawerProps) {
           )}
         </DrawerHeader>
 
-        <div className="px-4 pb-6 space-y-4 overflow-y-auto">
+        <div className="flex-1 min-h-0 px-4 pb-6 space-y-4 overflow-y-auto">
           {/* Play Method */}
           <div className="rounded-lg bg-muted/50 p-3 space-y-1">
             <span className={`text-sm font-semibold ${playMethod.color}`}>
