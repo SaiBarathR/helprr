@@ -10,6 +10,11 @@ let vapidMissingLogged = false;
 
 const PUSH_TIMEOUT_MS = 10_000;
 const CONSECUTIVE_FAILURE_LIMIT = 10;
+// Concurrent notifyEvent() calls can both fail against the same dead endpoint
+// inside one polling cycle. Without a window, both `increment: 1` updates land
+// and the row reaches CONSECUTIVE_FAILURE_LIMIT faster than the threshold
+// implies. Only count one failure per endpoint per debounce window.
+const FAILURE_INCREMENT_DEBOUNCE_MS = 1000;
 
 // Force IPv4 and reuse TLS sockets. Without family:4 the default agent runs
 // Happy Eyeballs (autoSelectFamily=true since Node 19) which races IPv6 and
@@ -173,9 +178,17 @@ export async function sendPushNotification(
         statusCode,
       }, { scope: 'notifications' });
     } else if (!isRetriableUpstream(statusCode)) {
+      const existing = await prisma.pushSubscription.findUnique({
+        where: { endpoint: subscription.endpoint },
+        select: { lastFailedAt: true, consecutiveFailures: true },
+      }).catch(() => null);
+      const shouldIncrement = !existing?.lastFailedAt
+        || Date.now() - existing.lastFailedAt.getTime() > FAILURE_INCREMENT_DEBOUNCE_MS;
       const updated = await prisma.pushSubscription.update({
         where: { endpoint: subscription.endpoint },
-        data: { consecutiveFailures: { increment: 1 }, lastFailedAt: new Date() },
+        data: shouldIncrement
+          ? { consecutiveFailures: { increment: 1 }, lastFailedAt: new Date() }
+          : { lastFailedAt: new Date() },
       }).catch(() => null);
       if (updated && updated.consecutiveFailures >= CONSECUTIVE_FAILURE_LIMIT) {
         await prisma.pushSubscription.delete({

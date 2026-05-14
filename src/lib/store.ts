@@ -391,6 +391,52 @@ interface UIState {
   applyImportedUiPrefs: (partial: Record<string, unknown>) => void;
 }
 
+// Single source of truth for which UI state keys are persisted to localStorage
+// AND accepted from imported settings files. Both `partialize` and
+// `applyImportedUiPrefs` reference this list so they cannot drift apart.
+const PERSISTED_KEYS = [
+  'mediaView',
+  'calendarView',
+  'moviesView',
+  'moviesPosterSize',
+  'moviesSort',
+  'moviesSearch',
+  'moviesSortDirection',
+  'moviesFilter',
+  'moviesVisibleFields',
+  'seriesView',
+  'seriesPosterSize',
+  'seriesSort',
+  'seriesSearch',
+  'seriesSortDirection',
+  'seriesFilter',
+  'seriesVisibleFields',
+  'discoverContentType',
+  'discoverSort',
+  'discoverSortDirection',
+  'discoverFilters',
+  'animeSort',
+  'animeFilters',
+  'torrentsFilter',
+  'torrentsSortKey',
+  'torrentsSortDir',
+  'activityTab',
+  'activitySortBy',
+  'activityFilterBy',
+  'notificationsFilters',
+  'calendarTypeFilter',
+  'calendarMonitoredOnly',
+  'navPosition',
+  'navOrder',
+  'disabledNavItems',
+  'defaultPage',
+  'dashboardLayout',
+  'animeCarouselOrder',
+  'disabledAnimeCarousels',
+] as const satisfies readonly (keyof UIState)[];
+
+const PERSISTED_KEY_SET: ReadonlySet<string> = new Set(PERSISTED_KEYS);
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -564,7 +610,10 @@ export const useUIStore = create<UIState>()(
       resetDashboardLayout: () => set({ dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w }))) }),
       applyImportedUiPrefs: (partial) =>
         set((state) => {
-          const next = { ...partial } as Record<string, unknown>;
+          const next: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(partial)) {
+            if (PERSISTED_KEY_SET.has(key)) next[key] = value;
+          }
           if ('dashboardLayout' in next && Array.isArray(next.dashboardLayout)) {
             next.dashboardLayout = sanitizeDashboardLayout(next.dashboardLayout as WidgetInstance[]);
           }
@@ -582,46 +631,8 @@ export const useUIStore = create<UIState>()(
         state?.setHasHydrated(true);
       },
       migrate: (persisted, version) => migrateUiPrefs(persisted, version) as unknown as UIState,
-      partialize: (state) => ({
-        mediaView: state.mediaView,
-        calendarView: state.calendarView,
-        moviesView: state.moviesView,
-        moviesPosterSize: state.moviesPosterSize,
-        moviesSort: state.moviesSort,
-        moviesSearch: state.moviesSearch,
-        moviesSortDirection: state.moviesSortDirection,
-        moviesFilter: state.moviesFilter,
-        moviesVisibleFields: state.moviesVisibleFields,
-        seriesView: state.seriesView,
-        seriesPosterSize: state.seriesPosterSize,
-        seriesSort: state.seriesSort,
-        seriesSearch: state.seriesSearch,
-        seriesSortDirection: state.seriesSortDirection,
-        seriesFilter: state.seriesFilter,
-        seriesVisibleFields: state.seriesVisibleFields,
-        discoverContentType: state.discoverContentType,
-        discoverSort: state.discoverSort,
-        discoverSortDirection: state.discoverSortDirection,
-        discoverFilters: state.discoverFilters,
-        animeSort: state.animeSort,
-        animeFilters: state.animeFilters,
-        torrentsFilter: state.torrentsFilter,
-        torrentsSortKey: state.torrentsSortKey,
-        torrentsSortDir: state.torrentsSortDir,
-        activityTab: state.activityTab,
-        activitySortBy: state.activitySortBy,
-        activityFilterBy: state.activityFilterBy,
-        notificationsFilters: state.notificationsFilters,
-        calendarTypeFilter: state.calendarTypeFilter,
-        calendarMonitoredOnly: state.calendarMonitoredOnly,
-        navPosition: state.navPosition,
-        navOrder: state.navOrder,
-        disabledNavItems: state.disabledNavItems,
-        defaultPage: state.defaultPage,
-        dashboardLayout: state.dashboardLayout,
-        animeCarouselOrder: state.animeCarouselOrder,
-        disabledAnimeCarousels: state.disabledAnimeCarousels,
-      }),
+      partialize: (state) =>
+        Object.fromEntries(PERSISTED_KEYS.map((k) => [k, state[k]])) as Partial<UIState>,
     }
   )
 );

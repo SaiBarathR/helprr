@@ -1186,9 +1186,9 @@ export default function SettingsPage() {
             />
           </div>
 
-          <div
-            className={!logEnabled ? 'opacity-50 pointer-events-none' : undefined}
-            aria-disabled={!logEnabled || undefined}
+          <fieldset
+            disabled={!logEnabled}
+            className={!logEnabled ? 'opacity-50' : undefined}
           >
           <div className="grouped-row">
             <span className="text-sm">Level</span>
@@ -1254,7 +1254,7 @@ export default function SettingsPage() {
               aria-label="Failed Response Bodies"
             />
           </div>
-          </div>
+          </fieldset>
         </div>
       </div>
 
