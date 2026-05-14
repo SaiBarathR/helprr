@@ -12,6 +12,7 @@ import {
 import {
   Drawer,
   DrawerContent,
+  DrawerDescription,
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
@@ -219,6 +220,9 @@ export function LogsFilesSheet({
       <DrawerContent className="max-h-[85vh]">
         <DrawerHeader className="border-b border-border">
           <DrawerTitle asChild>{titleNode}</DrawerTitle>
+          <DrawerDescription className="sr-only">
+            List of log files available for download.
+          </DrawerDescription>
         </DrawerHeader>
         {list}
       </DrawerContent>

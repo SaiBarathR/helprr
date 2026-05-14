@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -50,6 +50,7 @@ export function usePushNotifications() {
   const [error, setError] = useState<string | null>(null);
   const [subscriptionEndpoint, setSubscriptionEndpoint] = useState<string | null>(null);
   const [wasReregistered, setWasReregistered] = useState(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -64,7 +65,26 @@ export function usePushNotifications() {
     } else {
       setLoading(false);
     }
+
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
   }, []);
+
+  async function reconcileSubscription(sub: PushSubscription): Promise<{ done: boolean }> {
+    const res = await fetch('/api/notifications/subscription/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint: sub.endpoint }),
+    });
+    if (!res.ok) return { done: false };
+    const data = (await res.json()) as { exists?: boolean };
+    if (data.exists === false) {
+      const reregistered = await registerWithServer(sub);
+      if (reregistered) setWasReregistered(true);
+    }
+    return { done: true };
+  }
 
   async function checkSubscription() {
     try {
@@ -81,22 +101,21 @@ export function usePushNotifications() {
       // pruned it (consecutiveFailures cleanup, manual wipe, or a 410). Ask
       // the server whether the row still exists and silently re-register if
       // not — otherwise the toggle keeps showing "enabled" while no pushes
-      // ever land.
+      // ever land. Retry once after 5s on transient failure so a brief
+      // network hiccup doesn't leave the toggle "enabled" but pushes silent.
+      const scheduleRetry = () => {
+        retryTimerRef.current = setTimeout(() => {
+          void reconcileSubscription(sub).catch((err) => {
+            console.warn('[Push] subscription check retry failed:', err);
+          });
+        }, 5000);
+      };
       try {
-        const res = await fetch('/api/notifications/subscription/check', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: sub.endpoint }),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { exists?: boolean };
-          if (data.exists === false) {
-            const reregistered = await registerWithServer(sub);
-            if (reregistered) setWasReregistered(true);
-          }
-        }
+        const result = await reconcileSubscription(sub);
+        if (!result.done) scheduleRetry();
       } catch (err) {
         console.warn('[Push] subscription check failed:', err);
+        scheduleRetry();
       }
 
       setIsSubscribed(true);

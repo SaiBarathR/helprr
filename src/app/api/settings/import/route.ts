@@ -21,6 +21,7 @@ import {
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const THEMES = new Set(['dark', 'light', 'system']);
 const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
+const MAX_IMPORT_BYTES = 1_048_576;
 
 interface ImportRequestBody {
   appSettings?: Partial<ExportedAppSettings>;
@@ -36,6 +37,7 @@ interface ImportResult {
     notificationRules: number;
   };
   skipped: string[];
+  pollingRestarted: boolean;
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -94,9 +96,9 @@ function buildAppSettingsUpdate(
   return out;
 }
 
-async function applyAppSettings(input: Partial<ExportedAppSettings>): Promise<void> {
+async function applyAppSettings(input: Partial<ExportedAppSettings>): Promise<{ pollingRestarted: boolean }> {
   const data = buildAppSettingsUpdate(input);
-  if (Object.keys(data).length === 0) return;
+  if (Object.keys(data).length === 0) return { pollingRestarted: true };
 
   const current = await prisma.appSettings.findUnique({ where: { id: 'singleton' } });
   const wasCachingEnabled = current?.cacheImagesEnabled ?? true;
@@ -150,15 +152,18 @@ async function applyAppSettings(input: Partial<ExportedAppSettings>): Promise<vo
     }
   }
 
+  let pollingRestarted = true;
   if (data.pollingIntervalSecs !== undefined) {
     try {
       pollingService.restart((data.pollingIntervalSecs as number) * 1000);
     } catch (err) {
+      pollingRestarted = false;
       console.warn('Failed to restart polling after import', err);
     }
   }
   // Touch to ensure the singleton init path runs (and seeds defaults if absent)
   await getOrCreateAppSettings();
+  return { pollingRestarted };
 }
 
 async function applyServiceConnection(
@@ -265,6 +270,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
+  const contentLength = Number(request.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_IMPORT_BYTES) {
+    return NextResponse.json(
+      { error: `File too large (max ${MAX_IMPORT_BYTES} bytes)` },
+      { status: 413 }
+    );
+  }
+
   let body: ImportRequestBody;
   try {
     body = (await request.json()) as ImportRequestBody;
@@ -272,15 +285,21 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
   const result: ImportResult = {
     applied: { appSettings: false, services: [], notificationRules: 0 },
     skipped: [],
+    pollingRestarted: true,
   };
 
   try {
     if (body.appSettings && typeof body.appSettings === 'object') {
-      await applyAppSettings(body.appSettings);
+      const settingsResult = await applyAppSettings(body.appSettings);
       result.applied.appSettings = true;
+      result.pollingRestarted = settingsResult.pollingRestarted;
     }
 
     if (Array.isArray(body.serviceConnections)) {

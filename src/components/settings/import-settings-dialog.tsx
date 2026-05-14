@@ -32,6 +32,8 @@ import {
 } from '@/lib/settings-export';
 import type { ServiceType } from '@prisma/client';
 
+const MAX_IMPORT_BYTES = 1_048_576;
+
 interface ImportSettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -87,6 +89,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
   const [importing, setImporting] = useState(false);
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ replaceAll: boolean } | null>(null);
   const applyImportedUiPrefs = useUIStore((s) => s.applyImportedUiPrefs);
 
   useEffect(() => {
@@ -97,6 +100,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedAppSettings(false);
       setSelectedServices(new Set());
       setSelectedSourceDevice('');
+      setPendingConfirm(null);
       return;
     }
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
@@ -112,6 +116,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   async function handleFile(file: File) {
     setFileError(null);
     setParsed(null);
+    if (file.size > MAX_IMPORT_BYTES) {
+      setFileError('File too large (max 1 MB).');
+      return;
+    }
     try {
       const text = await file.text();
       let raw: unknown;
@@ -187,6 +195,20 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     )
   ), [parsed, selectedUi, selectedAppSettings, selectedServices, selectedSourceDevice, availableNotifDevices]);
 
+  function requestImport(replaceAll: boolean) {
+    if (!parsed) return;
+    const willOverwriteSecrets = parsed.payload.includesSecrets && (
+      replaceAll
+        ? parsed.availableServices.length > 0
+        : selectedServices.size > 0
+    );
+    if (willOverwriteSecrets) {
+      setPendingConfirm({ replaceAll });
+      return;
+    }
+    void runImport(replaceAll);
+  }
+
   async function runImport(replaceAll: boolean) {
     if (!parsed) return;
     let useUi = selectedUi;
@@ -206,14 +228,16 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
     setImporting(true);
     try {
-      // 1. Apply UI prefs locally first
+      // 1. Pre-compute UI prefs merge; defer the local mutation until after the server import succeeds
+      //    so a server failure can't leave UI state half-applied.
+      let mergedUiPrefs: Record<string, unknown> | null = null;
       if (useUi.size > 0) {
         const merged: Record<string, unknown> = {};
         for (const id of useUi) {
           const cat = parsed.uiPrefsMigrated[id];
           if (cat) Object.assign(merged, cat);
         }
-        applyImportedUiPrefs(merged);
+        mergedUiPrefs = merged;
       }
 
       // 2. Send DB-side parts to import endpoint
@@ -243,13 +267,18 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         if (!res.ok) {
           throw new Error(json?.error || 'Import failed');
         }
+        if (mergedUiPrefs) applyImportedUiPrefs(mergedUiPrefs);
         const skipped: string[] = Array.isArray(json?.skipped) ? json.skipped : [];
         if (skipped.length > 0) {
           toast.warning(`Imported with notes: ${skipped.join('; ')}`);
         } else {
           toast.success('Settings imported.');
         }
-      } else if (useUi.size > 0) {
+        if (json?.pollingRestarted === false) {
+          toast.warning('Settings imported, but polling did not restart — restart the server to resume notifications.');
+        }
+      } else if (mergedUiPrefs) {
+        applyImportedUiPrefs(mergedUiPrefs);
         toast.success('UI preferences imported.');
       } else {
         toast.info('Nothing to import.');
@@ -417,10 +446,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
           </Button>
           {parsed && (
             <>
-              <Button variant="outline" onClick={() => runImport(true)} disabled={importing}>
+              <Button variant="outline" onClick={() => requestImport(true)} disabled={importing}>
                 Replace everything
               </Button>
-              <Button onClick={() => runImport(false)} disabled={importing || !hasSelection}>
+              <Button onClick={() => requestImport(false)} disabled={importing || !hasSelection}>
                 {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Apply selected
               </Button>
@@ -428,6 +457,32 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
           )}
         </DialogFooter>
       </DialogContent>
+      <Dialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Overwrite service connections?</DialogTitle>
+            <DialogDescription>
+              This will overwrite existing service connection API keys with values from the import file. Continue?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingConfirm(null)} disabled={importing}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const replaceAll = pendingConfirm?.replaceAll ?? false;
+                setPendingConfirm(null);
+                void runImport(replaceAll);
+              }}
+              disabled={importing}
+            >
+              {importing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

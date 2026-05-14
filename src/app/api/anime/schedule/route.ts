@@ -148,15 +148,21 @@ async function getHandler(request: NextRequest) {
     const deduped = dedupe(entries);
     const annotated = annotate(deduped, movies, series);
 
-    return NextResponse.json({
-      weekStart,
-      weekEnd,
-      entries: annotated,
-    });
+    return NextResponse.json(
+      {
+        weekStart,
+        weekEnd,
+        entries: annotated,
+      },
+      {
+        headers: {
+          'Cache-Control': 'private, max-age=300, stale-while-revalidate=600',
+        },
+      }
+    );
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load airing schedule';
-    console.error('[Anime Schedule API]', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error('[Anime Schedule API]', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

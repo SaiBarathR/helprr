@@ -398,6 +398,7 @@ export async function getAnimeAiringSchedule(params: {
 
   const fetchAllPages = async (): Promise<AniListAiringSchedule[]> => {
     const collected: AniListAiringSchedule[] = [];
+    let truncated = false;
     for (let page = 1; page <= SCHEDULE_PAGE_LIMIT; page += 1) {
       const variables = {
         weekStart: params.weekStart,
@@ -409,6 +410,12 @@ export async function getAnimeAiringSchedule(params: {
       const schedules = result.Page?.airingSchedules ?? [];
       collected.push(...schedules);
       if (!result.Page?.pageInfo?.hasNextPage) break;
+      if (page === SCHEDULE_PAGE_LIMIT) truncated = true;
+    }
+    if (truncated) {
+      throw new Error(
+        `AniList airing schedule exceeded ${SCHEDULE_PAGE_LIMIT} pages — increase limit or narrow week range`
+      );
     }
     return collected;
   };

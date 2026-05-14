@@ -68,6 +68,7 @@ export function ClientLogCapture() {
 
   useEffect(() => {
     const state = stateRef.current;
+    let cancelled = false;
 
     async function flush(): Promise<void> {
       if (state.flushTimer) {
@@ -144,6 +145,7 @@ export function ClientLogCapture() {
     void fetch('/api/settings')
       .then((response) => response.ok ? response.json() : null)
       .then((settings) => {
+        if (cancelled) return;
         if (settings && settings.logClientConsoleEnabled === true) {
           state.enabled = true;
           installConsolePatch();
@@ -176,6 +178,7 @@ export function ClientLogCapture() {
     window.addEventListener('pagehide', onPageHide);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('error', onError);
       window.removeEventListener('unhandledrejection', onUnhandledRejection);
       navigator.serviceWorker?.removeEventListener('message', onMessage);

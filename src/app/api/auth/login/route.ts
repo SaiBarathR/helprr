@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createSession, verifyPassword, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
 import { getRedisClient } from '@/lib/redis';
 import { withApiLogging } from '@/lib/api-logger';
+import { isHttpsRequest } from '@/lib/request-utils';
 
 const LOGIN_WINDOW_MS = 60_000;
 const LOGIN_WINDOW_SECONDS = Math.max(1, Math.ceil(LOGIN_WINDOW_MS / 1000));
@@ -18,15 +19,6 @@ function formatWindowDuration(ms: number): string {
 }
 
 const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
-
-function isHttpsRequest(request: NextRequest): boolean {
-  if (request.nextUrl.protocol === 'https:') return true;
-  const forwardedProto = request.headers.get('x-forwarded-proto');
-  if (forwardedProto) {
-    return forwardedProto.split(',')[0]?.trim().toLowerCase() === 'https';
-  }
-  return false;
-}
 
 function getClientIp(request: NextRequest): string | null {
   // Only trust x-forwarded-for when traffic passes through a sanitized reverse proxy.

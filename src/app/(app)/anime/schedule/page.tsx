@@ -102,7 +102,6 @@ export default function AnimeSchedulePage() {
   const load = useCallback(async (start: Date, end: Date) => {
     const key = `${unixSec(start)}-${unixSec(end)}`;
     if (lastFetchKey.current === key) return;
-    lastFetchKey.current = key;
 
     setLoading(true);
     setError(null);
@@ -118,6 +117,10 @@ export default function AnimeSchedulePage() {
         throw new Error(data.error || 'Failed to load schedule');
       }
       const data: ScheduleResponse = await res.json();
+      // Drop the response if a newer load for a different week has started.
+      const currentKey = `${unixSec(start)}-${unixSec(end)}`;
+      if (currentKey !== key) return;
+      lastFetchKey.current = key;
       setEntries(data.entries || []);
       setNow(Math.floor(Date.now() / 1000));
     } catch (e) {

@@ -13,7 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   Download, Loader2, AlertTriangle, ArrowUpDown, Users, HardDrive,
@@ -383,27 +384,20 @@ export function InteractiveSearchDialog({
                             <DropdownMenuSeparator />
                             <DropdownMenuLabel>Type</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuCheckboxItem
-                              checked={seasonPackFilter === 'any'}
-                              onCheckedChange={() => setSeasonPackFilter('any')}
-                              onSelect={(e) => e.preventDefault()}
+                            <DropdownMenuRadioGroup
+                              value={seasonPackFilter}
+                              onValueChange={(v) => setSeasonPackFilter(v as typeof seasonPackFilter)}
                             >
-                              Any
-                            </DropdownMenuCheckboxItem>
-                            <DropdownMenuCheckboxItem
-                              checked={seasonPackFilter === 'seasonPack'}
-                              onCheckedChange={() => setSeasonPackFilter('seasonPack')}
-                              onSelect={(e) => e.preventDefault()}
-                            >
-                              Season Pack
-                            </DropdownMenuCheckboxItem>
-                            <DropdownMenuCheckboxItem
-                              checked={seasonPackFilter === 'singleEpisode'}
-                              onCheckedChange={() => setSeasonPackFilter('singleEpisode')}
-                              onSelect={(e) => e.preventDefault()}
-                            >
-                              Single Episode
-                            </DropdownMenuCheckboxItem>
+                              <DropdownMenuRadioItem value="any" onSelect={(e) => e.preventDefault()}>
+                                Any
+                              </DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="seasonPack" onSelect={(e) => e.preventDefault()}>
+                                Season Pack
+                              </DropdownMenuRadioItem>
+                              <DropdownMenuRadioItem value="singleEpisode" onSelect={(e) => e.preventDefault()}>
+                                Single Episode
+                              </DropdownMenuRadioItem>
+                            </DropdownMenuRadioGroup>
                           </>
                         )}
                       </DropdownMenuContent>
