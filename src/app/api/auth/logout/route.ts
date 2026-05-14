@@ -7,7 +7,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,
-    secure: isHttpsRequest(request),
+    secure: isHttpsRequest(request, process.env.TRUST_FORWARDED_PROTO === 'true'),
     sameSite: 'lax',
     maxAge: 0,
     path: '/',

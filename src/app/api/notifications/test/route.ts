@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { createHash } from 'crypto';
+import { COOKIE_NAME, requireAuth } from '@/lib/auth';
 import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
 import { getRedisClient } from '@/lib/redis';
@@ -8,17 +10,14 @@ const TEST_WINDOW_MS = 60_000;
 const TEST_MAX_ATTEMPTS = 10;
 const TEST_ATTEMPTS_KEY_PREFIX = 'notification-test:attempts:';
 
-function getClientIp(request: NextRequest): string | null {
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    const [firstIp] = forwardedFor.split(',');
-    const trimmed = firstIp?.trim();
-    if (trimmed) return trimmed;
-  }
-  return request.headers.get('x-real-ip')?.trim() || null;
+async function sessionRateLimitKey(): Promise<string> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
+  if (!token) return 'global';
+  return createHash('sha256').update(token).digest('hex').slice(0, 32);
 }
 
-async function incrementAttempts(ip: string): Promise<number> {
+async function incrementAttempts(id: string): Promise<number> {
   const redis = await getRedisClient();
   const result = await redis.eval(
     `local attempts = redis.call('INCR', KEYS[1])
@@ -27,7 +26,7 @@ if attempts == 1 then
 end
 return attempts`,
     {
-      keys: [`${TEST_ATTEMPTS_KEY_PREFIX}${ip}`],
+      keys: [`${TEST_ATTEMPTS_KEY_PREFIX}${id}`],
       arguments: [String(TEST_WINDOW_MS)],
     }
   );
@@ -36,11 +35,11 @@ return attempts`,
   return attempts;
 }
 
-async function postHandler(request: NextRequest): Promise<NextResponse> {
+async function postHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const rateLimitKey = getClientIp(request) ?? 'unknown';
+  const rateLimitKey = await sessionRateLimitKey();
   let attempts: number;
   try {
     attempts = await incrementAttempts(rateLimitKey);
