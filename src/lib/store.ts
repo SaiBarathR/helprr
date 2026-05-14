@@ -124,6 +124,35 @@ function cloneNotificationsFilters(filters: NotificationsFiltersState): Notifica
   return { ...filters, eventTypes: [...filters.eventTypes] };
 }
 
+export interface CleanupHistoryFiltersState {
+  cleaner: string[];
+  strikeType: string[];
+  ruleId: string[];
+  action: string[];
+  dateFrom: string | null;
+  dateTo: string | null;
+}
+
+export const DEFAULT_CLEANUP_HISTORY_FILTERS: CleanupHistoryFiltersState = {
+  cleaner: [],
+  strikeType: [],
+  ruleId: [],
+  action: [],
+  dateFrom: null,
+  dateTo: null,
+};
+
+function cloneCleanupHistoryFilters(f: CleanupHistoryFiltersState): CleanupHistoryFiltersState {
+  return {
+    cleaner: [...f.cleaner],
+    strikeType: [...f.strikeType],
+    ruleId: [...f.ruleId],
+    action: [...(f.action ?? [])],
+    dateFrom: f.dateFrom,
+    dateTo: f.dateTo,
+  };
+}
+
 export const DEFAULT_ANIME_FILTERS: AnimeFiltersState = {
   genres: [],
   year: '',
@@ -169,7 +198,7 @@ function sanitizeDashboardLayout(layout: WidgetInstance[]): WidgetInstance[] {
     }));
 }
 
-export const STORE_VERSION = 16;
+export const STORE_VERSION = 17;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -279,6 +308,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     state.seriesFilter = [];
     state.torrentsFilter = [];
   }
+  if (version < 17) {
+    state.cleanupHistoryFilters = cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS);
+  }
   return state;
 }
 
@@ -356,6 +388,10 @@ interface UIState {
   setNotificationsReadState: (state: NotificationsReadStatePreference) => void;
   setNotificationsDateRange: (from: string | null, to: string | null) => void;
   resetNotificationsFilters: () => void;
+  // Cleanup history filters
+  cleanupHistoryFilters: CleanupHistoryFiltersState;
+  setCleanupHistoryFilters: (filters: Partial<CleanupHistoryFiltersState>) => void;
+  resetCleanupHistoryFilters: () => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
@@ -424,6 +460,7 @@ const PERSISTED_KEYS = [
   'activitySortBy',
   'activityFilterBy',
   'notificationsFilters',
+  'cleanupHistoryFilters',
   'calendarTypeFilter',
   'calendarMonitoredOnly',
   'navPosition',
@@ -541,6 +578,20 @@ export const useUIStore = create<UIState>()(
         set((state) => ({ notificationsFilters: { ...state.notificationsFilters, dateFrom, dateTo } })),
       resetNotificationsFilters: () =>
         set({ notificationsFilters: cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS) }),
+      cleanupHistoryFilters: cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS),
+      setCleanupHistoryFilters: (partial) =>
+        set((state) => ({
+          cleanupHistoryFilters: {
+            ...state.cleanupHistoryFilters,
+            ...partial,
+            cleaner: partial.cleaner ? [...partial.cleaner] : state.cleanupHistoryFilters.cleaner,
+            strikeType: partial.strikeType ? [...partial.strikeType] : state.cleanupHistoryFilters.strikeType,
+            ruleId: partial.ruleId ? [...partial.ruleId] : state.cleanupHistoryFilters.ruleId,
+            action: partial.action ? [...partial.action] : (state.cleanupHistoryFilters.action ?? []),
+          },
+        })),
+      resetCleanupHistoryFilters: () =>
+        set({ cleanupHistoryFilters: cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS) }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),

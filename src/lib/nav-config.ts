@@ -12,6 +12,7 @@ import {
   Settings,
   Sparkles,
   ScrollText,
+  Sparkle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -23,6 +24,7 @@ export type NavItemId =
   | 'series'
   | 'calendar'
   | 'torrents'
+  | 'cleanup'
   | 'prowlarr'
   | 'jellyfin'
   | 'activity'
@@ -48,6 +50,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series' },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar' },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents' },
+  { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup' },
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr' },
   { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity' },

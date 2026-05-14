@@ -494,6 +494,7 @@ export interface QBittorrentTorrent {
   auto_tmm: boolean;
   max_ratio: number;
   max_seeding_time: number;
+  private?: boolean;
 }
 
 export interface QBittorrentTransferInfo {
