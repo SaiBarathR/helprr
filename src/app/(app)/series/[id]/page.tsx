@@ -54,6 +54,7 @@ import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { formatBytes } from '@/lib/format';
 import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
+import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -1248,22 +1249,12 @@ export default function SeriesDetailPage() {
             />}
 
             {/* Trailer */}
-            {!animeLoading && animeDetail && animeDetail.trailer?.id && (animeDetail.trailer.site === 'youtube' || animeDetail.trailer.site === 'dailymotion') && (
-              <div className='max-w-[1280px] max-h-[720px]'>
-                <div className="aspect-video rounded-lg overflow-hidden">
-                  <iframe
-                    src={
-                      animeDetail.trailer.site === 'youtube'
-                        ? `https://www.youtube.com/embed/${animeDetail.trailer.id}`
-                        : `https://www.dailymotion.com/embed/video/${animeDetail.trailer.id}`
-                    }
-                    title="Trailer"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full"
-                  />
-                </div>
-              </div>
+            {!animeLoading && animeDetail && (
+              <AnimeTrailerRail
+                trailer={animeDetail.trailer}
+                externalLinks={animeDetail.externalLinks}
+                title={animeDetail.title}
+              />
             )}
 
             {!animeLoading && !animeDetail && (

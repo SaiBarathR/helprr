@@ -13,6 +13,7 @@ import { AnimeCharacterRail } from '@/components/anime/anime-character-rail';
 import { AnimeRelationsSection } from '@/components/anime/anime-relations-section';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { AnimeReviewCard } from '@/components/anime/anime-review-card';
+import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -443,23 +444,11 @@ export default function AnimeDetailPage() {
         />
 
         {/* Trailer */}
-        {detail.trailer?.id && (detail.trailer.site === 'youtube' || detail.trailer.site === 'dailymotion') && (
-          <div>
-            <div className="aspect-video rounded-lg overflow-hidden">
-              <iframe
-                src={
-                  detail.trailer.site === 'youtube'
-                    ? `https://www.youtube.com/embed/${detail.trailer.id}`
-                    : `https://www.dailymotion.com/embed/video/${detail.trailer.id}`
-                }
-                title="Trailer"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="w-full h-full"
-              />
-            </div>
-          </div>
-        )}
+        <AnimeTrailerRail
+          trailer={detail.trailer}
+          externalLinks={detail.externalLinks}
+          title={detail.title}
+        />
 
         {/* Synopsis */}
         {sanitizedDescription && (
