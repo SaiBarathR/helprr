@@ -15,6 +15,13 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import {
@@ -130,6 +137,13 @@ const ALL_GENRES = [
   'Horror', 'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological',
   'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
 ];
+
+const YEAR_OPTIONS: number[] = (() => {
+  const end = new Date().getFullYear() + 5;
+  const years: number[] = [];
+  for (let y = end; y >= 1940; y--) years.push(y);
+  return years;
+})();
 
 export default function AnimePage() {
   const urlParams = useSearchParams();
@@ -607,11 +621,11 @@ export default function AnimePage() {
 
       {/* Filter Drawer */}
       <Drawer open={filterOpen} onOpenChange={setFilterOpen}>
-        <DrawerContent className="max-h-[95vh]">
+        <DrawerContent className="max-h-[95dvh]">
           <DrawerHeader className="sr-only">
             <DrawerTitle>Filters</DrawerTitle>
           </DrawerHeader>
-          <div className="overflow-y-auto px-4 pb-10">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
             <div className="space-y-3">
               {/* Sort */}
               <div>
@@ -670,29 +684,63 @@ export default function AnimePage() {
               {/* Year */}
               <div>
                 <label className="text-sm font-medium mb-1.5 block">Year</label>
-                <input
-                  type="number"
-                  placeholder="Exact Year (e.g. 2024)"
-                  value={draftFilters.year}
-                  onChange={(e) => setDraftFilters((prev) => ({ ...prev, year: e.target.value, yearMin: '', yearMax: '' }))}
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm mb-2"
-                />
+                <Select
+                  value={draftFilters.year || 'any'}
+                  onValueChange={(v) => setDraftFilters((prev) => ({
+                    ...prev,
+                    year: v === 'any' ? '' : v,
+                    yearMin: '',
+                    yearMax: '',
+                  }))}
+                >
+                  <SelectTrigger className="w-full h-9 mb-2">
+                    <SelectValue placeholder="Any year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any year</SelectItem>
+                    {YEAR_OPTIONS.map((y) => (
+                      <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <span className="text-xs text-muted-foreground">Or specify a range:</span>
                 <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    placeholder="Min Year"
-                    value={draftFilters.yearMin}
-                    onChange={(e) => setDraftFilters((prev) => ({ ...prev, yearMin: e.target.value, year: '' }))}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Max Year"
-                    value={draftFilters.yearMax}
-                    onChange={(e) => setDraftFilters((prev) => ({ ...prev, yearMax: e.target.value, year: '' }))}
-                    className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                  />
+                  <Select
+                    value={draftFilters.yearMin || 'any'}
+                    onValueChange={(v) => setDraftFilters((prev) => ({
+                      ...prev,
+                      yearMin: v === 'any' ? '' : v,
+                      year: '',
+                    }))}
+                  >
+                    <SelectTrigger className="w-full h-9">
+                      <SelectValue placeholder="Min Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Min Year</SelectItem>
+                      {YEAR_OPTIONS.map((y) => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={draftFilters.yearMax || 'any'}
+                    onValueChange={(v) => setDraftFilters((prev) => ({
+                      ...prev,
+                      yearMax: v === 'any' ? '' : v,
+                      year: '',
+                    }))}
+                  >
+                    <SelectTrigger className="w-full h-9">
+                      <SelectValue placeholder="Max Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Max Year</SelectItem>
+                      {YEAR_OPTIONS.map((y) => (
+                        <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
@@ -785,7 +833,7 @@ export default function AnimePage() {
 
             </div>
           </div>
-          <DrawerFooter>
+          <DrawerFooter className="shrink-0">
             <div className="flex gap-2 pt-2">
               <Button variant="outline" className="flex-1" onClick={clearFilters}>
                 <X className="h-4 w-4 mr-1" />
