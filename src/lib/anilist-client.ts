@@ -907,19 +907,12 @@ export async function getStaffDetail(
 
   const variables = { id, animePage, mangaPage, vaPage, perPage, animeSort: [animeSort], mangaSort: [mangaSort], vaSort: [vaSort] };
 
-  // Only cache when fetching the first pages (initial load)
-  const isInitial = animePage === 1 && mangaPage === 1 && vaPage === 1;
-
-  const fetcher = () => gqlRequest<StaffResponse>(gqlQuery, variables);
-
-  const result = isInitial
-    ? await getAnilistJsonWithCache<StaffResponse>({
-        endpoint: 'staffDetail',
-        params: variables,
-        policy: getCachePolicy('detail'),
-        fetcher,
-      })
-    : await fetcher();
+  const result = await getAnilistJsonWithCache<StaffResponse>({
+    endpoint: 'staffDetail',
+    params: variables,
+    policy: getCachePolicy('detail'),
+    fetcher: () => gqlRequest<StaffResponse>(gqlQuery, variables),
+  });
 
   const s = result.Staff;
   if (!s) throw new Error('Staff not found');
@@ -982,7 +975,12 @@ export async function getStaffMediaPage(
   }
 
   const variables = { id, page, perPage, sort: [sort], type };
-  const result = await gqlRequest<StaffPageResponse>(gqlQuery, variables);
+  const result = await getAnilistJsonWithCache<StaffPageResponse>({
+    endpoint: 'staffMediaPage',
+    params: variables,
+    policy: getCachePolicy('detail'),
+    fetcher: () => gqlRequest<StaffPageResponse>(gqlQuery, variables),
+  });
 
   if (!result.Staff) throw new Error('Staff not found');
 
@@ -1028,7 +1026,12 @@ export async function getStaffCharacterMediaPage(
   }
 
   const variables = { id, page, perPage, sort: [sort] };
-  const result = await gqlRequest<StaffCharacterMediaPageResponse>(gqlQuery, variables);
+  const result = await getAnilistJsonWithCache<StaffCharacterMediaPageResponse>({
+    endpoint: 'staffCharacterMediaPage',
+    params: variables,
+    policy: getCachePolicy('detail'),
+    fetcher: () => gqlRequest<StaffCharacterMediaPageResponse>(gqlQuery, variables),
+  });
 
   if (!result.Staff) throw new Error('Staff not found');
 
@@ -1134,16 +1137,12 @@ export async function getCharacterDetail(
 
   const variables = { id, page, perPage, sort: [sort] };
 
-  const fetcher = () => gqlRequest<CharacterResponse>(gqlQuery, variables);
-
-  const result = page === 1
-    ? await getAnilistJsonWithCache<CharacterResponse>({
-        endpoint: 'characterDetail',
-        params: variables,
-        policy: getCachePolicy('detail'),
-        fetcher,
-      })
-    : await fetcher();
+  const result = await getAnilistJsonWithCache<CharacterResponse>({
+    endpoint: 'characterDetail',
+    params: variables,
+    policy: getCachePolicy('detail'),
+    fetcher: () => gqlRequest<CharacterResponse>(gqlQuery, variables),
+  });
 
   const c = result.Character;
   if (!c) throw new Error('Character not found');
@@ -1271,16 +1270,12 @@ export async function getStudioDetail(
 
   const variables = { id, page, perPage, sort: [sort] };
 
-  const fetcher = () => gqlRequest<StudioResponse>(gqlQuery, variables);
-
-  const result = page === 1
-    ? await getAnilistJsonWithCache<StudioResponse>({
-        endpoint: 'studioDetail.v2',
-        params: variables,
-        policy: getCachePolicy('detail'),
-        fetcher,
-      })
-    : await fetcher();
+  const result = await getAnilistJsonWithCache<StudioResponse>({
+    endpoint: 'studioDetail.v2',
+    params: variables,
+    policy: getCachePolicy('detail'),
+    fetcher: () => gqlRequest<StudioResponse>(gqlQuery, variables),
+  });
 
   const st = result.Studio;
   if (!st) throw new Error('Studio not found');
