@@ -70,6 +70,7 @@ import { isProtectedApiImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 type JellyfinServerAction = 'restart' | 'shutdown' | 'scan-libraries';
 
@@ -78,7 +79,6 @@ const SERVER_ACTION_LABELS: Record<JellyfinServerAction, string> = {
   shutdown: 'shut down the Jellyfin server',
   'scan-libraries': 'scan all libraries',
 };
-import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 
 // ─── Helpers ───
 
@@ -439,17 +439,16 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       <StreamInfoDrawer session={selectedSession} onClose={() => setSelectedSession(null)} />
       <ConfirmDialog
         open={pendingServerAction !== null}
-        onOpenChange={(open) => { if (!open) setPendingServerAction(null); }}
-        title={pendingServerAction ? `Confirm ${pendingServerAction}` : 'Confirm action'}
+        onOpenChange={(open) => { if (!open && serverAction === null) setPendingServerAction(null); }}
+        title="Confirm action"
         description={pendingServerAction ? `Are you sure you want to ${SERVER_ACTION_LABELS[pendingServerAction]}?` : undefined}
         confirmLabel={pendingServerAction === 'shutdown' ? 'Shut down' : pendingServerAction === 'restart' ? 'Restart' : 'Confirm'}
         destructive
         busy={serverAction !== null}
         onConfirm={async () => {
           if (!pendingServerAction) return;
-          const target = pendingServerAction;
+          await runServerAction(pendingServerAction);
           setPendingServerAction(null);
-          await runServerAction(target);
         }}
       />
     </div>

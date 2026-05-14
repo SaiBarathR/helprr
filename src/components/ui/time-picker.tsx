@@ -33,7 +33,7 @@ function parseTime(value: string): [string, string, string] {
 function pad(value: string | number): string {
   const num = Number(value)
   if (!Number.isFinite(num)) return "00"
-  return String(Math.min(Math.max(num, 0), 99)).padStart(2, "0")
+  return String(Math.max(num, 0)).padStart(2, "0")
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"))
