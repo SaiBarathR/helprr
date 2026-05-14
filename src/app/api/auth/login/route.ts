@@ -19,6 +19,15 @@ function formatWindowDuration(ms: number): string {
 
 const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
 
+function isHttpsRequest(request: NextRequest): boolean {
+  if (request.nextUrl.protocol === 'https:') return true;
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  if (forwardedProto) {
+    return forwardedProto.split(',')[0]?.trim().toLowerCase() === 'https';
+  }
+  return false;
+}
+
 function getClientIp(request: NextRequest): string | null {
   // Only trust x-forwarded-for when traffic passes through a sanitized reverse proxy.
   const forwardedFor = request.headers.get('x-forwarded-for');
@@ -113,7 +122,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttpsRequest(request),
     sameSite: 'lax',
     maxAge: SESSION_DURATION,
     path: '/',
