@@ -20,6 +20,8 @@ import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { AnimeCarouselSettings } from '@/components/settings/anime-carousel-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
+import { ExportSettingsDialog } from '@/components/settings/export-settings-dialog';
+import { ImportSettingsDialog } from '@/components/settings/import-settings-dialog';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 
 interface ServiceForm {
@@ -304,6 +306,8 @@ export default function SettingsPage() {
   const [signingOut, setSigningOut] = useState(false);
   const [externalUrls, setExternalUrls] = useState<Record<string, string>>({});
   const [savingExternalUrls, setSavingExternalUrls] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -1339,6 +1343,43 @@ export default function SettingsPage() {
           )}
         </Button>
       </div>
+
+      {/* ── Backup & Restore ── */}
+      <div className="grouped-section mb-6">
+        <div className="grouped-section-title">Backup &amp; Restore</div>
+        <div className="grouped-section-content">
+          <button
+            onClick={() => setExportDialogOpen(true)}
+            className="grouped-row w-full active:bg-white/5 transition-colors"
+          >
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-medium">Export Settings</span>
+              <span className="text-xs text-muted-foreground">Save your preferences and service config to a JSON file</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => setImportDialogOpen(true)}
+            className="grouped-row w-full active:bg-white/5 transition-colors"
+            style={{ borderBottom: 'none' }}
+          >
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-medium">Import Settings</span>
+              <span className="text-xs text-muted-foreground">Restore from a previously exported file</span>
+            </div>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+
+      <ExportSettingsDialog open={exportDialogOpen} onOpenChange={setExportDialogOpen} />
+      <ImportSettingsDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImported={() => {
+          window.setTimeout(() => window.location.reload(), 600);
+        }}
+      />
 
       {/* ── Account ── */}
       <div className="grouped-section mb-6">
