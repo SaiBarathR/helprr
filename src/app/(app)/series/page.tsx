@@ -69,7 +69,6 @@ const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: strin
 };
 
 const filterOptions = [
-  { value: 'all', label: 'All' },
   { value: 'monitored', label: 'Monitored' },
   { value: 'unmonitored', label: 'Unmonitored' },
   { value: 'continuing', label: 'Continuing' },
@@ -308,12 +307,17 @@ export default function SeriesPage() {
       list = list.filter((s) => s.title.toLowerCase().includes(q));
     }
 
-    if (filter === 'monitored') list = list.filter((s) => s.monitored);
-    else if (filter === 'unmonitored') list = list.filter((s) => !s.monitored);
-    else if (filter === 'continuing') list = list.filter((s) => s.status === 'continuing');
-    else if (filter === 'ended') list = list.filter((s) => s.status === 'ended');
-    else if (filter === 'missing') list = list.filter((s) => s.monitored && s.statistics.episodeCount < s.statistics.totalEpisodeCount);
-    else if (filter === 'upcoming') list = list.filter((s) => s.status === 'upcoming');
+    if (filter.length > 0) {
+      list = list.filter((s) => filter.some((f) => {
+        if (f === 'monitored') return s.monitored;
+        if (f === 'unmonitored') return !s.monitored;
+        if (f === 'continuing') return s.status === 'continuing';
+        if (f === 'ended') return s.status === 'ended';
+        if (f === 'missing') return s.monitored && s.statistics.episodeCount < s.statistics.totalEpisodeCount;
+        if (f === 'upcoming') return s.status === 'upcoming';
+        return true;
+      }));
+    }
 
     list = [...list].sort((a, b) => {
       let result = 0;
@@ -474,7 +478,11 @@ export default function SeriesPage() {
     scrollMargin: contentOffsetTop,
   });
 
-  const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
+  const activeFilterLabel = filter.length === 0
+    ? 'All'
+    : filter.length === 1
+      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
+      : `${filter.length} filters`;
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
@@ -493,11 +501,23 @@ export default function SeriesPage() {
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuLabel>Filter</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={filter.length === 0}
+                onCheckedChange={() => setFilter([])}
+                onSelect={(e) => e.preventDefault()}
+              >
+                All
+              </DropdownMenuCheckboxItem>
               {filterOptions.map((opt) => (
                 <DropdownMenuCheckboxItem
                   key={opt.value}
-                  checked={filter === opt.value}
-                  onCheckedChange={() => setFilter(opt.value)}
+                  checked={filter.includes(opt.value)}
+                  onCheckedChange={() => setFilter(
+                    filter.includes(opt.value)
+                      ? filter.filter((f) => f !== opt.value)
+                      : [...filter, opt.value]
+                  )}
+                  onSelect={(e) => e.preventDefault()}
                 >
                   {opt.label}
                 </DropdownMenuCheckboxItem>
@@ -522,6 +542,7 @@ export default function SeriesPage() {
                   key={opt.value}
                   checked={sort === opt.value}
                   onCheckedChange={() => setSort(opt.value)}
+                  onSelect={(e) => e.preventDefault()}
                 >
                   {opt.label}
                 </DropdownMenuCheckboxItem>
@@ -530,12 +551,14 @@ export default function SeriesPage() {
               <DropdownMenuCheckboxItem
                 checked={sortDir === 'asc'}
                 onCheckedChange={() => setSortDir('asc')}
+                onSelect={(e) => e.preventDefault()}
               >
                 Ascending
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
                 checked={sortDir === 'desc'}
                 onCheckedChange={() => setSortDir('desc')}
+                onSelect={(e) => e.preventDefault()}
               >
                 Descending
               </DropdownMenuCheckboxItem>

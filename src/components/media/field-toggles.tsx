@@ -54,9 +54,9 @@ export function FieldToggles({
           <>
             <DropdownMenuLabel>Poster Size</DropdownMenuLabel>
             <DropdownMenuRadioGroup value={posterSize} onValueChange={(v) => onPosterSizeChange(v as PosterSize)}>
-              <DropdownMenuRadioItem value="small">Small</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="medium">Medium</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="large">Large</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="small" onSelect={(e) => e.preventDefault()}>Small</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="medium" onSelect={(e) => e.preventDefault()}>Medium</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="large" onSelect={(e) => e.preventDefault()}>Large</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
           </>
@@ -68,6 +68,7 @@ export function FieldToggles({
             key={opt.value}
             checked={selected.includes(opt.value)}
             onCheckedChange={() => toggle(opt.value)}
+            onSelect={(e) => e.preventDefault()}
           >
             {opt.label}
           </DropdownMenuCheckboxItem>

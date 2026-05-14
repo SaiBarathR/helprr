@@ -129,13 +129,31 @@ function getStateBadge(state: string) {
 }
 
 const filterOptions: { value: FilterType; label: string }[] = [
-  { value: 'all', label: 'All' },
   { value: 'downloading', label: 'Downloading' },
   { value: 'seeding', label: 'Seeding' },
   { value: 'completed', label: 'Completed' },
   { value: 'paused', label: 'Paused' },
   { value: 'active', label: 'Active' },
 ];
+
+const DOWNLOADING_STATES = new Set([
+  'downloading', 'metaDL', 'allocating', 'stalledDL', 'queuedDL', 'checkingDL', 'forcedDL', 'pausedDL',
+]);
+const SEEDING_STATES = new Set([
+  'uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP', 'pausedUP',
+]);
+
+function matchesTorrentFilter(t: QBittorrentTorrent, f: FilterType): boolean {
+  switch (f) {
+    case 'all': return true;
+    case 'downloading': return DOWNLOADING_STATES.has(t.state);
+    case 'seeding': return SEEDING_STATES.has(t.state);
+    case 'completed': return t.progress >= 1;
+    case 'paused': return t.state === 'pausedDL' || t.state === 'pausedUP';
+    case 'active': return t.dlspeed > 0 || t.upspeed > 0;
+    default: return true;
+  }
+}
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Name' },
@@ -544,7 +562,6 @@ export default function TorrentsPage() {
   const [bulkSpeedDrawer, setBulkSpeedDrawer] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
-  const filterRef = useRef<FilterType>(filter);
   const pollInFlightRef = useRef(false);
   const pendingPollRef = useRef(false);
 
@@ -555,16 +572,10 @@ export default function TorrentsPage() {
     }
 
     pollInFlightRef.current = true;
-    const currentFilter = filterRef.current;
     const startedAt = performance.now();
 
     try {
-      const qbtFilter = currentFilter === 'all' ? undefined : currentFilter;
-      const url = qbtFilter
-        ? `/api/qbittorrent/summary?filter=${encodeURIComponent(qbtFilter)}`
-        : '/api/qbittorrent/summary';
-
-      const res = await fetch(url);
+      const res = await fetch('/api/qbittorrent/summary');
       if (!res.ok) throw new Error('Failed to fetch');
 
       const data = await res.json() as QBittorrentSummaryResponse & { error?: string };
@@ -577,7 +588,6 @@ export default function TorrentsPage() {
 
       const durationMs = performance.now() - startedAt;
       console.info(`[perf][client] torrents summary ${durationMs.toFixed(1)}ms`, {
-        filter: currentFilter,
         torrentCount: data.torrents.length,
       });
     } catch (err) {
@@ -629,10 +639,9 @@ export default function TorrentsPage() {
   useEffect(() => {
     if (!hasHydrated || typeof window === 'undefined') return;
 
-    filterRef.current = filter;
     setLoading(true);
     void fetchSummary();
-  }, [fetchSummary, filter, hasHydrated]);
+  }, [fetchSummary, hasHydrated]);
 
   useEffect(() => {
     async function loadRefreshInterval() {
@@ -804,13 +813,16 @@ export default function TorrentsPage() {
 
   const filteredTorrents = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const filtered = q ? torrents.filter((torrent) => torrent.name.toLowerCase().includes(q)) : [...torrents];
+    let filtered = q ? torrents.filter((torrent) => torrent.name.toLowerCase().includes(q)) : [...torrents];
+    if (filter.length > 0) {
+      filtered = filtered.filter((t) => filter.some((f) => matchesTorrentFilter(t, f)));
+    }
     filtered.sort((a, b) => {
       const cmp = compareTorrents(a, b, sortKey);
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return filtered;
-  }, [search, torrents, sortKey, sortDir]);
+  }, [search, torrents, filter, sortKey, sortDir]);
 
   const useVirtualization = !loading && filteredTorrents.length > 0;
   const virtualizer = useWindowVirtualizer({
@@ -846,7 +858,11 @@ export default function TorrentsPage() {
     [torrents]
   );
 
-  const activeFilterLabel = filterOptions.find((o) => o.value === filter)?.label ?? 'All';
+  const activeFilterLabel = filter.length === 0
+    ? 'All'
+    : filter.length === 1
+      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
+      : `${filter.length} filters`;
 
   const selectAll = useCallback(() => {
     if (selectedTorrents.size === filteredTorrents.length) {
@@ -875,11 +891,23 @@ export default function TorrentsPage() {
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuLabel>Filter</DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={filter.length === 0}
+                onCheckedChange={() => setFilter([])}
+                onSelect={(e) => e.preventDefault()}
+              >
+                All
+              </DropdownMenuCheckboxItem>
               {filterOptions.map((opt) => (
                 <DropdownMenuCheckboxItem
                   key={opt.value}
-                  checked={filter === opt.value}
-                  onCheckedChange={() => setFilter(opt.value)}
+                  checked={filter.includes(opt.value)}
+                  onCheckedChange={() => setFilter(
+                    filter.includes(opt.value)
+                      ? filter.filter((f) => f !== opt.value)
+                      : [...filter, opt.value]
+                  )}
+                  onSelect={(e) => e.preventDefault()}
                 >
                   {opt.label}
                 </DropdownMenuCheckboxItem>
@@ -912,6 +940,7 @@ export default function TorrentsPage() {
                       setSortDir(opt.key === 'name' || opt.key === 'category' || opt.key === 'state' ? 'asc' : 'desc');
                     }
                   }}
+                  onSelect={(e) => e.preventDefault()}
                 >
                   {opt.label}
                   {sortKey === opt.key && (

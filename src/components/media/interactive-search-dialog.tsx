@@ -79,8 +79,8 @@ export function InteractiveSearchDialog({
 
   // Filters
   const [textFilter, setTextFilter] = useState('');
-  const [indexerFilter, setIndexerFilter] = useState('all');
-  const [qualityFilter, setQualityFilter] = useState('all');
+  const [indexerFilter, setIndexerFilter] = useState<string[]>([]);
+  const [qualityFilter, setQualityFilter] = useState<string[]>([]);
   const [seasonPackFilter, setSeasonPackFilter] = useState<'any' | 'seasonPack' | 'singleEpisode'>('any');
 
   // Override state
@@ -220,8 +220,8 @@ export function InteractiveSearchDialog({
       setReleases([]);
       setSearched(false);
       setTextFilter('');
-      setIndexerFilter('all');
-      setQualityFilter('all');
+      setIndexerFilter([]);
+      setQualityFilter([]);
       setSeasonPackFilter('any');
     }
     onOpenChange(v);
@@ -235,11 +235,14 @@ export function InteractiveSearchDialog({
       const lower = textFilter.toLowerCase();
       result = result.filter((r) => r.title.toLowerCase().includes(lower));
     }
-    if (indexerFilter !== 'all') {
-      result = result.filter((r) => r.indexer === indexerFilter);
+    if (indexerFilter.length > 0) {
+      result = result.filter((r) => !!r.indexer && indexerFilter.includes(r.indexer));
     }
-    if (qualityFilter !== 'all') {
-      result = result.filter((r) => r.quality?.quality?.name === qualityFilter);
+    if (qualityFilter.length > 0) {
+      result = result.filter((r) => {
+        const name = r.quality?.quality?.name;
+        return !!name && qualityFilter.includes(name);
+      });
     }
     if (seasonPackFilter === 'seasonPack') {
       result = result.filter((r) => r.fullSeason === true);
@@ -267,7 +270,7 @@ export function InteractiveSearchDialog({
     });
   }, [releases, textFilter, indexerFilter, qualityFilter, seasonPackFilter, sortKey, sortAsc]);
 
-  const hasActiveFilters = textFilter || indexerFilter !== 'all' || qualityFilter !== 'all' || seasonPackFilter !== 'any';
+  const hasActiveFilters = !!textFilter || indexerFilter.length > 0 || qualityFilter.length > 0 || seasonPackFilter !== 'any';
 
   return (
     <>
@@ -334,22 +337,44 @@ export function InteractiveSearchDialog({
                       <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuLabel>Indexer</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem checked={indexerFilter === 'all'} onCheckedChange={() => setIndexerFilter('all')}>
+                        <DropdownMenuCheckboxItem
+                          checked={indexerFilter.length === 0}
+                          onCheckedChange={() => setIndexerFilter([])}
+                          onSelect={(e) => e.preventDefault()}
+                        >
                           All Indexers
                         </DropdownMenuCheckboxItem>
                         {indexers.map((idx) => (
-                          <DropdownMenuCheckboxItem key={idx} checked={indexerFilter === idx} onCheckedChange={() => setIndexerFilter(idx)}>
+                          <DropdownMenuCheckboxItem
+                            key={idx}
+                            checked={indexerFilter.includes(idx)}
+                            onCheckedChange={() => setIndexerFilter((prev) => (
+                              prev.includes(idx) ? prev.filter((x) => x !== idx) : [...prev, idx]
+                            ))}
+                            onSelect={(e) => e.preventDefault()}
+                          >
                             {idx}
                           </DropdownMenuCheckboxItem>
                         ))}
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel>Quality</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        <DropdownMenuCheckboxItem checked={qualityFilter === 'all'} onCheckedChange={() => setQualityFilter('all')}>
+                        <DropdownMenuCheckboxItem
+                          checked={qualityFilter.length === 0}
+                          onCheckedChange={() => setQualityFilter([])}
+                          onSelect={(e) => e.preventDefault()}
+                        >
                           All Qualities
                         </DropdownMenuCheckboxItem>
                         {qualities.map((q) => (
-                          <DropdownMenuCheckboxItem key={q} checked={qualityFilter === q} onCheckedChange={() => setQualityFilter(q)}>
+                          <DropdownMenuCheckboxItem
+                            key={q}
+                            checked={qualityFilter.includes(q)}
+                            onCheckedChange={() => setQualityFilter((prev) => (
+                              prev.includes(q) ? prev.filter((x) => x !== q) : [...prev, q]
+                            ))}
+                            onSelect={(e) => e.preventDefault()}
+                          >
                             {q}
                           </DropdownMenuCheckboxItem>
                         ))}
@@ -358,13 +383,25 @@ export function InteractiveSearchDialog({
                             <DropdownMenuSeparator />
                             <DropdownMenuLabel>Type</DropdownMenuLabel>
                             <DropdownMenuSeparator />
-                            <DropdownMenuCheckboxItem checked={seasonPackFilter === 'any'} onCheckedChange={() => setSeasonPackFilter('any')}>
+                            <DropdownMenuCheckboxItem
+                              checked={seasonPackFilter === 'any'}
+                              onCheckedChange={() => setSeasonPackFilter('any')}
+                              onSelect={(e) => e.preventDefault()}
+                            >
                               Any
                             </DropdownMenuCheckboxItem>
-                            <DropdownMenuCheckboxItem checked={seasonPackFilter === 'seasonPack'} onCheckedChange={() => setSeasonPackFilter('seasonPack')}>
+                            <DropdownMenuCheckboxItem
+                              checked={seasonPackFilter === 'seasonPack'}
+                              onCheckedChange={() => setSeasonPackFilter('seasonPack')}
+                              onSelect={(e) => e.preventDefault()}
+                            >
                               Season Pack
                             </DropdownMenuCheckboxItem>
-                            <DropdownMenuCheckboxItem checked={seasonPackFilter === 'singleEpisode'} onCheckedChange={() => setSeasonPackFilter('singleEpisode')}>
+                            <DropdownMenuCheckboxItem
+                              checked={seasonPackFilter === 'singleEpisode'}
+                              onCheckedChange={() => setSeasonPackFilter('singleEpisode')}
+                              onSelect={(e) => e.preventDefault()}
+                            >
                               Single Episode
                             </DropdownMenuCheckboxItem>
                           </>
