@@ -380,17 +380,25 @@ export default function LogsPage() {
       />
       <ConfirmDialog
         open={pendingDeleteFile !== null}
-        onOpenChange={(open) => { if (!open) setPendingDeleteFile(null); }}
-        title={pendingDeleteFile ? `Delete ${pendingDeleteFile}?` : 'Delete file?'}
-        description="This cannot be undone."
+        onOpenChange={(open) => { if (!open && deletingFile === null) setPendingDeleteFile(null); }}
+        title="Delete file?"
+        description={
+          pendingDeleteFile ? (
+            <>
+              <span className="break-all font-mono">{pendingDeleteFile}</span>
+              <span className="block mt-1">This cannot be undone.</span>
+            </>
+          ) : (
+            'This cannot be undone.'
+          )
+        }
         confirmLabel="Delete"
         destructive
         busy={deletingFile !== null}
         onConfirm={async () => {
           if (!pendingDeleteFile) return;
-          const target = pendingDeleteFile;
+          await performDeleteFile(pendingDeleteFile);
           setPendingDeleteFile(null);
-          await performDeleteFile(target);
         }}
       />
     </div>

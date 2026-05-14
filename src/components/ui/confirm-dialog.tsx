@@ -14,7 +14,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { buttonVariants } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 
 interface ConfirmDialogProps {
   open: boolean
@@ -50,7 +49,7 @@ export function ConfirmDialog({
           <AlertDialogCancel disabled={busy}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             disabled={busy}
-            className={cn(destructive && buttonVariants({ variant: "destructive" }))}
+            className={destructive ? buttonVariants({ variant: "destructive" }) : undefined}
             onClick={(event) => {
               event.preventDefault()
               void onConfirm()
