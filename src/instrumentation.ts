@@ -54,6 +54,17 @@ export async function register() {
       initVapid();
       pollingService.start(intervalMs);
       console.log('[Helprr] Polling service started');
+
+      try {
+        const { startCleanupJobs } = await import('@/lib/cleanup/scheduler');
+        // Idempotent — startCleanupJobs internally restarts timers, and the
+        // scheduler stashes its state on globalThis so dev hot-reload of this
+        // module does not stack additional timers.
+        await startCleanupJobs();
+        console.log('[Helprr] Cleanup jobs started');
+      } catch (cleanupErr) {
+        console.warn('[Helprr] Could not start cleanup jobs:', cleanupErr);
+      }
     } catch (e) {
       console.warn('[Helprr] Could not start polling service:', e);
     }
