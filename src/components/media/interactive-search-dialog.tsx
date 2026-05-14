@@ -276,7 +276,7 @@ export function InteractiveSearchDialog({
   return (
     <>
       <Drawer open={open} onOpenChange={handleOpenChange}>
-        <DrawerContent className="max-h-[92vh] flex flex-col">
+        <DrawerContent>
           <DrawerTitle className="sr-only">{title}</DrawerTitle>
           <div className="flex items-center justify-between px-4 pt-4 pb-2">
             <h2 className="text-base font-semibold truncate pr-2">{title}</h2>

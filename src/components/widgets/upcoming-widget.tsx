@@ -3,8 +3,15 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Film, Tv, Clock, ChevronDown, Check, CircleDashed } from 'lucide-react';
+import { Film, Tv, Clock, Check, CircleDashed } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { Carousel, SectionHeader } from '@/components/widgets/shared';
 import { formatDistanceToNowSafe } from '@/lib/format';
@@ -56,18 +63,19 @@ export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
   }
 
   const daysSelector = (
-    <div className="relative inline-flex">
-      <select
-        value={days}
-        onChange={(e) => handleDaysChange(Number(e.target.value))}
-        className="appearance-none bg-muted/50 text-[10px] font-medium text-muted-foreground pl-2 pr-5 py-0.5 rounded-md cursor-pointer hover:bg-muted transition-colors focus:outline-none"
+    <Select value={String(days)} onValueChange={(v) => handleDaysChange(Number(v))}>
+      <SelectTrigger
+        size="sm"
+        className="h-auto gap-1 rounded-md border-0 bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted [&_svg:not([class*='size-'])]:size-2.5"
       >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
         {DAYS_OPTIONS.map((d) => (
-          <option key={d} value={d}>{d} days</option>
+          <SelectItem key={d} value={String(d)}>{d} days</SelectItem>
         ))}
-      </select>
-      <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-muted-foreground pointer-events-none" />
-    </div>
+      </SelectContent>
+    </Select>
   );
 
   if (loading) {

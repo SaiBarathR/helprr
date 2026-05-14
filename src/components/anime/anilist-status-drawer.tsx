@@ -190,12 +190,12 @@ export function AnilistStatusDrawer({
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[95vh]">
+      <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{entry ? 'Edit AniList Entry' : 'Add to AniList'}</DrawerTitle>
           <DrawerDescription className="line-clamp-1">{mediaTitle}</DrawerDescription>
         </DrawerHeader>
-        <div className="px-4 pb-2 space-y-4 overflow-y-auto">
+        <div className="flex-1 min-h-0 px-4 pb-2 space-y-4 overflow-y-auto">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Status</Label>
             <Select value={form.status} onValueChange={(v) => setForm((prev) => ({

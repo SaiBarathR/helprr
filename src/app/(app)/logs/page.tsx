@@ -9,6 +9,7 @@ import { LogsActiveFilters } from './logs-active-filters';
 import { LogsFilesSheet, type LogFile } from './logs-files-sheet';
 import { LogsEntryRow, type LogEntry } from './logs-entry-row';
 import type { LogLevel, LogSource } from './logs-filter-menu';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 function entryKey(entry: LogEntry, index: number) {
   return `${entry.timestampUtc}-${entry.requestId ?? index}`;
@@ -84,6 +85,7 @@ export default function LogsPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filesSheetOpen, setFilesSheetOpen] = useState(false);
   const [scrollMargin, setScrollMargin] = useState(0);
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -173,9 +175,8 @@ export default function LogsPage() {
     void downloadOrShare(url, file);
   }, []);
 
-  const deleteFile = useCallback(
+  const performDeleteFile = useCallback(
     async (file: string) => {
-      if (!window.confirm(`Delete ${file}? This cannot be undone.`)) return;
       setDeletingFile(file);
       try {
         const response = await fetch(`/api/logs/files?file=${encodeURIComponent(file)}`, {
@@ -191,6 +192,10 @@ export default function LogsPage() {
     },
     [loadFiles, loadLogs, selectedFile]
   );
+
+  const deleteFile = useCallback((file: string) => {
+    setPendingDeleteFile(file);
+  }, []);
 
   const handleResetFilters = useCallback(() => {
     setLevels(new Set());
@@ -370,8 +375,23 @@ export default function LogsPage() {
         selectedFile={selectedFile}
         onSelectFile={setSelectedFile}
         onDownloadFile={downloadFile}
-        onDeleteFile={(file) => void deleteFile(file)}
+        onDeleteFile={deleteFile}
         deletingFile={deletingFile}
+      />
+      <ConfirmDialog
+        open={pendingDeleteFile !== null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteFile(null); }}
+        title={pendingDeleteFile ? `Delete ${pendingDeleteFile}?` : 'Delete file?'}
+        description="This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        busy={deletingFile !== null}
+        onConfirm={async () => {
+          if (!pendingDeleteFile) return;
+          const target = pendingDeleteFile;
+          setPendingDeleteFile(null);
+          await performDeleteFile(target);
+        }}
       />
     </div>
   );

@@ -94,11 +94,11 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent className="max-h-[85vh]">
+      <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Add Widget</DrawerTitle>
         </DrawerHeader>
-        <div className="overflow-y-auto px-4 pb-8 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-5">
           {CATEGORY_ORDER.map((category) => {
             const widgets = grouped.get(category);
             if (!widgets || widgets.length === 0) return null;

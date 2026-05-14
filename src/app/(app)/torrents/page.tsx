@@ -9,6 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import {
   Drawer,
@@ -345,14 +352,15 @@ function SpeedLimitInput({
           className="h-8 text-xs flex-1"
           autoFocus
         />
-        <select
-          value={unit}
-          onChange={(e) => setUnit(e.target.value as 'KB/s' | 'MB/s')}
-          className="h-8 text-xs rounded-md border bg-background px-2"
-        >
-          <option value="KB/s">KB/s</option>
-          <option value="MB/s">MB/s</option>
-        </select>
+        <Select value={unit} onValueChange={(v) => setUnit(v as 'KB/s' | 'MB/s')}>
+          <SelectTrigger size="sm" className="text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="KB/s">KB/s</SelectItem>
+            <SelectItem value="MB/s">MB/s</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex gap-2">
         <Button size="sm" className="h-7 text-xs flex-1" onClick={handleSave} disabled={saving}>
