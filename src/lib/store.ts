@@ -169,6 +169,119 @@ function sanitizeDashboardLayout(layout: WidgetInstance[]): WidgetInstance[] {
     }));
 }
 
+export const STORE_VERSION = 16;
+
+export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
+  const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
+  if (version === 0) {
+    const oldMovies = state.moviesVisibleFields;
+    if (Array.isArray(oldMovies)) {
+      state.moviesVisibleFields = {
+        posters: DEFAULT_MOVIES_FIELDS.posters,
+        overview: oldMovies,
+        table: DEFAULT_MOVIES_FIELDS.table,
+      };
+    }
+    const oldSeries = state.seriesVisibleFields;
+    if (Array.isArray(oldSeries)) {
+      state.seriesVisibleFields = {
+        posters: DEFAULT_SERIES_FIELDS.posters,
+        overview: oldSeries,
+        table: DEFAULT_SERIES_FIELDS.table,
+      };
+    }
+  }
+  if (version < 2) {
+    state.navOrder = [...DEFAULT_NAV_ORDER];
+    state.disabledNavItems = [];
+  }
+  if (version < 3) {
+    state.defaultPage = 'dashboard';
+  }
+  if (version < 4) {
+    state.discoverContentType = 'all';
+    state.discoverSort = 'trending';
+    state.discoverSortDirection = 'desc';
+    state.discoverFilters = cloneDiscoverFilters(DEFAULT_DISCOVER_FILTERS);
+  }
+  if (version < 5) {
+    state.moviesSearch = '';
+    state.seriesSearch = '';
+  }
+  if (version < 6) {
+    state.dashboardLayout = DEFAULT_LAYOUT.map((w) => ({ ...w }));
+  }
+  if (version < 7) {
+    const rawLayout = Array.isArray(state.dashboardLayout)
+      ? state.dashboardLayout as WidgetInstance[]
+      : DEFAULT_LAYOUT.map((w) => ({ ...w }));
+    state.dashboardLayout = sanitizeDashboardLayout(rawLayout);
+  }
+  if (version < 8) {
+    state.animeSort = 'trending';
+    state.animeFilters = cloneAnimeFilters(DEFAULT_ANIME_FILTERS);
+    if (state.discoverContentType === 'anime') {
+      state.discoverContentType = 'all';
+    }
+  }
+  if (version < 9) {
+    state.animeSort = 'seasonal';
+  }
+  if (version < 10) {
+    state.navPosition = 'top';
+  }
+  if (version < 11) {
+    const layout = Array.isArray(state.dashboardLayout)
+      ? state.dashboardLayout as WidgetInstance[]
+      : [];
+    const hadOld = layout.some(
+      (w) => w.widgetId === 'torrent-summary' || w.widgetId === 'transfer-speed'
+    );
+    if (hadOld) {
+      const firstIdx = layout.findIndex(
+        (w) => w.widgetId === 'torrent-summary' || w.widgetId === 'transfer-speed'
+      );
+      const filtered = layout.filter(
+        (w) => w.widgetId !== 'torrent-summary' && w.widgetId !== 'transfer-speed'
+      );
+      const combined: WidgetInstance = {
+        id: `torrent-overview-1-${Date.now()}`,
+        widgetId: 'torrent-overview',
+        size: 'medium',
+      };
+      filtered.splice(firstIdx, 0, combined);
+      state.dashboardLayout = filtered;
+    }
+  }
+  if (version < 12) {
+    const filters = state.discoverFilters as Record<string, unknown> | undefined;
+    if (filters && !Array.isArray(filters.companies)) {
+      filters.companies = [];
+    }
+  }
+  if (version < 13) {
+    state.torrentsFilter = 'all';
+    state.torrentsSortKey = 'added_on';
+    state.torrentsSortDir = 'desc';
+    state.activityTab = 'queue';
+    state.activitySortBy = 'progress';
+    state.activityFilterBy = 'all';
+  }
+  if (version < 14) {
+    state.notificationsFilters = cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS);
+  }
+  if (version < 15) {
+    state.animeCarouselOrder = [...DEFAULT_ANIME_CAROUSEL_ORDER];
+    state.disabledAnimeCarousels = [];
+  }
+  if (version < 16) {
+    state.moviesFilter = [];
+    state.seriesFilter = [];
+    state.torrentsFilter = [];
+  }
+  return state;
+}
+
 interface UIState {
   hasHydrated: boolean;
   setHasHydrated: (hydrated: boolean) => void;
@@ -274,6 +387,8 @@ interface UIState {
   resizeWidget: (instanceId: string, size: WidgetSize) => void;
   reorderWidgets: (layout: WidgetInstance[]) => void;
   resetDashboardLayout: () => void;
+  // Settings import
+  applyImportedUiPrefs: (partial: Record<string, unknown>) => void;
 }
 
 export const useUIStore = create<UIState>()(
@@ -447,133 +562,26 @@ export const useUIStore = create<UIState>()(
         })),
       reorderWidgets: (layout) => set({ dashboardLayout: sanitizeDashboardLayout(layout) }),
       resetDashboardLayout: () => set({ dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w }))) }),
+      applyImportedUiPrefs: (partial) =>
+        set((state) => {
+          const next = { ...partial } as Record<string, unknown>;
+          if ('dashboardLayout' in next && Array.isArray(next.dashboardLayout)) {
+            next.dashboardLayout = sanitizeDashboardLayout(next.dashboardLayout as WidgetInstance[]);
+          }
+          if ('navOrder' in next && Array.isArray(next.navOrder)) {
+            next.navOrder = reconcileNavOrder(next.navOrder as NavItemId[]);
+          }
+          return { ...state, ...(next as Partial<UIState>) };
+        }),
     }),
     {
       name: 'helprr-ui-prefs',
-      // Bump version whenever new persisted fields are added
-      version: 16,
+      // Bump STORE_VERSION whenever new persisted fields are added
+      version: STORE_VERSION,
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },
-      migrate: (persisted, version) => {
-        const state = persisted as Record<string, unknown>;
-        if (version === 0) {
-          // Migrate flat string[] to per-mode VisibleFieldsByMode
-          const oldMovies = state.moviesVisibleFields;
-          if (Array.isArray(oldMovies)) {
-            state.moviesVisibleFields = {
-              posters: DEFAULT_MOVIES_FIELDS.posters,
-              overview: oldMovies,
-              table: DEFAULT_MOVIES_FIELDS.table,
-            };
-          }
-          const oldSeries = state.seriesVisibleFields;
-          if (Array.isArray(oldSeries)) {
-            state.seriesVisibleFields = {
-              posters: DEFAULT_SERIES_FIELDS.posters,
-              overview: oldSeries,
-              table: DEFAULT_SERIES_FIELDS.table,
-            };
-          }
-        }
-        if (version < 2) {
-          // Add navigation preferences
-          state.navOrder = [...DEFAULT_NAV_ORDER];
-          state.disabledNavItems = [];
-        }
-        if (version < 3) {
-          state.defaultPage = 'dashboard';
-        }
-        if (version < 4) {
-          state.discoverContentType = 'all';
-          state.discoverSort = 'trending';
-          state.discoverSortDirection = 'desc';
-          state.discoverFilters = cloneDiscoverFilters(DEFAULT_DISCOVER_FILTERS);
-        }
-        if (version < 5) {
-          state.moviesSearch = '';
-          state.seriesSearch = '';
-        }
-        if (version < 6) {
-          state.dashboardLayout = DEFAULT_LAYOUT.map((w) => ({ ...w }));
-        }
-        if (version < 7) {
-          const rawLayout = Array.isArray(state.dashboardLayout)
-            ? state.dashboardLayout as WidgetInstance[]
-            : DEFAULT_LAYOUT.map((w) => ({ ...w }));
-          state.dashboardLayout = sanitizeDashboardLayout(rawLayout);
-        }
-        if (version < 8) {
-          state.animeSort = 'trending';
-          state.animeFilters = cloneAnimeFilters(DEFAULT_ANIME_FILTERS);
-          // If user's persisted discoverContentType is 'anime', reset to 'all'
-          if (state.discoverContentType === 'anime') {
-            state.discoverContentType = 'all';
-          }
-        }
-        if (version < 9) {
-          state.animeSort = 'seasonal';
-        }
-        if (version < 10) {
-          state.navPosition = 'top';
-        }
-        if (version < 11) {
-          // Merge torrent-summary + transfer-speed widgets into torrent-overview
-          const layout = Array.isArray(state.dashboardLayout)
-            ? state.dashboardLayout as WidgetInstance[]
-            : [];
-          const hadOld = layout.some(
-            (w) => w.widgetId === 'torrent-summary' || w.widgetId === 'transfer-speed'
-          );
-          if (hadOld) {
-            // Find first old torrent widget index for placement
-            const firstIdx = layout.findIndex(
-              (w) => w.widgetId === 'torrent-summary' || w.widgetId === 'transfer-speed'
-            );
-            // Remove all old torrent widgets
-            const filtered = layout.filter(
-              (w) => w.widgetId !== 'torrent-summary' && w.widgetId !== 'transfer-speed'
-            );
-            // Insert new combined widget at same position
-            const combined: WidgetInstance = {
-              id: `torrent-overview-1-${Date.now()}`,
-              widgetId: 'torrent-overview',
-              size: 'medium',
-            };
-            filtered.splice(firstIdx, 0, combined);
-            state.dashboardLayout = filtered;
-          }
-        }
-        if (version < 12) {
-          // Add companies to discover filters
-          const filters = state.discoverFilters as Record<string, unknown> | undefined;
-          if (filters && !Array.isArray(filters.companies)) {
-            filters.companies = [];
-          }
-        }
-        if (version < 13) {
-          state.torrentsFilter = 'all';
-          state.torrentsSortKey = 'added_on';
-          state.torrentsSortDir = 'desc';
-          state.activityTab = 'queue';
-          state.activitySortBy = 'progress';
-          state.activityFilterBy = 'all';
-        }
-        if (version < 14) {
-          state.notificationsFilters = cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS);
-        }
-        if (version < 15) {
-          state.animeCarouselOrder = [...DEFAULT_ANIME_CAROUSEL_ORDER];
-          state.disabledAnimeCarousels = [];
-        }
-        if (version < 16) {
-          // moviesFilter/seriesFilter/torrentsFilter changed from single string to string[]
-          state.moviesFilter = [];
-          state.seriesFilter = [];
-          state.torrentsFilter = [];
-        }
-        return state as unknown as UIState;
-      },
+      migrate: (persisted, version) => migrateUiPrefs(persisted, version) as unknown as UIState,
       partialize: (state) => ({
         mediaView: state.mediaView,
         calendarView: state.calendarView,
