@@ -1,12 +1,21 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { COOKIE_NAME } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function postHandler(): Promise<NextResponse> {
+function isHttpsRequest(request: NextRequest): boolean {
+  if (request.nextUrl.protocol === 'https:') return true;
+  const forwardedProto = request.headers.get('x-forwarded-proto');
+  if (forwardedProto) {
+    return forwardedProto.split(',')[0]?.trim().toLowerCase() === 'https';
+  }
+  return false;
+}
+
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttpsRequest(request),
     sameSite: 'lax',
     maxAge: 0,
     path: '/',
