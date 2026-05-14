@@ -291,22 +291,41 @@ export function formatFavourites(n: number | null): string {
   return n.toLocaleString();
 }
 
+function matchYouTubeVideoId(url: string): string | null {
+  if (url.includes('/playlist') || url.includes('/channel') || url.includes('/@') || url.includes('/c/')) return null;
+  const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (watchMatch) return watchMatch[1];
+  const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
+  if (shortMatch) return shortMatch[1];
+  return null;
+}
+
 export function extractYouTubeTrailerFallback(
   externalLinks: AniListExternalLink[]
 ): { id: string; site: string; thumbnail: string | null } | null {
   for (const link of externalLinks) {
     if (!link.url) continue;
     if (link.site !== 'YouTube' && !link.url.includes('youtube.com') && !link.url.includes('youtu.be')) continue;
-    // Skip playlists and channels
-    if (link.url.includes('/playlist') || link.url.includes('/channel') || link.url.includes('/@') || link.url.includes('/c/')) continue;
-    // Match youtube.com/watch?v=ID
-    const watchMatch = link.url.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-    if (watchMatch) return { id: watchMatch[1], site: 'youtube', thumbnail: null };
-    // Match youtu.be/ID
-    const shortMatch = link.url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-    if (shortMatch) return { id: shortMatch[1], site: 'youtube', thumbnail: null };
+    const id = matchYouTubeVideoId(link.url);
+    if (id) return { id, site: 'youtube', thumbnail: null };
   }
   return null;
+}
+
+export function extractYouTubeVideosFromExternalLinks(
+  externalLinks: AniListExternalLink[]
+): { id: string; site: 'youtube' }[] {
+  const seen = new Set<string>();
+  const results: { id: string; site: 'youtube' }[] = [];
+  for (const link of externalLinks) {
+    if (!link.url) continue;
+    if (link.site !== 'YouTube' && !link.url.includes('youtube.com') && !link.url.includes('youtu.be')) continue;
+    const id = matchYouTubeVideoId(link.url);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    results.push({ id, site: 'youtube' });
+  }
+  return results;
 }
 
 export function extractTvdbId(externalLinks: AniListExternalLink[]): number | null {
