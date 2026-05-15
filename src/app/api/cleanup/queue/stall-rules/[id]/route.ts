@@ -17,7 +17,8 @@ async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string 
   // If the new maxStrikes is lower than before, cap any in-flight strikes so
   // we don't immediately delete torrents on the next cycle.
   const existing = await prisma.stallRule.findUnique({ where: { id }, select: { maxStrikes: true } });
-  if (existing && v.value.maxStrikes < existing.maxStrikes) {
+  if (!existing) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  if (v.value.maxStrikes < existing.maxStrikes) {
     await capStrikesToThreshold('stall', id, v.value.maxStrikes);
   }
 
@@ -38,6 +39,8 @@ async function deleteHandler(_req: NextRequest, ctx: { params: Promise<{ id: str
   const err = await requireAuth();
   if (err) return err;
   const { id } = await ctx.params;
+  const existing = await prisma.stallRule.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: 'not found' }, { status: 404 });
   await prisma.stallRule.delete({ where: { id } });
   await prisma.cleanupStrike.deleteMany({ where: { ruleId: id, strikeType: 'stall' } });
   return NextResponse.json({ ok: true });

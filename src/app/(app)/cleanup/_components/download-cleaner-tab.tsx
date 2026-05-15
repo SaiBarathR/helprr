@@ -24,6 +24,11 @@ import type {
   SeedingRuleShape,
 } from '@/lib/cleanup/types';
 
+async function jsonOk<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 interface SaveAllResponse {
   config: DownloadCleanerConfigShape;
   seedingRules: SeedingRuleShape[];
@@ -69,8 +74,8 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
     setFieldErrors([]);
     try {
       const [cfgR, rulesR] = await Promise.all([
-        fetch('/api/cleanup/download/config').then((r) => r.json()),
-        fetch('/api/cleanup/download/seeding-rules').then((r) => r.json()),
+        fetch('/api/cleanup/download/config').then(jsonOk<DownloadCleanerConfigShape>),
+        fetch('/api/cleanup/download/seeding-rules').then(jsonOk<SeedingRuleShape[]>),
       ]);
       setCfg(cfgR);
       setRules(rulesR);
@@ -119,18 +124,22 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
   };
 
   const createRule = async () => {
-    const r = await fetch('/api/cleanup/download/seeding-rules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(makeDefaultSeeding()),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(() => null);
-      toast.error(j?.error ?? 'Create failed');
-      return;
+    try {
+      const r = await fetch('/api/cleanup/download/seeding-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(makeDefaultSeeding()),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        toast.error(j?.error ?? 'Create failed');
+        return;
+      }
+      toast.success('Seeding rule created');
+      refresh();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Create failed');
     }
-    toast.success('Seeding rule created');
-    refresh();
   };
 
   const confirmDelete = async () => {
@@ -146,6 +155,8 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
       toast.success('Rule deleted');
       setPendingDelete(null);
       refresh();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Delete failed');
     } finally {
       setDeletingRule(false);
     }

@@ -36,6 +36,9 @@ export function inCompletionRange(
   percent: number,
   rule: { minCompletionPercentage: number; maxCompletionPercentage: number },
 ): boolean {
+  // Lower bound is asymmetric on purpose: when min=0 we include zero-progress
+  // torrents (`>= 0`), but a non-zero min is strictly-greater so the boundary
+  // value itself doesn't match. Upper bound is inclusive.
   const lower =
     rule.minCompletionPercentage === 0
       ? percent >= 0
@@ -269,5 +272,15 @@ export function buildMetadataReason(count: number, max: number): string {
 
 export function buildFailedImportReason(count: number, max: number): string {
   return `Failed-import strike — ${count}/${max}`;
+}
+
+export function formatError(err: unknown): string {
+  if (err instanceof Error) return err.message || err.name;
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 

@@ -25,6 +25,11 @@ import type {
   StallRuleShape,
 } from '@/lib/cleanup/types';
 
+async function jsonOk<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 interface SaveAllResponse {
   config: QueueCleanerConfigShape;
   stallRules: StallRuleShape[];
@@ -73,9 +78,9 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
     setFieldErrors([]);
     try {
       const [cfgR, stallR, slowR] = await Promise.all([
-        fetch('/api/cleanup/queue/config').then((r) => r.json()),
-        fetch('/api/cleanup/queue/stall-rules').then((r) => r.json()),
-        fetch('/api/cleanup/queue/slow-rules').then((r) => r.json()),
+        fetch('/api/cleanup/queue/config').then(jsonOk<QueueCleanerConfigShape>),
+        fetch('/api/cleanup/queue/stall-rules').then(jsonOk<StallRuleShape[]>),
+        fetch('/api/cleanup/queue/slow-rules').then(jsonOk<SlowRuleShape[]>),
       ]);
       setCfg(cfgR);
       setStallRules(stallR);
@@ -128,33 +133,41 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
 
   // ── Rule CRUD ──────────────────────────────────────────────────────────
   const createStallRule = async () => {
-    const r = await fetch('/api/cleanup/queue/stall-rules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(makeDefaultStall()),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(() => null);
-      toast.error(j?.error ?? 'Create failed');
-      return;
+    try {
+      const r = await fetch('/api/cleanup/queue/stall-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(makeDefaultStall()),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        toast.error(j?.error ?? 'Create failed');
+        return;
+      }
+      toast.success('Stall rule created');
+      refresh();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Create failed');
     }
-    toast.success('Stall rule created');
-    refresh();
   };
 
   const createSlowRule = async () => {
-    const r = await fetch('/api/cleanup/queue/slow-rules', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(makeDefaultSlow()),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(() => null);
-      toast.error(j?.error ?? 'Create failed');
-      return;
+    try {
+      const r = await fetch('/api/cleanup/queue/slow-rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(makeDefaultSlow()),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        toast.error(j?.error ?? 'Create failed');
+        return;
+      }
+      toast.success('Slow rule created');
+      refresh();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Create failed');
     }
-    toast.success('Slow rule created');
-    refresh();
   };
 
   const confirmDelete = async () => {
@@ -171,6 +184,8 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
       toast.success('Rule deleted');
       setPendingDelete(null);
       refresh();
+    } catch (err) {
+      toast.error((err as Error).message ?? 'Delete failed');
     } finally {
       setDeletingRule(false);
     }
@@ -376,7 +391,7 @@ function autoRunHint(mode: AutoRunMode): string {
     case 'disabled':
       return 'Auto-scheduler is off. Use manual runs from the Dashboard to test your rules. Recommended for new setups.';
     case 'dryRun':
-      return 'The scheduler runs on the interval but only logs what it would do. Visible in History as &quot;dryRunPreview&quot;.';
+      return 'The scheduler runs on the interval but only logs what it would do. Visible in History as &quot;dryRunPreview&quot;. Note: active strikes are cleared after each dry-run cycle, so counts start fresh next time.';
     case 'enabled':
       return 'The scheduler will delete torrents that meet your rules on every interval. Make sure you&apos;ve tested with dry-run first.';
   }

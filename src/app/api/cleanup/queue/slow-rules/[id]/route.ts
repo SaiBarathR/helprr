@@ -16,7 +16,8 @@ async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string 
 
   // Cap existing strikes if maxStrikes drops, to avoid immediate deletion.
   const existing = await prisma.slowRule.findUnique({ where: { id }, select: { maxStrikes: true } });
-  if (existing && v.value.maxStrikes < existing.maxStrikes) {
+  if (!existing) return NextResponse.json({ error: 'not found' }, { status: 404 });
+  if (v.value.maxStrikes < existing.maxStrikes) {
     await capStrikesToThreshold('slow', id, v.value.maxStrikes);
   }
 
@@ -37,6 +38,8 @@ async function deleteHandler(_req: NextRequest, ctx: { params: Promise<{ id: str
   const err = await requireAuth();
   if (err) return err;
   const { id } = await ctx.params;
+  const existing = await prisma.slowRule.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) return NextResponse.json({ error: 'not found' }, { status: 404 });
   await prisma.slowRule.delete({ where: { id } });
   await prisma.cleanupStrike.deleteMany({ where: { ruleId: id, strikeType: 'slow' } });
   return NextResponse.json({ ok: true });

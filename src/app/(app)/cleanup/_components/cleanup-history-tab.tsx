@@ -35,6 +35,11 @@ import {
 import { useUIStore } from '@/lib/store';
 import type { CleanupHistoryFiltersState } from '@/lib/store';
 
+async function jsonOk<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 interface HistoryRow {
   id: string;
   cleaner: string;
@@ -154,7 +159,7 @@ export function CleanupHistoryTab() {
     try {
       const sp = buildSearchParams(filters, page);
       const r = await fetch(`/api/cleanup/history?${sp.toString()}`);
-      const json = await r.json();
+      const json = await jsonOk<{ records?: HistoryRow[]; total?: number }>(r);
       setRows(json.records ?? []);
       setTotal(json.total ?? 0);
     } catch {
@@ -191,7 +196,7 @@ export function CleanupHistoryTab() {
         for (const [k, v] of filterSp.entries()) sp.set(k, v);
       }
       const r = await fetch(`/api/cleanup/history?${sp.toString()}`, { method: 'DELETE' });
-      const json = await r.json();
+      const json = await jsonOk<{ deleted?: number }>(r);
       toast.success(`Deleted ${json.deleted ?? 0} entries`);
       setDeleteMode(null);
       setPage(1);
@@ -230,8 +235,10 @@ export function CleanupHistoryTab() {
 
   const dateRangeLabel = useMemo(() => {
     if (!filters.dateFrom && !filters.dateTo) return 'Any time';
-    const fromStr = filters.dateFrom ? format(parseIsoDate(filters.dateFrom)!, 'MMM d, yyyy') : '…';
-    const toStr = filters.dateTo ? format(parseIsoDate(filters.dateTo)!, 'MMM d, yyyy') : 'now';
+    const parsedFrom = filters.dateFrom ? parseIsoDate(filters.dateFrom) : undefined;
+    const parsedTo = filters.dateTo ? parseIsoDate(filters.dateTo) : undefined;
+    const fromStr = parsedFrom ? format(parsedFrom, 'MMM d, yyyy') : '…';
+    const toStr = parsedTo ? format(parsedTo, 'MMM d, yyyy') : 'now';
     return fromStr === toStr ? fromStr : `${fromStr} → ${toStr}`;
   }, [filters.dateFrom, filters.dateTo]);
 

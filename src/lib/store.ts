@@ -128,7 +128,7 @@ export interface CleanupHistoryFiltersState {
   cleaner: string[];
   strikeType: string[];
   ruleId: string[];
-  action: string[];
+  action?: string[];
   dateFrom: string | null;
   dateTo: string | null;
 }

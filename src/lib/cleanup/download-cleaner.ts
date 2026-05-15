@@ -6,6 +6,7 @@ import { notifyEvent } from '@/lib/notification-service';
 import {
   batchFetchTrackerDomains,
   buildSeedingReason,
+  formatError,
   matchesIgnoredPatterns,
   matchesPrivacy,
   seedingHours,
@@ -254,7 +255,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
           failureDecisions.push({ decision: d, errorMessage: outcome.errorMessage });
         }
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorMessage = formatError(err);
         logger.error('Download cleaner removal threw unexpectedly', { hash: d.torrent.hash, err: errorMessage }, { scope: LOG });
         failedCount++;
         failureDecisions.push({ decision: d, errorMessage });
@@ -358,7 +359,7 @@ async function executeDownloadCleanerRemoval(d: DownloadDecision, triggeredBy: T
     const qbit = await getQBittorrentClient();
     await qbit.deleteTorrent(d.torrent.hash, intendedFilesDeleted);
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorMessage = formatError(err);
     logger.error('qBit delete (download cleaner) failed — keeping strikes for retry', { err: errorMessage, hash: hashLc }, { scope: LOG });
 
     await prisma.cleanupHistory.create({

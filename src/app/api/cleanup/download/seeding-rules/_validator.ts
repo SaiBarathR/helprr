@@ -32,6 +32,11 @@ export function validateSeedingRulePayload(body: unknown): { ok: true; value: Om
   if (!Number.isFinite(maxRatio)) return { ok: false, error: 'maxRatio invalid' };
   if (!Number.isFinite(minSeedTimeHours) || minSeedTimeHours < 0) return { ok: false, error: 'minSeedTimeHours must be >= 0' };
   if (!Number.isFinite(maxSeedTimeHours)) return { ok: false, error: 'maxSeedTimeHours invalid' };
+  // `-1` is the documented "unbounded" sentinel for maxSeedTimeHours, so we
+  // only enforce the min/max ordering when the user has set an upper bound.
+  if (maxSeedTimeHours >= 0 && minSeedTimeHours > maxSeedTimeHours) {
+    return { ok: false, error: 'minSeedTimeHours cannot exceed maxSeedTimeHours' };
+  }
   if (maxRatio < 0 && maxSeedTimeHours < 0) {
     return { ok: false, error: 'either maxRatio or maxSeedTimeHours must be >= 0' };
   }
