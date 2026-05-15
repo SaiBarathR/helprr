@@ -154,6 +154,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         ...(serverPayload.serviceConnections && { serviceConnections: serverPayload.serviceConnections }),
         ...(serverPayload.notificationPrefs && { notificationPrefs: serverPayload.notificationPrefs }),
         ...(serverPayload.cleanup && { cleanup: serverPayload.cleanup }),
+        ...(serverPayload.discoverLayout && { discoverLayout: serverPayload.discoverLayout }),
       };
 
       const json = JSON.stringify(fullPayload, null, 2);

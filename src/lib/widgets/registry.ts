@@ -1,18 +1,82 @@
-import type { WidgetDefinition, WidgetInstance } from './types';
+import * as React from 'react';
+import type { WidgetDefinition, WidgetInstance, WidgetProps } from './types';
 import { ALL_WIDGET_DEFINITIONS } from './definitions';
+import {
+  BUILTIN_DISCOVER_SECTIONS,
+  type DiscoverLayoutConfig,
+  type DiscoverLayoutSection,
+} from '@/lib/discover-layout-config';
+import { DiscoverSectionWidget } from '@/components/widgets/discover-section-widget';
 
-const widgetRegistry = new Map<string, WidgetDefinition>();
+const staticMap = new Map<string, WidgetDefinition>();
 
 for (const def of ALL_WIDGET_DEFINITIONS) {
-  widgetRegistry.set(def.id, def);
+  staticMap.set(def.id, def);
 }
 
-export function getWidgetDefinition(widgetId: string): WidgetDefinition | undefined {
-  return widgetRegistry.get(widgetId);
+const BUILTIN_MAP = new Map(BUILTIN_DISCOVER_SECTIONS.map((s) => [s.id, s] as const));
+
+const DISCOVER_WIDGET_PREFIX = 'discover-';
+
+function iconForSection(section: DiscoverLayoutSection): string {
+  if (section.type === 'custom') return 'Filter';
+  const builtin = BUILTIN_MAP.get(section.id);
+  if (!builtin) return 'Sparkles';
+  if (builtin.sectionType === 'genre') return 'Tags';
+  if (builtin.sectionType === 'provider') return 'Building2';
+  return 'Sparkles';
 }
 
-export function getAllWidgetDefinitions(): WidgetDefinition[] {
-  return ALL_WIDGET_DEFINITIONS;
+function descriptionForSection(section: DiscoverLayoutSection): string {
+  if (section.type === 'custom') return 'Custom Discover carousel';
+  const builtin = BUILTIN_MAP.get(section.id);
+  if (!builtin) return 'Discover section';
+  if (builtin.sectionType === 'genre') return 'Discover genre grid';
+  if (builtin.sectionType === 'provider') return 'Discover providers grid';
+  return 'Discover carousel';
+}
+
+function buildDefinitionForSection(section: DiscoverLayoutSection): WidgetDefinition {
+  const sectionId = section.id;
+  return {
+    id: `${DISCOVER_WIDGET_PREFIX}${sectionId}`,
+    name: section.label,
+    description: descriptionForSection(section),
+    icon: iconForSection(section),
+    category: 'discover',
+    sizes: ['medium', 'large'],
+    defaultSize: 'large',
+    component: (props: WidgetProps) =>
+      React.createElement(DiscoverSectionWidget, { sectionId, ...props }),
+    requiredServices: ['TMDB'],
+  };
+}
+
+export function buildDiscoverWidgetDefinitions(
+  discoverLayout?: DiscoverLayoutConfig | null,
+): WidgetDefinition[] {
+  if (!discoverLayout?.sections?.length) return [];
+  return discoverLayout.sections.map(buildDefinitionForSection);
+}
+
+export function getWidgetDefinition(
+  widgetId: string,
+  discoverLayout?: DiscoverLayoutConfig | null,
+): WidgetDefinition | undefined {
+  const fromStatic = staticMap.get(widgetId);
+  if (fromStatic) return fromStatic;
+  if (!widgetId.startsWith(DISCOVER_WIDGET_PREFIX)) return undefined;
+  if (!discoverLayout?.sections?.length) return undefined;
+  const sectionId = widgetId.slice(DISCOVER_WIDGET_PREFIX.length);
+  const section = discoverLayout.sections.find((s) => s.id === sectionId);
+  if (!section) return undefined;
+  return buildDefinitionForSection(section);
+}
+
+export function getAllWidgetDefinitions(
+  discoverLayout?: DiscoverLayoutConfig | null,
+): WidgetDefinition[] {
+  return [...ALL_WIDGET_DEFINITIONS, ...buildDiscoverWidgetDefinitions(discoverLayout)];
 }
 
 export const DEFAULT_LAYOUT: WidgetInstance[] = [

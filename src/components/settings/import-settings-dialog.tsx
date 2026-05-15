@@ -265,8 +265,11 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       if (useCleanup && parsed.payload.cleanup) {
         body.cleanup = parsed.payload.cleanup;
       }
+      if (parsed.payload.discoverLayout) {
+        body.discoverLayout = parsed.payload.discoverLayout;
+      }
 
-      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup;
+      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout;
       if (needsServerCall) {
         const res = await fetch('/api/settings/import', {
           method: 'POST',

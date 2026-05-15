@@ -19,6 +19,7 @@ import {
 import { ChevronRight, Loader2, Film, Tv, Download, Search, MonitorPlay, CheckCircle, XCircle, Compass, ExternalLink } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { AnimeCarouselSettings } from '@/components/settings/anime-carousel-settings';
+import { DiscoverLayoutSettings } from '@/components/settings/discover-layout-settings';
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
 import { ExportSettingsDialog } from '@/components/settings/export-settings-dialog';
@@ -1311,6 +1312,9 @@ export default function SettingsPage() {
 
       {/* ── Anime Carousels ── */}
       <AnimeCarouselSettings />
+
+      {/* ── Discover Layout ── */}
+      <DiscoverLayoutSettings />
 
       {/* ── Logging ── */}
       <div className="grouped-section mb-6">

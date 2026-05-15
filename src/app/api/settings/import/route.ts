@@ -18,6 +18,10 @@ import {
   type ExportedServiceConnection,
   type ExportedNotificationDevice,
 } from '@/lib/settings-export';
+import {
+  validateDiscoverLayout,
+  reconcileDiscoverLayout,
+} from '@/lib/discover-layout-config';
 import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/scheduler';
 import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
 
@@ -32,6 +36,7 @@ interface ImportRequestBody {
   notificationDevice?: ExportedNotificationDevice;
   cleanup?: ExportedCleanup;
   currentDeviceEndpoint?: string;
+  discoverLayout?: Record<string, unknown>;
 }
 
 interface ImportResult {
@@ -474,6 +479,21 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       if (body.cleanup && typeof body.cleanup === 'object') {
         await applyCleanupInTxn(tx, body.cleanup, skipped);
         appliedCleanup = true;
+      }
+
+      // Import discover layout
+      if (body.discoverLayout && typeof body.discoverLayout === 'object') {
+        const validated = validateDiscoverLayout(body.discoverLayout);
+        if (validated) {
+          const reconciled = reconcileDiscoverLayout(validated);
+          await tx.appSettings.upsert({
+            where: { id: 'singleton' },
+            update: { discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
+            create: { id: 'singleton', discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
+          });
+        } else {
+          skipped.push('Discover layout: invalid format, skipped');
+        }
       }
 
       return innerAppSettings;

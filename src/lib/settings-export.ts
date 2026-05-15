@@ -135,6 +135,7 @@ export interface SettingsExportPayload {
   serviceConnections?: ExportedServiceConnection[];
   notificationPrefs?: ExportedNotificationDevice[];
   cleanup?: ExportedCleanup;
+  discoverLayout?: Record<string, unknown>;
 }
 
 export function extractUiPrefsByCategory(

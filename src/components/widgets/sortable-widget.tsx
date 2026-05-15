@@ -6,6 +6,7 @@ import { GripVertical, MinusCircle } from 'lucide-react';
 import { WidgetRenderer } from './widget-renderer';
 import type { WidgetInstance, WidgetSize } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
+import { useUIStore } from '@/lib/store';
 
 interface SortableWidgetProps {
   instance: WidgetInstance;
@@ -40,7 +41,8 @@ export function SortableWidget({
     animateLayoutChanges: (args) => defaultAnimateLayoutChanges({ ...args, wasDragging: true }),
   });
 
-  const definition = getWidgetDefinition(instance.widgetId);
+  const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const definition = getWidgetDefinition(instance.widgetId, discoverLayout);
   const isFullWidth = instance.size === 'medium' || instance.size === 'large';
   const widgetTitle = definition?.name || 'widget';
 
