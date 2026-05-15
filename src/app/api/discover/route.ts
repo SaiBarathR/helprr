@@ -17,10 +17,13 @@ type DiscoverSections = NonNullable<DiscoverResponse['sections']>;
 
 const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder: 'asc' | 'desc'; contentType: DiscoverContentType }>> = {
   trending: { sortBy: 'trending', contentType: 'all' },
+  trending_movies: { sortBy: 'trending', contentType: 'movie' },
+  trending_tv: { sortBy: 'trending', contentType: 'show' },
+  popular_all: { sortBy: 'popular', contentType: 'all' },
   popular_movies: { sortBy: 'popular', contentType: 'movie' },
   popular_series: { sortBy: 'popular', contentType: 'show' },
-  upcoming_movies: { sortBy: 'upcoming', contentType: 'movie', sortOrder: 'asc' },
-  upcoming_series: { sortBy: 'upcoming', contentType: 'show', sortOrder: 'asc' },
+  upcoming_movies: { sortBy: 'upcoming', contentType: 'movie' },
+  upcoming_series: { sortBy: 'upcoming', contentType: 'show' },
   highly_rated: { sortBy: 'highlyRated', contentType: 'all' },
   most_loved: { sortBy: 'mostLoved', contentType: 'all' },
   now_playing: { sortBy: 'now_playing', contentType: 'movie' },
@@ -95,8 +98,6 @@ async function safeTmdb<T>(
 }
 
 function applySortPreset(sortBy: string, input: TmdbDiscoverParams): TmdbDiscoverParams {
-  const today = new Date().toISOString().slice(0, 10);
-
   switch (sortBy) {
     case 'highlyRated':
       return {
@@ -121,27 +122,10 @@ function applySortPreset(sortBy: string, input: TmdbDiscoverParams): TmdbDiscove
     case 'upcoming':
       return {
         ...input,
-        sortBy: 'primary_release_date',
-        sortOrder: 'asc',
+        sortBy: 'popularity',
+        sortOrder: 'desc',
         releaseState: 'upcoming',
-        yearFrom: input.yearFrom,
-        yearTo: input.yearTo,
-        query: input.query,
         includeAdult: false,
-        region: input.region,
-        language: input.language,
-        ratingMin: input.ratingMin,
-        ratingMax: input.ratingMax,
-        voteCountMin: input.voteCountMin,
-        providers: input.providers,
-        runtimeMin: input.runtimeMin,
-        runtimeMax: input.runtimeMax,
-        genres: input.genres,
-        networks: input.networks,
-        page: input.page,
-        // Helps relevance for upcoming browse with year-range defaults
-        // while keeping user filters intact.
-        ...(input.yearFrom ? {} : { yearFrom: Number(today.slice(0, 4)) }),
       };
     default:
       return {
@@ -238,6 +222,8 @@ async function buildSections() {
 
   const [
     trending,
+    trendingMovies,
+    trendingTv,
     popularMovies,
     popularSeries,
     upcomingMovies,
@@ -252,10 +238,12 @@ async function buildSections() {
     topRatedTvData,
   ] = await Promise.all([
     safeTmdb('trending', partialFailures, () => tmdb.trending('all', 1), EMPTY_LIST_RESPONSE),
+    safeTmdb('trending_movies', partialFailures, () => tmdb.trending('movie', 1), EMPTY_LIST_RESPONSE),
+    safeTmdb('trending_tv', partialFailures, () => tmdb.trending('tv', 1), EMPTY_LIST_RESPONSE),
     safeTmdb('popular_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
     safeTmdb('popular_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
-    safeTmdb('upcoming_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'primary_release_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
-    safeTmdb('upcoming_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'first_air_date', sortOrder: 'asc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
+    safeTmdb('upcoming_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
+    safeTmdb('upcoming_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
     safeTmdb('movie_genres', partialFailures, () => tmdb.movieGenres(), []),
     safeTmdb('series_genres', partialFailures, () => tmdb.tvGenres(), []),
     safeTmdb('movie_providers', partialFailures, () => tmdb.movieWatchProviders('US'), []),
@@ -265,6 +253,11 @@ async function buildSections() {
     safeTmdb('top_rated_movies', partialFailures, () => tmdb.topRatedMovies(1), EMPTY_LIST_RESPONSE),
     safeTmdb('top_rated_tv', partialFailures, () => tmdb.topRatedTv(1), EMPTY_LIST_RESPONSE),
   ]);
+
+  const popularAllItems = dedupeDiscoverItems([
+    ...normalizeItems(popularMovies.results, 'movie'),
+    ...normalizeItems(popularSeries.results, 'tv'),
+  ]).sort((a, b) => b.popularity - a.popularity);
 
   const combinedGenres = [
     ...movieGenres.map((genre) => ({ ...genre, type: 'movie' as const })),
@@ -295,6 +288,27 @@ async function buildSections() {
       type: 'media',
       mediaType: 'all',
       items: normalizeItems(trending.results, 'all').slice(0, 20),
+    },
+    {
+      key: 'trending_movies',
+      title: 'Trending Movies',
+      type: 'media',
+      mediaType: 'movie',
+      items: normalizeItems(trendingMovies.results, 'movie').slice(0, 20),
+    },
+    {
+      key: 'trending_tv',
+      title: 'Trending TV',
+      type: 'media',
+      mediaType: 'tv',
+      items: normalizeItems(trendingTv.results, 'tv').slice(0, 20),
+    },
+    {
+      key: 'popular_all',
+      title: 'Popular',
+      type: 'media',
+      mediaType: 'all',
+      items: popularAllItems.slice(0, 20),
     },
     {
       key: 'now_playing',
@@ -530,8 +544,15 @@ async function getHandler(request: NextRequest) {
 
     if (mode === 'sections') {
       const now = Date.now();
+      const sectionsHeaders = {
+        'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+      } as const;
+
       if (sectionsCache && now < sectionsCache.expiresAt) {
-        return NextResponse.json({ mode: 'sections', sections: sectionsCache.data } satisfies DiscoverResponse);
+        return NextResponse.json(
+          { mode: 'sections', sections: sectionsCache.data } satisfies DiscoverResponse,
+          { headers: sectionsHeaders }
+        );
       }
 
       const { sections, partialFailures } = await buildSections();
@@ -552,7 +573,7 @@ async function getHandler(request: NextRequest) {
 
       const fallbackSections = (!freshHasMedia && sectionsCache?.data) ? sectionsCache.data : sections;
       const body: DiscoverResponse = { mode: 'sections', sections: fallbackSections || [] };
-      return NextResponse.json(body);
+      return NextResponse.json(body, { headers: sectionsHeaders });
     }
 
     const page = parseNumber(searchParams.get('page')) || 1;
@@ -590,12 +611,6 @@ async function getHandler(request: NextRequest) {
       const voteFloor = sortBy === 'mostLoved' ? 1200 : 200;
       items = items.filter((item) => item.voteCount >= voteFloor);
       items = items.sort((a, b) => b.rating - a.rating || b.voteCount - a.voteCount);
-    }
-
-    if (!query && sortBy === 'upcoming') {
-      items = items
-        .filter((item) => (item.releaseDate ? item.releaseDate >= new Date().toISOString().slice(0, 10) : false))
-        .sort((a, b) => (a.releaseDate || '').localeCompare(b.releaseDate || ''));
     }
 
     items = dedupeDiscoverItems(items);

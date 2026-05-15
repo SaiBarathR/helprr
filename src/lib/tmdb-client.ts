@@ -15,6 +15,18 @@ export interface TmdbGenre {
   name: string;
 }
 
+export interface TmdbLanguage {
+  iso_639_1: string;
+  english_name: string;
+  name: string;
+}
+
+export interface TmdbRegion {
+  iso_3166_1: string;
+  english_name: string;
+  native_name: string;
+}
+
 export interface TmdbCompany {
   id: number;
   logo_path: string | null;
@@ -560,6 +572,9 @@ function getTmdbCachePolicy(endpoint: string): TmdbCachePolicy {
     || endpoint === '/genre/tv/list'
     || endpoint === '/watch/providers/movie'
     || endpoint === '/watch/providers/tv'
+    || endpoint === '/watch/providers/regions'
+    || endpoint === '/configuration/languages'
+    || endpoint === '/configuration/countries'
   ) {
     return {
       ttlSeconds: TMDB_CACHE_STATIC_TTL_SECONDS,
@@ -759,7 +774,10 @@ export class TmdbClient {
 
     if (input.releaseState === 'airing') params.with_status = '0';
     if (input.releaseState === 'ended') params.with_status = '3';
-    if (input.releaseState === 'upcoming') params.with_status = '1|2|5';
+    if (input.releaseState === 'upcoming') {
+      const today = new Date().toISOString().slice(0, 10);
+      params['first_air_date.gte'] = today;
+    }
 
     return this.get<TmdbListResponse>('/discover/tv', params);
   }
@@ -813,6 +831,16 @@ export class TmdbClient {
     const data = await this.get<TmdbProvidersResponse>('/watch/providers/tv', {
       watch_region: region,
     });
+    return data.results || [];
+  }
+
+  async configurationLanguages(): Promise<TmdbLanguage[]> {
+    const data = await this.get<TmdbLanguage[]>('/configuration/languages');
+    return Array.isArray(data) ? data : [];
+  }
+
+  async watchProviderRegions(): Promise<TmdbRegion[]> {
+    const data = await this.get<{ results: TmdbRegion[] }>('/watch/providers/regions');
     return data.results || [];
   }
 

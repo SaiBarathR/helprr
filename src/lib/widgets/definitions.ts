@@ -26,6 +26,9 @@ import { CleanupHistoryWidget } from '@/components/widgets/cleanup-history-widge
 import { AnimeCarouselWidget } from '@/components/widgets/anime-carousel-widget';
 import { ANIME_CAROUSEL_MAP, DEFAULT_ANIME_CAROUSEL_ORDER } from '@/lib/anime-carousel-config';
 
+import { TmdbCarouselWidget } from '@/components/widgets/tmdb-carousel-widget';
+import { TMDB_CAROUSEL_MAP, DEFAULT_TMDB_CAROUSEL_ORDER } from '@/lib/tmdb-carousel-config';
+
 export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
   // ── Existing ──
   {
@@ -232,5 +235,22 @@ for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
     sizes: ['medium', 'large'],
     defaultSize: 'large',
     component: (props: WidgetProps) => React.createElement(AnimeCarouselWidget, { carouselId: id, ...props }),
+  } as WidgetDefinition);
+}
+
+// Dynamically add TMDB carousel widgets
+for (const id of DEFAULT_TMDB_CAROUSEL_ORDER) {
+  const config = TMDB_CAROUSEL_MAP[id];
+  const icon = config.mediaTypeHint === 'mixed' ? 'Sparkles' : config.mediaTypeHint === 'tv' ? 'Tv' : 'Film';
+  ALL_WIDGET_DEFINITIONS.push({
+    id: `tmdb-${id}`,
+    name: `TMDB - ${config.label}`,
+    description: `TMDB carousel: ${config.label}`,
+    icon,
+    category: 'media',
+    sizes: ['medium', 'large'],
+    defaultSize: 'large',
+    component: (props: WidgetProps) => React.createElement(TmdbCarouselWidget, { carouselId: id, ...props }),
+    requiredServices: ['TMDB'],
   } as WidgetDefinition);
 }

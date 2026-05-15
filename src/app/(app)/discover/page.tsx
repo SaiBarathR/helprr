@@ -13,6 +13,25 @@ import {
   SheetTitle,
   SheetFooter,
 } from '@/components/ui/sheet';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from '@/components/ui/command';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -62,6 +81,75 @@ interface RateLimitInfo {
   message: string;
   retryAfterSeconds: number | null;
   retryAt: string | null;
+}
+
+interface LanguageRegionComboboxProps {
+  value: string;
+  onChange: (code: string) => void;
+  options: Array<{ code: string; name: string }>;
+  placeholder: string;
+  emptyLabel: string;
+  searchPlaceholder: string;
+}
+
+function LanguageRegionCombobox({
+  value,
+  onChange,
+  options,
+  placeholder,
+  emptyLabel,
+  searchPlaceholder,
+}: LanguageRegionComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((opt) => opt.code === value);
+  const label = selected ? selected.name : value ? value.toUpperCase() : placeholder;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-left flex items-center justify-between"
+        >
+          <span className={`truncate ${selected ? '' : 'text-muted-foreground'}`}>{label}</span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground rotate-90" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[280px]" align="start">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>No matches.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value={emptyLabel}
+                onSelect={() => {
+                  onChange('');
+                  setOpen(false);
+                }}
+              >
+                <span className="flex-1">{emptyLabel}</span>
+                {!value && <Check className="h-3.5 w-3.5" />}
+              </CommandItem>
+              {options.map((opt) => (
+                <CommandItem
+                  key={opt.code}
+                  value={`${opt.name} ${opt.code}`}
+                  onSelect={() => {
+                    onChange(opt.code);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="flex-1 truncate">{opt.name}</span>
+                  <span className="text-xs text-muted-foreground uppercase">{opt.code}</span>
+                  {value === opt.code && <Check className="h-3.5 w-3.5 ml-1" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function cardTypeIcon(type: 'movie' | 'tv') {
@@ -336,6 +424,7 @@ export default function DiscoverPage() {
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
   const gridFetchControllerRef = useRef<AbortController | null>(null);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   const router = useRouter();
 
@@ -499,8 +588,13 @@ export default function DiscoverPage() {
       }
 
       setRateLimitInfo(null);
-      const nextItems = data.items || [];
-      setItems((prev) => append ? [...prev, ...nextItems] : nextItems);
+      const nextItems: DiscoverItem[] = data.items || [];
+      setItems((prev) => {
+        if (!append) return nextItems;
+        const seen = new Set(prev.map((item) => `${item.mediaType}-${item.tmdbId}`));
+        const fresh = nextItems.filter((item) => !seen.has(`${item.mediaType}-${item.tmdbId}`));
+        return [...prev, ...fresh];
+      });
       setPage(data.page || 1);
       setTotalPages(data.totalPages || 1);
     } catch (error) {
@@ -680,6 +774,21 @@ export default function DiscoverPage() {
     void fetchGridItems(page + 1, true, controller.signal);
   }, [fetchGridItems, loadingMore, page, totalPages]);
 
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && page < totalPages && !loadingMore && !loadingItems) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [gridMode, page, totalPages, loadingMore, loadingItems, handleLoadMore]);
+
   const goToDiscoverHome = useCallback(() => {
     setDiscoverFilters({ ...DEFAULT_DISCOVER_FILTERS });
     setDiscoverSort('trending');
@@ -756,6 +865,41 @@ export default function DiscoverPage() {
               placeholder="Search movies and shows"
             />
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Content type"
+              className="h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
+            >
+              {discoverContentType === 'movie' ? (
+                <Film className="h-4 w-4" />
+              ) : discoverContentType === 'show' ? (
+                <Tv className="h-4 w-4" />
+              ) : (
+                <Compass className="h-4 w-4" />
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              {[
+                { value: 'all', label: 'All', icon: Compass },
+                { value: 'movie', label: 'Movies', icon: Film },
+                { value: 'show', label: 'Shows', icon: Tv },
+              ].map((option) => {
+                const Icon = option.icon;
+                const active = discoverContentType === option.value;
+                return (
+                  <DropdownMenuItem
+                    key={option.value}
+                    onSelect={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show')}
+                    className={active ? 'text-primary font-semibold' : ''}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {option.label}
+                    {active && <Check className="h-3.5 w-3.5 ml-auto" />}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button
             onClick={handleOpenFilters}
             className="relative h-10 w-10 rounded-lg border border-border/60 flex items-center justify-center"
@@ -771,29 +915,6 @@ export default function DiscoverPage() {
         </div>
 
         <div className="mt-2 space-y-2">
-          {/* <p className="text-[11px] font-medium text-muted-foreground">Type</p> */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-            {[
-              { value: 'all', label: 'All', icon: Compass },
-              { value: 'movie', label: 'Movies', icon: Film },
-              { value: 'show', label: 'Shows', icon: Tv },
-            ].map((option) => {
-              const Icon = option.icon;
-              const active = discoverContentType === option.value;
-              return (
-                <button
-                  key={option.value}
-                  onClick={() => handleSelectContentType(option.value as 'all' | 'movie' | 'show')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
-                    active ? 'bg-primary text-primary-foreground' : 'bg-accent/50 text-muted-foreground'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
           {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {SORT_OPTIONS.map((option) => {
@@ -904,14 +1025,12 @@ export default function DiscoverPage() {
               </div>
 
               {page < totalPages && (
-                <div className="flex justify-center pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleLoadMore}
-                    disabled={loadingMore}
-                  >
-                    {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Load more'}
-                  </Button>
+                <div
+                  ref={sentinelRef}
+                  className="flex justify-center py-4"
+                  aria-hidden="true"
+                >
+                  {loadingMore && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
                 </div>
               )}
             </>
@@ -1034,18 +1153,24 @@ export default function DiscoverPage() {
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Language</label>
-                <Input
+                <LanguageRegionCombobox
                   value={draftFilters.language}
-                  onChange={(e) => setDraftFilters({ ...draftFilters, language: e.target.value })}
-                  placeholder="en"
+                  onChange={(code) => setDraftFilters({ ...draftFilters, language: code })}
+                  options={filtersMeta?.languages || []}
+                  placeholder="Any language"
+                  emptyLabel="Any language"
+                  searchPlaceholder="Search language"
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs text-muted-foreground">Region</label>
-                <Input
+                <LanguageRegionCombobox
                   value={draftFilters.region}
-                  onChange={(e) => setDraftFilters({ ...draftFilters, region: e.target.value })}
-                  placeholder="US"
+                  onChange={(code) => setDraftFilters({ ...draftFilters, region: code })}
+                  options={filtersMeta?.regions || []}
+                  placeholder="Any region"
+                  emptyLabel="Any region"
+                  searchPlaceholder="Search region"
                 />
               </div>
             </div>

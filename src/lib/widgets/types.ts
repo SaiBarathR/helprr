@@ -19,7 +19,7 @@ export interface WidgetDefinition {
   sizes: WidgetSize[];
   defaultSize: WidgetSize;
   component: ComponentType<WidgetProps>;
-  requiredServices?: ('SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN')[];
+  requiredServices?: ('SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB')[];
 }
 
 export interface WidgetInstance {
