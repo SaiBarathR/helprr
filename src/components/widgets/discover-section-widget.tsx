@@ -121,6 +121,28 @@ function buildProviderHref(providerId: number, type: 'movie' | 'tv'): string {
   return `/discover?providers=${providerId}&contentType=${ct}`;
 }
 
+function buildCustomDiscoverHref(filters: DiscoverLayoutCustomFilters): string {
+  const params = new URLSearchParams();
+  params.set('contentType', filters.contentType);
+  params.set('sortBy', filters.sortBy);
+  params.set('sortOrder', filters.sortOrder);
+  if (filters.genres?.length) params.set('genres', filters.genres.join(','));
+  if (filters.yearFrom) params.set('yearFrom', filters.yearFrom);
+  if (filters.yearTo) params.set('yearTo', filters.yearTo);
+  if (filters.runtimeMin) params.set('runtimeMin', filters.runtimeMin);
+  if (filters.runtimeMax) params.set('runtimeMax', filters.runtimeMax);
+  if (filters.ratingMin) params.set('ratingMin', filters.ratingMin);
+  if (filters.ratingMax) params.set('ratingMax', filters.ratingMax);
+  if (filters.voteCountMin) params.set('voteCountMin', filters.voteCountMin);
+  if (filters.language) params.set('language', filters.language);
+  if (filters.region) params.set('region', filters.region);
+  if (filters.providers?.length) params.set('providers', filters.providers.join(','));
+  if (filters.networks?.length) params.set('networks', filters.networks.join(','));
+  if (filters.companies?.length) params.set('companies', filters.companies.join(','));
+  if (filters.releaseState) params.set('releaseState', filters.releaseState);
+  return `/discover?${params.toString()}`;
+}
+
 // ---------- subviews ----------
 
 function MediaCarouselView({
@@ -380,8 +402,8 @@ export function DiscoverSectionWidget({
   }
 
   const title = layoutSection.label;
-  const viewAllHref = layoutSection.type === 'custom'
-    ? `/discover`
+  const viewAllHref = layoutSection.type === 'custom' && layoutSection.filters
+    ? buildCustomDiscoverHref(layoutSection.filters)
     : `/discover?section=${layoutSection.id}`;
 
   if (isBuiltinMedia) {
