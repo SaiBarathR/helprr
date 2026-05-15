@@ -202,6 +202,14 @@ export function validateImportFile(
   if (obj.cleanup !== undefined && (typeof obj.cleanup !== 'object' || obj.cleanup === null)) {
     return { ok: false, error: 'Invalid cleanup section.' };
   }
+  if (
+    obj.discoverLayout !== undefined &&
+    (typeof obj.discoverLayout !== 'object' ||
+      obj.discoverLayout === null ||
+      Array.isArray(obj.discoverLayout))
+  ) {
+    return { ok: false, error: 'Invalid discoverLayout section.' };
+  }
 
   if (Array.isArray(obj.notificationPrefs)) {
     for (const device of obj.notificationPrefs as unknown[]) {

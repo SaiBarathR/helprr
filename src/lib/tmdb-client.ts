@@ -574,7 +574,6 @@ function getTmdbCachePolicy(endpoint: string): TmdbCachePolicy {
     || endpoint === '/watch/providers/tv'
     || endpoint === '/watch/providers/regions'
     || endpoint === '/configuration/languages'
-    || endpoint === '/configuration/countries'
   ) {
     return {
       ttlSeconds: TMDB_CACHE_STATIC_TTL_SECONDS,

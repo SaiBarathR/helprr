@@ -46,6 +46,7 @@ import type {
   DiscoverLayoutSection,
   DiscoverLayoutCustomFilters,
 } from '@/lib/discover-layout-config';
+import { validateDiscoverLayout } from '@/lib/discover-layout-config';
 import {
   Filter,
   Flame,
@@ -409,7 +410,7 @@ export default function DiscoverPage() {
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
   const gridFetchControllerRef = useRef<AbortController | null>(null);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
-  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const carouselFetchStartedRef = useRef<Set<string>>(new Set());
 
   // Discover layout config (server-side, cross-device)
   const [layoutConfig, setLayoutConfig] = useState<DiscoverLayoutConfig | null>(null);
@@ -639,7 +640,8 @@ export default function DiscoverPage() {
       const res = await fetch('/api/settings/discover-layout');
       if (res.ok) {
         const data = await res.json();
-        setLayoutConfig(data);
+        const validated = validateDiscoverLayout(data);
+        if (validated) setLayoutConfig(validated);
       }
     } catch {
       // noop — will fall back to default ordering
@@ -652,13 +654,20 @@ export default function DiscoverPage() {
     fetchLayoutConfig();
   }, [fetchSections, fetchFiltersMeta, fetchLayoutConfig]);
 
-  // Fetch items for custom carousels when they change
+  // Fetch items for custom carousels when they change.
+  // NOTE: deps intentionally exclude customCarouselItems/customCarouselLoading.
+  // Including them caused setCustomCarouselLoading to retrigger the effect, whose
+  // cleanup aborted the in-flight fetch before it could resolve — leaving the
+  // carousel stuck in the loading state forever. We use a ref to track which
+  // entries have already been started in this mount.
   useEffect(() => {
     if (customCarouselEntries.length === 0) return;
 
+    const controllers: AbortController[] = [];
+
     for (const entry of customCarouselEntries) {
-      if (customCarouselItems[entry.id] !== undefined) continue; // already fetched
-      if (customCarouselLoading[entry.id]) continue; // already loading
+      if (carouselFetchStartedRef.current.has(entry.id)) continue;
+      carouselFetchStartedRef.current.add(entry.id);
 
       const f = entry.filters!;
       const params = new URLSearchParams();
@@ -682,22 +691,39 @@ export default function DiscoverPage() {
       if (f.companies?.length) params.set('companies', f.companies.join(','));
       if (f.releaseState) params.set('releaseState', f.releaseState);
 
+      const controller = new AbortController();
+      controllers.push(controller);
+
       setCustomCarouselLoading((prev) => ({ ...prev, [entry.id]: true }));
 
-      fetch(`/api/discover?${params.toString()}`)
-        .then((res) => res.json())
+      fetch(`/api/discover?${params.toString()}`, { signal: controller.signal })
+        .then(async (res) => {
+          if (!res.ok) {
+            carouselFetchStartedRef.current.delete(entry.id);
+            return null;
+          }
+          return res.json();
+        })
         .then((data) => {
+          if (controller.signal.aborted) return;
+          if (data == null) return;
           const fetchedItems: DiscoverItem[] = data?.items || [];
           setCustomCarouselItems((prev) => ({ ...prev, [entry.id]: fetchedItems.slice(0, 20) }));
         })
-        .catch(() => {
-          setCustomCarouselItems((prev) => ({ ...prev, [entry.id]: [] }));
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === 'AbortError') return;
+          carouselFetchStartedRef.current.delete(entry.id);
         })
         .finally(() => {
+          if (controller.signal.aborted) return;
           setCustomCarouselLoading((prev) => ({ ...prev, [entry.id]: false }));
         });
     }
-  }, [customCarouselEntries, customCarouselItems, customCarouselLoading]);
+
+    return () => {
+      for (const controller of controllers) controller.abort();
+    };
+  }, [customCarouselEntries]);
 
   // Handle person URL params (from movie detail cast/crew links)
   useEffect(() => {
@@ -724,12 +750,16 @@ export default function DiscoverPage() {
     setManualBrowseMode,
   ]);
 
-  // Handle companies/networks URL params (from detail page links)
+  // Handle filter/section URL params from widget links and detail-page links
+  // (genres, providers, companies, networks, section).
   useEffect(() => {
     const rawCompanies = searchParams.get('companies');
     const rawNetworks = searchParams.get('networks');
+    const rawGenres = searchParams.get('genres');
+    const rawProviders = searchParams.get('providers');
+    const rawSection = searchParams.get('section');
     const rawContentType = searchParams.get('contentType');
-    if (!rawCompanies && !rawNetworks) return;
+    if (!rawCompanies && !rawNetworks && !rawGenres && !rawProviders && !rawSection) return;
 
     const parseIds = (raw: string | null) =>
       raw
@@ -738,21 +768,43 @@ export default function DiscoverPage() {
 
     const companyIds = parseIds(rawCompanies);
     const networkIds = parseIds(rawNetworks);
-    if (!companyIds.length && !networkIds.length) return;
+    const genreIds = parseIds(rawGenres);
+    const providerIds = parseIds(rawProviders);
+    const hasFilters = companyIds.length || networkIds.length || genreIds.length || providerIds.length;
+    if (!hasFilters && !rawSection) return;
 
     const ct = rawContentType === 'movie' || rawContentType === 'show' ? rawContentType : 'all';
-    setDiscoverContentType(ct);
-    setDiscoverSort('popular');
-    setDiscoverFilters({
-      ...DEFAULT_DISCOVER_FILTERS,
-      companies: companyIds,
-      networks: networkIds,
-    });
+
+    if (rawSection) {
+      setActiveSectionKey(rawSection);
+      const mapped = SECTION_TO_BROWSE[rawSection];
+      if (mapped) {
+        setDiscoverSort(mapped.sort);
+        setDiscoverContentType(mapped.contentType);
+        setDiscoverSortDirection(mapped.sort === 'upcoming' ? 'asc' : 'desc');
+      } else {
+        setDiscoverContentType(ct);
+      }
+    } else {
+      setDiscoverContentType(ct);
+      setDiscoverSort('popular');
+    }
+
+    if (hasFilters) {
+      setDiscoverFilters({
+        ...DEFAULT_DISCOVER_FILTERS,
+        companies: companyIds,
+        networks: networkIds,
+        genres: genreIds,
+        providers: providerIds,
+      });
+    }
     setManualBrowseMode(true);
   }, [
     searchParams,
     setDiscoverContentType,
     setDiscoverSort,
+    setDiscoverSortDirection,
     setDiscoverFilters,
     setManualBrowseMode,
   ]);
@@ -859,20 +911,36 @@ export default function DiscoverPage() {
     void fetchGridItems(page + 1, true, controller.signal);
   }, [fetchGridItems, loadingMore, page, totalPages]);
 
+  const loadMoreCallbackRef = useRef<() => void>(() => {});
   useEffect(() => {
-    const node = sentinelRef.current;
-    if (!node) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && page < totalPages && !loadingMore && !loadingItems) {
-          handleLoadMore();
-        }
-      },
-      { rootMargin: '200px' }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [gridMode, page, totalPages, loadingMore, loadingItems, handleLoadMore]);
+    loadMoreCallbackRef.current = () => {
+      if (page < totalPages && !loadingMore && !loadingItems) {
+        handleLoadMore();
+      }
+    };
+  }, [page, totalPages, loadingMore, loadingItems, handleLoadMore]);
+
+  // Callback ref so the IntersectionObserver attaches when the sentinel actually
+  // mounts (the sentinel is conditionally rendered after items load, so a plain
+  // useRef + useEffect[gridMode] approach observed a null node and never reattached).
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const sentinelRef = useCallback((node: HTMLDivElement | null) => {
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+      observerRef.current = null;
+    }
+    if (node) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting) loadMoreCallbackRef.current();
+        },
+        { rootMargin: '200px' }
+      );
+      observer.observe(node);
+      observerRef.current = observer;
+    }
+  }, []);
+  useEffect(() => () => observerRef.current?.disconnect(), []);
 
   const goToDiscoverHome = useCallback(() => {
     setDiscoverFilters({ ...DEFAULT_DISCOVER_FILTERS });

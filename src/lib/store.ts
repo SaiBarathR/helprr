@@ -337,14 +337,15 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     }
   }
   if (version < 19) {
-    // Drop legacy dashboard widgets that registered themselves as `tmdb-*`
-    // — the Discover Layout config now drives all such widgets.
+    // Discover Layout config now drives previously-dynamic widgets. Clear the
+    // cached config and re-sanitize: any persisted `discover-*` widget instances
+    // become orphans (no static definition, no discoverLayout to resolve them)
+    // and must be dropped so the dashboard doesn't render undefined slots.
     state.discoverLayout = null;
-    if (Array.isArray(state.dashboardLayout)) {
-      state.dashboardLayout = (state.dashboardLayout as WidgetInstance[]).filter(
-        (w) => !w.widgetId.startsWith('tmdb-'),
-      );
-    }
+    const rawLayout = Array.isArray(state.dashboardLayout)
+      ? state.dashboardLayout as WidgetInstance[]
+      : DEFAULT_LAYOUT.map((w) => ({ ...w }));
+    state.dashboardLayout = sanitizeDashboardLayout(rawLayout, null);
   }
   return state;
 }
@@ -757,10 +758,16 @@ export const useUIStore = create<UIState>()(
             if (ARRAY_PERSISTED_KEYS.has(key) && !Array.isArray(value)) continue;
             next[key] = value;
           }
-          const incomingDiscoverLayout =
+          const rawIncomingDiscoverLayout =
             'discoverLayout' in next && next.discoverLayout && typeof next.discoverLayout === 'object'
               ? (next.discoverLayout as DiscoverLayoutConfig)
-              : state.discoverLayout;
+              : null;
+          const incomingDiscoverLayout = rawIncomingDiscoverLayout
+            ? reconcileDiscoverLayout(rawIncomingDiscoverLayout)
+            : state.discoverLayout;
+          if (rawIncomingDiscoverLayout) {
+            next.discoverLayout = incomingDiscoverLayout;
+          }
           if ('dashboardLayout' in next && Array.isArray(next.dashboardLayout)) {
             next.dashboardLayout = sanitizeDashboardLayout(
               next.dashboardLayout as WidgetInstance[],

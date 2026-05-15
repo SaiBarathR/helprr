@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useUIStore, migrateUiPrefs, STORE_VERSION } from '@/lib/store';
+import { validateDiscoverLayout } from '@/lib/discover-layout-config';
 import {
   UI_PREF_CATEGORY_IDS,
   UI_PREF_CATEGORY_LABELS,
@@ -92,6 +93,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{ replaceAll: boolean } | null>(null);
   const applyImportedUiPrefs = useUIStore((s) => s.applyImportedUiPrefs);
+  const setDiscoverLayout = useUIStore((s) => s.setDiscoverLayout);
 
   useEffect(() => {
     if (!open) {
@@ -281,11 +283,18 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
           throw new Error(json?.error || 'Import failed');
         }
         if (mergedUiPrefs) applyImportedUiPrefs(mergedUiPrefs);
+        if (json?.discoverLayoutApplied && parsed.payload.discoverLayout) {
+          const validatedLayout = validateDiscoverLayout(parsed.payload.discoverLayout);
+          if (validatedLayout) setDiscoverLayout(validatedLayout);
+        }
         const skipped: string[] = Array.isArray(json?.skipped) ? json.skipped : [];
+        const successMsg = json?.discoverLayoutApplied
+          ? 'Settings imported (incl. discover layout).'
+          : 'Settings imported.';
         if (skipped.length > 0) {
           toast.warning(`Imported with notes: ${skipped.join('; ')}`);
         } else {
-          toast.success('Settings imported.');
+          toast.success(successMsg);
         }
         if (json?.pollingRestarted === false) {
           toast.warning('Settings imported, but polling did not restart — restart the server to resume notifications.');
