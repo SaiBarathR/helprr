@@ -5,32 +5,6 @@ import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverFiltersResponse } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 
-const REGION_OPTIONS = [
-  { code: 'US', name: 'United States' },
-  { code: 'GB', name: 'United Kingdom' },
-  { code: 'JP', name: 'Japan' },
-  { code: 'KR', name: 'South Korea' },
-  { code: 'IN', name: 'India' },
-  { code: 'DE', name: 'Germany' },
-  { code: 'FR', name: 'France' },
-  { code: 'ES', name: 'Spain' },
-  { code: 'IT', name: 'Italy' },
-  { code: 'BR', name: 'Brazil' },
-];
-
-const LANGUAGE_OPTIONS = [
-  { code: 'en', name: 'English' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'ko', name: 'Korean' },
-  { code: 'fr', name: 'French' },
-  { code: 'es', name: 'Spanish' },
-  { code: 'de', name: 'German' },
-  { code: 'it', name: 'Italian' },
-  { code: 'pt', name: 'Portuguese' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'zh', name: 'Chinese' },
-];
-
 const FILTERS_CACHE_TTL_MS = 10 * 60 * 1000;
 let filtersCache:
   | {
@@ -71,7 +45,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const tmdb = await getTMDBClient();
     const partialFailures = new Set<string>();
 
-    const [movieGenres, tvGenres, movieProviders, tvProviders, popularTv] = await Promise.all([
+    const [movieGenres, tvGenres, movieProviders, tvProviders, popularTv, tmdbLanguages, tmdbRegions] = await Promise.all([
       safeTmdb('movie_genres', partialFailures, () => tmdb.movieGenres(), []),
       safeTmdb('tv_genres', partialFailures, () => tmdb.tvGenres(), []),
       safeTmdb('movie_providers', partialFailures, () => tmdb.movieWatchProviders(region), []),
@@ -82,7 +56,19 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }),
         { page: 1, total_pages: 1, total_results: 0, results: [] }
       ),
+      safeTmdb('languages', partialFailures, () => tmdb.configurationLanguages(), []),
+      safeTmdb('regions', partialFailures, () => tmdb.watchProviderRegions(), []),
     ]);
+
+    const languages = tmdbLanguages
+      .filter((lang) => lang.iso_639_1 && lang.english_name)
+      .map((lang) => ({ code: lang.iso_639_1, name: lang.english_name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const regions = tmdbRegions
+      .filter((r) => r.iso_3166_1 && r.english_name)
+      .map((r) => ({ code: r.iso_3166_1, name: r.english_name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     const genres: DiscoverFiltersResponse['genres'] = [
       ...movieGenres.map((genre) => ({ id: genre.id, name: genre.name, type: 'movie' as const })),
@@ -136,8 +122,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       genres,
       providers,
       networks: [...networkMap.values()],
-      regions: REGION_OPTIONS,
-      languages: LANGUAGE_OPTIONS,
+      regions,
+      languages,
       releaseStates: [
         { value: 'released', label: 'Released' },
         { value: 'upcoming', label: 'Upcoming' },
