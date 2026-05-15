@@ -46,17 +46,24 @@ function buildWhere(searchParams: URLSearchParams): WhereResult {
   const action = parseArrayParam(searchParams.get('action'));
   const dateFrom = parseDateBoundary(searchParams.get('dateFrom'), 'start');
   const dateTo = parseDateBoundary(searchParams.get('dateTo'), 'end');
+  const reSearchedRaw = searchParams.get('reSearched');
 
   const bad = (field: string, value: string) => `invalid ${field}: ${value}`;
   for (const v of cleaner) if (!VALID_CLEANER.has(v)) return { ok: false, error: bad('cleaner', v) };
   for (const v of strikeType) if (!VALID_STRIKE_TYPE.has(v)) return { ok: false, error: bad('strikeType', v) };
   for (const v of action) if (!VALID_ACTION.has(v)) return { ok: false, error: bad('action', v) };
 
+  let reSearched: boolean | undefined;
+  if (reSearchedRaw === 'true') reSearched = true;
+  else if (reSearchedRaw === 'false') reSearched = false;
+  else if (reSearchedRaw && reSearchedRaw !== '') return { ok: false, error: bad('reSearched', reSearchedRaw) };
+
   const where: Prisma.CleanupHistoryWhereInput = {};
   if (cleaner.length > 0) where.cleaner = { in: cleaner };
   if (strikeType.length > 0) where.strikeType = { in: strikeType };
   if (ruleId.length > 0) where.ruleId = { in: ruleId };
   if (action.length > 0) where.action = { in: action };
+  if (reSearched !== undefined) where.reSearched = reSearched;
   if (dateFrom || dateTo) {
     const created: { gte?: Date; lt?: Date } = {};
     if (dateFrom) created.gte = dateFrom;

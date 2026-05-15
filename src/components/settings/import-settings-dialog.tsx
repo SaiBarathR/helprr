@@ -85,6 +85,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedUi, setSelectedUi] = useState<Set<UiPrefCategoryId>>(new Set());
   const [selectedAppSettings, setSelectedAppSettings] = useState(false);
+  const [selectedCleanup, setSelectedCleanup] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
   const [importing, setImporting] = useState(false);
@@ -98,6 +99,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setFileError(null);
       setSelectedUi(new Set());
       setSelectedAppSettings(false);
+      setSelectedCleanup(false);
       setSelectedServices(new Set());
       setSelectedSourceDevice('');
       setPendingConfirm(null);
@@ -149,6 +151,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       });
       setSelectedUi(new Set(availableUi));
       setSelectedAppSettings(!!payload.appSettings);
+      setSelectedCleanup(!!payload.cleanup);
       setSelectedServices(new Set(availableServices));
       const devices = payload.notificationPrefs ?? [];
       setSelectedSourceDevice(devices[0]?.deviceName ?? '');
@@ -190,10 +193,11 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     !!parsed && (
       selectedUi.size > 0
       || selectedAppSettings
+      || selectedCleanup
       || selectedServices.size > 0
       || (!!selectedSourceDevice && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedServices, selectedSourceDevice, availableNotifDevices]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedCleanup, selectedServices, selectedSourceDevice, availableNotifDevices]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
@@ -213,15 +217,18 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     if (!parsed) return;
     let useUi = selectedUi;
     let useAppSettings = selectedAppSettings;
+    let useCleanup = selectedCleanup;
     let useServices = selectedServices;
     let useDevice = selectedSourceDevice;
     if (replaceAll) {
       useUi = new Set(parsed.availableUi);
       useAppSettings = !!parsed.payload.appSettings;
+      useCleanup = !!parsed.payload.cleanup;
       useServices = new Set(parsed.availableServices);
       useDevice = availableNotifDevices[0]?.deviceName ?? '';
       setSelectedUi(useUi);
       setSelectedAppSettings(useAppSettings);
+      setSelectedCleanup(useCleanup);
       setSelectedServices(useServices);
       setSelectedSourceDevice(useDevice);
     }
@@ -255,8 +262,11 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         body.notificationDevice = sourceDevice;
         if (currentEndpoint) body.currentDeviceEndpoint = currentEndpoint;
       }
+      if (useCleanup && parsed.payload.cleanup) {
+        body.cleanup = parsed.payload.cleanup;
+      }
 
-      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice;
+      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup;
       if (needsServerCall) {
         const res = await fetch('/api/settings/import', {
           method: 'POST',
@@ -377,6 +387,25 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                     <div className="text-sm font-medium">App Settings</div>
                     <div className="text-xs text-muted-foreground">
                       Polling intervals, theme, logging, notification timing
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
+            {parsed.payload.cleanup && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedCleanup}
+                    onCheckedChange={(v) => setSelectedCleanup(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Cleanup</div>
+                    <div className="text-xs text-muted-foreground">
+                      Queue &amp; download cleaner configs plus {(parsed.payload.cleanup.stallRules?.length ?? 0)
+                      + (parsed.payload.cleanup.slowRules?.length ?? 0)
+                      + (parsed.payload.cleanup.seedingRules?.length ?? 0)} rule(s). Replaces existing rules.
                     </div>
                   </div>
                 </label>

@@ -124,11 +124,14 @@ function cloneNotificationsFilters(filters: NotificationsFiltersState): Notifica
   return { ...filters, eventTypes: [...filters.eventTypes] };
 }
 
+export type CleanupReSearchedFilter = 'yes' | 'no' | null;
+
 export interface CleanupHistoryFiltersState {
   cleaner: string[];
   strikeType: string[];
   ruleId: string[];
   action?: string[];
+  reSearched?: CleanupReSearchedFilter;
   dateFrom: string | null;
   dateTo: string | null;
 }
@@ -138,6 +141,7 @@ export const DEFAULT_CLEANUP_HISTORY_FILTERS: CleanupHistoryFiltersState = {
   strikeType: [],
   ruleId: [],
   action: [],
+  reSearched: null,
   dateFrom: null,
   dateTo: null,
 };
@@ -148,6 +152,7 @@ function cloneCleanupHistoryFilters(f: CleanupHistoryFiltersState): CleanupHisto
     strikeType: [...f.strikeType],
     ruleId: [...f.ruleId],
     action: [...(f.action ?? [])],
+    reSearched: f.reSearched ?? null,
     dateFrom: f.dateFrom,
     dateTo: f.dateTo,
   };
@@ -198,7 +203,7 @@ function sanitizeDashboardLayout(layout: WidgetInstance[]): WidgetInstance[] {
     }));
 }
 
-export const STORE_VERSION = 17;
+export const STORE_VERSION = 18;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -310,6 +315,12 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   }
   if (version < 17) {
     state.cleanupHistoryFilters = cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS);
+  }
+  if (version < 18) {
+    const existing = state.cleanupHistoryFilters as Record<string, unknown> | undefined;
+    if (existing && typeof existing === 'object' && !('reSearched' in existing)) {
+      existing.reSearched = null;
+    }
   }
   return state;
 }
@@ -588,6 +599,9 @@ export const useUIStore = create<UIState>()(
             strikeType: partial.strikeType ? [...partial.strikeType] : state.cleanupHistoryFilters.strikeType,
             ruleId: partial.ruleId ? [...partial.ruleId] : state.cleanupHistoryFilters.ruleId,
             action: partial.action ? [...partial.action] : (state.cleanupHistoryFilters.action ?? []),
+            reSearched: 'reSearched' in partial
+              ? (partial.reSearched ?? null)
+              : (state.cleanupHistoryFilters.reSearched ?? null),
           },
         })),
       resetCleanupHistoryFilters: () =>

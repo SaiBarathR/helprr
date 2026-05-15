@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,8 @@ interface Stats {
   queueTotal: number;
   downloadTotal: number;
   activeStrikes: number;
+  totalStrikes: number;
+  reSearchedAllTime: number;
 }
 
 interface StrikeRow {
@@ -47,10 +49,24 @@ interface DashboardStatus {
   download: CleanerStatusLite;
 }
 
+interface SchedulerLite {
+  autoRunMode: AutoRunMode;
+  intervalMinutes: number;
+  lastRunAt: number | null;
+  nextRunAt: number | null;
+  running: boolean;
+}
+
+interface SchedulerStatusResponse {
+  queue: SchedulerLite;
+  download: SchedulerLite;
+}
+
 export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queue' | 'download' | 'history') => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [strikes, setStrikes] = useState<StrikeRow[]>([]);
   const [status, setStatus] = useState<DashboardStatus | null>(null);
+  const [scheduler, setScheduler] = useState<SchedulerStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [queuePreview, setQueuePreview] = useState<{
@@ -59,7 +75,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     decisions: QueueDryRunDecision[];
     pendingStrikes: RunPreviewPendingStrike[];
     confirming: boolean;
-    confirmGate: boolean; // shown when user clicked Confirm and the count is large
+    confirmGate: boolean;
   }>({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
 
   const [downloadPreview, setDownloadPreview] = useState<{
@@ -100,11 +116,22 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     }
   }, []);
 
+  const refreshScheduler = useCallback(async () => {
+    try {
+      const r = await fetch('/api/cleanup/scheduler-status').then(jsonOk<SchedulerStatusResponse>);
+      setScheduler(r);
+    } catch {
+      // Silent — countdown just falls back to "—".
+    }
+  }, []);
+
   useEffect(() => {
     refresh();
+    refreshScheduler();
     const id = setInterval(refresh, 15000);
-    return () => clearInterval(id);
-  }, [refresh]);
+    const sid = setInterval(refreshScheduler, 5000);
+    return () => { clearInterval(id); clearInterval(sid); };
+  }, [refresh, refreshScheduler]);
 
   const startQueueDryRun = async () => {
     setQueuePreview({ open: true, loading: true, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
@@ -148,7 +175,6 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
   };
 
   const onConfirmQueue = () => {
-    // Second-confirm for large batches to prevent accidental mass deletion.
     if (queuePreview.decisions.length >= 5) {
       setQueuePreview((p) => ({ ...p, confirmGate: true }));
     } else {
@@ -207,11 +233,13 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
   return (
     <TooltipProvider delayDuration={150}>
       <div className="space-y-6">
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <section className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard label="Removed today" value={stats?.removedToday ?? '—'} loading={loading} />
           <StatCard label="Past 7 days" value={stats?.removedThisWeek ?? '—'} loading={loading} />
           <StatCard label="All time" value={stats?.removedAllTime ?? '—'} loading={loading} />
           <StatCard label="Active strikes" value={stats?.activeStrikes ?? '—'} loading={loading} />
+          <StatCard label="Total strikes" value={stats?.totalStrikes ?? '—'} loading={loading} />
+          <StatCard label="Re-searches" value={stats?.reSearchedAllTime ?? '—'} loading={loading} />
         </section>
 
         <section className="grouped-section">
@@ -220,11 +248,13 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
             <StatusRow
               label="Queue Cleaner"
               status={status?.queue}
+              scheduler={scheduler?.queue}
               onConfigure={() => onNavigate('queue')}
             />
             <StatusRow
               label="Download Cleaner"
               status={status?.download}
+              scheduler={scheduler?.download}
               onConfigure={() => onNavigate('download')}
             />
           </div>
@@ -370,7 +400,17 @@ function StatCard({ label, value, loading }: { label: string; value: number | st
   );
 }
 
-function StatusRow({ label, status, onConfigure }: { label: string; status: CleanerStatusLite | undefined; onConfigure: () => void }) {
+function StatusRow({
+  label,
+  status,
+  scheduler,
+  onConfigure,
+}: {
+  label: string;
+  status: CleanerStatusLite | undefined;
+  scheduler: SchedulerLite | undefined;
+  onConfigure: () => void;
+}) {
   if (!status) {
     return (
       <div className="grouped-row text-muted-foreground">
@@ -380,11 +420,15 @@ function StatusRow({ label, status, onConfigure }: { label: string; status: Clea
   }
   const variant = autoRunBadgeVariant(status);
   const description = autoRunDescription(status);
+  const showCountdown = status.enabled && status.autoRunMode !== 'disabled';
   return (
     <div className="grouped-row flex-wrap gap-2">
       <div className="min-w-0 flex-1">
         <div className="font-medium">{label}</div>
         <div className="text-xs text-muted-foreground">{description}</div>
+        {showCountdown && (
+          <NextRunLine scheduler={scheduler} />
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0 ml-auto">
         <Badge variant={variant.variant} className={variant.className}>{variant.label}</Badge>
@@ -392,6 +436,45 @@ function StatusRow({ label, status, onConfigure }: { label: string; status: Clea
       </div>
     </div>
   );
+}
+
+function NextRunLine({ scheduler }: { scheduler: SchedulerLite | undefined }) {
+  const [now, setNow] = useState<number>(() => Date.now());
+  const lastTickRef = useRef<number>(now);
+  useEffect(() => {
+    const id = setInterval(() => {
+      lastTickRef.current = Date.now();
+      setNow(lastTickRef.current);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!scheduler) {
+    return <div className="text-xs text-muted-foreground/70 mt-0.5">Next run: —</div>;
+  }
+  if (scheduler.running) {
+    return <div className="text-xs text-amber-500 mt-0.5">Cycle running now…</div>;
+  }
+  if (scheduler.nextRunAt == null) {
+    return <div className="text-xs text-muted-foreground/70 mt-0.5">Next run: scheduler idle</div>;
+  }
+  const deltaMs = scheduler.nextRunAt - now;
+  return (
+    <div className="text-xs text-muted-foreground mt-0.5">
+      Next run in <span className="font-mono">{formatDelta(deltaMs)}</span>
+    </div>
+  );
+}
+
+function formatDelta(ms: number): string {
+  if (ms <= 0) return 'imminent';
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function autoRunBadgeVariant(s: CleanerStatusLite): { variant: 'default' | 'outline' | 'secondary' | 'destructive'; className?: string; label: string } {

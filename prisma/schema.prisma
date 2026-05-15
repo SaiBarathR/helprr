@@ -178,7 +178,7 @@ model DownloadCleanerConfig {
   intervalMinutes               Int      @default(60)
   ignoredDownloads              Json     @default("[]")
   autoRemoveImportedEnabled     Boolean  @default(false)
-  autoRemoveImportedCategories  Json     @default("[\"sonarr\",\"radarr\"]")
+  autoRemoveImportedCategories  Json     @default("[\"sonarr\",\"radarr\",\"tv-sonarr\"]")
   autoRemoveImportedDeleteFiles Boolean  @default(true)
   // "disabled" (default — no auto cycles), "dryRun" (auto cycles, log only), "enabled" (auto delete)
   autoRunMode                   String   @default("disabled")
