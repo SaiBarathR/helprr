@@ -39,8 +39,14 @@ async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
+  let body: unknown;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+
+  try {
     const validated = validateDiscoverLayout(body);
 
     if (!validated) {

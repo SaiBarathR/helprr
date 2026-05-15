@@ -183,6 +183,7 @@ function CustomCarouselEditor({
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLabel(initial?.label ?? '');
       setFilters(initial?.filters ?? buildDefaultCustomFilters());
     }

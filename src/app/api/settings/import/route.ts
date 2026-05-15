@@ -48,6 +48,7 @@ interface ImportResult {
   };
   skipped: string[];
   pollingRestarted: boolean;
+  discoverLayoutApplied: boolean;
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -450,6 +451,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   let appliedAppSettings = false;
   let appliedNotificationRules = 0;
   let appliedCleanup = false;
+  let discoverLayoutApplied = false;
   let appSettingsTxnResult: AppSettingsTxnResult | null = null;
 
   try {
@@ -491,6 +493,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
             update: { discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
             create: { id: 'singleton', discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
           });
+          discoverLayoutApplied = true;
         } else {
           skipped.push('Discover layout: invalid format, skipped');
         }
@@ -571,6 +574,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     },
     skipped,
     pollingRestarted,
+    discoverLayoutApplied,
   };
   return NextResponse.json(result);
 }

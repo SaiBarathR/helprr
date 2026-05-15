@@ -25,7 +25,6 @@ interface ExportRequestBody {
   notificationPrefs?: boolean;
   cleanup?: boolean;
   includeSecrets?: boolean;
-  discoverLayout?: boolean;
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {

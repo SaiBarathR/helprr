@@ -1,4 +1,5 @@
 import * as React from 'react';
+import type { ComponentType } from 'react';
 import type { WidgetDefinition, WidgetInstance, WidgetProps } from './types';
 import { ALL_WIDGET_DEFINITIONS } from './definitions';
 import {
@@ -36,6 +37,18 @@ function descriptionForSection(section: DiscoverLayoutSection): string {
   return 'Discover carousel';
 }
 
+const sectionComponentCache = new Map<string, ComponentType<WidgetProps>>();
+
+function getSectionComponent(sectionId: string): ComponentType<WidgetProps> {
+  let cached = sectionComponentCache.get(sectionId);
+  if (!cached) {
+    cached = (props: WidgetProps) =>
+      React.createElement(DiscoverSectionWidget, { sectionId, ...props });
+    sectionComponentCache.set(sectionId, cached);
+  }
+  return cached;
+}
+
 function buildDefinitionForSection(section: DiscoverLayoutSection): WidgetDefinition {
   const sectionId = section.id;
   return {
@@ -46,8 +59,7 @@ function buildDefinitionForSection(section: DiscoverLayoutSection): WidgetDefini
     category: 'discover',
     sizes: ['medium', 'large'],
     defaultSize: 'large',
-    component: (props: WidgetProps) =>
-      React.createElement(DiscoverSectionWidget, { sectionId, ...props }),
+    component: getSectionComponent(sectionId),
     requiredServices: ['TMDB'],
   };
 }
