@@ -170,7 +170,7 @@ export function NavOrderSettings() {
   }
 
   return (
-    <div className="grouped-section px-4 mb-6">
+    <div className="grouped-section mb-6">
       <div className="grouped-section-title">Navigation</div>
       <div className="grouped-section-content">
         <div className="grouped-row">

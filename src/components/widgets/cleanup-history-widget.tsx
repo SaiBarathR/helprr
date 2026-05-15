@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, Eye, Flame, Tag, Trash2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Eye, Flame, MinusCircle, Tag, Trash2, RotateCcw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatDistanceToNowShort } from '@/lib/format';
@@ -43,6 +43,8 @@ function actionIcon(action: string) {
       return <Trash2 className="h-3.5 w-3.5 text-amber-400" />;
     case 'categoryChanged':
       return <Tag className="h-3.5 w-3.5 text-blue-400" />;
+    case 'skipped':
+      return <MinusCircle className="h-3.5 w-3.5 text-muted-foreground" />;
     case 'dryRunPreview':
       return <Eye className="h-3.5 w-3.5 text-muted-foreground" />;
     case 'failed':
@@ -62,6 +64,8 @@ function actionLabel(action: string): string {
       return 'Queue removed';
     case 'categoryChanged':
       return 'Re-categorised';
+    case 'skipped':
+      return 'Skipped';
     case 'dryRunPreview':
       return 'Dry-run';
     case 'failed':

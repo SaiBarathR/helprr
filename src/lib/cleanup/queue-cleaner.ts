@@ -27,6 +27,7 @@ import {
   strikeKey,
   StrikeJournal,
 } from './strikes';
+import { processWithLimit } from './concurrency';
 import {
   AutoRunMode,
   AUTO_RUN_MODES,
@@ -43,6 +44,10 @@ import {
 } from './types';
 
 const LOG = 'queue-cleaner';
+
+// Max parallel removals per cycle. Each removal makes 1–3 arr/qBit calls;
+// keeping this low avoids surprise backpressure on self-hosted services.
+const CLEANUP_CONCURRENCY = 4;
 
 export async function loadQueueCleanerConfig(): Promise<QueueCleanerConfigShape> {
   let row = await prisma.queueCleanerConfig.findUnique({ where: { id: 'singleton' } });
@@ -206,6 +211,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
   const correlation = buildCorrelationIndex(sonarrQueue, radarrQueue);
+  const inClientHashes = new Set(torrents.map((t) => t.hash.toLowerCase()));
 
   const journal = new StrikeJournal();
   const decisions: QueueDecision[] = [];
@@ -258,7 +264,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
 
       // 2) Failed Import (opt-in via maxStrikes >= 3)
       if (cfg.failedImport.maxStrikes >= 3 && linked?.queueItem) {
-        const skip = shouldSkipFailedImport(cfg, linked, t);
+        const skip = shouldSkipFailedImport(cfg, linked, t, inClientHashes);
         if (skip === 'contentId') {
           // ignored — never strikes when content ID missing & processNoContentId off
         } else if (skip === 'private') {
@@ -443,8 +449,9 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
           },
         });
         // Mirror the real-run flow's strike-clear after a successful removal
-        // (see line ~743). Without this, every subsequent dryRun cycle would
-        // re-fire the same decision and emit duplicate dryRunPreview rows.
+        // (see Phase 2 in executeQueueCleanerRemoval). Without this, every
+        // subsequent dryRun cycle would re-fire the same decision and emit
+        // duplicate dryRunPreview rows.
         await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
       }
 
@@ -464,7 +471,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
 
     await writeStrikeAddedHistory(pendingStrikes, opts.triggeredBy);
 
-    for (const d of decisions) {
+    await processWithLimit(decisions, CLEANUP_CONCURRENCY, async (d) => {
       try {
         const outcome = await executeQueueCleanerRemoval(d, opts.triggeredBy);
         if (outcome.kind === 'success') {
@@ -482,7 +489,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
         failedCount++;
         failureOutcomes.push({ decision: d, errorMessage });
       }
-    }
+    });
   }
 
   // ─── Notifications (only on a real run, not dry-run) ─────────────────────
@@ -591,6 +598,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     pendingStrikes,
     skippedFailedImport,
     durationMs,
+    succeeded: succeededCount,
+    failed: failedCount,
   };
 }
 
@@ -602,6 +611,8 @@ function emptyResult(opts: RunOptions): QueueEvaluationResult {
     pendingStrikes: [],
     skippedFailedImport: 0,
     durationMs: 0,
+    succeeded: 0,
+    failed: 0,
   };
 }
 
@@ -609,10 +620,14 @@ function shouldSkipFailedImport(
   cfg: QueueCleanerConfigShape,
   linked: LinkedArr,
   t: QBittorrentTorrent,
+  inClientHashes: Set<string>,
 ): 'contentId' | 'private' | 'notInClient' | null {
   if (!cfg.processNoContentId && linked.contentId == null) return 'contentId';
+  if (cfg.failedImport.skipIfNotFoundInClient) {
+    const dlId = (linked.queueItem.downloadId ?? '').toLowerCase();
+    if (!dlId || !inClientHashes.has(dlId)) return 'notInClient';
+  }
   if (cfg.failedImport.ignorePrivate && t.private) return 'private';
-  // skipIfNotFoundInClient is informational here — if we have the torrent, we have it in qBit
   return null;
 }
 
@@ -712,7 +727,7 @@ function toPending(
 }
 
 export type QueueRemovalOutcome =
-  | { kind: 'success'; action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged'; filesDeleted: boolean; reSearched: boolean }
+  | { kind: 'success'; action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged' | 'skipped'; filesDeleted: boolean; reSearched: boolean }
   | { kind: 'failure'; errorMessage: string };
 
 async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: TriggeredBy): Promise<QueueRemovalOutcome> {
@@ -724,7 +739,8 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
   const hashLc = d.torrent.hash.toLowerCase();
   const isPrivate = Boolean(d.torrent.private);
   const shouldDeleteFromClient = !isPrivate || d.options.deletePrivate;
-  let action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged';
+  let action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged' | 'skipped';
+  let reason = d.reason;
   let filesDeleted = false;
   let reSearched = false;
 
@@ -762,8 +778,11 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
       action = 'removedFromClient';
       filesDeleted = true;
     } else {
-      // Unlinked + private + deletePrivate off → nothing to do.
-      action = 'removedFromQueue';
+      // Unlinked + private + deletePrivate off → nothing to do. Emit a
+      // 'skipped' audit row so operators see the deliberate no-op, rather
+      // than a misleading 'removedFromQueue' claim.
+      action = 'skipped';
+      reason = 'Private torrent skipped (deletePrivate disabled)';
     }
   } catch (err) {
     const errorMessage = formatError(err);
@@ -798,7 +817,11 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
   }
 
   // ─── Phase 2: destructive action succeeded — clear strikes, then audit ──
-  await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  // Skipped actions are deliberate no-ops; keep strikes so the next cycle can
+  // re-evaluate if the situation changes (e.g. user toggles deletePrivate on).
+  if (action !== 'skipped') {
+    await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  }
 
   // ─── Phase 3: trigger re-search if appropriate ───────────────────────────
   if (action !== 'categoryChanged' && d.options.reSearch && d.linked?.contentId) {
@@ -827,7 +850,7 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
       hash: hashLc,
       shortHash: shortHash(hashLc),
       torrentName: d.torrent.name,
-      reason: d.reason,
+      reason,
       action,
       filesDeleted,
       reSearched,

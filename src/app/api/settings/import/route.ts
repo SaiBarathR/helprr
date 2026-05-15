@@ -322,8 +322,10 @@ async function applyCleanupInTxn(
   // Replace user-defined rules with the imported set. System rules (the
   // synthetic auto-remove-imported seeding rule) are preserved — they're
   // managed by saveDownloadCleanerConfig and will be re-synced on next save.
-  await tx.stallRule.deleteMany({});
+  // Only delete when a valid replacement array is supplied, so a missing or
+  // malformed key doesn't silently wipe existing rules.
   if (Array.isArray(data.stallRules)) {
+    await tx.stallRule.deleteMany({});
     for (const r of data.stallRules) {
       if (!r || typeof r !== 'object') continue;
       await tx.stallRule.create({
@@ -348,8 +350,8 @@ async function applyCleanupInTxn(
     }
   }
 
-  await tx.slowRule.deleteMany({});
   if (Array.isArray(data.slowRules)) {
+    await tx.slowRule.deleteMany({});
     for (const r of data.slowRules) {
       if (!r || typeof r !== 'object') continue;
       await tx.slowRule.create({
@@ -376,8 +378,8 @@ async function applyCleanupInTxn(
     }
   }
 
-  await tx.seedingRule.deleteMany({ where: { isSystem: false } });
   if (Array.isArray(data.seedingRules)) {
+    await tx.seedingRule.deleteMany({ where: { isSystem: false } });
     for (const r of data.seedingRules) {
       if (!r || typeof r !== 'object') continue;
       await tx.seedingRule.create({

@@ -58,7 +58,7 @@ export function InstallAppSection() {
 
   return (
     <>
-      <div className="grouped-section px-4 mb-6">
+      <div className="grouped-section mb-6">
         <div className="grouped-section-title">App</div>
         <div className="grouped-section-content">
           <button

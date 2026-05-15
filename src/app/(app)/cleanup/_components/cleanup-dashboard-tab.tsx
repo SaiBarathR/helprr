@@ -10,11 +10,7 @@ import { Loader2, AlertTriangle, Eye, ChevronRight } from 'lucide-react';
 import { RunPreviewDialog, QueueDryRunDecision, DownloadDryRunDecision, RunPreviewPendingStrike } from './run-preview-dialog';
 import type { AutoRunMode } from '@/lib/cleanup/types';
 import { formatDelta } from '@/lib/cleanup/format-delta';
-
-async function jsonOk<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<T>;
-}
+import { jsonOk } from '@/lib/http';
 
 interface Stats {
   removedToday: number;
@@ -165,8 +161,10 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
       });
-      const json = await jsonOk<{ decisions?: QueueDryRunDecision[] }>(r);
-      toast.success(`Removed ${json.decisions?.length ?? 0} torrent(s)`);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; decisions?: QueueDryRunDecision[] }>(r);
+      const succeeded = json.succeeded ?? 0;
+      const failed = json.failed ?? 0;
+      toast.success(`Removed ${succeeded} torrent(s)${failed > 0 ? ` — ${failed} failed` : ''}`);
       setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
       refresh();
     } catch {
@@ -213,8 +211,10 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
       });
-      const json = await jsonOk<{ decisions?: DownloadDryRunDecision[] }>(r);
-      toast.success(`Removed ${json.decisions?.length ?? 0} torrent(s)`);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; decisions?: DownloadDryRunDecision[] }>(r);
+      const succeeded = json.succeeded ?? 0;
+      const failed = json.failed ?? 0;
+      toast.success(`Removed ${succeeded} torrent(s)${failed > 0 ? ` — ${failed} failed` : ''}`);
       setDownloadPreview({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
       refresh();
     } catch {

@@ -1,3 +1,4 @@
+import type { CleanupAction } from '@prisma/client';
 import type { QBittorrentTorrent, QueueItem } from '@/types';
 
 export type PrivacyType = 'public' | 'private' | 'both';
@@ -5,7 +6,9 @@ export type PatternMode = 'include' | 'exclude';
 
 export type CleanerKind = 'queue' | 'download';
 export type StrikeType = 'stall' | 'slow' | 'failedImport' | 'downloadingMetadata';
-export type RemovalAction = 'removedFromClient' | 'removedFromQueue' | 'categoryChanged' | 'dryRunPreview' | 'failed';
+// Source-of-truth is the Prisma-generated `CleanupAction` enum
+// (prisma/schema.prisma); this alias keeps existing imports working.
+export type RemovalAction = CleanupAction;
 export type TriggeredBy = 'auto' | 'manual' | 'dryRun';
 export type AutoRunMode = 'disabled' | 'dryRun' | 'enabled';
 export const AUTO_RUN_MODES: AutoRunMode[] = ['disabled', 'dryRun', 'enabled'];
@@ -148,6 +151,8 @@ export interface QueueEvaluationResult {
   pendingStrikes: PendingStrike[];
   skippedFailedImport: number;
   durationMs: number;
+  succeeded: number;
+  failed: number;
 }
 
 export interface DownloadEvaluationResult {
@@ -155,4 +160,6 @@ export interface DownloadEvaluationResult {
   dryRun: boolean;
   decisions: DownloadDecision[];
   durationMs: number;
+  succeeded: number;
+  failed: number;
 }

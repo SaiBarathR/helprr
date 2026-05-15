@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
+import { CleanupAction, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 const VALID_CLEANER = new Set(['queue', 'download']);
 const VALID_STRIKE_TYPE = new Set(['stall', 'slow', 'failedImport', 'downloadingMetadata']);
-const VALID_ACTION = new Set([
-  'strikeAdded',
-  'removedFromClient',
-  'removedFromQueue',
-  'categoryChanged',
-  'dryRunPreview',
-  'failed',
-]);
+const VALID_ACTION = new Set<string>(Object.values(CleanupAction));
 
 function parseArrayParam(value: string | null): string[] {
   if (!value) return [];
@@ -62,7 +55,7 @@ function buildWhere(searchParams: URLSearchParams): WhereResult {
   if (cleaner.length > 0) where.cleaner = { in: cleaner };
   if (strikeType.length > 0) where.strikeType = { in: strikeType };
   if (ruleId.length > 0) where.ruleId = { in: ruleId };
-  if (action.length > 0) where.action = { in: action };
+  if (action.length > 0) where.action = { in: action as CleanupAction[] };
   if (reSearched !== undefined) where.reSearched = reSearched;
   if (dateFrom || dateTo) {
     const created: { gte?: Date; lt?: Date } = {};
@@ -81,6 +74,18 @@ async function getHandler(req: NextRequest) {
   const err = await requireAuth();
   if (err) return err;
   const sp = req.nextUrl.searchParams;
+
+  if (sp.get('summary') === 'true') {
+    const agg = await prisma.cleanupHistory.aggregate({
+      _count: { _all: true },
+      _min: { createdAt: true },
+    });
+    return NextResponse.json({
+      total: agg._count._all,
+      oldestAt: agg._min.createdAt?.toISOString() ?? null,
+    });
+  }
+
   const rawPage = Number(sp.get('page'));
   const rawSize = Number(sp.get('pageSize'));
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
@@ -118,6 +123,18 @@ async function deleteHandler(req: NextRequest) {
     const r = await prisma.cleanupHistory.deleteMany({});
     return NextResponse.json({ deleted: r.count });
   }
+
+  const olderThanRaw = sp.get('olderThanDays');
+  if (olderThanRaw !== null) {
+    const days = Number(olderThanRaw);
+    if (!Number.isFinite(days) || days < 1 || days > 3650) {
+      return NextResponse.json({ error: 'olderThanDays must be an integer between 1 and 3650' }, { status: 400 });
+    }
+    const cutoff = new Date(Date.now() - Math.floor(days) * 86_400_000);
+    const r = await prisma.cleanupHistory.deleteMany({ where: { createdAt: { lt: cutoff } } });
+    return NextResponse.json({ deleted: r.count, cutoff: cutoff.toISOString() });
+  }
+
   const whereResult = buildWhere(sp);
   if (!whereResult.ok) {
     return NextResponse.json({ error: whereResult.error }, { status: 400 });

@@ -34,11 +34,7 @@ import {
 } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { CleanupHistoryFiltersState } from '@/lib/store';
-
-async function jsonOk<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<T>;
-}
+import { jsonOk } from '@/lib/http';
 
 interface HistoryRow {
   id: string;
@@ -111,6 +107,7 @@ const ACTION_OPTIONS = [
   { value: 'removedFromClient', label: 'Removed' },
   { value: 'removedFromQueue', label: 'Queue-only' },
   { value: 'categoryChanged', label: 'Category changed' },
+  { value: 'skipped', label: 'Skipped' },
   { value: 'dryRunPreview', label: 'Dry-run preview' },
   { value: 'failed', label: 'Failed', destructive: true },
 ];
@@ -561,6 +558,7 @@ function HistoryRowCard({
   const isFailed = row.action === 'failed';
   const isDryRun = row.action === 'dryRunPreview';
   const isStrikeAdded = row.action === 'strikeAdded';
+  const isSkipped = row.action === 'skipped';
   return (
     <button
       type="button"
@@ -575,6 +573,7 @@ function HistoryRowCard({
             {isFailed && <Badge variant="destructive">failed</Badge>}
             {isDryRun && <Badge variant="secondary">dry-run</Badge>}
             {isStrikeAdded && <Badge variant="secondary">strike</Badge>}
+            {isSkipped && <Badge variant="secondary">skipped</Badge>}
           </div>
           <div className="font-medium text-sm break-words min-w-0">
             {row.torrentName}
@@ -648,6 +647,7 @@ function HistoryDetailDrawer({
                 {row.action === 'failed' && <Badge variant="destructive">failed</Badge>}
                 {row.action === 'dryRunPreview' && <Badge variant="secondary">dry-run</Badge>}
                 {row.action === 'strikeAdded' && <Badge variant="secondary">strike</Badge>}
+                {row.action === 'skipped' && <Badge variant="secondary">skipped</Badge>}
               </div>
 
               <DetailField label="Torrent">

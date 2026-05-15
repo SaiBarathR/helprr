@@ -195,7 +195,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedAppSettings
       || selectedCleanup
       || selectedServices.size > 0
-      || (!!selectedSourceDevice && availableNotifDevices.length > 0)
+      || (!!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
   ), [parsed, selectedUi, selectedAppSettings, selectedCleanup, selectedServices, selectedSourceDevice, availableNotifDevices]);
 

@@ -27,11 +27,7 @@ import type {
 import { FieldRow, isNumericActive, isRangeActive } from './field-row';
 import { SizeInput } from './size-input';
 import { StallRuleSummary, SlowRuleSummary } from './rule-summary';
-
-async function jsonOk<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<T>;
-}
+import { jsonOk } from '@/lib/http';
 
 interface SaveAllResponse {
   config: QueueCleanerConfigShape;
@@ -494,7 +490,7 @@ function autoRunHint(mode: AutoRunMode): string {
     case 'disabled':
       return 'Auto-scheduler is off. Use manual runs from the Dashboard to test your rules. Recommended for new setups.';
     case 'dryRun':
-      return 'The scheduler runs on the interval but only logs what it would do. Visible in History as "dryRunPreview". Note: active strikes are cleared after each dry-run cycle, so counts start fresh next time.';
+      return 'The scheduler runs on the interval but only logs what it would do. Visible in History as "dryRunPreview". Strikes accumulate across cycles; a torrent\'s strikes are only cleared when it reaches max strikes and produces a dryRunPreview decision (mirroring the real-run flow).';
     case 'enabled':
       return "The scheduler will delete torrents that meet your rules on every interval. Make sure you've tested with dry-run first.";
   }
@@ -571,7 +567,7 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
           </div>
           <Switch
             checked={fi.changeCategory}
-            disabled={fi.deletePrivate}
+            disabled={fi.deletePrivate && !fi.changeCategory}
             onCheckedChange={(v) => set({ changeCategory: v })}
           />
         </div>
@@ -586,7 +582,7 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
           </div>
           <Switch
             checked={fi.deletePrivate}
-            disabled={fi.changeCategory}
+            disabled={fi.changeCategory && !fi.deletePrivate}
             onCheckedChange={(v) => set({ deletePrivate: v })}
           />
         </div>
@@ -803,14 +799,14 @@ function StallRuleFields({ rule, onChange }: { rule: StallRuleShape; onChange: (
       <FieldRow label="Change category on removal" hint="Tells the arr to move the queue item rather than delete. Disables 'Delete private from client'." active={rule.changeCategory}>
         <Switch
           checked={rule.changeCategory}
-          disabled={rule.deletePrivate}
+          disabled={rule.deletePrivate && !rule.changeCategory}
           onCheckedChange={(v) => onChange({ ...rule, changeCategory: v })}
         />
       </FieldRow>
       <FieldRow label="Delete private from client" hint="Permit deletion of private torrents — affects H&R standing." active={rule.deletePrivate}>
         <Switch
           checked={rule.deletePrivate}
-          disabled={rule.changeCategory}
+          disabled={rule.changeCategory && !rule.deletePrivate}
           onCheckedChange={(v) => onChange({ ...rule, deletePrivate: v })}
         />
       </FieldRow>
@@ -912,14 +908,14 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
       <FieldRow label="Change category on removal" active={rule.changeCategory}>
         <Switch
           checked={rule.changeCategory}
-          disabled={rule.deletePrivate}
+          disabled={rule.deletePrivate && !rule.changeCategory}
           onCheckedChange={(v) => onChange({ ...rule, changeCategory: v })}
         />
       </FieldRow>
       <FieldRow label="Delete private from client" active={rule.deletePrivate}>
         <Switch
           checked={rule.deletePrivate}
-          disabled={rule.changeCategory}
+          disabled={rule.changeCategory && !rule.deletePrivate}
           onCheckedChange={(v) => onChange({ ...rule, deletePrivate: v })}
         />
       </FieldRow>

@@ -221,8 +221,18 @@ model CleanupStrike {
   @@index([hash])
 }
 
+enum CleanupAction {
+  strikeAdded
+  removedFromClient
+  removedFromQueue
+  categoryChanged
+  skipped
+  dryRunPreview
+  failed
+}
+
 model CleanupHistory {
-  id              String   @id @default(cuid())
+  id              String        @id @default(cuid())
   cleaner         String
   strikeType      String?
   ruleId          String?
@@ -231,8 +241,7 @@ model CleanupHistory {
   shortHash       String
   torrentName     String
   reason          String
-  // "removedFromClient" | "removedFromQueue" | "categoryChanged" | "dryRunPreview" | "failed"
-  action          String
+  action          CleanupAction
   filesDeleted    Boolean
   reSearched      Boolean
   linkedArrSource String?
