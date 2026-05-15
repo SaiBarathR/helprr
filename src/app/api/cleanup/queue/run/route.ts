@@ -31,9 +31,13 @@ function serializeResult(r: Awaited<ReturnType<typeof runQueueCleanerCycle>>) {
 async function postHandler(req: NextRequest) {
   const err = await requireAuth();
   if (err) return err;
-  let body: { dryRun?: unknown } = {};
-  try { body = await req.json(); } catch { /* empty body OK */ }
-  const dryRun = Boolean((body as { dryRun?: unknown }).dryRun);
+  let body: { dryRun?: unknown };
+  try { body = (await req.json()) as { dryRun?: unknown }; }
+  catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
+  if (typeof body?.dryRun !== 'boolean') {
+    return NextResponse.json({ error: 'dryRun must be a boolean' }, { status: 400 });
+  }
+  const dryRun = body.dryRun;
 
   await awaitInFlightQueue();
   const result = await runQueueCleanerCycle({ dryRun, triggeredBy: dryRun ? 'dryRun' : 'manual' });

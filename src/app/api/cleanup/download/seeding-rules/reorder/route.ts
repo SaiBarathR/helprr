@@ -18,12 +18,16 @@ async function postHandler(req: NextRequest) {
   // with an opaque 500.
   const existing = await prisma.seedingRule.findMany({
     where: { id: { in: orderedIds } },
-    select: { id: true },
+    select: { id: true, isSystem: true },
   });
   const knownIds = new Set(existing.map((r) => r.id));
   const unknown = orderedIds.filter((id) => !knownIds.has(id));
   if (unknown.length > 0) {
     return NextResponse.json({ error: 'unknown rule IDs', unknownIds: unknown }, { status: 400 });
+  }
+  const systemIds = existing.filter((r) => r.isSystem).map((r) => r.id);
+  if (systemIds.length > 0) {
+    return NextResponse.json({ error: 'system seeding rules cannot be reordered', systemIds }, { status: 400 });
   }
   const seen = new Set<string>();
   for (const id of orderedIds) {

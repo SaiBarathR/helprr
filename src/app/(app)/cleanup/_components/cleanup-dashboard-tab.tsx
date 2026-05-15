@@ -10,6 +10,11 @@ import { Loader2, AlertTriangle, Eye, ChevronRight } from 'lucide-react';
 import { RunPreviewDialog, QueueDryRunDecision, DownloadDryRunDecision, RunPreviewPendingStrike } from './run-preview-dialog';
 import type { AutoRunMode } from '@/lib/cleanup/types';
 
+async function jsonOk<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 interface Stats {
   removedToday: number;
   removedThisWeek: number;
@@ -69,10 +74,10 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     setLoading(true);
     try {
       const [statsRes, strikesRes, queueCfg, downloadCfg] = await Promise.all([
-        fetch('/api/cleanup/stats').then((r) => r.json()),
-        fetch('/api/cleanup/strikes').then((r) => r.json()),
-        fetch('/api/cleanup/queue/config').then((r) => r.json()),
-        fetch('/api/cleanup/download/config').then((r) => r.json()),
+        fetch('/api/cleanup/stats').then(jsonOk<Stats>),
+        fetch('/api/cleanup/strikes').then(jsonOk<StrikeRow[]>),
+        fetch('/api/cleanup/queue/config').then(jsonOk<Record<string, unknown>>),
+        fetch('/api/cleanup/download/config').then(jsonOk<Record<string, unknown>>),
       ]);
       setStats(statsRes);
       setStrikes(strikesRes);
@@ -109,7 +114,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: true }),
       });
-      const json = await r.json();
+      const json = await jsonOk<{ decisions?: QueueDryRunDecision[]; pendingStrikes?: RunPreviewPendingStrike[] }>(r);
       setQueuePreview({
         open: true,
         loading: false,
@@ -132,7 +137,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
       });
-      const json = await r.json();
+      const json = await jsonOk<{ decisions?: QueueDryRunDecision[] }>(r);
       toast.success(`Removed ${json.decisions?.length ?? 0} torrent(s)`);
       setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
       refresh();
@@ -159,7 +164,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: true }),
       });
-      const json = await r.json();
+      const json = await jsonOk<{ decisions?: DownloadDryRunDecision[] }>(r);
       setDownloadPreview({
         open: true,
         loading: false,
@@ -181,7 +186,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dryRun: false }),
       });
-      const json = await r.json();
+      const json = await jsonOk<{ decisions?: DownloadDryRunDecision[] }>(r);
       toast.success(`Removed ${json.decisions?.length ?? 0} torrent(s)`);
       setDownloadPreview({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
       refresh();

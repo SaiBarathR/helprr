@@ -12,6 +12,7 @@ import {
   buildSlowReason,
   buildStallReason,
   collectStatusMessages,
+  formatError,
   inCompletionRange,
   matchesIgnoredPatterns,
   matchesPatterns,
@@ -147,6 +148,7 @@ async function loadArrQueues(): Promise<{
   let radarrQueue: QueueItem[] | null = null;
   try {
     const c = await getSonarrClient();
+    // Hard cap: queues larger than 1000 will be truncated. Pagination not currently wired.
     const r = await c.getQueue(1, 1000);
     sonarrQueue = (r.records || []).map((i) => ({ ...i, source: 'sonarr' as const }));
   } catch (err) {
@@ -154,6 +156,7 @@ async function loadArrQueues(): Promise<{
   }
   try {
     const c = await getRadarrClient();
+    // Hard cap: queues larger than 1000 will be truncated. Pagination not currently wired.
     const r = await c.getQueue(1, 1000);
     radarrQueue = (r.records || []).map((i) => ({ ...i, source: 'radarr' as const }));
   } catch (err) {
@@ -474,7 +477,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
       } catch (err) {
         // Defensive: executeQueueCleanerRemoval is designed never to throw,
         // but if it does, treat as failure.
-        const errorMessage = err instanceof Error ? err.message : String(err);
+        const errorMessage = formatError(err);
         logger.error('Removal threw unexpectedly', { hash: d.torrent.hash, err: errorMessage }, { scope: LOG });
         failedCount++;
         failureOutcomes.push({ decision: d, errorMessage });
@@ -713,6 +716,11 @@ export type QueueRemovalOutcome =
   | { kind: 'failure'; errorMessage: string };
 
 async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: TriggeredBy): Promise<QueueRemovalOutcome> {
+  // NOT idempotent on partial failure: Sonarr/Radarr's deleteQueueItem with
+  // removeFromClient=true already removes the download from qBittorrent. If a
+  // subsequent step throws, the Arr-side state may not reflect what landed in
+  // qBit. Recovery is operator-driven via the `action: 'failed'` history row
+  // plus structured logs below — there is no automatic retry.
   const hashLc = d.torrent.hash.toLowerCase();
   const isPrivate = Boolean(d.torrent.private);
   const shouldDeleteFromClient = !isPrivate || d.options.deletePrivate;
@@ -758,7 +766,7 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
       action = 'removedFromQueue';
     }
   } catch (err) {
-    const errorMessage = errorToStringLocal(err);
+    const errorMessage = formatError(err);
     logger.error('Queue cleaner action failed', { err: errorMessage, hash: hashLc, intendedAction: d.options.changeCategory ? 'categoryChanged' : (shouldDeleteFromClient ? 'removedFromClient' : 'removedFromQueue') }, { scope: LOG });
 
     // ─── Phase 1 failure: keep strikes, write failure history, no re-search ─
@@ -805,7 +813,7 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
         reSearched = true;
       }
     } catch (err) {
-      logger.warn('Re-search trigger failed (deletion still succeeded)', { err: errorToStringLocal(err), hash: hashLc }, { scope: LOG });
+      logger.warn('Re-search trigger failed (deletion still succeeded)', { err: formatError(err), hash: hashLc }, { scope: LOG });
     }
   }
 
@@ -834,15 +842,4 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
   });
 
   return { kind: 'success', action, filesDeleted, reSearched };
-}
-
-// Inlined to avoid creating a dependency cycle with helpers.ts.
-function errorToStringLocal(err: unknown): string {
-  if (err instanceof Error) return err.message || err.name;
-  if (typeof err === 'string') return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
-  }
 }
