@@ -336,19 +336,36 @@ function CustomCarouselRow({
   items,
   loading,
   onOpenItem,
+  onSeeAll,
 }: {
   layoutSection: DiscoverLayoutSection;
   items: DiscoverItem[];
   loading: boolean;
   onOpenItem: (item: DiscoverItem) => void;
+  onSeeAll: (layoutSection: DiscoverLayoutSection) => void;
 }) {
+  const header = (
+    <div className="flex items-center justify-between px-0.5">
+      <h2 className="text-base font-semibold">{layoutSection.label}</h2>
+      <div className="flex items-center gap-2">
+        {layoutSection.filters && (
+          <button
+            onClick={() => onSeeAll(layoutSection)}
+            className="text-xs text-primary font-medium inline-flex items-center gap-1"
+          >
+            See all
+            <ChevronRight className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <span className="text-[10px] text-muted-foreground/50 bg-muted/40 px-1.5 py-0.5 rounded">Custom</span>
+      </div>
+    </div>
+  );
+
   if (loading) {
     return (
       <section className="space-y-2">
-        <div className="flex items-center justify-between px-0.5">
-          <h2 className="text-base font-semibold">{layoutSection.label}</h2>
-          <span className="text-[10px] text-muted-foreground/50 bg-muted/40 px-1.5 py-0.5 rounded">Custom</span>
-        </div>
+        {header}
         <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] aspect-[2/3] rounded-xl bg-muted/40 animate-pulse" />
@@ -362,10 +379,7 @@ function CustomCarouselRow({
 
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between px-0.5">
-        <h2 className="text-base font-semibold">{layoutSection.label}</h2>
-        <span className="text-[10px] text-muted-foreground/50 bg-muted/40 px-1.5 py-0.5 rounded">Custom</span>
-      </div>
+      {header}
       <div className="flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
         {items.map((item) => (
           <div key={`${item.mediaType}-${item.tmdbId}`} className="snap-start">
@@ -751,7 +765,8 @@ export default function DiscoverPage() {
   ]);
 
   // Handle filter/section URL params from widget links and detail-page links
-  // (genres, providers, companies, networks, section).
+  // (custom carousel "View all" passes the full filter set; section links pass
+  // just `section`; older genre/provider links pass id lists + contentType).
   useEffect(() => {
     const rawCompanies = searchParams.get('companies');
     const rawNetworks = searchParams.get('networks');
@@ -759,19 +774,31 @@ export default function DiscoverPage() {
     const rawProviders = searchParams.get('providers');
     const rawSection = searchParams.get('section');
     const rawContentType = searchParams.get('contentType');
-    if (!rawCompanies && !rawNetworks && !rawGenres && !rawProviders && !rawSection) return;
+    const rawSortBy = searchParams.get('sortBy');
+    const rawSortOrder = searchParams.get('sortOrder');
+    const rawYearFrom = searchParams.get('yearFrom');
+    const rawYearTo = searchParams.get('yearTo');
+    const rawRuntimeMin = searchParams.get('runtimeMin');
+    const rawRuntimeMax = searchParams.get('runtimeMax');
+    const rawRatingMin = searchParams.get('ratingMin');
+    const rawRatingMax = searchParams.get('ratingMax');
+    const rawVoteCountMin = searchParams.get('voteCountMin');
+    const rawLanguage = searchParams.get('language');
+    const rawRegion = searchParams.get('region');
+    const rawReleaseState = searchParams.get('releaseState');
+
+    const hasFilterParam = Boolean(
+      rawCompanies || rawNetworks || rawGenres || rawProviders ||
+      rawYearFrom || rawYearTo || rawRuntimeMin || rawRuntimeMax ||
+      rawRatingMin || rawRatingMax || rawVoteCountMin ||
+      rawLanguage || rawRegion || rawReleaseState
+    );
+    if (!hasFilterParam && !rawSection && !rawSortBy) return;
 
     const parseIds = (raw: string | null) =>
       raw
         ? raw.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v > 0)
         : [];
-
-    const companyIds = parseIds(rawCompanies);
-    const networkIds = parseIds(rawNetworks);
-    const genreIds = parseIds(rawGenres);
-    const providerIds = parseIds(rawProviders);
-    const hasFilters = companyIds.length || networkIds.length || genreIds.length || providerIds.length;
-    if (!hasFilters && !rawSection) return;
 
     const ct = rawContentType === 'movie' || rawContentType === 'show' ? rawContentType : 'all';
 
@@ -787,16 +814,37 @@ export default function DiscoverPage() {
       }
     } else {
       setDiscoverContentType(ct);
-      setDiscoverSort('popular');
+      if (rawSortBy) setDiscoverSort(rawSortBy);
+      else setDiscoverSort('popular');
+      if (rawSortOrder === 'asc' || rawSortOrder === 'desc') {
+        setDiscoverSortDirection(rawSortOrder);
+      }
     }
 
-    if (hasFilters) {
+    if (hasFilterParam) {
+      const allowedReleaseStates: ReadonlyArray<DiscoverFiltersState['releaseState']> = [
+        '', 'released', 'upcoming', 'airing', 'ended',
+      ];
+      const releaseState = (allowedReleaseStates as readonly string[]).includes(rawReleaseState ?? '')
+        ? (rawReleaseState as DiscoverFiltersState['releaseState'])
+        : '';
+
       setDiscoverFilters({
         ...DEFAULT_DISCOVER_FILTERS,
-        companies: companyIds,
-        networks: networkIds,
-        genres: genreIds,
-        providers: providerIds,
+        companies: parseIds(rawCompanies),
+        networks: parseIds(rawNetworks),
+        genres: parseIds(rawGenres),
+        providers: parseIds(rawProviders),
+        yearFrom: rawYearFrom ?? '',
+        yearTo: rawYearTo ?? '',
+        runtimeMin: rawRuntimeMin ?? '',
+        runtimeMax: rawRuntimeMax ?? '',
+        ratingMin: rawRatingMin ?? '',
+        ratingMax: rawRatingMax ?? '',
+        voteCountMin: rawVoteCountMin ?? '',
+        language: rawLanguage ?? '',
+        region: rawRegion ?? DEFAULT_DISCOVER_FILTERS.region,
+        releaseState,
       });
     }
     setManualBrowseMode(true);
@@ -965,6 +1013,47 @@ export default function DiscoverPage() {
     }
   }, [setDiscoverSort, setDiscoverContentType, setDiscoverSortDirection]);
 
+  const handleSeeAllCustom = useCallback((layoutSection: DiscoverLayoutSection) => {
+    const f = layoutSection.filters;
+    if (!f) return;
+    const ct: 'all' | 'movie' | 'show' =
+      f.contentType === 'movie' || f.contentType === 'show' ? f.contentType : 'all';
+    const allowedReleaseStates: ReadonlyArray<DiscoverFiltersState['releaseState']> = [
+      '', 'released', 'upcoming', 'airing', 'ended',
+    ];
+    const releaseState = (allowedReleaseStates as readonly string[]).includes(f.releaseState ?? '')
+      ? (f.releaseState as DiscoverFiltersState['releaseState'])
+      : '';
+
+    setActiveSectionKey(null);
+    setDiscoverContentType(ct);
+    setDiscoverSort(f.sortBy);
+    setDiscoverSortDirection(f.sortOrder);
+    setDiscoverFilters({
+      ...DEFAULT_DISCOVER_FILTERS,
+      genres: f.genres ?? [],
+      providers: f.providers ?? [],
+      networks: f.networks ?? [],
+      companies: f.companies ?? [],
+      yearFrom: f.yearFrom ?? '',
+      yearTo: f.yearTo ?? '',
+      runtimeMin: f.runtimeMin ?? '',
+      runtimeMax: f.runtimeMax ?? '',
+      ratingMin: f.ratingMin ?? '',
+      ratingMax: f.ratingMax ?? '',
+      voteCountMin: f.voteCountMin ?? '',
+      language: f.language ?? '',
+      region: f.region ?? DEFAULT_DISCOVER_FILTERS.region,
+      releaseState,
+    });
+    setManualBrowseMode(true);
+  }, [
+    setDiscoverContentType,
+    setDiscoverSort,
+    setDiscoverSortDirection,
+    setDiscoverFilters,
+  ]);
+
   const pickGenre = useCallback((genreId: number, type: 'movie' | 'show') => {
     setDiscoverFilters({
       ...discoverFilters,
@@ -1130,6 +1219,7 @@ export default function DiscoverPage() {
                           items={customCarouselItems[entry.id] ?? []}
                           loading={customCarouselLoading[entry.id] ?? true}
                           onOpenItem={handleOpenItem}
+                          onSeeAll={handleSeeAllCustom}
                         />
                       );
                     }
