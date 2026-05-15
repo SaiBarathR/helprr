@@ -20,6 +20,8 @@ import { StorageUsageWidget } from '@/components/widgets/storage-usage-widget';
 import { JellyfinLibraryWidget } from '@/components/widgets/jellyfin-library-widget';
 import { PlaybackChartWidget } from '@/components/widgets/playback-chart-widget';
 import { ActivityHistoryWidget } from '@/components/widgets/activity-history-widget';
+import { CleanupStatusWidget } from '@/components/widgets/cleanup-status-widget';
+import { CleanupHistoryWidget } from '@/components/widgets/cleanup-history-widget';
 
 import { AnimeCarouselWidget } from '@/components/widgets/anime-carousel-widget';
 import { ANIME_CAROUSEL_MAP, DEFAULT_ANIME_CAROUSEL_ORDER } from '@/lib/anime-carousel-config';
@@ -193,6 +195,28 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     sizes: ['medium', 'large'],
     defaultSize: 'medium',
     component: ActivityHistoryWidget,
+  },
+  {
+    id: 'cleanup-status',
+    name: 'Cleanup Status',
+    description: 'Next-run countdowns and active strikes',
+    icon: 'ShieldAlert',
+    category: 'monitoring',
+    sizes: ['medium', 'large'],
+    defaultSize: 'medium',
+    component: CleanupStatusWidget,
+    requiredServices: ['QBITTORRENT'],
+  },
+  {
+    id: 'cleanup-history',
+    name: 'Cleanup History',
+    description: 'Recent cleanup removals, dry-runs, and strikes',
+    icon: 'Sparkles',
+    category: 'monitoring',
+    sizes: ['medium', 'large'],
+    defaultSize: 'medium',
+    component: CleanupHistoryWidget,
+    requiredServices: ['QBITTORRENT'],
   },
 ];
 

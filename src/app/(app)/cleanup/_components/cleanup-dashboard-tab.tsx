@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, AlertTriangle, Eye, ChevronRight } from 'lucide-react';
 import { RunPreviewDialog, QueueDryRunDecision, DownloadDryRunDecision, RunPreviewPendingStrike } from './run-preview-dialog';
 import type { AutoRunMode } from '@/lib/cleanup/types';
+import { formatDelta } from '@/lib/cleanup/format-delta';
 
 async function jsonOk<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -464,17 +465,6 @@ function NextRunLine({ scheduler }: { scheduler: SchedulerLite | undefined }) {
       Next run in <span className="font-mono">{formatDelta(deltaMs)}</span>
     </div>
   );
-}
-
-function formatDelta(ms: number): string {
-  if (ms <= 0) return 'imminent';
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
 }
 
 function autoRunBadgeVariant(s: CleanerStatusLite): { variant: 'default' | 'outline' | 'secondary' | 'destructive'; className?: string; label: string } {
