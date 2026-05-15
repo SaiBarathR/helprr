@@ -124,6 +124,8 @@ function buildSearchParams(f: CleanupHistoryFiltersState, page: number) {
   if (f.ruleId.length > 0) sp.set('ruleId', f.ruleId.join(','));
   const actions = f.action ?? [];
   if (actions.length > 0) sp.set('action', actions.join(','));
+  if (f.reSearched === 'yes') sp.set('reSearched', 'true');
+  else if (f.reSearched === 'no') sp.set('reSearched', 'false');
   const dateFromIso = pickerDateToIsoStart(f.dateFrom);
   if (dateFromIso) sp.set('dateFrom', dateFromIso);
   const dateToIso = pickerDateToIsoEndExclusive(f.dateTo);
@@ -136,10 +138,12 @@ export function CleanupHistoryTab() {
   const setFilters = useUIStore((s) => s.setCleanupHistoryFilters);
   const resetFilters = useUIStore((s) => s.resetCleanupHistoryFilters);
 
-  // Coalesce against legacy persisted state that may lack the new `action` field.
+  // Coalesce against legacy persisted state that may lack the new `action` /
+  // `reSearched` fields.
   const filters: CleanupHistoryFiltersState = useMemo(() => ({
     ...filtersRaw,
     action: filtersRaw.action ?? [],
+    reSearched: filtersRaw.reSearched ?? null,
   }), [filtersRaw]);
 
   const [page, setPage] = useState(1);
@@ -178,6 +182,7 @@ export function CleanupHistoryTab() {
     + filters.strikeType.length
     + filters.ruleId.length
     + (filters.action ?? []).length
+    + (filters.reSearched ? 1 : 0)
     + (filters.dateFrom ? 1 : 0)
     + (filters.dateTo ? 1 : 0);
   const hasFilter = activeFilterCount > 0;
@@ -362,6 +367,13 @@ export function CleanupHistoryTab() {
 
             <Separator />
 
+            <ReSearchedFilter
+              value={filters.reSearched ?? null}
+              onChange={(v) => { setFilters({ reSearched: v }); setPage(1); }}
+            />
+
+            <Separator />
+
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date range</p>
               <div className="flex flex-wrap gap-1.5">
@@ -459,6 +471,43 @@ export function CleanupHistoryTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function ReSearchedFilter({
+  value,
+  onChange,
+}: {
+  value: 'yes' | 'no' | null;
+  onChange: (v: 'yes' | 'no' | null) => void;
+}) {
+  const options: { value: 'yes' | 'no' | null; label: string }[] = [
+    { value: null, label: 'Any' },
+    { value: 'yes', label: 'Yes' },
+    { value: 'no', label: 'No' },
+  ];
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Re-searched</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => {
+          const selected = value === o.value;
+          return (
+            <button
+              key={String(o.value)}
+              type="button"
+              onClick={() => onChange(o.value)}
+              className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors min-h-[32px] ${selected
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-muted/40 text-foreground border-transparent hover:bg-muted'
+              }`}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

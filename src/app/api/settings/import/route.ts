@@ -14,9 +14,12 @@ import { EVENT_TYPES } from '@/lib/notification-events';
 import { isServiceType } from '@/lib/service-connection-secrets';
 import {
   type ExportedAppSettings,
+  type ExportedCleanup,
   type ExportedServiceConnection,
   type ExportedNotificationDevice,
 } from '@/lib/settings-export';
+import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/scheduler';
+import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const THEMES = new Set(['dark', 'light', 'system']);
@@ -27,6 +30,7 @@ interface ImportRequestBody {
   appSettings?: Partial<ExportedAppSettings>;
   serviceConnections?: ExportedServiceConnection[];
   notificationDevice?: ExportedNotificationDevice;
+  cleanup?: ExportedCleanup;
   currentDeviceEndpoint?: string;
 }
 
@@ -35,6 +39,7 @@ interface ImportResult {
     appSettings: boolean;
     services: ServiceType[];
     notificationRules: number;
+    cleanup: boolean;
   };
   skipped: string[];
   pollingRestarted: boolean;
@@ -250,6 +255,152 @@ async function applyNotificationDeviceInTxn(
   return applied;
 }
 
+async function applyCleanupInTxn(
+  tx: Prisma.TransactionClient,
+  data: ExportedCleanup,
+  skipped: string[],
+): Promise<void> {
+  // Configs are singletons — upsert in place.
+  if (data.queueConfig && typeof data.queueConfig === 'object') {
+    const c = data.queueConfig;
+    await tx.queueCleanerConfig.upsert({
+      where: { id: 'singleton' },
+      create: {
+        id: 'singleton',
+        enabled: Boolean(c.enabled),
+        intervalMinutes: Math.max(1, Number(c.intervalMinutes) || 60),
+        ignoredDownloads: Array.isArray(c.ignoredDownloads) ? c.ignoredDownloads : [],
+        processNoContentId: Boolean(c.processNoContentId),
+        downloadingMetadataMaxStrikes: Math.max(0, Number(c.downloadingMetadataMaxStrikes) || 0),
+        failedImport: (c.failedImport ?? {}) as unknown as Prisma.InputJsonValue,
+        reSearchAfterRemoval: Boolean(c.reSearchAfterRemoval),
+        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+      },
+      update: {
+        enabled: Boolean(c.enabled),
+        intervalMinutes: Math.max(1, Number(c.intervalMinutes) || 60),
+        ignoredDownloads: Array.isArray(c.ignoredDownloads) ? c.ignoredDownloads : [],
+        processNoContentId: Boolean(c.processNoContentId),
+        downloadingMetadataMaxStrikes: Math.max(0, Number(c.downloadingMetadataMaxStrikes) || 0),
+        failedImport: (c.failedImport ?? {}) as unknown as Prisma.InputJsonValue,
+        reSearchAfterRemoval: Boolean(c.reSearchAfterRemoval),
+        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+      },
+    });
+  } else {
+    skipped.push('Cleanup: queueConfig missing or invalid');
+  }
+
+  if (data.downloadConfig && typeof data.downloadConfig === 'object') {
+    const c = data.downloadConfig;
+    await tx.downloadCleanerConfig.upsert({
+      where: { id: 'singleton' },
+      create: {
+        id: 'singleton',
+        enabled: Boolean(c.enabled),
+        intervalMinutes: Math.max(1, Number(c.intervalMinutes) || 60),
+        ignoredDownloads: Array.isArray(c.ignoredDownloads) ? c.ignoredDownloads : [],
+        autoRemoveImportedEnabled: Boolean(c.autoRemoveImportedEnabled),
+        autoRemoveImportedCategories: Array.isArray(c.autoRemoveImportedCategories) ? c.autoRemoveImportedCategories : [],
+        autoRemoveImportedDeleteFiles: Boolean(c.autoRemoveImportedDeleteFiles),
+        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+      },
+      update: {
+        enabled: Boolean(c.enabled),
+        intervalMinutes: Math.max(1, Number(c.intervalMinutes) || 60),
+        ignoredDownloads: Array.isArray(c.ignoredDownloads) ? c.ignoredDownloads : [],
+        autoRemoveImportedEnabled: Boolean(c.autoRemoveImportedEnabled),
+        autoRemoveImportedCategories: Array.isArray(c.autoRemoveImportedCategories) ? c.autoRemoveImportedCategories : [],
+        autoRemoveImportedDeleteFiles: Boolean(c.autoRemoveImportedDeleteFiles),
+        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+      },
+    });
+  } else {
+    skipped.push('Cleanup: downloadConfig missing or invalid');
+  }
+
+  // Replace user-defined rules with the imported set. System rules (the
+  // synthetic auto-remove-imported seeding rule) are preserved — they're
+  // managed by saveDownloadCleanerConfig and will be re-synced on next save.
+  await tx.stallRule.deleteMany({});
+  if (Array.isArray(data.stallRules)) {
+    for (const r of data.stallRules) {
+      if (!r || typeof r !== 'object') continue;
+      await tx.stallRule.create({
+        data: {
+          name: String(r.name ?? 'Stall rule'),
+          enabled: Boolean(r.enabled),
+          priority: Number(r.priority) || 0,
+          maxStrikes: Math.max(3, Number(r.maxStrikes) || 3),
+          privacyType: String(r.privacyType ?? 'public'),
+          minCompletionPercentage: Math.max(0, Math.min(100, Number(r.minCompletionPercentage) || 0)),
+          maxCompletionPercentage: Math.max(1, Math.min(100, Number(r.maxCompletionPercentage) || 100)),
+          resetStrikesOnProgress: Boolean(r.resetStrikesOnProgress),
+          minimumProgressBytes:
+            r.minimumProgressBytes != null && Number.isFinite(Number(r.minimumProgressBytes))
+              ? BigInt(Math.max(0, Math.floor(Number(r.minimumProgressBytes))))
+              : null,
+          changeCategory: Boolean(r.changeCategory),
+          deletePrivate: Boolean(r.deletePrivate),
+          reSearchOverride: r.reSearchOverride === null || r.reSearchOverride === undefined ? null : Boolean(r.reSearchOverride),
+        },
+      });
+    }
+  }
+
+  await tx.slowRule.deleteMany({});
+  if (Array.isArray(data.slowRules)) {
+    for (const r of data.slowRules) {
+      if (!r || typeof r !== 'object') continue;
+      await tx.slowRule.create({
+        data: {
+          name: String(r.name ?? 'Slow rule'),
+          enabled: Boolean(r.enabled),
+          priority: Number(r.priority) || 0,
+          maxStrikes: Math.max(3, Number(r.maxStrikes) || 3),
+          privacyType: String(r.privacyType ?? 'public'),
+          minCompletionPercentage: Math.max(0, Math.min(100, Number(r.minCompletionPercentage) || 0)),
+          maxCompletionPercentage: Math.max(1, Math.min(100, Number(r.maxCompletionPercentage) || 100)),
+          minSpeedKbps: r.minSpeedKbps != null ? Math.max(0, Number(r.minSpeedKbps) || 0) : null,
+          maxTimeHours: r.maxTimeHours != null ? Math.max(0, Number(r.maxTimeHours) || 0) : null,
+          ignoreAboveSizeBytes:
+            r.ignoreAboveSizeBytes != null && Number.isFinite(Number(r.ignoreAboveSizeBytes))
+              ? BigInt(Math.max(0, Math.floor(Number(r.ignoreAboveSizeBytes))))
+              : null,
+          resetStrikesOnProgress: Boolean(r.resetStrikesOnProgress),
+          changeCategory: Boolean(r.changeCategory),
+          deletePrivate: Boolean(r.deletePrivate),
+          reSearchOverride: r.reSearchOverride === null || r.reSearchOverride === undefined ? null : Boolean(r.reSearchOverride),
+        },
+      });
+    }
+  }
+
+  await tx.seedingRule.deleteMany({ where: { isSystem: false } });
+  if (Array.isArray(data.seedingRules)) {
+    for (const r of data.seedingRules) {
+      if (!r || typeof r !== 'object') continue;
+      await tx.seedingRule.create({
+        data: {
+          name: String(r.name ?? 'Seeding rule'),
+          enabled: Boolean(r.enabled),
+          priority: Number(r.priority) || 0,
+          categories: Array.isArray(r.categories) ? r.categories : [],
+          trackerPatterns: Array.isArray(r.trackerPatterns) ? r.trackerPatterns : [],
+          tagsAny: Array.isArray(r.tagsAny) ? r.tagsAny : [],
+          tagsAll: Array.isArray(r.tagsAll) ? r.tagsAll : [],
+          privacyType: String(r.privacyType ?? 'both'),
+          maxRatio: Number.isFinite(Number(r.maxRatio)) ? Number(r.maxRatio) : 1,
+          minSeedTimeHours: Math.max(0, Number(r.minSeedTimeHours) || 0),
+          maxSeedTimeHours: Number.isFinite(Number(r.maxSeedTimeHours)) ? Number(r.maxSeedTimeHours) : -1,
+          deleteSourceFiles: Boolean(r.deleteSourceFiles),
+          isSystem: false,
+        },
+      });
+    }
+  }
+}
+
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -291,6 +442,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const appliedServices: ServiceType[] = [];
   let appliedAppSettings = false;
   let appliedNotificationRules = 0;
+  let appliedCleanup = false;
   let appSettingsTxnResult: AppSettingsTxnResult | null = null;
 
   try {
@@ -315,6 +467,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
           body.currentDeviceEndpoint,
           skipped
         );
+      }
+
+      if (body.cleanup && typeof body.cleanup === 'object') {
+        await applyCleanupInTxn(tx, body.cleanup, skipped);
+        appliedCleanup = true;
       }
 
       return innerAppSettings;
@@ -367,11 +524,28 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     await getOrCreateAppSettings();
   }
 
+  // After cleanup rules are replaced, restart the cleaner schedulers so the
+  // new intervals/modes take effect and prune any strikes whose ruleId no
+  // longer exists.
+  if (appliedCleanup) {
+    try {
+      await pruneStrikesForMissingRules();
+    } catch (err) {
+      console.warn('Failed to prune orphan strikes after cleanup import', err);
+    }
+    try {
+      await Promise.all([restartQueueCleaner(), restartDownloadCleaner()]);
+    } catch (err) {
+      console.warn('Failed to restart cleanup schedulers after import', err);
+    }
+  }
+
   const result: ImportResult = {
     applied: {
       appSettings: appliedAppSettings,
       services: appliedServices,
       notificationRules: appliedNotificationRules,
+      cleanup: appliedCleanup,
     },
     skipped,
     pollingRestarted,

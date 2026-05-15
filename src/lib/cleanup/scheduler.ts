@@ -14,6 +14,9 @@ interface JobState {
   intervalMinutes: number;
   inFlight: Promise<QueueEvaluationResult | DownloadEvaluationResult | null> | null;
   autoRunMode: AutoRunMode;
+  // Epoch ms of the last tick (or restart). Drives the dashboard countdown.
+  // In-memory only; resets across server restarts.
+  lastRunAt: number | null;
 }
 
 interface SchedulerState {
@@ -29,8 +32,8 @@ function getState(): SchedulerState {
   let s = globalAny[GLOBAL_KEY] as SchedulerState | undefined;
   if (!s) {
     s = {
-      queue: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled' },
-      download: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled' },
+      queue: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled', lastRunAt: null },
+      download: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled', lastRunAt: null },
     };
     globalAny[GLOBAL_KEY] = s;
   }
@@ -94,6 +97,7 @@ function tickQueue(): void {
   const s = getState();
   if (s.queue.inFlight) return; // skip overlapping
   if (s.queue.autoRunMode === 'disabled') return; // safety: should not be scheduled, but double-check
+  s.queue.lastRunAt = Date.now();
   const p = safeRunQueue() as Promise<QueueEvaluationResult | DownloadEvaluationResult | null>;
   s.queue.inFlight = p;
   p.finally(() => {
@@ -105,6 +109,7 @@ function tickDownload(): void {
   const s = getState();
   if (s.download.inFlight) return;
   if (s.download.autoRunMode === 'disabled') return;
+  s.download.lastRunAt = Date.now();
   const p = safeRunDownload() as Promise<QueueEvaluationResult | DownloadEvaluationResult | null>;
   s.download.inFlight = p;
   p.finally(() => {
@@ -118,6 +123,7 @@ export async function restartQueueCleaner(): Promise<void> {
   clear(s.queue);
   s.queue.intervalMinutes = cfg.intervalMinutes;
   s.queue.autoRunMode = cfg.autoRunMode;
+  s.queue.lastRunAt = null;
   if (!cfg.enabled || cfg.autoRunMode === 'disabled') {
     logger.info('Queue cleaner auto-run disabled; timer cleared', {
       enabled: cfg.enabled,
@@ -126,6 +132,9 @@ export async function restartQueueCleaner(): Promise<void> {
     return;
   }
   const ms = Math.max(1, cfg.intervalMinutes) * 60_000;
+  // Anchor the countdown at the moment the timer is installed so the dashboard
+  // can show "next run in N min" honestly until the first tick fires.
+  s.queue.lastRunAt = Date.now();
   s.queue.timer = setInterval(tickQueue, ms);
   logger.info('Queue cleaner timer started', {
     intervalMinutes: cfg.intervalMinutes,
@@ -139,6 +148,7 @@ export async function restartDownloadCleaner(): Promise<void> {
   clear(s.download);
   s.download.intervalMinutes = cfg.intervalMinutes;
   s.download.autoRunMode = cfg.autoRunMode;
+  s.download.lastRunAt = null;
   if (!cfg.enabled || cfg.autoRunMode === 'disabled') {
     logger.info('Download cleaner auto-run disabled; timer cleared', {
       enabled: cfg.enabled,
@@ -147,6 +157,7 @@ export async function restartDownloadCleaner(): Promise<void> {
     return;
   }
   const ms = Math.max(1, cfg.intervalMinutes) * 60_000;
+  s.download.lastRunAt = Date.now();
   s.download.timer = setInterval(tickDownload, ms);
   logger.info('Download cleaner timer started', {
     intervalMinutes: cfg.intervalMinutes,
@@ -156,4 +167,39 @@ export async function restartDownloadCleaner(): Promise<void> {
 
 export async function startCleanupJobs(): Promise<void> {
   await Promise.allSettled([restartQueueCleaner(), restartDownloadCleaner()]);
+}
+
+export interface CleanerSchedulerStatus {
+  autoRunMode: AutoRunMode;
+  intervalMinutes: number;
+  lastRunAt: number | null;
+  nextRunAt: number | null;
+  running: boolean;
+}
+
+export interface SchedulerStatusSnapshot {
+  queue: CleanerSchedulerStatus;
+  download: CleanerSchedulerStatus;
+}
+
+function snapshotJob(j: JobState): CleanerSchedulerStatus {
+  const nextRunAt =
+    j.timer && j.lastRunAt != null && j.intervalMinutes > 0
+      ? j.lastRunAt + j.intervalMinutes * 60_000
+      : null;
+  return {
+    autoRunMode: j.autoRunMode,
+    intervalMinutes: j.intervalMinutes,
+    lastRunAt: j.lastRunAt,
+    nextRunAt,
+    running: j.inFlight != null,
+  };
+}
+
+export function getSchedulerStatus(): SchedulerStatusSnapshot {
+  const s = getState();
+  return {
+    queue: snapshotJob(s.queue),
+    download: snapshotJob(s.download),
+  };
 }

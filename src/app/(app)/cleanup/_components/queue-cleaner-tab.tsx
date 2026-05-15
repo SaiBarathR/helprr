@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Save, Trash2, AlertTriangle, Info } from 'lucide-react';
+import { Loader2, Plus, Save, Trash2, AlertTriangle, Info, Pencil, ChevronUp } from 'lucide-react';
 import type {
   AutoRunMode,
   FailedImportConfig,
@@ -24,6 +24,9 @@ import type {
   SlowRuleShape,
   StallRuleShape,
 } from '@/lib/cleanup/types';
+import { FieldRow, isNumericActive, isRangeActive } from './field-row';
+import { SizeInput } from './size-input';
+import { StallRuleSummary, SlowRuleSummary } from './rule-summary';
 
 async function jsonOk<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -55,9 +58,11 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'stall' | 'slow'; rule: { id: string; name: string } } | null>(null);
   const [deletingRule, setDeletingRule] = useState(false);
+  const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
 
-  // Server snapshot of last successful load/save — used for dirty diff.
   const serverSnapshot = useRef<SaveAllResponse | null>(null);
+  // Pinned card refs — used to scroll a newly-created rule into view.
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const isDirty = useMemo(() => {
     if (!serverSnapshot.current || !cfg) return false;
@@ -107,7 +112,20 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
       });
       const json = await r.json();
       if (!r.ok) {
-        if (Array.isArray(json.fieldErrors)) setFieldErrors(json.fieldErrors);
+        if (Array.isArray(json.fieldErrors)) {
+          setFieldErrors(json.fieldErrors);
+          // Force-expand any rule that has a field error so the user sees it.
+          const failingIds = (json.fieldErrors as FieldError[])
+            .filter((e) => (e.scope === 'stall' || e.scope === 'slow') && e.id)
+            .map((e) => e.id!);
+          if (failingIds.length > 0) {
+            setEditingIds((prev) => {
+              const next = new Set(prev);
+              for (const id of failingIds) next.add(id);
+              return next;
+            });
+          }
+        }
         toast.error(json.error ?? 'Save failed');
         return;
       }
@@ -115,6 +133,8 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
       setStallRules(json.stallRules);
       setSlowRules(json.slowRules);
       serverSnapshot.current = json;
+      // Collapse all cards on a clean save — the user is "done" editing.
+      setEditingIds(new Set());
       toast.success('Queue Cleaner settings saved');
     } catch (err) {
       toast.error((err as Error).message ?? 'Save failed');
@@ -129,9 +149,26 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
     setStallRules(serverSnapshot.current.stallRules);
     setSlowRules(serverSnapshot.current.slowRules);
     setFieldErrors([]);
+    setEditingIds(new Set());
   };
 
-  // ── Rule CRUD ──────────────────────────────────────────────────────────
+  const setRuleEditing = (id: string, editing: boolean) => {
+    setEditingIds((prev) => {
+      const next = new Set(prev);
+      if (editing) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const scrollNewRuleIntoView = (id: string) => {
+    // Defer until after the new card renders.
+    requestAnimationFrame(() => {
+      const el = cardRefs.current.get(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   const createStallRule = async () => {
     try {
       const r = await fetch('/api/cleanup/queue/stall-rules', {
@@ -144,8 +181,19 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
         toast.error(j?.error ?? 'Create failed');
         return;
       }
+      const created = (await r.json()) as StallRuleShape;
+      // Optimistic: append locally and update the server snapshot so dirty
+      // tracking knows the new rule isn't an unsaved change.
+      setStallRules((prev) => [...prev, created]);
+      if (serverSnapshot.current) {
+        serverSnapshot.current = {
+          ...serverSnapshot.current,
+          stallRules: [...serverSnapshot.current.stallRules, created],
+        };
+      }
+      setRuleEditing(created.id, true);
+      scrollNewRuleIntoView(created.id);
       toast.success('Stall rule created');
-      refresh();
     } catch (err) {
       toast.error((err as Error).message ?? 'Create failed');
     }
@@ -163,8 +211,17 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
         toast.error(j?.error ?? 'Create failed');
         return;
       }
+      const created = (await r.json()) as SlowRuleShape;
+      setSlowRules((prev) => [...prev, created]);
+      if (serverSnapshot.current) {
+        serverSnapshot.current = {
+          ...serverSnapshot.current,
+          slowRules: [...serverSnapshot.current.slowRules, created],
+        };
+      }
+      setRuleEditing(created.id, true);
+      scrollNewRuleIntoView(created.id);
       toast.success('Slow rule created');
-      refresh();
     } catch (err) {
       toast.error((err as Error).message ?? 'Create failed');
     }
@@ -181,9 +238,33 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
         toast.error(j?.error ?? 'Delete failed');
         return;
       }
-      toast.success('Rule deleted');
+      const deletedId = pendingDelete.rule.id;
+      if (pendingDelete.kind === 'stall') {
+        setStallRules((prev) => prev.filter((r) => r.id !== deletedId));
+        if (serverSnapshot.current) {
+          serverSnapshot.current = {
+            ...serverSnapshot.current,
+            stallRules: serverSnapshot.current.stallRules.filter((r) => r.id !== deletedId),
+          };
+        }
+      } else {
+        setSlowRules((prev) => prev.filter((r) => r.id !== deletedId));
+        if (serverSnapshot.current) {
+          serverSnapshot.current = {
+            ...serverSnapshot.current,
+            slowRules: serverSnapshot.current.slowRules.filter((r) => r.id !== deletedId),
+          };
+        }
+      }
+      cardRefs.current.delete(deletedId);
+      setEditingIds((prev) => {
+        if (!prev.has(deletedId)) return prev;
+        const next = new Set(prev);
+        next.delete(deletedId);
+        return next;
+      });
       setPendingDelete(null);
-      refresh();
+      toast.success('Rule deleted');
     } catch (err) {
       toast.error((err as Error).message ?? 'Delete failed');
     } finally {
@@ -191,7 +272,6 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
     }
   };
 
-  // ── Field error lookup ─────────────────────────────────────────────────
   const configError = fieldErrors.find((e) => e.scope === 'config')?.message;
   const errorFor = (kind: 'stall' | 'slow', id: string): string | undefined =>
     fieldErrors.find((e) => e.scope === kind && e.id === id)?.message;
@@ -199,6 +279,11 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
   if (loading || !cfg) {
     return <div className="py-12 flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>;
   }
+
+  const registerCardRef = (id: string) => (el: HTMLDivElement | null) => {
+    if (el) cardRefs.current.set(id, el);
+    else cardRefs.current.delete(id);
+  };
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -307,17 +392,26 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
           {stallRules.length === 0 ? (
             <div className="grouped-row text-sm text-muted-foreground">No rules. Click &ldquo;Add rule&rdquo; to create one.</div>
           ) : (
-            stallRules.map((rule) => (
-              <RuleCard
-                key={rule.id}
-                rule={rule}
-                onChange={(next) => setStallRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))}
-                onDelete={() => setPendingDelete({ kind: 'stall', rule: { id: rule.id, name: rule.name } })}
-                error={errorFor('stall', rule.id)}
-              >
-                <StallRuleFields rule={rule} onChange={(next) => setStallRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))} />
-              </RuleCard>
-            ))
+            stallRules.map((rule) => {
+              const editing = editingIds.has(rule.id);
+              const error = errorFor('stall', rule.id);
+              return (
+                <RuleCard
+                  key={rule.id}
+                  rule={rule}
+                  editing={editing || !!error}
+                  onEdit={() => setRuleEditing(rule.id, true)}
+                  onDone={() => setRuleEditing(rule.id, false)}
+                  onChange={(next) => setStallRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))}
+                  onDelete={() => setPendingDelete({ kind: 'stall', rule: { id: rule.id, name: rule.name } })}
+                  summary={<StallRuleSummary rule={rule} />}
+                  error={error}
+                  containerRef={registerCardRef(rule.id)}
+                >
+                  <StallRuleFields rule={rule} onChange={(next) => setStallRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))} />
+                </RuleCard>
+              );
+            })
           )}
         </RuleSection>
 
@@ -330,17 +424,26 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
           {slowRules.length === 0 ? (
             <div className="grouped-row text-sm text-muted-foreground">No rules. Click &ldquo;Add rule&rdquo; to create one.</div>
           ) : (
-            slowRules.map((rule) => (
-              <RuleCard
-                key={rule.id}
-                rule={rule}
-                onChange={(next) => setSlowRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))}
-                onDelete={() => setPendingDelete({ kind: 'slow', rule: { id: rule.id, name: rule.name } })}
-                error={errorFor('slow', rule.id)}
-              >
-                <SlowRuleFields rule={rule} onChange={(next) => setSlowRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))} />
-              </RuleCard>
-            ))
+            slowRules.map((rule) => {
+              const editing = editingIds.has(rule.id);
+              const error = errorFor('slow', rule.id);
+              return (
+                <RuleCard
+                  key={rule.id}
+                  rule={rule}
+                  editing={editing || !!error}
+                  onEdit={() => setRuleEditing(rule.id, true)}
+                  onDone={() => setRuleEditing(rule.id, false)}
+                  onChange={(next) => setSlowRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))}
+                  onDelete={() => setPendingDelete({ kind: 'slow', rule: { id: rule.id, name: rule.name } })}
+                  summary={<SlowRuleSummary rule={rule} />}
+                  error={error}
+                  containerRef={registerCardRef(rule.id)}
+                >
+                  <SlowRuleFields rule={rule} onChange={(next) => setSlowRules((prev) => prev.map((r) => (r.id === rule.id ? next : r)))} />
+                </RuleCard>
+              );
+            })
           )}
         </RuleSection>
 
@@ -353,7 +456,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
 
         {/* ── Save bar ──────────────────────────────────────────────────── */}
         <div className="fixed left-0 right-0 bottom-16 sm:bottom-0 z-30 pointer-events-none">
-          <div className="max-w-5xl mx-auto px-4 pb-4">
+          <div className="max-w-screen-2xl mx-auto px-4 pb-4">
             <div
               className={
                 'pointer-events-auto flex items-center justify-end gap-2 rounded-md border bg-card/95 backdrop-blur px-3 py-2 shadow-lg transition-opacity ' +
@@ -391,9 +494,9 @@ function autoRunHint(mode: AutoRunMode): string {
     case 'disabled':
       return 'Auto-scheduler is off. Use manual runs from the Dashboard to test your rules. Recommended for new setups.';
     case 'dryRun':
-      return 'The scheduler runs on the interval but only logs what it would do. Visible in History as &quot;dryRunPreview&quot;. Note: active strikes are cleared after each dry-run cycle, so counts start fresh next time.';
+      return 'The scheduler runs on the interval but only logs what it would do. Visible in History as "dryRunPreview". Note: active strikes are cleared after each dry-run cycle, so counts start fresh next time.';
     case 'enabled':
-      return 'The scheduler will delete torrents that meet your rules on every interval. Make sure you&apos;ve tested with dry-run first.';
+      return "The scheduler will delete torrents that meet your rules on every interval. Make sure you've tested with dry-run first.";
   }
 }
 
@@ -536,39 +639,67 @@ interface CommonRuleShape {
 
 function RuleCard<R extends CommonRuleShape>({
   rule,
+  editing,
+  onEdit,
+  onDone,
   onChange,
   onDelete,
+  summary,
   error,
   children,
+  containerRef,
 }: {
   rule: R;
+  editing: boolean;
+  onEdit: () => void;
+  onDone: () => void;
   onChange: (next: R) => void;
   onDelete: () => void;
+  summary: React.ReactNode;
   error: string | undefined;
   children: React.ReactNode;
+  containerRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div className={`grouped-row flex-col items-stretch gap-3 ${error ? 'bg-destructive/5' : ''}`}>
+    <div
+      ref={containerRef}
+      className={`grouped-row flex-col items-stretch gap-3 ${error ? 'bg-destructive/5' : ''} ${!rule.enabled ? 'opacity-60' : ''}`}
+    >
       <div className="flex items-center gap-2 flex-wrap">
-        <Input
-          value={rule.name}
-          onChange={(e) => onChange({ ...rule, name: e.target.value })}
-          placeholder="Rule name"
-          className="font-medium max-w-xs flex-1 min-w-[10rem]"
-          aria-invalid={!!error}
-        />
+        {editing ? (
+          <Input
+            value={rule.name}
+            onChange={(e) => onChange({ ...rule, name: e.target.value })}
+            placeholder="Rule name"
+            className="font-medium max-w-xs flex-1 min-w-[10rem]"
+            aria-invalid={!!error}
+          />
+        ) : (
+          <div className="font-medium text-sm flex-1 min-w-0 truncate" title={rule.name}>
+            {rule.name || <span className="italic text-muted-foreground">Untitled rule</span>}
+          </div>
+        )}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <span className="text-xs text-muted-foreground">{rule.enabled ? 'On' : 'Off'}</span>
           <Switch
             checked={rule.enabled}
             onCheckedChange={(v) => onChange({ ...rule, enabled: v })}
           />
+          {editing ? (
+            <Button size="sm" variant="ghost" onClick={onDone} aria-label="Collapse rule">
+              <ChevronUp className="w-4 h-4" />
+            </Button>
+          ) : (
+            <Button size="sm" variant="ghost" onClick={onEdit} aria-label="Edit rule">
+              <Pencil className="w-4 h-4" />
+            </Button>
+          )}
           <Button size="sm" variant="ghost" onClick={onDelete} aria-label="Delete rule">
             <Trash2 className="w-4 h-4" />
           </Button>
         </div>
       </div>
-      {children}
+      {editing ? children : summary}
       {error && (
         <div className="text-xs text-destructive flex items-start gap-1.5">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -581,16 +712,6 @@ function RuleCard<R extends CommonRuleShape>({
 
 function FieldGrid({ children }: { children: React.ReactNode }) {
   return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">{children}</div>;
-}
-
-function FieldRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      {children}
-      {hint && <p className="text-[11px] text-muted-foreground/80 leading-tight">{hint}</p>}
-    </div>
-  );
 }
 
 function PercentRange({ min, max, onChange }: { min: number; max: number; onChange: (min: number, max: number) => void }) {
@@ -635,7 +756,7 @@ function PrivacySelect({ value, onChange }: { value: 'public' | 'private' | 'bot
 function StallRuleFields({ rule, onChange }: { rule: StallRuleShape; onChange: (next: StallRuleShape) => void }) {
   return (
     <FieldGrid>
-      <FieldRow label="Max strikes" hint="Minimum 3. Lower values risk false-positive removals.">
+      <FieldRow label="Max strikes" hint="Minimum 3. Lower values risk false-positive removals." active>
         <Input
           type="number"
           min={3}
@@ -643,50 +764,61 @@ function StallRuleFields({ rule, onChange }: { rule: StallRuleShape; onChange: (
           onChange={(e) => onChange({ ...rule, maxStrikes: Math.max(3, Number(e.target.value) || 3) })}
         />
       </FieldRow>
-      <FieldRow label="Privacy scope" hint="Limit this rule to public, private, or both kinds of torrents.">
+      <FieldRow label="Privacy scope" hint="Limit this rule to public, private, or both kinds of torrents." active>
         <PrivacySelect value={rule.privacyType} onChange={(v) => onChange({ ...rule, privacyType: v })} />
       </FieldRow>
-      <FieldRow label="Completion % range" hint="Rule only applies when the torrent's progress is in this range.">
+      <FieldRow
+        label="Completion % range"
+        hint="Rule only applies when the torrent's progress is in this range."
+        active={isRangeActive(rule.minCompletionPercentage, rule.maxCompletionPercentage)}
+      >
         <PercentRange
           min={rule.minCompletionPercentage}
           max={rule.maxCompletionPercentage}
           onChange={(min, max) => onChange({ ...rule, minCompletionPercentage: min, maxCompletionPercentage: max })}
         />
       </FieldRow>
-      <FieldRow label="Priority" hint="Lower number = evaluated first. First matching rule wins.">
+      <FieldRow label="Priority" hint="Lower number = evaluated first. First matching rule wins." active={rule.priority !== 0}>
         <Input
           type="number"
           value={rule.priority}
           onChange={(e) => onChange({ ...rule, priority: Number(e.target.value) || 0 })}
         />
       </FieldRow>
-      <FieldRow label="Reset strikes on progress" hint="Clears accumulated strikes when the torrent shows new download bytes.">
+      <FieldRow label="Reset strikes on progress" hint="Clears accumulated strikes when the torrent shows new download bytes." active={rule.resetStrikesOnProgress}>
         <Switch checked={rule.resetStrikesOnProgress} onCheckedChange={(v) => onChange({ ...rule, resetStrikesOnProgress: v })} />
       </FieldRow>
-      <FieldRow label="Minimum progress to reset" hint="Bytes. Leave blank for &quot;any progress counts&quot;.">
-        <Input
-          type="number"
-          min={0}
-          value={rule.minimumProgressBytes ?? ''}
+      <FieldRow
+        label="Minimum progress to reset"
+        hint="Leave blank for &quot;any progress counts&quot;. Pick KB / MB / GB."
+        active={isNumericActive(rule.minimumProgressBytes, -1) && rule.minimumProgressBytes !== 0}
+      >
+        <SizeInput
+          bytes={rule.minimumProgressBytes}
+          onChange={(b) => onChange({ ...rule, minimumProgressBytes: b })}
           placeholder="(any progress)"
-          onChange={(e) => onChange({ ...rule, minimumProgressBytes: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0) })}
+          defaultUnit="MB"
         />
       </FieldRow>
-      <FieldRow label="Change category on removal" hint="Tells the arr to move the queue item rather than delete. Disables 'Delete private from client'.">
+      <FieldRow label="Change category on removal" hint="Tells the arr to move the queue item rather than delete. Disables 'Delete private from client'." active={rule.changeCategory}>
         <Switch
           checked={rule.changeCategory}
           disabled={rule.deletePrivate}
           onCheckedChange={(v) => onChange({ ...rule, changeCategory: v })}
         />
       </FieldRow>
-      <FieldRow label="Delete private from client" hint="Permit deletion of private torrents — affects H&R standing.">
+      <FieldRow label="Delete private from client" hint="Permit deletion of private torrents — affects H&R standing." active={rule.deletePrivate}>
         <Switch
           checked={rule.deletePrivate}
           disabled={rule.changeCategory}
           onCheckedChange={(v) => onChange({ ...rule, deletePrivate: v })}
         />
       </FieldRow>
-      <FieldRow label="Re-search override" hint="Override the global &quot;Re-search after removal&quot; for matches of this rule.">
+      <FieldRow
+        label="Re-search override"
+        hint="Override the global &quot;Re-search after removal&quot; for matches of this rule."
+        active={rule.reSearchOverride !== null}
+      >
         <Select
           value={rule.reSearchOverride === null ? 'inherit' : rule.reSearchOverride ? 'true' : 'false'}
           onValueChange={(v) => onChange({ ...rule, reSearchOverride: v === 'inherit' ? null : v === 'true' })}
@@ -707,7 +839,7 @@ function StallRuleFields({ rule, onChange }: { rule: StallRuleShape; onChange: (
 function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (next: SlowRuleShape) => void }) {
   return (
     <FieldGrid>
-      <FieldRow label="Max strikes" hint="Minimum 3.">
+      <FieldRow label="Max strikes" hint="Minimum 3." active>
         <Input
           type="number"
           min={3}
@@ -715,10 +847,14 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
           onChange={(e) => onChange({ ...rule, maxStrikes: Math.max(3, Number(e.target.value) || 3) })}
         />
       </FieldRow>
-      <FieldRow label="Privacy scope">
+      <FieldRow label="Privacy scope" active>
         <PrivacySelect value={rule.privacyType} onChange={(v) => onChange({ ...rule, privacyType: v })} />
       </FieldRow>
-      <FieldRow label="Min speed (KB/s)" hint="Strikes when download speed is below this. Blank = disabled.">
+      <FieldRow
+        label="Min speed (KB/s)"
+        hint="Strikes when download speed is below this. Blank = disabled."
+        active={isNumericActive(rule.minSpeedKbps)}
+      >
         <Input
           type="number"
           min={0}
@@ -727,7 +863,11 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
           onChange={(e) => onChange({ ...rule, minSpeedKbps: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0) })}
         />
       </FieldRow>
-      <FieldRow label="Max active hours" hint="Strikes when actively downloading for longer than this. Pause time is excluded.">
+      <FieldRow
+        label="Max active hours"
+        hint="Strikes when actively downloading for longer than this. Pause time is excluded."
+        active={isNumericActive(rule.maxTimeHours)}
+      >
         <Input
           type="number"
           min={0}
@@ -737,47 +877,53 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
           onChange={(e) => onChange({ ...rule, maxTimeHours: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0) })}
         />
       </FieldRow>
-      <FieldRow label="Completion % range">
+      <FieldRow
+        label="Completion % range"
+        active={isRangeActive(rule.minCompletionPercentage, rule.maxCompletionPercentage)}
+      >
         <PercentRange
           min={rule.minCompletionPercentage}
           max={rule.maxCompletionPercentage}
           onChange={(min, max) => onChange({ ...rule, minCompletionPercentage: min, maxCompletionPercentage: max })}
         />
       </FieldRow>
-      <FieldRow label="Ignore torrents larger than (bytes)" hint="Torrents above this size are exempt. Blank = no limit.">
-        <Input
-          type="number"
-          min={0}
-          value={rule.ignoreAboveSizeBytes ?? ''}
+      <FieldRow
+        label="Ignore torrents larger than"
+        hint="Torrents above this size are exempt. Blank = no limit. Pick KB / MB / GB."
+        active={isNumericActive(rule.ignoreAboveSizeBytes, -1) && rule.ignoreAboveSizeBytes !== 0}
+      >
+        <SizeInput
+          bytes={rule.ignoreAboveSizeBytes}
+          onChange={(b) => onChange({ ...rule, ignoreAboveSizeBytes: b })}
           placeholder="(no limit)"
-          onChange={(e) => onChange({ ...rule, ignoreAboveSizeBytes: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0) })}
+          defaultUnit="GB"
         />
       </FieldRow>
-      <FieldRow label="Priority" hint="Lower number = evaluated first.">
+      <FieldRow label="Priority" hint="Lower number = evaluated first." active={rule.priority !== 0}>
         <Input
           type="number"
           value={rule.priority}
           onChange={(e) => onChange({ ...rule, priority: Number(e.target.value) || 0 })}
         />
       </FieldRow>
-      <FieldRow label="Reset strikes on speed recovery" hint="Clears accumulated strikes if speed climbs back over the threshold.">
+      <FieldRow label="Reset strikes on speed recovery" hint="Clears accumulated strikes if speed climbs back over the threshold." active={rule.resetStrikesOnProgress}>
         <Switch checked={rule.resetStrikesOnProgress} onCheckedChange={(v) => onChange({ ...rule, resetStrikesOnProgress: v })} />
       </FieldRow>
-      <FieldRow label="Change category on removal">
+      <FieldRow label="Change category on removal" active={rule.changeCategory}>
         <Switch
           checked={rule.changeCategory}
           disabled={rule.deletePrivate}
           onCheckedChange={(v) => onChange({ ...rule, changeCategory: v })}
         />
       </FieldRow>
-      <FieldRow label="Delete private from client">
+      <FieldRow label="Delete private from client" active={rule.deletePrivate}>
         <Switch
           checked={rule.deletePrivate}
           disabled={rule.changeCategory}
           onCheckedChange={(v) => onChange({ ...rule, deletePrivate: v })}
         />
       </FieldRow>
-      <FieldRow label="Re-search override">
+      <FieldRow label="Re-search override" active={rule.reSearchOverride !== null}>
         <Select
           value={rule.reSearchOverride === null ? 'inherit' : rule.reSearchOverride ? 'true' : 'false'}
           onValueChange={(v) => onChange({ ...rule, reSearchOverride: v === 'inherit' ? null : v === 'true' })}

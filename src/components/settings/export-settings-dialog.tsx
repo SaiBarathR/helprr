@@ -44,6 +44,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
   );
   const [selectedAppSettings, setSelectedAppSettings] = useState(true);
   const [selectedNotifPrefs, setSelectedNotifPrefs] = useState(true);
+  const [selectedCleanup, setSelectedCleanup] = useState(true);
   const [availableServices, setAvailableServices] = useState<ConnectedServiceInfo[]>([]);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [includeSecrets, setIncludeSecrets] = useState(false);
@@ -108,8 +109,9 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
     selectedUi.size === 0
     && !selectedAppSettings
     && !selectedNotifPrefs
+    && !selectedCleanup
     && selectedServices.size === 0
-  ), [selectedUi, selectedAppSettings, selectedNotifPrefs, selectedServices]);
+  ), [selectedUi, selectedAppSettings, selectedNotifPrefs, selectedCleanup, selectedServices]);
 
   async function handleExport() {
     if (nothingSelected) {
@@ -125,6 +127,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
           appSettings: selectedAppSettings,
           services: selectedServices.size > 0 ? Array.from(selectedServices) : false,
           notificationPrefs: selectedNotifPrefs,
+          cleanup: selectedCleanup,
           includeSecrets,
         }),
       });
@@ -150,6 +153,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         ...(serverPayload.appSettings && { appSettings: serverPayload.appSettings }),
         ...(serverPayload.serviceConnections && { serviceConnections: serverPayload.serviceConnections }),
         ...(serverPayload.notificationPrefs && { notificationPrefs: serverPayload.notificationPrefs }),
+        ...(serverPayload.cleanup && { cleanup: serverPayload.cleanup }),
       };
 
       const json = JSON.stringify(fullPayload, null, 2);
@@ -283,6 +287,22 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
                 <div className="text-sm font-medium">Notification Preferences</div>
                 <div className="text-xs text-muted-foreground">
                   Rules for all registered devices (chosen at import time)
+                </div>
+              </div>
+            </label>
+          </section>
+
+          {/* Cleanup */}
+          <section>
+            <label className="flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedCleanup}
+                onCheckedChange={(v) => setSelectedCleanup(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">Cleanup</div>
+                <div className="text-xs text-muted-foreground">
+                  Queue &amp; download cleaner configs plus all stall, slow, and seeding rules
                 </div>
               </div>
             </label>

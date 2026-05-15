@@ -16,7 +16,7 @@ async function getHandler() {
   startToday.setHours(0, 0, 0, 0);
   const start7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [today, week, all, byCleaner] = await Promise.all([
+  const [today, week, all, byCleaner, totalStrikes, reSearchedAllTime, activeStrikes] = await Promise.all([
     prisma.cleanupHistory.count({ where: { action: { in: REMOVED_ACTIONS }, createdAt: { gte: startToday } } }),
     prisma.cleanupHistory.count({ where: { action: { in: REMOVED_ACTIONS }, createdAt: { gte: start7d } } }),
     prisma.cleanupHistory.count({ where: { action: { in: REMOVED_ACTIONS } } }),
@@ -25,12 +25,13 @@ async function getHandler() {
       where: { action: { in: REMOVED_ACTIONS } },
       _count: { _all: true },
     }),
+    prisma.cleanupHistory.count({ where: { action: 'strikeAdded' } }),
+    prisma.cleanupHistory.count({ where: { reSearched: true } }),
+    prisma.cleanupStrike.count(),
   ]);
 
   const queueTotal = byCleaner.find((r) => r.cleaner === 'queue')?._count._all ?? 0;
   const downloadTotal = byCleaner.find((r) => r.cleaner === 'download')?._count._all ?? 0;
-
-  const activeStrikes = await prisma.cleanupStrike.count();
 
   return NextResponse.json({
     removedToday: today,
@@ -39,6 +40,8 @@ async function getHandler() {
     queueTotal,
     downloadTotal,
     activeStrikes,
+    totalStrikes,
+    reSearchedAllTime,
   });
 }
 

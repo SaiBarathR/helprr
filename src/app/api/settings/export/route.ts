@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { withApiLogging } from '@/lib/api-logger';
 import {
+  type ExportedCleanup,
   type ExportedNotificationDevice,
   type ExportedNotificationRule,
   type ExportedServiceConnection,
@@ -15,11 +16,14 @@ import {
 } from '@/lib/settings-export';
 import { EVENT_TYPES, type NotificationEventType } from '@/lib/notification-events';
 import { STORE_VERSION } from '@/lib/store';
+import { loadQueueCleanerConfig, loadStallRules, loadSlowRules } from '@/lib/cleanup/queue-cleaner';
+import { loadDownloadCleanerConfig, loadSeedingRules } from '@/lib/cleanup/download-cleaner';
 
 interface ExportRequestBody {
   appSettings?: boolean;
   services?: string[] | false;
   notificationPrefs?: boolean;
+  cleanup?: boolean;
   includeSecrets?: boolean;
 }
 
@@ -37,6 +41,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const includeSecrets = body.includeSecrets === true;
   const wantAppSettings = body.appSettings === true;
   const wantNotificationPrefs = body.notificationPrefs === true;
+  const wantCleanup = body.cleanup === true;
   const selectedServices: ServiceType[] = Array.isArray(body.services)
     ? (SERVICE_TYPES_EXPORTABLE.filter((t) => (body.services as string[]).includes(t)) as ServiceType[])
     : [];
@@ -119,6 +124,24 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         devices.push({ deviceName: uniqueName, rules });
       }
       payload.notificationPrefs = devices;
+    }
+
+    if (wantCleanup) {
+      const [queueConfig, downloadConfig, stallRules, slowRules, seedingRules] = await Promise.all([
+        loadQueueCleanerConfig(),
+        loadDownloadCleanerConfig(),
+        loadStallRules(),
+        loadSlowRules(),
+        loadSeedingRules(),
+      ]);
+      const cleanup: ExportedCleanup = {
+        queueConfig,
+        downloadConfig,
+        stallRules,
+        slowRules,
+        seedingRules: seedingRules.filter((r) => !r.isSystem),
+      };
+      payload.cleanup = cleanup;
     }
 
     return NextResponse.json(payload);

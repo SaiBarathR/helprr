@@ -1,6 +1,13 @@
 import type { ServiceType } from '@prisma/client';
 import { EVENT_TYPES, type NotificationEventType } from '@/lib/notification-events';
 import { STORE_VERSION } from '@/lib/store';
+import type {
+  DownloadCleanerConfigShape,
+  QueueCleanerConfigShape,
+  SeedingRuleShape,
+  SlowRuleShape,
+  StallRuleShape,
+} from '@/lib/cleanup/types';
 
 export const EXPORT_FORMAT_KIND = 'helprr-settings-export';
 export const EXPORT_FORMAT_VERSION = 1;
@@ -107,6 +114,16 @@ export interface ExportedNotificationDevice {
   rules: ExportedNotificationRule[];
 }
 
+export interface ExportedCleanup {
+  queueConfig: QueueCleanerConfigShape;
+  downloadConfig: DownloadCleanerConfigShape;
+  stallRules: StallRuleShape[];
+  slowRules: SlowRuleShape[];
+  // System-managed seeding rules (the auto-remove-imported synthetic rule) are
+  // excluded — they're regenerated from downloadConfig on import.
+  seedingRules: SeedingRuleShape[];
+}
+
 export interface SettingsExportPayload {
   kind: typeof EXPORT_FORMAT_KIND;
   version: number;
@@ -117,6 +134,7 @@ export interface SettingsExportPayload {
   appSettings?: ExportedAppSettings;
   serviceConnections?: ExportedServiceConnection[];
   notificationPrefs?: ExportedNotificationDevice[];
+  cleanup?: ExportedCleanup;
 }
 
 export function extractUiPrefsByCategory(
@@ -179,6 +197,9 @@ export function validateImportFile(
   }
   if (obj.notificationPrefs !== undefined && !Array.isArray(obj.notificationPrefs)) {
     return { ok: false, error: 'Invalid notificationPrefs section.' };
+  }
+  if (obj.cleanup !== undefined && (typeof obj.cleanup !== 'object' || obj.cleanup === null)) {
+    return { ok: false, error: 'Invalid cleanup section.' };
   }
 
   if (Array.isArray(obj.notificationPrefs)) {

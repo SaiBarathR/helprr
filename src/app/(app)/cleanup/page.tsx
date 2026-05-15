@@ -22,7 +22,7 @@ export default function CleanupPage() {
   }, []);
 
   return (
-    <div className="px-4 py-6 max-w-5xl mx-auto animate-content-in">
+    <div className="px-4 py-6 max-w-screen-2xl mx-auto animate-content-in">
       <div className="mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">Cleanup</h1>
         <p className="text-sm text-muted-foreground mt-1">

@@ -38,7 +38,7 @@ export async function loadDownloadCleanerConfig(): Promise<DownloadCleanerConfig
     autoRemoveImportedEnabled: row.autoRemoveImportedEnabled,
     autoRemoveImportedCategories: Array.isArray(row.autoRemoveImportedCategories)
       ? (row.autoRemoveImportedCategories as string[])
-      : ['sonarr', 'radarr'],
+      : ['sonarr', 'radarr', 'tv-sonarr'],
     autoRemoveImportedDeleteFiles: row.autoRemoveImportedDeleteFiles,
     autoRunMode: (AUTO_RUN_MODES as string[]).includes(row.autoRunMode)
       ? (row.autoRunMode as AutoRunMode)
