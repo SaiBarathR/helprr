@@ -25,13 +25,9 @@ import type {
 } from '@/lib/cleanup/types';
 import { FieldRow, isArrayActive, isNumericActive } from './field-row';
 import { SeedingRuleSummary } from './rule-summary';
+import { jsonOk } from '@/lib/http';
 
 const COMMON_CATEGORIES = ['sonarr', 'radarr', 'tv-sonarr'] as const;
-
-async function jsonOk<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json() as Promise<T>;
-}
 
 interface SaveAllResponse {
   config: DownloadCleanerConfigShape;
@@ -651,7 +647,7 @@ function makeDefaultSeeding(): Omit<SeedingRuleShape, 'id' | 'isSystem'> {
     tagsAny: [],
     tagsAll: [],
     privacyType: 'both',
-    maxRatio: 1.0,
+    maxRatio: -1,
     minSeedTimeHours: 0,
     maxSeedTimeHours: -1,
     deleteSourceFiles: true,

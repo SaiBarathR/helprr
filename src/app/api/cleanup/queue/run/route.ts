@@ -10,6 +10,8 @@ function serializeResult(r: Awaited<ReturnType<typeof runQueueCleanerCycle>>) {
     dryRun: r.dryRun,
     durationMs: r.durationMs,
     skippedFailedImport: r.skippedFailedImport,
+    succeeded: r.succeeded,
+    failed: r.failed,
     pendingStrikes: r.pendingStrikes,
     decisions: r.decisions.map((d) => ({
       hash: d.torrent.hash,

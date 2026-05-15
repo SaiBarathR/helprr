@@ -1,12 +1,18 @@
 import { NextResponse } from 'next/server';
+import { CleanupAction } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Only completed removal actions count toward "Removed" tiles. Excludes
 // strikeAdded (just a strike event), dryRunPreview (no action taken), and
-// failed (attempted but didn't succeed).
-const REMOVED_ACTIONS = ['removedFromClient', 'removedFromQueue', 'categoryChanged'];
+// failed (attempted but didn't succeed). `skipped` is also excluded since
+// nothing was actually removed.
+const REMOVED_ACTIONS: CleanupAction[] = [
+  CleanupAction.removedFromClient,
+  CleanupAction.removedFromQueue,
+  CleanupAction.categoryChanged,
+];
 
 async function getHandler() {
   const err = await requireAuth();

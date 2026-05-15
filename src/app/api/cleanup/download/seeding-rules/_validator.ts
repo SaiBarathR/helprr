@@ -37,9 +37,10 @@ export function validateSeedingRulePayload(body: unknown): { ok: true; value: Om
   if (maxSeedTimeHours >= 0 && minSeedTimeHours > maxSeedTimeHours) {
     return { ok: false, error: 'minSeedTimeHours cannot exceed maxSeedTimeHours' };
   }
-  if (maxRatio < 0 && maxSeedTimeHours < 0) {
-    return { ok: false, error: 'either maxRatio or maxSeedTimeHours must be >= 0' };
-  }
+  // Both -1 means the rule is intentionally inert (matches nothing) until the
+  // user configures at least one cap. The cleaner's matcher handles this case
+  // (`ratioMet` and `maxTimeMet` are both false), so accept it here so newly
+  // added rules can be saved with safe defaults before being configured.
 
   const deleteSourceFiles = b.deleteSourceFiles === undefined ? true : Boolean(b.deleteSourceFiles);
 

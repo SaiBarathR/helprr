@@ -22,9 +22,13 @@ import {
   SeedingRuleShape,
   TriggeredBy,
 } from './types';
+import { processWithLimit } from './concurrency';
 
 const LOG = 'download-cleaner';
 const SYSTEM_RULE_NAME = 'Auto-remove imported (system)';
+
+// Max parallel removals per cycle. Mirrors queue-cleaner's setting.
+const CLEANUP_CONCURRENCY = 4;
 
 export async function loadDownloadCleanerConfig(): Promise<DownloadCleanerConfigShape> {
   let row = await prisma.downloadCleanerConfig.findUnique({ where: { id: 'singleton' } });
@@ -130,7 +134,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
   const t0 = Date.now();
   const cfg = await loadDownloadCleanerConfig();
   if (!cfg.enabled && opts.triggeredBy === 'auto') {
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0 };
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0 };
   }
 
   await syncSystemSeedingRule(cfg);
@@ -140,7 +144,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     qbit = await getQBittorrentClient();
   } catch (err) {
     logger.warn('qBittorrent unavailable', { err: String(err) }, { scope: LOG });
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0 };
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0 };
   }
 
   let torrents: QBittorrentTorrent[];
@@ -148,7 +152,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     torrents = await qbit.getTorrents();
   } catch (err) {
     logger.warn('qBittorrent listing failed', { err: String(err) }, { scope: LOG });
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0 };
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0 };
   }
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
@@ -244,7 +248,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
       }
     }
   } else {
-    for (const d of decisions) {
+    await processWithLimit(decisions, CLEANUP_CONCURRENCY, async (d) => {
       try {
         const outcome = await executeDownloadCleanerRemoval(d, opts.triggeredBy);
         if (outcome.kind === 'success') {
@@ -260,7 +264,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
         failedCount++;
         failureDecisions.push({ decision: d, errorMessage });
       }
-    }
+    });
   }
 
   // Batched notifications on real runs only.
@@ -331,6 +335,8 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     dryRun: opts.dryRun,
     decisions,
     durationMs,
+    succeeded: succeededCount,
+    failed: failedCount,
   };
 }
 

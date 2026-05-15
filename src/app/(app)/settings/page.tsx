@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -291,6 +292,11 @@ export default function SettingsPage() {
   const [cacheLastPurgedAt, setCacheLastPurgedAt] = useState<string | null>(null);
   const [loadingCacheUsage, setLoadingCacheUsage] = useState(false);
   const [purgingCache, setPurgingCache] = useState(false);
+  const [cleanupHistorySummary, setCleanupHistorySummary] = useState<{ total: number; oldestAt: string | null } | null>(null);
+  const [cleanupHistoryOlderThan, setCleanupHistoryOlderThan] = useState('30');
+  const [clearOlderConfirmOpen, setClearOlderConfirmOpen] = useState(false);
+  const [clearAllHistoryConfirmOpen, setClearAllHistoryConfirmOpen] = useState(false);
+  const [deletingCleanupHistory, setDeletingCleanupHistory] = useState(false);
   const [upcomingAlertHours, setUpcomingAlertHours] = useState('24');
   const [upcomingNotifyMode, setUpcomingNotifyMode] = useState('before_air');
   const [upcomingNotifyBeforeMins, setUpcomingNotifyBeforeMins] = useState('60');
@@ -465,6 +471,43 @@ export default function SettingsPage() {
 
     return () => clearInterval(interval);
   }, [cacheImagesEnabled, loadCacheUsage]);
+
+  const loadCleanupHistorySummary = useCallback(async () => {
+    try {
+      const res = await fetch('/api/cleanup/history?summary=true');
+      if (!res.ok) return;
+      const data = await res.json() as { total?: unknown; oldestAt?: unknown };
+      setCleanupHistorySummary({
+        total: typeof data.total === 'number' ? data.total : 0,
+        oldestAt: typeof data.oldestAt === 'string' ? data.oldestAt : null,
+      });
+    } catch {
+      // noop
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCleanupHistorySummary();
+  }, [loadCleanupHistorySummary]);
+
+  async function deleteCleanupHistory(query: string) {
+    setDeletingCleanupHistory(true);
+    try {
+      const res = await fetch(`/api/cleanup/history?${query}`, { method: 'DELETE' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(payload?.error || 'Failed to delete cleanup history');
+        return;
+      }
+      const deleted = typeof payload?.deleted === 'number' ? payload.deleted : 0;
+      toast.success(deleted === 0 ? 'No matching rows to delete' : `Deleted ${deleted} row${deleted === 1 ? '' : 's'}`);
+      await loadCleanupHistorySummary();
+    } catch {
+      toast.error('Failed to delete cleanup history');
+    } finally {
+      setDeletingCleanupHistory(false);
+    }
+  }
 
   function updateService(type: ServiceConfigType, field: keyof ServiceForm, value: string | boolean) {
     setServices((prev) => ({
@@ -1143,6 +1186,102 @@ export default function SettingsPage() {
           )}
         </div>
       </div>
+
+      {/* ── Cleanup history ── */}
+      <div className="grouped-section mb-6">
+        <div className="grouped-section-title">Cleanup history</div>
+        <div className="grouped-section-content">
+          <div className="grouped-row">
+            <span className="text-sm">Stored rows</span>
+            <span className="text-sm text-muted-foreground">
+              {cleanupHistorySummary == null
+                ? 'Loading…'
+                : cleanupHistorySummary.total === 0
+                ? 'No history yet'
+                : `${cleanupHistorySummary.total.toLocaleString()} rows`}
+            </span>
+          </div>
+          {cleanupHistorySummary?.oldestAt && (
+            <div className="grouped-row">
+              <span className="text-sm">Oldest entry</span>
+              <span className="text-sm text-muted-foreground">
+                {new Date(cleanupHistorySummary.oldestAt).toLocaleString()}
+              </span>
+            </div>
+          )}
+          <div className="grouped-row">
+            <Label htmlFor="cleanupHistoryOlderThan" className="text-sm">Delete rows older than</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="cleanupHistoryOlderThan"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={3650}
+                value={cleanupHistoryOlderThan}
+                onChange={(e) => setCleanupHistoryOlderThan(e.target.value)}
+                className="w-20 h-8 text-sm text-right"
+              />
+              <span className="text-sm text-muted-foreground">days</span>
+            </div>
+          </div>
+          <div className="flex max-w-[51%] gap-2 px-3 py-3 pb-1 border-b border-[oklch(1_0_0/6%)] last:border-b-0 space-y-2">
+            <Button
+              variant="outline"
+              className="w-full h-9"
+              onClick={() => setClearOlderConfirmOpen(true)}
+              disabled={
+                deletingCleanupHistory
+                || !cleanupHistorySummary
+                || cleanupHistorySummary.total === 0
+                || !Number.isFinite(Number(cleanupHistoryOlderThan))
+                || Number(cleanupHistoryOlderThan) < 1
+              }
+            >
+              {deletingCleanupHistory ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                'Clear older history'
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full h-9 text-destructive hover:text-destructive"
+              onClick={() => setClearAllHistoryConfirmOpen(true)}
+              disabled={deletingCleanupHistory || !cleanupHistorySummary || cleanupHistorySummary.total === 0}
+            >
+              Clear all history
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={clearOlderConfirmOpen}
+        onOpenChange={setClearOlderConfirmOpen}
+        title={`Delete cleanup history older than ${cleanupHistoryOlderThan} day${cleanupHistoryOlderThan === '1' ? '' : 's'}?`}
+        description={`Rows created before ${new Date(Date.now() - Math.max(1, Number(cleanupHistoryOlderThan) || 0) * 86_400_000).toLocaleString()} will be permanently deleted. This cannot be undone.`}
+        confirmLabel="Yes, delete"
+        cancelLabel="Cancel"
+        destructive
+        busy={deletingCleanupHistory}
+        onConfirm={() => deleteCleanupHistory(`olderThanDays=${encodeURIComponent(cleanupHistoryOlderThan)}`)}
+      />
+
+      <ConfirmDialog
+        open={clearAllHistoryConfirmOpen}
+        onOpenChange={setClearAllHistoryConfirmOpen}
+        title="Delete all cleanup history?"
+        description="Every cleanup audit row will be removed. The cleaners will still run normally — only the historical log is wiped. This cannot be undone."
+        confirmLabel="Yes, delete all"
+        cancelLabel="Cancel"
+        destructive
+        busy={deletingCleanupHistory}
+        onConfirm={() => deleteCleanupHistory('all=true')}
+      />
 
       {/* ── Display ── */}
       <div className="grouped-section mb-6">
