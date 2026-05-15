@@ -13,11 +13,13 @@ import {
   BarChart,
   BarChart3,
   Bell,
+  Building2,
   Calendar,
   CalendarDays,
   Clock,
   Database,
   Download,
+  Filter,
   HardDrive,
   History,
   Layers,
@@ -25,6 +27,8 @@ import {
   MonitorPlay,
   PlayCircle,
   Search,
+  Sparkles,
+  Tags,
 } from 'lucide-react';
 import { getAllWidgetDefinitions } from '@/lib/widgets/registry';
 import { useUIStore } from '@/lib/store';
@@ -36,11 +40,13 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   BarChart,
   BarChart3,
   Bell,
+  Building2,
   Calendar,
   CalendarDays,
   Clock,
   Database,
   Download,
+  Filter,
   HardDrive,
   History,
   Layers,
@@ -48,6 +54,8 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MonitorPlay,
   PlayCircle,
   Search,
+  Sparkles,
+  Tags,
 };
 
 const CATEGORY_LABELS: Record<WidgetCategory, string> = {
@@ -56,9 +64,10 @@ const CATEGORY_LABELS: Record<WidgetCategory, string> = {
   downloads: 'Downloads',
   streaming: 'Streaming',
   monitoring: 'Monitoring',
+  discover: 'Discover',
 };
 
-const CATEGORY_ORDER: WidgetCategory[] = ['overview', 'media', 'downloads', 'streaming', 'monitoring'];
+const CATEGORY_ORDER: WidgetCategory[] = ['overview', 'media', 'downloads', 'streaming', 'monitoring', 'discover'];
 
 interface WidgetGalleryProps {
   open: boolean;
@@ -67,9 +76,13 @@ interface WidgetGalleryProps {
 
 export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   const dashboardLayout = useUIStore((s) => s.dashboardLayout);
+  const discoverLayout = useUIStore((s) => s.discoverLayout);
   const addWidget = useUIStore((s) => s.addWidget);
 
-  const allDefinitions = getAllWidgetDefinitions();
+  const allDefinitions = useMemo(
+    () => getAllWidgetDefinitions(discoverLayout),
+    [discoverLayout]
+  );
   const addedWidgetIds = useMemo(
     () => new Set(dashboardLayout.map((w) => w.widgetId)),
     [dashboardLayout]

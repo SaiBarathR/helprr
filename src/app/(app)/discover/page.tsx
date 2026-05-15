@@ -33,6 +33,7 @@ import {
   CommandItem,
 } from '@/components/ui/command';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { LanguageRegionCombobox } from '@/components/ui/language-region-combobox';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
@@ -40,6 +41,11 @@ import type {
   DiscoverItem,
   DiscoverSection,
 } from '@/types';
+import type {
+  DiscoverLayoutConfig,
+  DiscoverLayoutSection,
+  DiscoverLayoutCustomFilters,
+} from '@/lib/discover-layout-config';
 import {
   Filter,
   Flame,
@@ -83,74 +89,7 @@ interface RateLimitInfo {
   retryAt: string | null;
 }
 
-interface LanguageRegionComboboxProps {
-  value: string;
-  onChange: (code: string) => void;
-  options: Array<{ code: string; name: string }>;
-  placeholder: string;
-  emptyLabel: string;
-  searchPlaceholder: string;
-}
 
-function LanguageRegionCombobox({
-  value,
-  onChange,
-  options,
-  placeholder,
-  emptyLabel,
-  searchPlaceholder,
-}: LanguageRegionComboboxProps) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((opt) => opt.code === value);
-  const label = selected ? selected.name : value ? value.toUpperCase() : placeholder;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm text-left flex items-center justify-between"
-        >
-          <span className={`truncate ${selected ? '' : 'text-muted-foreground'}`}>{label}</span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground rotate-90" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="p-0 w-[280px]" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>No matches.</CommandEmpty>
-            <CommandGroup>
-              <CommandItem
-                value={emptyLabel}
-                onSelect={() => {
-                  onChange('');
-                  setOpen(false);
-                }}
-              >
-                <span className="flex-1">{emptyLabel}</span>
-                {!value && <Check className="h-3.5 w-3.5" />}
-              </CommandItem>
-              {options.map((opt) => (
-                <CommandItem
-                  key={opt.code}
-                  value={`${opt.name} ${opt.code}`}
-                  onSelect={() => {
-                    onChange(opt.code);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="flex-1 truncate">{opt.name}</span>
-                  <span className="text-xs text-muted-foreground uppercase">{opt.code}</span>
-                  {value === opt.code && <Check className="h-3.5 w-3.5 ml-1" />}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 function cardTypeIcon(type: 'movie' | 'tv') {
   return (
@@ -391,6 +330,52 @@ function SectionRow({
   );
 }
 
+function CustomCarouselRow({
+  layoutSection,
+  items,
+  loading,
+  onOpenItem,
+}: {
+  layoutSection: DiscoverLayoutSection;
+  items: DiscoverItem[];
+  loading: boolean;
+  onOpenItem: (item: DiscoverItem) => void;
+}) {
+  if (loading) {
+    return (
+      <section className="space-y-2">
+        <div className="flex items-center justify-between px-0.5">
+          <h2 className="text-base font-semibold">{layoutSection.label}</h2>
+          <span className="text-[10px] text-muted-foreground/50 bg-muted/40 px-1.5 py-0.5 rounded">Custom</span>
+        </div>
+        <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] aspect-[2/3] rounded-xl bg-muted/40 animate-pulse" />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between px-0.5">
+        <h2 className="text-base font-semibold">{layoutSection.label}</h2>
+        <span className="text-[10px] text-muted-foreground/50 bg-muted/40 px-1.5 py-0.5 rounded">Custom</span>
+      </div>
+      <div className="flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+        {items.map((item) => (
+          <div key={`${item.mediaType}-${item.tmdbId}`} className="snap-start">
+            <MediaPoster item={item} onClick={onOpenItem} />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function DiscoverPage() {
   const searchParams = useSearchParams();
   const {
@@ -425,6 +410,11 @@ export default function DiscoverPage() {
   const gridFetchControllerRef = useRef<AbortController | null>(null);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Discover layout config (server-side, cross-device)
+  const [layoutConfig, setLayoutConfig] = useState<DiscoverLayoutConfig | null>(null);
+  const [customCarouselItems, setCustomCarouselItems] = useState<Record<string, DiscoverItem[]>>({});
+  const [customCarouselLoading, setCustomCarouselLoading] = useState<Record<string, boolean>>({});
 
   const router = useRouter();
 
@@ -468,19 +458,53 @@ export default function DiscoverPage() {
     );
   }, [manualBrowseMode, query, hasAdvancedFilters, activeSectionKey, discoverSort, discoverContentType, personFilter]);
 
+  // Layout-aware visible sections: respects user-configured order, visibility, and content type filter
   const visibleSections = useMemo(() => {
-    if (discoverContentType === 'all') return sections;
+    // If no layout config yet, fall back to original logic
+    if (!layoutConfig) {
+      if (discoverContentType === 'all') return sections;
+      return sections.filter((section) => {
+        if (!section.mediaType || section.mediaType === 'all') return section.key === 'providers';
+        if (discoverContentType === 'movie') return section.mediaType === 'movie';
+        if (discoverContentType === 'show') return section.mediaType === 'tv';
+        return true;
+      });
+    }
 
-    return sections.filter((section) => {
-      if (!section.mediaType || section.mediaType === 'all') {
-        return section.key === 'providers';
+    // Build a quick lookup of API sections by key
+    const sectionsByKey = new Map(sections.map((s) => [s.key, s]));
+
+    // Walk the layout config in order, only include enabled built-in sections that exist
+    const ordered: DiscoverSection[] = [];
+    for (const entry of layoutConfig.sections) {
+      if (!entry.enabled) continue;
+      if (entry.type === 'builtin') {
+        const apiSection = sectionsByKey.get(entry.id);
+        if (!apiSection) continue;
+
+        // Apply content type filter
+        if (discoverContentType !== 'all') {
+          if (!apiSection.mediaType || apiSection.mediaType === 'all') {
+            if (apiSection.key !== 'providers') continue;
+          } else if (discoverContentType === 'movie' && apiSection.mediaType !== 'movie') continue;
+          else if (discoverContentType === 'show' && apiSection.mediaType !== 'tv') continue;
+        }
+
+        ordered.push(apiSection);
       }
+      // Custom sections are rendered separately via customCarouselEntries
+    }
 
-      if (discoverContentType === 'movie') return section.mediaType === 'movie';
-      if (discoverContentType === 'show') return section.mediaType === 'tv';
-      return true;
-    });
-  }, [sections, discoverContentType]);
+    return ordered;
+  }, [sections, layoutConfig, discoverContentType]);
+
+  // Custom carousel entries from layout config (enabled custom sections in order)
+  const customCarouselEntries = useMemo(() => {
+    if (!layoutConfig) return [];
+    return layoutConfig.sections.filter(
+      (s) => s.type === 'custom' && s.enabled && s.filters
+    );
+  }, [layoutConfig]);
 
   const fetchSections = useCallback(async () => {
     setLoadingSections(true);
@@ -609,10 +633,71 @@ export default function DiscoverPage() {
     }
   }, [buildQueryString, applyRateLimit]);
 
+  // Fetch layout config from server
+  const fetchLayoutConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/settings/discover-layout');
+      if (res.ok) {
+        const data = await res.json();
+        setLayoutConfig(data);
+      }
+    } catch {
+      // noop — will fall back to default ordering
+    }
+  }, []);
+
   useEffect(() => {
     fetchSections();
     fetchFiltersMeta();
-  }, [fetchSections, fetchFiltersMeta]);
+    fetchLayoutConfig();
+  }, [fetchSections, fetchFiltersMeta, fetchLayoutConfig]);
+
+  // Fetch items for custom carousels when they change
+  useEffect(() => {
+    if (customCarouselEntries.length === 0) return;
+
+    for (const entry of customCarouselEntries) {
+      if (customCarouselItems[entry.id] !== undefined) continue; // already fetched
+      if (customCarouselLoading[entry.id]) continue; // already loading
+
+      const f = entry.filters!;
+      const params = new URLSearchParams();
+      params.set('mode', 'browse');
+      params.set('page', '1');
+      params.set('contentType', f.contentType);
+      params.set('sortBy', f.sortBy);
+      params.set('sortOrder', f.sortOrder);
+      if (f.genres?.length) params.set('genres', f.genres.join(','));
+      if (f.yearFrom) params.set('yearFrom', f.yearFrom);
+      if (f.yearTo) params.set('yearTo', f.yearTo);
+      if (f.runtimeMin) params.set('runtimeMin', f.runtimeMin);
+      if (f.runtimeMax) params.set('runtimeMax', f.runtimeMax);
+      if (f.ratingMin) params.set('ratingMin', f.ratingMin);
+      if (f.ratingMax) params.set('ratingMax', f.ratingMax);
+      if (f.voteCountMin) params.set('voteCountMin', f.voteCountMin);
+      if (f.language) params.set('language', f.language);
+      if (f.region) params.set('region', f.region);
+      if (f.providers?.length) params.set('providers', f.providers.join(','));
+      if (f.networks?.length) params.set('networks', f.networks.join(','));
+      if (f.companies?.length) params.set('companies', f.companies.join(','));
+      if (f.releaseState) params.set('releaseState', f.releaseState);
+
+      setCustomCarouselLoading((prev) => ({ ...prev, [entry.id]: true }));
+
+      fetch(`/api/discover?${params.toString()}`)
+        .then((res) => res.json())
+        .then((data) => {
+          const fetchedItems: DiscoverItem[] = data?.items || [];
+          setCustomCarouselItems((prev) => ({ ...prev, [entry.id]: fetchedItems.slice(0, 20) }));
+        })
+        .catch(() => {
+          setCustomCarouselItems((prev) => ({ ...prev, [entry.id]: [] }));
+        })
+        .finally(() => {
+          setCustomCarouselLoading((prev) => ({ ...prev, [entry.id]: false }));
+        });
+    }
+  }, [customCarouselEntries, customCarouselItems, customCarouselLoading]);
 
   // Handle person URL params (from movie detail cast/crew links)
   useEffect(() => {
@@ -955,16 +1040,59 @@ export default function DiscoverPage() {
           {loadingSections ? (
             <PageSpinner />
           ) : (
-            visibleSections.map((section) => (
-              <SectionRow
-                key={section.key}
-                section={section}
-                onOpenItem={handleOpenItem}
-                onSeeAll={handleSeeAll}
-                onPickGenre={pickGenre}
-                onPickProvider={pickProvider}
-              />
-            ))
+            <>
+              {/* Render sections in layout-config order, interleaving custom carousels */}
+              {layoutConfig ? (
+                layoutConfig.sections
+                  .filter((entry) => entry.enabled)
+                  .map((entry) => {
+                    if (entry.type === 'custom' && entry.filters) {
+                      // Apply content type filter to custom carousels too
+                      if (discoverContentType !== 'all') {
+                        const ct = entry.filters.contentType;
+                        if (ct !== 'all') {
+                          if (discoverContentType === 'movie' && ct !== 'movie') return null;
+                          if (discoverContentType === 'show' && ct !== 'show') return null;
+                        }
+                      }
+                      return (
+                        <CustomCarouselRow
+                          key={entry.id}
+                          layoutSection={entry}
+                          items={customCarouselItems[entry.id] ?? []}
+                          loading={customCarouselLoading[entry.id] ?? true}
+                          onOpenItem={handleOpenItem}
+                        />
+                      );
+                    }
+
+                    // Built-in section — find it in the ordered list
+                    const apiSection = visibleSections.find((s) => s.key === entry.id);
+                    if (!apiSection) return null;
+                    return (
+                      <SectionRow
+                        key={apiSection.key}
+                        section={apiSection}
+                        onOpenItem={handleOpenItem}
+                        onSeeAll={handleSeeAll}
+                        onPickGenre={pickGenre}
+                        onPickProvider={pickProvider}
+                      />
+                    );
+                  })
+              ) : (
+                visibleSections.map((section) => (
+                  <SectionRow
+                    key={section.key}
+                    section={section}
+                    onOpenItem={handleOpenItem}
+                    onSeeAll={handleSeeAll}
+                    onPickGenre={pickGenre}
+                    onPickProvider={pickProvider}
+                  />
+                ))
+              )}
+            </>
           )}
         </div>
       )}

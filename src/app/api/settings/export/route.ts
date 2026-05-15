@@ -25,6 +25,7 @@ interface ExportRequestBody {
   notificationPrefs?: boolean;
   cleanup?: boolean;
   includeSecrets?: boolean;
+  discoverLayout?: boolean;
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -77,6 +78,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         upcomingNotifyBeforeMins: settings.upcomingNotifyBeforeMins,
         upcomingDailyNotifyHour: settings.upcomingDailyNotifyHour,
       };
+
+      // Include discover layout alongside app settings
+      if (settings.discoverLayout) {
+        payload.discoverLayout = settings.discoverLayout as Record<string, unknown>;
+      }
     }
 
     if (selectedServices.length > 0) {

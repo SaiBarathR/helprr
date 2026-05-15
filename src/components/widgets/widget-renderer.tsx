@@ -3,6 +3,7 @@
 import { Suspense } from 'react';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
 import { WidgetWrapper, WidgetSkeleton } from './widget-wrapper';
+import { useUIStore } from '@/lib/store';
 import type { WidgetInstance } from '@/lib/widgets/types';
 
 interface WidgetRendererProps {
@@ -12,7 +13,8 @@ interface WidgetRendererProps {
 }
 
 export function WidgetRenderer({ instance, refreshInterval, editMode = false }: WidgetRendererProps) {
-  const definition = getWidgetDefinition(instance.widgetId);
+  const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const definition = getWidgetDefinition(instance.widgetId, discoverLayout);
 
   if (!definition) {
     return (

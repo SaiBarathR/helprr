@@ -10,6 +10,10 @@ import {
 import type { DiscoverContentType } from '@/types';
 import type { WidgetInstance, WidgetSize } from '@/lib/widgets/types';
 import { DEFAULT_LAYOUT, getWidgetDefinition } from '@/lib/widgets/registry';
+import {
+  reconcileDiscoverLayout,
+  type DiscoverLayoutConfig,
+} from '@/lib/discover-layout-config';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -186,24 +190,31 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-function normalizeWidgetSize(widgetId: string, size: WidgetSize): WidgetSize {
-  const definition = getWidgetDefinition(widgetId);
+function normalizeWidgetSize(
+  widgetId: string,
+  size: WidgetSize,
+  discoverLayout: DiscoverLayoutConfig | null,
+): WidgetSize {
+  const definition = getWidgetDefinition(widgetId, discoverLayout);
   const requested = size === 'small' ? 'medium' : size;
 
   if (!definition) return requested;
   return definition.sizes.includes(requested) ? requested : definition.defaultSize;
 }
 
-function sanitizeDashboardLayout(layout: WidgetInstance[]): WidgetInstance[] {
+function sanitizeDashboardLayout(
+  layout: WidgetInstance[],
+  discoverLayout: DiscoverLayoutConfig | null,
+): WidgetInstance[] {
   return layout
-    .filter((item) => Boolean(getWidgetDefinition(item.widgetId)))
+    .filter((item) => Boolean(getWidgetDefinition(item.widgetId, discoverLayout)))
     .map((item) => ({
       ...item,
-      size: normalizeWidgetSize(item.widgetId, item.size),
+      size: normalizeWidgetSize(item.widgetId, item.size, discoverLayout),
     }));
 }
 
-export const STORE_VERSION = 18;
+export const STORE_VERSION = 19;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -249,7 +260,10 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     const rawLayout = Array.isArray(state.dashboardLayout)
       ? state.dashboardLayout as WidgetInstance[]
       : DEFAULT_LAYOUT.map((w) => ({ ...w }));
-    state.dashboardLayout = sanitizeDashboardLayout(rawLayout);
+    state.dashboardLayout = sanitizeDashboardLayout(
+      rawLayout,
+      (state.discoverLayout as DiscoverLayoutConfig | null | undefined) ?? null,
+    );
   }
   if (version < 8) {
     state.animeSort = 'trending';
@@ -320,6 +334,16 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     const existing = state.cleanupHistoryFilters as Record<string, unknown> | undefined;
     if (existing && typeof existing === 'object' && !('reSearched' in existing)) {
       existing.reSearched = null;
+    }
+  }
+  if (version < 19) {
+    // Drop legacy dashboard widgets that registered themselves as `tmdb-*`
+    // — the Discover Layout config now drives all such widgets.
+    state.discoverLayout = null;
+    if (Array.isArray(state.dashboardLayout)) {
+      state.dashboardLayout = (state.dashboardLayout as WidgetInstance[]).filter(
+        (w) => !w.widgetId.startsWith('tmdb-'),
+      );
     }
   }
   return state;
@@ -434,6 +458,9 @@ interface UIState {
   resizeWidget: (instanceId: string, size: WidgetSize) => void;
   reorderWidgets: (layout: WidgetInstance[]) => void;
   resetDashboardLayout: () => void;
+  // Discover layout (server-side, cached locally for dashboard widget catalog)
+  discoverLayout: DiscoverLayoutConfig | null;
+  setDiscoverLayout: (config: DiscoverLayoutConfig | null) => void;
   // Settings import
   applyImportedUiPrefs: (partial: Record<string, unknown>) => void;
 }
@@ -481,6 +508,7 @@ const PERSISTED_KEYS = [
   'dashboardLayout',
   'animeCarouselOrder',
   'disabledAnimeCarousels',
+  'discoverLayout',
 ] as const satisfies readonly (keyof UIState)[];
 
 const PERSISTED_KEY_SET: ReadonlySet<string> = new Set(PERSISTED_KEYS);
@@ -664,9 +692,10 @@ export const useUIStore = create<UIState>()(
         }),
       resetAnimeCarouselConfig: () => set({ animeCarouselOrder: [...DEFAULT_ANIME_CAROUSEL_ORDER], disabledAnimeCarousels: [] }),
       // Dashboard widgets
-      dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w }))),
+      dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w })), null),
       dashboardEditMode: false,
-      setDashboardLayout: (layout) => set({ dashboardLayout: sanitizeDashboardLayout(layout) }),
+      setDashboardLayout: (layout) =>
+        set((state) => ({ dashboardLayout: sanitizeDashboardLayout(layout, state.discoverLayout) })),
       setDashboardEditMode: (editing) => set({ dashboardEditMode: editing }),
       addWidget: (widgetId, size) =>
         set((state) => {
@@ -674,9 +703,14 @@ export const useUIStore = create<UIState>()(
           const instance: WidgetInstance = {
             id: `${widgetId}-${count + 1}-${Date.now()}`,
             widgetId,
-            size: normalizeWidgetSize(widgetId, size),
+            size: normalizeWidgetSize(widgetId, size, state.discoverLayout),
           };
-          return { dashboardLayout: sanitizeDashboardLayout([...state.dashboardLayout, instance]) };
+          return {
+            dashboardLayout: sanitizeDashboardLayout(
+              [...state.dashboardLayout, instance],
+              state.discoverLayout,
+            ),
+          };
         }),
       removeWidget: (instanceId) =>
         set((state) => ({
@@ -686,12 +720,32 @@ export const useUIStore = create<UIState>()(
         set((state) => ({
           dashboardLayout: sanitizeDashboardLayout(
             state.dashboardLayout.map((w) =>
-              w.id === instanceId ? { ...w, size: normalizeWidgetSize(w.widgetId, size) } : w
-            )
+              w.id === instanceId
+                ? { ...w, size: normalizeWidgetSize(w.widgetId, size, state.discoverLayout) }
+                : w
+            ),
+            state.discoverLayout,
           ),
         })),
-      reorderWidgets: (layout) => set({ dashboardLayout: sanitizeDashboardLayout(layout) }),
-      resetDashboardLayout: () => set({ dashboardLayout: sanitizeDashboardLayout(DEFAULT_LAYOUT.map((w) => ({ ...w }))) }),
+      reorderWidgets: (layout) =>
+        set((state) => ({ dashboardLayout: sanitizeDashboardLayout(layout, state.discoverLayout) })),
+      resetDashboardLayout: () =>
+        set((state) => ({
+          dashboardLayout: sanitizeDashboardLayout(
+            DEFAULT_LAYOUT.map((w) => ({ ...w })),
+            state.discoverLayout,
+          ),
+        })),
+      // Discover layout cache
+      discoverLayout: null,
+      setDiscoverLayout: (config) =>
+        set((state) => {
+          const next = config ? reconcileDiscoverLayout(config) : null;
+          return {
+            discoverLayout: next,
+            dashboardLayout: sanitizeDashboardLayout(state.dashboardLayout, next),
+          };
+        }),
       applyImportedUiPrefs: (partial) =>
         set((state) => {
           const next: Record<string, unknown> = {};
@@ -703,8 +757,15 @@ export const useUIStore = create<UIState>()(
             if (ARRAY_PERSISTED_KEYS.has(key) && !Array.isArray(value)) continue;
             next[key] = value;
           }
+          const incomingDiscoverLayout =
+            'discoverLayout' in next && next.discoverLayout && typeof next.discoverLayout === 'object'
+              ? (next.discoverLayout as DiscoverLayoutConfig)
+              : state.discoverLayout;
           if ('dashboardLayout' in next && Array.isArray(next.dashboardLayout)) {
-            next.dashboardLayout = sanitizeDashboardLayout(next.dashboardLayout as WidgetInstance[]);
+            next.dashboardLayout = sanitizeDashboardLayout(
+              next.dashboardLayout as WidgetInstance[],
+              incomingDiscoverLayout,
+            );
           }
           if ('navOrder' in next && Array.isArray(next.navOrder)) {
             next.navOrder = reconcileNavOrder(next.navOrder as NavItemId[]);

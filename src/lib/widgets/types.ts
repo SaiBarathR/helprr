@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 
 export type WidgetSize = 'small' | 'medium' | 'large';
 
-export type WidgetCategory = 'overview' | 'media' | 'downloads' | 'streaming' | 'monitoring';
+export type WidgetCategory = 'overview' | 'media' | 'downloads' | 'streaming' | 'monitoring' | 'discover';
 
 export interface WidgetProps {
   size: WidgetSize;
