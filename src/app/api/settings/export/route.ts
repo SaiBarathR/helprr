@@ -21,6 +21,7 @@ import { loadDownloadCleanerConfig, loadSeedingRules } from '@/lib/cleanup/downl
 
 interface ExportRequestBody {
   appSettings?: boolean;
+  discoverLayout?: boolean;
   services?: string[] | false;
   notificationPrefs?: boolean;
   cleanup?: boolean;
@@ -40,6 +41,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const includeSecrets = body.includeSecrets === true;
   const wantAppSettings = body.appSettings === true;
+  const wantDiscoverLayout = body.discoverLayout === true;
   const wantNotificationPrefs = body.notificationPrefs === true;
   const wantCleanup = body.cleanup === true;
   const selectedServices: ServiceType[] = Array.isArray(body.services)
@@ -55,8 +57,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   };
 
   try {
-    if (wantAppSettings) {
-      const settings = await getOrCreateAppSettings();
+    // Load AppSettings once if either appSettings or discoverLayout is requested
+    // (both live on the same singleton row).
+    const settings = wantAppSettings || wantDiscoverLayout
+      ? await getOrCreateAppSettings()
+      : null;
+
+    if (wantAppSettings && settings) {
       payload.appSettings = {
         pollingIntervalSecs: settings.pollingIntervalSecs,
         dashboardRefreshIntervalSecs: settings.dashboardRefreshIntervalSecs,
@@ -77,11 +84,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         upcomingNotifyBeforeMins: settings.upcomingNotifyBeforeMins,
         upcomingDailyNotifyHour: settings.upcomingDailyNotifyHour,
       };
+    }
 
-      // Include discover layout alongside app settings
-      if (settings.discoverLayout) {
-        payload.discoverLayout = settings.discoverLayout as Record<string, unknown>;
-      }
+    if (wantDiscoverLayout && settings?.discoverLayout) {
+      payload.discoverLayout = settings.discoverLayout as Record<string, unknown>;
     }
 
     if (selectedServices.length > 0) {

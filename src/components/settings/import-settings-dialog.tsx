@@ -86,6 +86,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [fileError, setFileError] = useState<string | null>(null);
   const [selectedUi, setSelectedUi] = useState<Set<UiPrefCategoryId>>(new Set());
   const [selectedAppSettings, setSelectedAppSettings] = useState(false);
+  const [selectedDiscoverLayout, setSelectedDiscoverLayout] = useState(false);
   const [selectedCleanup, setSelectedCleanup] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
@@ -101,6 +102,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setFileError(null);
       setSelectedUi(new Set());
       setSelectedAppSettings(false);
+      setSelectedDiscoverLayout(false);
       setSelectedCleanup(false);
       setSelectedServices(new Set());
       setSelectedSourceDevice('');
@@ -153,6 +155,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       });
       setSelectedUi(new Set(availableUi));
       setSelectedAppSettings(!!payload.appSettings);
+      setSelectedDiscoverLayout(!!payload.discoverLayout);
       setSelectedCleanup(!!payload.cleanup);
       setSelectedServices(new Set(availableServices));
       const devices = payload.notificationPrefs ?? [];
@@ -195,11 +198,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     !!parsed && (
       selectedUi.size > 0
       || selectedAppSettings
+      || selectedDiscoverLayout
       || selectedCleanup
       || selectedServices.size > 0
       || (!!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedCleanup, selectedServices, selectedSourceDevice, availableNotifDevices]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedServices, selectedSourceDevice, availableNotifDevices]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
@@ -219,17 +223,20 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     if (!parsed) return;
     let useUi = selectedUi;
     let useAppSettings = selectedAppSettings;
+    let useDiscoverLayout = selectedDiscoverLayout;
     let useCleanup = selectedCleanup;
     let useServices = selectedServices;
     let useDevice = selectedSourceDevice;
     if (replaceAll) {
       useUi = new Set(parsed.availableUi);
       useAppSettings = !!parsed.payload.appSettings;
+      useDiscoverLayout = !!parsed.payload.discoverLayout;
       useCleanup = !!parsed.payload.cleanup;
       useServices = new Set(parsed.availableServices);
       useDevice = availableNotifDevices[0]?.deviceName ?? '';
       setSelectedUi(useUi);
       setSelectedAppSettings(useAppSettings);
+      setSelectedDiscoverLayout(useDiscoverLayout);
       setSelectedCleanup(useCleanup);
       setSelectedServices(useServices);
       setSelectedSourceDevice(useDevice);
@@ -267,7 +274,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       if (useCleanup && parsed.payload.cleanup) {
         body.cleanup = parsed.payload.cleanup;
       }
-      if (parsed.payload.discoverLayout) {
+      if (useDiscoverLayout && parsed.payload.discoverLayout) {
         body.discoverLayout = parsed.payload.discoverLayout;
       }
 
@@ -398,7 +405,25 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                   <div>
                     <div className="text-sm font-medium">App Settings</div>
                     <div className="text-xs text-muted-foreground">
-                      Polling intervals, theme, logging, notification timing
+                      Polling intervals, theme, timezone, logging, image cache, upcoming-release timing.
+                      Discover homepage layout is a separate option below.
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
+            {parsed.payload.discoverLayout && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedDiscoverLayout}
+                    onCheckedChange={(v) => setSelectedDiscoverLayout(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Discover Layout</div>
+                    <div className="text-xs text-muted-foreground">
+                      Section order, hidden builtin sections, and custom carousels (with their saved filters).
                     </div>
                   </div>
                 </label>

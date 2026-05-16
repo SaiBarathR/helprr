@@ -43,6 +43,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
     () => new Set(UI_PREF_CATEGORY_IDS)
   );
   const [selectedAppSettings, setSelectedAppSettings] = useState(true);
+  const [selectedDiscoverLayout, setSelectedDiscoverLayout] = useState(true);
   const [selectedNotifPrefs, setSelectedNotifPrefs] = useState(true);
   const [selectedCleanup, setSelectedCleanup] = useState(true);
   const [availableServices, setAvailableServices] = useState<ConnectedServiceInfo[]>([]);
@@ -108,10 +109,11 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
   const nothingSelected = useMemo(() => (
     selectedUi.size === 0
     && !selectedAppSettings
+    && !selectedDiscoverLayout
     && !selectedNotifPrefs
     && !selectedCleanup
     && selectedServices.size === 0
-  ), [selectedUi, selectedAppSettings, selectedNotifPrefs, selectedCleanup, selectedServices]);
+  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedServices]);
 
   async function handleExport() {
     if (nothingSelected) {
@@ -125,6 +127,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           appSettings: selectedAppSettings,
+          discoverLayout: selectedDiscoverLayout,
           services: selectedServices.size > 0 ? Array.from(selectedServices) : false,
           notificationPrefs: selectedNotifPrefs,
           cleanup: selectedCleanup,
@@ -232,7 +235,24 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               <div>
                 <div className="text-sm font-medium">App Settings</div>
                 <div className="text-xs text-muted-foreground">
-                  Polling intervals, theme, logging, notification timing, timezone
+                  Polling intervals, theme, timezone, logging, image cache, upcoming-release notification timing.
+                  Discover homepage layout is a separate option below.
+                </div>
+              </div>
+            </label>
+          </section>
+
+          {/* Discover Layout */}
+          <section>
+            <label className="flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedDiscoverLayout}
+                onCheckedChange={(v) => setSelectedDiscoverLayout(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">Discover Layout</div>
+                <div className="text-xs text-muted-foreground">
+                  Section order, hidden builtin sections, and custom carousels (with their saved filters).
                 </div>
               </div>
             </label>
