@@ -1,23 +1,32 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Film, Tv, Clock, Check, CircleDashed } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, SectionHeader } from '@/components/widgets/shared';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
-import { toCachedImageSrc, isProtectedApiImageSrc } from '@/lib/image';
+import { toCachedImageSrc } from '@/lib/image';
 import type { CalendarEvent, MediaImage } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
+import {
+  CAROUSEL_CARD_HEIGHT,
+  CAROUSEL_CARD_WIDTH,
+  CAROUSEL_GAP,
+  FONT_MONO,
+  HPR,
+  LIST_ROW_HEIGHT,
+  Pill,
+  Poster,
+  SECTION_HEADER_HEIGHT,
+  SectionHeader,
+  ViewModeToggle,
+  toneFromString,
+} from './bento-primitives';
+import { useDashboardLayout } from './dashboard-layout-context';
+
+const DAYS_OPTIONS = [7, 14, 30] as const;
+const STORAGE_KEY = 'helprr-upcoming-days';
 
 function formatEventDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -31,12 +40,9 @@ function formatEventDate(dateStr: string): string {
   return `${month} ${day}, ${time}`;
 }
 
-const DAYS_OPTIONS = [7, 14, 30] as const;
-const STORAGE_KEY = 'helprr-upcoming-days';
-
-function getPoster(images: MediaImage[], serviceHint?: 'radarr' | 'sonarr'): string | null {
+function getPoster(images: MediaImage[], hint?: 'radarr' | 'sonarr'): string | null {
   const img = images.find((i) => i.coverType === 'poster');
-  return toCachedImageSrc(img?.remoteUrl || img?.url || null, serviceHint);
+  return toCachedImageSrc(img?.remoteUrl || img?.url || null, hint);
 }
 
 function getStoredDays(): number {
@@ -46,8 +52,16 @@ function getStoredDays(): number {
   return DAYS_OPTIONS.includes(parsed as typeof DAYS_OPTIONS[number]) ? parsed : 14;
 }
 
-export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
+export function UpcomingWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+  layoutVariant,
+  instanceId,
+}: WidgetProps) {
   const [days, setDays] = useState(() => getStoredDays());
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const { setWidgetLayoutOverride } = useDashboardLayout();
 
   const fetchUpcoming = useCallback(async (): Promise<CalendarEvent[]> => {
     const res = await fetch(`/api/calendar?days=${days}`);
@@ -55,147 +69,290 @@ export function UpcomingWidget({ size, refreshInterval }: WidgetProps) {
     return res.json();
   }, [days]);
 
-  const { data: upcoming, loading } = useWidgetData({ fetchFn: fetchUpcoming, refreshInterval });
+  const { data, loading } = useWidgetData({
+    fetchFn: fetchUpcoming,
+    refreshInterval,
+    enabled: !editMode,
+    cacheKey: `upcoming-${days}d`,
+  });
+  const list = data ?? [];
+  const useList = narrow || layoutVariant === 'list';
+  const toggleNode = !narrow && instanceId ? (
+    <ViewModeToggle
+      value={useList ? 'list' : 'carousel'}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+    />
+  ) : null;
+  const visibleCount = useMemo(() => {
+    const carouselCount = width > 0
+      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+      : 12;
+    const listCount = height > 0
+      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
+      : 8;
+    return Math.max(carouselCount, listCount, 8);
+  }, [width, height]);
 
-  function handleDaysChange(newDays: number) {
-    setDays(newDays);
-    localStorage.setItem(STORAGE_KEY, String(newDays));
+  function handleDaysChange() {
+    const idx = DAYS_OPTIONS.indexOf(days as typeof DAYS_OPTIONS[number]);
+    const next = DAYS_OPTIONS[(idx + 1) % DAYS_OPTIONS.length];
+    setDays(next);
+    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY, String(next));
   }
 
-  const daysSelector = (
-    <Select value={String(days)} onValueChange={(v) => handleDaysChange(Number(v))}>
-      <SelectTrigger
-        size="sm"
-        className="h-auto gap-1 rounded-md border-0 bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-muted [&_svg:not([class*='size-'])]:size-2.5"
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent align="end">
-        {DAYS_OPTIONS.map((d) => (
-          <SelectItem key={d} value={String(d)}>{d} days</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+  const dayBadge = (
+    <button
+      type="button"
+      onClick={editMode ? undefined : handleDaysChange}
+      style={{ border: 'none', padding: 0, background: 'transparent', cursor: editMode ? 'default' : 'pointer' }}
+    >
+      <Pill color={HPR.amber}>
+        {narrow ? `${days} D ▾` : `${days} DAYS ▾`}
+      </Pill>
+    </button>
   );
 
-  if (loading) {
+  if (loading && list.length === 0) {
     return (
-      <div>
-        <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
-        <div className="flex gap-3 overflow-hidden">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-[170px] w-[110px] rounded-xl shrink-0" />
-          ))}
+      <div ref={ref}>
+        <SectionHeader title="Upcoming" badge={dayBadge} right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
+      </div>
+    );
+  }
+  if (list.length === 0) {
+    return (
+      <div ref={ref}>
+        <SectionHeader title="Upcoming" badge={dayBadge} right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+          Nothing upcoming
         </div>
       </div>
     );
   }
 
-  if (!upcoming || upcoming.length === 0) {
+  if (useList) {
     return (
-      <div>
-        <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
-        <div className="rounded-xl bg-card py-8 text-center">
-          <p className="text-sm text-muted-foreground">Nothing upcoming</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (size === 'medium') {
-    return (
-      <div>
-        <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
-        <div className="space-y-1.5">
-          {upcoming.slice(0, 4).map((event) => (
-            <Link
-              key={event.id}
-              href={event.type === 'episode' ? `/series/${event.seriesId}` : `/movies/${event.movieId}`}
-              className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
-            >
-              <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${event.type === 'episode' ? 'bg-purple-500/80' : 'bg-blue-500/80'}`}>
-                {event.type === 'episode' ? <Tv className="h-2.5 w-2.5 text-white" /> : <Film className="h-2.5 w-2.5 text-white" />}
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{event.title}</p>
-                <p className="text-[10px] text-muted-foreground truncate">
-                  {event.subtitle} · {formatEventDate(event.date)} · {formatDistanceToNowSafe(event.date)}
-                </p>
-              </div>
-              {event.hasFile ? (
-                <span className="w-5 h-5 rounded-full bg-green-500/15 flex items-center justify-center shrink-0" title="Downloaded">
-                  <Check className="h-3 w-3 text-green-500" />
-                </span>
-              ) : (
-                <span className="w-5 h-5 rounded-full bg-muted flex items-center justify-center shrink-0" title="Not downloaded">
-                  <CircleDashed className="h-3 w-3 text-muted-foreground" />
-                </span>
-              )}
-            </Link>
-          ))}
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader
+          title="Upcoming"
+          badge={dayBadge}
+          right={
+            <>
+              {toggleNode}
+              <span>View all →</span>
+            </>
+          }
+        />
+        <div
+          className="no-scrollbar scroll-fade-y"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {list.slice(0, visibleCount).map((ev) =>
+            editMode ? (
+              <UpcomingRow key={ev.id} ev={ev} />
+            ) : (
+              <Link
+                key={ev.id}
+                href={ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+              >
+                <UpcomingRow ev={ev} />
+              </Link>
+            ),
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <SectionHeader title="Upcoming" href="/calendar" badge={daysSelector} />
-      <Carousel>
-          {upcoming.slice(0, 12).map((event) => {
-            const poster = getPoster(event.images, event.type === 'movie' ? 'radarr' : 'sonarr');
-            return (
-              <Link
-                key={event.id}
-                href={event.type === 'episode' ? `/series/${event.seriesId}` : `/movies/${event.movieId}`}
-                className="snap-start shrink-0 w-[110px] group"
-              >
-                <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
-                  {poster ? (
-                    <Image
-                      src={poster}
-                      alt={event.title}
-                      fill
-                      sizes="110px"
-                      className="object-cover transition-transform duration-300 group-active:scale-105"
-                      unoptimized={isProtectedApiImageSrc(poster)}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      {event.type === 'episode'
-                        ? <Tv className="h-6 w-6 text-muted-foreground/20" />
-                        : <Film className="h-6 w-6 text-muted-foreground/20" />
+    <div ref={ref}>
+      <SectionHeader title="Upcoming" badge={dayBadge} right={<span>View all →</span>} />
+      <div
+        className="no-scrollbar"
+        style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
+      >
+        {list.slice(0, visibleCount).map((ev) => {
+          const poster = getPoster(ev.images, ev.type === 'movie' ? 'radarr' : 'sonarr');
+          const card = (
+            <>
+              <Poster
+                width={CAROUSEL_CARD_WIDTH}
+                height={CAROUSEL_CARD_HEIGHT}
+                label={ev.title}
+                tone={toneFromString(ev.title)}
+                imageUrl={poster ?? undefined}
+                check={Boolean(ev.hasFile)}
+                timePill={formatDistanceToNowSafe(ev.date)}
+                badge={
+                  !ev.hasFile
+                    ? {
+                        icon:
+                          ev.type === 'episode' ? (
+                            <Tv size={11} strokeWidth={2.4} />
+                          ) : (
+                            <Film size={11} strokeWidth={2.4} />
+                          ),
+                        color: ev.type === 'episode' ? HPR.purple : HPR.blue,
                       }
-                    </div>
-                  )}
-                  <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[9px] text-white/90">
-                      <Clock className="h-2 w-2" />
-                      {formatDistanceToNowSafe(event.date)}
-                    </span>
-                  </div>
-                  <div className="absolute top-1.5 left-1.5 right-1.5 flex items-start justify-between">
-                    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${event.type === 'episode' ? 'bg-purple-500/80' : 'bg-blue-500/80'}`}>
-                      {event.type === 'episode' ? <Tv className="h-2.5 w-2.5 text-white" /> : <Film className="h-2.5 w-2.5 text-white" />}
-                    </span>
-                    {event.hasFile ? (
-                      <span className="w-5 h-5 rounded-full bg-green-500/90 flex items-center justify-center">
-                        <Check className="h-2.5 w-2.5 text-white" />
-                      </span>
-                    ) : (
-                      <span className="w-5 h-5 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center">
-                        <CircleDashed className="h-2.5 w-2.5 text-white/70" />
-                      </span>
-                    )}
-                  </div>
+                    : undefined
+                }
+              />
+              <div style={{ marginTop: 6 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: HPR.fg,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    fontWeight: 500,
+                  }}
+                >
+                  {ev.title}
                 </div>
-                <p className="text-[11px] font-medium truncate leading-tight">{event.title}</p>
-                <p className="text-[10px] text-muted-foreground truncate">{event.subtitle} · {formatDistanceToNowSafe(event.date)}</p>
-                <p className="text-[9px] text-muted-foreground/70 tabular-nums truncate">{formatEventDate(event.date)}</p>
-              </Link>
-            );
-          })}
-        </Carousel>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: HPR.fgMute,
+                    fontFamily: FONT_MONO,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {ev.subtitle}
+                </div>
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: HPR.amber,
+                    fontFamily: FONT_MONO,
+                    marginTop: 2,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {formatEventDate(ev.date)}
+                </div>
+              </div>
+            </>
+          );
+          return editMode ? (
+            <div key={ev.id} style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0 }}>
+              {card}
+            </div>
+          ) : (
+            <Link
+              key={ev.id}
+              href={ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}
+              style={{
+                width: CAROUSEL_CARD_WIDTH,
+                flexShrink: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
+            >
+              {card}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function UpcomingRow({ ev }: { ev: CalendarEvent }) {
+  const poster = getPoster(ev.images, ev.type === 'movie' ? 'radarr' : 'sonarr');
+  const isMovie = ev.type === 'movie';
+  const typeColor = isMovie ? HPR.blue : HPR.purple;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 12,
+        padding: 8,
+        background: HPR.ink,
+        borderRadius: 12,
+      }}
+    >
+      <Poster
+        width={48}
+        height={72}
+        label={ev.title}
+        tone={toneFromString(ev.title)}
+        fontSize={8}
+        imageUrl={poster ?? undefined}
+        check={ev.hasFile}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 14,
+            color: HPR.fg,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            fontWeight: 500,
+          }}
+        >
+          {ev.title}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: HPR.fgMute,
+            marginTop: 2,
+            wordBreak: 'break-word',
+          }}
+        >
+          {ev.subtitle}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: HPR.fgMute,
+            fontFamily: FONT_MONO,
+            marginTop: 2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {formatEventDate(ev.date)} · {formatDistanceToNowSafe(ev.date)}
+        </div>
+      </div>
+      <div
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 6,
+          background: typeColor,
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          marginRight: 4,
+          marginTop: 2,
+          opacity: 0.85,
+        }}
+      >
+        {isMovie ? <Film size={11} strokeWidth={2.4} /> : <Tv size={11} strokeWidth={2.4} />}
+      </div>
     </div>
   );
 }

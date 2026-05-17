@@ -1,23 +1,27 @@
 'use client';
 
+import { useCallback, useMemo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Film, Tv, Clock } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 import { formatDistanceToNowShort } from '@/lib/format';
-import { toCachedImageSrc, isProtectedApiImageSrc } from '@/lib/image';
+import { toCachedImageSrc } from '@/lib/image';
 import type { WidgetProps } from '@/lib/widgets/types';
-
-function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (!Number.isFinite(d.getTime())) return '';
-  const month = d.toLocaleString('en-US', { month: 'short' });
-  const day = d.getDate();
-  const time = d.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  return `${month} ${day}, ${time}`;
-}
+import {
+  CAROUSEL_CARD_HEIGHT,
+  CAROUSEL_CARD_WIDTH,
+  CAROUSEL_GAP,
+  FONT_MONO,
+  HPR,
+  LIST_ROW_HEIGHT,
+  Poster,
+  SECTION_HEADER_HEIGHT,
+  SectionHeader,
+  ViewModeToggle,
+  toneFromString,
+} from './bento-primitives';
+import { useDashboardLayout } from './dashboard-layout-context';
 
 interface RecentItem {
   id: string;
@@ -29,116 +33,282 @@ interface RecentItem {
   href: string;
 }
 
-async function fetchRecent(): Promise<RecentItem[]> {
-  const res = await fetch('/api/activity/recent?limit=30');
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (!Number.isFinite(d.getTime())) return '';
+  const month = d.toLocaleString('en-US', { month: 'short' });
+  const day = d.getDate();
+  return `${month} ${day}`;
+}
+
+async function fetchRecent(limit: number): Promise<RecentItem[]> {
+  const res = await fetch(`/api/activity/recent?limit=${limit}`);
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data) ? data : [];
 }
 
-export function RecentlyAddedWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
-  const { data: recentlyAdded, loading } = useWidgetData({ fetchFn: fetchRecent, refreshInterval });
+export function RecentlyAddedWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+  layoutVariant,
+  instanceId,
+}: WidgetProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const { setWidgetLayoutOverride } = useDashboardLayout();
+  const visibleCount = useMemo(() => {
+    const carouselCount = width > 0
+      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+      : 12;
+    const listCount = height > 0
+      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
+      : 8;
+    return Math.max(carouselCount, listCount, 8);
+  }, [width, height]);
+  // Round up to nearest 10 so we don't refetch on every pixel of resize.
+  const fetchLimit = Math.ceil((visibleCount + 6) / 10) * 10;
+  const fetchFn = useCallback(() => fetchRecent(fetchLimit), [fetchLimit]);
+  const { data, loading } = useWidgetData({
+    fetchFn,
+    refreshInterval,
+    enabled: !editMode,
+    cacheKey: `recently-added-${fetchLimit}`,
+  });
+  const list = data ?? [];
+  const useList = narrow || layoutVariant === 'list';
+  const toggleNode = !narrow && instanceId ? (
+    <ViewModeToggle
+      value={useList ? 'list' : 'carousel'}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+    />
+  ) : null;
 
-  if (loading) {
+  if (loading && list.length === 0) {
     return (
-      <div>
-        <SectionHeader title="Recently Added" href="/activity/history" />
-        <div className="flex gap-3 overflow-hidden">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-[170px] w-[110px] rounded-xl shrink-0" />
-          ))}
+      <div ref={ref}>
+        <SectionHeader title="Recently Added" right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
+      </div>
+    );
+  }
+  if (list.length === 0) {
+    return (
+      <div ref={ref}>
+        <SectionHeader title="Recently Added" right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+          {editMode ? 'No recent imports' : 'No recent imports'}
         </div>
       </div>
     );
   }
 
-  if (!recentlyAdded || recentlyAdded.length === 0) {
-    return editMode ? <EditModePlaceholder title="Recently Added" message="No recent imports" /> : null;
-  }
-
-  if (size === 'medium') {
+  if (useList) {
     return (
-      <div>
-        <SectionHeader title="Recently Added" href="/activity/history" />
-        <div className="space-y-1.5">
-          {recentlyAdded.slice(0, 4).map((item) => {
-            const subtitle = [
-              item.subtitle,
-              formatShortDate(item.date),
-              formatDistanceToNowShort(item.date),
-            ].filter(Boolean).join(' • ');
-
-            return (
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader
+          title="Recently Added"
+          right={
+            <>
+              {toggleNode}
+              <span>View all →</span>
+            </>
+          }
+        />
+        <div
+          className="no-scrollbar scroll-fade-y"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {list.slice(0, visibleCount).map((it) =>
+            editMode ? (
+              <RecentRow key={it.id} item={it} />
+            ) : (
               <Link
-                key={item.id}
-                href={item.href}
-                className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
+                key={it.id}
+                href={it.href}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
               >
-                <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
-                  {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.title}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{subtitle}</p>
-                </div>
+                <RecentRow item={it} />
               </Link>
-            );
-          })}
+            ),
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <SectionHeader title="Recently Added" href="/activity/history" />
-      <Carousel>
-        {recentlyAdded.map((item) => {
-          const posterSrc = toCachedImageSrc(item.poster, item.type === 'movie' ? 'radarr' : 'sonarr') || item.poster;
-
-          return (
-            <Link
-              key={item.id}
-              href={item.href}
-              className="snap-start shrink-0 w-[110px] group"
-            >
-              <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
-                {posterSrc ? (
-                  <Image
-                    src={posterSrc}
-                    alt={item.title}
-                    fill
-                    sizes="110px"
-                    className="object-cover transition-transform duration-300 group-active:scale-105"
-                    unoptimized={isProtectedApiImageSrc(posterSrc)}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    {item.type === 'movie'
-                      ? <Film className="h-6 w-6 text-muted-foreground/20" />
-                      : <Tv className="h-6 w-6 text-muted-foreground/20" />
-                    }
-                  </div>
-                )}
-                <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-black/70 backdrop-blur-sm text-[9px] text-white/90">
-                    <Clock className="h-2 w-2" />
-                    {formatDistanceToNowShort(item.date)}
-                  </span>
+    <div ref={ref}>
+      <SectionHeader title="Recently Added" right={<span>View all →</span>} />
+      <div
+        className="no-scrollbar"
+        style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
+      >
+        {list.slice(0, visibleCount).map((it) => {
+          const posterSrc = toCachedImageSrc(it.poster, it.type === 'movie' ? 'radarr' : 'sonarr') || it.poster;
+          const card = (
+            <>
+              <Poster
+                width={CAROUSEL_CARD_WIDTH}
+                height={CAROUSEL_CARD_HEIGHT}
+                label={it.title}
+                tone={toneFromString(it.title)}
+                imageUrl={posterSrc ?? undefined}
+                timePill={`${formatDistanceToNowShort(it.date)} ago`}
+                badge={{
+                  icon:
+                    it.type === 'movie' ? (
+                      <Film size={11} strokeWidth={2.4} />
+                    ) : (
+                      <Tv size={11} strokeWidth={2.4} />
+                    ),
+                  color: it.type === 'movie' ? HPR.blue : HPR.purple,
+                }}
+              />
+              <div style={{ marginTop: 6 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: HPR.fg,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    fontWeight: 500,
+                  }}
+                >
+                  {it.title}
                 </div>
-                <div className="absolute top-1.5 left-1.5">
-                  <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${item.type === 'movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
-                    {item.type === 'movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
-                  </span>
+                <div style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}>
+                  {it.subtitle}
+                </div>
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: HPR.fgSubtle,
+                    fontFamily: FONT_MONO,
+                    marginTop: 2,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {formatShortDate(it.date)}
                 </div>
               </div>
-              <p className="text-[11px] font-medium truncate leading-tight">{item.title}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{item.subtitle}</p>
-              <p className="text-[9px] text-muted-foreground/70 tabular-nums truncate">{formatShortDate(item.date)}</p>
+            </>
+          );
+          return editMode ? (
+            <div key={it.id} style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0 }}>
+              {card}
+            </div>
+          ) : (
+            <Link
+              key={it.id}
+              href={it.href}
+              style={{
+                width: CAROUSEL_CARD_WIDTH,
+                flexShrink: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
+            >
+              {card}
             </Link>
           );
         })}
-      </Carousel>
+      </div>
+    </div>
+  );
+}
+
+function RecentRow({ item }: { item: RecentItem }) {
+  const isMovie = item.type === 'movie';
+  const typeColor = isMovie ? HPR.blue : HPR.purple;
+  const posterSrc = toCachedImageSrc(item.poster, isMovie ? 'radarr' : 'sonarr') || item.poster;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 12,
+        padding: 8,
+        background: HPR.ink,
+        borderRadius: 12,
+      }}
+    >
+      <Poster
+        width={48}
+        height={72}
+        label={item.title}
+        tone={toneFromString(item.title)}
+        fontSize={8}
+        imageUrl={posterSrc ?? undefined}
+      />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 14,
+            color: HPR.fg,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            fontWeight: 500,
+          }}
+        >
+          {item.title}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: HPR.fgMute,
+            marginTop: 2,
+            wordBreak: 'break-word',
+          }}
+        >
+          {item.subtitle}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: HPR.fgMute,
+            fontFamily: FONT_MONO,
+            marginTop: 2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {formatDistanceToNowShort(item.date)} ago
+        </div>
+      </div>
+      <div
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 6,
+          background: typeColor,
+          color: '#fff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          marginRight: 4,
+          marginTop: 2,
+          opacity: 0.85,
+        }}
+      >
+        {isMovie ? <Film size={11} strokeWidth={2.4} /> : <Tv size={11} strokeWidth={2.4} />}
+      </div>
     </div>
   );
 }
