@@ -99,6 +99,18 @@ model AppSettings {
   upcomingNotifyBeforeMins Int     @default(60)
   upcomingDailyNotifyHour  Int     @default(9)            // 0-23, for daily_digest mode
   discoverLayout           Json?                          // User-configured discover homepage layout (sections order, visibility, custom carousels)
+  defaultDesktopLayoutId   String?                        // Active DashboardLayout for desktop viewport
+  defaultMobileLayoutId    String?                        // Active DashboardLayout for mobile viewport
+}
+
+model DashboardLayout {
+  id        String   @id @default(cuid())
+  name      String
+  widgets   Json     // WidgetInstance[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
 }
 
 model AniListSeriesMapping {

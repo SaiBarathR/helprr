@@ -13,7 +13,6 @@ export const EXPORT_FORMAT_KIND = 'helprr-settings-export';
 export const EXPORT_FORMAT_VERSION = 1;
 
 export type UiPrefCategoryId =
-  | 'dashboard'
   | 'navigation'
   | 'mediaViews'
   | 'discover'
@@ -24,7 +23,6 @@ export type UiPrefCategoryId =
   | 'calendar';
 
 export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
-  dashboard: 'Dashboard widgets',
   navigation: 'Navigation',
   mediaViews: 'Movies & series views',
   discover: 'Discover',
@@ -36,7 +34,6 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
 };
 
 export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]> = {
-  dashboard: ['dashboardLayout'],
   navigation: ['navPosition', 'navOrder', 'disabledNavItems', 'defaultPage'],
   mediaViews: [
     'mediaView',

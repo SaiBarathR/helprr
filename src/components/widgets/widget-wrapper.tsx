@@ -2,7 +2,6 @@
 
 import { Component, type ReactNode } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { WidgetSize } from '@/lib/widgets/types';
 
 interface WidgetWrapperProps {
   widgetId: string;
@@ -49,9 +48,9 @@ class WidgetErrorBoundary extends Component<{ children: ReactNode; widgetId: str
   }
 }
 
-export function WidgetSkeleton({ size }: { size: WidgetSize }) {
-  const h = size === 'large' ? 'h-[280px]' : size === 'medium' ? 'h-[160px]' : 'h-[120px]';
-  return <Skeleton className={`${h} w-full rounded-xl`} />;
+export function WidgetSkeleton({ rowSpan = 1 }: { rowSpan?: number }) {
+  const h = rowSpan >= 2 ? 'h-[280px]' : 'h-[120px]';
+  return <Skeleton className={`${h} w-full rounded-[10px]`} />;
 }
 
 export function WidgetWrapper({ widgetId, children }: WidgetWrapperProps) {

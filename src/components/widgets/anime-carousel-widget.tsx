@@ -1,16 +1,28 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { PlayCircle, Star } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
-import { Skeleton } from '@/components/ui/skeleton';
-import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { useElementSize } from '@/lib/widgets/use-element-size';
+import { toCachedImageSrc } from '@/lib/image';
 import type { AnimeCarouselId } from '@/lib/anime-carousel-config';
 import type { AniListMediaListCollection, AniListMediaListEntry } from '@/lib/anilist-mutations';
 import type { AniListMediaSeason, AniListListItem } from '@/types/anilist';
+import type { WidgetProps } from '@/lib/widgets/types';
+import {
+  CAROUSEL_CARD_HEIGHT,
+  CAROUSEL_CARD_WIDTH,
+  CAROUSEL_GAP,
+  FONT_MONO,
+  HPR,
+  LIST_ROW_HEIGHT,
+  Poster,
+  SECTION_HEADER_HEIGHT,
+  SectionHeader,
+  ViewModeToggle,
+  toneFromString,
+} from './bento-primitives';
+import { useDashboardLayout } from './dashboard-layout-context';
 
 interface SeasonWindow {
   season: AniListMediaSeason;
@@ -27,30 +39,25 @@ interface HomeData {
   top: AniListListItem[];
 }
 
-interface AnimeCarouselWidgetProps {
+interface AnimeCarouselWidgetProps extends WidgetProps {
   carouselId: AnimeCarouselId;
-  size: 'small' | 'medium' | 'large';
-  refreshInterval: number;
-  editMode?: boolean;
 }
 
-function flattenEntries(collection: AniListMediaListCollection): AniListMediaListEntry[] {
-  const seen = new Set<number>();
-  const result: AniListMediaListEntry[] = [];
-  for (const list of collection.lists) {
-    for (const entry of list.entries) {
-      if (seen.has(entry.id)) continue;
-      seen.add(entry.id);
-      result.push(entry);
-    }
-  }
-  return result;
+interface RailItem {
+  id: number;
+  title: string;
+  coverImage: string | null;
+  format: string | null;
+  averageScore: number | null;
+  episodes: number | null;
+  seasonYear: number | null;
 }
 
-function entryToRailItem(entry: AniListMediaListEntry) {
+function entryToRailItem(entry: AniListMediaListEntry): RailItem {
   const media = entry.media;
   const title = media.title.english || media.title.romaji || media.title.native || `#${media.id}`;
-  const cover = media.coverImage?.large || media.coverImage?.medium || media.coverImage?.extraLarge || null;
+  const cover =
+    media.coverImage?.large || media.coverImage?.medium || media.coverImage?.extraLarge || null;
   return {
     id: media.id,
     title,
@@ -62,13 +69,11 @@ function entryToRailItem(entry: AniListMediaListEntry) {
   };
 }
 
-function itemToRailItem(item: AniListListItem) {
-  const title = item.title || item.titleRomaji || item.titleNative || `#${item.id}`;
-  const cover = item.coverImage || null;
+function itemToRailItem(item: AniListListItem): RailItem {
   return {
     id: item.id,
-    title,
-    coverImage: cover,
+    title: item.title || item.titleRomaji || item.titleNative || `#${item.id}`,
+    coverImage: item.coverImage || null,
     format: (item.format as string) ?? null,
     averageScore: item.averageScore,
     episodes: item.episodes ?? null,
@@ -85,7 +90,7 @@ async function fetchHomeDataCached() {
     return globalHomeDataPromise;
   }
   globalHomeDataPromiseTime = now;
-  globalHomeDataPromise = fetch('/api/anime/home?perPage=15')
+  globalHomeDataPromise = fetch('/api/anime/home?perPage=30')
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch anime home data');
       return res.json() as Promise<HomeData>;
@@ -98,28 +103,66 @@ async function fetchHomeDataCached() {
   return globalHomeDataPromise;
 }
 
-export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMode }: AnimeCarouselWidgetProps) {
-  const safeInterval = Math.max(refreshInterval, 5 * 60 * 1000);
+function flattenEntries(collection: AniListMediaListCollection): AniListMediaListEntry[] {
+  const seen = new Set<number>();
+  const result: AniListMediaListEntry[] = [];
+  for (const list of collection.lists) {
+    for (const entry of list.entries) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      result.push(entry);
+    }
+  }
+  return result;
+}
 
+export function AnimeCarouselWidget({
+  carouselId,
+  refreshInterval,
+  editMode,
+  narrow,
+  layoutVariant,
+  instanceId,
+}: AnimeCarouselWidgetProps) {
+  const safeInterval = Math.max(refreshInterval, 5 * 60 * 1000);
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const { setWidgetLayoutOverride } = useDashboardLayout();
+  const useList = !!narrow || layoutVariant === 'list';
+  const visibleCount = useMemo(() => {
+    const carouselCount = width > 0
+      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+      : narrow ? 8 : 12;
+    const listCount = height > 0
+      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
+      : 8;
+    return Math.max(carouselCount, listCount, 8);
+  }, [width, height, narrow]);
+  const toggleNode = !narrow && instanceId ? (
+    <ViewModeToggle
+      value={useList ? 'list' : 'carousel'}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+    />
+  ) : null;
   const requiresViewer = carouselId === 'continueWatching' || carouselId === 'planToWatch';
-  const [anilistViewerConnected, setAnilistViewerConnected] = useState<boolean | null>(null);
-  const viewerConnected = requiresViewer ? anilistViewerConnected : true;
+  const [viewerConnected, setViewerConnected] = useState<boolean | null>(null);
+  const ready = requiresViewer ? viewerConnected === true : true;
 
   useEffect(() => {
     if (!requiresViewer) return;
     fetch('/api/anilist/viewer')
       .then((res) => res.json())
-      .then((data) => setAnilistViewerConnected(!!data.connected))
-      .catch(() => setAnilistViewerConnected(false));
+      .then((data) => setViewerConnected(!!data.connected))
+      .catch(() => setViewerConnected(false));
   }, [requiresViewer]);
 
-  const { data: homeData, loading: homeLoading, error: homeError } = useWidgetData<HomeData>({
+  const { data: homeData, loading: homeLoading } = useWidgetData<HomeData>({
     fetchFn: fetchHomeDataCached,
     refreshInterval: safeInterval,
-    enabled: !requiresViewer && viewerConnected === true,
+    enabled: !editMode && !requiresViewer && ready,
+    cacheKey: 'anime-home',
   });
 
-  const { data: listData, loading: listLoading, error: listError } = useWidgetData<AniListMediaListEntry[]>({
+  const { data: listData, loading: listLoading } = useWidgetData<AniListMediaListEntry[]>({
     fetchFn: async () => {
       const status = carouselId === 'continueWatching' ? 'CURRENT' : 'PLANNING';
       const res = await fetch(`/api/anilist/library?type=ANIME&status=${status}`);
@@ -128,23 +171,12 @@ export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMod
       return flattenEntries(json.collection);
     },
     refreshInterval: safeInterval,
-    enabled: requiresViewer && viewerConnected === true,
+    enabled: !editMode && requiresViewer && ready,
+    cacheKey: `anime-${carouselId}`,
   });
-
-  if (viewerConnected === false) {
-    return (
-      <div className="flex h-full items-center justify-center bg-card p-4 rounded-xl text-xs text-muted-foreground text-center">
-        Please connect your AniList account in Settings.
-      </div>
-    );
-  }
-
-  const loading = requiresViewer ? listLoading : homeLoading;
-  const error = requiresViewer ? listError : homeError;
 
   let title = '';
   let viewAllHref = '';
-
   if (carouselId === 'continueWatching') {
     title = 'Continue Watching';
     viewAllHref = '/anime/library?status=CURRENT';
@@ -152,7 +184,7 @@ export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMod
     title = 'Plan to Watch';
     viewAllHref = '/anime/library?status=PLANNING';
   } else if (carouselId === 'trending') {
-    title = 'Trending Now';
+    title = 'Trending Anime';
     viewAllHref = '/anime/explore?sort=trending';
   } else if (carouselId === 'popularThisSeason') {
     title = 'Popular This Season';
@@ -168,84 +200,159 @@ export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMod
     title = 'All Time Popular';
     viewAllHref = '/anime/explore?sort=popularity';
   } else if (carouselId === 'top100') {
-    title = 'Top 100';
+    title = 'Top 100 Anime';
     viewAllHref = '/anime/explore?sort=score';
   }
 
-  if (loading && !homeData && !listData) {
+  if (viewerConnected === false) {
     return (
-      <div>
-        <SectionHeader title={title} href={viewAllHref} />
-        {size === 'medium' ? (
-          <div className="flex flex-col gap-1.5">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-[44px] w-full rounded-xl shrink-0" />
-            ))}
-          </div>
-        ) : (
-          <div className="flex gap-3 overflow-hidden">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-[170px] w-[110px] rounded-xl shrink-0" />
-            ))}
-          </div>
-        )}
+      <div ref={ref}>
+        <SectionHeader title={title} right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+          Connect AniList in Settings to enable this list.
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  const loading = requiresViewer ? listLoading : homeLoading;
+
+  let items: RailItem[] = [];
+  if (requiresViewer) items = (listData ?? []).map(entryToRailItem);
+  else if (homeData) {
+    if (carouselId === 'trending') items = homeData.trending.map(itemToRailItem);
+    else if (carouselId === 'popularThisSeason') items = homeData.season.map(itemToRailItem);
+    else if (carouselId === 'upcomingNextSeason') items = homeData.nextSeason.map(itemToRailItem);
+    else if (carouselId === 'allTimePopular') items = homeData.popular.map(itemToRailItem);
+    else if (carouselId === 'top100') items = homeData.top.map(itemToRailItem);
+  }
+
+  if (loading && items.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center bg-card p-4 rounded-xl text-xs text-red-500">
-        {error}
+      <div ref={ref}>
+        <SectionHeader title={title} right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
     );
   }
-
-  let items: ReturnType<typeof itemToRailItem>[] = [];
-
-  if (carouselId === 'continueWatching' || carouselId === 'planToWatch') {
-    items = (listData ?? []).map(entryToRailItem);
-  } else if (homeData) {
-    switch (carouselId) {
-      case 'trending': items = homeData.trending.map(itemToRailItem); break;
-      case 'popularThisSeason': items = homeData.season.map(itemToRailItem); break;
-      case 'upcomingNextSeason': items = homeData.nextSeason.map(itemToRailItem); break;
-      case 'allTimePopular': items = homeData.popular.map(itemToRailItem); break;
-      case 'top100': items = homeData.top.map(itemToRailItem); break;
-    }
-  }
-
   if (items.length === 0) {
-    return editMode ? <EditModePlaceholder title={title} message="No items found" /> : null;
+    return (
+      <div ref={ref}>
+        <SectionHeader title={title} right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No items</div>
+      </div>
+    );
   }
 
-  if (size === 'medium') {
+  if (useList) {
     return (
-      <div>
-        <SectionHeader title={title} href={viewAllHref} />
-        <div className="space-y-1.5">
-          {items.slice(0, 4).map((item) => {
-            const isManga = item.format === 'MANGA' || item.format === 'NOVEL' || item.format === 'ONE_SHOT';
-            const href = isManga ? `/anime/manga/${item.id}` : `/anime/${item.id}`;
-            const metadata: string[] = [];
-            if (item.format) metadata.push(item.format.replace('_', ' '));
-            if (item.episodes != null) {
-              metadata.push(`${item.episodes} eps`);
-            }
-            const subtitle = metadata.join(' · ');
-            return (
-              <Link
-                key={item.id}
-                href={href}
-                className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader
+          title={title}
+          right={
+            <>
+              {toggleNode}
+              <Link href={viewAllHref} style={{ color: HPR.fgMute, textDecoration: 'none' }}>
+                View all →
+              </Link>
+            </>
+          }
+        />
+        <div
+          className="no-scrollbar scroll-fade-y"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {items.slice(0, visibleCount).map((it) => {
+            const isManga = it.format === 'MANGA' || it.format === 'NOVEL' || it.format === 'ONE_SHOT';
+            const href = isManga ? `/anime/manga/${it.id}` : `/anime/${it.id}`;
+            const imgSrc = it.coverImage
+              ? toCachedImageSrc(it.coverImage, 'anilist') || it.coverImage
+              : null;
+            const meta = [
+              it.format?.replace('_', ' '),
+              it.episodes != null ? `${it.episodes} eps` : null,
+              it.seasonYear != null ? String(it.seasonYear) : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
+            const row = (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: 8,
+                  background: HPR.ink,
+                  borderRadius: 12,
+                }}
               >
-                <span className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 bg-pink-500/80">
-                  <PlayCircle className="h-2.5 w-2.5 text-white" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.title}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{subtitle}</p>
+                <Poster
+                  width={48}
+                  height={72}
+                  label={it.title}
+                  tone={toneFromString(it.title)}
+                  fontSize={8}
+                  imageUrl={imgSrc ?? undefined}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: HPR.fg,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {it.title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: HPR.fgMute,
+                      fontFamily: FONT_MONO,
+                      marginTop: 2,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {meta}
+                  </div>
                 </div>
+                {it.averageScore != null && (
+                  <span
+                    style={{
+                      fontFamily: FONT_MONO,
+                      fontSize: 11,
+                      color: HPR.amber,
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}
+                  >
+                    ★ {it.averageScore}%
+                  </span>
+                )}
+              </div>
+            );
+            return editMode ? (
+              <div key={it.id}>{row}</div>
+            ) : (
+              <Link
+                key={it.id}
+                href={href}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+              >
+                {row}
               </Link>
             );
           })}
@@ -254,59 +361,107 @@ export function AnimeCarouselWidget({ carouselId, size, refreshInterval, editMod
     );
   }
 
-  // Large size uses Carousel
   return (
-    <div>
-      <SectionHeader title={title} href={viewAllHref} />
-      <Carousel>
-        {items.map((item) => {
-          const imgSrc = item.coverImage
-            ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
-            : null;
-          const isManga = item.format === 'MANGA' || item.format === 'NOVEL' || item.format === 'ONE_SHOT';
-          const href = isManga ? `/anime/manga/${item.id}` : `/anime/${item.id}`;
-          const metadata: string[] = [];
-          if (item.format) metadata.push(item.format.replace('_', ' '));
-          if (item.episodes != null) {
-            metadata.push(`${item.episodes} eps`);
-          }
-
-          return (
-            <Link
-              key={item.id}
-              href={href}
-              className="snap-start shrink-0 w-[110px] group"
-            >
-              <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm border border-border/30 group-hover:border-primary/40 transition-colors">
-                {imgSrc ? (
-                  <Image
-                    src={imgSrc}
-                    alt={item.title}
-                    fill
-                    sizes="110px"
-                    className="object-cover transition-transform duration-300 group-hover:scale-105"
-                    unoptimized={isProtectedApiImageSrc(imgSrc)}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
-                    {item.title}
-                  </div>
-                )}
-                {item.averageScore != null && item.averageScore > 0 && (
-                  <div className="absolute right-1">
-                    <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-[9px] text-white">
-                      <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
-                      {item.averageScore}%
-                    </span>
-                  </div>
-                )}
+    <div ref={ref}>
+      <SectionHeader
+        title={title}
+        right={
+          <>
+            {toggleNode}
+            <span>View all →</span>
+          </>
+        }
+      />
+      <div
+        className="no-scrollbar"
+        style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
+      >
+        {items.slice(0, visibleCount).map((it) => {
+          const imgSrc = it.coverImage ? toCachedImageSrc(it.coverImage, 'anilist') || it.coverImage : null;
+          const isManga = it.format === 'MANGA' || it.format === 'NOVEL' || it.format === 'ONE_SHOT';
+          const href = isManga ? `/anime/manga/${it.id}` : `/anime/${it.id}`;
+          const meta = [
+            it.format?.replace('_', ' '),
+            it.episodes != null ? `${it.episodes} eps` : null,
+            it.seasonYear != null ? String(it.seasonYear) : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          const card = (
+            <>
+              <Poster
+                width={CAROUSEL_CARD_WIDTH}
+                height={CAROUSEL_CARD_HEIGHT}
+                label={it.title}
+                tone={toneFromString(it.title)}
+                imageUrl={imgSrc ?? undefined}
+                rating={it.averageScore ? `${it.averageScore}%` : null}
+              />
+              <div
+                style={{
+                  fontSize: 11,
+                  color: HPR.fg,
+                  marginTop: 6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  fontWeight: 500,
+                }}
+              >
+                {it.title}
               </div>
-              <p className="text-[11px] font-medium truncate leading-tight">{item.title}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{metadata.join(' · ')}</p>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: HPR.fgMute,
+                  fontFamily: FONT_MONO,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {meta}
+              </div>
+            </>
+          );
+          return editMode ? (
+            <div key={it.id} style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0 }}>
+              {card}
+            </div>
+          ) : (
+            <Link
+              key={it.id}
+              href={href}
+              style={{
+                width: CAROUSEL_CARD_WIDTH,
+                flexShrink: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
+            >
+              {card}
             </Link>
           );
         })}
-      </Carousel>
+        {!editMode && (
+          <Link
+            href={viewAllHref}
+            style={{
+              alignSelf: 'center',
+              padding: '6px 10px',
+              borderRadius: 999,
+              border: `1px solid ${HPR.hairline2}`,
+              fontSize: 11,
+              color: HPR.fg,
+              textDecoration: 'none',
+              flexShrink: 0,
+              fontFamily: FONT_MONO,
+            }}
+          >
+            See all →
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,35 +1,13 @@
 'use client';
 
-import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Film, Tv, Download, HardDrive } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { ServicesStatsResponse } from '@/types/service-stats';
-
-function StatsCard({
-  href,
-  editMode,
-  className,
-  children,
-}: {
-  href?: string;
-  editMode: boolean;
-  className: string;
-  children: ReactNode;
-}) {
-  if (!href || editMode) {
-    return <div className={className}>{children}</div>;
-  }
-
-  return (
-    <Link href={href} className={`${className} transition-colors hover:bg-muted/30 active:bg-muted/40`}>
-      {children}
-    </Link>
-  );
-}
+import { Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
 
 async function fetchStats(): Promise<ServicesStatsResponse> {
   const res = await fetch('/api/services/stats');
@@ -37,88 +15,162 @@ async function fetchStats(): Promise<ServicesStatsResponse> {
   return res.json();
 }
 
-export function StatsGridWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
-  const { data: stats, loading } = useWidgetData({ fetchFn: fetchStats, refreshInterval });
+interface Tile {
+  icon: React.ReactNode;
+  label: string;
+  value: string | number;
+  sub?: string;
+  color: string;
+  href?: string;
+}
 
-  if (loading) {
-    return (
-      <div className="grid gap-3 grid-cols-2">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="rounded-xl bg-card p-4">
-            <Skeleton className="h-8 w-20 mb-2" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-        ))}
-      </div>
-    );
-  }
+export function StatsGridWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
+  const { ref, width } = useElementSize<HTMLDivElement>();
+  // Each tile is half the widget width minus the 8px gap between tiles.
+  const tileWidth = width > 0 ? (width - 8) / 2 : 0;
+  const hideIcon = tileWidth > 0 && tileWidth < ICON_HIDE_THRESHOLD;
+  const { data, loading } = useWidgetData({
+    fetchFn: fetchStats,
+    refreshInterval,
+    enabled: !editMode,
+    cacheKey: 'stats-grid',
+  });
 
-  if (size === 'small') {
-    return (
-      <div className="rounded-xl bg-card p-2 grid grid-cols-3 gap-2">
-        <StatsCard href="/movies" editMode={editMode} className="rounded-lg p-2 flex items-center gap-2 min-w-0">
-          <Film className="h-4 w-4 text-blue-500" />
-          <span className="text-lg font-bold tabular-nums">{stats?.totalMovies ?? '--'}</span>
-        </StatsCard>
-        <StatsCard href="/series" editMode={editMode} className="rounded-lg p-2 flex items-center gap-2 min-w-0">
-          <Tv className="h-4 w-4 text-purple-500" />
-          <span className="text-lg font-bold tabular-nums">{stats?.totalSeries ?? '--'}</span>
-        </StatsCard>
-        <StatsCard href="/activity" editMode={editMode} className="rounded-lg p-2 flex items-center gap-2 min-w-0">
-          <Download className="h-4 w-4 text-green-500" />
-          <span className="text-lg font-bold tabular-nums">{stats?.activeDownloads ?? '--'}</span>
-        </StatsCard>
-      </div>
-    );
-  }
+  const free =
+    data?.diskSpace && data.diskSpace.length > 0
+      ? formatBytes(data.diskSpace.reduce((acc, d) => acc + d.freeSpace, 0))
+      : '--';
+
+  const tiles: Tile[] = [
+    {
+      icon: <Film size={15} />,
+      label: 'Movies',
+      value: loading ? '–' : data?.totalMovies ?? '--',
+      color: HPR.blue,
+      href: '/movies',
+    },
+    {
+      icon: <Tv size={15} />,
+      label: 'TV',
+      value: loading ? '–' : data?.totalSeries ?? '--',
+      sub:
+        !loading && data?.jellyfin?.episodeCount !== undefined
+          ? `${data.jellyfin.episodeCount.toLocaleString()} eps`
+          : undefined,
+      color: HPR.purple,
+      href: '/series',
+    },
+    {
+      icon: <Download size={15} />,
+      label: 'Downloading',
+      value: loading ? '–' : data?.activeDownloads ?? '--',
+      color: HPR.green,
+      href: '/activity',
+    },
+    {
+      icon: <HardDrive size={15} />,
+      label: 'Free Space',
+      value: free,
+      color: HPR.amber,
+    },
+  ];
 
   return (
-    <div className="grid gap-3 grid-cols-2">
-      <StatsCard href="/movies" editMode={editMode} className="rounded-xl bg-card p-4 flex items-center gap-3">
-        <div className="rounded-lg bg-blue-500/10 p-2.5">
-          <Film className="h-5 w-5 text-blue-500" />
-        </div>
-        <div>
-          <p className="text-2xl font-bold">{stats?.totalMovies ?? '--'}</p>
-          <p className="text-xs text-muted-foreground">Movies</p>
-        </div>
-      </StatsCard>
-      <StatsCard href="/series" editMode={editMode} className="rounded-xl bg-card p-4 flex items-center gap-3">
-        <div className="rounded-lg bg-purple-500/10 p-2.5">
-          <Tv className="h-5 w-5 text-purple-500" />
-        </div>
-        <div>
-          <div className='flex gap-2 items-center'>
-            <p className="text-2xl font-bold">{stats?.totalSeries ?? '--'}</p>
-            <p className="text-xl">TV</p>
-          </div>
-          {stats?.jellyfin?.episodeCount !== undefined && (
-            <p className="text-xs text-muted-foreground">{stats.jellyfin.episodeCount} episodes</p>
-          )}
-        </div>
-      </StatsCard>
-      <StatsCard href="/activity" editMode={editMode} className="rounded-xl bg-card p-4 flex items-center gap-3">
-        <div className="rounded-lg bg-green-500/10 p-2.5">
-          <Download className="h-5 w-5 text-green-500" />
-        </div>
-        <div>
-          <p className="text-2xl font-bold">{stats?.activeDownloads ?? '--'}</p>
-          <p className="text-xs text-muted-foreground">Downloading</p>
-        </div>
-      </StatsCard>
-      <StatsCard editMode={editMode} className="rounded-xl bg-card p-4 flex items-center gap-3">
-        <div className="rounded-lg bg-orange-500/10 p-2.5">
-          <HardDrive className="h-5 w-5 text-orange-500" />
-        </div>
-        <div>
-          <p className="text-2xl font-bold">
-            {stats?.diskSpace && stats.diskSpace.length > 0
-              ? formatBytes(stats.diskSpace.reduce((acc, disk) => acc + disk.freeSpace, 0))
-              : '--'}
-          </p>
-          <p className="text-xs text-muted-foreground">Free Space</p>
-        </div>
-      </StatsCard>
+    <div ref={ref}>
+      <Eyebrow style={{ marginBottom: 10 }}>Overview</Eyebrow>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          gap: 8,
+        }}
+      >
+        {tiles.map((t, i) => {
+          const inner = (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: narrow ? 8 : 10,
+                padding: narrow ? '8px 9px' : '10px 12px',
+                background: HPR.ink,
+                border: `1px solid ${HPR.hairline}`,
+                borderRadius: 8,
+                minWidth: 0,
+              }}
+            >
+              {!hideIcon && (
+                <div
+                  style={{
+                    width: narrow ? 28 : 32,
+                    height: narrow ? 28 : 32,
+                    borderRadius: 7,
+                    background: mix(t.color, 12),
+                    color: t.color,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  {t.icon}
+                </div>
+              )}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  style={{
+                    fontFamily: FONT_DISPLAY,
+                    fontSize: narrow ? 16 : 18,
+                    color: HPR.fg,
+                    fontWeight: 600,
+                    lineHeight: 1.05,
+                    letterSpacing: '-0.02em',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {t.value}
+                </div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: HPR.fgMute,
+                    marginTop: 2,
+                    display: 'flex',
+                    gap: 4,
+                    alignItems: 'baseline',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {t.label}
+                  {t.sub && (
+                    <span
+                      style={{
+                        color: HPR.fgSubtle,
+                        fontFamily: FONT_MONO,
+                        fontSize: 9,
+                      }}
+                    >
+                      {t.sub}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+          if (!t.href || editMode) {
+            return <div key={i}>{inner}</div>;
+          }
+          return (
+            <Link key={i} href={t.href} style={{ textDecoration: 'none' }}>
+              {inner}
+            </Link>
+          );
+        })}
+      </div>
     </div>
   );
 }

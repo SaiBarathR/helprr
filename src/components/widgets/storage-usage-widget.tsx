@@ -1,13 +1,10 @@
 'use client';
 
-import { Database } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Progress } from '@/components/ui/progress';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatBytes } from '@/lib/format';
-import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { DiskSpace, ServicesStatsResponse } from '@/types/service-stats';
+import { Bar, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
 
 async function fetchStorage(): Promise<DiskSpace[]> {
   const res = await fetch('/api/services/stats');
@@ -16,59 +13,77 @@ async function fetchStorage(): Promise<DiskSpace[]> {
   return data.diskSpace || [];
 }
 
-export function StorageUsageWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
-  const { data: disks, loading } = useWidgetData({ fetchFn: fetchStorage, refreshInterval });
-
-  if (loading) {
-    return (
-      <div className="rounded-xl bg-card p-3">
-        <Skeleton className="h-5 w-20 mb-2" />
-        <Skeleton className="h-3 w-full" />
-      </div>
-    );
-  }
-
-  if (!disks || disks.length === 0) {
-    return editMode ? <EditModePlaceholder title="Storage Usage" message="No disk stats" /> : null;
-  }
-
-  const totalFree = disks.reduce((acc, d) => acc + d.freeSpace, 0);
-  const totalSpace = disks.reduce((acc, d) => acc + d.totalSpace, 0);
-  const usedPercent = totalSpace > 0 ? ((totalSpace - totalFree) / totalSpace) * 100 : 0;
-
-  if (size === 'small') {
-    return (
-      <div className="rounded-xl bg-card p-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Database className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground">Storage</span>
-        </div>
-        <p className="text-sm font-bold tabular-nums mb-1">{formatBytes(totalFree)} free</p>
-        <Progress value={usedPercent} className="h-1.5" />
-      </div>
-    );
-  }
+export function StorageUsageWidget({ refreshInterval, narrow = false, editMode = false }: WidgetProps) {
+  const { data: disks } = useWidgetData({
+    fetchFn: fetchStorage,
+    refreshInterval,
+    enabled: !editMode,
+    cacheKey: 'storage-usage',
+  });
+  const list = disks ?? [];
 
   return (
-    <div className="rounded-xl bg-card p-4">
-      <p className="text-xs text-muted-foreground mb-3">Storage Usage</p>
-      <div className="space-y-3">
-        {disks.map((disk, i) => {
+    <div>
+      <Eyebrow style={{ marginBottom: 10 }}>Storage Usage</Eyebrow>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {list.length === 0 && (
+          <div style={{ fontSize: 11, color: HPR.fgSubtle }}>No disk stats</div>
+        )}
+        {list.map((disk, i) => {
           const used = disk.totalSpace - disk.freeSpace;
-          const percent = disk.totalSpace > 0 ? (used / disk.totalSpace) * 100 : 0;
-          const diskKey = disk.path || (disk.label ? `${disk.label}-${disk.totalSpace}` : `disk-${disk.totalSpace}`);
+          const pct = disk.totalSpace > 0 ? (used / disk.totalSpace) * 100 : 0;
+          const color = pct > 90 ? HPR.rose : pct > 75 ? HPR.amber : HPR.fgMute;
           return (
-            <div key={diskKey}>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-muted-foreground">Disk {i + 1}</span>
-                <span className="tabular-nums font-medium">
-                  {formatBytes(disk.freeSpace)} free / {formatBytes(disk.totalSpace)}
+            <div key={i} style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'baseline',
+                  marginBottom: 4,
+                  gap: 6,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: 6,
+                    minWidth: 0,
+                    flex: '1 1 auto',
+                  }}
+                >
+               
+                  {!narrow && disk.path && (
+                    <span
+                      style={{
+                        fontFamily: FONT_MONO,
+                        fontSize: 11,
+                        color: HPR.fgSubtle,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        flex: 1,
+                      }}
+                    >
+                      {disk.path}
+                    </span>
+                  )}
+                </div>
+                <span
+                  style={{
+                    fontFamily: FONT_MONO,
+                    fontSize: 10,
+                    color: HPR.fgMute,
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  {formatBytes(disk.freeSpace)} / {formatBytes(disk.totalSpace)}
                 </span>
               </div>
-              <Progress
-                value={percent}
-                className={`h-2 ${percent > 90 ? '[&>div]:bg-rose-500' : percent > 75 ? '[&>div]:bg-amber-500' : ''}`}
-              />
+              <Bar pct={pct} color={color} height={4} />
             </div>
           );
         })}
