@@ -1,17 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clapperboard, Loader2 } from 'lucide-react';
 
+const DEVICE_COOKIE = 'helprr-device';
+const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+
+function setDeviceCookieFromMatchMedia(): void {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return;
+  const device = window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop';
+  document.cookie = `${DEVICE_COOKIE}=${device}; Path=/; SameSite=Lax; Secure; Max-Age=${DEVICE_COOKIE_MAX_AGE}`;
+}
+
 export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  // Detect device class on the login page so the dashboard SSR reads the
+  // correct cookie on the very first authenticated render — avoids the
+  // desktop-then-mobile reload thrash for iPhone users.
+  useEffect(() => {
+    setDeviceCookieFromMatchMedia();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,6 +42,9 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
+        // Re-read device class right before redirect in case the user resized
+        // the window between mount and login.
+        setDeviceCookieFromMatchMedia();
         router.replace('/');
         router.refresh();
       } else {

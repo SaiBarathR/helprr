@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatDistanceToNowShort } from '@/lib/format';
 import { formatDelta } from '@/lib/cleanup/format-delta';
@@ -79,7 +80,11 @@ export function CleanupStatusWidget({ refreshInterval, rowSpan = 2, editMode = f
       <SectionHeader
         title="Cleanup"
         badge={dryRun ? <Pill color={HPR.amber}>DRY</Pill> : null}
-        right={<span>View all →</span>}
+        right={
+          <Link href="/cleanup" style={{ color: 'inherit', textDecoration: 'none' }}>
+            View all →
+          </Link>
+        }
       />
       <div
         style={{

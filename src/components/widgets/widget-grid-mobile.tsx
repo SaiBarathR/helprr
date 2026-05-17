@@ -52,6 +52,9 @@ export function WidgetGridMobile({ refreshInterval }: WidgetGridMobileProps) {
   );
 
   function handleLayoutChange(newLayout: Layout) {
+    // RGL fires onLayoutChange on mount/reconciliation even with static items.
+    // Without this guard, a non-edit reflow would silently persist positions.
+    if (!editMode) return;
     updateMobileWidgetPositions(
       newLayout.map((item) => ({
         id: item.i,

@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
+import Link from 'next/link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatBytes } from '@/lib/format';
 import type { QueueItem } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -13,7 +15,6 @@ import {
   HPR,
   Hairline,
   Pill,
-  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
 } from './bento-primitives';
@@ -59,16 +60,17 @@ export function ActiveDownloadsWidget({
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
-  const visibleCount = useMemo(() => {
-    const carouselCount = width > 0
-      ? Math.ceil(width / (CARD_WIDTH + CARD_GAP)) + 2
-      : 6;
-    const listCount = height > 0
-      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / ROW_HEIGHT) + 2
-      : 6;
-    return Math.max(carouselCount, listCount, 6);
-  }, [width, height]);
-  const fetchPageSize = Math.ceil((visibleCount + 4) / 10) * 10;
+  const { visibleCount: listVisible, fetchSize: heightFetchSize } = useListFetchSize({
+    height,
+    rowHeight: ROW_HEIGHT,
+  });
+  const carouselVisible = width > 0
+    ? Math.ceil(width / (CARD_WIDTH + CARD_GAP)) + 2
+    : 6;
+  const visibleCount = Math.max(listVisible, carouselVisible);
+  // Grow the fetch with width too — a wide carousel needs more cards than a
+  // tall list. Bucket to the same 20-step as useListFetchSize uses.
+  const fetchPageSize = Math.max(heightFetchSize, Math.ceil(carouselVisible / 20) * 20);
   const fetchFn = useCallback(() => fetchQueue(fetchPageSize), [fetchPageSize]);
   const { data: queue, loading } = useWidgetData({
     fetchFn,
@@ -87,7 +89,10 @@ export function ActiveDownloadsWidget({
 
   if (loading && list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Active Downloads" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
@@ -96,7 +101,10 @@ export function ActiveDownloadsWidget({
 
   if (list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Active Downloads" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           {editMode ? 'No active downloads' : 'Queue is empty'}
@@ -116,7 +124,9 @@ export function ActiveDownloadsWidget({
           right={
             <>
               {toggleNode}
-              <span>View all →</span>
+              <Link href="/torrents" style={{ color: 'inherit', textDecoration: 'none' }}>
+                View all →
+              </Link>
             </>
           }
         />
@@ -209,7 +219,9 @@ export function ActiveDownloadsWidget({
         right={
           <>
             {toggleNode}
-            <span>View all →</span>
+            <Link href="/torrents" style={{ color: 'inherit', textDecoration: 'none' }}>
+              View all →
+            </Link>
           </>
         }
       />
@@ -292,7 +304,7 @@ export function ActiveDownloadsWidget({
                 }}
               >
                 <span>{formatBytes(it.size)}</span>
-                <span>↓ {formatBytes(it.size - it.sizeleft)}</span>
+                <span>↓ {formatBytes(Math.max(0, it.size - it.sizeleft))}</span>
               </div>
             </div>
           );

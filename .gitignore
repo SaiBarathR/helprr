@@ -42,8 +42,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+.claude
 /jellyfinDocs
 /plans
+/docs
 
 # Captured request artifacts
 *.har

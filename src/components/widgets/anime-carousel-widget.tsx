@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc } from '@/lib/image';
 import type { AnimeCarouselId } from '@/lib/anime-carousel-config';
 import type { AniListMediaListCollection, AniListMediaListEntry } from '@/lib/anilist-mutations';
@@ -17,7 +18,6 @@ import {
   HPR,
   LIST_ROW_HEIGHT,
   Poster,
-  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
   toneFromString,
@@ -81,26 +81,28 @@ function itemToRailItem(item: AniListListItem): RailItem {
   };
 }
 
-let globalHomeDataPromise: Promise<HomeData> | null = null;
-let globalHomeDataPromiseTime = 0;
+const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
+const ANILIST_MAX_PER_PAGE = 50;
+const homeDataPromises = new Map<number, { promise: Promise<HomeData>; time: number }>();
 
-async function fetchHomeDataCached() {
+async function fetchHomeDataCached(perPage: number) {
+  const clamped = Math.min(ANILIST_MAX_PER_PAGE, Math.max(10, perPage));
   const now = Date.now();
-  if (globalHomeDataPromise && now - globalHomeDataPromiseTime < 5 * 60 * 1000) {
-    return globalHomeDataPromise;
+  const existing = homeDataPromises.get(clamped);
+  if (existing && now - existing.time < HOME_CACHE_TTL_MS) {
+    return existing.promise;
   }
-  globalHomeDataPromiseTime = now;
-  globalHomeDataPromise = fetch('/api/anime/home?perPage=30')
+  const promise = fetch(`/api/anime/home?perPage=${clamped}`)
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch anime home data');
       return res.json() as Promise<HomeData>;
     })
     .catch((error) => {
-      globalHomeDataPromise = null;
-      globalHomeDataPromiseTime = 0;
+      homeDataPromises.delete(clamped);
       throw error;
     });
-  return globalHomeDataPromise;
+  homeDataPromises.set(clamped, { promise, time: now });
+  return promise;
 }
 
 function flattenEntries(collection: AniListMediaListCollection): AniListMediaListEntry[] {
@@ -128,15 +130,15 @@ export function AnimeCarouselWidget({
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
   const useList = !!narrow || layoutVariant === 'list';
-  const visibleCount = useMemo(() => {
-    const carouselCount = width > 0
-      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
-      : narrow ? 8 : 12;
-    const listCount = height > 0
-      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
-      : 8;
-    return Math.max(carouselCount, listCount, 8);
-  }, [width, height, narrow]);
+  const { visibleCount: listVisible, fetchSize } = useListFetchSize({
+    height,
+    rowHeight: LIST_ROW_HEIGHT,
+  });
+  const carouselVisible = width > 0
+    ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+    : narrow ? 8 : 12;
+  const visibleCount = Math.max(listVisible, carouselVisible);
+  const perPage = Math.min(ANILIST_MAX_PER_PAGE, Math.max(visibleCount, fetchSize));
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
@@ -156,10 +158,10 @@ export function AnimeCarouselWidget({
   }, [requiresViewer]);
 
   const { data: homeData, loading: homeLoading } = useWidgetData<HomeData>({
-    fetchFn: fetchHomeDataCached,
+    fetchFn: () => fetchHomeDataCached(perPage),
     refreshInterval: safeInterval,
     enabled: !editMode && !requiresViewer && ready,
-    cacheKey: 'anime-home',
+    cacheKey: `anime-home-${perPage}`,
   });
 
   const { data: listData, loading: listLoading } = useWidgetData<AniListMediaListEntry[]>({
@@ -206,7 +208,10 @@ export function AnimeCarouselWidget({
 
   if (viewerConnected === false) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title={title} right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           Connect AniList in Settings to enable this list.
@@ -229,7 +234,10 @@ export function AnimeCarouselWidget({
 
   if (loading && items.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title={title} right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
@@ -237,7 +245,10 @@ export function AnimeCarouselWidget({
   }
   if (items.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title={title} right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No items</div>
       </div>
@@ -368,7 +379,9 @@ export function AnimeCarouselWidget({
         right={
           <>
             {toggleNode}
-            <span>View all →</span>
+            <Link href={viewAllHref} style={{ color: HPR.fgMute, textDecoration: 'none' }}>
+              View all →
+            </Link>
           </>
         }
       />
