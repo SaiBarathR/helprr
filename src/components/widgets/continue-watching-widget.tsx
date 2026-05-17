@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
+import Link from 'next/link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import type { JellyfinItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
@@ -15,7 +17,6 @@ import {
   HPR,
   LIST_ROW_HEIGHT,
   Poster,
-  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
   toneFromString,
@@ -43,16 +44,16 @@ export function ContinueWatchingWidget({
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
-  const visibleCount = useMemo(() => {
-    const carouselCount = width > 0
-      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
-      : 12;
-    const listCount = height > 0
-      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
-      : 8;
-    return Math.max(carouselCount, listCount, 8);
-  }, [width, height]);
-  const fetchLimit = Math.ceil((visibleCount + 6) / 10) * 10;
+  const { visibleCount: listVisible, fetchSize: heightFetchSize } = useListFetchSize({
+    height,
+    rowHeight: LIST_ROW_HEIGHT,
+    bucketSize: 10,
+  });
+  const carouselVisible = width > 0
+    ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+    : 12;
+  const visibleCount = Math.max(listVisible, carouselVisible);
+  const fetchLimit = Math.max(heightFetchSize, Math.ceil(carouselVisible / 10) * 10);
   const fetchFn = useCallback(() => fetchResumeItems(fetchLimit), [fetchLimit]);
   const { data: items, loading } = useWidgetData({
     fetchFn,
@@ -74,7 +75,10 @@ export function ContinueWatchingWidget({
 
   if (loading && list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Continue Watching" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
@@ -83,7 +87,10 @@ export function ContinueWatchingWidget({
 
   if (list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Continue Watching" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           {editMode ? 'Nothing to resume' : 'No items in progress'}
@@ -103,7 +110,9 @@ export function ContinueWatchingWidget({
           right={
             <>
               {toggleNode}
-              <span>View all →</span>
+              <Link href="/jellyfin" style={{ color: 'inherit', textDecoration: 'none' }}>
+                View all →
+              </Link>
             </>
           }
         />
@@ -201,7 +210,17 @@ export function ContinueWatchingWidget({
 
   return (
     <div ref={ref}>
-      <SectionHeader title="Continue Watching" right={<span>View all →</span>} />
+      <SectionHeader
+        title="Continue Watching"
+        right={
+          <>
+            {toggleNode}
+            <Link href="/jellyfin" style={{ color: 'inherit', textDecoration: 'none' }}>
+              View all →
+            </Link>
+          </>
+        }
+      />
       <div
         className="no-scrollbar"
         style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}

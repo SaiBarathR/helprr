@@ -176,6 +176,8 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     category: 'media',
     defaultDesktopSpan: span(3, 2),
     defaultMobileSpan: span(2, 1),
+    desktopLayout: 'list',
+    mobileLayout: 'list',
     component: TodayCalendarWidget,
   },
   {

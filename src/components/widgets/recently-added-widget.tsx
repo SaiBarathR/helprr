@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
 import { Film, Tv } from 'lucide-react';
-import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -16,7 +17,6 @@ import {
   HPR,
   LIST_ROW_HEIGHT,
   Poster,
-  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
   toneFromString,
@@ -57,21 +57,19 @@ export function RecentlyAddedWidget({
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
-  const visibleCount = useMemo(() => {
-    const carouselCount = width > 0
-      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
-      : 12;
-    const listCount = height > 0
-      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
-      : 8;
-    return Math.max(carouselCount, listCount, 8);
-  }, [width, height]);
-  // Round up to nearest 10 so we don't refetch on every pixel of resize.
-  const fetchLimit = Math.ceil((visibleCount + 6) / 10) * 10;
+  const { visibleCount: listVisible, fetchSize: heightFetchSize } = useListFetchSize({
+    height,
+    rowHeight: LIST_ROW_HEIGHT,
+  });
+  const carouselVisible = width > 0
+    ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+    : 12;
+  const visibleCount = Math.max(listVisible, carouselVisible);
+  const fetchLimit = Math.max(heightFetchSize, Math.ceil(carouselVisible / 20) * 20);
   const fetchFn = useCallback(() => fetchRecent(fetchLimit), [fetchLimit]);
   const { data, loading } = useWidgetData({
     fetchFn,
-    refreshInterval,
+    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
     enabled: !editMode,
     cacheKey: `recently-added-${fetchLimit}`,
   });
@@ -86,7 +84,10 @@ export function RecentlyAddedWidget({
 
   if (loading && list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Recently Added" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
@@ -94,10 +95,13 @@ export function RecentlyAddedWidget({
   }
   if (list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Recently Added" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
-          {editMode ? 'No recent imports' : 'No recent imports'}
+          No recent imports
         </div>
       </div>
     );
@@ -114,7 +118,9 @@ export function RecentlyAddedWidget({
           right={
             <>
               {toggleNode}
-              <span>View all →</span>
+              <Link href="/activity" style={{ color: 'inherit', textDecoration: 'none' }}>
+                View all →
+              </Link>
             </>
           }
         />
@@ -149,7 +155,17 @@ export function RecentlyAddedWidget({
 
   return (
     <div ref={ref}>
-      <SectionHeader title="Recently Added" right={<span>View all →</span>} />
+      <SectionHeader
+        title="Recently Added"
+        right={
+          <>
+            {toggleNode}
+            <Link href="/activity" style={{ color: 'inherit', textDecoration: 'none' }}>
+              View all →
+            </Link>
+          </>
+        }
+      />
       <div
         className="no-scrollbar"
         style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
@@ -188,7 +204,7 @@ export function RecentlyAddedWidget({
                 >
                   {it.title}
                 </div>
-                <div style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}>
+                <div style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }} className='line-clamp-1 md:line-clamp-2 overflow-hidden text-ellipsis'>
                   {it.subtitle}
                 </div>
                 <div

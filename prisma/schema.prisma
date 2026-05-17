@@ -81,7 +81,7 @@ model PollingState {
 model AppSettings {
   id                       String  @id @default("singleton")
   pollingIntervalSecs      Int     @default(30)
-  dashboardRefreshIntervalSecs Int @default(5)
+  dashboardRefreshIntervalSecs Int @default(15)
   activityRefreshIntervalSecs  Int @default(5)
   torrentsRefreshIntervalSecs  Int @default(5)
   cacheImagesEnabled       Boolean @default(true)
@@ -101,14 +101,20 @@ model AppSettings {
   discoverLayout           Json?                          // User-configured discover homepage layout (sections order, visibility, custom carousels)
   defaultDesktopLayoutId   String?                        // Active DashboardLayout for desktop viewport
   defaultMobileLayoutId    String?                        // Active DashboardLayout for mobile viewport
+
+  defaultDesktopLayout DashboardLayout? @relation("DesktopDefault", fields: [defaultDesktopLayoutId], references: [id], onDelete: SetNull)
+  defaultMobileLayout  DashboardLayout? @relation("MobileDefault", fields: [defaultMobileLayoutId], references: [id], onDelete: SetNull)
 }
 
 model DashboardLayout {
   id        String   @id @default(cuid())
-  name      String
+  name      String   @unique
   widgets   Json     // WidgetInstance[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  desktopDefaults AppSettings[] @relation("DesktopDefault")
+  mobileDefaults  AppSettings[] @relation("MobileDefault")
 
   @@index([createdAt])
 }

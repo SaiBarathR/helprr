@@ -7,7 +7,7 @@ import { ChevronDown, Loader2, Film, Tv, MonitorPlay } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import type { CustomHistoryItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
 import {
   DateRangeSelect,
@@ -96,10 +96,14 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
   }, [filters.fromIso, filters.toIso, filters.userId, filters.type]);
 
   const cacheKey = `jellyfin-play-history-${filters.fromIso}-${filters.toIso}-${filters.userId || 'all'}-${filters.type || 'all'}`;
+  // Pause background refresh once the user has paged in extras: a refetch
+  // would reset data to the first page and either drop or duplicate items at
+  // the page boundary. Background polling resumes naturally on filter changes
+  // (which reset extraItems back to []).
   const { data, loading } = useWidgetData<HistoryResult>({
     fetchFn,
-    refreshInterval,
-    enabled: !editMode,
+    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
+    enabled: !editMode && extraItems.length === 0,
     cacheKey,
   });
 

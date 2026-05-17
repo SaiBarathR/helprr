@@ -1,13 +1,14 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import Link from 'next/link';
 import { AlertCircle, AlertTriangle, RotateCw, Trash2 } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { FONT_MONO, HPR, Hairline, SECTION_HEADER_HEIGHT, SectionHeader, mix } from './bento-primitives';
+import { FONT_MONO, HPR, Hairline, SectionHeader, mix } from './bento-primitives';
 
 const ROW_HEIGHT = 46;
 
@@ -60,11 +61,11 @@ export function CleanupHistoryWidget({
   rowSpan = 2,
 }: WidgetProps) {
   const { ref, height } = useElementSize<HTMLDivElement>();
-  const visibleCount = useMemo(() => {
-    if (height <= 0) return rowSpan >= 2 ? 5 : 4;
-    return Math.max(4, Math.ceil((height - SECTION_HEADER_HEIGHT) / ROW_HEIGHT) + 3);
-  }, [height, rowSpan]);
-  const fetchPageSize = Math.ceil(visibleCount / 5) * 5;
+  const { visibleCount, fetchSize: fetchPageSize } = useListFetchSize({
+    height,
+    rowHeight: ROW_HEIGHT,
+    bucketSize: 5,
+  });
   const fetchFn = useCallback(() => fetchCleanupHistory(fetchPageSize), [fetchPageSize]);
   const { data, loading } = useWidgetData({
     fetchFn,
@@ -76,7 +77,10 @@ export function CleanupHistoryWidget({
 
   if (loading && list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Cleanup History" />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
@@ -84,7 +88,10 @@ export function CleanupHistoryWidget({
   }
   if (list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Cleanup History" />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           No cleanup events yet
@@ -98,7 +105,14 @@ export function CleanupHistoryWidget({
       ref={ref}
       style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
     >
-      <SectionHeader title="Cleanup History" right={<span>View all →</span>} />
+      <SectionHeader
+        title="Cleanup History"
+        right={
+          <Link href="/cleanup" style={{ color: 'inherit', textDecoration: 'none' }}>
+            View all →
+          </Link>
+        }
+      />
       <div
         className="no-scrollbar scroll-fade-y"
         style={{

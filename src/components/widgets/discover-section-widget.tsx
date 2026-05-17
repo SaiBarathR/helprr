@@ -1,9 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc } from '@/lib/image';
 import { useUIStore } from '@/lib/store';
 import {
@@ -14,7 +15,6 @@ import {
   HPR,
   LIST_ROW_HEIGHT,
   Poster,
-  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
   toneFromString,
@@ -48,24 +48,26 @@ interface DiscoverSectionWidgetProps {
 
 const CLIENT_CACHE_MS = 5 * 60 * 1000;
 
-let sectionsPromise: Promise<DiscoverResponse> | null = null;
-let sectionsPromiseTime = 0;
+// Cache the sections fetch per perSectionLimit. Widgets at the same size
+// share a single in-flight request via this map; differently-sized widgets
+// each get the bundle they need without colliding.
+const sectionsPromises = new Map<number, { promise: Promise<DiscoverResponse>; time: number }>();
 
-function fetchSectionsCached(): Promise<DiscoverResponse> {
+function fetchSectionsCached(perSectionLimit: number): Promise<DiscoverResponse> {
   const now = Date.now();
-  if (sectionsPromise && now - sectionsPromiseTime < CLIENT_CACHE_MS) return sectionsPromise;
-  sectionsPromiseTime = now;
-  sectionsPromise = fetch('/api/discover?mode=sections')
+  const existing = sectionsPromises.get(perSectionLimit);
+  if (existing && now - existing.time < CLIENT_CACHE_MS) return existing.promise;
+  const promise = fetch(`/api/discover?mode=sections&perSectionLimit=${perSectionLimit}`)
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover sections');
       return res.json() as Promise<DiscoverResponse>;
     })
     .catch((err) => {
-      sectionsPromise = null;
-      sectionsPromiseTime = 0;
+      sectionsPromises.delete(perSectionLimit);
       throw err;
     });
-  return sectionsPromise;
+  sectionsPromises.set(perSectionLimit, { promise, time: now });
+  return promise;
 }
 
 interface CustomCache {
@@ -73,9 +75,24 @@ interface CustomCache {
   time: number;
 }
 
+// LRU-evicted cache for custom Discover carousel queries. Insertion order ==
+// recency order in JS Maps; we delete-then-set on every hit so the
+// most-recently-accessed entry stays at the end and `keys().next()` returns the
+// oldest for eviction. Caps long-running tabs that explore many filter combos.
+const CUSTOM_CACHE_MAX_ENTRIES = 50;
 const customCache = new Map<string, CustomCache>();
 
-function buildCustomQuery(filters: DiscoverLayoutCustomFilters): string {
+function customCacheSet(query: string, entry: CustomCache): void {
+  customCache.delete(query);
+  customCache.set(query, entry);
+  while (customCache.size > CUSTOM_CACHE_MAX_ENTRIES) {
+    const oldest = customCache.keys().next().value;
+    if (oldest === undefined) break;
+    customCache.delete(oldest);
+  }
+}
+
+function buildCustomQuery(filters: DiscoverLayoutCustomFilters, limit?: number): string {
   const params = new URLSearchParams();
   params.set('mode', 'browse');
   params.set('page', '1');
@@ -96,25 +113,30 @@ function buildCustomQuery(filters: DiscoverLayoutCustomFilters): string {
   if (filters.networks?.length) params.set('networks', filters.networks.join(','));
   if (filters.companies?.length) params.set('companies', filters.companies.join(','));
   if (filters.releaseState) params.set('releaseState', filters.releaseState);
+  if (limit) params.set('limit', String(limit));
   return params.toString();
 }
 
-function fetchCustomCached(filters: DiscoverLayoutCustomFilters): Promise<DiscoverItem[]> {
-  const query = buildCustomQuery(filters);
+function fetchCustomCached(filters: DiscoverLayoutCustomFilters, limit: number): Promise<DiscoverItem[]> {
+  const query = buildCustomQuery(filters, limit);
   const now = Date.now();
   const cached = customCache.get(query);
-  if (cached && now - cached.time < CLIENT_CACHE_MS) return cached.promise;
+  if (cached && now - cached.time < CLIENT_CACHE_MS) {
+    // Bump recency without re-fetching.
+    customCacheSet(query, cached);
+    return cached.promise;
+  }
   const promise = fetch(`/api/discover?${query}`)
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover carousel');
       return res.json() as Promise<DiscoverResponse>;
     })
-    .then((data) => (data.items ?? []).slice(0, 20))
+    .then((data) => (data.items ?? []).slice(0, limit))
     .catch((err) => {
       customCache.delete(query);
       throw err;
     });
-  customCache.set(query, { promise, time: now });
+  customCacheSet(query, { promise, time: now });
   return promise;
 }
 
@@ -172,10 +194,12 @@ function MediaCarouselView({
   toggleNode: React.ReactNode;
 }) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const { visibleCount: listVisible } = useListFetchSize({
+    height,
+    rowHeight: LIST_ROW_HEIGHT,
+  });
   const dynamicLimit = useList
-    ? height > 0
-      ? Math.max(limit, Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4)
-      : limit
+    ? Math.max(limit, listVisible)
     : width > 0
       ? Math.max(limit, Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4)
       : limit;
@@ -565,6 +589,22 @@ export function DiscoverSectionWidget({
       onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
     />
   ) : null;
+  // Height/width-aware fetch sizing: when the widget grows taller (list mode)
+  // or wider (carousel mode), ask the discover API for more items. Custom
+  // carousels use limit (clamped to 60, multi-page browse). Builtin sections
+  // use perSectionLimit (clamped to 40 = 2 TMDB pages per section).
+  const { ref: sizeRef, width: widgetWidth, height: widgetHeight } = useElementSize<HTMLDivElement>();
+  const { fetchSize: heightFetchSize } = useListFetchSize({
+    height: widgetHeight,
+    rowHeight: LIST_ROW_HEIGHT,
+  });
+  const carouselVisible = widgetWidth > 0
+    ? Math.ceil(widgetWidth / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+    : 12;
+  const widthFetchSize = Math.ceil(carouselVisible / 20) * 20;
+  const combinedFetchSize = Math.max(heightFetchSize, widthFetchSize);
+  const effectiveCustomLimit = Math.min(60, Math.max(20, combinedFetchSize));
+  const effectiveSectionLimit = Math.min(40, Math.max(20, combinedFetchSize));
 
   const layoutSection = useMemo(
     () => resolveSection(sectionId, discoverLayout?.sections),
@@ -578,36 +618,53 @@ export function DiscoverSectionWidget({
 
   const needsSections = isBuiltinMedia || isBuiltinGenre || isBuiltinProvider;
 
+  const fetchSections = useCallback(
+    () => fetchSectionsCached(effectiveSectionLimit),
+    [effectiveSectionLimit],
+  );
   const {
     data: sectionsData,
     loading: sectionsLoading,
     error: sectionsError,
   } = useWidgetData<DiscoverResponse>({
-    fetchFn: fetchSectionsCached,
+    fetchFn: fetchSections,
     refreshInterval: safeInterval,
     enabled: !editMode && needsSections,
-    cacheKey: 'discover-sections',
+    cacheKey: `discover-sections-${effectiveSectionLimit}`,
   });
 
   const customFilters = isCustom ? layoutSection!.filters! : null;
   const customCacheKey = customFilters
-    ? `discover-custom-${buildCustomQuery(customFilters)}`
+    ? `discover-custom-${buildCustomQuery(customFilters, effectiveCustomLimit)}`
     : undefined;
+  const fetchCustom = useCallback(
+    () => fetchCustomCached(customFilters!, effectiveCustomLimit),
+    [customFilters, effectiveCustomLimit],
+  );
 
   const {
     data: customItems,
     loading: customLoading,
     error: customError,
   } = useWidgetData<DiscoverItem[]>({
-    fetchFn: () => fetchCustomCached(customFilters!),
+    fetchFn: fetchCustom,
     refreshInterval: safeInterval,
     enabled: !editMode && isCustom,
     cacheKey: customCacheKey,
   });
 
+  const wrap = (content: React.ReactNode) => (
+    <div
+      ref={sizeRef}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}
+    >
+      {content}
+    </div>
+  );
+
   if (!layoutSection) {
     return editMode
-      ? <StatusBlock title="Discover" message="Section was removed from Discover Layout" />
+      ? wrap(<StatusBlock title="Discover" message="Section was removed from Discover Layout" />)
       : null;
   }
 
@@ -618,16 +675,16 @@ export function DiscoverSectionWidget({
       : `/discover?section=${layoutSection.id}`;
 
   if (isBuiltinMedia) {
-    if (sectionsLoading && !sectionsData) return <StatusBlock title={title} message="Loading…" />;
+    if (sectionsLoading && !sectionsData) return wrap(<StatusBlock title={title} message="Loading…" />);
     const section = sectionsData?.sections?.find((s): s is DiscoverSection => s.key === sectionId);
     const items = (section?.items as DiscoverItem[] | undefined) ?? [];
     if (sectionsError && items.length === 0) {
-      return <StatusBlock title={title} message={sectionsError} />;
+      return wrap(<StatusBlock title={title} message={sectionsError} />);
     }
     if (items.length === 0) {
-      return editMode ? <StatusBlock title={title} message="No items found" /> : null;
+      return editMode ? wrap(<StatusBlock title={title} message="No items found" />) : null;
     }
-    return (
+    return wrap(
       <MediaCarouselView
         title={title}
         viewAllHref={viewAllHref}
@@ -635,60 +692,60 @@ export function DiscoverSectionWidget({
         limit={compact ? 6 : 20}
         useList={useList}
         toggleNode={toggleNode}
-      />
+      />,
     );
   }
 
   if (isBuiltinGenre) {
-    if (sectionsLoading && !sectionsData) return <StatusBlock title={title} message="Loading…" />;
+    if (sectionsLoading && !sectionsData) return wrap(<StatusBlock title={title} message="Loading…" />);
     const section = sectionsData?.sections?.find((s): s is DiscoverSection => s.key === sectionId);
     const items = (section?.items as DiscoverGenre[] | undefined) ?? [];
     if (sectionsError && items.length === 0) {
-      return <StatusBlock title={title} message={sectionsError} />;
+      return wrap(<StatusBlock title={title} message={sectionsError} />);
     }
     if (items.length === 0) {
-      return editMode ? <StatusBlock title={title} message="No genres found" /> : null;
+      return editMode ? wrap(<StatusBlock title={title} message="No genres found" />) : null;
     }
-    return (
+    return wrap(
       <GenreGridView
         title={title}
         viewAllHref={viewAllHref}
         items={items}
         limit={compact ? 6 : 12}
-      />
+      />,
     );
   }
 
   if (isBuiltinProvider) {
-    if (sectionsLoading && !sectionsData) return <StatusBlock title={title} message="Loading…" />;
+    if (sectionsLoading && !sectionsData) return wrap(<StatusBlock title={title} message="Loading…" />);
     const section = sectionsData?.sections?.find((s): s is DiscoverSection => s.key === sectionId);
     const items = (section?.items as DiscoverProvider[] | undefined) ?? [];
     if (sectionsError && items.length === 0) {
-      return <StatusBlock title={title} message={sectionsError} />;
+      return wrap(<StatusBlock title={title} message={sectionsError} />);
     }
     if (items.length === 0) {
-      return editMode ? <StatusBlock title={title} message="No providers found" /> : null;
+      return editMode ? wrap(<StatusBlock title={title} message="No providers found" />) : null;
     }
-    return (
+    return wrap(
       <ProviderGridView
         title={title}
         viewAllHref={viewAllHref}
         items={items}
         limit={compact ? 4 : 8}
-      />
+      />,
     );
   }
 
   if (isCustom) {
-    if (customLoading && !customItems) return <StatusBlock title={title} message="Loading…" />;
+    if (customLoading && !customItems) return wrap(<StatusBlock title={title} message="Loading…" />);
     const items = customItems ?? [];
     if (customError && items.length === 0) {
-      return <StatusBlock title={title} message={customError} />;
+      return wrap(<StatusBlock title={title} message={customError} />);
     }
     if (items.length === 0) {
-      return editMode ? <StatusBlock title={title} message="No items found" /> : null;
+      return editMode ? wrap(<StatusBlock title={title} message="No items found" />) : null;
     }
-    return (
+    return wrap(
       <MediaCarouselView
         title={title}
         viewAllHref={viewAllHref}
@@ -696,9 +753,9 @@ export function DiscoverSectionWidget({
         limit={compact ? 6 : 20}
         useList={useList}
         toggleNode={toggleNode}
-      />
+      />,
     );
   }
 
-  return editMode ? <StatusBlock title={title} message="Unsupported section" /> : null;
+  return editMode ? wrap(<StatusBlock title={title} message="Unsupported section" />) : null;
 }

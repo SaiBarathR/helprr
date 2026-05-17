@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { invalidateLayoutCache, type DashboardDevice } from '@/lib/cache/dashboard-layout-cache';
 import { DEFAULT_LAYOUT } from '@/lib/widgets/registry';
@@ -12,6 +12,7 @@ import {
 
 export const MAX_LAYOUTS = 20;
 export const MAX_NAME_LENGTH = 50;
+export const MAX_WIDGETS_PER_LAYOUT = 200;
 
 export interface DashboardLayoutRecord {
   id: string;
@@ -70,6 +71,9 @@ function validateName(name: unknown): string {
 
 function validateWidgets(widgets: unknown): WidgetInstance[] {
   if (!Array.isArray(widgets)) throw new ServiceError('Widgets must be an array', 400);
+  if (widgets.length > MAX_WIDGETS_PER_LAYOUT) {
+    throw new ServiceError(`Maximum of ${MAX_WIDGETS_PER_LAYOUT} widgets per layout`, 400);
+  }
   // Basic shape check; full sanitization happens via sanitizeDashboardLayout below.
   for (const w of widgets) {
     if (!w || typeof w !== 'object') throw new ServiceError('Invalid widget entry', 400);
@@ -89,38 +93,64 @@ export class ServiceError extends Error {
   }
 }
 
-export async function seedInitialLayouts(): Promise<void> {
-  const existing = await prisma.dashboardLayout.count();
-  if (existing > 0) return;
-
-  const discoverLayout = await getDiscoverLayout();
-  const widgets = sanitizeDashboardLayout(
-    DEFAULT_LAYOUT.map((w) => ({ ...w })),
-    discoverLayout,
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError
+    && error.code === 'P2002'
   );
-  const widgetsJson = widgets as unknown as Prisma.InputJsonValue;
+}
 
-  const desktopRow = await prisma.dashboardLayout.create({
-    data: { name: 'Desktop', widgets: widgetsJson },
-  });
-  const mobileRow = await prisma.dashboardLayout.create({
-    data: { name: 'Mobile', widgets: widgetsJson },
-  });
+// Singleton promise so simultaneous callers (parallel page renders, parallel
+// API hits on a cold install) share a single seed attempt. After the first
+// successful resolve every subsequent call is a no-op cache hit. On failure we
+// null the slot so the next call retries.
+let seedPromise: Promise<void> | null = null;
 
-  await prisma.appSettings.upsert({
-    where: { id: 'singleton' },
-    update: {
-      defaultDesktopLayoutId: desktopRow.id,
-      defaultMobileLayoutId: mobileRow.id,
-    },
-    create: {
-      id: 'singleton',
-      defaultDesktopLayoutId: desktopRow.id,
-      defaultMobileLayoutId: mobileRow.id,
-    },
-  });
+export function seedInitialLayouts(): Promise<void> {
+  if (seedPromise) return seedPromise;
+  seedPromise = (async () => {
+    const discoverLayout = await getDiscoverLayout();
+    const widgets = sanitizeDashboardLayout(
+      DEFAULT_LAYOUT.map((w) => ({ ...w })),
+      discoverLayout,
+    );
+    const widgetsJson = widgets as unknown as Prisma.InputJsonValue;
 
-  await invalidateLayoutCache();
+    // Existence check inside the transaction so the count + creates form one
+    // atomic unit. Without this, two replicas could both pass the check and
+    // try to create — saved by `name @unique` today, but checking inside the
+    // tx keeps the contract explicit.
+    const created = await prisma.$transaction(async (tx) => {
+      const existing = await tx.dashboardLayout.count();
+      if (existing > 0) return false;
+
+      const desktopRow = await tx.dashboardLayout.create({
+        data: { name: 'Desktop', widgets: widgetsJson },
+      });
+      const mobileRow = await tx.dashboardLayout.create({
+        data: { name: 'Mobile', widgets: widgetsJson },
+      });
+      await tx.appSettings.upsert({
+        where: { id: 'singleton' },
+        update: {
+          defaultDesktopLayoutId: desktopRow.id,
+          defaultMobileLayoutId: mobileRow.id,
+        },
+        create: {
+          id: 'singleton',
+          defaultDesktopLayoutId: desktopRow.id,
+          defaultMobileLayoutId: mobileRow.id,
+        },
+      });
+      return true;
+    });
+
+    if (created) await invalidateLayoutCache();
+  })().catch((error) => {
+    seedPromise = null;
+    throw error;
+  });
+  return seedPromise;
 }
 
 export async function listLayouts(): Promise<LayoutListResponse> {
@@ -149,12 +179,20 @@ export async function createLayout(input: { name: unknown; widgets: unknown }): 
   const discoverLayout = await getDiscoverLayout();
   const sanitized = sanitizeDashboardLayout(widgets, discoverLayout);
 
-  const row = await prisma.dashboardLayout.create({
-    data: {
-      name,
-      widgets: sanitized as unknown as Prisma.InputJsonValue,
-    },
-  });
+  let row;
+  try {
+    row = await prisma.dashboardLayout.create({
+      data: {
+        name,
+        widgets: sanitized as unknown as Prisma.InputJsonValue,
+      },
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new ServiceError('A layout with that name already exists', 409);
+    }
+    throw error;
+  }
   await invalidateLayoutCache();
   return rowToRecord(row);
 }
@@ -176,7 +214,15 @@ export async function updateLayout(
     data.widgets = sanitizeDashboardLayout(widgets, discoverLayout) as unknown as Prisma.InputJsonValue;
   }
 
-  const row = await prisma.dashboardLayout.update({ where: { id }, data });
+  let row;
+  try {
+    row = await prisma.dashboardLayout.update({ where: { id }, data });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new ServiceError('A layout with that name already exists', 409);
+    }
+    throw error;
+  }
   await invalidateLayoutCache();
   return rowToRecord(row);
 }
@@ -193,22 +239,39 @@ export async function copyLayout(id: string): Promise<DashboardLayoutRecord> {
   const existingNames = new Set(
     (await prisma.dashboardLayout.findMany({ select: { name: true } })).map((r) => r.name),
   );
-  let candidate = `${source.name}_copy`;
+  // Trim the source name first so there is always room for the `_copy_NN`
+  // suffix. Without this, a 49-character name would produce candidates that
+  // all truncate to the same prefix and silently collide.
+  const SUFFIX_BUDGET = 10;
+  const baseRoot = source.name.slice(0, Math.max(1, MAX_NAME_LENGTH - SUFFIX_BUDGET));
+  let candidate = `${baseRoot}_copy`;
   let attempt = 2;
   while (existingNames.has(candidate)) {
-    candidate = `${source.name}_copy_${attempt}`;
+    candidate = `${baseRoot}_copy_${attempt}`;
     attempt += 1;
+    if (attempt > 999) break;
   }
   if (candidate.length > MAX_NAME_LENGTH) {
     candidate = candidate.slice(0, MAX_NAME_LENGTH);
   }
 
-  const row = await prisma.dashboardLayout.create({
-    data: {
-      name: candidate,
-      widgets: source.widgets as Prisma.InputJsonValue,
-    },
-  });
+  let row;
+  try {
+    row = await prisma.dashboardLayout.create({
+      data: {
+        name: candidate,
+        widgets: source.widgets as Prisma.InputJsonValue,
+      },
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      // A concurrent copy raced us to the same generated name. Surface a clean
+      // 409 — the caller can retry and our suffix-bump will pick the next free
+      // candidate.
+      throw new ServiceError('A layout with that name already exists', 409);
+    }
+    throw error;
+  }
   await invalidateLayoutCache();
   return rowToRecord(row);
 }

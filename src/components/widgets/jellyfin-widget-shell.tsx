@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { useCallback, useState } from 'react';
-import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useWidgetFilter } from './use-widget-filter';
 import {
@@ -75,7 +75,7 @@ export function JellyfinStatsWidgetShell<T>(props: JellyfinStatsWidgetShellProps
 
   const { data, loading } = useWidgetData<T>({
     fetchFn: fetchWrapped,
-    refreshInterval,
+    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
     enabled: !editMode,
     cacheKey: `${widgetId}-${filters.days}-${filters.userId || 'all'}`,
   });

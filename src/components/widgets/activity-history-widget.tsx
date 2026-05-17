@@ -1,20 +1,30 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, ArrowDownToLine, Check, Film, Tv } from 'lucide-react';
-import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { Download, Film, Tv, AlertTriangle, Trash2, Info, Import } from 'lucide-react';
+import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort, formatBytes } from '@/lib/format';
+import { toCachedImageSrc } from '@/lib/image';
+import type { MediaImage } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 import {
+  CAROUSEL_CARD_HEIGHT,
+  CAROUSEL_CARD_WIDTH,
+  CAROUSEL_GAP,
   FONT_MONO,
   HPR,
   Hairline,
-  SECTION_HEADER_HEIGHT,
+  Poster,
   SectionHeader,
+  ViewModeToggle,
   mix,
+  toneFromString,
 } from './bento-primitives';
+import { useDashboardLayout } from './dashboard-layout-context';
+import { ActivityDetailDrawer, type ActivityDetailRecord } from './activity-detail-drawer';
 
 // Activity rows are taller when "detailed" (chips wrap); use a row estimate
 // that splits the difference. Buffer above the visible count handles the
@@ -30,12 +40,66 @@ interface HistoryRecord {
   mediaType?: 'episode' | 'movie';
   seriesId?: number;
   movieId?: number;
-  series?: { title: string; id: number };
-  episode?: { title: string; seasonNumber: number; episodeNumber: number; id: number };
-  movie?: { title: string; id: number };
-  quality?: { quality: { name: string } };
+  series?: {
+    title: string;
+    id: number;
+    overview?: string;
+    network?: string;
+    year?: number;
+    runtime?: number;
+    certification?: string;
+    genres?: string[];
+    seriesType?: string;
+    images?: MediaImage[];
+  };
+  episode?: {
+    title?: string;
+    seasonNumber: number;
+    episodeNumber: number;
+    id: number;
+    airDate?: string;
+    runtime?: number;
+    overview?: string;
+  };
+  movie?: {
+    title: string;
+    id: number;
+    overview?: string;
+    year?: number;
+    runtime?: number;
+    certification?: string;
+    genres?: string[];
+    studio?: string;
+    images?: MediaImage[];
+  };
+  quality?: { quality: { name: string; resolution?: number; source?: string } };
   customFormats?: { id: number; name: string }[];
-  data?: { indexer?: string; releaseGroup?: string; size?: string };
+  customFormatScore?: number;
+  languages?: { id: number; name: string }[];
+  data?: {
+    indexer?: string;
+    releaseGroup?: string | null;
+    size?: string;
+    downloadClient?: string;
+    downloadClientName?: string;
+    droppedPath?: string;
+    importedPath?: string;
+    message?: string;
+    releaseType?: string;
+    indexerFlags?: string;
+  };
+}
+
+function getPosterUrl(r: HistoryRecord): string | null {
+  const images = r.series?.images ?? r.movie?.images ?? [];
+  const poster = images.find((img) => img.coverType === 'poster');
+  if (!poster) return null;
+  return (
+    toCachedImageSrc(
+      poster.remoteUrl || poster.url || null,
+      r.source === 'radarr' ? 'radarr' : 'sonarr',
+    ) ?? poster.remoteUrl ?? poster.url ?? null
+  );
 }
 
 async function fetchHistory(pageSize: number): Promise<HistoryRecord[]> {
@@ -45,17 +109,51 @@ async function fetchHistory(pageSize: number): Promise<HistoryRecord[]> {
   return data.records || [];
 }
 
+function getEventIcon(eventType: string) {
+  switch (eventType) {
+    case 'grabbed':
+      return <Download className="h-3.5 w-3.5 text-blue-400" />;
+    case 'downloadFolderImported':
+    case 'episodeFileImported':
+    case 'movieFileImported':
+    case 'imported':
+      return <Import className="h-3.5 w-3.5 text-green-400" />;
+    case 'downloadFailed':
+    case 'importFailed':
+      return <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />;
+    case 'deleted':
+    case 'episodeFileDeleted':
+    case 'movieFileDeleted':
+      return <Trash2 className="h-3.5 w-3.5 text-rose-400" />;
+    default:
+      return <Download className="h-3.5 w-3.5 text-muted-foreground" />;
+  }
+}
+
+function getEventLabel(eventType: string): string {
+  switch (eventType) {
+    case 'grabbed': return 'Grabbed';
+    case 'downloadFolderImported': return 'Imported';
+    case 'episodeFileImported': return 'Imported';
+    case 'movieFileImported': return 'Imported';
+    case 'imported': return 'Imported';
+    case 'downloadFailed': return 'Failed';
+    case 'importFailed': return 'Import Failed';
+    case 'renamed': return 'Renamed';
+    case 'deleted':
+    case 'episodeFileDeleted':
+    case 'movieFileDeleted': return 'Deleted';
+    case 'ignored': return 'Ignored';
+    default: return eventType.replace(/([a-z])([A-Z])/g, '$1 $2');
+  }
+}
+
 function eventKind(t: string): 'grabbed' | 'imported' | 'failed' {
   if (t === 'grabbed') return 'grabbed';
   if (t.includes('Failed')) return 'failed';
   return 'imported';
 }
 
-function EventIcon({ kind }: { kind: ReturnType<typeof eventKind> }) {
-  if (kind === 'grabbed') return <ArrowDownToLine size={12} strokeWidth={2.4} />;
-  if (kind === 'imported') return <Check size={13} strokeWidth={2.6} />;
-  return <AlertTriangle size={12} strokeWidth={2.4} />;
-}
 
 function eventColor(kind: ReturnType<typeof eventKind>): string {
   return kind === 'grabbed' ? HPR.blue : kind === 'imported' ? HPR.green : HPR.rose;
@@ -130,38 +228,68 @@ function ActivityChip({
 export function ActivityHistoryWidget({
   refreshInterval,
   editMode = false,
+  narrow = false,
   layoutVariant,
   rowSpan = 2,
+  instanceId,
 }: WidgetProps) {
-  const { ref, height } = useElementSize<HTMLDivElement>();
-  const detailed = layoutVariant === 'detailed' || rowSpan >= 2;
-  const visibleCount = useMemo(() => {
-    if (height <= 0) return detailed ? 5 : 4;
-    const rowH = detailed ? ROW_HEIGHT + 14 : ROW_HEIGHT;
-    return Math.max(4, Math.ceil((height - SECTION_HEADER_HEIGHT) / rowH) + 3);
-  }, [height, detailed]);
-  const fetchPageSize = Math.ceil(visibleCount / 5) * 5;
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const { setWidgetLayoutOverride } = useDashboardLayout();
+  const [detail, setDetail] = useState<ActivityDetailRecord | null>(null);
+  const useList = narrow || layoutVariant !== 'carousel';
+  const detailed = useList && (layoutVariant === 'detailed' || rowSpan >= 2);
+  const { visibleCount: listVisible, fetchSize: heightFetchSize } = useListFetchSize({
+    height,
+    rowHeight: detailed ? ROW_HEIGHT + 14 : ROW_HEIGHT,
+  });
+  const carouselVisible = width > 0
+    ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+    : 10;
+  const visibleCount = Math.max(listVisible, carouselVisible);
+  const fetchPageSize = Math.max(heightFetchSize, Math.ceil(carouselVisible / 20) * 20);
   const fetchFn = useCallback(() => fetchHistory(fetchPageSize), [fetchPageSize]);
   const { data, loading } = useWidgetData({
     fetchFn,
-    refreshInterval,
+    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
     enabled: !editMode,
     cacheKey: `activity-history-${fetchPageSize}`,
   });
   const list = data ?? [];
+  const toggleNode = !narrow && instanceId ? (
+    <ViewModeToggle
+      value={useList ? 'list' : 'carousel'}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+    />
+  ) : null;
+  const headerRight = (
+    <>
+      {toggleNode}
+      <Link href="/activity" style={{ color: 'inherit', textDecoration: 'none' }}>
+        View all →
+      </Link>
+    </>
+  );
+
+  const openDetail = (r: HistoryRecord) => setDetail(r as ActivityDetailRecord);
 
   if (loading && list.length === 0) {
     return (
-      <div ref={ref}>
-        <SectionHeader title="Activity" />
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader title="Activity" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
     );
   }
   if (list.length === 0) {
     return (
-      <div ref={ref}>
-        <SectionHeader title="Activity" />
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader title="Activity" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           No recent activity
         </div>
@@ -169,117 +297,322 @@ export function ActivityHistoryWidget({
     );
   }
 
-  return (
-    <div
-      ref={ref}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
-    >
-      <SectionHeader title="Activity" right={<span>View all →</span>} />
-      <div
-        className="no-scrollbar scroll-fade-y"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-        }}
-      >
-        {list.slice(0, visibleCount).map((r, i) => {
-          const kind = eventKind(r.eventType);
-          const color = eventColor(kind);
-          const title = getTitle(r);
-          const qualityName = r.quality?.quality?.name;
-          const releaseGroup = r.data?.releaseGroup;
-          const indexer = r.data?.indexer;
-          const fileSize = r.data?.size ? formatBytes(Number(r.data.size)) : null;
-          const customFormats = (r.customFormats || []).filter((cf) => cf.name);
-          const href = getHref(r);
+  if (useList) {
+    return (
+      <>
+        <div
+          ref={ref}
+          style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+        >
+          <SectionHeader title="Activity" right={headerRight} />
+          <div
+            className="no-scrollbar scroll-fade-y"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+            }}
+          >
+            {list.slice(0, visibleCount).map((r, i) => {
+              const kind = eventKind(r.eventType);
+              const color = eventColor(kind);
+              const title = getTitle(r);
+              const qualityName = r.quality?.quality?.name;
+              const releaseGroup = r.data?.releaseGroup;
+              const indexer = r.data?.indexer;
+              const fileSize = r.data?.size ? formatBytes(Number(r.data.size)) : null;
+              const customFormats = (r.customFormats || []).filter((cf) => cf.name);
+              const href = getHref(r);
 
-          const metaParts: string[] = [];
-          metaParts.push(`${formatDistanceToNowShort(r.date)} ago`);
-          if (qualityName) metaParts.push(qualityName);
-          if (fileSize) metaParts.push(fileSize);
+              const primaryParts: string[] = [`${formatDistanceToNowShort(r.date)} ago`];
+              if (qualityName) primaryParts.push(qualityName);
+              if (r.eventType) {
+                primaryParts.unshift(getEventLabel(r.eventType));
+              }
 
-          const inner = (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0' }}>
-              <div
-                style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 5,
-                  background: mix(color, 14),
-                  color,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  marginTop: 1,
-                }}
-              >
-                <EventIcon kind={kind} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: HPR.fg,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    fontWeight: 500,
-                  }}
-                >
-                  {title}
-                </div>
-                <div
-                  style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO, marginTop: 2 }}
-                >
-                  {metaParts.join(' · ')}
-                </div>
-                {detailed && (releaseGroup || indexer || customFormats.length > 0) && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
-                    {releaseGroup && <ActivityChip>{releaseGroup}</ActivityChip>}
-                    {indexer && <ActivityChip>{indexer}</ActivityChip>}
-                    {customFormats.slice(0, 3).map((cf) => (
-                      <ActivityChip key={cf.id} tone={formatTone(cf.name)}>
-                        {cf.name}
-                      </ActivityChip>
-                    ))}
-                    {customFormats.length > 3 && (
-                      <ActivityChip>+{customFormats.length - 3}</ActivityChip>
+              const inner = (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0' }}>
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 5,
+                      background: mix(color, 14),
+                      color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: 1,
+                    }}
+                  >
+                    {getEventIcon(r.eventType)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: HPR.fg,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {title}
+                    </div>
+                    <div
+                      style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO, marginTop: 2 }}
+                    >
+                      {primaryParts.join(' · ')}
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        marginTop: 2,
+                      }}
+                    >
+                      {fileSize && (
+                        <span style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}>
+                          {fileSize}
+                        </span>
+                      )}
+                    </div>
+                    {detailed && (releaseGroup || indexer || customFormats.length > 0) && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 5 }}>
+                        {releaseGroup && <ActivityChip>{releaseGroup}</ActivityChip>}
+                        {indexer && <ActivityChip>{indexer}</ActivityChip>}
+                        {customFormats.slice(0, 3).map((cf) => (
+                          <ActivityChip key={cf.id} tone={formatTone(cf.name)}>
+                            {cf.name}
+                          </ActivityChip>
+                        ))}
+                        {customFormats.length > 3 && (
+                          <ActivityChip>+{customFormats.length - 3}</ActivityChip>
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-              <span
+                  <span
+                    style={{
+                      color: r.mediaType === 'movie' ? HPR.blue : HPR.purple,
+                      flexShrink: 0,
+                      marginTop: 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                    className='flex-col align-center gap-2'
+                  >
+                    {r.mediaType === 'movie' ? <Film size={13} /> : <Tv size={13} />}
+                    <DetailButton onClick={() => openDetail(r)} />
+                  </span>
+                </div>
+              );
+
+              return (
+                <div key={`${r.source}-${r.id}`}>
+                  {i > 0 && <Hairline />}
+                  {href && !editMode ? (
+                    <Link href={href} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+                      {inner}
+                    </Link>
+                  ) : (
+                    inner
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <ActivityDetailDrawer record={detail} onClose={() => setDetail(null)} />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div ref={ref}>
+        <SectionHeader title="Activity" right={headerRight} />
+        <div
+          className="no-scrollbar"
+          style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
+        >
+          {list.slice(0, visibleCount).map((r) => {
+            const kind = eventKind(r.eventType);
+            const color = eventColor(kind);
+            const title = getTitle(r);
+            const qualityName = r.quality?.quality?.name;
+            const fileSize = r.data?.size ? formatBytes(Number(r.data.size)) : null;
+            const href = getHref(r);
+            const posterUrl = getPosterUrl(r);
+
+            const card = (
+              <>
+                <Poster
+                  width={CAROUSEL_CARD_WIDTH}
+                  height={CAROUSEL_CARD_HEIGHT}
+                  label={title}
+                  tone={toneFromString(title)}
+                  fontSize={11}
+                  imageUrl={posterUrl ?? undefined}
+                  timePill={`${formatDistanceToNowShort(r.date)} ago`}
+                  badge={{ icon: getEventIcon(r.eventType), color }}
+                />
+                <div style={{ marginTop: 6 }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: HPR.fg,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {title}
+                  </div>
+                  {qualityName && (
+                    <div
+                      style={{
+                        fontSize: 9,
+                        color: HPR.fgMute,
+                        fontFamily: FONT_MONO,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {qualityName}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      marginTop: 2,
+                    }}
+                  >
+                    {fileSize && (
+                      <span
+                        style={{
+                          fontSize: 9,
+                          color: HPR.fgMute,
+                          fontFamily: FONT_MONO,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          minWidth: 0,
+                        }}
+                      >
+                        {fileSize}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        fontSize: 9,
+                        color: HPR.fgMute,
+                        fontFamily: FONT_MONO,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      {r?.data?.indexer ? r.data.indexer : r?.data?.releaseGroup ? r.data.releaseGroup : ''}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      marginTop: 2,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 9,
+                        color: HPR.fgMute,
+                        fontFamily: FONT_MONO,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      {r.eventType ? getEventLabel(r.eventType) : ''}
+                    </span>
+                    <DetailButton onClick={() => openDetail(r)} />
+                  </div>
+
+
+                </div>
+              </>
+            );
+
+            return href && !editMode ? (
+              <Link
+                key={`${r.source}-${r.id}`}
+                href={href}
                 style={{
-                  color: r.mediaType === 'movie' ? HPR.blue : HPR.purple,
+                  width: CAROUSEL_CARD_WIDTH,
                   flexShrink: 0,
-                  marginTop: 1,
-                  display: 'inline-flex',
-                  alignItems: 'center',
+                  textDecoration: 'none',
+                  color: 'inherit',
                 }}
               >
-                {r.mediaType === 'movie' ? <Film size={13} /> : <Tv size={13} />}
-              </span>
-            </div>
-          );
-
-          return (
-            <div key={`${r.source}-${r.id}`}>
-              {i > 0 && <Hairline />}
-              {href && !editMode ? (
-                <Link href={href} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-                  {inner}
-                </Link>
-              ) : (
-                inner
-              )}
-            </div>
-          );
-        })}
+                {card}
+              </Link>
+            ) : (
+              <div
+                key={`${r.source}-${r.id}`}
+                style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0 }}
+              >
+                {card}
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+      <ActivityDetailDrawer record={detail} onClose={() => setDetail(null)} />
+    </>
+  );
+}
+
+function DetailButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="View details"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 18,
+        height: 18,
+        padding: 0,
+        marginLeft: 'auto',
+        borderRadius: 4,
+        border: 'none',
+        background: 'rgba(255,255,255,0.04)',
+        color: HPR.fgMute,
+        cursor: 'pointer',
+      }}
+    >
+      <Info size={11} strokeWidth={2} />
+    </button>
   );
 }

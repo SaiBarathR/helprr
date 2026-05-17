@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/drawer';
 import type { PlaybackUserActivity, JellyfinUser, CustomHistoryItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
 import { DaysPill, JELLYFIN_DAYS_OPTIONS, MAX_DAYS } from './widget-filter-controls';
 import { SectionHeader, HPR } from './bento-primitives';
@@ -67,11 +67,14 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
   const [selectedUser, setSelectedUser] = useState<PlaybackUserActivity | null>(null);
   const [userHistory, setUserHistory] = useState<CustomHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  // Track the most recent request so an out-of-order response from an earlier
+  // click can't overwrite the history of the user that's currently selected.
+  const latestHistoryRequestRef = useRef<string | null>(null);
 
   const fetchFn = useCallback(() => fetchUserActivity(filters.days), [filters.days]);
   const { data, loading } = useWidgetData<UserActivityData>({
     fetchFn,
-    refreshInterval,
+    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
     enabled: !editMode,
     cacheKey: `jellyfin-user-activity-${filters.days}`,
   });
@@ -81,15 +84,20 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
   const pluginAvailable = data?.pluginAvailable !== false;
 
   async function openUserHistory(user: PlaybackUserActivity) {
+    const requestedUserId = user.user_id;
+    latestHistoryRequestRef.current = requestedUserId;
     setSelectedUser(user);
+    setUserHistory([]);
     setHistoryLoading(true);
     try {
       const to = toDateStr(new Date());
       const from = new Date();
       from.setDate(from.getDate() - 30);
       const res = await fetch(
-        `/api/jellyfin/playback/custom-history?from=${toDateStr(from)}&to=${to}&userId=${user.user_id}&limit=30`,
+        `/api/jellyfin/playback/custom-history?from=${toDateStr(from)}&to=${to}&userId=${requestedUserId}&limit=30`,
       );
+      // Bail if a newer click superseded this fetch.
+      if (latestHistoryRequestRef.current !== requestedUserId) return;
       if (res.ok) {
         const d = await res.json();
         setUserHistory(d.items ?? []);
@@ -97,9 +105,9 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
         setUserHistory([]);
       }
     } catch {
-      setUserHistory([]);
+      if (latestHistoryRequestRef.current === requestedUserId) setUserHistory([]);
     } finally {
-      setHistoryLoading(false);
+      if (latestHistoryRequestRef.current === requestedUserId) setHistoryLoading(false);
     }
   }
 

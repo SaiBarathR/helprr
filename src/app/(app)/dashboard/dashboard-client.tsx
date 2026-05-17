@@ -31,7 +31,9 @@ interface DashboardClientProps {
 function setDeviceCookie(device: 'desktop' | 'mobile'): void {
   if (typeof document === 'undefined') return;
   const maxAge = 60 * 60 * 24 * 365; // 1 year
-  document.cookie = `helprr-device=${device}; Path=/; SameSite=Lax; Max-Age=${maxAge}`;
+  // `Secure` is ignored by browsers over plain HTTP, so it's safe to always
+  // include — adds protection when the PWA is served over HTTPS.
+  document.cookie = `helprr-device=${device}; Path=/; SameSite=Lax; Secure; Max-Age=${maxAge}`;
 }
 
 function FullPageSpinner() {
@@ -88,6 +90,10 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
   // so we wait until React commits before deciding.
   useEffect(() => {
     if (detectedDevice === initialDevice) {
+      // After a refresh triggered by the mismatch branch, the effect re-runs
+      // here with matched devices — clear the spinner so the page becomes
+      // interactive again.
+      setReloading(false);
       setDeviceCookie(detectedDevice);
       return;
     }
@@ -99,7 +105,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
   const hasHydrated = useUIStore((s) => s.hasHydrated);
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const setEditMode = useUIStore((s) => s.setDashboardEditMode);
-  const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(15000);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -117,7 +123,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
   );
 
   useEffect(() => {
-    getRefreshIntervalMs('dashboardRefreshIntervalSecs', 5).then(setRefreshIntervalMs);
+    getRefreshIntervalMs('dashboardRefreshIntervalSecs', 15).then(setRefreshIntervalMs);
   }, []);
 
   useEffect(() => {

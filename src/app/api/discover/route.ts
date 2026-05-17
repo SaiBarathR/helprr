@@ -39,6 +39,36 @@ const EMPTY_LIST_RESPONSE = {
   results: [] as TmdbListItem[],
 };
 const SECTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const SECTION_MEDIA_DEFAULT = 20;
+// Each TMDB list endpoint returns 20 items per page. Fetching 2 pages per
+// section lets list-mode discover widgets display up to ~40 items when the
+// user grows the widget tall — at the cost of one extra TMDB call per
+// section per server cache cycle (5 min).
+const SECTION_TMDB_PAGES = 2;
+const SECTION_MEDIA_MAX = SECTION_TMDB_PAGES * 20;
+const BROWSE_LIMIT_MAX = 60;
+
+async function fetchTmdbPages<R extends { page: number; total_pages: number; total_results: number; results: TmdbListItem[] }>(
+  fn: (page: number) => Promise<R>,
+  pages: number = SECTION_TMDB_PAGES,
+): Promise<R> {
+  const results = await Promise.all(Array.from({ length: pages }, (_, i) => fn(i + 1)));
+  const first = results[0];
+  return {
+    ...first,
+    page: 1,
+    total_pages: first?.total_pages ?? 1,
+    total_results: first?.total_results ?? 0,
+    results: results.flatMap((r) => r.results),
+  } as R;
+}
+
+function clampInt(value: string | null, min: number, max: number, fallback: number): number {
+  if (value == null || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(n)));
+}
 
 let sectionsCache:
   | {
@@ -237,21 +267,21 @@ async function buildSections() {
     topRatedMoviesData,
     topRatedTvData,
   ] = await Promise.all([
-    safeTmdb('trending', partialFailures, () => tmdb.trending('all', 1), EMPTY_LIST_RESPONSE),
-    safeTmdb('trending_movies', partialFailures, () => tmdb.trending('movie', 1), EMPTY_LIST_RESPONSE),
-    safeTmdb('trending_tv', partialFailures, () => tmdb.trending('tv', 1), EMPTY_LIST_RESPONSE),
-    safeTmdb('popular_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
-    safeTmdb('popular_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc' }), EMPTY_LIST_RESPONSE),
-    safeTmdb('upcoming_movies', partialFailures, () => tmdb.discoverMovie({ page: 1, sortBy: 'popularity', sortOrder: 'desc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
-    safeTmdb('upcoming_series', partialFailures, () => tmdb.discoverTv({ page: 1, sortBy: 'popularity', sortOrder: 'desc', releaseState: 'upcoming' }), EMPTY_LIST_RESPONSE),
+    safeTmdb('trending', partialFailures, () => fetchTmdbPages((p) => tmdb.trending('all', p)), EMPTY_LIST_RESPONSE),
+    safeTmdb('trending_movies', partialFailures, () => fetchTmdbPages((p) => tmdb.trending('movie', p)), EMPTY_LIST_RESPONSE),
+    safeTmdb('trending_tv', partialFailures, () => fetchTmdbPages((p) => tmdb.trending('tv', p)), EMPTY_LIST_RESPONSE),
+    safeTmdb('popular_movies', partialFailures, () => fetchTmdbPages((p) => tmdb.discoverMovie({ page: p, sortBy: 'popularity', sortOrder: 'desc' })), EMPTY_LIST_RESPONSE),
+    safeTmdb('popular_series', partialFailures, () => fetchTmdbPages((p) => tmdb.discoverTv({ page: p, sortBy: 'popularity', sortOrder: 'desc' })), EMPTY_LIST_RESPONSE),
+    safeTmdb('upcoming_movies', partialFailures, () => fetchTmdbPages((p) => tmdb.discoverMovie({ page: p, sortBy: 'popularity', sortOrder: 'desc', releaseState: 'upcoming' })), EMPTY_LIST_RESPONSE),
+    safeTmdb('upcoming_series', partialFailures, () => fetchTmdbPages((p) => tmdb.discoverTv({ page: p, sortBy: 'popularity', sortOrder: 'desc', releaseState: 'upcoming' })), EMPTY_LIST_RESPONSE),
     safeTmdb('movie_genres', partialFailures, () => tmdb.movieGenres(), []),
     safeTmdb('series_genres', partialFailures, () => tmdb.tvGenres(), []),
     safeTmdb('movie_providers', partialFailures, () => tmdb.movieWatchProviders('US'), []),
     safeTmdb('tv_providers', partialFailures, () => tmdb.tvWatchProviders('US'), []),
-    safeTmdb('now_playing', partialFailures, () => tmdb.nowPlayingMovies(1, 'US'), EMPTY_LIST_RESPONSE),
-    safeTmdb('airing_today', partialFailures, () => tmdb.airingTodayTv(1), EMPTY_LIST_RESPONSE),
-    safeTmdb('top_rated_movies', partialFailures, () => tmdb.topRatedMovies(1), EMPTY_LIST_RESPONSE),
-    safeTmdb('top_rated_tv', partialFailures, () => tmdb.topRatedTv(1), EMPTY_LIST_RESPONSE),
+    safeTmdb('now_playing', partialFailures, () => fetchTmdbPages((p) => tmdb.nowPlayingMovies(p, 'US')), EMPTY_LIST_RESPONSE),
+    safeTmdb('airing_today', partialFailures, () => fetchTmdbPages((p) => tmdb.airingTodayTv(p)), EMPTY_LIST_RESPONSE),
+    safeTmdb('top_rated_movies', partialFailures, () => fetchTmdbPages((p) => tmdb.topRatedMovies(p)), EMPTY_LIST_RESPONSE),
+    safeTmdb('top_rated_tv', partialFailures, () => fetchTmdbPages((p) => tmdb.topRatedTv(p)), EMPTY_LIST_RESPONSE),
   ]);
 
   const popularAllItems = dedupeDiscoverItems([
@@ -287,42 +317,42 @@ async function buildSections() {
       title: 'Trending',
       type: 'media',
       mediaType: 'all',
-      items: normalizeItems(trending.results, 'all').slice(0, 20),
+      items: normalizeItems(trending.results, 'all').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'trending_movies',
       title: 'Trending Movies',
       type: 'media',
       mediaType: 'movie',
-      items: normalizeItems(trendingMovies.results, 'movie').slice(0, 20),
+      items: normalizeItems(trendingMovies.results, 'movie').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'trending_tv',
       title: 'Trending TV',
       type: 'media',
       mediaType: 'tv',
-      items: normalizeItems(trendingTv.results, 'tv').slice(0, 20),
+      items: normalizeItems(trendingTv.results, 'tv').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'popular_all',
       title: 'Popular',
       type: 'media',
       mediaType: 'all',
-      items: popularAllItems.slice(0, 20),
+      items: popularAllItems.slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'now_playing',
       title: 'Now in Theaters',
       type: 'media',
       mediaType: 'movie',
-      items: normalizeItems(nowPlaying.results, 'movie').slice(0, 20),
+      items: normalizeItems(nowPlaying.results, 'movie').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'popular_movies',
       title: 'Popular Movies',
       type: 'media',
       mediaType: 'movie',
-      items: normalizeItems(popularMovies.results, 'movie').slice(0, 20),
+      items: normalizeItems(popularMovies.results, 'movie').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'movie_genres',
@@ -336,7 +366,7 @@ async function buildSections() {
       title: 'Upcoming Movies',
       type: 'media',
       mediaType: 'movie',
-      items: normalizeItems(upcomingMovies.results, 'movie').slice(0, 20),
+      items: normalizeItems(upcomingMovies.results, 'movie').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'providers',
@@ -350,14 +380,14 @@ async function buildSections() {
       title: 'Airing Today',
       type: 'media',
       mediaType: 'tv',
-      items: normalizeItems(airingToday.results, 'tv').slice(0, 20),
+      items: normalizeItems(airingToday.results, 'tv').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'popular_series',
       title: 'Popular Series',
       type: 'media',
       mediaType: 'tv',
-      items: normalizeItems(popularSeries.results, 'tv').slice(0, 20),
+      items: normalizeItems(popularSeries.results, 'tv').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'series_genres',
@@ -371,21 +401,21 @@ async function buildSections() {
       title: 'Upcoming Series',
       type: 'media',
       mediaType: 'tv',
-      items: normalizeItems(upcomingSeries.results, 'tv').slice(0, 20),
+      items: normalizeItems(upcomingSeries.results, 'tv').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'top_rated_movies',
       title: 'Top Rated Movies',
       type: 'media',
       mediaType: 'movie',
-      items: normalizeItems(topRatedMoviesData.results, 'movie').slice(0, 20),
+      items: normalizeItems(topRatedMoviesData.results, 'movie').slice(0, SECTION_MEDIA_MAX),
     },
     {
       key: 'top_rated_tv',
       title: 'Top Rated TV',
       type: 'media',
       mediaType: 'tv',
-      items: normalizeItems(topRatedTvData.results, 'tv').slice(0, 20),
+      items: normalizeItems(topRatedTvData.results, 'tv').slice(0, SECTION_MEDIA_MAX),
     },
   ];
 
@@ -547,10 +577,24 @@ async function getHandler(request: NextRequest) {
       const sectionsHeaders = {
         'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
       } as const;
+      const perSectionLimit = clampInt(
+        searchParams.get('perSectionLimit'),
+        1,
+        SECTION_MEDIA_MAX,
+        SECTION_MEDIA_DEFAULT,
+      );
+      const applySectionLimit = (data: DiscoverSections): DiscoverSections =>
+        perSectionLimit >= SECTION_MEDIA_MAX
+          ? data
+          : data.map((section) =>
+              section.type === 'media'
+                ? { ...section, items: (section.items as DiscoverItem[]).slice(0, perSectionLimit) }
+                : section,
+            );
 
       if (sectionsCache && now < sectionsCache.expiresAt) {
         return NextResponse.json(
-          { mode: 'sections', sections: sectionsCache.data } satisfies DiscoverResponse,
+          { mode: 'sections', sections: applySectionLimit(sectionsCache.data) } satisfies DiscoverResponse,
           { headers: sectionsHeaders }
         );
       }
@@ -572,13 +616,19 @@ async function getHandler(request: NextRequest) {
       }
 
       const fallbackSections = (!freshHasMedia && sectionsCache?.data) ? sectionsCache.data : sections;
-      const body: DiscoverResponse = { mode: 'sections', sections: fallbackSections || [] };
+      const body: DiscoverResponse = {
+        mode: 'sections',
+        sections: applySectionLimit(fallbackSections || []),
+      };
       return NextResponse.json(body, { headers: sectionsHeaders });
     }
 
-    const page = parseNumber(searchParams.get('page')) || 1;
+    const startPage = parseNumber(searchParams.get('page')) || 1;
     const query = searchParams.get('q') || '';
     const section = searchParams.get('section');
+    const limit = clampInt(searchParams.get('limit'), 1, BROWSE_LIMIT_MAX, 20);
+    const TMDB_PAGE_SIZE = 20;
+    const pageCount = Math.max(1, Math.ceil(limit / TMDB_PAGE_SIZE));
 
     const sectionOverride = section ? SECTION_SORT_OVERRIDES[section] : undefined;
     const contentType = sectionOverride?.contentType || asContentType(searchParams.get('contentType'));
@@ -586,12 +636,19 @@ async function getHandler(request: NextRequest) {
     const sortOrder = sectionOverride?.sortOrder || asSortOrder(searchParams.get('sortOrder'));
     const filters = parseFilters(searchParams);
 
-    const result = mode === 'search' || query.trim()
-      ? await searchItems({ q: query, page, contentType })
-      : await discoverItems({ page, contentType, sortBy, sortOrder, filters, section }).then((res) => res.data);
+    const pages = Array.from({ length: pageCount }, (_, i) => startPage + i);
+    const pageResults = await Promise.all(
+      pages.map((page) =>
+        mode === 'search' || query.trim()
+          ? searchItems({ q: query, page, contentType })
+          : discoverItems({ page, contentType, sortBy, sortOrder, filters, section }).then((res) => res.data),
+      ),
+    );
+    const firstPage = pageResults[0];
+    const combinedResults = pageResults.flatMap((r) => r.results);
 
     let items = normalizeItems(
-      result.results,
+      combinedResults,
       contentType === 'movie'
         ? 'movie'
         : contentType === 'show'
@@ -613,16 +670,16 @@ async function getHandler(request: NextRequest) {
       items = items.sort((a, b) => b.rating - a.rating || b.voteCount - a.voteCount);
     }
 
-    items = dedupeDiscoverItems(items);
+    items = dedupeDiscoverItems(items).slice(0, limit);
 
     const { movies, series } = await getLibraries();
     items = annotateDiscoverItems(items, movies, series);
 
     const body: DiscoverResponse = {
       mode: query.trim() ? 'search' : 'browse',
-      page: result.page,
-      totalPages: result.total_pages,
-      totalResults: result.total_results,
+      page: firstPage.page,
+      totalPages: firstPage.total_pages,
+      totalResults: firstPage.total_results,
       items,
     };
 
