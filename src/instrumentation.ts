@@ -56,6 +56,13 @@ export async function register() {
       console.log('[Helprr] Polling service started');
 
       try {
+        const { seedInitialLayouts } = await import('@/lib/dashboard-layouts');
+        await seedInitialLayouts();
+      } catch (seedErr) {
+        console.warn('[Helprr] Could not seed dashboard layouts:', seedErr);
+      }
+
+      try {
         const { startCleanupJobs } = await import('@/lib/cleanup/scheduler');
         // Idempotent — startCleanupJobs internally restarts timers, and the
         // scheduler stashes its state on globalThis so dev hot-reload of this

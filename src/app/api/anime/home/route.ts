@@ -13,7 +13,9 @@ interface SeasonWindow {
   year: number;
 }
 
-const HOME_PER_PAGE_VALUES = new Set([10, 30, 40]);
+const HOME_PER_PAGE_MIN = 10;
+const HOME_PER_PAGE_MAX = 50;
+const HOME_PER_PAGE_DEFAULT = 10;
 
 async function getLibraries() {
   const [movies, series] = await Promise.all([
@@ -85,8 +87,9 @@ function getNextSeasonClient(currentSeason: AniListMediaSeason, currentYear: num
 }
 
 function getHomePerPage(request: NextRequest): number {
-  const perPage = Number(new URL(request.url).searchParams.get('perPage'));
-  return HOME_PER_PAGE_VALUES.has(perPage) ? perPage : 10;
+  const raw = Number(new URL(request.url).searchParams.get('perPage'));
+  if (!Number.isFinite(raw)) return HOME_PER_PAGE_DEFAULT;
+  return Math.min(HOME_PER_PAGE_MAX, Math.max(HOME_PER_PAGE_MIN, Math.round(raw)));
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {

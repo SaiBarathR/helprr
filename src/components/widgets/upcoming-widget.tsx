@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { Film, Tv } from 'lucide-react';
-import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
 import type { CalendarEvent, MediaImage } from '@/types';
@@ -18,7 +19,6 @@ import {
   LIST_ROW_HEIGHT,
   Pill,
   Poster,
-  SECTION_HEADER_HEIGHT,
   SectionHeader,
   ViewModeToggle,
   toneFromString,
@@ -47,9 +47,15 @@ function getPoster(images: MediaImage[], hint?: 'radarr' | 'sonarr'): string | n
 
 function getStoredDays(): number {
   if (typeof window === 'undefined') return 14;
-  const stored = localStorage.getItem(STORAGE_KEY);
-  const parsed = stored ? parseInt(stored, 10) : NaN;
-  return DAYS_OPTIONS.includes(parsed as typeof DAYS_OPTIONS[number]) ? parsed : 14;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const parsed = stored ? parseInt(stored, 10) : NaN;
+    return DAYS_OPTIONS.includes(parsed as typeof DAYS_OPTIONS[number]) ? parsed : 14;
+  } catch {
+    // localStorage can throw in private mode, sandboxed iframes, or when
+    // storage is disabled. Fall back to the default.
+    return 14;
+  }
 }
 
 export function UpcomingWidget({
@@ -71,7 +77,7 @@ export function UpcomingWidget({
 
   const { data, loading } = useWidgetData({
     fetchFn: fetchUpcoming,
-    refreshInterval,
+    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
     enabled: !editMode,
     cacheKey: `upcoming-${days}d`,
   });
@@ -83,21 +89,26 @@ export function UpcomingWidget({
       onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
     />
   ) : null;
-  const visibleCount = useMemo(() => {
-    const carouselCount = width > 0
-      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
-      : 12;
-    const listCount = height > 0
-      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
-      : 8;
-    return Math.max(carouselCount, listCount, 8);
-  }, [width, height]);
+  const { visibleCount: listVisible } = useListFetchSize({
+    height,
+    rowHeight: LIST_ROW_HEIGHT,
+  });
+  const carouselVisible = width > 0
+    ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+    : 12;
+  const visibleCount = Math.max(listVisible, carouselVisible);
 
   function handleDaysChange() {
     const idx = DAYS_OPTIONS.indexOf(days as typeof DAYS_OPTIONS[number]);
     const next = DAYS_OPTIONS[(idx + 1) % DAYS_OPTIONS.length];
     setDays(next);
-    if (typeof window !== 'undefined') localStorage.setItem(STORAGE_KEY, String(next));
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY, String(next));
+      } catch {
+        // Storage may be full or disabled; the in-memory state is still updated.
+      }
+    }
   }
 
   const dayBadge = (
@@ -114,7 +125,10 @@ export function UpcomingWidget({
 
   if (loading && list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Upcoming" badge={dayBadge} right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
@@ -122,7 +136,10 @@ export function UpcomingWidget({
   }
   if (list.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Upcoming" badge={dayBadge} right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           Nothing upcoming
@@ -143,7 +160,9 @@ export function UpcomingWidget({
           right={
             <>
               {toggleNode}
-              <span>View all →</span>
+              <Link href="/calendar" style={{ color: 'inherit', textDecoration: 'none' }}>
+                View all →
+              </Link>
             </>
           }
         />
@@ -178,7 +197,18 @@ export function UpcomingWidget({
 
   return (
     <div ref={ref}>
-      <SectionHeader title="Upcoming" badge={dayBadge} right={<span>View all →</span>} />
+      <SectionHeader
+        title="Upcoming"
+        badge={dayBadge}
+        right={
+          <>
+            {toggleNode}
+            <Link href="/calendar" style={{ color: 'inherit', textDecoration: 'none' }}>
+              View all →
+            </Link>
+          </>
+        }
+      />
       <div
         className="no-scrollbar"
         style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
@@ -227,10 +257,8 @@ export function UpcomingWidget({
                     fontSize: 10,
                     color: HPR.fgMute,
                     fontFamily: FONT_MONO,
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
                   }}
+                  className='line-clamp-1 md:line-clamp-2 overflow-hidden text-ellipsis'
                 >
                   {ev.subtitle}
                 </div>

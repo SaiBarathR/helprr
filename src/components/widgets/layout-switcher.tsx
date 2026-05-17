@@ -163,6 +163,12 @@ export function LayoutSwitcher({
       cancelRename();
       return;
     }
+    // Clear the rename state immediately so the input's blur handler (which
+    // fires synchronously when Enter moves focus away) sees no active rename
+    // and bails out — otherwise Enter would queue a second PUT via onBlur.
+    setRenamingId(null);
+    setRenameValue('');
+    setRenameOriginal('');
     setBusyId(layoutId);
     try {
       await callApi(
@@ -175,7 +181,6 @@ export function LayoutSwitcher({
         'Renamed',
       );
       await refresh();
-      cancelRename();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed');
     } finally {

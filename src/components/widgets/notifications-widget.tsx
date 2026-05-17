@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { FONT_MONO, HPR, SECTION_HEADER_HEIGHT, SectionHeader, mix } from './bento-primitives';
+import { FONT_MONO, HPR, SectionHeader, mix } from './bento-primitives';
 
 // Notification cards include 2 lines of body text + padding, so they're
 // taller than the dashboard's generic LIST_ROW_HEIGHT.
@@ -59,11 +61,11 @@ export function NotificationsWidget({
 }: WidgetProps) {
   const router = useRouter();
   const { ref, height } = useElementSize<HTMLDivElement>();
-  const maxItems = useMemo(() => {
-    if (height <= 0) return 5;
-    return Math.max(3, Math.ceil((height - SECTION_HEADER_HEIGHT) / NOTIFICATION_ROW_HEIGHT) + 3);
-  }, [height]);
-  const fetchPageSize = Math.ceil(maxItems / 5) * 5;
+  const { visibleCount: maxItems, fetchSize: fetchPageSize } = useListFetchSize({
+    height,
+    rowHeight: NOTIFICATION_ROW_HEIGHT,
+    bucketSize: 5,
+  });
   const fetchFn = useCallback(() => fetchNotifications(fetchPageSize), [fetchPageSize]);
   const { data, loading } = useWidgetData({
     fetchFn,
@@ -102,7 +104,10 @@ export function NotificationsWidget({
 
   if (loading && items.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Notifications" />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
@@ -110,7 +115,10 @@ export function NotificationsWidget({
   }
   if (items.length === 0) {
     return (
-      <div ref={ref}>
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
         <SectionHeader title="Notifications" />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           No recent notifications
@@ -124,7 +132,14 @@ export function NotificationsWidget({
       ref={ref}
       style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
     >
-      <SectionHeader title="Notifications" right={<span>View all →</span>} />
+      <SectionHeader
+        title="Notifications"
+        right={
+          <Link href="/notifications" style={{ color: 'inherit', textDecoration: 'none' }}>
+            View all →
+          </Link>
+        }
+      />
       <div
         className="no-scrollbar scroll-fade-y"
         style={{

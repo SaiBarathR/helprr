@@ -104,7 +104,8 @@ async function loadJellyfinUsers(): Promise<JellyfinUserOption[]> {
       const users: JellyfinUserOption[] = Array.isArray(data.users) ? data.users : [];
       userListCache.users = users;
       return users;
-    } catch {
+    } catch (err) {
+      console.error('Failed to load jellyfin users:', err);
       return [];
     } finally {
       userListCache.promise = null;
@@ -167,7 +168,8 @@ async function loadJellyfinFilters(): Promise<string[]> {
       const filters: string[] = Array.isArray(data.filters) ? data.filters : [];
       filterListCache.filters = filters;
       return filters;
-    } catch {
+    } catch (err) {
+      console.error('Failed to load jellyfin filters:', err);
       return [];
     } finally {
       filterListCache.promise = null;

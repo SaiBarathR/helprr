@@ -1,23 +1,27 @@
 'use client';
 
-import { useMemo } from 'react';
 import Link from 'next/link';
 import { Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc } from '@/lib/image';
 import type { CalendarEvent, MediaImage } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 import {
+  CAROUSEL_CARD_HEIGHT,
+  CAROUSEL_CARD_WIDTH,
+  CAROUSEL_GAP,
+  FONT_MONO,
   HPR,
+  LIST_ROW_HEIGHT,
   Pill,
   Poster,
-  SECTION_HEADER_HEIGHT,
   SectionHeader,
+  ViewModeToggle,
   toneFromString,
 } from './bento-primitives';
-
-const ROW_HEIGHT = 92;
+import { useDashboardLayout } from './dashboard-layout-context';
 
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
@@ -36,12 +40,23 @@ async function fetchToday(): Promise<CalendarEvent[]> {
   return res.json();
 }
 
-export function TodayCalendarWidget({ refreshInterval, editMode = false }: WidgetProps) {
-  const { ref, height } = useElementSize<HTMLDivElement>();
-  const visibleCount = useMemo(() => {
-    if (height <= 0) return 6;
-    return Math.max(4, Math.ceil((height - SECTION_HEADER_HEIGHT) / ROW_HEIGHT) + 3);
-  }, [height]);
+export function TodayCalendarWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+  layoutVariant,
+  instanceId,
+}: WidgetProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const { setWidgetLayoutOverride } = useDashboardLayout();
+  const { visibleCount: listVisible } = useListFetchSize({
+    height,
+    rowHeight: LIST_ROW_HEIGHT,
+  });
+  const carouselVisible = width > 0
+    ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+    : 10;
+  const visibleCount = Math.max(listVisible, carouselVisible);
   const { data, loading } = useWidgetData({
     fetchFn: fetchToday,
     refreshInterval,
@@ -49,73 +64,205 @@ export function TodayCalendarWidget({ refreshInterval, editMode = false }: Widge
     cacheKey: 'today-calendar',
   });
   const list = data ?? [];
+  const useList = narrow || layoutVariant !== 'carousel';
+  const toggleNode = !narrow && instanceId ? (
+    <ViewModeToggle
+      value={useList ? 'list' : 'carousel'}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+    />
+  ) : null;
+  const headerRight = (
+    <>
+      {toggleNode}
+      <Link href="/calendar" style={{ color: 'inherit', textDecoration: 'none' }}>
+        View all →
+      </Link>
+    </>
+  );
 
   if (loading && list.length === 0) {
     return (
-      <div ref={ref}>
-        <SectionHeader title="Today" />
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader title="Today" right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
     );
   }
   if (list.length === 0) {
     return (
-      <div ref={ref}>
-        <SectionHeader title="Today" badge={<Pill color={HPR.amber}>0</Pill>} />
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader title="Today" badge={<Pill color={HPR.amber}>0</Pill>} right={toggleNode} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>Nothing airing today</div>
       </div>
     );
   }
 
+  if (useList) {
+    return (
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader
+          title="Today"
+          badge={<Pill color={HPR.amber}>{list.length}</Pill>}
+          right={headerRight}
+        />
+        <div
+          className="no-scrollbar scroll-fade-y"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {list.slice(0, visibleCount).map((ev) => {
+            const time = formatTime(ev.date);
+            const poster = getPoster(ev.images, ev.type === 'movie' ? 'radarr' : 'sonarr');
+            const isMovie = ev.type === 'movie';
+            const typeColor = isMovie ? HPR.blue : HPR.purple;
+            const row = (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: 8,
+                  background: HPR.ink,
+                  borderRadius: 12,
+                }}
+              >
+                <Poster
+                  width={48}
+                  height={72}
+                  label={ev.title}
+                  tone={toneFromString(ev.title)}
+                  fontSize={8}
+                  imageUrl={poster ?? undefined}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: HPR.fg,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {ev.title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: HPR.fgMute,
+                      marginTop: 2,
+                      wordBreak: 'break-word',
+                    }}
+                    className='line-clamp-2 overflow-hidden text-ellipsis'
+                  >
+                    {ev.subtitle}
+                  </div>
+                  {time && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: HPR.fgMute,
+                        marginTop: 2,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {time}
+                    </div>
+                  )}
+                </div>
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 6,
+                    background: typeColor,
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginRight: 4,
+                    marginTop: 2,
+                    opacity: 0.85,
+                  }}
+                >
+                  {isMovie ? <Film size={11} strokeWidth={2.4} /> : <Tv size={11} strokeWidth={2.4} />}
+                </div>
+              </div>
+            );
+            return editMode ? (
+              <div key={ev.id}>{row}</div>
+            ) : (
+              <Link
+                key={ev.id}
+                href={ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+              >
+                {row}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      ref={ref}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
-    >
+    <div ref={ref}>
       <SectionHeader
         title="Today"
         badge={<Pill color={HPR.amber}>{list.length}</Pill>}
-        right={<span>View all →</span>}
+        right={headerRight}
       />
       <div
-        className="no-scrollbar scroll-fade-y"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-        }}
+        className="no-scrollbar"
+        style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
       >
         {list.slice(0, visibleCount).map((ev) => {
           const time = formatTime(ev.date);
           const poster = getPoster(ev.images, ev.type === 'movie' ? 'radarr' : 'sonarr');
           const isMovie = ev.type === 'movie';
-          const typeColor = isMovie ? HPR.blue : HPR.purple;
-          const row = (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 12,
-                padding: 8,
-                background: HPR.ink,
-                borderRadius: 12,
-              }}
-            >
+          const card = (
+            <>
               <Poster
-                width={48}
-                height={72}
+                width={CAROUSEL_CARD_WIDTH}
+                height={CAROUSEL_CARD_HEIGHT}
                 label={ev.title}
                 tone={toneFromString(ev.title)}
-                fontSize={8}
                 imageUrl={poster ?? undefined}
+                timePill={time || undefined}
+                badge={{
+                  icon:
+                    isMovie ? (
+                      <Film size={11} strokeWidth={2.4} />
+                    ) : (
+                      <Tv size={11} strokeWidth={2.4} />
+                    ),
+                  color: isMovie ? HPR.blue : HPR.purple,
+                }}
               />
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ marginTop: 6 }}>
                 <div
                   style={{
-                    fontSize: 14,
+                    fontSize: 11,
                     color: HPR.fg,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -127,58 +274,34 @@ export function TodayCalendarWidget({ refreshInterval, editMode = false }: Widge
                 </div>
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: 10,
                     color: HPR.fgMute,
-                    marginTop: 2,
+                    fontFamily: FONT_MONO,
                     wordBreak: 'break-word',
                   }}
+                  className='line-clamp-2 overflow-hidden text-ellipsis'
                 >
                   {ev.subtitle}
                 </div>
-                {time && (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: HPR.fgMute,
-                      marginTop: 2,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {time}
-                  </div>
-                )}
               </div>
-              <div
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 6,
-                  background: typeColor,
-                  color: '#fff',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
-                  marginRight: 4,
-                  marginTop: 2,
-                  opacity: 0.85,
-                }}
-              >
-                {isMovie ? <Film size={11} strokeWidth={2.4} /> : <Tv size={11} strokeWidth={2.4} />}
-              </div>
-            </div>
+            </>
           );
           return editMode ? (
-            <div key={ev.id}>{row}</div>
+            <div key={ev.id} style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0 }}>
+              {card}
+            </div>
           ) : (
             <Link
               key={ev.id}
               href={ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}
-              style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+              style={{
+                width: CAROUSEL_CARD_WIDTH,
+                flexShrink: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
             >
-              {row}
+              {card}
             </Link>
           );
         })}

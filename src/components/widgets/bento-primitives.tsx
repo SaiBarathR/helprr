@@ -122,7 +122,7 @@ export function SectionHeader({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 10,
+        marginBottom: 6,
         gap: 8,
         minWidth: 0,
       }}
@@ -236,7 +236,9 @@ export function Poster({
           ? `linear-gradient(135deg, ${c1}, ${c2})`
           : `linear-gradient(135deg, ${c1}, ${c2})`,
         backgroundImage: imageUrl
-          ? `url(${imageUrl}), linear-gradient(135deg, ${c1}, ${c2})`
+          // Wrap in double quotes and percent-encode embedded quotes so URLs
+          // with `)` or whitespace cannot break out of the CSS `url(...)` token.
+          ? `url("${imageUrl.replace(/"/g, '%22')}"), linear-gradient(135deg, ${c1}, ${c2})`
           : `linear-gradient(135deg, ${c1}, ${c2}), repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0 2px, transparent 2px 6px)`,
         backgroundSize: imageUrl ? 'cover, auto' : 'auto',
         backgroundPosition: imageUrl ? 'center, 0 0' : '0 0',
@@ -342,7 +344,7 @@ export function Poster({
             background: 'rgba(0, 0, 0, 0.3)',
             backdropFilter: 'blur(4px)',
             WebkitBackdropFilter: 'blur(4px)',
-            color: 'rgba(255, 255, 255, 1t)',
+            color: 'rgba(255, 255, 255, 1)',
             fontSize: 8,
             fontFamily: FONT_MONO,
             fontWeight: 500,
@@ -759,16 +761,16 @@ export function FloatingEdit({
       style={{
         position: 'fixed',
         bottom: mobile ? 80 : 30,
-        right: mobile ? 18 : 36,
-        width: mobile ? 48 : undefined,
-        height: mobile ? 48 : undefined,
+        right: edit ? (mobile ? "40%" : "40%") : mobile ? 50 : 36,
+        width: 48 ,
+        height: 48 ,
         minHeight: mobile ? undefined : 42,
         padding: mobile ? 0 : '9px 14px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
-        borderRadius: mobile ? 9999 : 9999,
+        borderRadius:  9999,
         background: edit ? HPR.amber : HPR.surface,
         border: `1px solid ${edit ? HPR.amber : HPR.hairline2}`,
         boxShadow: edit
@@ -789,7 +791,7 @@ export function FloatingEdit({
           <span style={{ color: edit ? HPR.ink : HPR.amber, fontSize: 14 }}>
             {edit ? '✓' : '✎'}
           </span>
-          {edit ? 'Done' : 'Customize'}
+          {/* {edit ? 'Done' : 'Customize'} */}
         </>
       )}
     </button>

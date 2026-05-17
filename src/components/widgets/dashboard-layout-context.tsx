@@ -30,6 +30,33 @@ interface DashboardLayoutContextValue {
 
 const DashboardLayoutContext = createContext<DashboardLayoutContextValue | null>(null);
 
+// Cheap structural compare keyed on the fields that actually round-trip to the
+// server. Avoids JSON.stringify on every onLayoutChange tick during drags.
+function widgetsDiffer(a: WidgetInstance[], b: WidgetInstance[]): boolean {
+  if (a === b) return false;
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i += 1) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.id !== y.id
+      || x.widgetId !== y.widgetId
+      || x.x !== y.x
+      || x.y !== y.y
+      || x.colSpan !== y.colSpan
+      || x.rowSpan !== y.rowSpan
+      || x.mobileX !== y.mobileX
+      || x.mobileY !== y.mobileY
+      || x.mobileColSpan !== y.mobileColSpan
+      || x.mobileRowSpan !== y.mobileRowSpan
+      || x.layoutOverride !== y.layoutOverride
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function useDashboardLayout(): DashboardLayoutContextValue {
   const ctx = useContext(DashboardLayoutContext);
   if (!ctx) throw new Error('useDashboardLayout must be used inside DashboardLayoutProvider');
@@ -47,6 +74,18 @@ interface DashboardLayoutProviderProps {
 export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, children }: DashboardLayoutProviderProps) {
   const [widgets, setWidgetsState] = useState<WidgetInstance[]>(initialWidgets);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const dashboardEditMode = useUIStore((s) => s.dashboardEditMode);
+  // Mirror edit mode into a ref so the auto-save closure reads the live value
+  // without re-binding on every state change. Without this, the toggle would
+  // bake in whatever editMode was when the override was created.
+  const editModeRef = useRef(dashboardEditMode);
+  editModeRef.current = dashboardEditMode;
+  // Mirror the latest widgets so setWidgetLayoutOverride can compute the next
+  // array deterministically OUTSIDE of setWidgetsState — reading state from a
+  // side-effect inside the updater is unreliable under React 18 (the updater
+  // may double-invoke or run later than expected).
+  const widgetsRef = useRef<WidgetInstance[]>(initialWidgets);
+  widgetsRef.current = widgets;
   const overrideSaveRef = useRef<AbortController | null>(null);
 
   const setWidgets = useCallback((next: WidgetInstance[]) => {
@@ -128,21 +167,21 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
 
   const setWidgetLayoutOverride = useCallback(
     (instanceId: string, variant: WidgetLayoutVariant | null) => {
-      let nextWidgets: WidgetInstance[] | null = null;
-      setWidgetsState((current) => {
-        const updated = current.map((w) => {
-          if (w.id !== instanceId) return w;
-          if (variant == null) {
-            const next = { ...w };
-            delete next.layoutOverride;
-            return next;
-          }
-          return { ...w, layoutOverride: variant };
-        });
-        nextWidgets = updated;
-        return updated;
+      const next = widgetsRef.current.map((w) => {
+        if (w.id !== instanceId) return w;
+        if (variant == null) {
+          const stripped = { ...w };
+          delete stripped.layoutOverride;
+          return stripped;
+        }
+        return { ...w, layoutOverride: variant };
       });
-      if (!nextWidgets) return;
+      setWidgetsState(next);
+      // While in edit mode the user has unsaved drags in the working set; an
+      // auto-save here would silently persist those positions and break the
+      // "Discard" button. The override sticks in local state regardless — the
+      // user's explicit Save (or Done) will flush it together with their edits.
+      if (editModeRef.current) return;
       // Auto-save: PUT the updated layout. Abort any in-flight save first so a
       // rapid double-tap doesn't race itself into a stale write.
       overrideSaveRef.current?.abort();
@@ -153,7 +192,7 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
           const res = await fetch(`/api/dashboard-layouts/${activeLayoutId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ widgets: nextWidgets }),
+            body: JSON.stringify({ widgets: next }),
             signal: controller.signal,
           });
           if (!res.ok) {
@@ -174,7 +213,7 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
   }, []);
 
   const isDirty = useMemo(
-    () => JSON.stringify(widgets) !== JSON.stringify(initialWidgets),
+    () => widgetsDiffer(widgets, initialWidgets),
     [widgets, initialWidgets],
   );
 
