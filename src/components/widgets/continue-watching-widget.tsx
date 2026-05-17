@@ -1,17 +1,29 @@
 'use client';
 
-import Image from 'next/image';
-import { MonitorPlay } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useCallback, useMemo } from 'react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
-import { isProtectedApiImageSrc } from '@/lib/image';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 import type { JellyfinItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import {
+  Bar,
+  CAROUSEL_CARD_HEIGHT,
+  CAROUSEL_CARD_WIDTH,
+  CAROUSEL_GAP,
+  FONT_MONO,
+  HPR,
+  LIST_ROW_HEIGHT,
+  Poster,
+  SECTION_HEADER_HEIGHT,
+  SectionHeader,
+  ViewModeToggle,
+  toneFromString,
+} from './bento-primitives';
+import { useDashboardLayout } from './dashboard-layout-context';
 
-async function fetchResumeItems(): Promise<JellyfinItem[]> {
-  const res = await fetch('/api/jellyfin/resume');
+async function fetchResumeItems(limit: number): Promise<JellyfinItem[]> {
+  const res = await fetch(`/api/jellyfin/resume?limit=${limit}`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.items || [];
@@ -22,55 +34,164 @@ function jellyfinWebUrl(baseUrl: string, item: JellyfinItem): string {
   return `${baseUrl}/web/index.html#!/details?id=${targetId}`;
 }
 
-export function ContinueWatchingWidget({ size, refreshInterval, editMode = false }: WidgetProps) {
-  const { data: resumeItems, loading } = useWidgetData({ fetchFn: fetchResumeItems, refreshInterval });
+export function ContinueWatchingWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+  layoutVariant,
+  instanceId,
+}: WidgetProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const { setWidgetLayoutOverride } = useDashboardLayout();
+  const visibleCount = useMemo(() => {
+    const carouselCount = width > 0
+      ? Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4
+      : 12;
+    const listCount = height > 0
+      ? Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4
+      : 8;
+    return Math.max(carouselCount, listCount, 8);
+  }, [width, height]);
+  const fetchLimit = Math.ceil((visibleCount + 6) / 10) * 10;
+  const fetchFn = useCallback(() => fetchResumeItems(fetchLimit), [fetchLimit]);
+  const { data: items, loading } = useWidgetData({
+    fetchFn,
+    refreshInterval,
+    enabled: !editMode,
+    cacheKey: `continue-watching-${fetchLimit}`,
+  });
   const externalUrls = useExternalUrls();
   const jellyfinUrl = externalUrls.JELLYFIN;
 
-  if (loading) {
+  const list = items ?? [];
+  const useList = narrow || layoutVariant === 'list';
+  const toggleNode = !narrow && instanceId ? (
+    <ViewModeToggle
+      value={useList ? 'list' : 'carousel'}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+    />
+  ) : null;
+
+  if (loading && list.length === 0) {
     return (
-      <div>
-        <SectionHeader title="Continue Watching" />
-        <div className="flex gap-3 overflow-hidden">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-[170px] w-[110px] rounded-xl shrink-0" />
-          ))}
+      <div ref={ref}>
+        <SectionHeader title="Continue Watching" right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
+      </div>
+    );
+  }
+
+  if (list.length === 0) {
+    return (
+      <div ref={ref}>
+        <SectionHeader title="Continue Watching" right={toggleNode} />
+        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+          {editMode ? 'Nothing to resume' : 'No items in progress'}
         </div>
       </div>
     );
   }
 
-  if (!resumeItems || resumeItems.length === 0) {
-    return editMode ? <EditModePlaceholder title="Continue Watching" message="Nothing to resume" /> : null;
-  }
-
-  if (size === 'medium') {
+  if (useList) {
     return (
-      <div>
-        <SectionHeader title="Continue Watching" />
-        <div className="space-y-1.5">
-          {resumeItems.slice(0, 4).map((item) => {
-            const progress = item.UserData?.PlayedPercentage ?? 0;
-            return (
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader
+          title="Continue Watching"
+          right={
+            <>
+              {toggleNode}
+              <span>View all →</span>
+            </>
+          }
+        />
+        <div
+          className="no-scrollbar scroll-fade-y"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {list.slice(0, visibleCount).map((it) => {
+            const pct = it.UserData?.PlayedPercentage ?? 0;
+            const title = it.SeriesName || it.Name;
+            const sub =
+              it.Type === 'Episode' && it.ParentIndexNumber != null
+                ? `S${it.ParentIndexNumber}·E${it.IndexNumber ?? ''}`
+                : it.ProductionYear?.toString() ?? '';
+            const imageId = it.Type === 'Episode' && it.SeriesId ? it.SeriesId : it.Id;
+            const hasImage = it.ImageTags?.Primary || (it.Type === 'Episode' && it.SeriesId);
+            const imageSrc = hasImage
+              ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=120&quality=80`
+              : undefined;
+            const row = (
               <div
-                key={item.Id}
-                className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5"
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: 8,
+                  background: HPR.ink,
+                  borderRadius: 12,
+                }}
               >
-                <MonitorPlay className="h-3.5 w-3.5 text-[#00a4dc] shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.SeriesName || item.Name}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">
-                    {item.Type === 'Episode' && item.ParentIndexNumber != null
-                      ? `S${item.ParentIndexNumber}E${item.IndexNumber} · ${item.Name}`
-                      : item.Name !== (item.SeriesName || item.Name) ? item.Name : ''}
-                  </p>
-                </div>
-                <div className="w-12 shrink-0">
-                  <div className="h-1 rounded-full bg-white/10">
-                    <div className="h-full rounded-full bg-[#00a4dc]" style={{ width: `${progress}%` }} />
+                <Poster
+                  width={48}
+                  height={72}
+                  label={title}
+                  tone={toneFromString(title)}
+                  fontSize={8}
+                  imageUrl={imageSrc}
+                  progress={pct}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: 14,
+                      color: HPR.fg,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {title}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: HPR.fgMute,
+                      fontFamily: FONT_MONO,
+                      marginTop: 2,
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {sub}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    <Bar pct={pct} color={HPR.cyan} height={3} />
                   </div>
                 </div>
               </div>
+            );
+            return jellyfinUrl && !editMode ? (
+              <a
+                key={it.Id}
+                href={jellyfinWebUrl(jellyfinUrl, it)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+              >
+                {row}
+              </a>
+            ) : (
+              <div key={it.Id}>{row}</div>
             );
           })}
         </div>
@@ -79,62 +200,72 @@ export function ContinueWatchingWidget({ size, refreshInterval, editMode = false
   }
 
   return (
-    <div>
-      <SectionHeader title="Continue Watching" />
-      <Carousel>
-        {resumeItems.map((item) => {
-          const progress = item.UserData?.PlayedPercentage ?? 0;
-          const imageId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
-          const hasImage = item.ImageTags?.Primary || (item.Type === 'Episode' && item.SeriesId);
-          const jellyfinPosterSrc = `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`;
-
-          const cardContent = (
+    <div ref={ref}>
+      <SectionHeader title="Continue Watching" right={<span>View all →</span>} />
+      <div
+        className="no-scrollbar"
+        style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
+      >
+        {list.slice(0, visibleCount).map((it) => {
+          const pct = it.UserData?.PlayedPercentage ?? 0;
+          const title = it.SeriesName || it.Name;
+          const sub =
+            it.Type === 'Episode' && it.ParentIndexNumber != null
+              ? `S${it.ParentIndexNumber}·E${it.IndexNumber ?? ''}`
+              : it.ProductionYear?.toString() ?? '';
+          const imageId = it.Type === 'Episode' && it.SeriesId ? it.SeriesId : it.Id;
+          const hasImage = it.ImageTags?.Primary || (it.Type === 'Episode' && it.SeriesId);
+          const imageSrc = hasImage
+            ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`
+            : undefined;
+          const cardInner = (
             <>
-              <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
-                {hasImage ? (
-                  <Image
-                    src={jellyfinPosterSrc}
-                    alt={item.Name}
-                    fill
-                    sizes="110px"
-                    className="object-cover"
-                    unoptimized={isProtectedApiImageSrc(jellyfinPosterSrc)}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <MonitorPlay className="h-6 w-6 text-muted-foreground/20" />
-                  </div>
-                )}
-                <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10">
-                  <div className="h-full bg-[#00a4dc]" style={{ width: `${progress}%` }} />
-                </div>
+              <Poster
+                width={CAROUSEL_CARD_WIDTH}
+                height={CAROUSEL_CARD_HEIGHT}
+                label={title}
+                tone={toneFromString(title)}
+                progress={pct}
+                imageUrl={imageSrc}
+              />
+              <div
+                style={{
+                  fontSize: 11,
+                  color: HPR.fg,
+                  marginTop: 6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  fontWeight: 500,
+                }}
+              >
+                {title}
               </div>
-              <p className="text-[11px] font-medium truncate leading-tight">{item.SeriesName || item.Name}</p>
-              {item.Type === 'Episode' && item.ParentIndexNumber != null && (
-                <p className="text-[10px] text-muted-foreground truncate">
-                  S{item.ParentIndexNumber}E{item.IndexNumber}
-                </p>
-              )}
+              <div style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}>{sub}</div>
             </>
           );
-
-          return jellyfinUrl ? (
+          return jellyfinUrl && !editMode ? (
             <a
-              key={item.Id}
-              href={jellyfinWebUrl(jellyfinUrl, item)}
+              key={it.Id}
+              href={jellyfinWebUrl(jellyfinUrl, it)}
               target="_blank"
               rel="noopener noreferrer"
-              className="snap-start shrink-0 w-[110px]"
+              style={{
+                width: CAROUSEL_CARD_WIDTH,
+                flexShrink: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
             >
-              {cardContent}
+              {cardInner}
             </a>
           ) : (
-            <div key={item.Id} className="snap-start shrink-0 w-[110px]">
-              {cardContent}
+            <div key={it.Id} style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0 }}>
+              {cardInner}
             </div>
           );
         })}
-      </Carousel>
+      </div>
     </div>
   );
 }

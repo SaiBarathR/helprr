@@ -1,14 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Badge } from '@/components/ui/badge';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatDistanceToNowShort } from '@/lib/format';
 import { formatDelta } from '@/lib/cleanup/format-delta';
-import { SectionHeader } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { AutoRunMode } from '@/lib/cleanup/types';
+import { FONT_DISPLAY, FONT_MONO, HPR, Pill, SectionHeader, mix } from './bento-primitives';
 
 interface SchedulerLeg {
   autoRunMode: AutoRunMode;
@@ -16,23 +14,6 @@ interface SchedulerLeg {
   lastRunAt: number | null;
   nextRunAt: number | null;
   running: boolean;
-}
-
-interface SchedulerStatus {
-  queue: SchedulerLeg;
-  download: SchedulerLeg;
-}
-
-interface StrikeRow {
-  id: string;
-  hash: string;
-  torrentName: string;
-  strikeType: string;
-  ruleId: string | null;
-  ruleName: string | null;
-  count: number;
-  maxStrikes: number;
-  lastSeenAt: string;
 }
 
 interface CleanupStats {
@@ -44,198 +25,224 @@ interface CleanupStats {
   reSearchedAllTime: number;
 }
 
+interface StrikeRow {
+  id: string;
+  torrentName: string;
+  strikeType: string;
+  ruleName: string | null;
+  count: number;
+  maxStrikes: number;
+  lastSeenAt: string;
+}
+
 interface CleanupStatusData {
-  scheduler: SchedulerStatus | null;
+  scheduler: { queue: SchedulerLeg; download: SchedulerLeg } | null;
   strikes: StrikeRow[];
   stats: CleanupStats | null;
 }
 
 async function fetchCleanupStatus(): Promise<CleanupStatusData> {
-  const [schedulerRes, strikesRes, statsRes] = await Promise.all([
+  const [schedRes, strikesRes, statsRes] = await Promise.all([
     fetch('/api/cleanup/scheduler-status'),
     fetch('/api/cleanup/strikes'),
     fetch('/api/cleanup/stats'),
   ]);
-  const scheduler: SchedulerStatus | null = schedulerRes.ok
-    ? ((await schedulerRes.json()) as SchedulerStatus)
-    : null;
-  const strikes: StrikeRow[] = strikesRes.ok
-    ? ((await strikesRes.json()) as StrikeRow[])
-    : [];
-  const stats: CleanupStats | null = statsRes.ok
-    ? ((await statsRes.json()) as CleanupStats)
-    : null;
-  return { scheduler, strikes, stats };
+  return {
+    scheduler: schedRes.ok ? await schedRes.json() : null,
+    strikes: strikesRes.ok ? await strikesRes.json() : [],
+    stats: statsRes.ok ? await statsRes.json() : null,
+  };
 }
 
-export function CleanupStatusWidget({ size, refreshInterval }: WidgetProps) {
-  const { data, loading } = useWidgetData({
+export function CleanupStatusWidget({ refreshInterval, rowSpan = 2, editMode = false }: WidgetProps) {
+  const { data } = useWidgetData({
     fetchFn: fetchCleanupStatus,
     refreshInterval,
+    enabled: !editMode,
+    cacheKey: 'cleanup-status',
   });
-
-  // Independent 1s tick so countdowns flow smoothly between the slower
-  // `useWidgetData` polls.
-  const [now, setNow] = useState<number>(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  if (loading) {
-    return (
-      <div>
-        <SectionHeader title="Cleanup" href="/cleanup" />
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-12 rounded-lg" />
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <Skeleton className="h-10 rounded-xl" />
-            <Skeleton className="h-10 rounded-xl" />
-          </div>
-          <Skeleton className="h-3 w-24 mt-3" />
-          <Skeleton className="h-10 w-full rounded-xl" />
-          <Skeleton className="h-10 w-full rounded-xl" />
-        </div>
-      </div>
-    );
-  }
-
+  const stats = data?.stats;
+  const strikes = data?.strikes ?? [];
   const queue = data?.scheduler?.queue;
   const download = data?.scheduler?.download;
-  const strikes = data?.strikes ?? [];
-  const stats = data?.stats;
-  const strikeLimit = size === 'large' ? 8 : 3;
+  const dryRun = queue?.autoRunMode === 'dryRun' || download?.autoRunMode === 'dryRun';
+  const strikeLimit = rowSpan >= 2 ? 5 : 3;
 
   return (
     <div>
-      <SectionHeader title="Cleanup" href="/cleanup" />
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-        <StatTile label="Today" value={stats?.removedToday} />
-        <StatTile label="Past 7 days" value={stats?.removedThisWeek} />
-        <StatTile label="Total strikes" value={stats?.totalStrikes} />
-        <StatTile label="Re-searches" value={stats?.reSearchedAllTime} />
+      <SectionHeader
+        title="Cleanup"
+        badge={dryRun ? <Pill color={HPR.amber}>DRY</Pill> : null}
+        right={<span>View all →</span>}
+      />
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr 1fr 1fr',
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <CleanupTile label="Today" value={stats?.removedToday} color={HPR.fgMute} />
+        <CleanupTile label="Past 7d" value={stats?.removedThisWeek} color={HPR.green} />
+        <CleanupTile label="Strikes" value={stats?.totalStrikes} color={HPR.amber} />
+        <CleanupTile label="Re-search" value={stats?.reSearchedAllTime} color={HPR.fgMute} />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <CleanerStatusRow label="Queue" leg={queue} now={now} />
-        <CleanerStatusRow label="Download" leg={download} now={now} />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+        <CleanerRow label="Queue" leg={queue} now={now} color={HPR.amber} />
+        <CleanerRow label="Download" leg={download} now={now} color={HPR.blue} />
       </div>
 
-      <div className="mt-4 mb-1.5 flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-          Active strikes ({strikes.length})
-        </span>
+      <div style={{ fontSize: 10, color: HPR.fgSubtle, marginTop: 4, marginBottom: 6, fontFamily: FONT_MONO, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        Active strikes ({strikes.length})
       </div>
-
       {strikes.length === 0 ? (
-        <div className="rounded-xl bg-card py-4 text-center">
-          <p className="text-xs text-muted-foreground">No active strikes</p>
+        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '4px 0' }}>
+          No active strikes
         </div>
       ) : (
-        <div className="space-y-1">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {strikes.slice(0, strikeLimit).map((s) => (
             <div
               key={s.id}
-              className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '6px 8px',
+                background: HPR.ink,
+                border: `1px solid ${HPR.hairline}`,
+                borderRadius: 6,
+              }}
             >
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate">{s.torrentName}</p>
-                <p className="text-[10px] text-muted-foreground truncate">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: HPR.fg,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {s.torrentName}
+                </div>
+                <div style={{ fontSize: 9, color: HPR.fgMute, fontFamily: FONT_MONO }}>
                   {s.strikeType}
                   {s.ruleName ? ` · ${s.ruleName}` : ''}
                   {' · '}
                   {formatDistanceToNowShort(s.lastSeenAt)}
-                </p>
+                </div>
               </div>
-              <Badge
-                variant={s.count >= s.maxStrikes ? 'destructive' : 'outline'}
-                className="shrink-0 font-mono text-[10px] px-1.5"
-              >
+              <Pill color={s.count >= s.maxStrikes ? HPR.rose : HPR.amber}>
                 {s.count}/{s.maxStrikes}
-              </Badge>
+              </Pill>
             </div>
           ))}
-          {strikes.length > strikeLimit && (
-            <div className="text-[10px] text-muted-foreground text-center pt-0.5">
-              +{strikes.length - strikeLimit} more
-            </div>
-          )}
         </div>
       )}
     </div>
   );
 }
 
-function StatTile({ label, value }: { label: string; value: number | undefined }) {
+function CleanupTile({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value?: number;
+  color: string;
+}) {
   return (
-    <div className="rounded-lg bg-card px-2.5 py-1.5">
-      <div className="text-lg font-mono font-semibold tabular-nums leading-tight">
+    <div
+      style={{
+        padding: 8,
+        background: HPR.ink,
+        border: `1px solid ${HPR.hairline}`,
+        borderRadius: 6,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: FONT_DISPLAY,
+          fontSize: 17,
+          color,
+          fontWeight: 700,
+          lineHeight: 1,
+          letterSpacing: '-0.02em',
+        }}
+      >
         {value ?? '—'}
       </div>
-      <div className="text-[10px] text-muted-foreground truncate">{label}</div>
+      <div
+        style={{
+          fontSize: 9,
+          color: HPR.fgMute,
+          marginTop: 4,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          fontFamily: FONT_MONO,
+        }}
+      >
+        {label}
+      </div>
     </div>
   );
 }
 
-function CleanerStatusRow({
+function CleanerRow({
   label,
   leg,
   now,
+  color,
 }: {
   label: string;
-  leg: SchedulerLeg | undefined;
+  leg?: SchedulerLeg;
   now: number;
+  color: string;
 }) {
+  let text = '—';
+  if (leg) {
+    if (leg.autoRunMode === 'disabled') text = 'OFF';
+    else if (leg.running) text = 'RUNNING…';
+    else if (leg.nextRunAt != null) text = formatDelta(leg.nextRunAt - now);
+    else text = 'IDLE';
+  }
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl bg-card px-3 py-2">
-      <span className="text-xs font-medium truncate">{label}</span>
-      <StatusPill leg={leg} now={now} />
-    </div>
-  );
-}
-
-function StatusPill({ leg, now }: { leg: SchedulerLeg | undefined; now: number }) {
-  if (!leg) {
-    return <span className="text-[10px] text-muted-foreground">—</span>;
-  }
-  if (leg.autoRunMode === 'disabled') {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono px-1.5">
-        Off
-      </Badge>
-    );
-  }
-  if (leg.running) {
-    return (
-      <Badge
-        variant="secondary"
-        className="text-[10px] font-mono px-1.5 bg-amber-500/15 text-amber-400 animate-pulse"
+    <div
+      style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '7px 9px',
+        background: HPR.ink,
+        border: `1px solid ${HPR.hairline}`,
+        borderRadius: 6,
+      }}
+    >
+      <span style={{ fontSize: 11, color: HPR.fg }}>{label}</span>
+      <span
+        style={{
+          fontFamily: FONT_MONO,
+          fontSize: 10,
+          color,
+          background: mix(color, 14),
+          padding: '1px 6px',
+          borderRadius: 4,
+          fontWeight: 500,
+        }}
       >
-        Running…
-      </Badge>
-    );
-  }
-  if (leg.nextRunAt == null) {
-    return (
-      <Badge variant="outline" className="text-[10px] font-mono px-1.5">
-        Idle
-      </Badge>
-    );
-  }
-  const delta = leg.nextRunAt - now;
-  return (
-    <div className="flex items-center gap-1.5 shrink-0">
-      <Badge variant="secondary" className="text-[10px] font-mono px-1.5 whitespace-nowrap">
-        {formatDelta(delta)}
-      </Badge>
-      {leg.autoRunMode === 'dryRun' && (
-        <span className="text-[9px] text-muted-foreground uppercase tracking-wide">dry</span>
-      )}
+        {text}
+      </span>
     </div>
   );
 }

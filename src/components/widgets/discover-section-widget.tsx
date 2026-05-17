@@ -1,14 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { useMemo } from 'react';
-import { CheckCircle2, Film, Star, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { Carousel, EditModePlaceholder, SectionHeader } from '@/components/widgets/shared';
-import { Skeleton } from '@/components/ui/skeleton';
-import { toCachedImageSrc, isProtectedApiImageSrc } from '@/lib/image';
+import { useElementSize } from '@/lib/widgets/use-element-size';
+import { toCachedImageSrc } from '@/lib/image';
 import { useUIStore } from '@/lib/store';
+import {
+  CAROUSEL_CARD_HEIGHT,
+  CAROUSEL_CARD_WIDTH,
+  CAROUSEL_GAP,
+  FONT_MONO,
+  HPR,
+  LIST_ROW_HEIGHT,
+  Poster,
+  SECTION_HEADER_HEIGHT,
+  SectionHeader,
+  ViewModeToggle,
+  toneFromString,
+  mix,
+} from './bento-primitives';
+import { Film, Tv } from 'lucide-react';
+import { useDashboardLayout } from './dashboard-layout-context';
+import type { WidgetLayoutVariant } from '@/lib/widgets/types';
 import {
   BUILTIN_DISCOVER_SECTIONS,
   type DiscoverLayoutCustomFilters,
@@ -24,14 +38,15 @@ import type {
 
 interface DiscoverSectionWidgetProps {
   sectionId: string;
-  size: 'small' | 'medium' | 'large';
   refreshInterval: number;
   editMode?: boolean;
+  narrow?: boolean;
+  colSpan?: number;
+  layoutVariant?: WidgetLayoutVariant;
+  instanceId?: string;
 }
 
 const CLIENT_CACHE_MS = 5 * 60 * 1000;
-
-// ---------- caches ----------
 
 let sectionsPromise: Promise<DiscoverResponse> | null = null;
 let sectionsPromiseTime = 0;
@@ -103,8 +118,6 @@ function fetchCustomCached(filters: DiscoverLayoutCustomFilters): Promise<Discov
   return promise;
 }
 
-// ---------- helpers ----------
-
 function detailHref(item: DiscoverItem): string {
   return item.mediaType === 'movie'
     ? `/discover/movie/${item.tmdbId}`
@@ -143,46 +156,141 @@ function buildCustomDiscoverHref(filters: DiscoverLayoutCustomFilters): string {
   return `/discover?${params.toString()}`;
 }
 
-// ---------- subviews ----------
-
 function MediaCarouselView({
   title,
   viewAllHref,
   items,
-  size,
+  limit,
+  useList,
+  toggleNode,
 }: {
   title: string;
   viewAllHref: string;
   items: DiscoverItem[];
-  size: 'small' | 'medium' | 'large';
+  limit: number;
+  useList: boolean;
+  toggleNode: React.ReactNode;
 }) {
-  if (size === 'medium') {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const dynamicLimit = useList
+    ? height > 0
+      ? Math.max(limit, Math.ceil((height - SECTION_HEADER_HEIGHT) / LIST_ROW_HEIGHT) + 4)
+      : limit
+    : width > 0
+      ? Math.max(limit, Math.ceil(width / (CAROUSEL_CARD_WIDTH + CAROUSEL_GAP)) + 4)
+      : limit;
+  const headerRight = (
+    <>
+      {toggleNode}
+      <Link href={viewAllHref} style={{ color: 'inherit', textDecoration: 'none' }}>
+        View all →
+      </Link>
+    </>
+  );
+
+  if (useList) {
     return (
-      <div>
-        <SectionHeader title={title} href={viewAllHref} />
-        <div className="space-y-1.5">
-          {items.slice(0, 4).map((item) => {
-            const Icon = item.mediaType === 'movie' ? Film : Tv;
-            const badgeColor = item.mediaType === 'movie' ? 'bg-sky-500/80' : 'bg-violet-500/80';
-            const metadata: string[] = [];
-            if (item.year != null) metadata.push(String(item.year));
-            if (item.rating > 0) metadata.push(`${item.rating.toFixed(1)}★`);
+      <div
+        ref={ref}
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+      >
+        <SectionHeader title={title} right={headerRight} />
+        <div
+          className="no-scrollbar scroll-fade-y"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            flex: 1,
+            minHeight: 0,
+            overflowY: 'auto',
+          }}
+        >
+          {items.slice(0, dynamicLimit).map((item) => {
+            const isMovie = item.mediaType === 'movie';
+            const typeColor = isMovie ? HPR.blue : HPR.purple;
             return (
               <Link
                 key={`${item.mediaType}-${item.tmdbId}`}
                 href={detailHref(item)}
-                className="flex items-center gap-2.5 rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
+                style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
               >
-                <span className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${badgeColor}`}>
-                  <Icon className="h-2.5 w-2.5 text-white" />
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.title}</p>
-                  <p className="text-[10px] text-muted-foreground truncate">{metadata.join(' · ')}</p>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    padding: 8,
+                    background: HPR.ink,
+                    borderRadius: 12,
+                  }}
+                >
+                  <Poster
+                    width={48}
+                    height={72}
+                    label={item.title}
+                    tone={toneFromString(item.title)}
+                    fontSize={8}
+                    imageUrl={item.posterPath ?? undefined}
+                    check={Boolean(item.library?.exists)}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: HPR.fg,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        fontWeight: 500,
+                      }}
+                    >
+                      {item.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: HPR.fgMute,
+                        marginTop: 2,
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {[item.year != null ? String(item.year) : null, isMovie ? 'Movie' : 'TV']
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </div>
+                    {item.rating > 0 && (
+                      <div
+                        style={{
+                          fontFamily: FONT_MONO,
+                          fontSize: 12,
+                          color: HPR.amber,
+                          marginTop: 2,
+                        }}
+                      >
+                        ★ {item.rating.toFixed(1)}
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 6,
+                      background: typeColor,
+                      color: '#fff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginRight: 4,
+                      marginTop: 2,
+                      opacity: 0.85,
+                    }}
+                  >
+                    {isMovie ? <Film size={11} strokeWidth={2.4} /> : <Tv size={11} strokeWidth={2.4} />}
+                  </div>
                 </div>
-                {item.library?.exists && (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                )}
               </Link>
             );
           })}
@@ -192,55 +300,68 @@ function MediaCarouselView({
   }
 
   return (
-    <div>
-      <SectionHeader title={title} href={viewAllHref} />
-      <Carousel>
-        {items.map((item) => {
-          const metadata: string[] = [];
-          if (item.year != null) metadata.push(String(item.year));
-          if (item.mediaType === 'tv') metadata.push('TV');
+    <div ref={ref}>
+      <SectionHeader title={title} right={headerRight} />
+      <div
+        className="no-scrollbar"
+        style={{ display: 'flex', gap: CAROUSEL_GAP, overflowX: 'auto', paddingBottom: 4 }}
+      >
+        {items.slice(0, dynamicLimit).map((item) => {
+          const meta = [
+            item.year != null ? String(item.year) : null,
+            item.mediaType === 'tv' ? 'TV' : 'Movie',
+          ]
+            .filter(Boolean)
+            .join(' · ');
           return (
             <Link
               key={`${item.mediaType}-${item.tmdbId}`}
               href={detailHref(item)}
-              className="snap-start shrink-0 w-[110px] group"
+              style={{
+                width: CAROUSEL_CARD_WIDTH,
+                flexShrink: 0,
+                textDecoration: 'none',
+                color: 'inherit',
+              }}
             >
-              <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm border border-border/30 group-hover:border-primary/40 transition-colors">
-                {item.posterPath ? (
-                  <Image
-                    src={item.posterPath}
-                    alt={item.title}
-                    fill
-                    sizes="110px"
-                    className="object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
-                    {item.title}
-                  </div>
-                )}
-                {item.library?.exists && (
-                  <div className="absolute left-1 top-1">
-                    <span className="inline-flex items-center justify-center h-4 w-4 rounded-full bg-emerald-500 text-white">
-                      <CheckCircle2 className="h-3 w-3" />
-                    </span>
-                  </div>
-                )}
-                {item.rating > 0 && (
-                  <div className="absolute right-1 top-1">
-                    <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-black/60 backdrop-blur-sm text-[9px] text-white">
-                      <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
-                      {item.rating.toFixed(1)}
-                    </span>
-                  </div>
-                )}
+              <Poster
+                width={CAROUSEL_CARD_WIDTH}
+                height={CAROUSEL_CARD_HEIGHT}
+                label={item.title}
+                tone={toneFromString(item.title)}
+                imageUrl={item.posterPath ?? undefined}
+                rating={item.rating > 0 ? item.rating.toFixed(1) : null}
+                check={Boolean(item.library?.exists)}
+              />
+              <div
+                style={{
+                  fontSize: 11,
+                  color: HPR.fg,
+                  marginTop: 6,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  fontWeight: 500,
+                }}
+              >
+                {item.title}
               </div>
-              <p className="text-[11px] font-medium truncate leading-tight">{item.title}</p>
-              <p className="text-[10px] text-muted-foreground truncate">{metadata.join(' · ')}</p>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: HPR.fgMute,
+                  fontFamily: FONT_MONO,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {meta}
+              </div>
             </Link>
           );
         })}
-      </Carousel>
+      </div>
     </div>
   );
 }
@@ -249,25 +370,64 @@ function GenreGridView({
   title,
   viewAllHref,
   items,
-  size,
+  limit,
 }: {
   title: string;
   viewAllHref: string;
   items: DiscoverGenre[];
-  size: 'small' | 'medium' | 'large';
+  limit: number;
 }) {
-  const limit = size === 'medium' ? 6 : 12;
+  const { ref, height } = useElementSize<HTMLDivElement>();
+  // 2-column grid: each row holds 2 pills. Pill ~32px tall + 6px gap.
+  const visibleCount = height > 0
+    ? Math.max(limit, Math.ceil((height - 32) / 38) * 2 + 4)
+    : limit;
   return (
-    <div>
-      <SectionHeader title={title} href={viewAllHref} />
-      <div className="grid grid-cols-2 gap-1.5">
-        {items.slice(0, limit).map((genre) => (
+    <div
+      ref={ref}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+    >
+      <SectionHeader
+        title={title}
+        right={
+          <Link href={viewAllHref} style={{ color: 'inherit', textDecoration: 'none' }}>
+            View all →
+          </Link>
+        }
+      />
+      <div
+        className="no-scrollbar scroll-fade-y"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 6,
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          alignContent: 'start',
+        }}
+      >
+        {items.slice(0, visibleCount).map((genre) => (
           <Link
             key={`${genre.type}-${genre.id}`}
             href={buildGenreHref(genre.id, genre.type)}
-            className="rounded-xl bg-card px-3 py-2.5 hover:bg-muted/30 transition-colors"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: 32,
+              background: HPR.ink,
+              border: `1px solid ${HPR.hairline}`,
+              borderRadius: 999,
+              fontSize: 11,
+              color: HPR.fg,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              textDecoration: 'none',
+            }}
           >
-            <p className="text-xs font-medium truncate">{genre.name}</p>
+            {genre.name}
           </Link>
         ))}
       </div>
@@ -279,40 +439,88 @@ function ProviderGridView({
   title,
   viewAllHref,
   items,
-  size,
+  limit,
 }: {
   title: string;
   viewAllHref: string;
   items: DiscoverProvider[];
-  size: 'small' | 'medium' | 'large';
+  limit: number;
 }) {
-  const limit = size === 'medium' ? 4 : 8;
+  const { ref, height } = useElementSize<HTMLDivElement>();
+  // 2-column grid: provider row ~42px tall (24px icon + padding + border) + 6px gap.
+  const visibleCount = height > 0
+    ? Math.max(limit, Math.ceil((height - 32) / 48) * 2 + 4)
+    : limit;
   return (
-    <div>
-      <SectionHeader title={title} href={viewAllHref} />
-      <div className="grid grid-cols-2 gap-1.5">
-        {items.slice(0, limit).map((provider) => {
-          const rawLogo = provider.logoPath ? `https://image.tmdb.org/t/p/w185${provider.logoPath}` : null;
-          const logoSrc = rawLogo ? (toCachedImageSrc(rawLogo, 'tmdb') || rawLogo) : null;
+    <div
+      ref={ref}
+      style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
+    >
+      <SectionHeader
+        title={title}
+        right={
+          <Link href={viewAllHref} style={{ color: 'inherit', textDecoration: 'none' }}>
+            View all →
+          </Link>
+        }
+      />
+      <div
+        className="no-scrollbar scroll-fade-y"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: 6,
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+          alignContent: 'start',
+        }}
+      >
+        {items.slice(0, visibleCount).map((provider) => {
+          const rawLogo = provider.logoPath
+            ? `https://image.tmdb.org/t/p/w185${provider.logoPath}`
+            : null;
+          const logoSrc = rawLogo ? toCachedImageSrc(rawLogo, 'tmdb') || rawLogo : null;
           return (
             <Link
               key={`${provider.type}-${provider.id}`}
               href={buildProviderHref(provider.id, provider.type)}
-              className="flex items-center gap-2 rounded-xl bg-card px-2.5 py-2 hover:bg-muted/30 transition-colors"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 10px',
+                background: HPR.ink,
+                border: `1px solid ${HPR.hairline}`,
+                borderRadius: 6,
+                textDecoration: 'none',
+                color: HPR.fg,
+              }}
             >
-              <div className="relative h-7 w-7 rounded bg-background/70 overflow-hidden shrink-0">
-                {logoSrc && (
-                  <Image
-                    src={logoSrc}
-                    alt={provider.name}
-                    fill
-                    sizes="28px"
-                    className="object-contain"
-                    unoptimized={isProtectedApiImageSrc(logoSrc)}
-                  />
-                )}
-              </div>
-              <p className="text-xs font-medium truncate">{provider.name}</p>
+              <div
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 5,
+                  background: mix(HPR.violet, 14),
+                  flexShrink: 0,
+                  backgroundImage: logoSrc ? `url(${logoSrc})` : undefined,
+                  backgroundSize: 'contain',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 11,
+                  color: HPR.fg,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {provider.name}
+              </span>
             </Link>
           );
         })}
@@ -321,28 +529,14 @@ function ProviderGridView({
   );
 }
 
-function CarouselSkeleton({ title, size }: { title: string; size: 'small' | 'medium' | 'large' }) {
+function StatusBlock({ title, message }: { title?: string; message: string }) {
   return (
     <div>
-      <SectionHeader title={title} />
-      {size === 'medium' ? (
-        <div className="flex flex-col gap-1.5">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-[44px] w-full rounded-xl shrink-0" />
-          ))}
-        </div>
-      ) : (
-        <div className="flex gap-3 overflow-hidden">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-[170px] w-[110px] rounded-xl shrink-0" />
-          ))}
-        </div>
-      )}
+      {title && <SectionHeader title={title} />}
+      <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>{message}</div>
     </div>
   );
 }
-
-// ---------- the widget ----------
 
 const BUILTIN_MAP = new Map(BUILTIN_DISCOVER_SECTIONS.map((s) => [s.id, s] as const));
 
@@ -353,12 +547,24 @@ function resolveSection(sectionId: string, sections: DiscoverLayoutSection[] | u
 
 export function DiscoverSectionWidget({
   sectionId,
-  size,
   refreshInterval,
   editMode,
+  narrow,
+  colSpan,
+  layoutVariant,
+  instanceId,
 }: DiscoverSectionWidgetProps) {
+  const compact = narrow || (colSpan != null && colSpan <= 6);
   const safeInterval = Math.max(refreshInterval, CLIENT_CACHE_MS);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const { setWidgetLayoutOverride } = useDashboardLayout();
+  const useList = !!narrow || layoutVariant === 'list';
+  const toggleNode = !narrow && instanceId ? (
+    <ViewModeToggle
+      value={useList ? 'list' : 'carousel'}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+    />
+  ) : null;
 
   const layoutSection = useMemo(
     () => resolveSection(sectionId, discoverLayout?.sections),
@@ -379,10 +585,14 @@ export function DiscoverSectionWidget({
   } = useWidgetData<DiscoverResponse>({
     fetchFn: fetchSectionsCached,
     refreshInterval: safeInterval,
-    enabled: needsSections,
+    enabled: !editMode && needsSections,
+    cacheKey: 'discover-sections',
   });
 
   const customFilters = isCustom ? layoutSection!.filters! : null;
+  const customCacheKey = customFilters
+    ? `discover-custom-${buildCustomQuery(customFilters)}`
+    : undefined;
 
   const {
     data: customItems,
@@ -391,79 +601,104 @@ export function DiscoverSectionWidget({
   } = useWidgetData<DiscoverItem[]>({
     fetchFn: () => fetchCustomCached(customFilters!),
     refreshInterval: safeInterval,
-    enabled: isCustom,
+    enabled: !editMode && isCustom,
+    cacheKey: customCacheKey,
   });
 
   if (!layoutSection) {
-    if (editMode) {
-      return <EditModePlaceholder title="Discover widget" message="Section was removed from Discover Layout" />;
-    }
-    return null;
+    return editMode
+      ? <StatusBlock title="Discover" message="Section was removed from Discover Layout" />
+      : null;
   }
 
   const title = layoutSection.label;
-  const viewAllHref = layoutSection.type === 'custom' && layoutSection.filters
-    ? buildCustomDiscoverHref(layoutSection.filters)
-    : `/discover?section=${layoutSection.id}`;
+  const viewAllHref =
+    layoutSection.type === 'custom' && layoutSection.filters
+      ? buildCustomDiscoverHref(layoutSection.filters)
+      : `/discover?section=${layoutSection.id}`;
 
   if (isBuiltinMedia) {
-    if (sectionsLoading && !sectionsData) return <CarouselSkeleton title={title} size={size} />;
+    if (sectionsLoading && !sectionsData) return <StatusBlock title={title} message="Loading…" />;
     const section = sectionsData?.sections?.find((s): s is DiscoverSection => s.key === sectionId);
     const items = (section?.items as DiscoverItem[] | undefined) ?? [];
     if (sectionsError && items.length === 0) {
-      return (
-        <div className="flex h-full items-center justify-center bg-card p-4 rounded-xl text-xs text-red-500">
-          {sectionsError}
-        </div>
-      );
+      return <StatusBlock title={title} message={sectionsError} />;
     }
-    if (items.length === 0) return editMode ? <EditModePlaceholder title={title} message="No items found" /> : null;
-    return <MediaCarouselView title={title} viewAllHref={viewAllHref} items={items} size={size} />;
+    if (items.length === 0) {
+      return editMode ? <StatusBlock title={title} message="No items found" /> : null;
+    }
+    return (
+      <MediaCarouselView
+        title={title}
+        viewAllHref={viewAllHref}
+        items={items}
+        limit={compact ? 6 : 20}
+        useList={useList}
+        toggleNode={toggleNode}
+      />
+    );
   }
 
   if (isBuiltinGenre) {
-    if (sectionsLoading && !sectionsData) return <CarouselSkeleton title={title} size={size} />;
+    if (sectionsLoading && !sectionsData) return <StatusBlock title={title} message="Loading…" />;
     const section = sectionsData?.sections?.find((s): s is DiscoverSection => s.key === sectionId);
     const items = (section?.items as DiscoverGenre[] | undefined) ?? [];
     if (sectionsError && items.length === 0) {
-      return (
-        <div className="flex h-full items-center justify-center bg-card p-4 rounded-xl text-xs text-red-500">
-          {sectionsError}
-        </div>
-      );
+      return <StatusBlock title={title} message={sectionsError} />;
     }
-    if (items.length === 0) return editMode ? <EditModePlaceholder title={title} message="No genres found" /> : null;
-    return <GenreGridView title={title} viewAllHref={viewAllHref} items={items} size={size} />;
+    if (items.length === 0) {
+      return editMode ? <StatusBlock title={title} message="No genres found" /> : null;
+    }
+    return (
+      <GenreGridView
+        title={title}
+        viewAllHref={viewAllHref}
+        items={items}
+        limit={compact ? 6 : 12}
+      />
+    );
   }
 
   if (isBuiltinProvider) {
-    if (sectionsLoading && !sectionsData) return <CarouselSkeleton title={title} size={size} />;
+    if (sectionsLoading && !sectionsData) return <StatusBlock title={title} message="Loading…" />;
     const section = sectionsData?.sections?.find((s): s is DiscoverSection => s.key === sectionId);
     const items = (section?.items as DiscoverProvider[] | undefined) ?? [];
     if (sectionsError && items.length === 0) {
-      return (
-        <div className="flex h-full items-center justify-center bg-card p-4 rounded-xl text-xs text-red-500">
-          {sectionsError}
-        </div>
-      );
+      return <StatusBlock title={title} message={sectionsError} />;
     }
-    if (items.length === 0) return editMode ? <EditModePlaceholder title={title} message="No providers found" /> : null;
-    return <ProviderGridView title={title} viewAllHref={viewAllHref} items={items} size={size} />;
+    if (items.length === 0) {
+      return editMode ? <StatusBlock title={title} message="No providers found" /> : null;
+    }
+    return (
+      <ProviderGridView
+        title={title}
+        viewAllHref={viewAllHref}
+        items={items}
+        limit={compact ? 4 : 8}
+      />
+    );
   }
 
   if (isCustom) {
-    if (customLoading && !customItems) return <CarouselSkeleton title={title} size={size} />;
+    if (customLoading && !customItems) return <StatusBlock title={title} message="Loading…" />;
     const items = customItems ?? [];
     if (customError && items.length === 0) {
-      return (
-        <div className="flex h-full items-center justify-center bg-card p-4 rounded-xl text-xs text-red-500">
-          {customError}
-        </div>
-      );
+      return <StatusBlock title={title} message={customError} />;
     }
-    if (items.length === 0) return editMode ? <EditModePlaceholder title={title} message="No items found" /> : null;
-    return <MediaCarouselView title={title} viewAllHref={viewAllHref} items={items} size={size} />;
+    if (items.length === 0) {
+      return editMode ? <StatusBlock title={title} message="No items found" /> : null;
+    }
+    return (
+      <MediaCarouselView
+        title={title}
+        viewAllHref={viewAllHref}
+        items={items}
+        limit={compact ? 6 : 20}
+        useList={useList}
+        toggleNode={toggleNode}
+      />
+    );
   }
 
-  return editMode ? <EditModePlaceholder title={title} message="Unsupported section" /> : null;
+  return editMode ? <StatusBlock title={title} message="Unsupported section" /> : null;
 }

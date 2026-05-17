@@ -1,14 +1,14 @@
 'use client';
 
-import { Skeleton } from '@/components/ui/skeleton';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
-import { EditModePlaceholder } from '@/components/widgets/shared';
 import type { WidgetProps } from '@/lib/widgets/types';
+import { Dot, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
 
 interface ServiceStatus {
   type: string;
   name: string;
   ok: boolean;
+  ver?: string;
 }
 
 async function fetchServiceHealth(): Promise<ServiceStatus[]> {
@@ -17,43 +17,86 @@ async function fetchServiceHealth(): Promise<ServiceStatus[]> {
   return res.json();
 }
 
-export function ServiceHealthWidget({ refreshInterval, editMode = false }: WidgetProps) {
-  const { data: services, loading } = useWidgetData({
+export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode = false }: WidgetProps) {
+  const { data: services } = useWidgetData({
     fetchFn: fetchServiceHealth,
-    refreshInterval: Math.max(refreshInterval, 30000), // Don't health-check more often than 30s
+    refreshInterval: Math.max(refreshInterval, 30000),
+    enabled: !editMode,
+    cacheKey: 'service-health',
   });
 
-  if (loading) {
-    return (
-      <div className="rounded-xl bg-card p-4">
-        <Skeleton className="h-4 w-24 mb-3" />
-        <div className="space-y-2">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-4 w-full" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (!services || services.length === 0) {
-    return editMode ? <EditModePlaceholder title="Service Health" message="No services configured" /> : (
-      <div className="rounded-xl bg-card p-4 text-center">
-        <p className="text-xs text-muted-foreground">No services configured</p>
-      </div>
-    );
-  }
+  const list = services ?? [];
+  const okCount = list.filter((s) => s.ok).length;
 
   return (
-    <div className="rounded-xl bg-card p-4">
-      <p className="text-xs text-muted-foreground mb-2.5">Service Health</p>
-      <div className="space-y-1.5">
-        {services.map((svc) => (
-          <div key={svc.type + svc.name} className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${svc.ok ? 'bg-green-500' : 'bg-rose-500'}`} />
-            <span className="text-sm flex-1 truncate">{svc.name}</span>
-            <span className={`text-[10px] ${svc.ok ? 'text-green-400' : 'text-rose-400'}`}>
-              {svc.ok ? 'Online' : 'Offline'}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <Eyebrow style={{ marginBottom: 8 }}>
+        Service Health · {okCount}/{list.length || 0}
+      </Eyebrow>
+      <div
+        className="no-scrollbar scroll-fade-y"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+        }}
+      >
+        {list.length === 0 && (
+          <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+            No services configured
+          </div>
+        )}
+        {list.map((s, i) => (
+          <div
+            key={s.type + s.name}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 6,
+              padding: '6px 0',
+              borderBottom: i < list.length - 1 ? `1px solid ${HPR.hairline}` : 'none',
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, flex: 1 }}>
+              <Dot color={s.ok ? HPR.green : HPR.rose} />
+              <span
+                style={{
+                  color: HPR.fg,
+                  fontSize: 12,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {s.name}
+              </span>
+              {!narrow && s.ver && (
+                <span
+                  style={{
+                    fontFamily: FONT_MONO,
+                    fontSize: 9,
+                    color: HPR.fgSubtle,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {s.ver}
+                </span>
+              )}
+            </div>
+            <span
+              style={{
+                fontFamily: FONT_MONO,
+                fontSize: 10,
+                color: s.ok ? HPR.green : HPR.rose,
+                letterSpacing: '0.04em',
+                flexShrink: 0,
+              }}
+            >
+              {s.ok ? (narrow ? '●' : 'ONLINE') : narrow ? '×' : 'OFFLINE'}
             </span>
           </div>
         ))}

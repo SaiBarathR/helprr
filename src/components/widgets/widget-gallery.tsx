@@ -19,6 +19,7 @@ import {
   Clock,
   Database,
   Download,
+  Film,
   Filter,
   HardDrive,
   History,
@@ -27,11 +28,19 @@ import {
   MonitorPlay,
   PlayCircle,
   Search,
+  Server,
+  ShieldAlert,
   Sparkles,
   Tags,
+  Timer,
+  Tv,
+  Users,
+  XCircle,
+  Zap,
 } from 'lucide-react';
 import { getAllWidgetDefinitions } from '@/lib/widgets/registry';
 import { useUIStore } from '@/lib/store';
+import { useDashboardLayout } from './dashboard-layout-context';
 import type { WidgetCategory } from '@/lib/widgets/types';
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -46,6 +55,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Clock,
   Database,
   Download,
+  Film,
   Filter,
   HardDrive,
   History,
@@ -54,8 +64,15 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   MonitorPlay,
   PlayCircle,
   Search,
+  Server,
+  ShieldAlert,
   Sparkles,
   Tags,
+  Timer,
+  Tv,
+  Users,
+  XCircle,
+  Zap,
 };
 
 const CATEGORY_LABELS: Record<WidgetCategory, string> = {
@@ -75,9 +92,8 @@ interface WidgetGalleryProps {
 }
 
 export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
-  const dashboardLayout = useUIStore((s) => s.dashboardLayout);
+  const { widgets: dashboardLayout, addWidget } = useDashboardLayout();
   const discoverLayout = useUIStore((s) => s.discoverLayout);
-  const addWidget = useUIStore((s) => s.addWidget);
 
   const allDefinitions = useMemo(
     () => getAllWidgetDefinitions(discoverLayout),
@@ -102,7 +118,7 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   function handleAdd(widgetId: string) {
     const def = allDefinitions.find((d) => d.id === widgetId);
     if (!def) return;
-    addWidget(widgetId, def.defaultSize);
+    addWidget(widgetId);
   }
 
   return (
@@ -142,16 +158,12 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
                           <p className="text-sm font-medium">{def.name}</p>
                           <p className="text-xs text-muted-foreground truncate">{def.description}</p>
                         </div>
-                        <div className="flex gap-1">
-                          {def.sizes.map((s) => (
-                            <span
-                              key={s}
-                              className="text-[9px] uppercase font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
-                            >
-                              {s[0]}
-                            </span>
-                          ))}
-                        </div>
+                        <span
+                          className="text-[9px] uppercase font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                          title={`${def.defaultDesktopSpan.colSpan}×${def.defaultDesktopSpan.rowSpan} desktop`}
+                        >
+                          {def.defaultDesktopSpan.colSpan}×{def.defaultDesktopSpan.rowSpan}
+                        </span>
                         {isAdded && (
                           <span className="text-[10px] text-muted-foreground font-medium">Added</span>
                         )}

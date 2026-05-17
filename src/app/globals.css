@@ -8,7 +8,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-display);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -166,6 +165,166 @@ html {
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Soft fade at the bottom edge of vertical scroll containers. Top stays
+   fully opaque so titles/headers aren't dimmed. */
+.scroll-fade-y {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    black 0,
+    black calc(100% - 14px),
+    transparent 100%
+  );
+}
+
+/* ── Bento Dashboard tokens (--hpr-*) ───────────────────────────────────
+   Scoped to the dashboard via the .dashboard-bento class. Theme inspector
+   rewrites these vars live; other pages keep the existing OKLch tokens. */
+:root {
+  --hpr-ink: #100c08;
+  --hpr-inkSoft: #15110c;
+  --hpr-surface: #1c1813;
+  --hpr-surfaceHi: #231e17;
+  --hpr-hairline: rgba(255, 214, 160, 0.09);
+  --hpr-hairline2: rgba(255, 214, 160, 0.16);
+  --hpr-fg: #f4ead7;
+  --hpr-fgMute: #b9a98c;
+  --hpr-fgSubtle: #7a6c54;
+  --hpr-amber: #f5b948;
+  --hpr-green: #5ac893;
+  --hpr-rose: #e36a7a;
+  --hpr-blue: #6aa9ee;
+  --hpr-purple: #b48bf0;
+  --hpr-violet: #8a6bf7;
+  --hpr-cyan: #00a4dc;
+  --hpr-pink: #ec6b9e;
+  --hpr-font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --hpr-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --hpr-font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --hpr-bg-grad: radial-gradient(ellipse 80% 50% at 50% -10%, color-mix(in oklab, var(--hpr-amber) 8%, transparent), transparent 60%);
+  --hpr-cols: 12;
+  --hpr-gap: 10px;
+  --hpr-pad: 14px;
+}
+
+.dashboard-bento {
+  background: var(--hpr-inkSoft) var(--hpr-bg-grad);
+  background-attachment: fixed;
+  color: var(--hpr-fg);
+  font-family: var(--hpr-font-body);
+}
+
+@media (max-width: 768px) {
+  .dashboard-bento {
+    --hpr-cols: 2;
+    --hpr-gap: 10px;
+    --hpr-pad: 12px;
+  }
+}
+
+.dashboard-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--hpr-cols, 12), 1fr);
+  gap: var(--hpr-gap, 10px);
+  position: relative;
+}
+
+@keyframes hpr-ping {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+.hpr-ping {
+  animation: hpr-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.dashboard-bento-grid {
+  grid-auto-rows: minmax(112px, max-content);
+}
+
+.dashboard-bento-grid-rgl.react-grid-layout {
+  position: relative;
+}
+
+.dashboard-bento-grid-rgl .react-grid-item {
+  transition: transform 200ms ease, width 200ms ease, height 200ms ease;
+}
+
+.dashboard-bento-grid-rgl .react-grid-item.react-grid-placeholder {
+  background: var(--hpr-amber, oklch(0.78 0.16 75));
+  opacity: 0.25;
+  border-radius: 12px;
+}
+
+.dashboard-bento-grid-rgl .react-grid-item.react-draggable-dragging {
+  z-index: 10;
+}
+
+.dashboard-bento-grid-rgl .react-grid-item.react-resizable-hide > .react-resizable-handle {
+  display: none;
+}
+
+.dashboard-bento-grid-rgl .react-grid-item > .react-resizable-handle {
+  width: 22px;
+  height: 22px;
+  bottom: 4px;
+  right: 4px;
+  cursor: se-resize;
+  background: var(--hpr-amber, oklch(0.78 0.16 75));
+  border-top-left-radius: 10px;
+  border-bottom-right-radius: 8px;
+  opacity: 0.95;
+  z-index: 4;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.dashboard-bento-grid-rgl .react-grid-item > .react-resizable-handle::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid rgba(0, 0, 0, 0.7);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.7);
+  border-bottom-right-radius: 2px;
+}
+
+.dashboard-bento-grid-rgl .react-grid-item > .react-resizable-handle:hover {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+.dashboard-bento-grid-rgl .react-grid-item.react-resizable.resizing {
+  z-index: 9;
+  opacity: 0.92;
+}
+
+/* Mobile RGL: enlarge SE corner resize for finger-sized touch targets. */
+.dashboard-bento-grid-rgl-mobile .react-grid-item > .react-resizable-handle {
+  width: 32px;
+  height: 32px;
+  bottom: 2px;
+  right: 2px;
+  touch-action: none;
+  border-top-left-radius: 14px;
+}
+
+.dashboard-bento-grid-rgl-mobile .react-grid-item > .react-resizable-handle::after {
+  right: 6px;
+  bottom: 6px;
+  width: 14px;
+  height: 14px;
+  border-right-width: 3px;
+  border-bottom-width: 3px;
 }
 
 /* Status colors */
@@ -604,7 +763,7 @@ html {
 
 /* Editorial display serif — used for detail-page hero titles */
 .font-display {
-  font-family: var(--font-display), ui-serif, Georgia, serif;
+  font-family: ui-serif, Charter, "Iowan Old Style", Georgia, "Apple Garamond", "Times New Roman", serif;
   font-feature-settings: "kern", "liga", "calt";
 }
 
