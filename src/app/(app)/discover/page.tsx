@@ -186,6 +186,23 @@ function countActiveAdvancedFilters(filters: DiscoverFiltersState): number {
   return count;
 }
 
+// Carousel item count scales with viewport so mobile doesn't pay for items
+// it'll never scroll past, and wide displays still have enough to scroll.
+// Card widths here mirror the MediaPoster rail-variant breakpoints + 10px gap.
+function computeCarouselItemLimit(): number {
+  if (typeof window === 'undefined') return 24;
+  const w = window.innerWidth;
+  let cardWidth: number;
+  if (w >= 1536) cardWidth = 206;
+  else if (w >= 1280) cardWidth = 190;
+  else if (w >= 1024) cardWidth = 174;
+  else if (w >= 768) cardWidth = 160;
+  else if (w >= 640) cardWidth = 150;
+  else cardWidth = 120;
+  const visible = Math.max(1, Math.floor(w / cardWidth));
+  return Math.min(46, Math.max(16, Math.ceil(visible * 2.5)));
+}
+
 function MediaPoster({
   item,
   onClick,
@@ -204,7 +221,7 @@ function MediaPoster({
       onClick={() => onClick(item)}
       className={isGrid
         ? 'group relative w-full min-w-0 text-left'
-        : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] text-left'}
+        : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] text-left'}
     >
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
         {posterSrc ? (
@@ -212,7 +229,7 @@ function MediaPoster({
             src={posterSrc}
             alt={item.title}
             fill
-            sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, 140px'}
+            sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px'}
             className="object-cover transition-transform duration-300 group-hover:scale-105"
             unoptimized={isProtectedApiImageSrc(posterSrc)}
           />
@@ -368,7 +385,7 @@ function CustomCarouselRow({
         {header}
         <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] aspect-[2/3] rounded-xl bg-muted/40 animate-pulse" />
+            <div key={i} className="min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] aspect-[2/3] rounded-xl bg-muted/40 animate-pulse" />
           ))}
         </div>
       </section>
@@ -422,6 +439,7 @@ export default function DiscoverPage() {
   const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
   const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
+  const [carouselItemLimit] = useState(computeCarouselItemLimit);
   const gridFetchControllerRef = useRef<AbortController | null>(null);
   const loadMoreControllerRef = useRef<AbortController | null>(null);
   const carouselFetchStartedRef = useRef<Set<string>>(new Set());
@@ -524,7 +542,7 @@ export default function DiscoverPage() {
   const fetchSections = useCallback(async () => {
     setLoadingSections(true);
     try {
-      const res = await fetch('/api/discover?mode=sections');
+      const res = await fetch(`/api/discover?mode=sections&perSectionLimit=${carouselItemLimit}`);
       const data = await res.json();
       if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
         applyRateLimit(data);
@@ -537,7 +555,7 @@ export default function DiscoverPage() {
     } finally {
       setLoadingSections(false);
     }
-  }, [applyRateLimit]);
+  }, [applyRateLimit, carouselItemLimit]);
 
   const fetchFiltersMeta = useCallback(async () => {
     try {
@@ -687,6 +705,7 @@ export default function DiscoverPage() {
       const params = new URLSearchParams();
       params.set('mode', 'browse');
       params.set('page', '1');
+      params.set('limit', String(carouselItemLimit));
       params.set('contentType', f.contentType);
       params.set('sortBy', f.sortBy);
       params.set('sortOrder', f.sortOrder);
@@ -722,7 +741,7 @@ export default function DiscoverPage() {
           if (controller.signal.aborted) return;
           if (data == null) return;
           const fetchedItems: DiscoverItem[] = data?.items || [];
-          setCustomCarouselItems((prev) => ({ ...prev, [entry.id]: fetchedItems.slice(0, 20) }));
+          setCustomCarouselItems((prev) => ({ ...prev, [entry.id]: fetchedItems.slice(0, carouselItemLimit) }));
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -737,7 +756,7 @@ export default function DiscoverPage() {
     return () => {
       for (const controller of controllers) controller.abort();
     };
-  }, [customCarouselEntries]);
+  }, [customCarouselEntries, carouselItemLimit]);
 
   // Handle person URL params (from movie detail cast/crew links)
   useEffect(() => {
@@ -959,36 +978,22 @@ export default function DiscoverPage() {
     void fetchGridItems(page + 1, true, controller.signal);
   }, [fetchGridItems, loadingMore, page, totalPages]);
 
-  const loadMoreCallbackRef = useRef<() => void>(() => {});
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    loadMoreCallbackRef.current = () => {
-      if (page < totalPages && !loadingMore && !loadingItems) {
-        handleLoadMore();
-      }
-    };
-  }, [page, totalPages, loadingMore, loadingItems, handleLoadMore]);
-
-  // Callback ref so the IntersectionObserver attaches when the sentinel actually
-  // mounts (the sentinel is conditionally rendered after items load, so a plain
-  // useRef + useEffect[gridMode] approach observed a null node and never reattached).
-  const observerRef = useRef<IntersectionObserver | null>(null);
-  const sentinelRef = useCallback((node: HTMLDivElement | null) => {
-    if (observerRef.current) {
-      observerRef.current.disconnect();
-      observerRef.current = null;
-    }
-    if (node) {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          if (entries[0]?.isIntersecting) loadMoreCallbackRef.current();
-        },
-        { rootMargin: '200px' }
-      );
-      observer.observe(node);
-      observerRef.current = observer;
-    }
-  }, []);
-  useEffect(() => () => observerRef.current?.disconnect(), []);
+    if (!gridMode) return;
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && page < totalPages && !loadingMore && !loadingItems) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [gridMode, page, totalPages, loadingMore, loadingItems, handleLoadMore, items.length]);
 
   const goToDiscoverHome = useCallback(() => {
     setDiscoverFilters({ ...DEFAULT_DISCOVER_FILTERS });
