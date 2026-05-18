@@ -9,7 +9,6 @@ import { HPR } from './bento-primitives';
 
 interface WidgetRendererProps {
   instance: WidgetInstance;
-  refreshInterval: number;
   editMode?: boolean;
   narrow?: boolean;
   colSpan?: number;
@@ -19,7 +18,6 @@ interface WidgetRendererProps {
 
 export function WidgetRenderer({
   instance,
-  refreshInterval,
   editMode = false,
   narrow,
   colSpan,
@@ -43,9 +41,10 @@ export function WidgetRenderer({
     );
   }
 
+  const effectiveSecs = instance.refreshIntervalSecs ?? definition.defaultRefreshIntervalSecs;
   const WidgetComponent = definition.component;
   const widgetProps: WidgetProps = {
-    refreshInterval,
+    refreshInterval: effectiveSecs * 1000,
     editMode,
     narrow,
     colSpan,

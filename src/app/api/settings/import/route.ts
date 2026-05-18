@@ -71,8 +71,6 @@ function buildAppSettingsUpdate(
   const out: Record<string, unknown> = {};
   if (input.pollingIntervalSecs !== undefined)
     out.pollingIntervalSecs = clampInt(input.pollingIntervalSecs, 1, 86_400, 30);
-  if (input.dashboardRefreshIntervalSecs !== undefined)
-    out.dashboardRefreshIntervalSecs = clampInt(input.dashboardRefreshIntervalSecs, 1, 86_400, 5);
   if (input.activityRefreshIntervalSecs !== undefined)
     out.activityRefreshIntervalSecs = clampInt(input.activityRefreshIntervalSecs, 1, 86_400, 5);
   if (input.torrentsRefreshIntervalSecs !== undefined)
@@ -130,7 +128,6 @@ async function applyAppSettingsInTxn(
     create: {
       id: 'singleton',
       pollingIntervalSecs: (data.pollingIntervalSecs as number | undefined) ?? 30,
-      dashboardRefreshIntervalSecs: (data.dashboardRefreshIntervalSecs as number | undefined) ?? 5,
       activityRefreshIntervalSecs: (data.activityRefreshIntervalSecs as number | undefined) ?? 5,
       torrentsRefreshIntervalSecs: (data.torrentsRefreshIntervalSecs as number | undefined) ?? 5,
       cacheImagesEnabled: (data.cacheImagesEnabled as boolean | undefined) ?? true,

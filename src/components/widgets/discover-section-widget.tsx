@@ -579,7 +579,6 @@ export function DiscoverSectionWidget({
   instanceId,
 }: DiscoverSectionWidgetProps) {
   const compact = narrow || (colSpan != null && colSpan <= 6);
-  const safeInterval = Math.max(refreshInterval, CLIENT_CACHE_MS);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const { setWidgetLayoutOverride } = useDashboardLayout();
   const useList = !!narrow || layoutVariant === 'list';
@@ -628,7 +627,7 @@ export function DiscoverSectionWidget({
     error: sectionsError,
   } = useWidgetData<DiscoverResponse>({
     fetchFn: fetchSections,
-    refreshInterval: safeInterval,
+    refreshInterval,
     enabled: !editMode && needsSections,
     cacheKey: `discover-sections-${effectiveSectionLimit}`,
   });
@@ -648,7 +647,7 @@ export function DiscoverSectionWidget({
     error: customError,
   } = useWidgetData<DiscoverItem[]>({
     fetchFn: fetchCustom,
-    refreshInterval: safeInterval,
+    refreshInterval,
     enabled: !editMode && isCustom,
     cacheKey: customCacheKey,
   });

@@ -27,13 +27,6 @@ interface CacheEntry {
   time: number;
 }
 
-/**
- * Heavy/aggregated widgets (stats panels, history queries, library scans) should
- * clamp their poll interval to this floor — they pull large or slow-changing
- * data and don't need second-by-second updates.
- */
-export const HEAVY_WIDGET_MIN_INTERVAL_MS = 30_000;
-
 const CACHE_MAX_ENTRIES = 50;
 const widgetDataCache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<unknown>>();

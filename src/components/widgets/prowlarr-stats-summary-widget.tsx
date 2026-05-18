@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { Database, Search, Download, XCircle } from 'lucide-react';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
+import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
 import { SectionHeader, StatTile, HPR } from './bento-primitives';
 import { DaysPill, PROWLARR_DAYS_OPTIONS } from './widget-filter-controls';
@@ -21,7 +21,7 @@ export function ProwlarrStatsSummaryWidget({ refreshInterval, editMode = false, 
   const fetchFn = useCallback(() => fetchProwlarrStats(filters.days), [filters.days]);
   const { data, loading } = useWidgetData({
     fetchFn,
-    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
+    refreshInterval,
     enabled: !editMode,
     cacheKey: `prowlarr-stats-${filters.days}d`,
   });

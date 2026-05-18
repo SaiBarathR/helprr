@@ -20,7 +20,7 @@ async function fetchServiceHealth(): Promise<ServiceStatus[]> {
 export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode = false }: WidgetProps) {
   const { data: services } = useWidgetData({
     fetchFn: fetchServiceHealth,
-    refreshInterval: Math.max(refreshInterval, 30000),
+    refreshInterval,
     enabled: !editMode,
     cacheKey: 'service-health',
   });

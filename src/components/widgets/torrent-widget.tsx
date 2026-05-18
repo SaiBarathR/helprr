@@ -63,7 +63,7 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
   const hideIcon = width > 0 && width < ICON_HIDE_THRESHOLD;
   const { data, loading } = useWidgetData({
     fetchFn: fetchTorrentData,
-    refreshInterval: Math.min(refreshInterval, 3000),
+    refreshInterval,
     enabled: !editMode,
     cacheKey: 'torrent-overview',
   });

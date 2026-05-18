@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useUIStore } from '@/lib/store';
-import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { WidgetGrid } from '@/components/widgets/widget-grid';
 import { WidgetGallery } from '@/components/widgets/widget-gallery';
@@ -105,7 +104,6 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
   const hasHydrated = useUIStore((s) => s.hasHydrated);
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const setEditMode = useUIStore((s) => s.setDashboardEditMode);
-  const [refreshIntervalMs, setRefreshIntervalMs] = useState(15000);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -121,10 +119,6 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
     () => buildDashboardThemeStyle({ accent, palette, gradient, font }),
     [accent, palette, gradient, font],
   );
-
-  useEffect(() => {
-    getRefreshIntervalMs('dashboardRefreshIntervalSecs', 15).then(setRefreshIntervalMs);
-  }, []);
 
   useEffect(() => {
     return () => setEditMode(false);
@@ -212,7 +206,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
           dirty={isDirty}
         />
       )}
-      <WidgetGrid refreshInterval={refreshIntervalMs} isMobile={isMobile} />
+      <WidgetGrid isMobile={isMobile} />
 
       <FloatingEdit edit={editMode} mobile={isMobile} onClick={handleFloatingToggle} />
       <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} />

@@ -81,7 +81,6 @@ model PollingState {
 model AppSettings {
   id                       String  @id @default("singleton")
   pollingIntervalSecs      Int     @default(30)
-  dashboardRefreshIntervalSecs Int @default(15)
   activityRefreshIntervalSecs  Int @default(5)
   torrentsRefreshIntervalSecs  Int @default(5)
   cacheImagesEnabled       Boolean @default(true)

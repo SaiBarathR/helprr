@@ -46,6 +46,9 @@ export interface WidgetDefinition {
   category: WidgetCategory;
   defaultDesktopSpan: WidgetSpan;
   defaultMobileSpan: WidgetSpan;
+  /** Per-type default poll interval (seconds). Each WidgetInstance may override
+   *  via refreshIntervalSecs; otherwise this value is used. */
+  defaultRefreshIntervalSecs: number;
   supportsNarrow?: boolean;
   /** Layout variant chosen when narrow=false (desktop or full-row mobile). */
   desktopLayout?: WidgetLayoutVariant;
@@ -72,4 +75,7 @@ export interface WidgetInstance {
   /** User-chosen variant for this widget on this layout. When set, takes
    *  precedence over the WidgetDefinition.desktopLayout/mobileLayout default. */
   layoutOverride?: WidgetLayoutVariant;
+  /** Per-instance refresh interval (seconds). When set, overrides the
+   *  WidgetDefinition.defaultRefreshIntervalSecs. Valid range: 10–300. */
+  refreshIntervalSecs?: number;
 }

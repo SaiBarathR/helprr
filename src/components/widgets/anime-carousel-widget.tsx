@@ -126,7 +126,6 @@ export function AnimeCarouselWidget({
   layoutVariant,
   instanceId,
 }: AnimeCarouselWidgetProps) {
-  const safeInterval = Math.max(refreshInterval, 5 * 60 * 1000);
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
   const useList = !!narrow || layoutVariant === 'list';
@@ -159,7 +158,7 @@ export function AnimeCarouselWidget({
 
   const { data: homeData, loading: homeLoading } = useWidgetData<HomeData>({
     fetchFn: () => fetchHomeDataCached(perPage),
-    refreshInterval: safeInterval,
+    refreshInterval,
     enabled: !editMode && !requiresViewer && ready,
     cacheKey: `anime-home-${perPage}`,
   });
@@ -172,7 +171,7 @@ export function AnimeCarouselWidget({
       const json = await res.json();
       return flattenEntries(json.collection);
     },
-    refreshInterval: safeInterval,
+    refreshInterval,
     enabled: !editMode && requiresViewer && ready,
     cacheKey: `anime-${carouselId}`,
   });

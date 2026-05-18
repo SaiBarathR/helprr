@@ -69,7 +69,7 @@ async function getHandler() {
  * Update or create the singleton application settings using values from the request body.
  *
  * Accepts a JSON body with any of the following optional fields to update the singleton settings:
- * `pollingIntervalSecs`, `dashboardRefreshIntervalSecs`, `activityRefreshIntervalSecs`, `torrentsRefreshIntervalSecs`,
+ * `pollingIntervalSecs`, `activityRefreshIntervalSecs`, `torrentsRefreshIntervalSecs`,
  * `theme`, `upcomingAlertHours`, `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
  *
  * @param request - Incoming Next.js request whose JSON body supplies the settings to set or update.
@@ -83,7 +83,7 @@ async function putHandler(request: NextRequest) {
     const body = await request.json();
     const {
       pollingIntervalSecs, theme, upcomingAlertHours,
-      dashboardRefreshIntervalSecs, activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
+      activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
       cacheImagesEnabled,
       timeZone,
@@ -105,11 +105,6 @@ async function putHandler(request: NextRequest) {
       const parsed = parseIntegerSetting(pollingIntervalSecs, 'Polling interval', 1, 86_400);
       if ('error' in parsed) return parsed.error;
       data.pollingIntervalSecs = parsed.value;
-    }
-    if (dashboardRefreshIntervalSecs !== undefined) {
-      const parsed = parseIntegerSetting(dashboardRefreshIntervalSecs, 'Dashboard refresh interval', 1, 86_400);
-      if ('error' in parsed) return parsed.error;
-      data.dashboardRefreshIntervalSecs = parsed.value;
     }
     if (activityRefreshIntervalSecs !== undefined) {
       const parsed = parseIntegerSetting(activityRefreshIntervalSecs, 'Activity refresh interval', 1, 86_400);
@@ -211,7 +206,6 @@ async function putHandler(request: NextRequest) {
       create: {
         id: 'singleton',
         pollingIntervalSecs: (data.pollingIntervalSecs as number | undefined) ?? 30,
-        dashboardRefreshIntervalSecs: (data.dashboardRefreshIntervalSecs as number | undefined) ?? 5,
         activityRefreshIntervalSecs: (data.activityRefreshIntervalSecs as number | undefined) ?? 5,
         torrentsRefreshIntervalSecs: (data.torrentsRefreshIntervalSecs as number | undefined) ?? 5,
         cacheImagesEnabled: (data.cacheImagesEnabled as boolean | undefined) ?? true,
