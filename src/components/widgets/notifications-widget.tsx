@@ -91,9 +91,15 @@ export function NotificationsWidget({
           return next;
         });
         try {
-          await fetch(`/api/notifications/${n.id}`, { method: 'PUT' });
+          const res = await fetch(`/api/notifications/${n.id}`, { method: 'PUT' });
+          if (!res.ok) throw new Error(`PUT failed (${res.status})`);
         } catch {
-          // ignore
+          setLocallyRead((prev) => {
+            if (!prev.has(n.id)) return prev;
+            const next = new Set(prev);
+            next.delete(n.id);
+            return next;
+          });
         }
       }
       const href = n.metadata?.redirect ?? '/notifications';
@@ -159,6 +165,13 @@ export function NotificationsWidget({
             <div
               key={n.id}
               onClick={() => void handleClick(n)}
+              onKeyDown={(e) => {
+                if (editMode) return;
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  void handleClick(n);
+                }
+              }}
               role={editMode ? undefined : 'button'}
               tabIndex={editMode ? -1 : 0}
               style={{

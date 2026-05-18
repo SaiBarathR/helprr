@@ -219,7 +219,11 @@ export function AnimeCarouselWidget({
     );
   }
 
-  const loading = requiresViewer ? listLoading : homeLoading;
+  // The viewer probe is async — while it's pending, treat the widget as
+  // loading so we don't flash the empty "No items" state before listData
+  // even has a chance to fetch.
+  const viewerPending = requiresViewer && viewerConnected === null;
+  const loading = viewerPending || (requiresViewer ? listLoading : homeLoading);
 
   let items: RailItem[] = [];
   if (requiresViewer) items = (listData ?? []).map(entryToRailItem);

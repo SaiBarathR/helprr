@@ -55,7 +55,7 @@ async function fetchCleanupStatus(): Promise<CleanupStatusData> {
   };
 }
 
-export function CleanupStatusWidget({ refreshInterval, rowSpan = 2, editMode = false }: WidgetProps) {
+export function CleanupStatusWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { data } = useWidgetData({
     fetchFn: fetchCleanupStatus,
     refreshInterval,
@@ -64,19 +64,19 @@ export function CleanupStatusWidget({ refreshInterval, rowSpan = 2, editMode = f
   });
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (editMode) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [editMode]);
 
   const stats = data?.stats;
   const strikes = data?.strikes ?? [];
   const queue = data?.scheduler?.queue;
   const download = data?.scheduler?.download;
   const dryRun = queue?.autoRunMode === 'dryRun' || download?.autoRunMode === 'dryRun';
-  const strikeLimit = rowSpan >= 2 ? 5 : 3;
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <SectionHeader
         title="Cleanup"
         badge={dryRun ? <Pill color={HPR.amber}>DRY</Pill> : null}
@@ -113,8 +113,18 @@ export function CleanupStatusWidget({ refreshInterval, rowSpan = 2, editMode = f
           No active strikes
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {strikes.slice(0, strikeLimit).map((s) => (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            flex: '1 1 0',
+            minHeight: 0,
+            overflowY: 'auto',
+            paddingRight: 2,
+          }}
+        >
+          {strikes.map((s) => (
             <div
               key={s.id}
               style={{

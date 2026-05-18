@@ -107,9 +107,13 @@ export function useWidgetData<T>({
 
   // When cacheKey changes we're effectively switching to a different query
   // (filter change, user switch, etc.). The old data is stale and showing it
-  // mid-fetch is misleading — always reset to loading state before the new
-  // fetch lands.
+  // mid-fetch is misleading — reset to loading state before the new fetch
+  // lands. Skip the reset on the first render so a warm cache seeded via
+  // useState survives mount (matters for DragOverlay remounts).
+  const prevCacheKeyRef = useRef<string | undefined>(cacheKey);
   useEffect(() => {
+    if (prevCacheKeyRef.current === cacheKey) return;
+    prevCacheKeyRef.current = cacheKey;
     setData(null);
     setLoading(true);
     setError(null);
