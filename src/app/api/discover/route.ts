@@ -40,11 +40,11 @@ const EMPTY_LIST_RESPONSE = {
 };
 const SECTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 const SECTION_MEDIA_DEFAULT = 20;
-// Each TMDB list endpoint returns 20 items per page. Fetching 2 pages per
-// section lets list-mode discover widgets display up to ~40 items when the
-// user grows the widget tall — at the cost of one extra TMDB call per
-// section per server cache cycle (5 min).
-const SECTION_TMDB_PAGES = 2;
+// Each TMDB list endpoint returns 20 items per page. The Discover client picks
+// an item count based on viewport width (max ~46 items on 4K), so 3 pages
+// (60 items cached per section) is enough headroom while keeping the TMDB
+// fanout small. Pages are fetched in parallel and cached server-side for 5 min.
+const SECTION_TMDB_PAGES = 3;
 const SECTION_MEDIA_MAX = SECTION_TMDB_PAGES * 20;
 const BROWSE_LIMIT_MAX = 60;
 
