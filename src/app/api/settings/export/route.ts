@@ -66,7 +66,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (wantAppSettings && settings) {
       payload.appSettings = {
         pollingIntervalSecs: settings.pollingIntervalSecs,
-        dashboardRefreshIntervalSecs: settings.dashboardRefreshIntervalSecs,
         activityRefreshIntervalSecs: settings.activityRefreshIntervalSecs,
         torrentsRefreshIntervalSecs: settings.torrentsRefreshIntervalSecs,
         cacheImagesEnabled: settings.cacheImagesEnabled,

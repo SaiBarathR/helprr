@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { Download, Film, Tv, AlertTriangle, Trash2, Info, Import } from 'lucide-react';
-import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
+import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowShort, formatBytes } from '@/lib/format';
@@ -250,7 +250,7 @@ export function ActivityHistoryWidget({
   const fetchFn = useCallback(() => fetchHistory(fetchPageSize), [fetchPageSize]);
   const { data, loading } = useWidgetData({
     fetchFn,
-    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
+    refreshInterval,
     enabled: !editMode,
     cacheKey: `activity-history-${fetchPageSize}`,
   });

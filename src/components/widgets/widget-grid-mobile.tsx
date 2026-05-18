@@ -11,14 +11,10 @@ import { useDashboardLayout } from './dashboard-layout-context';
 import { WidgetGridItem } from './widget-grid-desktop';
 import { ThemeInspector } from './theme-inspector';
 
-interface WidgetGridMobileProps {
-  refreshInterval: number;
-}
-
 const MOBILE_COLS = 4;
 const ResponsiveGrid = WidthProvider(GridLayout);
 
-export function WidgetGridMobile({ refreshInterval }: WidgetGridMobileProps) {
+export function WidgetGridMobile() {
   const { widgets: dashboardLayout, removeWidget, updateMobileWidgetPositions } = useDashboardLayout();
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
@@ -95,7 +91,6 @@ export function WidgetGridMobile({ refreshInterval }: WidgetGridMobileProps) {
             <div key={instance.id} data-widget-id={instance.id}>
               <WidgetGridItem
                 instance={instance}
-                refreshInterval={refreshInterval}
                 editMode={editMode}
                 onRemove={removeWidget}
                 colSpan={col}

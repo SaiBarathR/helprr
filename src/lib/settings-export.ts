@@ -80,7 +80,6 @@ export interface ExportedServiceConnection {
 
 export interface ExportedAppSettings {
   pollingIntervalSecs: number;
-  dashboardRefreshIntervalSecs: number;
   activityRefreshIntervalSecs: number;
   torrentsRefreshIntervalSecs: number;
   cacheImagesEnabled: boolean;
