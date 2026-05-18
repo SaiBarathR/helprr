@@ -623,7 +623,7 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json(body, { headers: sectionsHeaders });
     }
 
-    const startPage = parseNumber(searchParams.get('page')) || 1;
+    const startPage = Math.max(1, parseNumber(searchParams.get('page')) ?? 1);
     const query = searchParams.get('q') || '';
     const section = searchParams.get('section');
     const limit = clampInt(searchParams.get('limit'), 1, BROWSE_LIMIT_MAX, 20);
