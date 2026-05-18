@@ -115,19 +115,28 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
   async function loadMore() {
     const nextOffset = (extraOffset === 0 ? (data?.items?.length ?? 0) : extraOffset + PAGE_SIZE);
     if (!filters.fromIso) return;
+    const filtersAtStart = filters;
     setLoadingMore(true);
     try {
-      const from = toDateStr(new Date(filters.fromIso));
-      const to = toDateStr(new Date(filters.toIso || filters.fromIso));
+      const from = toDateStr(new Date(filtersAtStart.fromIso));
+      const to = toDateStr(new Date(filtersAtStart.toIso || filtersAtStart.fromIso));
       const params = new URLSearchParams({ from, to, limit: String(PAGE_SIZE), offset: String(nextOffset) });
-      if (filters.userId) params.set('userId', filters.userId);
-      if (filters.type) params.set('type', filters.type);
+      if (filtersAtStart.userId) params.set('userId', filtersAtStart.userId);
+      if (filtersAtStart.type) params.set('type', filtersAtStart.type);
       const res = await fetch(`/api/jellyfin/playback/custom-history?${params}`);
-      if (res.ok) {
-        const d = await res.json();
-        setExtraItems((prev) => [...prev, ...((d.items as CustomHistoryItem[]) ?? [])]);
-        setExtraOffset(nextOffset);
-      }
+      if (!res.ok) return;
+      const d = await res.json();
+      // Drop the response if filters changed mid-flight — the new query
+      // already reset extraItems/extraOffset and we'd otherwise splice
+      // rows from the old window into the new result.
+      if (
+        filtersAtStart.fromIso !== filters.fromIso ||
+        filtersAtStart.toIso !== filters.toIso ||
+        filtersAtStart.userId !== filters.userId ||
+        filtersAtStart.type !== filters.type
+      ) return;
+      setExtraItems((prev) => [...prev, ...((d.items as CustomHistoryItem[]) ?? [])]);
+      setExtraOffset(nextOffset);
     } finally {
       setLoadingMore(false);
     }

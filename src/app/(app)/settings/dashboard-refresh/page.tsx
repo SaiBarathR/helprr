@@ -3,8 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import * as LucideIcons from 'lucide-react';
-import { ChevronLeft, ChevronDown, RotateCcw, AlertTriangle, Loader2 } from 'lucide-react';
+import {
+  ChevronLeft, ChevronDown, RotateCcw, AlertTriangle, Loader2,
+  Activity, BarChart, BarChart3, Bell, Building2, Calendar, CalendarDays,
+  Clock, Database, Download, Film, Filter, HardDrive, HelpCircle, History,
+  Layers, MonitorPlay, PlayCircle, Search, Server, ShieldAlert, Sparkles,
+  Square, Tags, Timer, Tv, Users, XCircle,
+  type LucideIcon,
+} from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,9 +37,15 @@ interface LayoutsResponse {
 
 type OverrideMap = Record<string, Record<string, number | undefined>>;
 
-function getIcon(name: string): LucideIcons.LucideIcon {
-  const Icon = (LucideIcons as unknown as Record<string, LucideIcons.LucideIcon | undefined>)[name];
-  return Icon ?? LucideIcons.Square;
+const WIDGET_ICONS: Record<string, LucideIcon> = {
+  Activity, BarChart, BarChart3, Bell, Building2, Calendar, CalendarDays,
+  Clock, Database, Download, Film, Filter, HardDrive, History, Layers,
+  MonitorPlay, PlayCircle, Search, Server, ShieldAlert, Sparkles, Tags,
+  Timer, Tv, Users, XCircle,
+};
+
+function getIcon(name: string): LucideIcon {
+  return WIDGET_ICONS[name] ?? Square;
 }
 
 export default function DashboardRefreshSettingsPage() {
@@ -194,33 +206,48 @@ export default function DashboardRefreshSettingsPage() {
   async function handleSave() {
     if (!data || !dirty || hasInvalid) return;
     setSaving(true);
+    const succeeded: string[] = [];
+    const failed: string[] = [];
     try {
       const layoutsToSave = data.layouts.filter((l) => dirtyLayoutIds.has(l.id));
       for (const layout of layoutsToSave) {
-        const updatedWidgets = layout.widgets.map((inst) => {
-          const value = overrides[layout.id]?.[inst.id];
-          const next: WidgetInstance = { ...inst, refreshIntervalSecs: value };
-          if (value === undefined) delete next.refreshIntervalSecs;
-          return next;
-        });
-        const res = await fetch(`/api/dashboard-layouts/${layout.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ widgets: updatedWidgets }),
-        });
-        if (!res.ok) {
-          const payload = await res.json().catch(() => ({}));
-          throw new Error(payload?.error ?? `Failed to save ${layout.name}`);
+        try {
+          const updatedWidgets = layout.widgets.map((inst) => {
+            const value = overrides[layout.id]?.[inst.id];
+            const next: WidgetInstance = { ...inst, refreshIntervalSecs: value };
+            if (value === undefined) delete next.refreshIntervalSecs;
+            return next;
+          });
+          const res = await fetch(`/api/dashboard-layouts/${layout.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ widgets: updatedWidgets }),
+          });
+          if (!res.ok) {
+            const payload = await res.json().catch(() => ({}));
+            throw new Error(payload?.error ?? `Failed to save ${layout.name}`);
+          }
+          succeeded.push(layout.name);
+        } catch {
+          failed.push(layout.name);
         }
       }
-      toast.success('Refresh intervals saved');
+
+      if (failed.length === 0) {
+        toast.success('Refresh intervals saved');
+      } else if (succeeded.length === 0) {
+        toast.error(`Failed to save: ${failed.join(', ')}`);
+      } else {
+        toast.warning(
+          `Saved ${succeeded.length}, failed ${failed.length}: ${failed.join(', ')}`,
+        );
+      }
+
       const refresh = await fetch('/api/dashboard-layouts', { cache: 'no-store' });
       if (refresh.ok) {
         const next: LayoutsResponse = await refresh.json();
         setData(next);
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -335,7 +362,7 @@ export default function DashboardRefreshSettingsPage() {
                               && current !== undefined
                               && defaultSecs >= 60
                               && current < defaultSecs;
-                            const Icon = def ? getIcon(def.icon) : LucideIcons.HelpCircle;
+                            const Icon = def ? getIcon(def.icon) : HelpCircle;
                             return (
                               <li
                                 key={inst.id}

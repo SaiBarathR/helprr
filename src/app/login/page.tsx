@@ -13,7 +13,10 @@ const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 function setDeviceCookieFromMatchMedia(): void {
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
   const device = window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop';
-  document.cookie = `${DEVICE_COOKIE}=${device}; Path=/; SameSite=Lax; Secure; Max-Age=${DEVICE_COOKIE_MAX_AGE}`;
+  // Browsers reject Secure cookies over plain HTTP (except localhost), so omit
+  // the flag on http:// origins — LAN-hosted self-hosted instances need this.
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${DEVICE_COOKIE}=${device}; Path=/; SameSite=Lax${secure}; Max-Age=${DEVICE_COOKIE_MAX_AGE}`;
 }
 
 export default function LoginPage() {

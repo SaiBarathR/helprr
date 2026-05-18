@@ -24,14 +24,16 @@ export function WidgetGridMobile() {
     [dashboardLayout, discoverLayout],
   );
 
-  const layoutItems: Layout = useMemo(
-    () => visibleWidgets.map((instance) => {
+  const { layoutItems, layoutLookup } = useMemo(() => {
+    const lookup = new Map<string, { col: number; row: number; narrow: boolean }>();
+    const items: Layout = visibleWidgets.map((instance) => {
       const def = getWidgetDefinition(instance.widgetId, discoverLayout)!;
       const col = Math.min(
         MOBILE_COLS,
         Math.max(1, (instance.mobileColSpan ?? def.defaultMobileSpan.colSpan) as number),
       );
       const row = Math.max(1, (instance.mobileRowSpan ?? def.defaultMobileSpan.rowSpan) as number);
+      lookup.set(instance.id, { col, row, narrow: col <= 2 });
       return {
         i: instance.id,
         x: instance.mobileX ?? 0,
@@ -43,9 +45,9 @@ export function WidgetGridMobile() {
         minH: 1,
         static: !editMode,
       };
-    }),
-    [visibleWidgets, discoverLayout, editMode],
-  );
+    });
+    return { layoutItems: items, layoutLookup: lookup };
+  }, [visibleWidgets, discoverLayout, editMode]);
 
   function handleLayoutChange(newLayout: Layout) {
     // RGL fires onLayoutChange on mount/reconciliation even with static items.
@@ -80,13 +82,9 @@ export function WidgetGridMobile() {
         onLayoutChange={handleLayoutChange}
       >
         {visibleWidgets.map((instance) => {
-          const def = getWidgetDefinition(instance.widgetId, discoverLayout)!;
-          const col = Math.min(
-            MOBILE_COLS,
-            Math.max(1, (instance.mobileColSpan ?? def.defaultMobileSpan.colSpan) as number),
-          );
-          const row = Math.max(1, (instance.mobileRowSpan ?? def.defaultMobileSpan.rowSpan) as number);
-          const narrow = col <= 2;
+          const entry = layoutLookup.get(instance.id);
+          if (!entry) return null;
+          const { col, row, narrow } = entry;
           return (
             <div key={instance.id} data-widget-id={instance.id}>
               <WidgetGridItem
