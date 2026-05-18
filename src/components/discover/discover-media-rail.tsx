@@ -27,7 +27,7 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
             <Link
               key={`${item.mediaType}-${item.tmdbId}`}
               href={href}
-              className="group relative min-w-[110px] w-[110px] sm:min-w-[130px] sm:w-[130px] text-left shrink-0"
+              className="group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] text-left shrink-0"
             >
               <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
                 {posterSrc ? (
@@ -35,7 +35,7 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
                     src={posterSrc}
                     alt={item.title}
                     fill
-                    sizes="(max-width: 640px) 35vw, 130px"
+                    sizes="(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px"
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                     unoptimized={isProtectedApiImageSrc(posterSrc)}
                   />
