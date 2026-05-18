@@ -59,6 +59,7 @@ function buildDefinitionForSection(section: DiscoverLayoutSection): WidgetDefini
     category: 'discover',
     defaultDesktopSpan: { colSpan: 12, rowSpan: 3 },
     defaultMobileSpan: { colSpan: 2, rowSpan: 1 },
+    defaultRefreshIntervalSecs: 300,
     desktopLayout: 'carousel',
     mobileLayout: 'carousel',
     component: getSectionComponent(sectionId),

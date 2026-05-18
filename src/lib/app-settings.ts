@@ -10,7 +10,6 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
   return {
     id: 'singleton',
     pollingIntervalSecs: 30,
-    dashboardRefreshIntervalSecs: 5,
     activityRefreshIntervalSecs: 5,
     torrentsRefreshIntervalSecs: 5,
     cacheImagesEnabled: true,

@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/drawer';
 import type { PlaybackUserActivity, JellyfinUser, CustomHistoryItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
+import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
 import { DaysPill, JELLYFIN_DAYS_OPTIONS, MAX_DAYS } from './widget-filter-controls';
 import { SectionHeader, HPR } from './bento-primitives';
@@ -74,7 +74,7 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
   const fetchFn = useCallback(() => fetchUserActivity(filters.days), [filters.days]);
   const { data, loading } = useWidgetData<UserActivityData>({
     fetchFn,
-    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
+    refreshInterval,
     enabled: !editMode,
     cacheKey: `jellyfin-user-activity-${filters.days}`,
   });

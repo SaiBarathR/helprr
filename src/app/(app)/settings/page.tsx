@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
@@ -282,7 +283,6 @@ export default function SettingsPage() {
 
   const [expandedService, setExpandedService] = useState<ServiceConfigType | null>(null);
   const [pollingInterval, setPollingInterval] = useState('30');
-  const [dashboardRefreshInterval, setDashboardRefreshInterval] = useState('5');
   const [activityRefreshInterval, setActivityRefreshInterval] = useState('5');
   const [torrentsRefreshInterval, setTorrentsRefreshInterval] = useState('5');
   const [timeZone, setTimeZone] = useState('');
@@ -391,7 +391,6 @@ export default function SettingsPage() {
         if (settingsRes.status === 'fulfilled' && settingsRes.value.ok) {
           const settings = await settingsRes.value.json();
           setPollingInterval(String(settings.pollingIntervalSecs));
-          setDashboardRefreshInterval(String(settings.dashboardRefreshIntervalSecs ?? 5));
           setActivityRefreshInterval(String(settings.activityRefreshIntervalSecs ?? 5));
           setTorrentsRefreshInterval(String(settings.torrentsRefreshIntervalSecs ?? 5));
           if (typeof settings.envTimeZone === 'string') {
@@ -650,7 +649,6 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pollingIntervalSecs: parseInt(pollingInterval, 10),
-          dashboardRefreshIntervalSecs: parseInt(dashboardRefreshInterval, 10),
           activityRefreshIntervalSecs: parseInt(activityRefreshInterval, 10),
           torrentsRefreshIntervalSecs: parseInt(torrentsRefreshInterval, 10),
           timeZone: timeZone.trim(),
@@ -1065,19 +1063,16 @@ export default function SettingsPage() {
             </Select>
           </div>
 
-          <div className="grouped-row">
-            <span className="text-sm">Dashboard Refresh</span>
-            <Select value={dashboardRefreshInterval} onValueChange={setDashboardRefreshInterval}>
-              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                <SelectValue>{getRefreshLabel(dashboardRefreshInterval)}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {REFRESH_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Link
+            href="/settings/dashboard-refresh"
+            className="grouped-row group hover:bg-[oklch(1_0_0/3%)]"
+          >
+            <span className="text-sm">Dashboard Widget Refresh</span>
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              Configure
+              <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          </Link>
 
           <div className="grouped-row">
             <span className="text-sm">Activity Refresh</span>

@@ -3,7 +3,7 @@
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { Film, Tv } from 'lucide-react';
-import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
+import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
@@ -77,7 +77,7 @@ export function UpcomingWidget({
 
   const { data, loading } = useWidgetData({
     fetchFn: fetchUpcoming,
-    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
+    refreshInterval,
     enabled: !editMode,
     cacheKey: `upcoming-${days}d`,
   });

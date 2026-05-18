@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import type { ProwlarrStats } from '@/lib/prowlarr-client';
-import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
+import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
 import { daysToStartDate, DaysPill, PROWLARR_DAYS_OPTIONS } from './widget-filter-controls';
 import { SectionHeader, HPR } from './bento-primitives';
@@ -156,7 +156,7 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
   const fetchFn = React.useCallback(() => fetchProwlarrStats(filters.days), [filters.days]);
   const { data, loading } = useWidgetData<ProwlarrStats | null>({
     fetchFn,
-    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
+    refreshInterval,
     enabled: !editMode,
     cacheKey: `prowlarr-stats-${filters.days}d`,
   });

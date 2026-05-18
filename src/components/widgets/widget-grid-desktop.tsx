@@ -13,10 +13,6 @@ import { WidgetRenderer } from './widget-renderer';
 import { ThemeInspector } from './theme-inspector';
 import { HPR, mix } from './bento-primitives';
 
-interface WidgetGridDesktopProps {
-  refreshInterval: number;
-}
-
 const ResponsiveGrid = WidthProvider(GridLayout);
 
 export const WIDGET_HUE: Record<string, string> = {
@@ -30,7 +26,6 @@ export const WIDGET_HUE: Record<string, string> = {
 
 export function WidgetGridItem({
   instance,
-  refreshInterval,
   editMode,
   onRemove,
   colSpan,
@@ -38,7 +33,6 @@ export function WidgetGridItem({
   narrow = false,
 }: {
   instance: WidgetInstance;
-  refreshInterval: number;
   editMode: boolean;
   onRemove: (id: string) => void;
   /** Effective column span — defaults to instance.colSpan (desktop). */
@@ -73,7 +67,6 @@ export function WidgetGridItem({
     >
       <WidgetRenderer
         instance={instance}
-        refreshInterval={refreshInterval}
         editMode={editMode}
         narrow={narrow}
         colSpan={effectiveCol}
@@ -84,7 +77,7 @@ export function WidgetGridItem({
   );
 }
 
-export function WidgetGridDesktop({ refreshInterval }: WidgetGridDesktopProps) {
+export function WidgetGridDesktop() {
   const { widgets: dashboardLayout, removeWidget, updateWidgetPositions } = useDashboardLayout();
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
@@ -142,7 +135,6 @@ export function WidgetGridDesktop({ refreshInterval }: WidgetGridDesktopProps) {
           <div key={instance.id} data-widget-id={instance.id}>
             <WidgetGridItem
               instance={instance}
-              refreshInterval={refreshInterval}
               editMode={editMode}
               onRemove={removeWidget}
             />

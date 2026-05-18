@@ -1,5 +1,6 @@
 import type { ColSpan, RowSpan, WidgetInstance, WidgetLayoutVariant } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
+import { WIDGET_REFRESH_MIN_SECS, WIDGET_REFRESH_MAX_SECS } from '@/lib/widgets/definitions';
 import type { DiscoverLayoutConfig } from '@/lib/discover-layout-config';
 
 const VALID_LAYOUT_VARIANTS: ReadonlySet<WidgetLayoutVariant> = new Set([
@@ -16,6 +17,13 @@ function sanitizeLayoutOverride(value: unknown): WidgetLayoutVariant | undefined
   return VALID_LAYOUT_VARIANTS.has(value as WidgetLayoutVariant)
     ? (value as WidgetLayoutVariant)
     : undefined;
+}
+
+function sanitizeRefreshInterval(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  const n = Math.floor(value);
+  if (n < WIDGET_REFRESH_MIN_SECS || n > WIDGET_REFRESH_MAX_SECS) return undefined;
+  return n;
 }
 
 export const DASHBOARD_DESKTOP_COLS = 12;
@@ -98,6 +106,7 @@ export function sanitizeSpansOnly(
         mobileX: item.mobileX,
         mobileY: item.mobileY,
         layoutOverride: sanitizeLayoutOverride(item.layoutOverride),
+        refreshIntervalSecs: sanitizeRefreshInterval(item.refreshIntervalSecs),
       };
     });
 }

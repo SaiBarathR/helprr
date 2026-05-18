@@ -7,7 +7,7 @@ import { ChevronDown, Loader2, Film, Tv, MonitorPlay } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import type { CustomHistoryItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { useWidgetData, HEAVY_WIDGET_MIN_INTERVAL_MS } from '@/lib/widgets/use-widget-data';
+import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
 import {
   DateRangeSelect,
@@ -102,7 +102,7 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
   // (which reset extraItems back to []).
   const { data, loading } = useWidgetData<HistoryResult>({
     fetchFn,
-    refreshInterval: Math.max(refreshInterval, HEAVY_WIDGET_MIN_INTERVAL_MS),
+    refreshInterval,
     enabled: !editMode && extraItems.length === 0,
     cacheKey,
   });
