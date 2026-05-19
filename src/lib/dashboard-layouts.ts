@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { invalidateLayoutCache, type DashboardDevice } from '@/lib/cache/dashboard-layout-cache';
-import { DEFAULT_LAYOUT } from '@/lib/widgets/registry';
+import {
+  DEFAULT_DESKTOP_LAYOUT,
+  DEFAULT_MOBILE_LAYOUT,
+  getDefaultLayoutForSlug,
+  type DashboardLayoutSlug,
+} from '@/lib/widgets/registry';
 import { sanitizeDashboardLayout } from '@/lib/widgets/sanitize';
 import type { WidgetInstance } from '@/lib/widgets/types';
 import {
@@ -18,6 +23,8 @@ export interface DashboardLayoutRecord {
   id: string;
   name: string;
   widgets: WidgetInstance[];
+  isBuiltIn: boolean;
+  slug: DashboardLayoutSlug | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,13 +39,20 @@ function rowToRecord(row: {
   id: string;
   name: string;
   widgets: unknown;
+  isBuiltIn?: boolean;
+  slug?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): DashboardLayoutRecord {
+  const rawSlug = row.slug ?? null;
+  const slug: DashboardLayoutSlug | null =
+    rawSlug === 'desktop' || rawSlug === 'mobile' ? rawSlug : null;
   return {
     id: row.id,
     name: row.name,
     widgets: Array.isArray(row.widgets) ? (row.widgets as WidgetInstance[]) : [],
+    isBuiltIn: row.isBuiltIn ?? false,
+    slug,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -110,11 +124,16 @@ export function seedInitialLayouts(): Promise<void> {
   if (seedPromise) return seedPromise;
   seedPromise = (async () => {
     const discoverLayout = await getDiscoverLayout();
-    const widgets = sanitizeDashboardLayout(
-      DEFAULT_LAYOUT.map((w) => ({ ...w })),
+    const desktopWidgets = sanitizeDashboardLayout(
+      DEFAULT_DESKTOP_LAYOUT.map((w) => ({ ...w })),
       discoverLayout,
     );
-    const widgetsJson = widgets as unknown as Prisma.InputJsonValue;
+    const mobileWidgets = sanitizeDashboardLayout(
+      DEFAULT_MOBILE_LAYOUT.map((w) => ({ ...w })),
+      discoverLayout,
+    );
+    const desktopJson = desktopWidgets as unknown as Prisma.InputJsonValue;
+    const mobileJson = mobileWidgets as unknown as Prisma.InputJsonValue;
 
     // Existence check inside the transaction so the count + creates form one
     // atomic unit. Without this, two replicas could both pass the check and
@@ -122,13 +141,27 @@ export function seedInitialLayouts(): Promise<void> {
     // tx keeps the contract explicit.
     const created = await prisma.$transaction(async (tx) => {
       const existing = await tx.dashboardLayout.count();
-      if (existing > 0) return false;
+      if (existing > 0) {
+        // Backfill `isBuiltIn`/`slug` for installs that pre-date these
+        // columns so the read-only lock + Built-in badge apply correctly.
+        // Match the two seeded layouts by their original names; the
+        // `slug: null` predicate makes the update idempotent on warm starts.
+        await tx.dashboardLayout.updateMany({
+          where: { name: 'Desktop', slug: null },
+          data: { isBuiltIn: true, slug: 'desktop' },
+        });
+        await tx.dashboardLayout.updateMany({
+          where: { name: 'Mobile', slug: null },
+          data: { isBuiltIn: true, slug: 'mobile' },
+        });
+        return false;
+      }
 
       const desktopRow = await tx.dashboardLayout.create({
-        data: { name: 'Desktop', widgets: widgetsJson },
+        data: { name: 'Desktop', widgets: desktopJson, isBuiltIn: true, slug: 'desktop' },
       });
       const mobileRow = await tx.dashboardLayout.create({
-        data: { name: 'Mobile', widgets: widgetsJson },
+        data: { name: 'Mobile', widgets: mobileJson, isBuiltIn: true, slug: 'mobile' },
       });
       await tx.appSettings.upsert({
         where: { id: 'singleton' },
@@ -145,7 +178,8 @@ export function seedInitialLayouts(): Promise<void> {
       return true;
     });
 
-    if (created) await invalidateLayoutCache();
+    await invalidateLayoutCache();
+    void created;
   })().catch((error) => {
     seedPromise = null;
     throw error;
@@ -277,6 +311,11 @@ export async function copyLayout(id: string): Promise<DashboardLayoutRecord> {
 }
 
 export async function deleteLayout(id: string): Promise<void> {
+  const existing = await prisma.dashboardLayout.findUnique({ where: { id } });
+  if (!existing) throw new ServiceError('Layout not found', 404);
+  if (existing.isBuiltIn) {
+    throw new ServiceError('Built-in layouts cannot be deleted. Use Reset to restore the default widgets.', 400);
+  }
   const settings = await prisma.appSettings.findUnique({
     where: { id: 'singleton' },
     select: { defaultDesktopLayoutId: true, defaultMobileLayoutId: true },
@@ -287,11 +326,31 @@ export async function deleteLayout(id: string): Promise<void> {
       400,
     );
   }
-  const existing = await prisma.dashboardLayout.findUnique({ where: { id } });
-  if (!existing) throw new ServiceError('Layout not found', 404);
 
   await prisma.dashboardLayout.delete({ where: { id } });
   await invalidateLayoutCache();
+}
+
+export async function resetLayoutToDefault(id: string): Promise<DashboardLayoutRecord> {
+  const existing = await prisma.dashboardLayout.findUnique({ where: { id } });
+  if (!existing) throw new ServiceError('Layout not found', 404);
+  if (!existing.isBuiltIn || (existing.slug !== 'desktop' && existing.slug !== 'mobile')) {
+    throw new ServiceError('Only built-in layouts can be reset', 400);
+  }
+
+  const defaults = getDefaultLayoutForSlug(existing.slug as DashboardLayoutSlug);
+  const discoverLayout = await getDiscoverLayout();
+  const sanitized = sanitizeDashboardLayout(
+    defaults.map((w) => ({ ...w })),
+    discoverLayout,
+  );
+
+  const row = await prisma.dashboardLayout.update({
+    where: { id },
+    data: { widgets: sanitized as unknown as Prisma.InputJsonValue },
+  });
+  await invalidateLayoutCache();
+  return rowToRecord(row);
 }
 
 export async function setDefaultForDevice(layoutId: string, device: DashboardDevice): Promise<void> {

@@ -14,6 +14,7 @@ interface WidgetRendererProps {
   colSpan?: number;
   rowSpan?: number;
   layoutVariant?: WidgetLayoutVariant;
+  mobileGrid?: boolean;
 }
 
 export function WidgetRenderer({
@@ -23,6 +24,7 @@ export function WidgetRenderer({
   colSpan,
   rowSpan,
   layoutVariant,
+  mobileGrid,
 }: WidgetRendererProps) {
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const definition = getWidgetDefinition(instance.widgetId, discoverLayout);
@@ -51,6 +53,7 @@ export function WidgetRenderer({
     rowSpan,
     layoutVariant,
     instanceId: instance.id,
+    mobileGrid,
   };
 
   return (

@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Drawer,
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
+import { Input } from '@/components/ui/input';
 import {
   Activity,
   ArrowUpDown,
@@ -94,6 +95,15 @@ interface WidgetGalleryProps {
 export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   const { widgets: dashboardLayout, addWidget } = useDashboardLayout();
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const [query, setQuery] = useState('');
+
+  // Reset the query when the caller closes the drawer. Wrapping
+  // `onOpenChange` so we don't need an effect — calling setState inside an
+  // effect that mirrors a prop triggers an immediate re-render.
+  function handleOpenChange(next: boolean) {
+    if (!next) setQuery('');
+    onOpenChange(next);
+  }
 
   const allDefinitions = useMemo(
     () => getAllWidgetDefinitions(discoverLayout),
@@ -104,16 +114,27 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
     [dashboardLayout]
   );
 
+  const filteredDefinitions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allDefinitions;
+    return allDefinitions.filter((def) =>
+      def.name.toLowerCase().includes(q)
+      || def.description.toLowerCase().includes(q)
+    );
+  }, [allDefinitions, query]);
+
   const grouped = useMemo(() => {
     const map = new Map<WidgetCategory, typeof allDefinitions>();
     for (const cat of CATEGORY_ORDER) {
       map.set(cat, []);
     }
-    for (const def of allDefinitions) {
+    for (const def of filteredDefinitions) {
       map.get(def.category)?.push(def);
     }
     return map;
-  }, [allDefinitions]);
+  }, [filteredDefinitions]);
+
+  const noResults = query.trim() !== '' && filteredDefinitions.length === 0;
 
   function handleAdd(widgetId: string) {
     const def = allDefinitions.find((d) => d.id === widgetId);
@@ -122,12 +143,29 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Add Widget</DrawerTitle>
         </DrawerHeader>
+        <div className="px-4 pb-3">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search widgets…"
+              className="h-9 pl-8 text-sm"
+            />
+          </div>
+        </div>
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-5">
+          {noResults && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No widgets match &ldquo;{query.trim()}&rdquo;
+            </p>
+          )}
           {CATEGORY_ORDER.map((category) => {
             const widgets = grouped.get(category);
             if (!widgets || widgets.length === 0) return null;

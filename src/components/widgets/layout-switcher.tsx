@@ -25,6 +25,8 @@ interface LayoutRecord {
   id: string;
   name: string;
   widgets: WidgetInstance[];
+  isBuiltIn?: boolean;
+  slug?: 'desktop' | 'mobile' | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,7 +52,7 @@ export function LayoutSwitcher({
   device,
   onLayoutSwitched,
 }: LayoutSwitcherProps) {
-  const { widgets } = useDashboardLayout();
+  const { widgets, setWidgets } = useDashboardLayout();
   // Mirror the dashboard's live theme so the drawer/dialog (rendered in a
   // portal outside the dashboard root) inherit the same --hpr-* variables.
   // Without this the drawer falls back to globals.css defaults (amber/yellow).
@@ -65,14 +67,22 @@ export function LayoutSwitcher({
   const [data, setData] = useState<LayoutsList | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<
+    'desktop' | 'mobile' | 'copy' | 'rename' | null
+  >(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [renameOriginal, setRenameOriginal] = useState('');
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [saveAsValue, setSaveAsValue] = useState('');
   const [saveAsBusy, setSaveAsBusy] = useState(false);
+  const [emptyOpen, setEmptyOpen] = useState(false);
+  const [emptyValue, setEmptyValue] = useState('');
+  const [emptyBusy, setEmptyBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<LayoutRecord | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [resetTarget, setResetTarget] = useState<LayoutRecord | null>(null);
+  const [resetBusy, setResetBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -112,6 +122,7 @@ export function LayoutSwitcher({
 
   async function handleSetDefault(layoutId: string, target: 'desktop' | 'mobile') {
     setBusyId(layoutId);
+    setBusyAction(target);
     try {
       await callApi(
         '/api/dashboard-layouts/defaults',
@@ -123,16 +134,25 @@ export function LayoutSwitcher({
         `Set as ${target} default`,
       );
       await refresh();
-      if (target === device) onLayoutSwitched();
+      // Auto-switch the dashboard when the user makes a different layout the
+      // default for the device they're currently on. The provider no longer
+      // re-keys on layout id, so router.refresh() can re-render the page
+      // contents (server-fetched widgets for the new default) without
+      // closing this drawer or dropping edit mode.
+      if (target === device && layoutId !== activeLayoutId) {
+        onLayoutSwitched();
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed');
     } finally {
       setBusyId(null);
+      setBusyAction(null);
     }
   }
 
   async function handleCopy(layoutId: string) {
     setBusyId(layoutId);
+    setBusyAction('copy');
     try {
       await callApi(`/api/dashboard-layouts/${layoutId}/copy`, { method: 'POST' }, 'Copied');
       await refresh();
@@ -140,6 +160,7 @@ export function LayoutSwitcher({
       toast.error(error instanceof Error ? error.message : 'Failed');
     } finally {
       setBusyId(null);
+      setBusyAction(null);
     }
   }
 
@@ -170,6 +191,7 @@ export function LayoutSwitcher({
     setRenameValue('');
     setRenameOriginal('');
     setBusyId(layoutId);
+    setBusyAction('rename');
     try {
       await callApi(
         `/api/dashboard-layouts/${layoutId}`,
@@ -185,6 +207,41 @@ export function LayoutSwitcher({
       toast.error(error instanceof Error ? error.message : 'Failed');
     } finally {
       setBusyId(null);
+      setBusyAction(null);
+    }
+  }
+
+  async function handleResetConfirm() {
+    if (!resetTarget) return;
+    const target = resetTarget;
+    setResetBusy(true);
+    try {
+      const response = await callApi(
+        `/api/dashboard-layouts/${target.id}/reset`,
+        { method: 'POST' },
+        'Reset to default',
+      );
+      setResetTarget(null);
+      // The provider only resyncs its working set when activeLayoutId changes
+      // (see DashboardLayoutProvider). A reset keeps the same id and only
+      // swaps the widgets array, so without pushing the new widgets in here
+      // the dashboard would keep showing the pre-reset arrangement.
+      if (target.id === activeLayoutId) {
+        const next = response && typeof response === 'object' && 'widgets' in response
+          ? (response as { widgets: unknown }).widgets
+          : null;
+        if (Array.isArray(next)) {
+          setWidgets(next as WidgetInstance[]);
+        }
+      }
+      await refresh();
+      if (target.id === activeLayoutId) {
+        onLayoutSwitched();
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed');
+    } finally {
+      setResetBusy(false);
     }
   }
 
@@ -234,6 +291,38 @@ export function LayoutSwitcher({
     }
   }
 
+  function openCreateEmpty() {
+    setEmptyValue('');
+    setEmptyOpen(true);
+  }
+
+  async function handleCreateEmptySubmit() {
+    const name = emptyValue.trim();
+    if (!name) {
+      toast.error('Name is required');
+      return;
+    }
+    setEmptyBusy(true);
+    try {
+      await callApi(
+        '/api/dashboard-layouts',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, widgets: [] }),
+        },
+        'Layout created',
+      );
+      await refresh();
+      setEmptyOpen(false);
+      setEmptyValue('');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed');
+    } finally {
+      setEmptyBusy(false);
+    }
+  }
+
   return (
     <>
       <Drawer open={open} onOpenChange={onOpenChange}>
@@ -242,22 +331,37 @@ export function LayoutSwitcher({
             <DrawerTitle>Layouts</DrawerTitle>
           </DrawerHeader>
           <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-3">
-            <button
-              type="button"
-              onClick={openSaveAs}
-              className="w-full rounded-xl border border-dashed p-3 text-sm font-medium hover:bg-muted/30"
-              style={{ borderColor: HPR.hairline2, color: HPR.amber }}
-            >
-              + Save current as new layout
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={openSaveAs}
+                className="flex-1 rounded-xl border border-dashed p-3 text-sm font-medium hover:bg-muted/30"
+                style={{ borderColor: HPR.hairline2, color: HPR.amber }}
+              >
+                + Save current as new
+              </button>
+              <button
+                type="button"
+                onClick={openCreateEmpty}
+                className="flex-1 rounded-xl border border-dashed p-3 text-sm font-medium hover:bg-muted/30"
+                style={{ borderColor: HPR.hairline2, color: HPR.amber }}
+              >
+                + Create empty layout
+              </button>
+            </div>
 
-            {loading && <p className="text-xs text-muted-foreground">Loading…</p>}
+            {loading && (
+              <div className="flex justify-center py-4">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            )}
             {!loading && data?.layouts.map((layout) => {
               const isActive = layout.id === activeLayoutId;
               const isDesktopDefault = data.defaultDesktopLayoutId === layout.id;
               const isMobileDefault = data.defaultMobileLayoutId === layout.id;
               const isCurrentDefault = (device === 'desktop' && isDesktopDefault) || (device === 'mobile' && isMobileDefault);
-              const canDelete = !isDesktopDefault && !isMobileDefault;
+              const isBuiltIn = Boolean(layout.isBuiltIn);
+              const canDelete = !isBuiltIn && !isDesktopDefault && !isMobileDefault;
               const isRenaming = renamingId === layout.id;
 
               return (
@@ -286,12 +390,18 @@ export function LayoutSwitcher({
                       <button
                         type="button"
                         onClick={() => startRename(layout)}
-                        className="flex-1 text-left text-sm font-medium truncate hover:opacity-70"
+                        className="flex-1 text-left text-sm font-medium truncate hover:opacity-70 flex items-center gap-2"
                       >
-                        {layout.name}
+                        {busyId === layout.id && busyAction === 'rename' && (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        )}
+                        <span className="truncate">{layout.name}</span>
                       </button>
                     )}
                     <div className="flex items-center gap-1 text-[9px] uppercase">
+                      {isBuiltIn && (
+                        <span className="px-1.5 py-0.5 rounded bg-muted">Built-in</span>
+                      )}
                       {isDesktopDefault && (
                         <span className="px-1.5 py-0.5 rounded bg-muted">PC default</span>
                       )}
@@ -306,39 +416,62 @@ export function LayoutSwitcher({
                       type="button"
                       onClick={() => void handleSetDefault(layout.id, 'desktop')}
                       disabled={busyId === layout.id || isDesktopDefault}
-                      className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40"
+                      className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40 inline-flex items-center"
                       style={{ borderColor: HPR.hairline }}
                     >
+                      {busyId === layout.id && busyAction === 'desktop' && (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      )}
                       Set as PC default
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleSetDefault(layout.id, 'mobile')}
                       disabled={busyId === layout.id || isMobileDefault}
-                      className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40"
+                      className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40 inline-flex items-center"
                       style={{ borderColor: HPR.hairline }}
                     >
+                      {busyId === layout.id && busyAction === 'mobile' && (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      )}
                       Set as Mobile default
                     </button>
                     <button
                       type="button"
                       onClick={() => void handleCopy(layout.id)}
                       disabled={busyId === layout.id}
-                      className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40"
+                      className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40 inline-flex items-center"
                       style={{ borderColor: HPR.hairline }}
                     >
+                      {busyId === layout.id && busyAction === 'copy' && (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      )}
                       Copy
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(layout)}
-                      disabled={busyId === layout.id || !canDelete}
-                      title={!canDelete ? 'Default layouts cannot be deleted' : undefined}
-                      className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40"
-                      style={{ borderColor: HPR.hairline }}
-                    >
-                      Delete
-                    </button>
+                    {isBuiltIn && (
+                      <button
+                        type="button"
+                        onClick={() => setResetTarget(layout)}
+                        disabled={busyId === layout.id || resetBusy}
+                        title="Restore this layout to its original default widgets"
+                        className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40"
+                        style={{ borderColor: HPR.hairline }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                    {!isBuiltIn && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(layout)}
+                        disabled={busyId === layout.id || !canDelete}
+                        title={!canDelete ? 'A layout set as a device default cannot be deleted' : undefined}
+                        className="px-2 py-1 rounded border hover:bg-muted/30 disabled:opacity-40"
+                        style={{ borderColor: HPR.hairline }}
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                   {isCurrentDefault && (
                     <p className="text-[10px] text-muted-foreground">
@@ -397,6 +530,57 @@ export function LayoutSwitcher({
         busy={deleteBusy}
         onConfirm={handleDeleteConfirm}
       />
+
+      <ConfirmDialog
+        open={resetTarget !== null}
+        onOpenChange={(next) => { if (!next && !resetBusy) setResetTarget(null); }}
+        title="Reset to default?"
+        description={
+          resetTarget
+            ? `“${resetTarget.name}” will be restored to its original widgets. Any changes you've made to this layout will be discarded.`
+            : undefined
+        }
+        confirmLabel="Reset"
+        destructive
+        busy={resetBusy}
+        onConfirm={handleResetConfirm}
+      />
+
+      <Dialog open={emptyOpen} onOpenChange={(next) => { if (!emptyBusy) setEmptyOpen(next); }}>
+        <DialogContent className="sm:max-w-md" style={themeStyle}>
+          <DialogHeader>
+            <DialogTitle>Create empty layout</DialogTitle>
+            <DialogDescription>
+              A new layout will be created with no widgets. You can add widgets from the
+              edit toolbar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              autoFocus
+              value={emptyValue}
+              onChange={(e) => setEmptyValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && emptyValue.trim() && !emptyBusy) {
+                  void handleCreateEmptySubmit();
+                }
+              }}
+              placeholder="Layout name"
+              maxLength={50}
+              disabled={emptyBusy}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmptyOpen(false)} disabled={emptyBusy}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleCreateEmptySubmit()} disabled={emptyBusy || !emptyValue.trim()}>
+              {emptyBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -94,6 +94,7 @@ export function WidgetGridMobile() {
                 colSpan={col}
                 rowSpan={row}
                 narrow={narrow}
+                mobileGrid
               />
             </div>
           );

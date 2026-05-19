@@ -10,6 +10,7 @@ import type { JellyfinScheduledTask, JellyfinSystemInfo } from '@/types/jellyfin
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { SectionHeader, HPR } from './bento-primitives';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 
 type ServerAction = 'restart' | 'shutdown' | 'scan-libraries';
 
@@ -43,6 +44,8 @@ async function fetchServerData(): Promise<ServerData> {
 }
 
 export function JellyfinServerWidget({ refreshInterval, editMode = false }: WidgetProps) {
+  const { ref, width } = useElementSize<HTMLDivElement>();
+  const compactView = useMemo(() => width < 300, [width]);
   const { data, loading } = useWidgetData<ServerData>({
     fetchFn: fetchServerData,
     refreshInterval,
@@ -92,7 +95,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div ref={ref} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <SectionHeader title="Jellyfin Server" />
       {loading && !system ? (
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
@@ -142,7 +145,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
               ) : (
                 <FolderSync className="h-3 w-3" />
               )}
-              {scanRunning ? 'Scanning…' : 'Scan Libraries'}
+              {compactView ? '' : scanRunning ? 'Scanning…' : 'Scan Libraries'}
             </Button>
             <Button
               variant="ghost"
@@ -152,7 +155,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
               onClick={() => handleServerAction('restart')}
             >
               {serverAction === 'restart' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
-              Restart
+              {compactView ? '' : 'Restart'}
             </Button>
             <Button
               variant="ghost"
@@ -162,7 +165,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
               onClick={() => handleServerAction('shutdown')}
             >
               {serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
-              Shutdown
+              {compactView ? '' : 'Shutdown'}
             </Button>
           </div>
         </div>

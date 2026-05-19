@@ -22,7 +22,12 @@ interface DashboardLayoutContextValue {
   removeWidget: (instanceId: string) => void;
   updateWidgetPositions: (positions: Array<{ id: string; x: number; y: number; colSpan?: ColSpan; rowSpan?: RowSpan }>) => void;
   updateMobileWidgetPositions: (positions: Array<{ id: string; x: number; y: number; colSpan?: ColSpan; rowSpan?: RowSpan }>) => void;
-  setWidgetLayoutOverride: (instanceId: string, variant: WidgetLayoutVariant | null) => void;
+  setWidgetLayoutOverride: (
+    instanceId: string,
+    variant: WidgetLayoutVariant | null,
+    options?: { mobile?: boolean },
+  ) => void;
+  setWidgetRefreshInterval: (instanceId: string, secs: number | undefined) => void;
   resetWidgets: () => void;
   isDirty: boolean;
   initialWidgets: WidgetInstance[];
@@ -50,6 +55,8 @@ function widgetsDiffer(a: WidgetInstance[], b: WidgetInstance[]): boolean {
       || x.mobileColSpan !== y.mobileColSpan
       || x.mobileRowSpan !== y.mobileRowSpan
       || x.layoutOverride !== y.layoutOverride
+      || x.mobileLayoutOverride !== y.mobileLayoutOverride
+      || x.refreshIntervalSecs !== y.refreshIntervalSecs
     ) {
       return true;
     }
@@ -73,6 +80,18 @@ interface DashboardLayoutProviderProps {
 
 export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, children }: DashboardLayoutProviderProps) {
   const [widgets, setWidgetsState] = useState<WidgetInstance[]>(initialWidgets);
+  // Reset the working set when the active layout id changes (e.g. user
+  // picked a new device default in the Layouts drawer). We used to remount
+  // the provider via `key=` for this — but that nuked all UI state below
+  // (open drawers, edit mode, etc.) on every switch. Deriving state from the
+  // changed prop instead keeps the drawer + edit mode alive; any in-flight
+  // unsaved edits to the previous layout are intentionally discarded because
+  // the user explicitly switched.
+  const [trackedLayoutId, setTrackedLayoutId] = useState(activeLayoutId);
+  if (activeLayoutId !== trackedLayoutId) {
+    setTrackedLayoutId(activeLayoutId);
+    setWidgetsState(initialWidgets);
+  }
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const dashboardEditMode = useUIStore((s) => s.dashboardEditMode);
   // Mirror edit mode into a ref so the auto-save closure reads the live value
@@ -166,15 +185,23 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
   }, []);
 
   const setWidgetLayoutOverride = useCallback(
-    (instanceId: string, variant: WidgetLayoutVariant | null) => {
+    (
+      instanceId: string,
+      variant: WidgetLayoutVariant | null,
+      options?: { mobile?: boolean },
+    ) => {
+      const mobile = options?.mobile === true;
+      const field: 'layoutOverride' | 'mobileLayoutOverride' = mobile
+        ? 'mobileLayoutOverride'
+        : 'layoutOverride';
       const next = widgetsRef.current.map((w) => {
         if (w.id !== instanceId) return w;
         if (variant == null) {
           const stripped = { ...w };
-          delete stripped.layoutOverride;
+          delete stripped[field];
           return stripped;
         }
-        return { ...w, layoutOverride: variant };
+        return { ...w, [field]: variant };
       });
       setWidgetsState(next);
       // While in edit mode the user has unsaved drags in the working set; an
@@ -208,6 +235,23 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
     [activeLayoutId],
   );
 
+  const setWidgetRefreshInterval = useCallback(
+    (instanceId: string, secs: number | undefined) => {
+      setWidgetsState((current) =>
+        current.map((w) => {
+          if (w.id !== instanceId) return w;
+          if (secs === undefined) {
+            const next = { ...w };
+            delete next.refreshIntervalSecs;
+            return next;
+          }
+          return { ...w, refreshIntervalSecs: secs };
+        }),
+      );
+    },
+    [],
+  );
+
   const resetWidgets = useCallback(() => {
     setWidgetsState(DEFAULT_LAYOUT.map((w) => ({ ...w })));
   }, []);
@@ -225,10 +269,11 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
     updateWidgetPositions,
     updateMobileWidgetPositions,
     setWidgetLayoutOverride,
+    setWidgetRefreshInterval,
     resetWidgets,
     isDirty,
     initialWidgets,
-  }), [widgets, setWidgets, addWidget, removeWidget, updateWidgetPositions, updateMobileWidgetPositions, setWidgetLayoutOverride, resetWidgets, isDirty, initialWidgets]);
+  }), [widgets, setWidgets, addWidget, removeWidget, updateWidgetPositions, updateMobileWidgetPositions, setWidgetLayoutOverride, setWidgetRefreshInterval, resetWidgets, isDirty, initialWidgets]);
 
   return (
     <DashboardLayoutContext.Provider value={value}>

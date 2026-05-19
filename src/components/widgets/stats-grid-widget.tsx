@@ -7,7 +7,7 @@ import { useElementSize } from '@/lib/widgets/use-element-size';
 import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { ServicesStatsResponse } from '@/types/service-stats';
-import { Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
+import { Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
 
 async function fetchStats(): Promise<ServicesStatsResponse> {
   const res = await fetch('/api/services/stats');
@@ -24,11 +24,20 @@ interface Tile {
   href?: string;
 }
 
-export function StatsGridWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
-  const { ref, width } = useElementSize<HTMLDivElement>();
-  // Each tile is half the widget width minus the 8px gap between tiles.
-  const tileWidth = width > 0 ? (width - 8) / 2 : 0;
-  const hideIcon = tileWidth > 0 && tileWidth < ICON_HIDE_THRESHOLD;
+export function StatsGridWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+}: WidgetProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const isVertical = height > 0 && height < ICON_HIDE_HEIGHT_THRESHOLD;
+  const compact = narrow || isVertical;
+  // In vertical mode the four tiles share a single horizontal row, so each
+  // tile gets ~1/4 of the widget width instead of ~1/2.
+  const tileDivisor = isVertical ? 4 : 2;
+  const isSingleRow = tileDivisor === 4;
+  const tileWidth = width > 0 ? (width - 8 * (tileDivisor - 1)) / tileDivisor : 0;
+  const hideIcon = (tileWidth || height) > 0 && (tileWidth < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchStats,
     refreshInterval,
@@ -76,14 +85,18 @@ export function StatsGridWidget({ refreshInterval, editMode = false, narrow = fa
   ];
 
   return (
-    <div ref={ref}>
-      <Eyebrow style={{ marginBottom: 10 }}>Overview</Eyebrow>
+    <div ref={ref} style={{ position: 'relative', height: '100%' }}>
+      {!hideIcon && <Eyebrow style={{ marginBottom: 10 }}>Overview</Eyebrow>}
       <div
         style={{
+          //grid should fill all available space, but gap should be consistent regardless of size
           display: 'grid',
-          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          gap: 8,
+          gridTemplateColumns: `repeat(${isVertical ? 4 : 2}, minmax(0, 1fr))`,
+          gap: isSingleRow ? 3 : 8,
+          marginTop: isSingleRow ? 3 : 0,
+          height: `calc(100% - ${!hideIcon ? 28 : 0}px)`,
         }}
+
       >
         {tiles.map((t, i) => {
           const inner = (
@@ -91,8 +104,8 @@ export function StatsGridWidget({ refreshInterval, editMode = false, narrow = fa
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: narrow ? 8 : 10,
-                padding: narrow ? '8px 9px' : '10px 12px',
+                gap: isSingleRow ? 1 : compact ? 8 : 10,
+                padding: compact ? '8px 9px' : '10px 12px',
                 background: HPR.ink,
                 border: `1px solid ${HPR.hairline}`,
                 borderRadius: 8,
@@ -102,8 +115,8 @@ export function StatsGridWidget({ refreshInterval, editMode = false, narrow = fa
               {!hideIcon && (
                 <div
                   style={{
-                    width: narrow ? 28 : 32,
-                    height: narrow ? 28 : 32,
+                    width: compact ? 28 : 32,
+                    height: compact ? 28 : 32,
                     borderRadius: 7,
                     background: mix(t.color, 12),
                     color: t.color,
@@ -120,7 +133,7 @@ export function StatsGridWidget({ refreshInterval, editMode = false, narrow = fa
                 <div
                   style={{
                     fontFamily: FONT_DISPLAY,
-                    fontSize: narrow ? 16 : 18,
+                    fontSize: compact ? 16 : 18,
                     color: HPR.fg,
                     fontWeight: 600,
                     lineHeight: 1.05,

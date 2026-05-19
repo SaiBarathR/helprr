@@ -44,6 +44,7 @@ interface DiscoverSectionWidgetProps {
   colSpan?: number;
   layoutVariant?: WidgetLayoutVariant;
   instanceId?: string;
+  mobileGrid?: boolean;
 }
 
 const CLIENT_CACHE_MS = 5 * 60 * 1000;
@@ -577,6 +578,7 @@ export function DiscoverSectionWidget({
   colSpan,
   layoutVariant,
   instanceId,
+  mobileGrid = false,
 }: DiscoverSectionWidgetProps) {
   const compact = narrow || (colSpan != null && colSpan <= 6);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
@@ -585,7 +587,7 @@ export function DiscoverSectionWidget({
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
-      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
   // Height/width-aware fetch sizing: when the widget grows taller (list mode)

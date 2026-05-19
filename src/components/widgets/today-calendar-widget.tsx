@@ -57,6 +57,7 @@ export function TodayCalendarWidget({
   narrow = false,
   layoutVariant,
   instanceId,
+  mobileGrid = false,
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
@@ -79,7 +80,7 @@ export function TodayCalendarWidget({
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
-      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
   const headerRight = (

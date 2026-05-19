@@ -31,6 +31,7 @@ export function WidgetGridItem({
   colSpan,
   rowSpan,
   narrow = false,
+  mobileGrid = false,
 }: {
   instance: WidgetInstance;
   editMode: boolean;
@@ -41,6 +42,9 @@ export function WidgetGridItem({
   rowSpan?: number;
   /** Pick the widget's mobile layout variant when true. */
   narrow?: boolean;
+  /** True when this item is rendered inside the mobile grid. Drives which
+   *  per-instance override field wins. */
+  mobileGrid?: boolean;
 }) {
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const definition = getWidgetDefinition(instance.widgetId, discoverLayout);
@@ -50,7 +54,12 @@ export function WidgetGridItem({
   const baseVariant = narrow
     ? definition.mobileLayout ?? 'default'
     : definition.desktopLayout ?? 'default';
-  const variant = instance.layoutOverride ?? baseVariant;
+  // Device-wise resolution: the mobile grid reads its own override first,
+  // then falls back to the legacy shared `layoutOverride` so layouts saved
+  // before this split keep rendering the way they used to.
+  const variant = mobileGrid
+    ? instance.mobileLayoutOverride ?? instance.layoutOverride ?? baseVariant
+    : instance.layoutOverride ?? baseVariant;
 
   return (
     <BentoCell
@@ -72,6 +81,7 @@ export function WidgetGridItem({
         colSpan={effectiveCol}
         rowSpan={effectiveRow}
         layoutVariant={variant}
+        mobileGrid={mobileGrid}
       />
     </BentoCell>
   );
