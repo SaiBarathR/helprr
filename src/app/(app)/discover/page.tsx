@@ -1156,7 +1156,7 @@ export default function DiscoverPage() {
           </button>
         </div>
 
-        <div className="mt-2 space-y-2">
+        <div className="mt-3 space-y-2">
           {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {SORT_OPTIONS.map((option) => {
