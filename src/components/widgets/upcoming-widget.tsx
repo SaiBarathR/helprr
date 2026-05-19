@@ -64,6 +64,7 @@ export function UpcomingWidget({
   narrow = false,
   layoutVariant,
   instanceId,
+  mobileGrid = false,
 }: WidgetProps) {
   const [days, setDays] = useState(() => getStoredDays());
   const { ref, width, height } = useElementSize<HTMLDivElement>();
@@ -86,7 +87,7 @@ export function UpcomingWidget({
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
-      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
   const { visibleCount: listVisible } = useListFetchSize({

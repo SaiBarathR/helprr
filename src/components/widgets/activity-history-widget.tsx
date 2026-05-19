@@ -232,6 +232,7 @@ export function ActivityHistoryWidget({
   layoutVariant,
   rowSpan = 2,
   instanceId,
+  mobileGrid = false,
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
@@ -258,7 +259,7 @@ export function ActivityHistoryWidget({
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
-      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
   const headerRight = (
@@ -462,7 +463,7 @@ export function ActivityHistoryWidget({
                   timePill={`${formatDistanceToNowShort(r.date)} ago`}
                   badge={{ icon: getEventIcon(r.eventType), color }}
                 />
-                <div style={{ marginTop: 6 }}>
+                <div className=' mt-0 md:mt-1.5'>
                   <div
                     style={{
                       fontSize: 11,
@@ -484,20 +485,11 @@ export function ActivityHistoryWidget({
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        maxWidth: '100%',
                       }}
                     >
-                      {qualityName}
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      marginTop: 2,
-                    }}
-                  >
-                    {fileSize && (
                       <span
                         style={{
                           fontSize: 9,
@@ -507,34 +499,36 @@ export function ActivityHistoryWidget({
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           minWidth: 0,
+                          width: '62%',
                         }}
                       >
-                        {fileSize}
+                        {qualityName}
                       </span>
-                    )}
-                    <span
-                      style={{
-                        fontSize: 9,
-                        color: HPR.fgMute,
-                        fontFamily: FONT_MONO,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        minWidth: 0,
-                        flex: 1,
-                      }}
-                    >
-                      {r?.data?.indexer ? r.data.indexer : r?.data?.releaseGroup ? r.data.releaseGroup : ''}
-                    </span>
-                  </div>
+                      {fileSize && (
+                        <span
+                          style={{
+                            fontSize: 9,
+                            color: HPR.fgMute,
+                            fontFamily: FONT_MONO,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            minWidth: 0,
+                          }}
+                        >
+                          {fileSize}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: 6,
-                      marginTop: 2,
+                      gap: 3,
                     }}
+                    className='md:mt-0.5'
                   >
                     <span
                       style={{
@@ -553,6 +547,29 @@ export function ActivityHistoryWidget({
                     <DetailButton onClick={() => openDetail(r)} />
                   </div>
 
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                    className='md:mt-0.5'
+                  >
+                    <span
+                      style={{
+                        fontSize: 9,
+                        color: HPR.fgMute,
+                        fontFamily: FONT_MONO,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      {r?.data?.indexer ? r.data.indexer : r?.data?.releaseGroup ? r.data.releaseGroup : ''}
+                    </span>
+                  </div>
 
                 </div>
               </>

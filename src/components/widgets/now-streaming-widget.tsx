@@ -46,6 +46,7 @@ export function NowStreamingWidget({
   narrow = false,
   layoutVariant,
   instanceId,
+  mobileGrid = false,
 }: WidgetProps) {
   const { data: sessions, loading } = useWidgetData({
     fetchFn: fetchSessions,
@@ -65,14 +66,14 @@ export function NowStreamingWidget({
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
-      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
 
   const liveBadge = list.length > 0 && (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
       <Dot color={HPR.green} size={7} pulse />
-      <Pill color={HPR.green} style={{ fontSize: 9 }}>
+      <Pill color={HPR.green} style={{ fontSize: 9, marginLeft: 4 }}>
         {list.length} LIVE
       </Pill>
     </span>
@@ -101,12 +102,12 @@ export function NowStreamingWidget({
   return (
     <div>
       <SectionHeader
-        title="Now Streaming"
+        title={!narrow ? "Now Streaming" : undefined}
         badge={liveBadge}
         right={
           <>
             {toggleNode}
-            <span>{list.length} active</span>
+            {!narrow && <span>{list.length} active</span>}
           </>
         }
       />
@@ -192,7 +193,7 @@ export function NowStreamingWidget({
                     <div style={{ flex: 1 }}>
                       <Bar pct={pct} color={HPR.cyan} height={2} />
                     </div>
-                    <span
+                    {!narrow && <span
                       style={{
                         fontFamily: FONT_MONO,
                         fontSize: 9,
@@ -201,7 +202,7 @@ export function NowStreamingWidget({
                       }}
                     >
                       {fmtTicks(s.PlayState?.PositionTicks)}
-                    </span>
+                    </span>}
                   </div>
                 </div>
               </button>

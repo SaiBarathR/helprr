@@ -7,6 +7,7 @@ import { useUIStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { WidgetGrid } from '@/components/widgets/widget-grid';
 import { WidgetGallery } from '@/components/widgets/widget-gallery';
+import { RefreshIntervalDrawer } from '@/components/widgets/refresh-interval-drawer';
 import { BentoTopBar, FloatingEdit, HPR } from '@/components/widgets/bento-primitives';
 import { buildDashboardThemeStyle } from '@/lib/dashboard-theme';
 import {
@@ -20,6 +21,7 @@ export interface InitialDashboardLayout {
   id: string;
   name: string;
   widgets: WidgetInstance[];
+  isBuiltIn: boolean;
 }
 
 interface DashboardClientProps {
@@ -64,12 +66,13 @@ function FullPageSpinner() {
 }
 
 export function DashboardClient({ initialLayout, initialDevice }: DashboardClientProps) {
-  // Keying on the layout id remounts the provider whenever the active layout
-  // changes — the working set resets to the new layout's widgets without us
-  // having to thread a "sync on prop change" effect through the provider.
+  // No `key` here — keying on initialLayout.id remounts the provider (and
+  // every drawer / edit-mode flag below it) on every layout switch. The
+  // provider now syncs its working set when activeLayoutId changes, so
+  // staying mounted preserves the LayoutSwitcher drawer, edit mode, and
+  // gallery state across the switch.
   return (
     <DashboardLayoutProvider
-      key={initialLayout.id}
       initialWidgets={initialLayout.widgets}
       activeLayoutId={initialLayout.id}
     >
@@ -106,6 +109,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
   const setEditMode = useUIStore((s) => s.setDashboardEditMode);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [refreshDrawerOpen, setRefreshDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const { widgets, isDirty, setWidgets } = useDashboardLayout();
@@ -165,9 +169,9 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
   const handleFloatingToggle = useCallback(() => {
     if (editMode) {
       void handleDone();
-    } else {
-      setEditMode(true);
+      return;
     }
+    setEditMode(true);
   }, [editMode, handleDone, setEditMode]);
 
   const handleLayoutSwitched = useCallback(() => {
@@ -199,6 +203,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
           eyebrow={eyebrow}
           onAdd={() => setGalleryOpen(true)}
           onSwitch={() => setSwitcherOpen(true)}
+          onConfigureRefresh={() => setRefreshDrawerOpen(true)}
           onSave={handleSave}
           onDiscard={handleDiscard}
           onDone={handleDone}
@@ -208,7 +213,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
       )}
       <WidgetGrid isMobile={isMobile} />
 
-      <FloatingEdit edit={editMode} mobile={isMobile} onClick={handleFloatingToggle} />
+     {!editMode && <FloatingEdit edit={editMode} mobile={isMobile} onClick={handleFloatingToggle} />}
       <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} />
       <LayoutSwitcher
         open={switcherOpen}
@@ -216,6 +221,11 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
         activeLayoutId={initialLayout.id}
         device={detectedDevice}
         onLayoutSwitched={handleLayoutSwitched}
+      />
+      <RefreshIntervalDrawer
+        open={refreshDrawerOpen}
+        onOpenChange={setRefreshDrawerOpen}
+        layoutName={initialLayout.name}
       />
     </div>
   );

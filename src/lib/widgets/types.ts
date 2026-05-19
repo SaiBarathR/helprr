@@ -22,6 +22,7 @@ export type WidgetLayoutVariant =
   | 'posters'
   | 'cards'
   | 'detailed'
+  | 'vertical'
   | 'default';
 
 export interface WidgetProps {
@@ -36,6 +37,10 @@ export interface WidgetProps {
   /** The WidgetInstance.id this render came from — needed to dispatch
    *  per-instance mutations like the view-mode toggle. */
   instanceId?: string;
+  /** True when rendered inside the mobile grid. Lets toggles persist their
+   *  choice to the device-specific override field instead of clobbering the
+   *  desktop variant. */
+  mobileGrid?: boolean;
 }
 
 export interface WidgetDefinition {
@@ -72,9 +77,14 @@ export interface WidgetInstance {
   /** Mobile grid position, in 4-column layout coordinates. */
   mobileX?: number;
   mobileY?: number;
-  /** User-chosen variant for this widget on this layout. When set, takes
-   *  precedence over the WidgetDefinition.desktopLayout/mobileLayout default. */
+  /** User-chosen variant for the DESKTOP grid. When set, takes precedence
+   *  over WidgetDefinition.desktopLayout. Historically applied to both grids
+   *  — kept that way on mobile only as a fallback when mobileLayoutOverride
+   *  is absent, so existing saved layouts don't visually change. */
   layoutOverride?: WidgetLayoutVariant;
+  /** User-chosen variant for the MOBILE grid. When set, takes precedence
+   *  over both layoutOverride and WidgetDefinition.mobileLayout. */
+  mobileLayoutOverride?: WidgetLayoutVariant;
   /** Per-instance refresh interval (seconds). When set, overrides the
    *  WidgetDefinition.defaultRefreshIntervalSecs. Valid range: 10–300. */
   refreshIntervalSecs?: number;

@@ -109,6 +109,8 @@ model DashboardLayout {
   id        String   @id @default(cuid())
   name      String   @unique
   widgets   Json     // WidgetInstance[]
+  isBuiltIn Boolean  @default(false)
+  slug      String?  @unique // 'desktop' | 'mobile' for built-ins; null otherwise
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

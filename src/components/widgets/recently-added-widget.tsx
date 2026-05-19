@@ -54,6 +54,7 @@ export function RecentlyAddedWidget({
   narrow = false,
   layoutVariant,
   instanceId,
+  mobileGrid = false,
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
@@ -78,7 +79,7 @@ export function RecentlyAddedWidget({
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
-      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
 

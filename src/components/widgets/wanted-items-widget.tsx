@@ -5,7 +5,7 @@ import { Search } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { AMBER_SOFT, Eyebrow, FONT_DISPLAY, HPR, ICON_HIDE_THRESHOLD } from './bento-primitives';
+import { AMBER_SOFT, Eyebrow, FONT_DISPLAY, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD } from './bento-primitives';
 
 interface WantedCounts {
   missingTotal: number;
@@ -22,9 +22,14 @@ async function fetchWanted(): Promise<WantedCounts> {
   };
 }
 
-export function WantedItemsWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
-  const { ref, width } = useElementSize<HTMLDivElement>();
-  const hideIcon = width > 0 && width < ICON_HIDE_THRESHOLD;
+export function WantedItemsWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+}: WidgetProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const compact = narrow;
+  const hideIcon = (width || height) > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchWanted,
     refreshInterval,
@@ -37,13 +42,20 @@ export function WantedItemsWidget({ refreshInterval, editMode = false, narrow = 
   const inner = (
     <div
       ref={ref}
-      style={{ display: 'flex', alignItems: 'center', gap: narrow ? 10 : 12, minWidth: 0 }}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: compact ? 8 : 12,
+        minWidth: 0,
+        height: '100%',
+      }}
     >
       {!hideIcon && (
         <div
           style={{
-            width: narrow ? 34 : 38,
-            height: narrow ? 34 : 38,
+            width: compact ? 32 : 38,
+            height: compact ? 32 : 38,
             borderRadius: 8,
             background: AMBER_SOFT,
             color: HPR.amber,
@@ -53,11 +65,11 @@ export function WantedItemsWidget({ refreshInterval, editMode = false, narrow = 
             flexShrink: 0,
           }}
         >
-          <Search size={narrow ? 15 : 18} />
+          <Search size={compact ? 15 : 18} />
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Eyebrow>{narrow ? 'Wanted' : 'Wanted Items'}</Eyebrow>
+      <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
+        <Eyebrow>{compact ? 'Wanted' : 'Wanted Items'}</Eyebrow>
         <div
           style={{
             display: 'flex',
@@ -70,7 +82,7 @@ export function WantedItemsWidget({ refreshInterval, editMode = false, narrow = 
           <span
             style={{
               fontFamily: FONT_DISPLAY,
-              fontSize: narrow ? 20 : 22,
+              fontSize: compact ? 20 : 22,
               color: HPR.fg,
               fontWeight: 700,
               lineHeight: 1,
@@ -79,8 +91,8 @@ export function WantedItemsWidget({ refreshInterval, editMode = false, narrow = 
           >
             {missing}
           </span>
-          <span style={{ fontSize: narrow ? 10 : 11, color: HPR.fgMute }}>missing</span>
-          {!narrow && cutoff > 0 && (
+          <span style={{ fontSize: compact ? 10 : 11, color: HPR.fgMute }}>missing</span>
+          {cutoff > 0 && (
             <>
               <span
                 style={{
@@ -97,13 +109,12 @@ export function WantedItemsWidget({ refreshInterval, editMode = false, narrow = 
           )}
         </div>
       </div>
-      {!narrow && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
+      {!compact && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
     </div>
   );
 
-  if (editMode) return inner;
   return (
-    <Link href="/activity?tab=missing" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+    <Link href="/activity?tab=missing" style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}>
       {inner}
     </Link>
   );

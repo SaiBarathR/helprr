@@ -8,6 +8,7 @@ export interface ActiveLayout {
   id: string;
   name: string;
   widgets: unknown;
+  isBuiltIn: boolean;
 }
 
 interface CacheEntry {
@@ -76,7 +77,7 @@ async function fetchLayoutFromDb(device: DashboardDevice): Promise<ActiveLayout 
   if (pointerId) {
     const row = await prisma.dashboardLayout.findUnique({
       where: { id: pointerId },
-      select: { id: true, name: true, widgets: true },
+      select: { id: true, name: true, widgets: true, isBuiltIn: true },
     });
     if (row) return row as ActiveLayout;
   }
@@ -84,7 +85,7 @@ async function fetchLayoutFromDb(device: DashboardDevice): Promise<ActiveLayout 
   // Pointer is null or stale — fall back to the oldest layout if any exist.
   const fallback = await prisma.dashboardLayout.findFirst({
     orderBy: { createdAt: 'asc' },
-    select: { id: true, name: true, widgets: true },
+    select: { id: true, name: true, widgets: true, isBuiltIn: true },
   });
   return (fallback as ActiveLayout | null) ?? null;
 }

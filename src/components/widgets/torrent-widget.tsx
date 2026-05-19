@@ -7,7 +7,7 @@ import { useElementSize } from '@/lib/widgets/use-element-size';
 import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { QBittorrentSummaryResponse } from '@/types';
-import { Eyebrow, FONT_DISPLAY, FONT_MONO, Hairline, HPR, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
+import { Eyebrow, FONT_DISPLAY, FONT_MONO, Hairline, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
 
 const DOWNLOADING = new Set([
   'downloading', 'metadl', 'forcedmetadl', 'queueddl',
@@ -58,9 +58,14 @@ async function fetchTorrentData(): Promise<TorrentData> {
   };
 }
 
-export function TorrentWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
-  const { ref, width } = useElementSize<HTMLDivElement>();
-  const hideIcon = width > 0 && width < ICON_HIDE_THRESHOLD;
+export function TorrentWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+}: WidgetProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const compact = narrow;
+  const hideIcon = (width || height) > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchTorrentData,
     refreshInterval,
@@ -81,15 +86,15 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          marginBottom: 10,
+          marginBottom: hideIcon ? 5 : 10,
           minWidth: 0,
         }}
       >
         {!hideIcon && (
           <div
             style={{
-              width: narrow ? 28 : 32,
-              height: narrow ? 28 : 32,
+              width: compact ? 28 : 32,
+              height: compact ? 28 : 32,
               borderRadius: 7,
               background: mix(HPR.blue, 12),
               color: HPR.blue,
@@ -99,14 +104,14 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
               flexShrink: 0,
             }}
           >
-            <HardDrive size={narrow ? 12 : 14} />
+            <HardDrive size={compact ? 12 : 14} />
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
           <span
             style={{
               fontFamily: FONT_DISPLAY,
-              fontSize: narrow ? 20 : 24,
+              fontSize: compact ? 20 : 24,
               color: HPR.fg,
               fontWeight: 700,
               lineHeight: 1,
@@ -117,7 +122,7 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
           </span>
           <Eyebrow>torrent</Eyebrow>
         </div>
-        {!narrow && data && (
+        {data && (
           <div
             style={{
               marginLeft: 'auto',
@@ -128,17 +133,17 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
               color: HPR.fgMute,
             }}
           >
-            <span style={{ color: HPR.blue }}>↓ {data.downloading} DL</span>
-            <span>↑ {data.seeding} SEED</span>
+            <span style={{ color: HPR.blue }}>↓ {data.downloading} {!compact ? 'DL' : ''}</span>
+            <span>↑ {data.seeding} {!compact ? 'SEED' : ''}</span>
           </div>
         )}
       </div>
       <div
         style={{
           display: 'flex',
-          flexDirection: narrow ? 'column' : 'row',
-          gap: narrow ? 6 : 14,
-          marginBottom: narrow ? 8 : 10,
+          flexDirection: compact ? 'column' : 'row',
+          gap: compact ? 2 : 14,
+          marginBottom: compact ? 8 : 10,
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -157,13 +162,13 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
             >
               {dl}
             </span>
-            {narrow && (
+            {compact && (
               <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginLeft: 'auto' }}>
                 {dlT}
               </span>
             )}
           </div>
-          {!narrow && (
+          {!compact && (
             <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginTop: 1 }}>
               {dlT} total
             </div>
@@ -185,20 +190,20 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
             >
               {up}
             </span>
-            {narrow && (
+            {compact && (
               <span style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginLeft: 'auto' }}>
                 {upT}
               </span>
             )}
           </div>
-          {!narrow && (
+          {!compact && (
             <div style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle, marginTop: 1 }}>
               {upT} total
             </div>
           )}
         </div>
       </div>
-      {!narrow && data && (data.dlRateLimit > 0 || data.upRateLimit > 0) && (
+      {!compact && data && (data.dlRateLimit > 0 || data.upRateLimit > 0) && (
         <>
           <Hairline style={{ marginBottom: 7 }} />
           <div
@@ -221,7 +226,6 @@ export function TorrentWidget({ refreshInterval, editMode = false, narrow = fals
     </div>
   );
 
-  if (editMode) return inner;
   return (
     <Link href="/torrents" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
       {inner}

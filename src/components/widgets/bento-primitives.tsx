@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react';
-import { Check, Clock, LayoutGrid, List, Plus, Save } from 'lucide-react';
+import { ArrowLeftRight, ArrowUpDown, Check, Clock, LayoutGrid, List, Plus, Save, Settings } from 'lucide-react';
 
 export const HPR = {
   ink: 'var(--hpr-ink)',
@@ -49,7 +49,8 @@ export const LIST_ROW_HEIGHT = 50;
 // Approx height eaten by SectionHeader / Eyebrow + its bottom margin.
 export const SECTION_HEADER_HEIGHT = 32;
 // Below this measured pixel width, small status widgets drop their icon.
-export const ICON_HIDE_THRESHOLD = 140;
+export const ICON_HIDE_THRESHOLD = 160;
+export const ICON_HIDE_HEIGHT_THRESHOLD = 90;
 
 /** color-mix helper that stays theme-reactive. */
 export const mix = (c: string, p: number): string =>
@@ -555,6 +556,7 @@ export interface BentoTopBarProps {
   onSave?: () => void;
   onDiscard?: () => void;
   onSwitch?: () => void;
+  onConfigureRefresh?: () => void;
   saving?: boolean;
   dirty?: boolean;
   rightStatus?: React.ReactNode;
@@ -570,6 +572,7 @@ export function BentoTopBar({
   onSave,
   onDiscard,
   onSwitch,
+  onConfigureRefresh,
   saving = false,
   dirty = false,
   rightStatus,
@@ -632,6 +635,16 @@ export function BentoTopBar({
           {onSwitch && (
             <button type="button" onClick={onSwitch} style={btnSecondary}>
               Layouts
+            </button>
+          )}
+          {onConfigureRefresh && (
+            <button
+              type="button"
+              onClick={onConfigureRefresh}
+              aria-label="Configure refresh intervals"
+              style={btnIcon}
+            >
+              <Settings size={14} strokeWidth={2.2} />
             </button>
           )}
           {onAdd && (
@@ -839,6 +852,87 @@ export function ViewModeToggle({
 }
 
 function ViewModeButton({
+  active,
+  label,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 22,
+        height: '100%',
+        padding: 0,
+        border: 'none',
+        background: active ? mix(HPR.amber, 18) : 'transparent',
+        color: active ? HPR.amber : HPR.fgMute,
+        cursor: 'pointer',
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── VariantToggle (default ⇄ vertical) ───────────────────────────────
+// Used by indicator widgets (overview / prowlarr / wanted / torrents /
+// service-health / storage) to flip between the wide icon-left layout and a
+// compact stacked layout. The value maps directly to WidgetInstance.layoutOverride.
+export function VariantToggle({
+  value,
+  onChange,
+}: {
+  value: 'default' | 'vertical';
+  onChange: (next: 'default' | 'vertical') => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Layout mode"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'stretch',
+        borderRadius: 6,
+        border: `1px solid ${HPR.hairline2}`,
+        overflow: 'hidden',
+        height: 22,
+      }}
+    >
+      <VariantButton
+        active={value === 'default'}
+        label="Horizontal layout"
+        onClick={() => onChange('default')}
+      >
+        <ArrowLeftRight size={11} strokeWidth={2} />
+      </VariantButton>
+      <div style={{ width: 1, background: HPR.hairline2 }} />
+      <VariantButton
+        active={value === 'vertical'}
+        label="Vertical layout"
+        onClick={() => onChange('vertical')}
+      >
+        <ArrowUpDown size={11} strokeWidth={2} />
+      </VariantButton>
+    </div>
+  );
+}
+
+function VariantButton({
   active,
   label,
   onClick,

@@ -125,6 +125,7 @@ export function AnimeCarouselWidget({
   narrow,
   layoutVariant,
   instanceId,
+  mobileGrid = false,
 }: AnimeCarouselWidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
@@ -141,7 +142,7 @@ export function AnimeCarouselWidget({
   const toggleNode = !narrow && instanceId ? (
     <ViewModeToggle
       value={useList ? 'list' : 'carousel'}
-      onChange={(next) => setWidgetLayoutOverride(instanceId, next)}
+      onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
   const requiresViewer = carouselId === 'continueWatching' || carouselId === 'planToWatch';

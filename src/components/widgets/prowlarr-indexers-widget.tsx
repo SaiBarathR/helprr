@@ -6,7 +6,7 @@ import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { getProwlarrIndexerStatusId, isProwlarrIndexerBlocked, type ProwlarrIndexerStatus } from '@/lib/prowlarr-client';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { Dot, Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
+import { Dot, Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
 
 interface ProwlarrSummary {
   total: number;
@@ -37,9 +37,14 @@ async function fetchProwlarr(): Promise<ProwlarrSummary | null> {
   return { total: indexers.length, enabled, disabled, blocked };
 }
 
-export function ProwlarrIndexersWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
-  const { ref, width } = useElementSize<HTMLDivElement>();
-  const hideIcon = width > 0 && width < ICON_HIDE_THRESHOLD;
+export function ProwlarrIndexersWidget({
+  refreshInterval,
+  editMode = false,
+  narrow = false,
+}: WidgetProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const compact = narrow;
+  const hideIcon = (width || height) > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchProwlarr,
     refreshInterval,
@@ -55,13 +60,20 @@ export function ProwlarrIndexersWidget({ refreshInterval, editMode = false, narr
   const inner = (
     <div
       ref={ref}
-      style={{ display: 'flex', alignItems: 'center', gap: narrow ? 10 : 12, minWidth: 0 }}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: compact ? 8 : 12,
+        minWidth: 0,
+        height: '100%',
+      }}
     >
       {!hideIcon && (
         <div
           style={{
-            width: narrow ? 34 : 40,
-            height: narrow ? 34 : 40,
+            width: compact ? 32 : 40,
+            height: compact ? 32 : 40,
             borderRadius: 8,
             background: mix(HPR.violet, 12),
             color: HPR.violet,
@@ -71,10 +83,10 @@ export function ProwlarrIndexersWidget({ refreshInterval, editMode = false, narr
             flexShrink: 0,
           }}
         >
-          <Layers size={narrow ? 14 : 18} />
+          <Layers size={compact ? 14 : 18} />
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
         <Eyebrow
           style={{
             whiteSpace: 'nowrap',
@@ -82,7 +94,7 @@ export function ProwlarrIndexersWidget({ refreshInterval, editMode = false, narr
             textOverflow: 'ellipsis',
           }}
         >
-          {narrow ? 'Indexers' : 'Prowlarr Indexers'}
+          {compact ? 'Indexers' : 'Prowlarr Indexers'}
         </Eyebrow>
         <div
           style={{
@@ -96,7 +108,7 @@ export function ProwlarrIndexersWidget({ refreshInterval, editMode = false, narr
           <div
             style={{
               fontFamily: FONT_DISPLAY,
-              fontSize: narrow ? 20 : 22,
+              fontSize: compact ? 20 : 22,
               color: HPR.fg,
               fontWeight: 700,
               lineHeight: 1,
@@ -129,13 +141,12 @@ export function ProwlarrIndexersWidget({ refreshInterval, editMode = false, narr
           </div>
         </div>
       </div>
-      {!narrow && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
+      {!compact && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
     </div>
   );
 
-  if (editMode) return inner;
   return (
-    <Link href="/prowlarr" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+    <Link href="/prowlarr" style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}>
       {inner}
     </Link>
   );

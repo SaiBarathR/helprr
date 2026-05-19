@@ -9,6 +9,7 @@ const VALID_LAYOUT_VARIANTS: ReadonlySet<WidgetLayoutVariant> = new Set([
   'posters',
   'cards',
   'detailed',
+  'vertical',
   'default',
 ]);
 
@@ -106,6 +107,7 @@ export function sanitizeSpansOnly(
         mobileX: item.mobileX,
         mobileY: item.mobileY,
         layoutOverride: sanitizeLayoutOverride(item.layoutOverride),
+        mobileLayoutOverride: sanitizeLayoutOverride(item.mobileLayoutOverride),
         refreshIntervalSecs: sanitizeRefreshInterval(item.refreshIntervalSecs),
       };
     });

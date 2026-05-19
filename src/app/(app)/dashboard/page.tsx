@@ -25,6 +25,7 @@ export default async function DashboardPage() {
     id: layout.id,
     name: layout.name,
     widgets: Array.isArray(layout.widgets) ? (layout.widgets as WidgetInstance[]) : [],
+    isBuiltIn: Boolean(layout.isBuiltIn),
   };
 
   return <DashboardClient initialLayout={initialLayout} initialDevice={device} />;

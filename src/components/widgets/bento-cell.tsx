@@ -45,7 +45,7 @@ export function BentoCell({
   chrome,
   children,
 }: BentoCellProps) {
-  const effectivePad = pad ?? (narrow || mobile ? 11 : 14);
+  const effectivePad = pad ?? (narrow || mobile ? 11 : 8);
   const cardBg = raised
     ? HPR.surfaceHi
     : hue
