@@ -6,6 +6,7 @@ import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { toCachedImageSrc } from '@/lib/image';
+import { FinaleBadge, ReleaseTypeBadge } from '@/components/calendar/release-badges';
 import type { CalendarEvent, MediaImage } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 import {
@@ -38,6 +39,16 @@ async function fetchToday(): Promise<CalendarEvent[]> {
   const res = await fetch('/api/calendar?days=1&fullDay=true');
   if (!res.ok) return [];
   return res.json();
+}
+
+function shortTagFor(ev: CalendarEvent): { label: string; color: string } | null {
+  if (ev.finaleType) {
+    return { label: 'FIN', color: '#f87171' };
+  }
+  if (ev.releaseType === 'cinema') return { label: 'CIN', color: '#fb7185' };
+  if (ev.releaseType === 'physical') return { label: 'PHY', color: '#fbbf24' };
+  if (ev.releaseType === 'digital') return { label: 'DIG', color: '#22d3ee' };
+  return null;
 }
 
 export function TodayCalendarWidget({
@@ -162,6 +173,12 @@ export function TodayCalendarWidget({
                   >
                     {ev.title}
                   </div>
+                  {(ev.releaseType || ev.finaleType) && (
+                    <div className="flex items-center gap-1" style={{ marginTop: 3 }}>
+                      {ev.releaseType && <ReleaseTypeBadge type={ev.releaseType} />}
+                      {ev.finaleType && <FinaleBadge type={ev.finaleType} />}
+                    </div>
+                  )}
                   <div
                     style={{
                       fontSize: 12,
@@ -240,25 +257,49 @@ export function TodayCalendarWidget({
           const time = formatTime(ev.date);
           const poster = getPoster(ev.images, ev.type === 'movie' ? 'radarr' : 'sonarr');
           const isMovie = ev.type === 'movie';
+          const tag = shortTagFor(ev);
           const card = (
             <>
-              <Poster
-                width={CAROUSEL_CARD_WIDTH}
-                height={CAROUSEL_CARD_HEIGHT}
-                label={ev.title}
-                tone={toneFromString(ev.title)}
-                imageUrl={poster ?? undefined}
-                timePill={time || undefined}
-                badge={{
-                  icon:
-                    isMovie ? (
-                      <Film size={11} strokeWidth={2.4} />
-                    ) : (
-                      <Tv size={11} strokeWidth={2.4} />
-                    ),
-                  color: isMovie ? HPR.blue : HPR.purple,
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <Poster
+                  width={CAROUSEL_CARD_WIDTH}
+                  height={CAROUSEL_CARD_HEIGHT}
+                  label={ev.title}
+                  tone={toneFromString(ev.title)}
+                  imageUrl={poster ?? undefined}
+                  timePill={time || undefined}
+                  badge={{
+                    icon:
+                      isMovie ? (
+                        <Film size={11} strokeWidth={2.4} />
+                      ) : (
+                        <Tv size={11} strokeWidth={2.4} />
+                      ),
+                    color: isMovie ? HPR.blue : HPR.purple,
+                  }}
+                />
+                {tag && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: 5,
+                      left: 27,
+                      padding: '0 5px',
+                      height: 18,
+                      borderRadius: 4,
+                      background: 'rgba(0,0,0,0.55)',
+                      color: tag.color,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: '0.05em',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    {tag.label}
+                  </span>
+                )}
+              </div>
               <div style={{ marginTop: 6 }}>
                 <div
                   style={{

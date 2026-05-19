@@ -99,6 +99,7 @@ export interface SonarrEpisode {
   monitored: boolean;
   absoluteEpisodeNumber: number;
   unverifiedSceneNumbering: boolean;
+  finaleType?: EpisodeFinaleType;
   series?: SonarrSeries;
 }
 
@@ -515,6 +516,9 @@ export interface QBittorrentSummaryResponse {
 }
 
 // Calendar Event (unified)
+export type MovieReleaseType = 'cinema' | 'physical' | 'digital';
+export type EpisodeFinaleType = 'series' | 'season' | 'midseason';
+
 export interface CalendarEvent {
   id: string;
   type: 'episode' | 'movie';
@@ -526,6 +530,8 @@ export interface CalendarEvent {
   seriesId?: number;
   movieId?: number;
   images: MediaImage[];
+  releaseType?: MovieReleaseType;
+  finaleType?: EpisodeFinaleType;
 }
 
 // App Types
