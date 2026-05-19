@@ -7,7 +7,7 @@ export interface BentoCellProps {
   /** Effective column span on the current grid. */
   colSpan: number;
   rowSpan?: number;
-  /** Inner padding override. Defaults to 14 (or 11 when narrow=true). */
+  /** Inner padding override. Defaults to 8 (or 11 when narrow=true or mobile=true). */
   pad?: number;
   /** Tint hue (mixed with surface). */
   hue?: string | null;

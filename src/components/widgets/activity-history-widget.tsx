@@ -463,7 +463,7 @@ export function ActivityHistoryWidget({
                   timePill={`${formatDistanceToNowShort(r.date)} ago`}
                   badge={{ icon: getEventIcon(r.eventType), color }}
                 />
-                <div className=' mt-0 md:mt-1.5'>
+                <div className='mt-0 md:mt-1.5'>
                   <div
                     style={{
                       fontSize: 11,

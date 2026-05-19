@@ -57,6 +57,14 @@ export function RefreshIntervalDrawer({
   // already remounts this whole subtree on actual layout switches.
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
+  // Stale drafts (partial / out-of-range numbers the user typed but didn't
+  // commit via Save) must not survive a close→reopen cycle, otherwise the
+  // input shows a "rejected" value next time the drawer opens.
+  function handleOpenChange(next: boolean) {
+    if (!next) setDrafts({});
+    onOpenChange(next);
+  }
+
   function getDraft(instanceId: string, current: number | undefined): string {
     const draft = drafts[instanceId];
     if (draft !== undefined) return draft;
@@ -71,7 +79,9 @@ export function RefreshIntervalDrawer({
     }
     const parsed = Number(raw);
     if (!Number.isFinite(parsed)) return;
-    setWidgetRefreshInterval(instanceId, Math.floor(parsed));
+    const floored = Math.floor(parsed);
+    if (floored < WIDGET_REFRESH_MIN_SECS || floored > WIDGET_REFRESH_MAX_SECS) return;
+    setWidgetRefreshInterval(instanceId, floored);
   }
 
   function resetInstance(instanceId: string) {
@@ -79,13 +89,16 @@ export function RefreshIntervalDrawer({
     setWidgetRefreshInterval(instanceId, undefined);
   }
 
-  function isValid(value: number | undefined): boolean {
-    if (value === undefined) return true;
-    return value >= WIDGET_REFRESH_MIN_SECS && value <= WIDGET_REFRESH_MAX_SECS;
+  function isDraftValid(draft: string): boolean {
+    if (draft.trim() === '') return true;
+    const parsed = Number(draft);
+    if (!Number.isFinite(parsed)) return false;
+    const floored = Math.floor(parsed);
+    return floored >= WIDGET_REFRESH_MIN_SECS && floored <= WIDGET_REFRESH_MAX_SECS;
   }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
+    <Drawer open={open} onOpenChange={handleOpenChange}>
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>Refresh intervals · {layoutName}</DrawerTitle>
@@ -106,7 +119,7 @@ export function RefreshIntervalDrawer({
                 const def = getWidgetDefinition(inst.widgetId, discoverLayout);
                 const current = inst.refreshIntervalSecs;
                 const draft = getDraft(inst.id, current);
-                const valid = isValid(current);
+                const valid = isDraftValid(draft);
                 const defaultSecs = def?.defaultRefreshIntervalSecs ?? 30;
                 const showHeavyWarning =
                   valid

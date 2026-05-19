@@ -65,7 +65,7 @@ export function TorrentWidget({
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const compact = narrow;
-  const hideIcon = (width || height) > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
+  const hideIcon = width > 0 && height > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchTorrentData,
     refreshInterval,
@@ -225,6 +225,8 @@ export function TorrentWidget({
       )}
     </div>
   );
+
+  if (editMode) return inner;
 
   return (
     <Link href="/torrents" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>

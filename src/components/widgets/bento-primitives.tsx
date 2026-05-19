@@ -129,21 +129,23 @@ export function SectionHeader({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <h3
-          style={{
-            fontFamily: FONT_DISPLAY,
-            fontWeight: 600,
-            fontSize,
-            color: HPR.fg,
-            margin: 0,
-            letterSpacing: '-0.015em',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-          }}
-        >
-          {title}
-        </h3>
+        {title ? (
+          <h3
+            style={{
+              fontFamily: FONT_DISPLAY,
+              fontWeight: 600,
+              fontSize,
+              color: HPR.fg,
+              margin: 0,
+              letterSpacing: '-0.015em',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+          >
+            {title}
+          </h3>
+        ) : null}
         {badge}
       </div>
       {right && (

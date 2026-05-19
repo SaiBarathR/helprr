@@ -4,7 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import type { ColSpan, RowSpan, WidgetInstance, WidgetLayoutVariant } from '@/lib/widgets/types';
-import { DEFAULT_LAYOUT, getWidgetDefinition } from '@/lib/widgets/registry';
+import { getWidgetDefinition } from '@/lib/widgets/registry';
 import {
   DASHBOARD_DESKTOP_COLS,
   DASHBOARD_MOBILE_COLS,
@@ -28,7 +28,6 @@ interface DashboardLayoutContextValue {
     options?: { mobile?: boolean },
   ) => void;
   setWidgetRefreshInterval: (instanceId: string, secs: number | undefined) => void;
-  resetWidgets: () => void;
   isDirty: boolean;
   initialWidgets: WidgetInstance[];
 }
@@ -252,10 +251,6 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
     [],
   );
 
-  const resetWidgets = useCallback(() => {
-    setWidgetsState(DEFAULT_LAYOUT.map((w) => ({ ...w })));
-  }, []);
-
   const isDirty = useMemo(
     () => widgetsDiffer(widgets, initialWidgets),
     [widgets, initialWidgets],
@@ -270,10 +265,9 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
     updateMobileWidgetPositions,
     setWidgetLayoutOverride,
     setWidgetRefreshInterval,
-    resetWidgets,
     isDirty,
     initialWidgets,
-  }), [widgets, setWidgets, addWidget, removeWidget, updateWidgetPositions, updateMobileWidgetPositions, setWidgetLayoutOverride, setWidgetRefreshInterval, resetWidgets, isDirty, initialWidgets]);
+  }), [widgets, setWidgets, addWidget, removeWidget, updateWidgetPositions, updateMobileWidgetPositions, setWidgetLayoutOverride, setWidgetRefreshInterval, isDirty, initialWidgets]);
 
   return (
     <DashboardLayoutContext.Provider value={value}>

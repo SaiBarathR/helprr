@@ -29,7 +29,7 @@ export function WantedItemsWidget({
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const compact = narrow;
-  const hideIcon = (width || height) > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
+  const hideIcon = width > 0 && height > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchWanted,
     refreshInterval,
@@ -112,6 +112,8 @@ export function WantedItemsWidget({
       {!compact && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
     </div>
   );
+
+  if (editMode) return inner;
 
   return (
     <Link href="/activity?tab=missing" style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}>

@@ -139,22 +139,22 @@ export function seedInitialLayouts(): Promise<void> {
     // atomic unit. Without this, two replicas could both pass the check and
     // try to create — saved by `name @unique` today, but checking inside the
     // tx keeps the contract explicit.
-    const created = await prisma.$transaction(async (tx) => {
+    const changed = await prisma.$transaction(async (tx) => {
       const existing = await tx.dashboardLayout.count();
       if (existing > 0) {
         // Backfill `isBuiltIn`/`slug` for installs that pre-date these
         // columns so the read-only lock + Built-in badge apply correctly.
         // Match the two seeded layouts by their original names; the
         // `slug: null` predicate makes the update idempotent on warm starts.
-        await tx.dashboardLayout.updateMany({
+        const desktopUpdate = await tx.dashboardLayout.updateMany({
           where: { name: 'Desktop', slug: null },
           data: { isBuiltIn: true, slug: 'desktop' },
         });
-        await tx.dashboardLayout.updateMany({
+        const mobileUpdate = await tx.dashboardLayout.updateMany({
           where: { name: 'Mobile', slug: null },
           data: { isBuiltIn: true, slug: 'mobile' },
         });
-        return false;
+        return desktopUpdate.count > 0 || mobileUpdate.count > 0;
       }
 
       const desktopRow = await tx.dashboardLayout.create({
@@ -178,8 +178,9 @@ export function seedInitialLayouts(): Promise<void> {
       return true;
     });
 
-    await invalidateLayoutCache();
-    void created;
+    if (changed) {
+      await invalidateLayoutCache();
+    }
   })().catch((error) => {
     seedPromise = null;
     throw error;
