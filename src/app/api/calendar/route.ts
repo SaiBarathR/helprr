@@ -6,6 +6,7 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import type {
   CalendarEvent,
+  MovieReleaseType,
   SonarrCalendarEntry,
   RadarrCalendarEntry,
 } from '@/types';
@@ -113,6 +114,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       })(),
     ]);
 
+    const startMs = new Date(start!).getTime();
+    const endMs = new Date(end!).getTime();
+
     // Transform Sonarr episodes
     if (sonarrResult.status === 'fulfilled') {
       for (const ep of sonarrResult.value) {
@@ -126,24 +130,37 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           monitored: ep.monitored,
           seriesId: ep.seriesId,
           images: ep.series.images,
+          ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
         });
       }
     }
 
-    // Transform Radarr movies
+    // Transform Radarr movies — fan out one event per release type in window
     if (radarrResult.status === 'fulfilled') {
       for (const m of radarrResult.value) {
-        events.push({
-          id: `radarr-${m.id}`,
-          type: 'movie',
-          title: m.title,
-          subtitle: `${m.year} - ${m.studio}`,
-          date: m.digitalRelease || m.physicalRelease || m.inCinemas || '',
-          hasFile: m.hasFile,
-          monitored: m.monitored,
-          movieId: m.id,
-          images: m.images,
-        });
+        const releases: Array<[MovieReleaseType, string | undefined]> = [
+          ['cinema', m.inCinemas],
+          ['physical', m.physicalRelease],
+          ['digital', m.digitalRelease],
+        ];
+        for (const [releaseType, dateStr] of releases) {
+          if (!dateStr) continue;
+          const ms = new Date(dateStr).getTime();
+          if (!Number.isFinite(ms)) continue;
+          if (ms < startMs || ms > endMs) continue;
+          events.push({
+            id: `radarr-${m.id}-${releaseType}`,
+            type: 'movie',
+            title: m.title,
+            subtitle: `${m.year} - ${m.studio}`,
+            date: dateStr,
+            hasFile: m.hasFile,
+            monitored: m.monitored,
+            movieId: m.id,
+            images: m.images,
+            releaseType,
+          });
+        }
       }
     }
 

@@ -624,7 +624,17 @@ export class PollingService {
           }
         }
 
-        const body = `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
+        const finaleLabel =
+          ep.finaleType === 'series'
+            ? 'Series Finale'
+            : ep.finaleType === 'season'
+              ? 'Season Finale'
+              : ep.finaleType === 'midseason'
+                ? 'Midseason Finale'
+                : null;
+        const baseBody = `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
+        const body = finaleLabel ? `${baseBody} (${finaleLabel})` : baseBody;
+        const notificationTitle = ep.finaleType === 'series' ? 'Series Finale Airing Soon' : 'Upcoming Episode';
         const already = await prisma.notificationHistory.findFirst({
           where: {
             eventType: 'upcomingPremiere',
@@ -635,13 +645,14 @@ export class PollingService {
         if (!already) {
           await this.notifyAndLog({
             eventType: 'upcomingPremiere',
-            title: 'Upcoming Episode',
+            title: notificationTitle,
             body,
             metadata: {
               source: 'sonarr',
               seriesId: ep.seriesId,
               seasonNumber: ep.seasonNumber,
               episodeId: ep.id,
+              ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
               redirect: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`,
             },
             url: `/series/${ep.seriesId}`,
@@ -675,54 +686,70 @@ export class PollingService {
         end,
         mode,
       }, { scope: 'polling' });
+      const releaseTypeLabels = {
+        cinema: 'In Cinemas',
+        physical: 'Physical Release',
+        digital: 'Digital Release',
+      } as const;
       for (const movie of calendar) {
-        if (mode === 'before_air') {
-          const releaseDate = movie.digitalRelease || movie.physicalRelease || movie.inCinemas;
-          if (releaseDate) {
-            const airTime = new Date(releaseDate);
+        const releases: Array<['cinema' | 'physical' | 'digital', string | undefined]> = [
+          ['cinema', movie.inCinemas],
+          ['physical', movie.physicalRelease],
+          ['digital', movie.digitalRelease],
+        ];
+        for (const [releaseType, dateStr] of releases) {
+          if (!dateStr) continue;
+          const airTime = new Date(dateStr);
+          if (!Number.isFinite(airTime.getTime())) continue;
+
+          if (mode === 'before_air') {
             const minsUntilAir = (airTime.getTime() - now.getTime()) / 60000;
             if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) {
               logger.debug('Skipping Radarr upcoming item outside before-air window', {
                 movieId: movie.id,
+                releaseType,
                 minsUntilAir,
                 notifyBeforeMins: settings.upcomingNotifyBeforeMins,
               }, { scope: 'polling' });
               continue;
             }
           }
-        }
 
-        const body = `${movie.title} (${movie.year})`;
-        const already = await prisma.notificationHistory.findFirst({
-          where: {
-            eventType: 'upcomingPremiere',
-            body,
-            createdAt: { gte: dedupeSince },
-          },
-        });
-        if (!already) {
-          await this.notifyAndLog({
-            eventType: 'upcomingPremiere',
-            title: 'Upcoming Movie',
-            body,
-            metadata: {
-              source: 'radarr',
-              movieId: movie.id,
-              redirect: `/movies/${movie.id}`,
+          const body = `${movie.title} (${movie.year}) — ${releaseTypeLabels[releaseType]}`;
+          const already = await prisma.notificationHistory.findFirst({
+            where: {
+              eventType: 'upcomingPremiere',
+              body,
+              createdAt: { gte: dedupeSince },
             },
-            url: `/movies/${movie.id}`,
-          }, {
-            service: 'radarr',
-            reason: 'upcoming-premiere',
-            movieId: movie.id,
-            dedupeSince,
           });
-        } else {
-          logger.debug('Skipping duplicate Radarr upcoming notification', {
-            movieId: movie.id,
-            dedupeSince,
-            historyId: already.id,
-          }, { scope: 'polling' });
+          if (!already) {
+            await this.notifyAndLog({
+              eventType: 'upcomingPremiere',
+              title: 'Upcoming Movie',
+              body,
+              metadata: {
+                source: 'radarr',
+                movieId: movie.id,
+                releaseType,
+                redirect: `/movies/${movie.id}`,
+              },
+              url: `/movies/${movie.id}`,
+            }, {
+              service: 'radarr',
+              reason: 'upcoming-premiere',
+              movieId: movie.id,
+              releaseType,
+              dedupeSince,
+            });
+          } else {
+            logger.debug('Skipping duplicate Radarr upcoming notification', {
+              movieId: movie.id,
+              releaseType,
+              dedupeSince,
+              historyId: already.id,
+            }, { scope: 'polling' });
+          }
         }
       }
     } catch (error) {

@@ -27,6 +27,11 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import {
+  FinaleBadge,
+  ReleaseTypeBadge,
+  getMonthBorderClass,
+} from '@/components/calendar/release-badges';
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
 import type { CalendarEvent } from '@/types';
@@ -206,9 +211,13 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
                       {format(eventDate, 'h:mm a')}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate pl-[18px]">
-                    {event.subtitle}
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-0.5 pl-[18px]">
+                    {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
+                    {event.finaleType && <FinaleBadge type={event.finaleType} />}
+                    <p className="text-xs text-muted-foreground truncate min-w-0">
+                      {event.subtitle}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Monitored indicator */}
@@ -299,13 +308,15 @@ function MonthView({
                     event.type === 'episode'
                       ? `/series/${event.seriesId}`
                       : `/movies/${event.movieId}`;
+                  const accentKey = event.releaseType ?? event.finaleType;
+                  const accent = getMonthBorderClass(accentKey);
                   return (
                     <Link key={event.id} href={href} className="block">
                       <div
                         className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] leading-tight font-medium truncate transition-opacity hover:opacity-80 ${event.type === 'episode'
                           ? 'bg-blue-500/15 text-blue-400'
                           : 'bg-orange-500/15 text-orange-400'
-                          } ${!event.monitored ? 'opacity-50' : ''} ${event.hasFile ? 'line-through decoration-1' : ''
+                          } ${accent} ${!event.monitored ? 'opacity-50' : ''} ${event.hasFile ? 'line-through decoration-1' : ''
                           }`}
                       >
                         {event.type === 'episode' ? (
@@ -410,14 +421,18 @@ function WeekView({
                           <Film className="h-3 w-3 text-orange-400 shrink-0" />
                         )}
                         <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm font-medium truncate ${event.hasFile
-                              ? 'line-through text-muted-foreground'
-                              : ''
-                              }`}
-                          >
-                            {event.title}
-                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <p
+                              className={`text-sm font-medium truncate ${event.hasFile
+                                ? 'line-through text-muted-foreground'
+                                : ''
+                                }`}
+                            >
+                              {event.title}
+                            </p>
+                            {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
+                            {event.finaleType && <FinaleBadge type={event.finaleType} />}
+                          </div>
                           <p className="text-xs text-muted-foreground truncate">
                             {event.subtitle}
                           </p>
