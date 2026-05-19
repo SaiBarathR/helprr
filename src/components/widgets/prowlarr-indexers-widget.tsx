@@ -44,7 +44,7 @@ export function ProwlarrIndexersWidget({
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const compact = narrow;
-  const hideIcon = (width || height) > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
+  const hideIcon = width > 0 && height > 0 && (width < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchProwlarr,
     refreshInterval,
@@ -144,6 +144,8 @@ export function ProwlarrIndexersWidget({
       {!compact && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
     </div>
   );
+
+  if (editMode) return inner;
 
   return (
     <Link href="/prowlarr" style={{ textDecoration: 'none', color: 'inherit', display: 'block', height: '100%' }}>

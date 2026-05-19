@@ -45,7 +45,7 @@ async function fetchServerData(): Promise<ServerData> {
 
 export function JellyfinServerWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { ref, width } = useElementSize<HTMLDivElement>();
-  const compactView = useMemo(() => width < 300, [width]);
+  const compactView = useMemo(() => width > 0 && width < 300, [width]);
   const { data, loading } = useWidgetData<ServerData>({
     fetchFn: fetchServerData,
     refreshInterval,
