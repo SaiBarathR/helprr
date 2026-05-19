@@ -36,7 +36,8 @@ export function StatsGridWidget({
   // tile gets ~1/4 of the widget width instead of ~1/2.
   const tileDivisor = isVertical ? 4 : 2;
   const isSingleRow = tileDivisor === 4;
-  const tileWidth = width > 0 ? (width - 8 * (tileDivisor - 1)) / tileDivisor : 0;
+  const gap = isSingleRow ? 3 : 8;
+  const tileWidth = width > 0 ? (width - gap * (tileDivisor - 1)) / tileDivisor : 0;
   const hideIcon = tileWidth > 0 && height > 0 && (tileWidth < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
     fetchFn: fetchStats,
