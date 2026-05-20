@@ -28,6 +28,7 @@
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
+  --color-foreground-subtle: var(--foreground-subtle);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
@@ -60,6 +61,7 @@
   --secondary-foreground: var(--hpr-fg);
   --muted: var(--hpr-surfaceHi);
   --muted-foreground: var(--hpr-fgMute);
+  --foreground-subtle: var(--hpr-fgSubtle);
   --accent: var(--hpr-surfaceHi);
   --accent-foreground: var(--hpr-fg);
   --destructive: oklch(0.577 0.245 27.325);
@@ -296,23 +298,23 @@ html {
 
 /* Status colors */
 .status-downloaded {
-  color: oklch(0.72 0.17 152);
+  color: var(--hpr-green);
 }
 
 .status-missing {
-  color: oklch(0.70 0.19 22);
+  color: var(--hpr-rose);
 }
 
 .status-downloading {
-  color: oklch(0.62 0.21 265);
+  color: var(--hpr-blue);
 }
 
 .status-warning {
-  color: oklch(0.75 0.18 65);
+  color: var(--hpr-amber);
 }
 
 .status-upcoming {
-  color: oklch(0.65 0.22 310);
+  color: var(--hpr-purple);
 }
 
 /* Native-style key-value rows (borderless) */

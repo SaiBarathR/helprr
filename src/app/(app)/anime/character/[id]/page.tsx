@@ -310,7 +310,7 @@ export default function CharacterDetailPage() {
                         </Badge>
                       )}
                       <Badge
-                        className={`absolute top-1 left-1 text-[9px] ${edge.characterRole === 'MAIN' ? 'bg-blue-500/80 text-white' : 'bg-background/60 text-foreground'}`}
+                        className={`absolute top-1 left-1 text-[9px] ${edge.characterRole === 'MAIN' ? 'bg-blue-500/80 text-foreground' : 'bg-background/60 text-foreground'}`}
                       >
                         {edge.characterRole}
                       </Badge>

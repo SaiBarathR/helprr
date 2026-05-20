@@ -491,7 +491,7 @@ export default function EpisodeDetailPage() {
       {/* Status badge + rating */}
       <div className="flex items-center gap-2">
         {episode.hasFile ? (
-          <Badge className="bg-green-600 hover:bg-green-600 text-white">DOWNLOADED</Badge>
+          <Badge className="bg-green-600 hover:bg-green-600 text-foreground">DOWNLOADED</Badge>
         ) : episode.monitored ? (
           <Badge variant="destructive">MISSING</Badge>
         ) : (
