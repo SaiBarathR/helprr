@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ import { AnilistConnectionCard } from '@/components/settings/anilist-connection-
 import { ExportSettingsDialog } from '@/components/settings/export-settings-dialog';
 import { ImportSettingsDialog } from '@/components/settings/import-settings-dialog';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
+import { CLIENT_LOG_SETTINGS_EVENT, type ClientLogCaptureSettingsEvent } from '@/components/client-log-capture';
 
 interface ServiceForm {
   url: string;
@@ -224,11 +225,11 @@ const REFRESH_OPTIONS = [
   { value: '600', label: '10 minutes' },
 ];
 
-const LOG_LEVEL_OPTIONS = [
-  { value: 'debug', label: 'Debug' },
-  { value: 'info', label: 'Info' },
-  { value: 'warn', label: 'Warn' },
-  { value: 'error', label: 'Error' },
+const LOG_LEVEL_OPTIONS: { value: string; label: string; hint: string }[] = [
+  { value: 'debug', label: 'Debug', hint: 'capture everything' },
+  { value: 'info', label: 'Info', hint: 'info, warnings, errors' },
+  { value: 'warn', label: 'Warn', hint: 'warnings & errors only' },
+  { value: 'error', label: 'Error', hint: 'errors only' },
 ];
 
 const ALERT_WINDOW_OPTIONS = [
@@ -304,6 +305,9 @@ export default function SettingsPage() {
   const [savingExternalUrls, setSavingExternalUrls] = useState(false);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [purgeLogsConfirmOpen, setPurgeLogsConfirmOpen] = useState(false);
+  const [purgingLogs, setPurgingLogs] = useState(false);
+  const lastSavedLogEnabledRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -389,7 +393,9 @@ export default function SettingsPage() {
             setTimeZone(settings.timeZone);
           }
           setCacheImagesEnabled(settings.cacheImagesEnabled !== false);
-          setLogEnabled(settings.logEnabled !== false);
+          const persistedLogEnabled = settings.logEnabled !== false;
+          setLogEnabled(persistedLogEnabled);
+          lastSavedLogEnabledRef.current = persistedLogEnabled;
           if (settings.logLevel) setLogLevel(settings.logLevel);
           if (settings.logMaxFileMb != null) setLogMaxFileMb(String(settings.logMaxFileMb));
           if (settings.logRetentionDays != null) setLogRetentionDays(String(settings.logRetentionDays));
@@ -474,6 +480,25 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadCleanupHistorySummary();
   }, [loadCleanupHistorySummary]);
+
+  async function purgeAllLogs() {
+    setPurgingLogs(true);
+    try {
+      const res = await fetch('/api/logs/files?all=true', { method: 'DELETE' });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(payload?.error || 'Failed to delete log files');
+        return;
+      }
+      const deleted = typeof payload?.deleted === 'number' ? payload.deleted : 0;
+      toast.success(deleted === 0 ? 'No log files to delete' : `Deleted ${deleted} log file${deleted === 1 ? '' : 's'}`);
+    } catch {
+      toast.error('Failed to delete log files');
+    } finally {
+      setPurgingLogs(false);
+      setPurgeLogsConfirmOpen(false);
+    }
+  }
 
   async function deleteCleanupHistory(query: string) {
     setDeletingCleanupHistory(true);
@@ -663,6 +688,16 @@ export default function SettingsPage() {
           setCacheImagesEnabled(payload.cacheImagesEnabled);
         }
         void loadCacheUsage();
+        const detail: ClientLogCaptureSettingsEvent = {
+          logEnabled,
+          logClientConsoleEnabled,
+        };
+        window.dispatchEvent(new CustomEvent(CLIENT_LOG_SETTINGS_EVENT, { detail }));
+        const previouslyEnabled = lastSavedLogEnabledRef.current;
+        lastSavedLogEnabledRef.current = logEnabled;
+        if (previouslyEnabled === true && logEnabled === false) {
+          setPurgeLogsConfirmOpen(true);
+        }
       } else {
         toast.error(payload?.error || 'Failed to save settings');
       }
@@ -1258,6 +1293,18 @@ export default function SettingsPage() {
         onConfirm={() => deleteCleanupHistory('all=true')}
       />
 
+      <ConfirmDialog
+        open={purgeLogsConfirmOpen}
+        onOpenChange={setPurgeLogsConfirmOpen}
+        title="Delete existing log files?"
+        description="Logging is now disabled. Existing log files on disk will still appear in /logs until you delete them. Remove all log files now?"
+        confirmLabel="Yes, delete log files"
+        cancelLabel="Keep files"
+        destructive
+        busy={purgingLogs}
+        onConfirm={purgeAllLogs}
+      />
+
       {/* ── App Install ── */}
       <InstallAppSection />
 
@@ -1295,11 +1342,19 @@ export default function SettingsPage() {
               </SelectTrigger>
               <SelectContent>
                 {LOG_LEVEL_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}>
+                    <span className="flex flex-col items-start">
+                      <span>{o.label}</span>
+                      <span className="text-xs text-muted-foreground">{o.hint}</span>
+                    </span>
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+          <p className="px-4 pb-3 -mt-1 text-xs text-muted-foreground">
+            Minimum severity recorded. Debug captures every log.
+          </p>
 
           <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
             <Label className="text-xs text-muted-foreground">Rotate At (MB)</Label>

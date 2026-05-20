@@ -73,16 +73,36 @@ const originalConsole = {
   error: console.error.bind(console),
 };
 
-let config: LoggerConfig = {
-  timeZone: getEnvTimeZone(),
-  level: DEFAULT_LOG_LEVEL as LogLevel,
-  maxFileMb: DEFAULT_LOG_MAX_FILE_MB,
-  retentionDays: DEFAULT_LOG_RETENTION_DAYS,
-  enabled: true,
+// Next.js with webpack splits instrumentation, polling, and per-route API handlers
+// into separate bundles. Each bundle would otherwise get its own copy of this
+// module's mutable state, so configureLogger() called from one bundle would not
+// affect logger.X() callers in another. We stash the live config on globalThis so
+// every bundle reads and writes the same object.
+type LoggerSingleton = {
+  config: LoggerConfig;
+  writeQueue: Promise<void>;
+  initialized: boolean;
+  cleaning: boolean;
 };
-let initialized = false;
-let writeQueue: Promise<void> = Promise.resolve();
-let cleaning = false;
+
+const SINGLETON_KEY = '__helprrLogger' as const;
+const globalScope = globalThis as typeof globalThis & {
+  [SINGLETON_KEY]?: LoggerSingleton;
+};
+
+const singleton: LoggerSingleton = globalScope[SINGLETON_KEY] ?? {
+  config: {
+    timeZone: getEnvTimeZone(),
+    level: DEFAULT_LOG_LEVEL as LogLevel,
+    maxFileMb: DEFAULT_LOG_MAX_FILE_MB,
+    retentionDays: DEFAULT_LOG_RETENTION_DAYS,
+    enabled: true,
+  },
+  writeQueue: Promise.resolve(),
+  initialized: false,
+  cleaning: false,
+};
+globalScope[SINGLETON_KEY] = singleton;
 
 function getLogDir(): string {
   return process.env.LOG_DIR || path.join(process.cwd(), 'logs');
@@ -99,7 +119,7 @@ function normalizeLevel(level: unknown): LogLevel {
 }
 
 function shouldWrite(level: LogLevel): boolean {
-  return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[config.level];
+  return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[singleton.config.level];
 }
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
@@ -109,13 +129,11 @@ function clampInt(value: unknown, fallback: number, min: number, max: number): n
 }
 
 export function configureLogger(next: Partial<LoggerConfig>): void {
-  config = {
-    timeZone: normalizeTimeZone(next.timeZone, config.timeZone),
-    level: normalizeLevel(next.level ?? config.level),
-    maxFileMb: clampInt(next.maxFileMb, config.maxFileMb, 1, 1024),
-    retentionDays: clampInt(next.retentionDays, config.retentionDays, 1, 3650),
-    enabled: next.enabled === undefined ? config.enabled : Boolean(next.enabled),
-  };
+  singleton.config.timeZone = normalizeTimeZone(next.timeZone, singleton.config.timeZone);
+  singleton.config.level = normalizeLevel(next.level ?? singleton.config.level);
+  singleton.config.maxFileMb = clampInt(next.maxFileMb, singleton.config.maxFileMb, 1, 1024);
+  singleton.config.retentionDays = clampInt(next.retentionDays, singleton.config.retentionDays, 1, 3650);
+  singleton.config.enabled = next.enabled === undefined ? singleton.config.enabled : Boolean(next.enabled);
 }
 
 function redactString(value: string): string {
@@ -188,7 +206,7 @@ function rotatedName(now = new Date()): string {
 
 async function rotateIfNeeded(bytesToWrite: number): Promise<void> {
   const logPath = getCurrentLogPath();
-  const maxBytes = config.maxFileMb * 1024 * 1024;
+  const maxBytes = singleton.config.maxFileMb * 1024 * 1024;
   try {
     const stat = await fs.promises.stat(logPath);
     if (stat.size + bytesToWrite < maxBytes) return;
@@ -201,10 +219,10 @@ async function rotateIfNeeded(bytesToWrite: number): Promise<void> {
 }
 
 async function cleanupOldLogs(): Promise<void> {
-  if (cleaning) return;
-  cleaning = true;
+  if (singleton.cleaning) return;
+  singleton.cleaning = true;
   try {
-    const cutoff = Date.now() - config.retentionDays * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - singleton.config.retentionDays * 24 * 60 * 60 * 1000;
     const dir = getLogDir();
     const files = await fs.promises.readdir(dir).catch(() => []);
     await Promise.all(files
@@ -217,7 +235,7 @@ async function cleanupOldLogs(): Promise<void> {
         }
       }));
   } finally {
-    cleaning = false;
+    singleton.cleaning = false;
   }
 }
 
@@ -236,12 +254,12 @@ export function writeLog(
   metadata?: unknown,
   options: Partial<Pick<LogEntry, 'source' | 'scope' | 'requestId'>> = {}
 ): void {
-  if (!config.enabled) return;
+  if (!singleton.config.enabled) return;
   const normalizedLevel = normalizeLevel(level);
   if (!shouldWrite(normalizedLevel)) return;
 
   const now = new Date();
-  const timeZone = normalizeTimeZone(config.timeZone);
+  const timeZone = normalizeTimeZone(singleton.config.timeZone);
   const entry: LogEntry = {
     timestampUtc: now.toISOString(),
     timestampLocal: formatInTimeZone(now, timeZone, {
@@ -264,7 +282,7 @@ export function writeLog(
     metadata: metadata === undefined ? undefined : redact(metadata),
   };
 
-  writeQueue = writeQueue.then(() => appendEntry(entry)).catch((error) => {
+  singleton.writeQueue = singleton.writeQueue.then(() => appendEntry(entry)).catch((error) => {
     originalConsole.warn('[Logger] Write failed:', error);
   });
 }
@@ -282,8 +300,8 @@ export const logger = {
 
 export function initializeServerLogging(next?: Partial<LoggerConfig>): void {
   if (next) configureLogger(next);
-  if (initialized) return;
-  initialized = true;
+  if (singleton.initialized) return;
+  singleton.initialized = true;
 
   console.debug = (...args: unknown[]) => {
     originalConsole.debug(...args);
@@ -323,7 +341,7 @@ export function initializeServerLogging(next?: Partial<LoggerConfig>): void {
 
 export async function flushPendingWrites(): Promise<void> {
   try {
-    await writeQueue;
+    await singleton.writeQueue;
   } catch {
     // Errors are already surfaced via the queue's catch handler.
   }

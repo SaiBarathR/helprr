@@ -58,6 +58,13 @@ type ClientCaptureState = {
 
 type ConsoleOriginals = Pick<Console, 'debug' | 'log' | 'info' | 'warn' | 'error'>;
 
+export interface ClientLogCaptureSettingsEvent {
+  logEnabled?: boolean;
+  logClientConsoleEnabled?: boolean;
+}
+
+export const CLIENT_LOG_SETTINGS_EVENT = 'helprr:settings-updated';
+
 export function ClientLogCapture() {
   const originalsRef = useRef<ConsoleOriginals | null>(null);
   const stateRef = useRef<ClientCaptureState>({
@@ -111,6 +118,7 @@ export function ClientLogCapture() {
     }
 
     function installConsolePatch() {
+      if (originalsRef.current) return;
       const originals: ConsoleOriginals = {
         debug: console.debug.bind(console),
         log: console.log.bind(console),
@@ -142,16 +150,34 @@ export function ClientLogCapture() {
       };
     }
 
-    void fetch('/api/settings')
-      .then((response) => response.ok ? response.json() : null)
-      .then((settings) => {
-        if (cancelled) return;
-        if (settings && settings.logClientConsoleEnabled === true) {
-          state.enabled = true;
-          installConsolePatch();
+    function applySettings(settings: ClientLogCaptureSettingsEvent | null | undefined) {
+      const globalEnabled = settings?.logEnabled !== false;
+      const consoleEnabled = settings?.logClientConsoleEnabled !== false;
+      const next = Boolean(globalEnabled && consoleEnabled);
+      if (next === state.enabled) return;
+      state.enabled = next;
+      if (!next && state.buffer.length > 0) {
+        state.buffer = [];
+        if (state.flushTimer) {
+          clearTimeout(state.flushTimer);
+          state.flushTimer = null;
         }
-      })
-      .catch(() => {});
+      }
+    }
+
+    async function refreshFromServer() {
+      try {
+        const response = await fetch('/api/settings', { cache: 'no-store' });
+        if (cancelled || !response.ok) return;
+        const settings = (await response.json()) as ClientLogCaptureSettingsEvent;
+        applySettings(settings);
+      } catch {
+        // Silent failure — keep current state.
+      }
+    }
+
+    installConsolePatch();
+    void refreshFromServer();
 
     const onError = (event: ErrorEvent) => {
       enqueue('error', [event.error || event.message, { filename: event.filename, lineno: event.lineno, colno: event.colno }]);
@@ -165,10 +191,25 @@ export function ClientLogCapture() {
       }
     };
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') void flush();
+      if (document.visibilityState === 'hidden') {
+        void flush();
+      } else {
+        void refreshFromServer();
+      }
     };
     const onPageHide = () => {
       void flush();
+    };
+    const onFocus = () => {
+      void refreshFromServer();
+    };
+    const onSettingsUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<ClientLogCaptureSettingsEvent>).detail;
+      if (detail) {
+        applySettings(detail);
+      } else {
+        void refreshFromServer();
+      }
     };
 
     window.addEventListener('error', onError);
@@ -176,6 +217,8 @@ export function ClientLogCapture() {
     navigator.serviceWorker?.addEventListener('message', onMessage);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener(CLIENT_LOG_SETTINGS_EVENT, onSettingsUpdated as EventListener);
 
     return () => {
       cancelled = true;
@@ -184,6 +227,8 @@ export function ClientLogCapture() {
       navigator.serviceWorker?.removeEventListener('message', onMessage);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener(CLIENT_LOG_SETTINGS_EVENT, onSettingsUpdated as EventListener);
       if (state.flushTimer) {
         clearTimeout(state.flushTimer);
         state.flushTimer = null;
