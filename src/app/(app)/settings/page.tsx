@@ -99,7 +99,7 @@ export default function SettingsIndexPage() {
         />
       </GroupedSection>
 
-      <GroupedSection footer="This device only — preferences in Appearance do not sync.">
+      <GroupedSection>
         <CategoryRow
           href="/settings/appearance"
           icon={Palette}

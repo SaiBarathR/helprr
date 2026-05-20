@@ -124,7 +124,20 @@ export default function StorageSettingsPage() {
   }, [loadCleanupSummary]);
 
   async function handleToggleCache(next: boolean) {
-    const updated = await update({ cacheImagesEnabled: next });
+    const updated = await update(
+      { cacheImagesEnabled: next },
+      {
+        successMessage: (_, raw) => {
+          if (next) return undefined;
+          const bytes = (raw as { cachePurge?: { deletedTotalBytes?: unknown } } | null)
+            ?.cachePurge?.deletedTotalBytes;
+          if (typeof bytes === 'number' && bytes > 0) {
+            return `Cache deleted (${formatBytes(bytes)})`;
+          }
+          return undefined;
+        },
+      },
+    );
     if (!updated) return;
     if (!next) {
       // server purges when disabled; reset local view

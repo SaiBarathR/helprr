@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -36,23 +36,21 @@ const REFRESH_OPTIONS = [
 
 export default function PreferencesPage() {
   const { settings, loading, update } = useAppSettings();
-  const [timeZoneDraft, setTimeZoneDraft] = useState('');
+  const [draft, setDraft] = useState<string | null>(null);
   const tzTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSettingsTz = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (settings && settings.timeZone !== lastSettingsTz.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTimeZoneDraft(settings.timeZone);
-      lastSettingsTz.current = settings.timeZone;
-    }
-  }, [settings]);
+  const displayedTz = draft ?? settings?.timeZone ?? '';
 
   function onTimeZoneChange(value: string) {
-    setTimeZoneDraft(value);
+    setDraft(value);
     if (tzTimer.current) clearTimeout(tzTimer.current);
-    tzTimer.current = setTimeout(() => {
-      void update({ timeZone: value });
+    tzTimer.current = setTimeout(async () => {
+      await update(
+        { timeZone: value },
+        {
+          successMessage: (state) => `Timezone set to ${state.timeZone}`,
+        },
+      );
+      setDraft(null);
     }, 600);
   }
 
@@ -80,7 +78,7 @@ export default function PreferencesPage() {
           <Label className="text-xs text-muted-foreground">Timezone</Label>
           <Input
             placeholder={settings?.envTimeZone ?? 'UTC'}
-            value={timeZoneDraft}
+            value={displayedTz}
             onChange={(event) => onTimeZoneChange(event.target.value)}
             disabled={loading}
             className="h-10"

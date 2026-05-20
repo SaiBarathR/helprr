@@ -1,4 +1,4 @@
-import { Film, Tv, Download, Search, MonitorPlay, Compass, type LucideIcon } from 'lucide-react';
+import { Film, Tv, Download, Search, MonitorPlay, Compass } from 'lucide-react';
 
 export const SERVICE_CONFIG = [
   {
@@ -72,14 +72,6 @@ export const SERVICE_CONFIG = [
 export type ServiceConfig = (typeof SERVICE_CONFIG)[number];
 export type ServiceConfigType = ServiceConfig['type'];
 export type ServiceSlug = ServiceConfig['slug'];
-
-export interface ServiceIconConfig {
-  label: string;
-  icon: LucideIcon;
-  dotColor: string;
-  iconBg: string;
-  iconColor: string;
-}
 
 export function findServiceBySlug(slug: string): ServiceConfig | undefined {
   return SERVICE_CONFIG.find((c) => c.slug === slug);
