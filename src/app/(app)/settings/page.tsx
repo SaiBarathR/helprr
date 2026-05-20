@@ -225,7 +225,7 @@ const REFRESH_OPTIONS = [
   { value: '600', label: '10 minutes' },
 ];
 
-const LOG_LEVEL_OPTIONS: { value: string; label: string; hint: string }[] = [
+const LOG_LEVEL_OPTIONS: { value: 'debug' | 'info' | 'warn' | 'error'; label: string; hint: string }[] = [
   { value: 'debug', label: 'Debug', hint: 'capture everything' },
   { value: 'info', label: 'Info', hint: 'info, warnings, errors' },
   { value: 'warn', label: 'Warn', hint: 'warnings & errors only' },
@@ -486,11 +486,12 @@ export default function SettingsPage() {
     try {
       const res = await fetch('/api/logs/files?all=true', { method: 'DELETE' });
       const payload = await res.json().catch(() => null);
+      const deleted = typeof payload?.deleted === 'number' ? payload.deleted : 0;
       if (!res.ok) {
-        toast.error(payload?.error || 'Failed to delete log files');
+        const base = payload?.error || 'Failed to delete log files';
+        toast.error(deleted > 0 ? `${base} (deleted ${deleted} before failing)` : base);
         return;
       }
-      const deleted = typeof payload?.deleted === 'number' ? payload.deleted : 0;
       toast.success(deleted === 0 ? 'No log files to delete' : `Deleted ${deleted} log file${deleted === 1 ? '' : 's'}`);
     } catch {
       toast.error('Failed to delete log files');

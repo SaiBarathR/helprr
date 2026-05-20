@@ -63,7 +63,7 @@ export interface ClientLogCaptureSettingsEvent {
   logClientConsoleEnabled?: boolean;
 }
 
-export const CLIENT_LOG_SETTINGS_EVENT = 'helprr:settings-updated';
+export const CLIENT_LOG_SETTINGS_EVENT = 'helprr:logging-settings-updated';
 
 export function ClientLogCapture() {
   const originalsRef = useRef<ConsoleOriginals | null>(null);
@@ -200,9 +200,6 @@ export function ClientLogCapture() {
     const onPageHide = () => {
       void flush();
     };
-    const onFocus = () => {
-      void refreshFromServer();
-    };
     const onSettingsUpdated = (event: Event) => {
       const detail = (event as CustomEvent<ClientLogCaptureSettingsEvent>).detail;
       if (detail) {
@@ -217,7 +214,6 @@ export function ClientLogCapture() {
     navigator.serviceWorker?.addEventListener('message', onMessage);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', onPageHide);
-    window.addEventListener('focus', onFocus);
     window.addEventListener(CLIENT_LOG_SETTINGS_EVENT, onSettingsUpdated as EventListener);
 
     return () => {
@@ -227,7 +223,6 @@ export function ClientLogCapture() {
       navigator.serviceWorker?.removeEventListener('message', onMessage);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pagehide', onPageHide);
-      window.removeEventListener('focus', onFocus);
       window.removeEventListener(CLIENT_LOG_SETTINGS_EVENT, onSettingsUpdated as EventListener);
       if (state.flushTimer) {
         clearTimeout(state.flushTimer);
