@@ -49,8 +49,7 @@ export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
     const [copied, setCopied] = useState(false);
     const json = stringifyEntry(entry);
 
-    async function handleCopy(event: React.MouseEvent) {
-      event.stopPropagation();
+    async function handleCopy() {
       try {
         await navigator.clipboard.writeText(json);
         setCopied(true);
@@ -66,12 +65,12 @@ export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
         ref={ref}
         data-index={dataIndex}
         style={style}
-        className="absolute top-0 left-0 w-full"
+        className="absolute top-0 left-0 w-full border-b border-[oklch(1_0_0/6%)]"
       >
         <button
           type="button"
           onClick={onToggle}
-          className="block w-full border-b border-[oklch(1_0_0/6%)] px-4 py-3 text-left active:bg-white/5 hover:bg-white/[0.02] transition-colors"
+          className="block w-full px-4 py-3 text-left active:bg-white/5 hover:bg-white/[0.02] transition-colors"
         >
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
@@ -99,22 +98,22 @@ export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
               {entry.requestId && <div>{entry.requestId.slice(0, 8)}</div>}
             </div>
           </div>
-          {isExpanded && (
-            <div className="relative mt-3">
-              <button
-                type="button"
-                onClick={handleCopy}
-                aria-label="Copy entry as JSON"
-                className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-background/80 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
-              >
-                {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
-              <pre className="max-h-96 overflow-auto rounded-md bg-muted/40 p-3 pr-10 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">
-                {json}
-              </pre>
-            </div>
-          )}
         </button>
+        {isExpanded && (
+          <div className="relative px-4 pb-3">
+            <button
+              type="button"
+              onClick={handleCopy}
+              aria-label="Copy entry as JSON"
+              className="absolute right-6 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-background/80 text-muted-foreground hover:bg-background hover:text-foreground transition-colors"
+            >
+              {copied ? <Check className="h-3.5 w-3.5 text-primary" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+            <pre className="max-h-96 overflow-auto rounded-md bg-muted/40 p-3 pr-10 text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">
+              {json}
+            </pre>
+          </div>
+        )}
       </div>
     );
   }
