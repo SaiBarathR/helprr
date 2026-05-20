@@ -324,11 +324,9 @@ export function AnimeCarouselWidget({
                     style={{
                       fontSize: 14,
                       color: HPR.fg,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
                       fontWeight: 500,
                     }}
+                    className='line-clamp-2 overflow-hidden text-ellipsis'
                   >
                     {it.title}
                   </div>
@@ -340,6 +338,7 @@ export function AnimeCarouselWidget({
                       marginTop: 2,
                       wordBreak: 'break-word',
                     }}
+                    className='line-clamp-2 overflow-hidden text-ellipsis'
                   >
                     {meta}
                   </div>
@@ -418,12 +417,9 @@ export function AnimeCarouselWidget({
                 style={{
                   fontSize: 11,
                   color: HPR.fg,
-                  marginTop: 6,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
                   fontWeight: 500,
                 }}
+                className='mt-0.5 md:mt-2 line-clamp-2 overflow-hidden text-ellipsis'
               >
                 {it.title}
               </div>
@@ -432,10 +428,8 @@ export function AnimeCarouselWidget({
                   fontSize: 10,
                   color: HPR.fgMute,
                   fontFamily: FONT_MONO,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
                 }}
+                className='line-clamp-2 overflow-hidden text-ellipsis'
               >
                 {meta}
               </div>

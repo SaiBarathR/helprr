@@ -200,7 +200,11 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
         <EmptyChartState message={emptyMessage} />
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer
+            width="100%"
+            height="100%"
+            initialDimension={{ width: 1, height: 1 }}
+          >
             <BarChart data={rows} layout="vertical" margin={CHART_MARGIN}>
               <XAxis
                 type="number"

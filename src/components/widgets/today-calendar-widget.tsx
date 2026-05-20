@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Film, Tv } from 'lucide-react';
+import { Check, Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -178,6 +178,23 @@ export function TodayCalendarWidget({
                     <div className="flex items-center gap-1" style={{ marginTop: 3 }}>
                       {ev.releaseType && <ReleaseTypeBadge type={ev.releaseType} />}
                       {ev.finaleType && <FinaleBadge type={ev.finaleType} />}
+                      {Boolean(ev.hasFile) && (
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            padding: '0 4px',
+                            height: 16,
+                            borderRadius: 4,
+                            background: HPR.green,
+                            color: HPR.ink,
+                            fontSize: 9,
+                            fontWeight: 700,
+                          }}
+                        >
+                          <Check size={10} strokeWidth={2.4} />
+                        </span>)}
                     </div>
                   )}
                   <div
@@ -269,6 +286,7 @@ export function TodayCalendarWidget({
                   tone={toneFromString(ev.title)}
                   imageUrl={poster ?? undefined}
                   timePill={time || undefined}
+                  check={Boolean(ev.hasFile)}
                   badge={{
                     icon:
                       isMovie ? (

@@ -156,7 +156,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
           <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No scheduled tasks.</div>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-2 mb-3">
+            <div className="grid grid-cols-3 gap-1 mb-1">
               <div className="rounded-lg bg-card px-3 py-2 text-center">
                 <p className="text-lg font-semibold tabular-nums">{totalCount}</p>
                 <p className="text-[10px] text-muted-foreground">Total</p>
