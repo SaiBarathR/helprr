@@ -174,7 +174,7 @@ export function TodayCalendarWidget({
                   >
                     {ev.title}
                   </div>
-                  {(ev.releaseType || ev.finaleType) && (
+                  {(ev.releaseType || ev.finaleType || ev.hasFile) && (
                     <div className="flex items-center gap-1" style={{ marginTop: 3 }}>
                       {ev.releaseType && <ReleaseTypeBadge type={ev.releaseType} />}
                       {ev.finaleType && <FinaleBadge type={ev.finaleType} />}

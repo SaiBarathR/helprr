@@ -62,6 +62,13 @@ export default function LoggingSettingsPage() {
     }
   }, [settings]);
 
+  useEffect(() => {
+    return () => {
+      if (maxFileMbTimer.current) clearTimeout(maxFileMbTimer.current);
+      if (retentionDaysTimer.current) clearTimeout(retentionDaysTimer.current);
+    };
+  }, []);
+
   async function handleToggleEnabled(next: boolean) {
     const wasEnabled = previousLogEnabled.current;
     const result = await update({ logEnabled: next });
@@ -194,8 +201,9 @@ export default function LoggingSettingsPage() {
       <GroupedSection title="File rotation" footer="Synced across devices">
         <fieldset disabled={!logEnabled} className={!logEnabled ? 'opacity-50' : undefined}>
           <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Rotate at (MB)</Label>
+            <Label htmlFor="log-max-file-mb" className="text-xs text-muted-foreground">Rotate at (MB)</Label>
             <Input
+              id="log-max-file-mb"
               type="number"
               min={1}
               max={1024}
@@ -206,8 +214,9 @@ export default function LoggingSettingsPage() {
             />
           </div>
           <div className="px-4 py-3 space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Retention (days)</Label>
+            <Label htmlFor="log-retention-days" className="text-xs text-muted-foreground">Retention (days)</Label>
             <Input
+              id="log-retention-days"
               type="number"
               min={1}
               max={3650}
