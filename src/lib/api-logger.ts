@@ -7,16 +7,25 @@ interface ApiLoggingPrefs {
   failedResponseBodies: boolean;
 }
 
-let prefs: ApiLoggingPrefs = {
+// Shared across webpack bundles via globalThis — see note in logger.ts.
+const API_LOGGING_KEY = '__helprrApiLogging' as const;
+const globalScope = globalThis as typeof globalThis & {
+  [API_LOGGING_KEY]?: ApiLoggingPrefs;
+};
+
+const prefs: ApiLoggingPrefs = globalScope[API_LOGGING_KEY] ?? {
   enabled: true,
   failedRequestBodies: false,
   failedResponseBodies: false,
 };
+globalScope[API_LOGGING_KEY] = prefs;
 
 const MAX_BODY_PREVIEW_CHARS = 20_000;
 
 export function configureApiLogging(next: Partial<ApiLoggingPrefs>): void {
-  prefs = { ...prefs, ...next };
+  if (next.enabled !== undefined) prefs.enabled = Boolean(next.enabled);
+  if (next.failedRequestBodies !== undefined) prefs.failedRequestBodies = Boolean(next.failedRequestBodies);
+  if (next.failedResponseBodies !== undefined) prefs.failedResponseBodies = Boolean(next.failedResponseBodies);
 }
 
 function getRequest(input: unknown): Request | null {

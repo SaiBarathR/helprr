@@ -14,6 +14,27 @@ async function deleteHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
+  const all = request.nextUrl.searchParams.get('all') === 'true';
+  if (all) {
+    const files = await listLogFiles();
+    let deleted = 0;
+    for (const entry of files) {
+      try {
+        await deleteLogFile(entry.name);
+        deleted += 1;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') {
+          return NextResponse.json(
+            { error: 'Failed to delete log files', deleted },
+            { status: 500 }
+          );
+        }
+      }
+    }
+    return NextResponse.json({ success: true, deleted });
+  }
+
   const file = request.nextUrl.searchParams.get('file');
   if (!file) {
     return NextResponse.json({ error: 'file is required' }, { status: 400 });
