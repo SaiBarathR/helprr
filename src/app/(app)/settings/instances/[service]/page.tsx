@@ -150,7 +150,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   }, [type, isJellyfin]);
 
   async function handleTest() {
-    if (!url || !apiKey) {
+    const trimmedUrl = url.trim();
+    const trimmedKey = apiKey.trim();
+    const trimmedUser = username?.trim() ?? '';
+    if (!trimmedUrl || !trimmedKey) {
       toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
       return;
     }
@@ -161,9 +164,9 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type,
-          url,
-          apiKey,
-          ...(isQbt && { username: username || 'admin' }),
+          url: trimmedUrl,
+          apiKey: trimmedKey,
+          ...(isQbt && { username: trimmedUser || 'admin' }),
         }),
       });
       const data = await res.json();
@@ -210,7 +213,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   }
 
   async function handleSave() {
-    if (!url || !apiKey) {
+    const trimmedUrl = url.trim();
+    const trimmedKey = apiKey.trim();
+    const trimmedUser = username?.trim() ?? '';
+    if (!trimmedUrl || !trimmedKey) {
       toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
       return;
     }
@@ -218,15 +224,15 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       toast.error('Please test Jellyfin with an admin API key before saving');
       return;
     }
-    if (isJellyfin && !username) {
+    if (isJellyfin && !trimmedUser) {
       toast.error('Please select a Jellyfin user');
       return;
     }
     setSaving(true);
     try {
-      const body: Record<string, string> = { type, url, apiKey };
-      if (isQbt) body.username = username || 'admin';
-      else if (isJellyfin && jellyfinValidated) body.username = username || jellyfinValidated.userId;
+      const body: Record<string, string> = { type, url: trimmedUrl, apiKey: trimmedKey };
+      if (isQbt) body.username = trimmedUser || 'admin';
+      else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
 
       const res = await fetch('/api/services', {
         method: 'POST',

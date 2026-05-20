@@ -266,7 +266,7 @@ function MediaCarouselView({
                         color: HPR.fg,
                         fontWeight: 500,
                       }}
-                      className='line-clamp-2 overflow-hidden text-ellipsis'
+                      className='line-clamp-2'
                     >
                       {item.title}
                     </div>
@@ -363,7 +363,7 @@ function MediaCarouselView({
                   marginTop: 6,
                   fontWeight: 500,
                 }}
-                className='line-clamp-2 overflow-hidden text-ellipsis'
+                className='line-clamp-2'
               >
                 {item.title}
               </div>

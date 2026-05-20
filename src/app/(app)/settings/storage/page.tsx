@@ -330,7 +330,9 @@ export default function StorageSettingsPage() {
               || !cleanupSummary
               || cleanupSummary.total === 0
               || !Number.isFinite(Number(olderThanDays))
+              || !Number.isInteger(Number(olderThanDays))
               || Number(olderThanDays) < 1
+              || Number(olderThanDays) > 3650
             }
           >
             {deletingHistory ? (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -53,6 +53,12 @@ export default function PreferencesPage() {
       setDraft(null);
     }, 600);
   }
+
+  useEffect(() => {
+    return () => {
+      if (tzTimer.current) clearTimeout(tzTimer.current);
+    };
+  }, []);
 
   return (
     <div className="animate-content-in pb-12">

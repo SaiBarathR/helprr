@@ -42,18 +42,39 @@ async function fetchSettings(): Promise<AppSettingsState | null> {
   inflightLoad = (async () => {
     try {
       const res = await fetch('/api/settings');
-      if (!res.ok) return null;
+      if (!res.ok) {
+        console.error('[use-app-settings] fetch failed', res.status, res.statusText);
+        cachedState = null;
+        notify();
+        return null;
+      }
       const data = await res.json();
       cachedState = normalize(data);
       notify();
       return cachedState;
-    } catch {
+    } catch (err) {
+      console.error('[use-app-settings] fetch failed', err);
+      cachedState = null;
+      notify();
       return null;
     } finally {
       inflightLoad = null;
     }
   })();
   return inflightLoad;
+}
+
+const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
+const UPCOMING_NOTIFY_MODES = ['before_air', 'once_in_window', 'daily_digest'] as const;
+
+function pickEnum<T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+  fallback: T[number],
+): T[number] {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T[number])
+    : fallback;
 }
 
 function normalize(raw: Record<string, unknown>): AppSettingsState {
@@ -65,16 +86,14 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     timeZone: typeof raw.timeZone === 'string' ? raw.timeZone : 'UTC',
     envTimeZone: typeof raw.envTimeZone === 'string' ? raw.envTimeZone : 'UTC',
     logEnabled: raw.logEnabled !== false,
-    logLevel: (typeof raw.logLevel === 'string' ? raw.logLevel : 'debug') as AppSettingsState['logLevel'],
+    logLevel: pickEnum(raw.logLevel, LOG_LEVELS, 'debug'),
     logMaxFileMb: numberOr(raw.logMaxFileMb, 50),
     logRetentionDays: numberOr(raw.logRetentionDays, 30),
     logClientConsoleEnabled: raw.logClientConsoleEnabled !== false,
     logFailedRequestBodies: Boolean(raw.logFailedRequestBodies),
     logFailedResponseBodies: Boolean(raw.logFailedResponseBodies),
     upcomingAlertHours: numberOr(raw.upcomingAlertHours, 24),
-    upcomingNotifyMode: (typeof raw.upcomingNotifyMode === 'string'
-      ? raw.upcomingNotifyMode
-      : 'before_air') as AppSettingsState['upcomingNotifyMode'],
+    upcomingNotifyMode: pickEnum(raw.upcomingNotifyMode, UPCOMING_NOTIFY_MODES, 'before_air'),
     upcomingNotifyBeforeMins: numberOr(raw.upcomingNotifyBeforeMins, 60),
     upcomingDailyNotifyHour: numberOr(raw.upcomingDailyNotifyHour, 9),
   };
@@ -168,6 +187,7 @@ export function useAppSettings(): UseAppSettingsResult {
   const reload = useCallback(async () => {
     cachedState = null;
     inflightLoad = null;
+    notify();
     await fetchSettings();
   }, []);
 
