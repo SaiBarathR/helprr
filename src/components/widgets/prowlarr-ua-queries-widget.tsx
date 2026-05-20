@@ -15,7 +15,7 @@ export function ProwlarrUserAgentQueriesWidget({ refreshInterval, editMode = fal
           .sort((a, b) => b.Queries - a.Queries)
           .slice(0, 10)
       }
-      bars={[{ dataKey: 'Queries', color: '#6366f1' }]}
+      bars={[{ dataKey: 'Queries', color: 'var(--hpr-violet)' }]}
       emptyMessage="No user-agent queries in this period."
       refreshInterval={refreshInterval}
       editMode={editMode}

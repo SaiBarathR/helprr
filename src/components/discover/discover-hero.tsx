@@ -45,7 +45,7 @@ export function DiscoverHero({
   return (
     <section className="relative -mx-2 md:-mx-6">
       {/* ── Cinematic backdrop ─────────────────────────────────────── */}
-      <div className="relative h-[260px] sm:h-[340px] md:h-[420px] lg:h-[480px] w-full overflow-hidden bg-black">
+      <div className="relative h-[260px] sm:h-[340px] md:h-[420px] lg:h-[480px] w-full overflow-hidden bg-background">
         {backdropSrc ? (
           <>
             <Image
@@ -61,15 +61,15 @@ export function DiscoverHero({
             <div className="cinema-grain" aria-hidden />
             <div
               aria-hidden
-              className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-black/40 to-transparent pointer-events-none"
+              className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-background/40 to-transparent pointer-events-none"
             />
             <div
               aria-hidden
-              className="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-black/40 to-transparent pointer-events-none"
+              className="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-background/40 to-transparent pointer-events-none"
             />
           </>
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-zinc-900 via-black to-zinc-950" />
+          <div className="absolute inset-0 bg-gradient-to-br from-card via-background to-card" />
         )}
 
         {/* Open in / Add to button top right */}
@@ -77,8 +77,8 @@ export function DiscoverHero({
 
         {/* Editorial slug — top left */}
         <div className="absolute top-3 left-3 md:top-5 md:left-6 hero-meta-fade">
-          <div className="flex items-center gap-2 text-white/65">
-            <span className="block w-6 h-px bg-white/40 hairline-grow" />
+          <div className="flex items-center gap-2 text-foreground/65">
+            <span className="block w-6 h-px bg-foreground/40 hairline-grow" />
             <span className="tracked-caps">{mediaLabel}</span>
           </div>
         </div>
@@ -88,7 +88,7 @@ export function DiscoverHero({
       <div className="relative px-4 md:px-8 lg:px-10 -mt-12 md:-mt-16 flex gap-4 md:gap-6">
         {/* Poster */}
         <div className="relative w-[110px] h-[165px] md:w-[140px] md:h-[210px] shrink-0">
-          <div className="absolute inset-0 rounded-md overflow-hidden bg-zinc-900 ring-1 ring-white/10 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)]">
+          <div className="absolute inset-0 rounded-md overflow-hidden bg-card ring-1 ring-border shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)]">
             {posterSrc ? (
               <Image
                 src={posterSrc}

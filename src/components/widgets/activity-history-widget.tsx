@@ -193,7 +193,7 @@ function formatTone(name: string): 'purple' | 'amber' | 'blue' | 'plain' {
 }
 
 const CHIP_TONES = {
-  plain: { c: HPR.fgMute, bg: 'rgba(255,255,255,0.05)' },
+  plain: { c: HPR.fgMute, bg: mix(HPR.fg, 5) },
   purple: { c: HPR.purple, bg: mix(HPR.purple, 10) },
   amber: { c: HPR.amber, bg: mix(HPR.amber, 14) },
   blue: { c: HPR.blue, bg: mix(HPR.blue, 10) },
@@ -624,7 +624,7 @@ function DetailButton({ onClick }: { onClick: () => void }) {
         marginLeft: 'auto',
         borderRadius: 4,
         border: 'none',
-        background: 'rgba(255,255,255,0.04)',
+        background: mix(HPR.fg, 4),
         color: HPR.fgMute,
         cursor: 'pointer',
       }}

@@ -263,15 +263,15 @@ function StudioMediaCard({ item }: { item: AniListStudioMediaNode }) {
             {item.title}
           </div>
         )}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background/60 to-transparent pointer-events-none" />
         {item.averageScore != null && item.averageScore > 0 && (
-          <Badge className="absolute top-1 right-1 text-[9px] bg-black/60 text-white gap-0.5">
+          <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
             <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
             {item.averageScore}%
           </Badge>
         )}
         {item.format && (
-          <Badge className="absolute bottom-1 left-1 text-[9px] bg-black/60 text-white">
+          <Badge className="absolute bottom-1 left-1 text-[9px] bg-background/60 text-foreground">
             {item.format.replace(/_/g, ' ')}
           </Badge>
         )}

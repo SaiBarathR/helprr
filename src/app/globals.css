@@ -1,13 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--hpr-font-body, var(--font-geist-sans));
+  --font-mono: var(--hpr-font-mono, var(--font-geist-mono));
+  --font-display: var(--hpr-font-display, var(--font-geist-sans));
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,71 +48,37 @@
 :root {
   --header-height: calc(env(safe-area-inset-top, 0px) + 3rem);
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: var(--hpr-inkSoft);
+  --foreground: var(--hpr-fg);
+  --card: var(--hpr-surface);
+  --card-foreground: var(--hpr-fg);
+  --popover: var(--hpr-surface);
+  --popover-foreground: var(--hpr-fg);
+  --primary: var(--hpr-amber);
+  --primary-foreground: var(--hpr-ink);
+  --secondary: var(--hpr-surfaceHi);
+  --secondary-foreground: var(--hpr-fg);
+  --muted: var(--hpr-surfaceHi);
+  --muted-foreground: var(--hpr-fgMute);
+  --accent: var(--hpr-surfaceHi);
+  --accent-foreground: var(--hpr-fg);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: var(--hpr-hairline2);
+  --input: var(--hpr-hairline2);
+  --ring: var(--hpr-amber);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: var(--hpr-ink);
+  --sidebar-foreground: var(--hpr-fg);
+  --sidebar-primary: var(--hpr-amber);
+  --sidebar-primary-foreground: var(--hpr-ink);
+  --sidebar-accent: var(--hpr-surface);
+  --sidebar-accent-foreground: var(--hpr-fg);
+  --sidebar-border: var(--hpr-hairline);
+  --sidebar-ring: var(--hpr-amber);
 }
 
 @layer base {
@@ -122,7 +87,9 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    background: var(--background) var(--hpr-bg-grad);
+    background-attachment: fixed;
+    color: var(--foreground);
     -webkit-tap-highlight-color: transparent;
     overflow-x: clip;
   }
@@ -763,7 +730,7 @@ html {
 
 /* Editorial display serif — used for detail-page hero titles */
 .font-display {
-  font-family: ui-serif, Charter, "Iowan Old Style", Georgia, "Apple Garamond", "Times New Roman", serif;
+  font-family: var(--hpr-font-display, ui-serif, Charter, "Iowan Old Style", Georgia, "Apple Garamond", "Times New Roman", serif);
   font-feature-settings: "kern", "liga", "calt";
 }
 

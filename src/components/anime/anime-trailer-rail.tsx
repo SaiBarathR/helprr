@@ -71,9 +71,9 @@ export function AnimeTrailerRail({ trailer, externalLinks, title }: AnimeTrailer
                     unoptimized
                   />
                 )}
-                <div className="absolute inset-0 bg-black/30 flex items-center justify-center group-hover:bg-black/40 transition-colors">
-                  <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
-                    <Play className="h-5 w-5 text-black fill-black ml-0.5" />
+                <div className="absolute inset-0 bg-background/30 flex items-center justify-center group-hover:bg-background/40 transition-colors">
+                  <div className="w-10 h-10 rounded-full bg-foreground/90 flex items-center justify-center">
+                    <Play className="h-5 w-5 text-background fill-background ml-0.5" />
                   </div>
                 </div>
               </div>

@@ -83,7 +83,6 @@ export interface ExportedAppSettings {
   activityRefreshIntervalSecs: number;
   torrentsRefreshIntervalSecs: number;
   cacheImagesEnabled: boolean;
-  theme: string;
   timeZone: string;
   logEnabled: boolean;
   logLevel: string;

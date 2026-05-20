@@ -195,7 +195,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 22;
+export const STORE_VERSION = 23;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -411,10 +411,16 @@ interface UIState {
   dashboardPalette: DashboardPalette;
   dashboardGradient: DashboardGradient;
   dashboardFont: DashboardFont;
+  dashboardFg?: string;
+  dashboardFgMute?: string;
+  dashboardFgSubtle?: string;
   setDashboardAccent: (a: DashboardAccent) => void;
   setDashboardPalette: (p: DashboardPalette) => void;
   setDashboardGradient: (g: DashboardGradient) => void;
   setDashboardFont: (f: DashboardFont) => void;
+  setDashboardFg: (c: string | undefined) => void;
+  setDashboardFgMute: (c: string | undefined) => void;
+  setDashboardFgSubtle: (c: string | undefined) => void;
   resetDashboardTheme: () => void;
   // Discover layout (server-side, cached locally for dashboard widget catalog)
   discoverLayout: DiscoverLayoutConfig | null;
@@ -470,6 +476,9 @@ const PERSISTED_KEYS = [
   'dashboardPalette',
   'dashboardGradient',
   'dashboardFont',
+  'dashboardFg',
+  'dashboardFgMute',
+  'dashboardFgSubtle',
 ] as const satisfies readonly (keyof UIState)[];
 
 const PERSISTED_KEY_SET: ReadonlySet<string> = new Set(PERSISTED_KEYS);
@@ -659,16 +668,25 @@ export const useUIStore = create<UIState>()(
       dashboardPalette: DEFAULT_DASHBOARD_THEME.palette,
       dashboardGradient: DEFAULT_DASHBOARD_THEME.gradient,
       dashboardFont: DEFAULT_DASHBOARD_THEME.font,
+      dashboardFg: undefined,
+      dashboardFgMute: undefined,
+      dashboardFgSubtle: undefined,
       setDashboardAccent: (a) => set({ dashboardAccent: a }),
       setDashboardPalette: (p) => set({ dashboardPalette: p }),
       setDashboardGradient: (g) => set({ dashboardGradient: g }),
       setDashboardFont: (f) => set({ dashboardFont: f }),
+      setDashboardFg: (c) => set({ dashboardFg: c }),
+      setDashboardFgMute: (c) => set({ dashboardFgMute: c }),
+      setDashboardFgSubtle: (c) => set({ dashboardFgSubtle: c }),
       resetDashboardTheme: () =>
         set({
           dashboardAccent: DEFAULT_DASHBOARD_THEME.accent,
           dashboardPalette: DEFAULT_DASHBOARD_THEME.palette,
           dashboardGradient: DEFAULT_DASHBOARD_THEME.gradient,
           dashboardFont: DEFAULT_DASHBOARD_THEME.font,
+          dashboardFg: undefined,
+          dashboardFgMute: undefined,
+          dashboardFgSubtle: undefined,
         }),
       // Discover layout cache
       discoverLayout: null,

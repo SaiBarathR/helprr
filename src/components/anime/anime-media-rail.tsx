@@ -85,7 +85,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
                   </div>
                 )}
                 {item.averageScore != null && item.averageScore > 0 && (
-                  <Badge className="absolute top-1 right-1 text-[9px] bg-black/60 text-white gap-0.5">
+                  <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
                     <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
                     {item.averageScore}%
                   </Badge>

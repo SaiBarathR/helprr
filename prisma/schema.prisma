@@ -84,7 +84,6 @@ model AppSettings {
   activityRefreshIntervalSecs  Int @default(5)
   torrentsRefreshIntervalSecs  Int @default(5)
   cacheImagesEnabled       Boolean @default(true)
-  theme                    String  @default("dark")
   timeZone                 String  @default("UTC")
   logEnabled               Boolean @default(true)
   logLevel                 String  @default("debug")

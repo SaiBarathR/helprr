@@ -31,7 +31,7 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
     return (
       <Link
         href={href}
-        className="inline-flex items-center gap-1.5 rounded-full bg-black/55 backdrop-blur-md text-white px-3 py-1.5 text-[11px] font-medium hover:bg-black/70 transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
       >
         <Sparkles className="h-3.5 w-3.5" />
         <span className="tracking-widest uppercase">
@@ -54,7 +54,7 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-full bg-black/25 backdrop-blur-md text-white px-2 py-1.5 text-[11px] font-medium hover:bg-black/70 transition-colors"
+      className="inline-flex items-center gap-1.5 rounded-full bg-background/25 backdrop-blur-md text-foreground px-2 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
     >
       <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
       <span className="tracking-widest">

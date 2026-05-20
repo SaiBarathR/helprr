@@ -94,7 +94,7 @@ interface RateLimitInfo {
 
 function cardTypeIcon(type: 'movie' | 'tv') {
   return (
-    <div className="flex items-center justify-center h-5 w-5 rounded-md bg-black/60">
+    <div className="flex items-center justify-center h-5 w-5 rounded-md bg-background/60">
       {type === 'movie'
         ? <Film className="h-3 w-3 text-blue-400" />
         : <Tv className="h-3 w-3 text-violet-400" />}
@@ -238,7 +238,7 @@ function MediaPoster({
             {item.mediaType === 'movie' ? <Film className="h-7 w-7" /> : <Tv className="h-7 w-7" />}
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background/75 via-background/20 to-transparent" />
         <div className="absolute top-1.5 left-1.5">{cardTypeIcon(item.mediaType)}</div>
         {item.library?.exists && (
           <div className="absolute top-1.5 right-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
@@ -246,8 +246,8 @@ function MediaPoster({
           </div>
         )}
         <div className="absolute bottom-0 left-0 right-0 p-2">
-          <p className="text-xs text-white font-medium line-clamp-2 leading-tight">{item.title}</p>
-          <div className="mt-1 flex items-center justify-between text-[10px] text-white/80">
+          <p className="text-xs text-foreground font-medium line-clamp-2 leading-tight">{item.title}</p>
+          <div className="mt-1 flex items-center justify-between text-[10px] text-foreground/80">
             <span>{item.year ?? '----'}</span>
             <span className="inline-flex items-center gap-1">
               <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />

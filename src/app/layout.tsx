@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
-import { ThemeProvider } from '@/components/theme-provider';
+import { ThemeApplier } from '@/components/theme-applier';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { ServiceWorkerRegister } from '@/components/sw-register';
@@ -49,19 +49,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <TooltipProvider delayDuration={300}>
-            {children}
-          </TooltipProvider>
-          <Toaster />
-          <ServiceWorkerRegister />
-          <ClientLogCapture />
-        </ThemeProvider>
+        <ThemeApplier />
+        <TooltipProvider delayDuration={300}>
+          {children}
+        </TooltipProvider>
+        <Toaster />
+        <ServiceWorkerRegister />
+        <ClientLogCapture />
       </body>
     </html>
   );

@@ -470,7 +470,7 @@ function AddSeriesPageContent() {
                           <Tv className="h-8 w-8 text-muted-foreground" />
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
                       {r.library?.exists && (
                         <div className="absolute top-1.5 right-1.5">
                           <Badge className="bg-green-600/90 text-white text-[10px]">
@@ -480,8 +480,8 @@ function AddSeriesPageContent() {
                         </div>
                       )}
                       <div className="absolute bottom-0 p-1.5">
-                        <p className="text-[11px] font-medium text-white truncate leading-tight">{r.title}</p>
-                        <p className="text-[10px] text-white/70">{r.year}</p>
+                        <p className="text-[11px] font-medium text-foreground truncate leading-tight">{r.title}</p>
+                        <p className="text-[10px] text-foreground/70">{r.year}</p>
                       </div>
                     </div>
                   </button>

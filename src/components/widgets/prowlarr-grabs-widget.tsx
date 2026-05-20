@@ -14,7 +14,7 @@ export function ProwlarrGrabsByIndexerWidget({ refreshInterval, editMode = false
           .map((i) => ({ name: i.indexerName, Grabs: i.numberOfGrabs }))
           .sort((a, b) => b.Grabs - a.Grabs)
       }
-      bars={[{ dataKey: 'Grabs', color: '#10b981' }]}
+      bars={[{ dataKey: 'Grabs', color: 'var(--hpr-green)' }]}
       emptyMessage="No grabs in this period."
       refreshInterval={refreshInterval}
       editMode={editMode}

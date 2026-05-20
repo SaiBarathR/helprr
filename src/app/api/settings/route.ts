@@ -10,7 +10,6 @@ import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
 import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
-const THEMES = new Set(['dark', 'light', 'system']);
 const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
 
 function parseIntegerSetting(
@@ -70,7 +69,7 @@ async function getHandler() {
  *
  * Accepts a JSON body with any of the following optional fields to update the singleton settings:
  * `pollingIntervalSecs`, `activityRefreshIntervalSecs`, `torrentsRefreshIntervalSecs`,
- * `theme`, `upcomingAlertHours`, `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
+ * `upcomingAlertHours`, `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
  *
  * @param request - Incoming Next.js request whose JSON body supplies the settings to set or update.
  * @returns The resulting settings object as JSON on success; on failure returns `{ error: 'Failed to update settings' }` with HTTP status 500.
@@ -82,7 +81,7 @@ async function putHandler(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      pollingIntervalSecs, theme, upcomingAlertHours,
+      pollingIntervalSecs, upcomingAlertHours,
       activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
       cacheImagesEnabled,
@@ -115,15 +114,6 @@ async function putHandler(request: NextRequest) {
       const parsed = parseIntegerSetting(torrentsRefreshIntervalSecs, 'Torrents refresh interval', 1, 86_400);
       if ('error' in parsed) return parsed.error;
       data.torrentsRefreshIntervalSecs = parsed.value;
-    }
-    if (theme !== undefined) {
-      if (typeof theme !== 'string' || !THEMES.has(theme)) {
-        return NextResponse.json(
-          { error: 'Invalid theme' },
-          { status: 400 }
-        );
-      }
-      data.theme = theme;
     }
     if (upcomingAlertHours !== undefined) {
       const parsed = parseIntegerSetting(upcomingAlertHours, 'Upcoming alert hours', 1, 8_760);
@@ -209,7 +199,6 @@ async function putHandler(request: NextRequest) {
         activityRefreshIntervalSecs: (data.activityRefreshIntervalSecs as number | undefined) ?? 5,
         torrentsRefreshIntervalSecs: (data.torrentsRefreshIntervalSecs as number | undefined) ?? 5,
         cacheImagesEnabled: (data.cacheImagesEnabled as boolean | undefined) ?? true,
-        theme: (data.theme as string | undefined) ?? 'dark',
         timeZone: (data.timeZone as string | undefined) ?? getEnvTimeZone(),
         logEnabled: (data.logEnabled as boolean | undefined) ?? true,
         logLevel: (data.logLevel as string | undefined) ?? 'debug',

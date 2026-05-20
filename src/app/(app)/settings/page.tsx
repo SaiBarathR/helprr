@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -169,7 +168,7 @@ const SERVICE_CONFIG = [
     type: 'JELLYFIN' as const,
     label: 'Jellyfin',
     icon: MonitorPlay,
-    dotColor: 'bg-[#00a4dc]',
+    dotColor: 'bg-[var(--hpr-cyan)]',
     placeholder: 'http://localhost:8096',
   },
   {
@@ -225,12 +224,6 @@ const REFRESH_OPTIONS = [
   { value: '600', label: '10 minutes' },
 ];
 
-const THEME_OPTIONS = [
-  { value: 'dark', label: 'Dark' },
-  { value: 'light', label: 'Light' },
-  { value: 'system', label: 'System' },
-];
-
 const LOG_LEVEL_OPTIONS = [
   { value: 'debug', label: 'Debug' },
   { value: 'info', label: 'Info' },
@@ -263,7 +256,7 @@ const NOTIFY_BEFORE_OPTIONS = [
 ];
 
 /**
- * Renders the Settings page for managing service instances, application preferences, display theme, notification settings, and account actions.
+ * Renders the Settings page for managing service instances, application preferences, notification settings, and account actions.
  *
  * The component loads existing service connections and user settings on mount, exposes controls to test/save service connections, adjust polling and refresh intervals, set appearance and notification options, reorder navigation, and sign out.
  *
@@ -271,10 +264,6 @@ const NOTIFY_BEFORE_OPTIONS = [
  */
 export default function SettingsPage() {
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => setMounted(true), []);
 
   const [services, setServices] = useState<Record<ServiceConfigType, ServiceForm>>(() => buildDefaultServices());
   const [persistedConnections, setPersistedConnections] = useState<PersistedConnections>(() => buildDefaultPersistedConnections());
@@ -411,9 +400,6 @@ export default function SettingsPage() {
           if (settings.upcomingNotifyMode) setUpcomingNotifyMode(settings.upcomingNotifyMode);
           if (settings.upcomingNotifyBeforeMins != null) setUpcomingNotifyBeforeMins(String(settings.upcomingNotifyBeforeMins));
           if (settings.upcomingDailyNotifyHour != null) setUpcomingDailyNotifyHour(String(settings.upcomingDailyNotifyHour));
-          if (settings.theme) {
-            setTheme(settings.theme);
-          }
         }
       } catch {
         // Settings may not exist yet
@@ -421,7 +407,6 @@ export default function SettingsPage() {
     }
 
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadCacheUsage = useCallback(async () => {
@@ -660,7 +645,6 @@ export default function SettingsPage() {
           logClientConsoleEnabled,
           logFailedRequestBodies,
           logFailedResponseBodies,
-          theme,
           upcomingAlertHours: parseInt(upcomingAlertHours, 10),
           upcomingNotifyMode,
           upcomingNotifyBeforeMins: parseInt(upcomingNotifyBeforeMins, 10),
@@ -782,11 +766,6 @@ export default function SettingsPage() {
 
   function getRefreshLabel(value: string) {
     return REFRESH_OPTIONS.find((o) => o.value === value)?.label ?? value;
-  }
-
-  function getThemeLabel(value: string | undefined) {
-    if (!value) return 'System';
-    return THEME_OPTIONS.find((o) => o.value === value)?.label ?? value;
   }
 
   function getLogLevelLabel(value: string) {
@@ -1278,26 +1257,6 @@ export default function SettingsPage() {
         busy={deletingCleanupHistory}
         onConfirm={() => deleteCleanupHistory('all=true')}
       />
-
-      {/* ── Display ── */}
-      <div className="grouped-section mb-6">
-        <div className="grouped-section-title">Display</div>
-        <div className="grouped-section-content">
-          <div className="grouped-row">
-            <span className="text-sm">Appearance</span>
-            <Select value={mounted ? theme : undefined} onValueChange={setTheme}>
-              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                <SelectValue>{mounted ? getThemeLabel(theme) : 'System'}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {THEME_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
 
       {/* ── App Install ── */}
       <InstallAppSection />

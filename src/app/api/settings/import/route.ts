@@ -26,7 +26,6 @@ import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/sched
 import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
-const THEMES = new Set(['dark', 'light', 'system']);
 const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
 const MAX_IMPORT_BYTES = 1_048_576;
 
@@ -77,7 +76,6 @@ function buildAppSettingsUpdate(
     out.torrentsRefreshIntervalSecs = clampInt(input.torrentsRefreshIntervalSecs, 1, 86_400, 5);
   if (input.cacheImagesEnabled !== undefined)
     out.cacheImagesEnabled = Boolean(input.cacheImagesEnabled);
-  if (input.theme !== undefined) out.theme = pickEnum(input.theme, THEMES, 'dark');
   if (input.timeZone !== undefined) {
     const tz = typeof input.timeZone === 'string' && input.timeZone.trim().length > 0
       ? input.timeZone.trim()
@@ -131,7 +129,6 @@ async function applyAppSettingsInTxn(
       activityRefreshIntervalSecs: (data.activityRefreshIntervalSecs as number | undefined) ?? 5,
       torrentsRefreshIntervalSecs: (data.torrentsRefreshIntervalSecs as number | undefined) ?? 5,
       cacheImagesEnabled: (data.cacheImagesEnabled as boolean | undefined) ?? true,
-      theme: (data.theme as string | undefined) ?? 'dark',
       timeZone: (data.timeZone as string | undefined) ?? getEnvTimeZone(),
       logEnabled: (data.logEnabled as boolean | undefined) ?? true,
       logLevel: (data.logLevel as string | undefined) ?? 'debug',

@@ -196,7 +196,7 @@ export function ActivityDetailDrawer({ record, onClose }: Props) {
                   width: 88,
                   height: 132,
                   background: posterUrl ? `url("${posterUrl}") center/cover` : HPR.ink,
-                  boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05)',
+                  boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--hpr-fg) 5%, transparent)',
                 }}
                 aria-hidden="true"
               >

@@ -7,6 +7,7 @@ import {
   FONTS,
   GRADIENTS,
   PALETTES,
+  resolveForegroundTones,
   type DashboardAccent,
   type DashboardFont,
   type DashboardGradient,
@@ -28,11 +29,19 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
   const palette = useUIStore((s) => s.dashboardPalette);
   const gradient = useUIStore((s) => s.dashboardGradient);
   const font = useUIStore((s) => s.dashboardFont);
+  const fgOverride = useUIStore((s) => s.dashboardFg);
+  const fgMuteOverride = useUIStore((s) => s.dashboardFgMute);
+  const fgSubtleOverride = useUIStore((s) => s.dashboardFgSubtle);
 
   const setAccent = useUIStore((s) => s.setDashboardAccent);
   const setPalette = useUIStore((s) => s.setDashboardPalette);
   const setGradient = useUIStore((s) => s.setDashboardGradient);
   const setFont = useUIStore((s) => s.setDashboardFont);
+  const setFg = useUIStore((s) => s.setDashboardFg);
+  const setFgMute = useUIStore((s) => s.setDashboardFgMute);
+  const setFgSubtle = useUIStore((s) => s.setDashboardFgSubtle);
+
+  const paletteDefaults = resolveForegroundTones({ accent, palette, gradient, font });
 
   return (
     <div
@@ -43,7 +52,7 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
         border: `1px solid ${AMBER_RING}`,
         borderRadius: 10,
         display: 'grid',
-        gridTemplateColumns: mobile ? '1fr' : 'repeat(4, 1fr)',
+        gridTemplateColumns: mobile ? '1fr' : 'repeat(5, 1fr)',
         gap: mobile ? 12 : 16,
         position: 'relative',
         marginBottom: 4,
@@ -67,53 +76,137 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
         THEME · LIVE
       </div>
 
-      <InspectorBlock label="Accent" sub="status amber stays reserved">
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {ACCENT_IDS.map((id) => {
-            const meta = ACCENT_COLORS[id];
-            const selected = id === accent;
-            return (
-              <button
-                key={id}
-                type="button"
-                aria-label={meta.label}
-                onClick={() => setAccent(id)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 7,
-                  background: meta.color,
-                  position: 'relative',
-                  border: 'none',
-                  boxShadow: selected
-                    ? `0 0 0 2px ${HPR.fg}, 0 0 0 4px ${HPR.surface}`
-                    : 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                {selected && (
-                  <span
+      <InspectorBlock label="Accent" sub="custom or preset color">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {ACCENT_IDS.map((id) => {
+              const meta = ACCENT_COLORS[id];
+              const selected = id === accent;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  aria-label={meta.label}
+                  onClick={() => setAccent(id)}
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 7,
+                    background: meta.color,
+                    position: 'relative',
+                    border: 'none',
+                    boxShadow: selected
+                      ? `0 0 0 2px ${HPR.fg}, 0 0 0 4px ${HPR.surface}`
+                      : 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {selected && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'color-mix(in oklab, var(--hpr-ink) 60%, transparent)',
+                        fontSize: 14,
+                        fontWeight: 700,
+                      }}
+                    >
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Custom Accent Color Picker */}
+            {(() => {
+              const isCustomAccent = !ACCENT_IDS.includes(accent);
+              const currentAccentHex = isCustomAccent ? accent : (ACCENT_COLORS[accent]?.color || '#f5b948');
+              return (
+                <div
+                  style={{
+                    position: 'relative',
+                    width: 30,
+                    height: 30,
+                    borderRadius: 7,
+                    background: 'linear-gradient(45deg, #e36a7a, #f5b948, #5ac893, #6aa9ee, #b48bf0)',
+                    boxShadow: isCustomAccent
+                      ? `0 0 0 2px ${HPR.fg}, 0 0 0 4px ${HPR.surface}`
+                      : 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
                     style={{
-                      position: 'absolute',
-                      inset: 0,
+                      width: 20,
+                      height: 20,
+                      borderRadius: 5,
+                      background: currentAccentHex,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: 'rgba(0,0,0,0.6)',
-                      fontSize: 14,
+                      color: isCustomAccent ? 'var(--hpr-ink)' : 'color-mix(in oklab, var(--hpr-fg) 85%, transparent)',
                       fontWeight: 700,
+                      fontSize: 10,
                     }}
                   >
-                    ✓
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                    {isCustomAccent ? '✓' : '+'}
+                  </div>
+                  <input
+                    type="color"
+                    value={currentAccentHex}
+                    onChange={(e) => setAccent(e.target.value)}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0,
+                      cursor: 'pointer',
+                    }}
+                  />
+                </div>
+              );
+            })()}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <span style={{ fontSize: 10, fontFamily: FONT_MONO, color: HPR.fgSubtle }}>HEX:</span>
+            <input
+              type="text"
+              value={!ACCENT_IDS.includes(accent) ? accent : (ACCENT_COLORS[accent]?.color || '#f5b948')}
+              onChange={(e) => {
+                let val = e.target.value;
+                if (!val.startsWith('#')) val = '#' + val;
+                if (val.length <= 7) {
+                  setAccent(val);
+                }
+              }}
+              placeholder="#FFFFFF"
+              style={{
+                width: 75,
+                fontSize: 11,
+                fontFamily: FONT_MONO,
+                background: HPR.ink,
+                color: HPR.fg,
+                border: `1px solid ${HPR.hairline2}`,
+                borderRadius: 4,
+                padding: '2px 6px',
+                outline: 'none',
+              }}
+            />
+          </div>
         </div>
       </InspectorBlock>
 
-      <InspectorBlock label="Palette" sub="background + surface tones">
+      <InspectorBlock label="Palette" sub="atmosphere base tone">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {PALETTE_IDS.map((id) => {
             const meta = PALETTES[id];
@@ -165,6 +258,83 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
               </button>
             );
           })}
+
+          {/* Custom Palette Option */}
+          {(() => {
+            const isCustomPalette = !PALETTE_IDS.includes(palette);
+            const currentPaletteHex = isCustomPalette ? palette : (PALETTES[palette]?.swatch[0] || '#15110c');
+            return (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '4px 6px',
+                  borderRadius: 5,
+                  border: isCustomPalette ? `1px solid ${HPR.amber}` : '1px solid transparent',
+                  background: isCustomPalette ? mix(HPR.amber, 8) : 'transparent',
+                  position: 'relative',
+                }}
+              >
+                <span style={{ display: 'flex', position: 'relative', width: 42, height: 14 }}>
+                  <span
+                    style={{
+                      width: 42,
+                      height: 14,
+                      background: 'linear-gradient(to right, #1a1a2e, #16213e, #0f3460)',
+                      borderRadius: '3px',
+                      border: `1px solid ${HPR.hairline2}`,
+                    }}
+                  />
+                  <input
+                    type="color"
+                    value={currentPaletteHex}
+                    onChange={(e) => setPalette(e.target.value)}
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0,
+                      cursor: 'pointer',
+                    }}
+                  />
+                </span>
+                <span style={{ fontSize: 11, color: isCustomPalette ? HPR.fg : HPR.fgMute, flex: 1 }}>
+                  Custom Color
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    type="text"
+                    value={currentPaletteHex}
+                    onChange={(e) => {
+                      let val = e.target.value;
+                      if (!val.startsWith('#')) val = '#' + val;
+                      if (val.length <= 7) {
+                        setPalette(val);
+                      }
+                    }}
+                    placeholder="#15110C"
+                    style={{
+                      width: 70,
+                      fontSize: 10,
+                      fontFamily: FONT_MONO,
+                      background: HPR.ink,
+                      color: HPR.fg,
+                      border: `1px solid ${HPR.hairline2}`,
+                      borderRadius: 4,
+                      padding: '1px 3px',
+                      outline: 'none',
+                      textAlign: 'center',
+                    }}
+                  />
+                  {isCustomPalette && (
+                    <span style={{ color: HPR.amber, fontSize: 10 }}>●</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </InspectorBlock>
 
@@ -207,6 +377,29 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
               </button>
             );
           })}
+        </div>
+      </InspectorBlock>
+
+      <InspectorBlock label="Text" sub="primary / muted / subtle">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <TextTonePicker
+            label="Primary"
+            value={fgOverride}
+            fallback={paletteDefaults.fg}
+            onChange={setFg}
+          />
+          <TextTonePicker
+            label="Muted"
+            value={fgMuteOverride}
+            fallback={paletteDefaults.fgMute}
+            onChange={setFgMute}
+          />
+          <TextTonePicker
+            label="Subtle"
+            value={fgSubtleOverride}
+            fallback={paletteDefaults.fgSubtle}
+            onChange={setFgSubtle}
+          />
         </div>
       </InspectorBlock>
 
@@ -284,6 +477,103 @@ function InspectorBlock({
         {sub && <span style={{ fontSize: 9, color: HPR.fgSubtle }}>{sub}</span>}
       </div>
       {children}
+    </div>
+  );
+}
+
+interface TextTonePickerProps {
+  label: string;
+  value: string | undefined;
+  fallback: string;
+  onChange: (val: string | undefined) => void;
+}
+
+function TextTonePicker({ label, value, fallback, onChange }: TextTonePickerProps) {
+  const isOverridden = typeof value === 'string' && value.length > 0;
+  const displayHex = isOverridden ? value : fallback;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span
+        style={{
+          width: 42,
+          fontSize: 10,
+          color: isOverridden ? HPR.fg : HPR.fgMute,
+          fontFamily: FONT_MONO,
+          letterSpacing: '0.05em',
+        }}
+      >
+        {label}
+      </span>
+      <div
+        style={{
+          position: 'relative',
+          width: 24,
+          height: 24,
+          borderRadius: 5,
+          background: displayHex,
+          border: `1px solid ${HPR.hairline2}`,
+          flexShrink: 0,
+          cursor: 'pointer',
+        }}
+      >
+        <input
+          type="color"
+          value={displayHex}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            opacity: 0,
+            cursor: 'pointer',
+          }}
+          aria-label={`${label} text color`}
+        />
+      </div>
+      <input
+        type="text"
+        value={displayHex}
+        onChange={(e) => {
+          let val = e.target.value;
+          if (!val.startsWith('#')) val = '#' + val;
+          if (val.length <= 7) {
+            onChange(val);
+          }
+        }}
+        placeholder={fallback}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 10,
+          fontFamily: FONT_MONO,
+          background: HPR.ink,
+          color: isOverridden ? HPR.fg : HPR.fgMute,
+          border: `1px solid ${HPR.hairline2}`,
+          borderRadius: 4,
+          padding: '2px 4px',
+          outline: 'none',
+        }}
+      />
+      {isOverridden && (
+        <button
+          type="button"
+          aria-label={`Reset ${label} text color`}
+          title="Reset to palette default"
+          onClick={() => onChange(undefined)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: HPR.fgSubtle,
+            fontSize: 12,
+            cursor: 'pointer',
+            padding: 0,
+            lineHeight: 1,
+          }}
+        >
+          ↺
+        </button>
+      )}
     </div>
   );
 }

@@ -69,7 +69,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         activityRefreshIntervalSecs: settings.activityRefreshIntervalSecs,
         torrentsRefreshIntervalSecs: settings.torrentsRefreshIntervalSecs,
         cacheImagesEnabled: settings.cacheImagesEnabled,
-        theme: settings.theme,
         timeZone: settings.timeZone,
         logEnabled: settings.logEnabled,
         logLevel: settings.logLevel,

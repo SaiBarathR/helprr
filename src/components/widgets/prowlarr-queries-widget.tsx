@@ -24,14 +24,14 @@ export function ProwlarrQueriesByIndexerWidget({ refreshInterval, editMode = fal
           }))
       }
       bars={[
-        { dataKey: 'Search', color: '#6366f1', stackId: 'q' },
-        { dataKey: 'RSS', color: '#f59e0b', stackId: 'q' },
-        { dataKey: 'Auth', color: '#ef4444', stackId: 'q', radius: [0, 4, 4, 0] },
+        { dataKey: 'Search', color: 'var(--hpr-violet)', stackId: 'q' },
+        { dataKey: 'RSS', color: 'var(--hpr-amber)', stackId: 'q' },
+        { dataKey: 'Auth', color: 'var(--hpr-rose)', stackId: 'q', radius: [0, 4, 4, 0] },
       ]}
       legend={[
-        { color: '#6366f1', label: 'Search' },
-        { color: '#f59e0b', label: 'RSS' },
-        { color: '#ef4444', label: 'Auth' },
+        { color: 'var(--hpr-violet)', label: 'Search' },
+        { color: 'var(--hpr-amber)', label: 'RSS' },
+        { color: 'var(--hpr-rose)', label: 'Auth' },
       ]}
       refreshInterval={refreshInterval}
       editMode={editMode}

@@ -99,8 +99,8 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 px-2 md:px-6 pb-4">
-            <h1 className="text-xl font-bold text-white">{collection.name}</h1>
-            <p className="text-sm text-white/80">{collection.parts.length} movies</p>
+            <h1 className="text-xl font-bold text-foreground">{collection.name}</h1>
+            <p className="text-sm text-muted-foreground">{collection.parts.length} movies</p>
           </div>
         </div>
 
