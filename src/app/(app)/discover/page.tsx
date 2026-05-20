@@ -242,7 +242,7 @@ function MediaPoster({
         <div className="absolute top-1.5 left-1.5">{cardTypeIcon(item.mediaType)}</div>
         {item.library?.exists && (
           <div className="absolute top-1.5 right-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
-            <Check className="h-3 w-3 text-white" />
+            <Check className="h-3 w-3 text-foreground" />
           </div>
         )}
         <div className="absolute bottom-0 left-0 right-0 p-2">

@@ -60,7 +60,7 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
         )}
         {inLibrary && (
           <div
-            className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white shadow-md"
+            className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-foreground shadow-md"
             title={`In ${library?.type === 'movie' ? 'Radarr' : 'Sonarr'} library`}
           >
             <Check className="h-3 w-3" strokeWidth={3} />

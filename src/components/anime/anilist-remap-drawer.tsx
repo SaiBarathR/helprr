@@ -187,7 +187,7 @@ export function AniListRemapDrawer({
               <p className="text-xs text-muted-foreground">{formatState(mapping)}</p>
             </div>
             {mapping?.state === 'MANUAL_MATCH' ? (
-              <Badge className="bg-green-600/90 text-white">Manual</Badge>
+              <Badge className="bg-green-600/90 text-foreground">Manual</Badge>
             ) : mapping?.state === 'AUTO_MATCH' ? (
               <Badge variant="outline">Auto</Badge>
             ) : null}

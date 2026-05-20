@@ -162,7 +162,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
                   )}
                 </div>
                 {movie.library?.exists && (
-                  <Badge className="bg-green-600/90 text-[10px] text-white shrink-0">Added</Badge>
+                  <Badge className="bg-green-600/90 text-[10px] text-foreground shrink-0">Added</Badge>
                 )}
               </Link>
             );

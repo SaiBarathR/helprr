@@ -1507,7 +1507,7 @@ export default function SeriesDetailPage() {
                 <span className="flex items-center gap-2 text-sm text-right">
                   {formatAniListMappingState(animeMapping?.state)}
                   {animeMapping?.state === 'MANUAL_MATCH' ? (
-                    <Badge className="bg-green-600/90 text-white text-[10px] px-1.5 py-0">Manual</Badge>
+                    <Badge className="bg-green-600/90 text-foreground text-[10px] px-1.5 py-0">Manual</Badge>
                   ) : animeMapping?.state === 'AUTO_MATCH' ? (
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">Auto</Badge>
                   ) : null}

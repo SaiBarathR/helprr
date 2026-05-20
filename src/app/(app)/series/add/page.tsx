@@ -294,7 +294,7 @@ function AddSeriesPageContent() {
                   {selected.year}{selected.network ? ` \u00b7 ${selected.network}` : ''}
                 </p>
                 {selectedInLibrary && (
-                  <Badge className="mt-2 bg-green-600/90 text-white">
+                  <Badge className="mt-2 bg-green-600/90 text-foreground">
                     <Check className="mr-1 h-3.5 w-3.5" />
                     Added
                   </Badge>
@@ -473,7 +473,7 @@ function AddSeriesPageContent() {
                       <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
                       {r.library?.exists && (
                         <div className="absolute top-1.5 right-1.5">
-                          <Badge className="bg-green-600/90 text-white text-[10px]">
+                          <Badge className="bg-green-600/90 text-foreground text-[10px]">
                             <Check className="mr-1 h-3 w-3" />
                             Added
                           </Badge>

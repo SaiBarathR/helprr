@@ -894,7 +894,7 @@ function AnimeCard({
           </Badge>
         )}
         {item.library?.exists && (
-          <Badge className="absolute top-1 left-1 text-[9px] bg-green-600/80 text-white">
+          <Badge className="absolute top-1 left-1 text-[9px] bg-green-600/80 text-foreground">
             <Check className="h-2 w-2" />
           </Badge>
         )}
