@@ -264,11 +264,9 @@ function MediaCarouselView({
                       style={{
                         fontSize: 14,
                         color: HPR.fg,
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
                         fontWeight: 500,
                       }}
+                      className='line-clamp-2 overflow-hidden text-ellipsis'
                     >
                       {item.title}
                     </div>
@@ -363,11 +361,9 @@ function MediaCarouselView({
                   fontSize: 11,
                   color: HPR.fg,
                   marginTop: 6,
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
                   fontWeight: 500,
                 }}
+                className='line-clamp-2 overflow-hidden text-ellipsis'
               >
                 {item.title}
               </div>
@@ -690,7 +686,7 @@ export function DiscoverSectionWidget({
         title={title}
         viewAllHref={viewAllHref}
         items={items}
-        limit={compact ? 6 : 20}
+        limit={compact ? 16 : 20}
         useList={useList}
         toggleNode={toggleNode}
       />,
@@ -751,7 +747,7 @@ export function DiscoverSectionWidget({
         title={title}
         viewAllHref={viewAllHref}
         items={items}
-        limit={compact ? 6 : 20}
+        limit={compact ? 16 : 20}
         useList={useList}
         toggleNode={toggleNode}
       />,
