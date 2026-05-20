@@ -362,7 +362,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       {system && (
         <div className="rounded-xl bg-card overflow-hidden">
           <div className="p-3 flex items-center gap-3">
-            <div className="rounded-lg bg-[#00a4dc]/10 p-2"><Server className="h-4 w-4 text-[#00a4dc]" /></div>
+            <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Server className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{system.ServerName}</p>
               <p className="text-xs text-muted-foreground">v{system.Version}</p>
@@ -379,7 +379,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-[#00a4dc] hover:bg-[#00a4dc]/10"
+              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-[var(--hpr-cyan)] hover:bg-[var(--hpr-cyan)]/10"
               disabled={serverAction !== null || scanRunning}
               onClick={() => handleServerAction('scan-libraries')}
             >
@@ -471,11 +471,11 @@ function PosterCard({ item, showProgress, jellyfinUrl }: { item: JellyfinItem; s
         )}
         <div className="absolute top-1.5 left-1.5">
           <span className={`inline-flex items-center justify-center w-5 h-5 rounded-md ${item.Type === 'Movie' ? 'bg-blue-500/80' : 'bg-purple-500/80'}`}>
-            {item.Type === 'Movie' ? <Film className="h-2.5 w-2.5 text-white" /> : <Tv className="h-2.5 w-2.5 text-white" />}
+            {item.Type === 'Movie' ? <Film className="h-2.5 w-2.5 text-foreground" /> : <Tv className="h-2.5 w-2.5 text-foreground" />}
           </span>
         </div>
         {showProgress && progress > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/10"><div className="h-full bg-[#00a4dc]" style={{ width: `${progress}%` }} /></div>
+          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-foreground/10"><div className="h-full bg-[var(--hpr-cyan)]" style={{ width: `${progress}%` }} /></div>
         )}
       </div>
       <p className="text-[11px] font-medium truncate leading-tight">{item.SeriesName || item.Name}</p>
@@ -509,7 +509,7 @@ function LibraryCard({ library }: { library: JellyfinLibrary }) {
   const Icon = m[library.CollectionType || ''] || Library;
   return (
     <div className="rounded-xl bg-card p-3 flex items-center gap-3">
-      <div className="rounded-lg bg-[#00a4dc]/10 p-2"><Icon className="h-4 w-4 text-[#00a4dc]" /></div>
+      <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{library.Name}</p>
         <p className="text-xs text-muted-foreground">{library.CollectionType || 'Mixed'}{library.ChildCount != null && ` \u00B7 ${library.ChildCount} items`}</p>
@@ -611,9 +611,9 @@ function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
           return (
             <button key={user.user_id} onClick={() => openUserHistory(user)} className="w-full text-left rounded-xl bg-muted/30 p-3 active:bg-muted/50 transition-colors">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-[#00a4dc]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                <div className="h-10 w-10 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden">
                   {avatarSrc ? <Image src={avatarSrc} alt={user.user_name} width={40} height={40} className="object-cover" unoptimized /> : (
-                    <span className="text-sm font-bold text-[#00a4dc]">{user.user_name.charAt(0).toUpperCase()}</span>
+                    <span className="text-sm font-bold text-[var(--hpr-cyan)]">{user.user_name.charAt(0).toUpperCase()}</span>
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -1325,7 +1325,7 @@ function PlayActivityChart({ data }: { data: PlayActivityUser[] }) {
 
           return (
             <div key={label} className="flex-1 flex flex-col items-center justify-end h-full min-w-0" title={`${label}: ${count}`}>
-              <div className="w-full rounded-t-sm bg-[#00a4dc] min-h-[2px]" style={{ height: `${Math.max(pct, 2)}%` }} />
+              <div className="w-full rounded-t-sm bg-[var(--hpr-cyan)] min-h-[2px]" style={{ height: `${Math.max(pct, 2)}%` }} />
             </div>
           );
         })}
@@ -1352,7 +1352,14 @@ function PlayActivityChart({ data }: { data: PlayActivityUser[] }) {
   );
 }
 
-const USER_COLORS = ['#00a4dc', '#e5a00d', '#00c853', '#ff5252', '#7c4dff', '#ff6d00'];
+const USER_COLORS = [
+  'var(--hpr-cyan)',
+  'var(--hpr-amber)',
+  'var(--hpr-green)',
+  'var(--hpr-rose)',
+  'var(--hpr-violet)',
+  'var(--hpr-pink)',
+];
 
 // ─── Ranked List (with sort toggle) ───
 
@@ -1370,7 +1377,7 @@ function RankedList({ entries, sortBy, limit }: { entries: PlaybackBreakdownEntr
     <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
       {sorted.map((entry, i) => (
         <div key={entry.label} className="relative px-3 py-2.5 flex items-center gap-3">
-          <div className="absolute inset-0 bg-[#00a4dc]/5" style={{ width: `${((sortBy === 'duration' ? entry.time : entry.count) / maxVal) * 100}%` }} />
+          <div className="absolute inset-0 bg-[var(--hpr-cyan)]/5" style={{ width: `${((sortBy === 'duration' ? entry.time : entry.count) / maxVal) * 100}%` }} />
           <span className="text-xs text-muted-foreground font-mono w-5 shrink-0 relative">{i + 1}</span>
           <span className="text-sm truncate flex-1 relative">{entry.label}</span>
           <div className="text-right shrink-0 relative">
@@ -1487,7 +1494,7 @@ function HourlyHeatmap({ data }: { data: Record<string, number> }) {
                   const intensity = val / maxVal;
                   return (
                     <div key={h} className="flex-1 aspect-square rounded-[2px]" style={{
-                      backgroundColor: intensity > 0 ? `rgba(0, 164, 220, ${0.12 + intensity * 0.88})` : 'rgba(255,255,255,0.03)',
+                      backgroundColor: intensity > 0 ? `color-mix(in oklab, var(--hpr-cyan) ${(0.12 + intensity * 0.88) * 100}%, transparent)` : 'color-mix(in oklab, var(--foreground) 4%, transparent)',
                     }} title={`${day} ${h}:00 — ${formatDurationSeconds(val)}`} />
                   );
                 })}
@@ -1502,7 +1509,7 @@ function HourlyHeatmap({ data }: { data: Record<string, number> }) {
         <span className="text-[8px] text-muted-foreground mr-0.5">Less</span>
         {[0, 0.25, 0.5, 0.75, 1].map((i) => (
           <div key={i} className="w-3 h-3 rounded-[2px]" style={{
-            backgroundColor: i === 0 ? 'rgba(255,255,255,0.03)' : `rgba(0, 164, 220, ${0.12 + i * 0.88})`,
+            backgroundColor: i === 0 ? 'color-mix(in oklab, var(--foreground) 4%, transparent)' : `color-mix(in oklab, var(--hpr-cyan) ${(0.12 + i * 0.88) * 100}%, transparent)`,
           }} />
         ))}
         <span className="text-[8px] text-muted-foreground ml-0.5">More</span>
@@ -1514,7 +1521,7 @@ function HourlyHeatmap({ data }: { data: Record<string, number> }) {
 // ─── Scheduled Tasks ───
 
 function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
-  if (state === 'Running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00a4dc] shrink-0" />;
+  if (state === 'Running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--hpr-cyan)] shrink-0" />;
   if (state === 'Cancelling') return <XCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />;
   if (status === 'Completed') return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />;
   if (status === 'Failed' || status === 'Aborted') return <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />;
@@ -1588,7 +1595,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
     <div>
       <SectionHeader
         title="Scheduled Tasks"
-        badge={runningCount > 0 ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[#00a4dc]/15 text-[#00a4dc]">{runningCount} running</Badge> : undefined}
+        badge={runningCount > 0 ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[var(--hpr-cyan)]/15 text-[var(--hpr-cyan)]">{runningCount} running</Badge> : undefined}
         trailing={onRefresh && (
           <Button
             variant="ghost"
@@ -1627,12 +1634,12 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
           {active.map((t) => (
             <div key={t.Id} className="px-3 py-2.5">
               <div className="flex items-center gap-2.5">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00a4dc] shrink-0" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--hpr-cyan)] shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{t.Name}</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">{t.Category}</p>
                 </div>
-                <span className="text-xs font-medium text-[#00a4dc] tabular-nums shrink-0">
+                <span className="text-xs font-medium text-[var(--hpr-cyan)] tabular-nums shrink-0">
                   {t.CurrentProgressPercentage != null ? `${t.CurrentProgressPercentage.toFixed(0)}%` : 'Running'}
                 </span>
                 <Button
@@ -1697,7 +1704,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
                   <p className="text-sm font-medium">{category}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {catTasks.length} task{catTasks.length !== 1 ? 's' : ''}
-                    {catRunning > 0 && <span className="text-[#00a4dc]"> &middot; {catRunning} running</span>}
+                    {catRunning > 0 && <span className="text-[var(--hpr-cyan)]"> &middot; {catRunning} running</span>}
                     {latestRun && <span> &middot; {timeAgo(latestRun)}</span>}
                   </p>
                 </div>
@@ -1750,7 +1757,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
                             <Button
                               variant="ghost"
                               size="icon"
-                              className={`h-6 w-6 shrink-0 ${isRunning ? 'text-red-500 hover:text-red-400 hover:bg-red-500/10' : 'text-[#00a4dc] hover:text-[#00a4dc]/80 hover:bg-[#00a4dc]/10'}`}
+                              className={`h-6 w-6 shrink-0 ${isRunning ? 'text-red-500 hover:text-red-400 hover:bg-red-500/10' : 'text-[var(--hpr-cyan)] hover:text-[var(--hpr-cyan)]/80 hover:bg-[var(--hpr-cyan)]/10'}`}
                               disabled={isBusy}
                               onClick={() => handleTaskAction(t.Id, isRunning ? 'stop' : 'start')}
                             >

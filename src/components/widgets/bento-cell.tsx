@@ -107,9 +107,9 @@ export function BentoCell({
             minWidth: 0,
             overflow: 'hidden',
             boxShadow: dragging
-              ? `0 32px 64px rgba(0,0,0,0.7), 0 0 0 1.5px ${HPR.amber}, 0 0 60px ${mix(HPR.amber, 25)}`
+              ? `0 32px 64px ${mix(HPR.ink, 70)}, 0 0 0 1.5px ${HPR.amber}, 0 0 60px ${mix(HPR.amber, 25)}`
               : raised
-                ? '0 8px 22px rgba(0,0,0,0.25)'
+                ? `0 8px 22px ${mix(HPR.ink, 25)}`
                 : 'none',
             transition: 'box-shadow 0.2s, transform 0.25s',
           }}
@@ -171,7 +171,7 @@ export function BentoEditChrome({ onRemove }: BentoEditChromeProps) {
           height: 22,
           borderRadius: '50%',
           background: HPR.rose,
-          color: '#fff',
+          color: 'var(--hpr-fg)',
           border: 'none',
           display: 'flex',
           alignItems: 'center',

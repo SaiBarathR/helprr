@@ -8,9 +8,10 @@
  */
 
 import type * as React from 'react';
+import { generatePaletteFromBase, type PaletteTokens } from './color-utils';
 
-export type DashboardAccent = 'amber' | 'crimson' | 'cyan' | 'violet' | 'forest';
-export type DashboardPalette = 'warm' | 'slate' | 'pure' | 'cream';
+export type DashboardAccent = string;
+export type DashboardPalette = string;
 export type DashboardGradient = 'glow' | 'frame' | 'none';
 export type DashboardFont = 'system' | 'helvetica' | 'charter' | 'jetbrains';
 
@@ -19,6 +20,9 @@ export interface DashboardThemePrefs {
   palette: DashboardPalette;
   gradient: DashboardGradient;
   font: DashboardFont;
+  fg?: string;
+  fgMute?: string;
+  fgSubtle?: string;
 }
 
 export const DEFAULT_DASHBOARD_THEME: DashboardThemePrefs = {
@@ -35,18 +39,6 @@ export const ACCENT_COLORS: Record<DashboardAccent, { color: string; label: stri
   violet: { color: '#8a6bf7', label: 'Violet' },
   forest: { color: '#5ac893', label: 'Forest' },
 };
-
-interface PaletteTokens {
-  ink: string;
-  inkSoft: string;
-  surface: string;
-  surfaceHi: string;
-  hairline: string;
-  hairline2: string;
-  fg: string;
-  fgMute: string;
-  fgSubtle: string;
-}
 
 export const PALETTES: Record<DashboardPalette, { label: string; tokens: PaletteTokens; swatch: [string, string, string] }> = {
   warm: {
@@ -165,12 +157,33 @@ export const FONTS: Record<
   },
 };
 
+/** Resolve theme prefs into concrete token values (palette + per-tone overrides). */
+function resolveThemeTokens(prefs: DashboardThemePrefs) {
+  const accent = prefs.accent in ACCENT_COLORS
+    ? ACCENT_COLORS[prefs.accent].color
+    : prefs.accent;
+
+  const basePalette = prefs.palette in PALETTES
+    ? PALETTES[prefs.palette].tokens
+    : generatePaletteFromBase(prefs.palette, accent);
+
+  const palette: PaletteTokens = {
+    ...basePalette,
+    fg: prefs.fg ?? basePalette.fg,
+    fgMute: prefs.fgMute ?? basePalette.fgMute,
+    fgSubtle: prefs.fgSubtle ?? basePalette.fgSubtle,
+  };
+
+  const font = prefs.font in FONTS ? FONTS[prefs.font] : FONTS.system;
+  const gradient = prefs.gradient in GRADIENTS ? GRADIENTS[prefs.gradient].value : GRADIENTS.none.value;
+
+  return { accent, palette, font, gradient };
+}
+
 /** Build a React style object containing every --hpr-* variable. */
 export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSProperties {
-  const palette = PALETTES[prefs.palette].tokens;
-  const accent = ACCENT_COLORS[prefs.accent].color;
-  const font = FONTS[prefs.font];
-  const gradient = GRADIENTS[prefs.gradient].value;
+  const { accent, palette, font, gradient } = resolveThemeTokens(prefs);
+
   return {
     ['--hpr-ink' as string]: palette.ink,
     ['--hpr-inkSoft' as string]: palette.inkSoft,
@@ -192,10 +205,7 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
 /** Write a full set of --hpr-* variables onto `el`. */
 export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThemePrefs): void {
   if (!el) return;
-  const palette = PALETTES[prefs.palette].tokens;
-  const accent = ACCENT_COLORS[prefs.accent].color;
-  const font = FONTS[prefs.font];
-  const gradient = GRADIENTS[prefs.gradient].value;
+  const { accent, palette, font, gradient } = resolveThemeTokens(prefs);
 
   el.style.setProperty('--hpr-ink', palette.ink);
   el.style.setProperty('--hpr-inkSoft', palette.inkSoft);
@@ -211,6 +221,12 @@ export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThem
   el.style.setProperty('--hpr-font-display', font.display);
   el.style.setProperty('--hpr-font-mono', font.mono);
   el.style.setProperty('--hpr-bg-grad', gradient);
+}
+
+/** Resolve just the foreground tokens (for showing palette defaults in pickers). */
+export function resolveForegroundTones(prefs: DashboardThemePrefs): { fg: string; fgMute: string; fgSubtle: string } {
+  const { palette } = resolveThemeTokens({ ...prefs, fg: undefined, fgMute: undefined, fgSubtle: undefined });
+  return { fg: palette.fg, fgMute: palette.fgMute, fgSubtle: palette.fgSubtle };
 }
 
 /** Width (in columns) of each named size on the current grid. */

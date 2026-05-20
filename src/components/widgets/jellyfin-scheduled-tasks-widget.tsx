@@ -31,7 +31,7 @@ async function fetchTasks(): Promise<JellyfinScheduledTask[]> {
 }
 
 function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
-  if (state === 'Running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00a4dc] shrink-0" />;
+  if (state === 'Running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--hpr-cyan)] shrink-0" />;
   if (state === 'Cancelling') return <XCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />;
   if (status === 'Completed') return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />;
   if (status === 'Failed' || status === 'Aborted') return <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />;
@@ -123,7 +123,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
   const failedCount = failed.length;
 
   const badge = runningCount > 0 ? (
-    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[#00a4dc]/15 text-[#00a4dc]">
+    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-[var(--hpr-cyan)]/15 text-[var(--hpr-cyan)]">
       {runningCount} running
     </Badge>
   ) : undefined;
@@ -182,12 +182,12 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
                 {active.map((t) => (
                   <div key={t.Id} className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#00a4dc] shrink-0" />
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--hpr-cyan)] shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{t.Name}</p>
                         <p className="text-[10px] text-muted-foreground mt-0.5">{t.Category}</p>
                       </div>
-                      <span className="text-xs font-medium text-[#00a4dc] tabular-nums shrink-0">
+                      <span className="text-xs font-medium text-[var(--hpr-cyan)] tabular-nums shrink-0">
                         {t.CurrentProgressPercentage != null
                           ? `${t.CurrentProgressPercentage.toFixed(0)}%`
                           : 'Running'}
@@ -263,7 +263,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
                         <p className="text-sm font-medium">{category}</p>
                         <p className="text-[10px] text-muted-foreground">
                           {catTasks.length} task{catTasks.length !== 1 ? 's' : ''}
-                          {catRunning > 0 && <span className="text-[#00a4dc]"> · {catRunning} running</span>}
+                          {catRunning > 0 && <span className="text-[var(--hpr-cyan)]"> · {catRunning} running</span>}
                           {latestRun && <span> · {timeAgo(latestRun)}</span>}
                         </p>
                       </div>
@@ -324,7 +324,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
                                     className={`h-6 w-6 shrink-0 ${
                                       isRunning
                                         ? 'text-red-500 hover:text-red-400 hover:bg-red-500/10'
-                                        : 'text-[#00a4dc] hover:text-[#00a4dc]/80 hover:bg-[#00a4dc]/10'
+                                        : 'text-[var(--hpr-cyan)] hover:text-[var(--hpr-cyan)]/80 hover:bg-[var(--hpr-cyan)]/10'
                                     }`}
                                     disabled={editMode || isBusy}
                                     onClick={() => handleTaskAction(t.Id, isRunning ? 'stop' : 'start')}

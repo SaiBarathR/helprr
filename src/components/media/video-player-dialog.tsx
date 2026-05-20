@@ -77,7 +77,7 @@ export function VideoPlayerDialog({ open, onOpenChange, videos, initialIndex }: 
           </div>
         </div>
 
-        <div className="relative bg-black w-full aspect-video shrink-0 mx-auto max-w-[calc((95dvh-9rem)*16/9)]">
+        <div className="relative bg-background w-full aspect-video shrink-0 mx-auto max-w-[calc((95dvh-9rem)*16/9)]">
           {open && (
             <iframe
               key={video.id}
@@ -98,8 +98,8 @@ export function VideoPlayerDialog({ open, onOpenChange, videos, initialIndex }: 
                 disabled={safeIndex === 0}
                 aria-label="Previous video"
                 className={cn(
-                  'absolute left-2 top-1/2 -translate-y-1/2 z-10 size-9 rounded-full bg-black/60 text-white flex items-center justify-center transition-opacity',
-                  safeIndex === 0 ? 'opacity-30 pointer-events-none' : 'hover:bg-black/80'
+                  'absolute left-2 top-1/2 -translate-y-1/2 z-10 size-9 rounded-full bg-background/60 text-foreground flex items-center justify-center transition-opacity',
+                  safeIndex === 0 ? 'opacity-30 pointer-events-none' : 'hover:bg-background/80'
                 )}
               >
                 <ChevronLeft className="size-5" />
@@ -110,8 +110,8 @@ export function VideoPlayerDialog({ open, onOpenChange, videos, initialIndex }: 
                 disabled={safeIndex === videos.length - 1}
                 aria-label="Next video"
                 className={cn(
-                  'absolute right-2 top-1/2 -translate-y-1/2 z-10 size-9 rounded-full bg-black/60 text-white flex items-center justify-center transition-opacity',
-                  safeIndex === videos.length - 1 ? 'opacity-30 pointer-events-none' : 'hover:bg-black/80'
+                  'absolute right-2 top-1/2 -translate-y-1/2 z-10 size-9 rounded-full bg-background/60 text-foreground flex items-center justify-center transition-opacity',
+                  safeIndex === videos.length - 1 ? 'opacity-30 pointer-events-none' : 'hover:bg-background/80'
                 )}
               >
                 <ChevronRight className="size-5" />

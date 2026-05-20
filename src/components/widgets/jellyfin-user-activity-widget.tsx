@@ -148,7 +148,7 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
                   className="w-full text-left rounded-xl bg-muted/30 p-3 active:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[#00a4dc]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                    <div className="h-9 w-9 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden">
                       {avatarSrc ? (
                         <Image
                           src={avatarSrc}
@@ -159,7 +159,7 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
                           unoptimized
                         />
                       ) : (
-                        <span className="text-sm font-bold text-[#00a4dc]">
+                        <span className="text-sm font-bold text-[var(--hpr-cyan)]">
                           {user.user_name.charAt(0).toUpperCase()}
                         </span>
                       )}

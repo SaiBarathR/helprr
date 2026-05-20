@@ -103,7 +103,7 @@ export function MediaTable({
                           ? 'bg-green-500'
                           : row.monitored
                             ? row.status === 'continuing' || row.status === 'released' ? 'bg-red-500' : 'bg-blue-500'
-                            : 'bg-zinc-500'
+                            : 'bg-muted-foreground'
                       }`}
                     />
                     <span className="truncate">{row.title}</span>

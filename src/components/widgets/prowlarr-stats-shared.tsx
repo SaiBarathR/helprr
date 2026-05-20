@@ -74,7 +74,7 @@ export function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
         padding: '6px 8px',
         fontSize: 11,
         color: HPR.fg,
-        boxShadow: '0 6px 16px rgba(0,0,0,0.5)',
+        boxShadow: '0 6px 16px color-mix(in oklab, var(--hpr-ink) 50%, transparent)',
       }}
     >
       <p style={{ fontWeight: 600, marginBottom: 4, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -217,7 +217,7 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
                 axisLine={false}
                 tickLine={false}
               />
-              <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+              <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
               {bars.map((b, i) => (
                 <Bar
                   key={b.dataKey}

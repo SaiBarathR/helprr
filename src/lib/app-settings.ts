@@ -13,7 +13,6 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     activityRefreshIntervalSecs: 5,
     torrentsRefreshIntervalSecs: 5,
     cacheImagesEnabled: true,
-    theme: 'dark',
     timeZone: getEnvTimeZone(),
     logEnabled: true,
     logLevel: DEFAULT_LOG_LEVEL,

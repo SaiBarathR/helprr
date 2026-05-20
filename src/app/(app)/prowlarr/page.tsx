@@ -844,7 +844,7 @@ function YTick({ x, y, payload }: any) {
   const maxLen = 16;
   const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text;
   return (
-    <text x={x} y={y} dy={4} textAnchor="end" fill="#888" fontSize={10}>
+    <text x={x} y={y} dy={4} textAnchor="end" fill="var(--hpr-fgMute)" fontSize={10}>
       {display}
     </text>
   );
@@ -1039,7 +1039,7 @@ function StatsTab() {
                   <BarChart data={responseData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
                     <XAxis
                       type="number"
-                      tick={{ fontSize: 10, fill: '#888' }}
+                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
                       tickFormatter={(v) => `${v}ms`}
                       axisLine={false}
                       tickLine={false}
@@ -1052,8 +1052,8 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                    <Bar dataKey="Response" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
+                    <Bar dataKey="Response" fill="var(--hpr-cyan)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1071,7 +1071,7 @@ function StatsTab() {
                   <BarChart data={failureData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
                     <XAxis
                       type="number"
-                      tick={{ fontSize: 10, fill: '#888' }}
+                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
                       tickFormatter={(v) => `${v}%`}
                       axisLine={false}
                       tickLine={false}
@@ -1084,8 +1084,8 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                    <Bar dataKey="Failure %" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
+                    <Bar dataKey="Failure %" fill="var(--hpr-rose)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1099,9 +1099,9 @@ function StatsTab() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Queries by Indexer</p>
                 <div className="flex items-center gap-3 ml-auto">
                   {[
-                    { color: '#6366f1', label: 'Search' },
-                    { color: '#f59e0b', label: 'RSS' },
-                    { color: '#ef4444', label: 'Auth' },
+                    { color: 'var(--hpr-violet)', label: 'Search' },
+                    { color: 'var(--hpr-amber)', label: 'RSS' },
+                    { color: 'var(--hpr-rose)', label: 'Auth' },
                   ].map(({ color, label }) => (
                     <span key={label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
                       <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: color }} />
@@ -1115,7 +1115,7 @@ function StatsTab() {
                   <BarChart data={queriesData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
                     <XAxis
                       type="number"
-                      tick={{ fontSize: 10, fill: '#888' }}
+                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
                       tickFormatter={fmtNum}
                       axisLine={false}
                       tickLine={false}
@@ -1128,10 +1128,10 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                    <Bar dataKey="Search" stackId="q" fill="#6366f1" />
-                    <Bar dataKey="RSS" stackId="q" fill="#f59e0b" />
-                    <Bar dataKey="Auth" stackId="q" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
+                    <Bar dataKey="Search" stackId="q" fill="var(--hpr-violet)" />
+                    <Bar dataKey="RSS" stackId="q" fill="var(--hpr-amber)" />
+                    <Bar dataKey="Auth" stackId="q" fill="var(--hpr-rose)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1149,7 +1149,7 @@ function StatsTab() {
                   <BarChart data={grabsData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
                     <XAxis
                       type="number"
-                      tick={{ fontSize: 10, fill: '#888' }}
+                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
                       tickFormatter={fmtNum}
                       axisLine={false}
                       tickLine={false}
@@ -1162,8 +1162,8 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                    <Bar dataKey="Grabs" fill="#10b981" radius={[0, 4, 4, 0]} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
+                    <Bar dataKey="Grabs" fill="var(--hpr-green)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1181,7 +1181,7 @@ function StatsTab() {
                   <BarChart data={uaQueryData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
                     <XAxis
                       type="number"
-                      tick={{ fontSize: 10, fill: '#888' }}
+                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
                       tickFormatter={fmtNum}
                       axisLine={false}
                       tickLine={false}
@@ -1194,8 +1194,8 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                    <Bar dataKey="Queries" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
+                    <Bar dataKey="Queries" fill="var(--hpr-violet)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1213,7 +1213,7 @@ function StatsTab() {
                   <BarChart data={uaGrabData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
                     <XAxis
                       type="number"
-                      tick={{ fontSize: 10, fill: '#888' }}
+                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
                       tickFormatter={fmtNum}
                       axisLine={false}
                       tickLine={false}
@@ -1226,8 +1226,8 @@ function StatsTab() {
                       axisLine={false}
                       tickLine={false}
                     />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                    <Bar dataKey="Grabs" fill="#10b981" radius={[0, 4, 4, 0]} />
+                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
+                    <Bar dataKey="Grabs" fill="var(--hpr-green)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

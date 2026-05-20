@@ -314,7 +314,7 @@ function RecentRow({ item }: { item: RecentItem }) {
           height: 20,
           borderRadius: 6,
           background: typeColor,
-          color: '#fff',
+          color: 'var(--hpr-fg)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',

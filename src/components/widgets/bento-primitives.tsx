@@ -179,17 +179,20 @@ export type PosterTone =
   | 'olive'
   | 'crimson';
 
+const tintAgainstSurface = (c: string, p: number) =>
+  `color-mix(in oklab, ${c} ${p}%, ${HPR.surface})`;
+
 const POSTER_TONES: Record<PosterTone, [string, string]> = {
-  blue: ['#2c3a55', '#1a2237'],
-  purple: ['#3a2c55', '#241a37'],
-  rose: ['#552c3a', '#37212a'],
-  green: ['#2c5544', '#1a3729'],
-  amber: ['#553e2c', '#372a1a'],
-  pink: ['#5a2c44', '#37192a'],
-  teal: ['#2c5552', '#1a3735'],
-  indigo: ['#352c55', '#1f1a37'],
-  olive: ['#4d4d2c', '#33321a'],
-  crimson: ['#552c2c', '#37191a'],
+  blue: [tintAgainstSurface(HPR.blue, 35), tintAgainstSurface(HPR.blue, 18)],
+  purple: [tintAgainstSurface(HPR.purple, 35), tintAgainstSurface(HPR.purple, 18)],
+  rose: [tintAgainstSurface(HPR.rose, 35), tintAgainstSurface(HPR.rose, 18)],
+  green: [tintAgainstSurface(HPR.green, 35), tintAgainstSurface(HPR.green, 18)],
+  amber: [tintAgainstSurface(HPR.amber, 35), tintAgainstSurface(HPR.amber, 18)],
+  pink: [tintAgainstSurface(HPR.pink, 35), tintAgainstSurface(HPR.pink, 18)],
+  teal: [tintAgainstSurface(HPR.cyan, 35), tintAgainstSurface(HPR.cyan, 18)],
+  indigo: [tintAgainstSurface(HPR.violet, 35), tintAgainstSurface(HPR.violet, 18)],
+  olive: [tintAgainstSurface(HPR.amber, 25), tintAgainstSurface(HPR.amber, 12)],
+  crimson: [tintAgainstSurface(HPR.rose, 45), tintAgainstSurface(HPR.rose, 22)],
 };
 
 export function toneFromString(seed: string | undefined | null): PosterTone {
@@ -242,12 +245,12 @@ export function Poster({
           // Wrap in double quotes and percent-encode embedded quotes so URLs
           // with `)` or whitespace cannot break out of the CSS `url(...)` token.
           ? `url("${imageUrl.replace(/"/g, '%22')}"), linear-gradient(135deg, ${c1}, ${c2})`
-          : `linear-gradient(135deg, ${c1}, ${c2}), repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0 2px, transparent 2px 6px)`,
+          : `linear-gradient(135deg, ${c1}, ${c2}), repeating-linear-gradient(45deg, ${mix(HPR.fg, 4)} 0 2px, transparent 2px 6px)`,
         backgroundSize: imageUrl ? 'cover, auto' : 'auto',
         backgroundPosition: imageUrl ? 'center, 0 0' : '0 0',
         backgroundBlendMode: imageUrl ? 'normal' : 'overlay',
         overflow: 'hidden',
-        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.04)',
+        boxShadow: `inset 0 0 0 1px ${mix(HPR.fg, 4)}`,
       }}
     >
       {!imageUrl && label && (
@@ -264,8 +267,8 @@ export function Poster({
             fontWeight: 600,
             fontSize,
             lineHeight: 1.1,
-            color: 'rgba(255,255,255,0.78)',
-            textShadow: '0 1px 2px rgba(0,0,0,0.4)',
+            color: mix(HPR.fg, 78),
+            textShadow: `0 1px 2px ${mix(HPR.ink, 40)}`,
             letterSpacing: '-0.01em',
           }}
         >
@@ -281,7 +284,7 @@ export function Poster({
             width: 18,
             height: 18,
             borderRadius: 4,
-            background: 'rgba(0,0,0,0.55)',
+            background: mix(HPR.ink, 55),
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -300,7 +303,7 @@ export function Poster({
             right: 5,
             padding: '2px 5px',
             borderRadius: 4,
-            background: 'rgba(0,0,0,0.6)',
+            background: mix(HPR.ink, 60),
             color: HPR.amber,
             fontSize: 9,
             fontFamily: FONT_MONO,
@@ -326,7 +329,7 @@ export function Poster({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#0a3a22',
+            color: HPR.ink,
           }}
         >
           <Check size={11} strokeWidth={3} />
@@ -344,10 +347,10 @@ export function Poster({
             gap: 2,
             padding: '2px 6px',
             borderRadius: 5,
-            background: 'rgba(0, 0, 0, 0.3)',
+            background: mix(HPR.ink, 30),
             backdropFilter: 'blur(4px)',
             WebkitBackdropFilter: 'blur(4px)',
-            color: 'rgba(255, 255, 255, 1)',
+            color: HPR.fg,
             fontSize: 8,
             fontFamily: FONT_MONO,
             fontWeight: 500,
@@ -371,7 +374,7 @@ export function Poster({
             right: 0,
             bottom: 0,
             height: 3,
-            background: 'rgba(0,0,0,0.4)',
+            background: mix(HPR.ink, 40),
           }}
         >
           <div style={{ width: `${progress}%`, height: '100%', background: HPR.cyan }} />
@@ -468,7 +471,7 @@ export function Bar({
       style={{
         width: '100%',
         height,
-        background: 'rgba(255,255,255,0.06)',
+        background: mix(HPR.fg, 6),
         borderRadius: 999,
         overflow: 'hidden',
       }}
@@ -789,8 +792,8 @@ export function FloatingEdit({
         background: edit ? HPR.amber : HPR.surface,
         border: `1px solid ${edit ? HPR.amber : HPR.hairline2}`,
         boxShadow: edit
-          ? `0 0 0 6px ${mix(HPR.amber, 18)}, 0 8px 24px rgba(0,0,0,0.6)`
-          : '0 8px 24px rgba(0,0,0,0.5)',
+          ? `0 0 0 6px ${mix(HPR.amber, 18)}, 0 8px 24px ${mix(HPR.ink, 60)}`
+          : `0 8px 24px ${mix(HPR.ink, 50)}`,
         color: edit ? HPR.ink : HPR.amber,
         fontSize: mobile ? 18 : 12,
         zIndex: 40,

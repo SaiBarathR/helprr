@@ -115,18 +115,18 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
           <h1 className="text-xl font-bold leading-tight line-clamp-2 drop-shadow-lg">{anime.title}</h1>
           <div className="flex items-center gap-2 flex-wrap">
             {anime.averageScore != null && anime.averageScore > 0 && (
-              <Badge className="bg-black/50 text-white text-[10px] gap-0.5 backdrop-blur-sm">
+              <Badge className="bg-background/50 text-foreground text-[10px] gap-0.5 backdrop-blur-sm">
                 <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
                 {anime.averageScore}%
               </Badge>
             )}
             {anime.format && (
-              <Badge variant="outline" className="text-[10px] border-white/30 text-white backdrop-blur-sm">
+              <Badge variant="outline" className="text-[10px] border-foreground/30 text-foreground backdrop-blur-sm">
                 {anime.format.replace('_', ' ')}
               </Badge>
             )}
             {anime.genres.slice(0, 3).map((genre) => (
-              <Badge key={genre} variant="outline" className="text-[10px] border-white/30 text-white backdrop-blur-sm">
+              <Badge key={genre} variant="outline" className="text-[10px] border-foreground/30 text-foreground backdrop-blur-sm">
                 {genre}
               </Badge>
             ))}

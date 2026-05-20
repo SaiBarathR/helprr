@@ -21,7 +21,7 @@ export function ProwlarrFailureRateWidget({ refreshInterval, editMode = false, n
           })
           .sort((a, b) => b['Failure %'] - a['Failure %'])
       }
-      bars={[{ dataKey: 'Failure %', color: '#ef4444' }]}
+      bars={[{ dataKey: 'Failure %', color: 'var(--hpr-rose)' }]}
       xTickFormatter={(v) => `${v}%`}
       emptyMessage="No failures in this period."
       refreshInterval={refreshInterval}

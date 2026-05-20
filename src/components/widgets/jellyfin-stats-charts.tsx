@@ -6,7 +6,14 @@ import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
 
 export type SortMode = 'plays' | 'duration';
 
-const USER_COLORS = ['#00a4dc', '#e5a00d', '#00c853', '#ff5252', '#7c4dff', '#ff6d00'];
+const USER_COLORS = [
+  'var(--hpr-cyan)',
+  'var(--hpr-amber)',
+  'var(--hpr-green)',
+  'var(--hpr-rose)',
+  'var(--hpr-violet)',
+  'var(--hpr-pink)',
+];
 
 // ─── Ranked list (top TV/movies/clients/devices) ───
 
@@ -33,7 +40,7 @@ export function RankedList({
       {sorted.map((entry, i) => (
         <div key={entry.label} className="relative px-3 flex items-center gap-3 flex-1 min-h-0">
           <div
-            className="absolute inset-0 bg-[#00a4dc]/5"
+            className="absolute inset-0 bg-[var(--hpr-cyan)]/5"
             style={{ width: `${((sortBy === 'duration' ? entry.time : entry.count) / maxVal) * 100}%` }}
           />
           <span className="text-xs text-muted-foreground font-mono w-5 shrink-0 relative">{i + 1}</span>
@@ -296,7 +303,7 @@ export function PlayActivityChart({ data }: { data: PlayActivityUser[] }) {
               title={`${label}: ${count}`}
             >
               <div
-                className="w-full rounded-t-sm bg-[#00a4dc] min-h-[2px]"
+                className="w-full rounded-t-sm bg-[var(--hpr-cyan)] min-h-[2px]"
                 style={{ height: `${Math.max(pct, 2)}%` }}
               />
             </div>
@@ -381,8 +388,8 @@ export function HourlyHeatmap({ data }: { data: Record<string, number> }) {
                       style={{
                         backgroundColor:
                           intensity > 0
-                            ? `rgba(0, 164, 220, ${0.12 + intensity * 0.88})`
-                            : 'rgba(255,255,255,0.03)',
+                            ? `color-mix(in oklab, var(--hpr-cyan) ${(0.12 + intensity * 0.88) * 100}%, transparent)`
+                            : 'color-mix(in oklab, var(--hpr-fg) 3%, transparent)',
                       }}
                       title={`${day} ${h}:00 — ${formatDurationSeconds(val)}`}
                     />
@@ -402,7 +409,9 @@ export function HourlyHeatmap({ data }: { data: Record<string, number> }) {
             className="w-3 h-3 rounded-[2px]"
             style={{
               backgroundColor:
-                i === 0 ? 'rgba(255,255,255,0.03)' : `rgba(0, 164, 220, ${0.12 + i * 0.88})`,
+                i === 0
+                  ? 'color-mix(in oklab, var(--hpr-fg) 3%, transparent)'
+                  : `color-mix(in oklab, var(--hpr-cyan) ${(0.12 + i * 0.88) * 100}%, transparent)`,
             }}
           />
         ))}

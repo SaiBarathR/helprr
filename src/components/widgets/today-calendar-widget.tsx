@@ -43,11 +43,11 @@ async function fetchToday(): Promise<CalendarEvent[]> {
 
 function shortTagFor(ev: CalendarEvent): { label: string; color: string } | null {
   if (ev.finaleType) {
-    return { label: 'FIN', color: '#f87171' };
+    return { label: 'FIN', color: HPR.rose };
   }
-  if (ev.releaseType === 'cinema') return { label: 'CIN', color: '#fb7185' };
-  if (ev.releaseType === 'physical') return { label: 'PHY', color: '#fbbf24' };
-  if (ev.releaseType === 'digital') return { label: 'DIG', color: '#22d3ee' };
+  if (ev.releaseType === 'cinema') return { label: 'CIN', color: HPR.pink };
+  if (ev.releaseType === 'physical') return { label: 'PHY', color: HPR.amber };
+  if (ev.releaseType === 'digital') return { label: 'DIG', color: HPR.cyan };
   return null;
 }
 
@@ -212,7 +212,7 @@ export function TodayCalendarWidget({
                     height: 20,
                     borderRadius: 6,
                     background: typeColor,
-                    color: '#fff',
+                    color: 'var(--hpr-fg)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -288,7 +288,7 @@ export function TodayCalendarWidget({
                       padding: '0 5px',
                       height: 18,
                       borderRadius: 4,
-                      background: 'rgba(0,0,0,0.55)',
+                      background: 'color-mix(in oklab, var(--hpr-ink) 55%, transparent)',
                       color: tag.color,
                       fontSize: 9,
                       fontWeight: 700,

@@ -15,7 +15,7 @@ export function ProwlarrUserAgentGrabsWidget({ refreshInterval, editMode = false
           .sort((a, b) => b.Grabs - a.Grabs)
           .slice(0, 10)
       }
-      bars={[{ dataKey: 'Grabs', color: '#10b981' }]}
+      bars={[{ dataKey: 'Grabs', color: 'var(--hpr-green)' }]}
       emptyMessage="No user-agent grabs in this period."
       refreshInterval={refreshInterval}
       editMode={editMode}

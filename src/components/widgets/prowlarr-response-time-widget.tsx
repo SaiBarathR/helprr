@@ -14,7 +14,7 @@ export function ProwlarrResponseTimeWidget({ refreshInterval, editMode = false, 
           .sort((a, b) => b.averageResponseTime - a.averageResponseTime)
           .map((i) => ({ name: i.indexerName, Response: Math.round(i.averageResponseTime) }))
       }
-      bars={[{ dataKey: 'Response', color: '#0ea5e9' }]}
+      bars={[{ dataKey: 'Response', color: 'var(--hpr-cyan)' }]}
       xTickFormatter={(v) => formatMs(v)}
       refreshInterval={refreshInterval}
       editMode={editMode}

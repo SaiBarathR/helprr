@@ -106,8 +106,8 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
       ) : (
         <div className="rounded-xl bg-card overflow-hidden">
           <div className="p-3 flex items-center gap-3">
-            <div className="rounded-lg bg-[#00a4dc]/10 p-2">
-              <Server className="h-4 w-4 text-[#00a4dc]" />
+            <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2">
+              <Server className="h-4 w-4 text-[var(--hpr-cyan)]" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{system.ServerName}</p>
@@ -136,7 +136,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-[#00a4dc] hover:bg-[#00a4dc]/10"
+              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-[var(--hpr-cyan)] hover:bg-[var(--hpr-cyan)]/10"
               disabled={editMode || serverAction !== null || scanRunning}
               onClick={() => handleServerAction('scan-libraries')}
             >
