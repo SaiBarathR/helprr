@@ -13,8 +13,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (typeof endpoint !== 'string' || !endpoint.trim()) {
       return NextResponse.json({ error: 'Invalid endpoint' }, { status: 400 });
     }
-    const row = await prisma.pushSubscription.findUnique({ where: { endpoint } });
-    return NextResponse.json({ exists: Boolean(row) });
+    const row = await prisma.pushSubscription.findUnique({
+      where: { endpoint },
+      select: { id: true, revokedAt: true },
+    });
+    if (!row) return NextResponse.json({ exists: false });
+    if (row.revokedAt) return NextResponse.json({ exists: false, revoked: true });
+    return NextResponse.json({ exists: true });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed' },

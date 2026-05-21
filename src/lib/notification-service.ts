@@ -253,6 +253,7 @@ export async function notifyEvent(event: {
   }, { scope: 'notifications' });
 
   const subscriptions = await prisma.pushSubscription.findMany({
+    where: { revokedAt: null },
     include: { preferences: true },
   });
 

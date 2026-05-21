@@ -71,14 +71,22 @@ export function usePushNotifications() {
     };
   }, []);
 
-  async function reconcileSubscription(sub: PushSubscription): Promise<{ done: boolean }> {
+  async function reconcileSubscription(sub: PushSubscription): Promise<{ done: boolean; revoked?: boolean }> {
     const res = await fetch('/api/notifications/subscription/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ endpoint: sub.endpoint }),
     });
     if (!res.ok) return { done: false };
-    const data = (await res.json()) as { exists?: boolean };
+    const data = (await res.json()) as { exists?: boolean; revoked?: boolean };
+    if (data.revoked) {
+      try {
+        await sub.unsubscribe();
+      } catch (err) {
+        console.warn('[Push] could not unsubscribe revoked browser subscription:', err);
+      }
+      return { done: true, revoked: true };
+    }
     if (data.exists === false) {
       const reregistered = await registerWithServer(sub);
       if (reregistered) setWasReregistered(true);
@@ -110,16 +118,23 @@ export function usePushNotifications() {
           });
         }, 5000);
       };
+      let revoked = false;
       try {
         const result = await reconcileSubscription(sub);
         if (!result.done) scheduleRetry();
+        else if (result.revoked) revoked = true;
       } catch (err) {
         console.warn('[Push] subscription check failed:', err);
         scheduleRetry();
       }
 
-      setIsSubscribed(true);
-      setSubscriptionEndpoint(sub.endpoint);
+      if (revoked) {
+        setIsSubscribed(false);
+        setSubscriptionEndpoint(null);
+      } else {
+        setIsSubscribed(true);
+        setSubscriptionEndpoint(sub.endpoint);
+      }
     } catch (err) {
       console.warn('[Push] Could not check subscription:', err);
     }

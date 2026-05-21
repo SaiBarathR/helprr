@@ -41,6 +41,7 @@ model PushSubscription {
   consecutiveFailures Int                      @default(0)
   lastFailedAt        DateTime?
   lastSucceededAt     DateTime?
+  revokedAt           DateTime?
   createdAt           DateTime                 @default(now())
   preferences         NotificationPreference[]
 }
