@@ -1,5 +1,7 @@
 import type { QBittorrentTorrent, QueueItem } from '@/types';
 import type { QBittorrentClient } from '@/lib/qbittorrent-client';
+import type { SonarrClient } from '@/lib/sonarr-client';
+import type { RadarrClient } from '@/lib/radarr-client';
 import type {
   LinkedArr,
   PatternMode,
@@ -8,6 +10,27 @@ import type {
   SlowRuleShape,
   StallRuleShape,
 } from './types';
+
+// Sonarr/Radarr v3 history eventType strings that represent a *successful*
+// import. We require one of these (matched by downloadId == torrent hash) before
+// the "Auto-remove imported" system rule will delete a torrent.
+export const IMPORTED_HISTORY_EVENT_TYPES = new Set<string>([
+  'downloadFolderImported',
+  'episodeFileImported',
+  'movieFileImported',
+]);
+
+// trackedDownloadState values that mean arr has finalized the import and the
+// torrent files are safe to remove from the client. Anything else (importing,
+// importPending, importBlocked, downloadFailed, importFailed, etc.) means arr
+// is still working on it or has flagged a problem — do NOT delete from those
+// states.
+const IMPORTED_QUEUE_STATES = new Set<string>(['imported']);
+
+export function isImportedQueueState(state: string | undefined | null): boolean {
+  if (!state) return false;
+  return IMPORTED_QUEUE_STATES.has(state);
+}
 
 export function torrentTags(t: QBittorrentTorrent): string[] {
   return (t.tags || '')
@@ -282,5 +305,48 @@ export function formatError(err: unknown): string {
   } catch {
     return String(err);
   }
+}
+
+export type ImportConfirmationSource = 'sonarr' | 'radarr';
+
+export interface ImportConfirmation {
+  source: ImportConfirmationSource;
+  eventType: string;
+}
+
+/**
+ * Query Sonarr+Radarr history for any successful-import event whose
+ * downloadId matches the given torrent hash. Returns the first confirmation
+ * found, or null if neither arr has imported it.
+ *
+ * Fails closed: if an arr is configured but the API call throws, we treat that
+ * arr as "cannot confirm" and move on. Caller is responsible for skipping the
+ * removal when this returns null.
+ */
+export async function confirmImportedViaHistory(
+  hash: string,
+  arrs: { sonarr: SonarrClient | null; radarr: RadarrClient | null },
+): Promise<ImportConfirmation | null> {
+  // Sonarr first — anime/TV is the more common case in the user's setup, and
+  // either source confirming is sufficient.
+  if (arrs.sonarr) {
+    try {
+      const res = await arrs.sonarr.getHistory(1, 50, 'date', 'descending', { downloadId: hash });
+      const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
+      if (hit) return { source: 'sonarr', eventType: hit.eventType };
+    } catch {
+      // swallow — caller logs cycle-level failures; per-torrent noise isn't useful
+    }
+  }
+  if (arrs.radarr) {
+    try {
+      const res = await arrs.radarr.getHistory(1, 50, 'date', 'descending', { downloadId: hash });
+      const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
+      if (hit) return { source: 'radarr', eventType: hit.eventType };
+    } catch {
+      // swallow
+    }
+  }
+  return null;
 }
 
