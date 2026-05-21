@@ -20,6 +20,7 @@ interface UseWidgetDataResult<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  refresh: () => Promise<void>;
 }
 
 interface CacheEntry {
@@ -129,5 +130,5 @@ export function useWidgetData<T>({
     return () => clearInterval(interval);
   }, [doFetch, refreshInterval, enabled]);
 
-  return { data, loading, error };
+  return { data, loading, error, refresh: doFetch };
 }

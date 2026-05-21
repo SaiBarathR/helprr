@@ -46,7 +46,7 @@ async function fetchServerData(): Promise<ServerData> {
 export function JellyfinServerWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { ref, width } = useElementSize<HTMLDivElement>();
   const compactView = useMemo(() => width > 0 && width < 300, [width]);
-  const { data, loading } = useWidgetData<ServerData>({
+  const { data, loading, refresh } = useWidgetData<ServerData>({
     fetchFn: fetchServerData,
     refreshInterval,
     enabled: !editMode,
@@ -74,13 +74,17 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         toast.error(body?.error || `Failed to ${label}`);
+        return;
+      }
+      if (action === 'scan-libraries') {
+        await refresh();
       }
     } catch {
       toast.error(`Failed to ${label}`);
     } finally {
       setServerAction(null);
     }
-  }, []);
+  }, [refresh]);
 
   const handleServerAction = useCallback(
     (action: ServerAction) => {
