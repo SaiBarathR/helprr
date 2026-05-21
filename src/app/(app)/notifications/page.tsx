@@ -488,7 +488,7 @@ export default function NotificationsPage() {
               )}
             </button>
             <Link
-              href="/notifications/preferences"
+              href="/settings/notifications"
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
               aria-label="Notification preferences"
             >

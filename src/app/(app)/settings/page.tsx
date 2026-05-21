@@ -79,7 +79,7 @@ export default function SettingsIndexPage() {
           iconBg="bg-rose-500/10"
           iconColor="text-rose-400"
           label="Notifications"
-          subtitle="Upcoming alerts and timing"
+          subtitle="Push, event types, devices, upcoming"
         />
         <CategoryRow
           href="/settings/storage"

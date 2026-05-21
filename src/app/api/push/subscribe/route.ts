@@ -18,7 +18,13 @@ async function postHandler(request: NextRequest) {
 
     const subscription = await prisma.pushSubscription.upsert({
       where: { endpoint },
-      update: { p256dh: keys.p256dh, auth: keys.auth, deviceName },
+      update: {
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        deviceName,
+        revokedAt: null,
+        consecutiveFailures: 0,
+      },
       create: { endpoint, p256dh: keys.p256dh, auth: keys.auth, deviceName },
     });
 
