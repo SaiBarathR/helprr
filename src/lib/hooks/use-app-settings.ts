@@ -168,7 +168,12 @@ export function useAppSettings(): UseAppSettingsResult {
         cachedState = normalize(payload ?? {});
         notify();
         if (showToast) {
-          const custom = opts?.successMessage?.(cachedState, payload);
+          let custom: string | undefined;
+          try {
+            custom = opts?.successMessage?.(cachedState, payload);
+          } catch (err) {
+            console.error('[use-app-settings] successMessage callback threw', err);
+          }
           if (custom) toast.success(custom, { duration: 1800 });
           else toast.success('Saved', { duration: 1200 });
         }

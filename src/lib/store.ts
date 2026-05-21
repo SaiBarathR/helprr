@@ -469,6 +469,7 @@ const PERSISTED_KEYS = [
   'navOrder',
   'disabledNavItems',
   'defaultPage',
+  'sidebarCollapsed',
   'animeCarouselOrder',
   'disabledAnimeCarousels',
   'discoverLayout',
