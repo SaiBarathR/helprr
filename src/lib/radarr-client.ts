@@ -173,7 +173,7 @@ export class RadarrClient {
     pageSize: number = 20,
     sortKey: string = 'date',
     sortDirection: string = 'descending',
-    filters?: { movieId?: number; eventType?: number }
+    filters?: { movieId?: number; eventType?: number; downloadId?: string }
   ): Promise<HistoryResponse> {
     const params: Record<string, unknown> = {
       page,
@@ -184,6 +184,7 @@ export class RadarrClient {
     };
     if (filters?.movieId) params.movieId = filters.movieId;
     if (filters?.eventType !== undefined) params.eventType = filters.eventType;
+    if (filters?.downloadId) params.downloadId = filters.downloadId;
     return this.get<HistoryResponse>('/api/v3/history', params);
   }
 

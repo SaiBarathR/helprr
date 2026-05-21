@@ -243,7 +243,7 @@ export class SonarrClient {
     pageSize: number = 20,
     sortKey: string = 'date',
     sortDirection: string = 'descending',
-    filters?: { episodeId?: number; seriesId?: number; eventType?: number }
+    filters?: { episodeId?: number; seriesId?: number; eventType?: number; downloadId?: string }
   ): Promise<HistoryResponse> {
     const params: Record<string, unknown> = {
       page,
@@ -256,6 +256,7 @@ export class SonarrClient {
     if (filters?.episodeId) params.episodeId = filters.episodeId;
     if (filters?.seriesId) params.seriesId = filters.seriesId;
     if (filters?.eventType !== undefined) params.eventType = filters.eventType;
+    if (filters?.downloadId) params.downloadId = filters.downloadId;
     return this.get<HistoryResponse>('/api/v3/history', params);
   }
 
