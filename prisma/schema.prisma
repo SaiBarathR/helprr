@@ -44,6 +44,33 @@ model Session {
   @@index([revokedAt])
 }
 
+model WatchlistItem {
+  id                 String         @id @default(cuid())
+  source             String
+  externalId         String
+  mediaType          String
+  title              String
+  year               Int?
+  posterUrl          String?
+  overview           String?
+  rating             Float?
+  addedAt            DateTime       @default(now())
+  reminderAt         DateTime?
+  reminderNotifiedAt DateTime?
+  tags               WatchlistTag[] @relation("WatchlistItemTags")
+
+  @@unique([source, externalId, mediaType])
+  @@index([addedAt])
+  @@index([reminderAt, reminderNotifiedAt])
+}
+
+model WatchlistTag {
+  id    String          @id @default(cuid())
+  name  String          @unique
+  color String?
+  items WatchlistItem[] @relation("WatchlistItemTags")
+}
+
 model PushSubscription {
   id                  String                   @id @default(cuid())
   endpoint            String                   @unique

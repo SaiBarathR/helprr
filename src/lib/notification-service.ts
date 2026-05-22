@@ -43,6 +43,7 @@ const TTL_BY_EVENT: Record<string, number> = {
   upcomingPremiere: 86400,
   cleanupStrike: 60,
   cleanupRemoved: 60,
+  watchlistReminder: 86400,
 };
 
 function ttlForTag(tag: string | undefined): number {

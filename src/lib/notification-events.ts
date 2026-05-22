@@ -6,11 +6,12 @@ export const EVENT_TYPES = [
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
+  'watchlistReminder',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -100,6 +101,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'A cleanup action failed (deletion or category change)',
     iconName: 'X', colorClass: 'bg-red-500/10 text-red-500',
   },
+  watchlistReminder: {
+    type: 'watchlistReminder', group: 'watchlist',
+    label: 'Watchlist Reminder',
+    description: 'A watchlist item reached its reminder date',
+    iconName: 'Bell', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -122,6 +129,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'cleanup',
     title: 'Cleanup',
     types: ['cleanupStrike', 'cleanupRemoved', 'cleanupFailed'],
+  },
+  {
+    id: 'watchlist',
+    title: 'Watchlist',
+    types: ['watchlistReminder'],
   },
 ];
 

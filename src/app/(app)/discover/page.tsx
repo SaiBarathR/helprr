@@ -34,6 +34,8 @@ import {
 } from '@/components/ui/command';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { LanguageRegionCombobox } from '@/components/ui/language-region-combobox';
+import { WatchlistButton } from '@/components/watchlist/watchlist-button';
+import { tmdbImageUrl } from '@/lib/discover';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
@@ -217,46 +219,69 @@ function MediaPoster({
     ? (toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath)
     : null;
   return (
-    <button
-      onClick={() => onClick(item)}
+    <div
       className={isGrid
-        ? 'group relative w-full min-w-0 text-left'
-        : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] text-left'}
+        ? 'group relative w-full min-w-0'
+        : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px]'}
     >
-      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
-        {posterSrc ? (
-          <Image
-            src={posterSrc}
-            alt={item.title}
-            fill
-            sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px'}
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            unoptimized={isProtectedApiImageSrc(posterSrc)}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            {item.mediaType === 'movie' ? <Film className="h-7 w-7" /> : <Tv className="h-7 w-7" />}
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-background/75 via-background/20 to-transparent" />
-        <div className="absolute top-1.5 left-1.5">{cardTypeIcon(item.mediaType)}</div>
-        {item.library?.exists && (
-          <div className="absolute top-1.5 right-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
-            <Check className="h-3 w-3 text-foreground" />
-          </div>
-        )}
-        <div className="absolute bottom-0 left-0 right-0 p-2">
-          <p className="text-xs text-foreground font-medium line-clamp-2 leading-tight">{item.title}</p>
-          <div className="mt-1 flex items-center justify-between text-[10px] text-foreground/80">
-            <span>{item.year ?? '----'}</span>
-            <span className="inline-flex items-center gap-1">
-              <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
-              {item.rating.toFixed(1)}
-            </span>
+      <button
+        type="button"
+        onClick={() => onClick(item)}
+        className="block w-full text-left"
+      >
+        <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
+          {posterSrc ? (
+            <Image
+              src={posterSrc}
+              alt={item.title}
+              fill
+              sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px'}
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              unoptimized={isProtectedApiImageSrc(posterSrc)}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+              {item.mediaType === 'movie' ? <Film className="h-7 w-7" /> : <Tv className="h-7 w-7" />}
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/75 via-background/20 to-transparent" />
+          <div className="absolute top-1.5 left-1.5">{cardTypeIcon(item.mediaType)}</div>
+          <div className="absolute bottom-0 left-0 right-0 p-2">
+            <p className="text-xs text-foreground font-medium line-clamp-2 leading-tight">{item.title}</p>
+            <div className="mt-1 flex items-center justify-between text-[10px] text-foreground/80">
+              <span>{item.year ?? '----'}</span>
+              <span className="inline-flex items-center gap-1">
+                <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+                {item.rating.toFixed(1)}
+              </span>
+            </div>
           </div>
         </div>
+      </button>
+      <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1.5">
+        {item.library?.exists ? (
+          <div className="flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
+            <Check className="h-3 w-3 text-foreground" />
+          </div>
+        ) : (
+          <WatchlistButton
+            draft={{
+              source: 'TMDB',
+              externalId: String(item.tmdbId),
+              mediaType: item.mediaType === 'movie' ? 'movie' : 'series',
+              title: item.title,
+              year: item.year ?? null,
+              posterUrl: tmdbImageUrl(item.posterPath, 'w500'),
+              overview: item.overview ?? null,
+              rating: typeof item.rating === 'number' ? item.rating * 10 : null,
+              releaseDate: item.releaseDate ?? null,
+            }}
+            variant="icon"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
+          />
+        )}
       </div>
-    </button>
+    </div>
   );
 }
 
