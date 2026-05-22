@@ -109,7 +109,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
   }
 
-  const token = await createSession();
+  const userAgent = request.headers.get('user-agent');
+  const token = await createSession({ userAgent, ip });
 
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, token, {
