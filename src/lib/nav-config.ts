@@ -14,6 +14,7 @@ import {
   ScrollText,
   Sparkle,
   Bookmark,
+  Dices,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -24,6 +25,7 @@ export type NavItemId =
   | 'movies'
   | 'series'
   | 'watchlist'
+  | 'random'
   | 'calendar'
   | 'torrents'
   | 'cleanup'
@@ -51,6 +53,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'movies', href: '/movies', icon: Film, label: 'Movies', shortLabel: 'Movies' },
   { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series' },
   { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist' },
+  { id: 'random', href: '/random', icon: Dices, label: 'Random Watch', shortLabel: 'Random' },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar' },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents' },
   { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup' },
