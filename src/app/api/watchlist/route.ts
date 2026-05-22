@@ -25,12 +25,15 @@ interface PostBody {
   reminderAt?: unknown;
 }
 
-function parseReminderAt(raw: unknown): Date | null | undefined {
+const REMINDER_INVALID = Symbol('reminderInvalid');
+type ReminderResult = Date | null | undefined | typeof REMINDER_INVALID;
+
+function parseReminderAt(raw: unknown): ReminderResult {
   if (raw === undefined) return undefined; // no change
-  if (raw === null || raw === '') return null;
-  if (typeof raw !== 'string' && !(raw instanceof Date)) return undefined;
+  if (raw === null || raw === '') return null; // explicit clear
+  if (typeof raw !== 'string' && !(raw instanceof Date)) return REMINDER_INVALID;
   const d = raw instanceof Date ? raw : new Date(raw);
-  return Number.isFinite(d.getTime()) ? d : undefined;
+  return Number.isFinite(d.getTime()) ? d : REMINDER_INVALID;
 }
 
 interface LibraryHrefLookups {
@@ -227,7 +230,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         ? Math.max(0, Math.min(100, body.rating))
         : null;
   const tags = Array.isArray(body.tags) ? body.tags.filter((t): t is string => typeof t === 'string') : null;
-  const reminderAt = parseReminderAt(body.reminderAt);
+  const reminderResult = parseReminderAt(body.reminderAt);
+  if (reminderResult === REMINDER_INVALID) {
+    return NextResponse.json({ error: 'Invalid reminderAt' }, { status: 400 });
+  }
+  const reminderAt: Date | null | undefined = reminderResult;
 
   const tagIds = tags ? await ensureTagIds(tags) : null;
 

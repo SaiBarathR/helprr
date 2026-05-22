@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { ensureTagIds, watchlistHrefFor } from '@/lib/watchlist-helpers';
+
+function isNotFound(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
+}
 
 async function deleteHandler(
   _request: NextRequest,
@@ -15,8 +20,12 @@ async function deleteHandler(
   try {
     await prisma.watchlistItem.delete({ where: { id } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (err) {
+    if (isNotFound(err)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    console.error('[Watchlist] delete failed:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
@@ -57,8 +66,12 @@ async function patchHandler(
       addedAt: item.addedAt.toISOString(),
       href: watchlistHrefFor(item.source, item.externalId, item.mediaType),
     });
-  } catch {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (err) {
+    if (isNotFound(err)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    console.error('[Watchlist] patch failed:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 

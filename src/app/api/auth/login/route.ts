@@ -21,7 +21,13 @@ function formatWindowDuration(ms: number): string {
 const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
 
 function getClientIp(request: NextRequest): string | null {
-  // Only trust x-forwarded-for when traffic passes through a sanitized reverse proxy.
+  // Without a sanitized reverse proxy, x-forwarded-* is attacker-controlled
+  // — feeding it into rate limiting lets one client trivially bypass the
+  // 5/min cap by rotating the header, and persisting it into Session.ip
+  // would store a forged value. TRUST_FORWARDED_PROTO is the same gate the
+  // login response already uses for the Secure cookie flag.
+  if (process.env.TRUST_FORWARDED_PROTO !== 'true') return null;
+
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
     const [firstIp] = forwardedFor.split(',');

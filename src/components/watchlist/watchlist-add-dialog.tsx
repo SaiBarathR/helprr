@@ -180,22 +180,29 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
     try {
       const pending = tagInput.trim();
       const tagsToSend = pending ? [...selected, normalizeTagName(pending)] : selected;
-      const res = await fetch('/api/watchlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source: draft.source,
-          externalId: draft.externalId,
-          mediaType: draft.mediaType,
-          title: cleanedTitle,
-          year: draft.year ?? null,
-          posterUrl: draft.posterUrl ?? null,
-          overview: draft.overview ?? null,
-          rating: draft.rating ?? null,
-          tags: tagsToSend,
-          reminderAt,
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch('/api/watchlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: draft.source,
+            externalId: draft.externalId,
+            mediaType: draft.mediaType,
+            title: cleanedTitle,
+            year: draft.year ?? null,
+            posterUrl: draft.posterUrl ?? null,
+            overview: draft.overview ?? null,
+            rating: draft.rating ?? null,
+            tags: tagsToSend,
+            reminderAt,
+          }),
+        });
+      } catch (err) {
+        console.error('[Watchlist] add network error:', err);
+        toast.error('Failed to save (network error)');
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         toast.error(err?.error ?? 'Failed to save');

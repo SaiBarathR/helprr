@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Clock, Dices, Film, Loader2, RefreshCw, Star, Tv } from 'lucide-react';
@@ -30,21 +30,29 @@ export default function RandomWatchPage() {
   const [poolSize, setPoolSize] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Monotonic request id — if the user clicks "Pick another" while the
+  // previous request is still in flight, drop the stale response so it
+  // can't overwrite the newer one.
+  const requestIdRef = useRef(0);
 
   const roll = useCallback(
     async (next: FilterType) => {
+      const localId = ++requestIdRef.current;
       setLoading(true);
       setError(null);
       try {
         const res = await fetch(`/api/random-watch?type=${next}`);
+        if (localId !== requestIdRef.current) return;
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as { pick: RandomPick | null; poolSize: number };
+        if (localId !== requestIdRef.current) return;
         setPick(data.pick);
         setPoolSize(data.poolSize);
       } catch (err) {
+        if (localId !== requestIdRef.current) return;
         setError(err instanceof Error ? err.message : 'Failed to fetch a pick');
       } finally {
-        setLoading(false);
+        if (localId === requestIdRef.current) setLoading(false);
       }
     },
     []
@@ -203,9 +211,9 @@ export default function RandomWatchPage() {
                 <p className="text-sm text-muted-foreground leading-relaxed">{pick.overview}</p>
               )}
               <div className="pt-2">
-                <Link href={pick.href}>
-                  <Button>Open details</Button>
-                </Link>
+                <Button asChild>
+                  <Link href={pick.href}>Open details</Link>
+                </Button>
               </div>
             </div>
           </div>

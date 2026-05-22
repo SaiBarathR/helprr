@@ -218,7 +218,14 @@ export default function WatchlistPage() {
   async function handleRemove(item: WatchlistItem) {
     setRemoving(true);
     try {
-      const res = await fetch(`/api/watchlist/${item.id}`, { method: 'DELETE' });
+      let res: Response;
+      try {
+        res = await fetch(`/api/watchlist/${item.id}`, { method: 'DELETE' });
+      } catch (err) {
+        console.error('[Watchlist] remove network error:', err);
+        toast.error('Failed to remove (network error)');
+        return;
+      }
       if (!res.ok) {
         toast.error('Failed to remove');
         return;
@@ -235,11 +242,18 @@ export default function WatchlistPage() {
   async function handleClearAll() {
     setClearingAll(true);
     try {
-      const res = await fetch('/api/watchlist', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: 'all' }),
-      });
+      let res: Response;
+      try {
+        res = await fetch('/api/watchlist', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm: 'all' }),
+        });
+      } catch (err) {
+        console.error('[Watchlist] clear-all network error:', err);
+        toast.error('Failed to clear watchlist (network error)');
+        return;
+      }
       if (!res.ok) {
         toast.error('Failed to clear watchlist');
         return;
@@ -754,14 +768,21 @@ function ManageTagsDialog({
     if (!nameChanged && !colorChanged) return;
     setSaving(t.id);
     try {
-      const res = await fetch(`/api/watchlist/tags/${t.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(nameChanged ? { name: next.name } : {}),
-          ...(colorChanged ? { color: next.color } : {}),
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`/api/watchlist/tags/${t.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...(nameChanged ? { name: next.name } : {}),
+            ...(colorChanged ? { color: next.color } : {}),
+          }),
+        });
+      } catch (err) {
+        console.error('[Watchlist] tag-rename network error:', err);
+        toast.error('Failed to update tag (network error)');
+        return;
+      }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         toast.error(err?.error ?? 'Failed to update tag');
