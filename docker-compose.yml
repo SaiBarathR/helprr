@@ -3,8 +3,6 @@ services:
     image: postgres:16-alpine
     container_name: helprr-db
     restart: unless-stopped
-    ports:
-      - "5456:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
@@ -23,8 +21,6 @@ services:
     image: redis:7-alpine
     container_name: helprr-redis
     restart: unless-stopped
-    ports:
-      - "6300:6379"
     networks:
       - helprr-net
     healthcheck:
