@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { WatchlistAddDialog, type WatchlistDraft } from './watchlist-add-dialog';
+import { WatchlistAddDialog, type WatchlistDraft } from '@/components/watchlist/watchlist-add-dialog';
 
 interface Props {
   draft: WatchlistDraft;

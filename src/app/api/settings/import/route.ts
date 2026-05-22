@@ -498,11 +498,20 @@ async function applyDashboardLayoutsInTxn(
       });
     } else {
       // No row with this slug yet — create one. If the desired name collides
-      // with a user layout, fall back to the canonical name.
+      // with a user layout, fall back to the canonical name. Walk a counter
+      // suffix until we land on something the unique(name) constraint will
+      // accept, so a second import never blows up.
+      let finalName = name;
       const nameTaken = await tx.dashboardLayout.findUnique({ where: { name }, select: { id: true } });
-      const finalName = nameTaken
-        ? slug === 'mobile' ? 'Mobile (built-in)' : 'Desktop (built-in)'
-        : name;
+      if (nameTaken) {
+        const base = slug === 'mobile' ? 'Mobile (built-in)' : 'Desktop (built-in)';
+        finalName = base;
+        let suffix = 2;
+        while (await tx.dashboardLayout.findUnique({ where: { name: finalName }, select: { id: true } })) {
+          finalName = `${base} ${suffix}`;
+          suffix += 1;
+        }
+      }
       await tx.dashboardLayout.create({
         data: {
           name: finalName,
@@ -564,17 +573,25 @@ async function applyDashboardLayoutsInTxn(
   }
 
   // Resolve default-layout names back to IDs and persist on AppSettings.
+  // Prefer slug lookup for built-ins so a user layout that happens to share
+  // the built-in's name can't beat the actual built-in.
   const desktopName = typeof data.defaultDesktopLayoutName === 'string'
     ? data.defaultDesktopLayoutName.trim()
     : null;
   const mobileName = typeof data.defaultMobileLayoutName === 'string'
     ? data.defaultMobileLayoutName.trim()
     : null;
+  const desktopBuiltIn = await tx.dashboardLayout.findUnique({ where: { slug: 'desktop' }, select: { id: true, name: true } });
+  const mobileBuiltIn = await tx.dashboardLayout.findUnique({ where: { slug: 'mobile' }, select: { id: true, name: true } });
   const desktopRow = desktopName
-    ? await tx.dashboardLayout.findUnique({ where: { name: desktopName }, select: { id: true } })
+    ? (desktopBuiltIn && desktopBuiltIn.name === desktopName
+        ? desktopBuiltIn
+        : await tx.dashboardLayout.findUnique({ where: { name: desktopName }, select: { id: true } }))
     : null;
   const mobileRow = mobileName
-    ? await tx.dashboardLayout.findUnique({ where: { name: mobileName }, select: { id: true } })
+    ? (mobileBuiltIn && mobileBuiltIn.name === mobileName
+        ? mobileBuiltIn
+        : await tx.dashboardLayout.findUnique({ where: { name: mobileName }, select: { id: true } }))
     : null;
   if (desktopRow || mobileRow) {
     await tx.appSettings.upsert({

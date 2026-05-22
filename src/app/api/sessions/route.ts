@@ -1,15 +1,19 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
+import { requireSession, SESSION_DURATION } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireSession();
   if (!auth.ok) return auth.response;
 
+  // Sessions older than the JWT lifetime carry a token the server will
+  // refuse anyway — don't show them in the active-devices list.
+  const cutoff = new Date(Date.now() - SESSION_DURATION * 1000);
+
   try {
     const rows = await prisma.session.findMany({
-      where: { revokedAt: null },
+      where: { revokedAt: null, createdAt: { gte: cutoff } },
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,

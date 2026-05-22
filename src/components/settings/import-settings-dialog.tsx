@@ -126,7 +126,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     setFileError(null);
     setParsed(null);
     if (file.size > MAX_IMPORT_BYTES) {
-      setFileError('File too large (max 1 MB).');
+      setFileError(`File too large (max ${Math.round(MAX_IMPORT_BYTES / 1024 / 1024)} MiB).`);
       return;
     }
     try {

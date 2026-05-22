@@ -49,53 +49,59 @@ export function MediaCard({
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
   return (
-    <Link href={href} onClick={onNavigate} className="group block">
-      <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm">
-        {poster ? (
-          <Image
-            src={poster}
-            alt={title}
-            fill
-            sizes="(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 16vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            unoptimized={isProtectedApiImageSrc(poster)}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            {type === 'movie' ? <Film className="h-10 w-10" /> : <Tv className="h-10 w-10" />}
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />
-        <div className="absolute bottom-0 left-0 right-0 p-2">
-          <p className="text-xs font-semibold text-foreground truncate leading-tight">{title}</p>
-          {show('year') && <p className="text-[10px] text-foreground/70">{year}</p>}
-        </div>
-        {/* Rating badge - top right */}
-        {show('rating') && rating !== undefined && rating > 0 && (
-          <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-background/60 rounded px-1 py-0.5">
-            <Star className="h-2.5 w-2.5 text-yellow-400 fill-yellow-400" />
-            <span className="text-[9px] text-foreground font-medium">{rating.toFixed(1)}</span>
-          </div>
-        )}
-        {/* Status dot - bottom right */}
-        {show('monitored') && hasFile !== undefined && (
-          <div className="absolute bottom-1.5 right-1.5">
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${
-                hasFile ? 'bg-green-500' : monitored ? 'bg-red-500' : 'bg-muted-foreground'
-              }`}
+    <div className="group relative">
+      <Link href={href} onClick={onNavigate} className="block">
+        <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm">
+          {poster ? (
+            <Image
+              src={poster}
+              alt={title}
+              fill
+              sizes="(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 16vw"
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              unoptimized={isProtectedApiImageSrc(poster)}
             />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+              {type === 'movie' ? <Film className="h-10 w-10" /> : <Tv className="h-10 w-10" />}
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-2">
+            <p className="text-xs font-semibold text-foreground truncate leading-tight">{title}</p>
+            {show('year') && <p className="text-[10px] text-foreground/70">{year}</p>}
           </div>
-        )}
-        {/* Unmonitored overlay */}
-        {show('monitored') && monitored === false && (
-          <div className="absolute inset-0 bg-background/40" />
-        )}
-        {cornerAction && (
-          <div className="absolute top-1.5 left-1.5 z-10">{cornerAction}</div>
-        )}
-      </div>
-    </Link>
+          {/* Rating badge - top right */}
+          {show('rating') && rating !== undefined && rating > 0 && (
+            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-background/60 rounded px-1 py-0.5">
+              <Star className="h-2.5 w-2.5 text-yellow-400 fill-yellow-400" />
+              <span className="text-[9px] text-foreground font-medium">{rating.toFixed(1)}</span>
+            </div>
+          )}
+          {/* Status dot - bottom right */}
+          {show('monitored') && hasFile !== undefined && (
+            <div className="absolute bottom-1.5 right-1.5">
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  hasFile ? 'bg-green-500' : monitored ? 'bg-red-500' : 'bg-muted-foreground'
+                }`}
+              />
+            </div>
+          )}
+          {/* Unmonitored overlay */}
+          {show('monitored') && monitored === false && (
+            <div className="absolute inset-0 bg-background/40" />
+          )}
+        </div>
+      </Link>
+      {/* cornerAction sits OUTSIDE the Link so its onClick isn't routed
+          through the anchor (no nested-interactive markup, no accidental
+          navigation). It still uses absolute positioning relative to the
+          outer wrapper. */}
+      {cornerAction && (
+        <div className="absolute top-1.5 left-1.5 z-10">{cornerAction}</div>
+      )}
+    </div>
   );
 }
 

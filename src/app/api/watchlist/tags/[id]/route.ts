@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
@@ -52,8 +53,17 @@ async function patchHandler(
       color: tag.color,
       count: tag._count.items,
     });
-  } catch {
-    return NextResponse.json({ error: 'Tag not found or name conflict' }, { status: 409 });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === 'P2025') {
+        return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
+      }
+      if (err.code === 'P2002') {
+        return NextResponse.json({ error: 'Name already in use' }, { status: 409 });
+      }
+    }
+    console.error('[WatchlistTag] patch failed:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
@@ -67,8 +77,12 @@ async function deleteHandler(
   try {
     await prisma.watchlistTag.delete({ where: { id } });
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    console.error('[WatchlistTag] delete failed:', err);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
