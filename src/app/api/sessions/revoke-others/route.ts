@@ -17,10 +17,8 @@ async function postHandler(): Promise<NextResponse> {
     });
     return NextResponse.json({ revoked: result.count });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed' },
-      { status: 500 }
-    );
+    console.error('[Sessions] revoke-others failed:', error);
+    return NextResponse.json({ error: 'Failed to revoke sessions' }, { status: 500 });
   }
 }
 

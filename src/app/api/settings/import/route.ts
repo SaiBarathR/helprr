@@ -13,6 +13,7 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { EVENT_TYPES } from '@/lib/notification-events';
 import { isServiceType } from '@/lib/service-connection-secrets';
 import {
+  MAX_IMPORT_BYTES,
   type ExportedAppSettings,
   type ExportedCleanup,
   type ExportedDashboardLayouts,
@@ -43,7 +44,6 @@ import {
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
-const MAX_IMPORT_BYTES = 2_097_152; // 2 MiB — watchlist + dashboardLayouts can push the old 1 MiB cap
 
 interface ImportRequestBody {
   appSettings?: Partial<ExportedAppSettings>;

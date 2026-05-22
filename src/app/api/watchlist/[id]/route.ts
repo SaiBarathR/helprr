@@ -2,37 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { normalizeTagName, pickTagColor, watchlistHrefFor } from '@/lib/watchlist-helpers';
-
-async function ensureTagIds(rawNames: string[]): Promise<string[]> {
-  const cleaned = Array.from(
-    new Set(
-      rawNames
-        .map((t) => normalizeTagName(t))
-        .filter((t) => t.length > 0 && t.length <= 50)
-    )
-  );
-  if (cleaned.length === 0) return [];
-
-  const existing = await prisma.watchlistTag.findMany({
-    where: { name: { in: cleaned } },
-    select: { id: true, name: true },
-  });
-  const map = new Map(existing.map((t) => [t.name, t.id]));
-  const toCreate = cleaned.filter((n) => !map.has(n));
-  if (toCreate.length > 0) {
-    await prisma.watchlistTag.createMany({
-      data: toCreate.map((name) => ({ name, color: pickTagColor(name) })),
-      skipDuplicates: true,
-    });
-    const fresh = await prisma.watchlistTag.findMany({
-      where: { name: { in: toCreate } },
-      select: { id: true, name: true },
-    });
-    for (const t of fresh) map.set(t.name, t.id);
-  }
-  return cleaned.map((n) => map.get(n)!).filter(Boolean);
-}
+import { ensureTagIds, watchlistHrefFor } from '@/lib/watchlist-helpers';
 
 async function deleteHandler(
   _request: NextRequest,

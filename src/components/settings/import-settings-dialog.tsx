@@ -23,6 +23,7 @@ import {
 import { useUIStore, migrateUiPrefs, STORE_VERSION } from '@/lib/store';
 import { validateDiscoverLayout } from '@/lib/discover-layout-config';
 import {
+  MAX_IMPORT_BYTES,
   UI_PREF_CATEGORY_IDS,
   UI_PREF_CATEGORY_LABELS,
   UI_PREF_CATEGORY_FIELDS,
@@ -32,8 +33,6 @@ import {
   validateImportFile,
 } from '@/lib/settings-export';
 import type { ServiceType } from '@prisma/client';
-
-const MAX_IMPORT_BYTES = 2_097_152;
 
 interface ImportSettingsDialogProps {
   open: boolean;

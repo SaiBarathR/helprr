@@ -67,6 +67,33 @@ interface KnownTag {
   count: number;
 }
 
+// Module-level cache so re-opening the dialog (or opening it from many cards
+// in quick succession) doesn't refetch the tag list every time.
+const TAG_CACHE_TTL_MS = 60_000;
+let tagCache: { at: number; tags: KnownTag[] } | null = null;
+let tagInFlight: Promise<KnownTag[]> | null = null;
+
+async function fetchKnownTags(): Promise<KnownTag[]> {
+  const now = Date.now();
+  if (tagCache && now - tagCache.at < TAG_CACHE_TTL_MS) return tagCache.tags;
+  if (tagInFlight) return tagInFlight;
+  tagInFlight = fetch('/api/watchlist/tags')
+    .then((r) => (r.ok ? (r.json() as Promise<KnownTag[]>) : []))
+    .then((tags) => {
+      tagCache = { at: Date.now(), tags };
+      return tags;
+    })
+    .catch(() => [] as KnownTag[])
+    .finally(() => {
+      tagInFlight = null;
+    });
+  return tagInFlight;
+}
+
+export function invalidateWatchlistTagCache(): void {
+  tagCache = null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -93,10 +120,7 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
     setTagInput('');
     setReminderEnabled(initial.includes('reminder'));
     setReminderValue(defaultReminderLocal(draft.releaseDate));
-    void fetch('/api/watchlist/tags')
-      .then((r) => (r.ok ? (r.json() as Promise<KnownTag[]>) : []))
-      .then(setKnownTags)
-      .catch(() => setKnownTags([]));
+    void fetchKnownTags().then(setKnownTags);
   }, [open, draft, initialTags]);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -180,6 +204,9 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
       const data = (await res.json()) as { created: boolean };
       const reminderMsg = reminderEnabled ? ' · reminder set' : '';
       toast.success((data.created ? 'Added to watchlist' : 'Watchlist updated') + reminderMsg);
+      // New tags may have been created by ensureTagIds on the server; drop
+      // the cache so the next dialog open sees them.
+      invalidateWatchlistTagCache();
       onOpenChange(false);
       onSaved?.();
     } finally {

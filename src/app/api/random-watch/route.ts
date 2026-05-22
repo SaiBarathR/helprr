@@ -5,6 +5,7 @@ import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 
 type RandomType = 'movie' | 'series' | 'any';
+const VALID_TYPES: ReadonlySet<RandomType> = new Set(['movie', 'series', 'any']);
 
 interface RandomPick {
   mediaType: 'movie' | 'series';
@@ -90,7 +91,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (authError) return authError;
 
   const url = new URL(request.url);
-  const type = (url.searchParams.get('type') ?? 'any') as RandomType;
+  const raw = url.searchParams.get('type') ?? 'any';
+  const type: RandomType = VALID_TYPES.has(raw as RandomType) ? (raw as RandomType) : 'any';
 
   const [movies, series] = await Promise.all([
     type === 'series' ? Promise.resolve([] as RadarrMovie[]) : fetchMoviePool(),

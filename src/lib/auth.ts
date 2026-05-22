@@ -9,6 +9,9 @@ const SESSION_DURATION = 30 * 24 * 60 * 60; // 30 days in seconds
 const COOKIE_NAME = 'helprr-session';
 const LAST_SEEN_DEBOUNCE_MS = 5 * 60 * 1000; // 5 minutes
 
+// In-process debounce. In a multi-replica deployment (PM2 cluster, k8s) every
+// process keeps its own map, so the DB write rate scales with replica count.
+// Helprr is single-instance today; if that ever changes, move this to Redis.
 const lastSeenTouched = new Map<string, number>();
 
 interface SessionRow {

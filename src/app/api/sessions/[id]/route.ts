@@ -35,10 +35,8 @@ async function patchHandler(
     await prisma.session.update({ where: { id }, data: { label } });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed' },
-      { status: 500 }
-    );
+    console.error('[Sessions] rename failed:', error);
+    return NextResponse.json({ error: 'Failed to update session' }, { status: 500 });
   }
 }
 

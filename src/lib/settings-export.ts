@@ -11,6 +11,8 @@ import type {
 
 export const EXPORT_FORMAT_KIND = 'helprr-settings-export';
 export const EXPORT_FORMAT_VERSION = 1;
+// Max import payload size. Watchlist + dashboard layouts can push past 1 MiB.
+export const MAX_IMPORT_BYTES = 2_097_152;
 
 export type UiPrefCategoryId =
   | 'navigation'

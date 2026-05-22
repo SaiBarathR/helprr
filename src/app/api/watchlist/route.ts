@@ -3,10 +3,10 @@ import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import {
+  ensureTagIds,
   isValidMediaType,
   isValidSource,
   normalizeTagName,
-  pickTagColor,
   watchlistHrefFor,
 } from '@/lib/watchlist-helpers';
 import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
@@ -25,8 +25,6 @@ interface PostBody {
   reminderAt?: unknown;
 }
 
-const REMINDER_TAG = 'reminder';
-
 function parseReminderAt(raw: unknown): Date | null | undefined {
   if (raw === undefined) return undefined; // no change
   if (raw === null || raw === '') return null;
@@ -35,48 +33,25 @@ function parseReminderAt(raw: unknown): Date | null | undefined {
   return Number.isFinite(d.getTime()) ? d : undefined;
 }
 
-async function ensureTagIds(rawNames: string[]): Promise<string[]> {
-  const cleaned = Array.from(
-    new Set(
-      rawNames
-        .map((t) => normalizeTagName(t))
-        .filter((t) => t.length > 0 && t.length <= 50)
-    )
-  );
-  if (cleaned.length === 0) return [];
-
-  const existing = await prisma.watchlistTag.findMany({
-    where: { name: { in: cleaned } },
-    select: { id: true, name: true },
-  });
-  const existingByName = new Map(existing.map((t) => [t.name, t.id]));
-  const toCreate = cleaned.filter((n) => !existingByName.has(n));
-  if (toCreate.length > 0) {
-    await prisma.watchlistTag.createMany({
-      data: toCreate.map((name) => ({ name, color: pickTagColor(name) })),
-      skipDuplicates: true,
-    });
-    const fresh = await prisma.watchlistTag.findMany({
-      where: { name: { in: toCreate } },
-      select: { id: true, name: true },
-    });
-    for (const t of fresh) existingByName.set(t.name, t.id);
-  }
-
-  return cleaned.map((n) => existingByName.get(n)!).filter(Boolean);
-}
-
 interface LibraryHrefLookups {
   radarrByTmdbId: Map<number, number>;
   sonarrByTvdbId: Map<number, number>;
   sonarrByTmdbId: Map<number, number>;
 }
 
+const LOOKUPS_TTL_MS = 5 * 60 * 1000;
+let lookupsCache: { at: number; value: LibraryHrefLookups } | null = null;
+
 async function buildLibraryHrefLookups(needed: {
   tmdbMovie: boolean;
   tvdbSeries: boolean;
   tmdbSeries: boolean;
 }): Promise<LibraryHrefLookups> {
+  const now = Date.now();
+  if (lookupsCache && now - lookupsCache.at < LOOKUPS_TTL_MS) {
+    return lookupsCache.value;
+  }
+
   const needRadarr = needed.tmdbMovie;
   const needSonarr = needed.tvdbSeries || needed.tmdbSeries;
 
@@ -115,7 +90,9 @@ async function buildLibraryHrefLookups(needed: {
     if (tmdbId) sonarrByTmdbId.set(tmdbId, s.id);
   }
 
-  return { radarrByTmdbId, sonarrByTvdbId, sonarrByTmdbId };
+  const value: LibraryHrefLookups = { radarrByTmdbId, sonarrByTvdbId, sonarrByTmdbId };
+  lookupsCache = { at: now, value };
+  return value;
 }
 
 function resolveHref(
@@ -179,9 +156,15 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const tag = url.searchParams.get('tag')?.trim() || null;
   const q = url.searchParams.get('q')?.trim() || null;
 
+  // Accept either a tag id (cuid, used by the in-app filter) or a tag name
+  // (so shareable URLs like ?tag=family work).
+  const tagFilter = tag
+    ? { tags: { some: { OR: [{ id: tag }, { name: normalizeTagName(tag) }] } } }
+    : {};
+
   const items = await prisma.watchlistItem.findMany({
     where: {
-      ...(tag ? { tags: { some: { id: tag } } } : {}),
+      ...tagFilter,
       ...(q ? { title: { contains: q, mode: 'insensitive' as const } } : {}),
     },
     include: { tags: true },
@@ -232,32 +215,25 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const year = typeof body.year === 'number' && Number.isFinite(body.year) ? body.year : null;
-  const posterUrl = typeof body.posterUrl === 'string' ? body.posterUrl : null;
-  const overview = typeof body.overview === 'string' ? body.overview : null;
+  // `null` means "clear it"; missing field means "leave it alone" (handled below).
+  const posterUrl =
+    body.posterUrl === undefined ? undefined : typeof body.posterUrl === 'string' ? body.posterUrl : null;
+  const overview =
+    body.overview === undefined ? undefined : typeof body.overview === 'string' ? body.overview : null;
   const rating =
-    typeof body.rating === 'number' && Number.isFinite(body.rating)
-      ? Math.max(0, Math.min(100, body.rating))
-      : null;
-  const tags = Array.isArray(body.tags) ? body.tags.filter((t): t is string => typeof t === 'string') : [];
+    body.rating === undefined
+      ? undefined
+      : typeof body.rating === 'number' && Number.isFinite(body.rating)
+        ? Math.max(0, Math.min(100, body.rating))
+        : null;
+  const tags = Array.isArray(body.tags) ? body.tags.filter((t): t is string => typeof t === 'string') : null;
   const reminderAt = parseReminderAt(body.reminderAt);
 
-  // Auto-include the 'reminder' tag whenever a reminder date is set, and
-  // drop it when the reminder is explicitly cleared, so the UI can filter
-  // watchlist views by tag without callers having to manage the tag.
-  const tagSet = new Set(tags.map((t) => normalizeTagName(t)).filter(Boolean));
-  if (reminderAt instanceof Date) tagSet.add(REMINDER_TAG);
-  else if (reminderAt === null) tagSet.delete(REMINDER_TAG);
-
-  const tagIds = await ensureTagIds(Array.from(tagSet));
+  const tagIds = tags ? await ensureTagIds(tags) : null;
 
   const existing = await prisma.watchlistItem.findUnique({
     where: { source_externalId_mediaType: { source, externalId, mediaType } },
   });
-
-  // Setting a new reminderAt clears any previous "notified" stamp so the
-  // poller treats it as a fresh pending reminder.
-  const reminderNotifiedAtUpdate =
-    reminderAt === undefined ? undefined : reminderAt === null ? null : null;
 
   const item = await prisma.watchlistItem.upsert({
     where: { source_externalId_mediaType: { source, externalId, mediaType } },
@@ -267,22 +243,24 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       mediaType,
       title,
       year,
-      posterUrl,
-      overview,
-      rating,
+      posterUrl: posterUrl ?? null,
+      overview: overview ?? null,
+      rating: rating ?? null,
       reminderAt: reminderAt instanceof Date ? reminderAt : null,
-      tags: { connect: tagIds.map((id) => ({ id })) },
+      tags: tagIds ? { connect: tagIds.map((id) => ({ id })) } : undefined,
     },
     update: {
       title,
       year,
-      posterUrl: posterUrl ?? undefined,
-      overview: overview ?? undefined,
-      rating: rating ?? undefined,
+      ...(posterUrl !== undefined ? { posterUrl } : {}),
+      ...(overview !== undefined ? { overview } : {}),
+      ...(rating !== undefined ? { rating } : {}),
+      // Setting a new reminderAt resets notified+attempts so the poller treats
+      // it as a fresh pending reminder. Clearing also resets both.
       ...(reminderAt !== undefined
-        ? { reminderAt, reminderNotifiedAt: reminderNotifiedAtUpdate }
+        ? { reminderAt, reminderNotifiedAt: null, reminderAttempts: 0 }
         : {}),
-      tags: { set: tagIds.map((id) => ({ id })) },
+      ...(tagIds ? { tags: { set: tagIds.map((id) => ({ id })) } } : {}),
     },
     include: { tags: true },
   });
@@ -290,9 +268,27 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ item: serialize(item), created: !existing });
 }
 
-async function deleteHandler(): Promise<NextResponse> {
+async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+
+  // Wipe-all is destructive enough that a stray GET-turned-DELETE or an
+  // accidental fetch shouldn't trigger it. Require an explicit sentinel.
+  let body: { confirm?: unknown };
+  try {
+    body = (await request.json()) as { confirm?: unknown };
+  } catch {
+    return NextResponse.json(
+      { error: 'Body must be JSON with { confirm: "all" }' },
+      { status: 400 }
+    );
+  }
+  if (body?.confirm !== 'all') {
+    return NextResponse.json(
+      { error: 'Pass { confirm: "all" } to wipe the entire watchlist' },
+      { status: 400 }
+    );
+  }
 
   const result = await prisma.watchlistItem.deleteMany({});
   return NextResponse.json({ ok: true, count: result.count });

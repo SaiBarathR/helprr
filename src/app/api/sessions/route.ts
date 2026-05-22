@@ -25,10 +25,8 @@ async function getHandler(): Promise<NextResponse> {
       rows.map((row) => ({ ...row, isCurrent: row.id === currentSid }))
     );
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed' },
-      { status: 500 }
-    );
+    console.error('[Sessions] list failed:', error);
+    return NextResponse.json({ error: 'Failed to list sessions' }, { status: 500 });
   }
 }
 

@@ -235,7 +235,11 @@ export default function WatchlistPage() {
   async function handleClearAll() {
     setClearingAll(true);
     try {
-      const res = await fetch('/api/watchlist', { method: 'DELETE' });
+      const res = await fetch('/api/watchlist', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'all' }),
+      });
       if (!res.ok) {
         toast.error('Failed to clear watchlist');
         return;
