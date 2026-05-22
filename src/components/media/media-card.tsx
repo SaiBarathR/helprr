@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Film, Tv, Star } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 
@@ -18,6 +19,7 @@ interface MediaCardProps {
   visibleFields?: string[];
   rating?: number;
   onNavigate?: () => void;
+  cornerAction?: ReactNode;
 }
 
 function getImageUrl(
@@ -41,6 +43,7 @@ export function MediaCard({
   visibleFields,
   rating,
   onNavigate,
+  cornerAction,
 }: MediaCardProps) {
   const poster = getImageUrl(images, 'poster', type === 'movie' ? 'radarr' : 'sonarr');
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
@@ -87,6 +90,9 @@ export function MediaCard({
         {/* Unmonitored overlay */}
         {show('monitored') && monitored === false && (
           <div className="absolute inset-0 bg-background/40" />
+        )}
+        {cornerAction && (
+          <div className="absolute top-1.5 left-1.5 z-10">{cornerAction}</div>
         )}
       </div>
     </Link>

@@ -54,6 +54,7 @@ import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { formatBytes } from '@/lib/format';
 import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
+import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 
 interface SeriesCredits {
@@ -155,6 +156,7 @@ export default function SeriesDetailPage() {
   const [animeLoading, setAnimeLoading] = useState(false);
   const [animeOverviewExpanded, setAnimeOverviewExpanded] = useState(false);
   const [showAniListRemap, setShowAniListRemap] = useState(false);
+  const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
   const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(
     () => initialSnapshot?.seasonEpisodes ?? new Map()
@@ -1097,6 +1099,10 @@ export default function SeriesDetailPage() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowAddWatchlist(true)}>
+                  <Bookmark className="h-4 w-4" />
+                  Add to Watchlist…
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setShowMonitorEdit(true)}>
                   <Eye className="h-4 w-4" />
                   Monitor
@@ -1176,6 +1182,18 @@ export default function SeriesDetailPage() {
                       <Tv className="h-8 w-8" />
                     </div>
                   )}
+                  <button
+                    type="button"
+                    aria-label="Add to watchlist"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowAddWatchlist(true);
+                    }}
+                    className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                  >
+                    <Bookmark className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
               <div className="flex-1 min-w-0 pt-[60px]">
@@ -1203,20 +1221,34 @@ export default function SeriesDetailPage() {
         ) : (
           <div className="flex gap-4 pt-3 pb-4">
             <div className="w-28 shrink-0">
-              {poster ? (
-                <Image
-                  src={poster}
-                  alt={series.title}
-                  width={112}
-                  height={168}
-                  className="w-full h-auto aspect-[2/3] object-cover rounded-lg"
-                  unoptimized={isProtectedApiImageSrc(poster)}
-                />
-              ) : (
-                <div className="w-full aspect-[2/3] rounded-lg bg-muted flex items-center justify-center">
-                  <Tv className="h-10 w-10 text-muted-foreground" />
-                </div>
-              )}
+              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+                {poster ? (
+                  <Image
+                    src={poster}
+                    alt={series.title}
+                    width={112}
+                    height={168}
+                    className="w-full h-full object-cover"
+                    unoptimized={isProtectedApiImageSrc(poster)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                    <Tv className="h-10 w-10" />
+                  </div>
+                )}
+                <button
+                  type="button"
+                  aria-label="Add to watchlist"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowAddWatchlist(true);
+                  }}
+                  className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                >
+                  <Bookmark className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
             <div className="flex-1 min-w-0 pt-1">
               <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
@@ -1896,6 +1928,23 @@ export default function SeriesDetailPage() {
         seriesTitle={series.title}
         mapping={animeMapping}
         onUpdated={handleAniListUpdated}
+      />
+
+      <WatchlistAddDialog
+        open={showAddWatchlist}
+        onOpenChange={setShowAddWatchlist}
+        draft={{
+          source: 'SONARR',
+          externalId: String(series.id),
+          mediaType: 'series',
+          title: series.title,
+          year: series.year ?? null,
+          posterUrl:
+            series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+            series.images?.find((i) => i.coverType === 'poster')?.url ??
+            null,
+          overview: series.overview ?? null,
+        }}
       />
 
       {/* Monitor edit drawer */}

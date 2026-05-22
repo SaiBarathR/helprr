@@ -4,6 +4,7 @@ import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import { logger } from '@/lib/logger';
+import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
 
@@ -125,6 +126,7 @@ export class PollingService {
         'pollQBittorrent',
         'pollJellyfin',
         'checkUpcoming',
+        'checkWatchlistReminders',
       ] as const;
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled([
@@ -133,6 +135,7 @@ export class PollingService {
         this.pollQBittorrent(),
         this.pollJellyfin(),
         this.checkUpcoming(),
+        this.checkWatchlistReminders(),
       ]);
 
       const rejected = results.flatMap((result, index) => {
@@ -756,6 +759,47 @@ export class PollingService {
       logger.warn('Radarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
   }
+
+  private async checkWatchlistReminders(): Promise<void> {
+    const now = new Date();
+    const due = await prisma.watchlistItem.findMany({
+      where: {
+        reminderAt: { lte: now },
+        reminderNotifiedAt: null,
+      },
+      take: 50,
+    });
+    if (due.length === 0) return;
+    logger.debug('Watchlist reminders due', { count: due.length }, { scope: 'polling' });
+
+    for (const item of due) {
+      const yearSuffix = item.year ? ` (${item.year})` : '';
+      const body = `${item.title}${yearSuffix}`;
+      const redirect = watchlistHrefFor(item.source, item.externalId, item.mediaType) ?? '/watchlist';
+      try {
+        await this.notifyAndLog({
+          eventType: 'watchlistReminder',
+          title: 'Watchlist Reminder',
+          body,
+          metadata: {
+            source: 'watchlist',
+            id: item.id,
+            redirect,
+          },
+          url: redirect,
+        }, { service: 'watchlist', reason: 'reminder-due', itemId: item.id });
+      } finally {
+        // Mark notified even on push failure so we don't spam every poll cycle.
+        await prisma.watchlistItem.update({
+          where: { id: item.id },
+          data: { reminderNotifiedAt: now },
+        }).catch((error) => {
+          logger.warn('Failed to mark watchlist reminder as notified', { itemId: item.id, error }, { scope: 'polling' });
+        });
+      }
+    }
+  }
 }
+
 
 export const pollingService = new PollingService();

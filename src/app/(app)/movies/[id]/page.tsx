@@ -64,6 +64,7 @@ import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
+import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 
 type RatingItem = {
   label: string;
@@ -116,6 +117,7 @@ export default function MovieDetailPage() {
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
+  const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
@@ -627,6 +629,10 @@ export default function MovieDetailPage() {
                     Open in Jellyfin
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem onClick={() => setShowAddWatchlist(true)}>
+                  <Bookmark className="h-4 w-4" />
+                  Add to Watchlist…
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => router.push(`/movies/${movie.id}/edit`)}
                 >
@@ -690,6 +696,18 @@ export default function MovieDetailPage() {
                       <Film className="h-8 w-8" />
                     </div>
                   )}
+                  <button
+                    type="button"
+                    aria-label="Add to watchlist"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowAddWatchlist(true);
+                    }}
+                    className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                  >
+                    <Bookmark className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
               <div className="flex-1 min-w-0 pt-[60px]">
@@ -749,6 +767,18 @@ export default function MovieDetailPage() {
                     <Film className="h-10 w-10" />
                   </div>
                 )}
+                <button
+                  type="button"
+                  aria-label="Add to watchlist"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setShowAddWatchlist(true);
+                  }}
+                  className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                >
+                  <Bookmark className="h-3.5 w-3.5" />
+                </button>
               </div>
             </div>
             <div className="flex-1 min-w-0 pt-1">
@@ -981,6 +1011,23 @@ export default function MovieDetailPage() {
         service="radarr"
         mediaId={movie.id}
         mediaTitle={movie.title}
+      />
+
+      <WatchlistAddDialog
+        open={showAddWatchlist}
+        onOpenChange={setShowAddWatchlist}
+        draft={{
+          source: 'RADARR',
+          externalId: String(movie.id),
+          mediaType: 'movie',
+          title: movie.title,
+          year: movie.year ?? null,
+          posterUrl:
+            movie.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+            movie.images?.find((i) => i.coverType === 'poster')?.url ??
+            null,
+          overview: movie.overview ?? null,
+        }}
       />
 
       {/* Delete Drawer (bottom sheet) */}
