@@ -55,7 +55,13 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
+    const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
+    if (typeof payload.sid !== 'string' || !payload.sid) {
+      if (pathname.startsWith('/api/')) {
+        return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
+      }
+      return addSecurityHeaders(NextResponse.redirect(new URL('/login', request.url)));
+    }
     return addSecurityHeaders(NextResponse.next());
   } catch {
     if (pathname.startsWith('/api/')) {

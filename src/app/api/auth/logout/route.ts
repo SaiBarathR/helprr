@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { COOKIE_NAME } from '@/lib/auth';
+import { COOKIE_NAME, getCurrentSid, revokeSession } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const sid = await getCurrentSid();
+  if (sid) {
+    try {
+      await revokeSession(sid);
+    } catch (err) {
+      console.error('[Auth] Failed to revoke session on logout:', err);
+    }
+  }
+
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, '', {
     httpOnly: true,

@@ -32,6 +32,18 @@ model ServiceConnection {
   updatedAt      DateTime    @updatedAt
 }
 
+model Session {
+  id         String    @id @default(cuid())
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  userAgent  String?
+  ip         String?
+  label      String?
+  revokedAt  DateTime?
+
+  @@index([revokedAt])
+}
+
 model PushSubscription {
   id                  String                   @id @default(cuid())
   endpoint            String                   @unique

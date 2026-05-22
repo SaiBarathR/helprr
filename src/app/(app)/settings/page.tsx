@@ -10,6 +10,7 @@ import {
   Palette,
   Download as DownloadIcon,
   UserCircle,
+  Shield,
 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
@@ -118,6 +119,14 @@ export default function SettingsIndexPage() {
           iconColor="text-yellow-400"
           label="Backup & Restore"
           subtitle="Export or import your settings"
+        />
+        <CategoryRow
+          href="/settings/sessions"
+          icon={Shield}
+          iconBg="bg-orange-500/10"
+          iconColor="text-orange-400"
+          label="Sessions"
+          subtitle="Active devices, force logout"
         />
         <CategoryRow
           href="/settings/account"
