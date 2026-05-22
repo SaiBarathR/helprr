@@ -46,6 +46,8 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
   const [selectedDiscoverLayout, setSelectedDiscoverLayout] = useState(true);
   const [selectedNotifPrefs, setSelectedNotifPrefs] = useState(true);
   const [selectedCleanup, setSelectedCleanup] = useState(true);
+  const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(true);
+  const [selectedWatchlist, setSelectedWatchlist] = useState(false);
   const [availableServices, setAvailableServices] = useState<ConnectedServiceInfo[]>([]);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [includeSecrets, setIncludeSecrets] = useState(false);
@@ -112,8 +114,10 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
     && !selectedDiscoverLayout
     && !selectedNotifPrefs
     && !selectedCleanup
+    && !selectedDashboardLayouts
+    && !selectedWatchlist
     && selectedServices.size === 0
-  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedServices]);
+  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedServices]);
 
   async function handleExport() {
     if (nothingSelected) {
@@ -131,6 +135,8 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
           services: selectedServices.size > 0 ? Array.from(selectedServices) : false,
           notificationPrefs: selectedNotifPrefs,
           cleanup: selectedCleanup,
+          dashboardLayouts: selectedDashboardLayouts,
+          watchlist: selectedWatchlist,
           includeSecrets,
         }),
       });
@@ -158,6 +164,8 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         ...(serverPayload.notificationPrefs && { notificationPrefs: serverPayload.notificationPrefs }),
         ...(serverPayload.cleanup && { cleanup: serverPayload.cleanup }),
         ...(serverPayload.discoverLayout && { discoverLayout: serverPayload.discoverLayout }),
+        ...(serverPayload.dashboardLayouts && { dashboardLayouts: serverPayload.dashboardLayouts }),
+        ...(serverPayload.watchlist && { watchlist: serverPayload.watchlist }),
       };
 
       const json = JSON.stringify(fullPayload, null, 2);
@@ -324,6 +332,38 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
                 <div className="text-sm font-medium">Cleanup</div>
                 <div className="text-xs text-muted-foreground">
                   Queue &amp; download cleaner configs plus all stall, slow, and seeding rules
+                </div>
+              </div>
+            </label>
+          </section>
+
+          {/* Dashboard Layouts */}
+          <section>
+            <label className="flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedDashboardLayouts}
+                onCheckedChange={(v) => setSelectedDashboardLayouts(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">Dashboard Layouts</div>
+                <div className="text-xs text-muted-foreground">
+                  All saved bento layouts (built-in + custom), widget positions, per-widget refresh intervals, and the active default for desktop &amp; mobile.
+                </div>
+              </div>
+            </label>
+          </section>
+
+          {/* Watchlist */}
+          <section>
+            <label className="flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedWatchlist}
+                onCheckedChange={(v) => setSelectedWatchlist(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">Watchlist</div>
+                <div className="text-xs text-muted-foreground">
+                  Watchlist items (with tags &amp; reminders). Off by default — content, not settings.
                 </div>
               </div>
             </label>

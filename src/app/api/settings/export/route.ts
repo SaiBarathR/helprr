@@ -6,9 +6,13 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { withApiLogging } from '@/lib/api-logger';
 import {
   type ExportedCleanup,
+  type ExportedDashboardLayout,
+  type ExportedDashboardLayouts,
   type ExportedNotificationDevice,
   type ExportedNotificationRule,
   type ExportedServiceConnection,
+  type ExportedWatchlistItem,
+  type ExportedWatchlistTag,
   type SettingsExportPayload,
   EXPORT_FORMAT_KIND,
   EXPORT_FORMAT_VERSION,
@@ -25,6 +29,8 @@ interface ExportRequestBody {
   services?: string[] | false;
   notificationPrefs?: boolean;
   cleanup?: boolean;
+  dashboardLayouts?: boolean;
+  watchlist?: boolean;
   includeSecrets?: boolean;
 }
 
@@ -44,6 +50,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const wantDiscoverLayout = body.discoverLayout === true;
   const wantNotificationPrefs = body.notificationPrefs === true;
   const wantCleanup = body.cleanup === true;
+  const wantDashboardLayouts = body.dashboardLayouts === true;
+  const wantWatchlist = body.watchlist === true;
   const selectedServices: ServiceType[] = Array.isArray(body.services)
     ? (SERVICE_TYPES_EXPORTABLE.filter((t) => (body.services as string[]).includes(t)) as ServiceType[])
     : [];
@@ -57,9 +65,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   };
 
   try {
-    // Load AppSettings once if either appSettings or discoverLayout is requested
-    // (both live on the same singleton row).
-    const settings = wantAppSettings || wantDiscoverLayout
+    // Load AppSettings once if appSettings, discoverLayout, or dashboardLayouts
+    // is requested (all live on the same singleton row — dashboardLayouts pulls
+    // its default-layout IDs from here).
+    const settings = wantAppSettings || wantDiscoverLayout || wantDashboardLayouts
       ? await getOrCreateAppSettings()
       : null;
 
@@ -151,6 +160,57 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         seedingRules: seedingRules.filter((r) => !r.isSystem),
       };
       payload.cleanup = cleanup;
+    }
+
+    if (wantDashboardLayouts) {
+      const rows = await prisma.dashboardLayout.findMany({
+        orderBy: { createdAt: 'asc' },
+      });
+      const layouts: ExportedDashboardLayout[] = rows.map((r) => ({
+        name: r.name,
+        isBuiltIn: r.isBuiltIn,
+        slug: r.slug === 'desktop' || r.slug === 'mobile' ? r.slug : null,
+        widgets: Array.isArray(r.widgets) ? (r.widgets as unknown[]) : [],
+      }));
+      const byId = new Map(rows.map((r) => [r.id, r.name] as const));
+      const dashboardLayouts: ExportedDashboardLayouts = {
+        layouts,
+        defaultDesktopLayoutName: settings?.defaultDesktopLayoutId
+          ? byId.get(settings.defaultDesktopLayoutId) ?? null
+          : null,
+        defaultMobileLayoutName: settings?.defaultMobileLayoutId
+          ? byId.get(settings.defaultMobileLayoutId) ?? null
+          : null,
+      };
+      payload.dashboardLayouts = dashboardLayouts;
+    }
+
+    if (wantWatchlist) {
+      const [items, tags] = await Promise.all([
+        prisma.watchlistItem.findMany({
+          include: { tags: { select: { name: true } } },
+          orderBy: { addedAt: 'asc' },
+        }),
+        prisma.watchlistTag.findMany({ orderBy: { name: 'asc' } }),
+      ]);
+      const exportedItems: ExportedWatchlistItem[] = items.map((i) => ({
+        source: i.source,
+        externalId: i.externalId,
+        mediaType: i.mediaType,
+        title: i.title,
+        year: i.year ?? null,
+        posterUrl: i.posterUrl ?? null,
+        overview: i.overview ?? null,
+        rating: i.rating ?? null,
+        addedAt: i.addedAt.toISOString(),
+        reminderAt: i.reminderAt ? i.reminderAt.toISOString() : null,
+        tags: i.tags.map((t) => t.name),
+      }));
+      const exportedTags: ExportedWatchlistTag[] = tags.map((t) => ({
+        name: t.name,
+        color: t.color ?? null,
+      }));
+      payload.watchlist = { items: exportedItems, tags: exportedTags };
     }
 
     return NextResponse.json(payload);

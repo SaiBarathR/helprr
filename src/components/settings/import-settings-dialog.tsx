@@ -33,7 +33,7 @@ import {
 } from '@/lib/settings-export';
 import type { ServiceType } from '@prisma/client';
 
-const MAX_IMPORT_BYTES = 1_048_576;
+const MAX_IMPORT_BYTES = 2_097_152;
 
 interface ImportSettingsDialogProps {
   open: boolean;
@@ -88,6 +88,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedAppSettings, setSelectedAppSettings] = useState(false);
   const [selectedDiscoverLayout, setSelectedDiscoverLayout] = useState(false);
   const [selectedCleanup, setSelectedCleanup] = useState(false);
+  const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(false);
+  const [selectedWatchlist, setSelectedWatchlist] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
   const [importing, setImporting] = useState(false);
@@ -104,6 +106,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedAppSettings(false);
       setSelectedDiscoverLayout(false);
       setSelectedCleanup(false);
+      setSelectedDashboardLayouts(false);
+      setSelectedWatchlist(false);
       setSelectedServices(new Set());
       setSelectedSourceDevice('');
       setPendingConfirm(null);
@@ -157,6 +161,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedAppSettings(!!payload.appSettings);
       setSelectedDiscoverLayout(!!payload.discoverLayout);
       setSelectedCleanup(!!payload.cleanup);
+      setSelectedDashboardLayouts(!!payload.dashboardLayouts);
+      // Watchlist is content, not settings — leave off by default; the user
+      // can opt in. "Replace everything" still pulls it in.
+      setSelectedWatchlist(false);
       setSelectedServices(new Set(availableServices));
       const devices = payload.notificationPrefs ?? [];
       setSelectedSourceDevice(devices[0]?.deviceName ?? '');
@@ -200,10 +208,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedAppSettings
       || selectedDiscoverLayout
       || selectedCleanup
+      || selectedDashboardLayouts
+      || selectedWatchlist
       || selectedServices.size > 0
       || (!!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedServices, selectedSourceDevice, availableNotifDevices]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedServices, selectedSourceDevice, availableNotifDevices]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
@@ -225,6 +235,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     let useAppSettings = selectedAppSettings;
     let useDiscoverLayout = selectedDiscoverLayout;
     let useCleanup = selectedCleanup;
+    let useDashboardLayouts = selectedDashboardLayouts;
+    let useWatchlist = selectedWatchlist;
     let useServices = selectedServices;
     let useDevice = selectedSourceDevice;
     if (replaceAll) {
@@ -232,12 +244,16 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       useAppSettings = !!parsed.payload.appSettings;
       useDiscoverLayout = !!parsed.payload.discoverLayout;
       useCleanup = !!parsed.payload.cleanup;
+      useDashboardLayouts = !!parsed.payload.dashboardLayouts;
+      useWatchlist = !!parsed.payload.watchlist;
       useServices = new Set(parsed.availableServices);
       useDevice = availableNotifDevices[0]?.deviceName ?? '';
       setSelectedUi(useUi);
       setSelectedAppSettings(useAppSettings);
       setSelectedDiscoverLayout(useDiscoverLayout);
       setSelectedCleanup(useCleanup);
+      setSelectedDashboardLayouts(useDashboardLayouts);
+      setSelectedWatchlist(useWatchlist);
       setSelectedServices(useServices);
       setSelectedSourceDevice(useDevice);
     }
@@ -277,8 +293,14 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       if (useDiscoverLayout && parsed.payload.discoverLayout) {
         body.discoverLayout = parsed.payload.discoverLayout;
       }
+      if (useDashboardLayouts && parsed.payload.dashboardLayouts) {
+        body.dashboardLayouts = parsed.payload.dashboardLayouts;
+      }
+      if (useWatchlist && parsed.payload.watchlist) {
+        body.watchlist = parsed.payload.watchlist;
+      }
 
-      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout;
+      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout || body.dashboardLayouts || body.watchlist;
       if (needsServerCall) {
         const res = await fetch('/api/settings/import', {
           method: 'POST',
@@ -443,6 +465,42 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                       Queue &amp; download cleaner configs plus {(parsed.payload.cleanup.stallRules?.length ?? 0)
                       + (parsed.payload.cleanup.slowRules?.length ?? 0)
                       + (parsed.payload.cleanup.seedingRules?.length ?? 0)} rule(s). Replaces existing rules.
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
+            {parsed.payload.dashboardLayouts && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedDashboardLayouts}
+                    onCheckedChange={(v) => setSelectedDashboardLayouts(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Dashboard Layouts</div>
+                    <div className="text-xs text-muted-foreground">
+                      {parsed.payload.dashboardLayouts.layouts.length} layout(s).
+                      Built-ins updated in place; user layouts upserted by name. Existing user layouts not in the file are kept.
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
+            {parsed.payload.watchlist && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedWatchlist}
+                    onCheckedChange={(v) => setSelectedWatchlist(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Watchlist</div>
+                    <div className="text-xs text-muted-foreground">
+                      {parsed.payload.watchlist.items.length} item(s) and {parsed.payload.watchlist.tags.length} tag(s).
+                      Merged with existing watchlist; items match on (source, externalId, mediaType).
                     </div>
                   </div>
                 </label>

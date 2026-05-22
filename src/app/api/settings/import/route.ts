@@ -15,8 +15,10 @@ import { isServiceType } from '@/lib/service-connection-secrets';
 import {
   type ExportedAppSettings,
   type ExportedCleanup,
+  type ExportedDashboardLayouts,
   type ExportedServiceConnection,
   type ExportedNotificationDevice,
+  type ExportedWatchlist,
 } from '@/lib/settings-export';
 import {
   validateDiscoverLayout,
@@ -24,10 +26,24 @@ import {
 } from '@/lib/discover-layout-config';
 import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/scheduler';
 import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
+import {
+  MAX_LAYOUTS,
+  MAX_NAME_LENGTH as MAX_LAYOUT_NAME_LENGTH,
+  MAX_WIDGETS_PER_LAYOUT,
+} from '@/lib/dashboard-layouts';
+import { sanitizeDashboardLayout } from '@/lib/widgets/sanitize';
+import { invalidateLayoutCache } from '@/lib/cache/dashboard-layout-cache';
+import type { WidgetInstance } from '@/lib/widgets/types';
+import {
+  isValidMediaType,
+  isValidSource,
+  normalizeTagName,
+  pickTagColor,
+} from '@/lib/watchlist-helpers';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
-const MAX_IMPORT_BYTES = 1_048_576;
+const MAX_IMPORT_BYTES = 2_097_152; // 2 MiB — watchlist + dashboardLayouts can push the old 1 MiB cap
 
 interface ImportRequestBody {
   appSettings?: Partial<ExportedAppSettings>;
@@ -36,6 +52,8 @@ interface ImportRequestBody {
   cleanup?: ExportedCleanup;
   currentDeviceEndpoint?: string;
   discoverLayout?: Record<string, unknown>;
+  dashboardLayouts?: ExportedDashboardLayouts;
+  watchlist?: ExportedWatchlist;
 }
 
 interface ImportResult {
@@ -44,6 +62,9 @@ interface ImportResult {
     services: ServiceType[];
     notificationRules: number;
     cleanup: boolean;
+    dashboardLayouts: number;
+    watchlistItems: number;
+    watchlistTags: number;
   };
   skipped: string[];
   pollingRestarted: boolean;
@@ -403,6 +424,319 @@ async function applyCleanupInTxn(
   }
 }
 
+function validateLayoutWidgets(widgets: unknown): WidgetInstance[] | null {
+  if (!Array.isArray(widgets)) return null;
+  if (widgets.length > MAX_WIDGETS_PER_LAYOUT) return null;
+  for (const w of widgets) {
+    if (!w || typeof w !== 'object') return null;
+    const item = w as Record<string, unknown>;
+    if (typeof item.id !== 'string' || typeof item.widgetId !== 'string') return null;
+  }
+  return widgets as WidgetInstance[];
+}
+
+async function applyDashboardLayoutsInTxn(
+  tx: Prisma.TransactionClient,
+  data: ExportedDashboardLayouts,
+  skipped: string[],
+): Promise<number> {
+  if (!Array.isArray(data.layouts)) {
+    skipped.push('Dashboard layouts: missing layouts array');
+    return 0;
+  }
+
+  // Read the current discoverLayout once so widget sanitization can resolve
+  // dynamic `discover-*` widgets.
+  const settingsRow = await tx.appSettings.findUnique({
+    where: { id: 'singleton' },
+    select: { discoverLayout: true },
+  });
+  const rawDiscover = settingsRow?.discoverLayout as unknown;
+  const validatedDiscover = rawDiscover ? validateDiscoverLayout(rawDiscover) : null;
+  const discoverLayout = reconcileDiscoverLayout(validatedDiscover);
+
+  // Stage 1: upsert built-ins by slug (preserve existing IDs so anything
+  // referencing them keeps working).
+  // Stage 2: upsert user layouts by unique name.
+  // We don't delete existing user layouts that aren't in the import — that's
+  // less destructive and matches how appSettings/serviceConnections behave.
+  const builtIns = data.layouts.filter(
+    (l) => l && (l.slug === 'desktop' || l.slug === 'mobile'),
+  );
+  const userLayouts = data.layouts.filter(
+    (l) => l && !(l.slug === 'desktop' || l.slug === 'mobile'),
+  );
+
+  let applied = 0;
+
+  for (const layout of builtIns) {
+    const widgets = validateLayoutWidgets(layout.widgets);
+    if (!widgets) {
+      skipped.push(`Dashboard layout "${String(layout.name ?? layout.slug)}" skipped: invalid widgets`);
+      continue;
+    }
+    const sanitized = sanitizeDashboardLayout(widgets, discoverLayout);
+    const name = typeof layout.name === 'string' && layout.name.trim().length > 0
+      ? layout.name.trim().slice(0, MAX_LAYOUT_NAME_LENGTH)
+      : layout.slug === 'mobile' ? 'Mobile' : 'Desktop';
+    const slug = layout.slug as 'desktop' | 'mobile';
+
+    const existing = await tx.dashboardLayout.findUnique({ where: { slug } });
+    if (existing) {
+      // Update widgets; rename only if the new name is free (otherwise keep
+      // the existing name to avoid a unique-constraint violation).
+      const nameTaken = name !== existing.name
+        ? await tx.dashboardLayout.findUnique({ where: { name }, select: { id: true } })
+        : null;
+      await tx.dashboardLayout.update({
+        where: { id: existing.id },
+        data: {
+          widgets: sanitized as unknown as Prisma.InputJsonValue,
+          isBuiltIn: true,
+          ...(nameTaken ? {} : { name }),
+        },
+      });
+    } else {
+      // No row with this slug yet — create one. If the desired name collides
+      // with a user layout, fall back to the canonical name.
+      const nameTaken = await tx.dashboardLayout.findUnique({ where: { name }, select: { id: true } });
+      const finalName = nameTaken
+        ? slug === 'mobile' ? 'Mobile (built-in)' : 'Desktop (built-in)'
+        : name;
+      await tx.dashboardLayout.create({
+        data: {
+          name: finalName,
+          slug,
+          isBuiltIn: true,
+          widgets: sanitized as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
+    applied += 1;
+  }
+
+  // Cap user-layout imports so we never blow past MAX_LAYOUTS.
+  const builtInCount = await tx.dashboardLayout.count({ where: { isBuiltIn: true } });
+  const userCountBefore = await tx.dashboardLayout.count({ where: { isBuiltIn: false } });
+  const remainingSlots = Math.max(0, MAX_LAYOUTS - builtInCount - userCountBefore);
+
+  let createdUser = 0;
+  for (const layout of userLayouts) {
+    if (typeof layout.name !== 'string' || layout.name.trim().length === 0) {
+      skipped.push('Dashboard layout skipped: missing name');
+      continue;
+    }
+    const name = layout.name.trim().slice(0, MAX_LAYOUT_NAME_LENGTH);
+    const widgets = validateLayoutWidgets(layout.widgets);
+    if (!widgets) {
+      skipped.push(`Dashboard layout "${name}" skipped: invalid widgets`);
+      continue;
+    }
+    const sanitized = sanitizeDashboardLayout(widgets, discoverLayout);
+    const existing = await tx.dashboardLayout.findUnique({ where: { name } });
+    if (existing) {
+      // Don't downgrade an existing built-in to a user layout — skip and warn.
+      if (existing.isBuiltIn) {
+        skipped.push(`Dashboard layout "${name}" skipped: collides with a built-in name`);
+        continue;
+      }
+      await tx.dashboardLayout.update({
+        where: { id: existing.id },
+        data: { widgets: sanitized as unknown as Prisma.InputJsonValue },
+      });
+      applied += 1;
+    } else {
+      if (createdUser >= remainingSlots) {
+        skipped.push(`Dashboard layout "${name}" skipped: max ${MAX_LAYOUTS} layouts reached`);
+        continue;
+      }
+      await tx.dashboardLayout.create({
+        data: {
+          name,
+          isBuiltIn: false,
+          slug: null,
+          widgets: sanitized as unknown as Prisma.InputJsonValue,
+        },
+      });
+      applied += 1;
+      createdUser += 1;
+    }
+  }
+
+  // Resolve default-layout names back to IDs and persist on AppSettings.
+  const desktopName = typeof data.defaultDesktopLayoutName === 'string'
+    ? data.defaultDesktopLayoutName.trim()
+    : null;
+  const mobileName = typeof data.defaultMobileLayoutName === 'string'
+    ? data.defaultMobileLayoutName.trim()
+    : null;
+  const desktopRow = desktopName
+    ? await tx.dashboardLayout.findUnique({ where: { name: desktopName }, select: { id: true } })
+    : null;
+  const mobileRow = mobileName
+    ? await tx.dashboardLayout.findUnique({ where: { name: mobileName }, select: { id: true } })
+    : null;
+  if (desktopRow || mobileRow) {
+    await tx.appSettings.upsert({
+      where: { id: 'singleton' },
+      update: {
+        ...(desktopRow ? { defaultDesktopLayoutId: desktopRow.id } : {}),
+        ...(mobileRow ? { defaultMobileLayoutId: mobileRow.id } : {}),
+      },
+      create: {
+        id: 'singleton',
+        defaultDesktopLayoutId: desktopRow?.id ?? null,
+        defaultMobileLayoutId: mobileRow?.id ?? null,
+      },
+    });
+  }
+  if (desktopName && !desktopRow) {
+    skipped.push(`Default desktop layout "${desktopName}" not found in import — left unchanged`);
+  }
+  if (mobileName && !mobileRow) {
+    skipped.push(`Default mobile layout "${mobileName}" not found in import — left unchanged`);
+  }
+
+  return applied;
+}
+
+interface WatchlistApplyResult {
+  items: number;
+  tags: number;
+}
+
+async function applyWatchlistInTxn(
+  tx: Prisma.TransactionClient,
+  data: ExportedWatchlist,
+  skipped: string[],
+): Promise<WatchlistApplyResult> {
+  if (!Array.isArray(data.items)) {
+    skipped.push('Watchlist: missing items array');
+    return { items: 0, tags: 0 };
+  }
+
+  // Upsert tags first so item.tags connect lookups always resolve.
+  const incomingTags: { name: string; color: string | null }[] = [];
+  if (Array.isArray(data.tags)) {
+    for (const t of data.tags) {
+      if (!t || typeof t !== 'object' || typeof t.name !== 'string') continue;
+      const name = normalizeTagName(t.name);
+      if (!name || name.length > 50) continue;
+      const color = typeof t.color === 'string' && t.color.length > 0 ? t.color : null;
+      incomingTags.push({ name, color });
+    }
+  }
+
+  // Collect tag names from items so we create any tag the user references
+  // even if the export omitted a tag row (or sent items but no tags array).
+  const itemTagNames = new Set<string>();
+  for (const it of data.items) {
+    if (!it || typeof it !== 'object' || !Array.isArray(it.tags)) continue;
+    for (const t of it.tags) {
+      if (typeof t !== 'string') continue;
+      const n = normalizeTagName(t);
+      if (n && n.length <= 50) itemTagNames.add(n);
+    }
+  }
+
+  const allTagNames = new Set(incomingTags.map((t) => t.name));
+  for (const n of itemTagNames) allTagNames.add(n);
+
+  let tagCount = 0;
+  const tagIdByName = new Map<string, string>();
+  for (const name of allTagNames) {
+    const color = incomingTags.find((t) => t.name === name)?.color ?? pickTagColor(name);
+    const row = await tx.watchlistTag.upsert({
+      where: { name },
+      update: { color },
+      create: { name, color },
+      select: { id: true, name: true },
+    });
+    tagIdByName.set(row.name, row.id);
+    tagCount += 1;
+  }
+
+  let itemCount = 0;
+  for (const it of data.items) {
+    if (!it || typeof it !== 'object') continue;
+    const sourceRaw = typeof it.source === 'string' ? it.source.toUpperCase() : '';
+    const mediaType = typeof it.mediaType === 'string' ? it.mediaType.toLowerCase() : '';
+    const externalId = typeof it.externalId === 'string' ? it.externalId
+      : typeof it.externalId === 'number' ? String(it.externalId) : '';
+    const title = typeof it.title === 'string' ? it.title.trim() : '';
+    if (!isValidSource(sourceRaw) || !isValidMediaType(mediaType) || !externalId || !title) {
+      skipped.push(`Watchlist item "${title || externalId}" skipped: invalid identifying fields`);
+      continue;
+    }
+
+    const year = typeof it.year === 'number' && Number.isFinite(it.year) ? it.year : null;
+    const posterUrl = typeof it.posterUrl === 'string' ? it.posterUrl : null;
+    const overview = typeof it.overview === 'string' ? it.overview : null;
+    const rating = typeof it.rating === 'number' && Number.isFinite(it.rating)
+      ? Math.max(0, Math.min(100, it.rating))
+      : null;
+    const reminderAt = typeof it.reminderAt === 'string' && it.reminderAt.length > 0
+      ? (() => {
+          const d = new Date(it.reminderAt);
+          return Number.isFinite(d.getTime()) ? d : null;
+        })()
+      : null;
+    const addedAt = typeof it.addedAt === 'string' && it.addedAt.length > 0
+      ? (() => {
+          const d = new Date(it.addedAt);
+          return Number.isFinite(d.getTime()) ? d : undefined;
+        })()
+      : undefined;
+
+    const tagIds: string[] = [];
+    if (Array.isArray(it.tags)) {
+      for (const raw of it.tags) {
+        if (typeof raw !== 'string') continue;
+        const n = normalizeTagName(raw);
+        const id = tagIdByName.get(n);
+        if (id) tagIds.push(id);
+      }
+    }
+
+    await tx.watchlistItem.upsert({
+      where: {
+        source_externalId_mediaType: {
+          source: sourceRaw,
+          externalId,
+          mediaType,
+        },
+      },
+      create: {
+        source: sourceRaw,
+        externalId,
+        mediaType,
+        title,
+        year,
+        posterUrl,
+        overview,
+        rating,
+        reminderAt,
+        ...(addedAt ? { addedAt } : {}),
+        tags: { connect: tagIds.map((id) => ({ id })) },
+      },
+      update: {
+        title,
+        year,
+        posterUrl: posterUrl ?? undefined,
+        overview: overview ?? undefined,
+        rating: rating ?? undefined,
+        reminderAt,
+        // Reset notifiedAt so a freshly-set reminder fires on the next poll.
+        reminderNotifiedAt: null,
+        tags: { set: tagIds.map((id) => ({ id })) },
+      },
+    });
+    itemCount += 1;
+  }
+
+  return { items: itemCount, tags: tagCount };
+}
+
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -446,6 +780,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   let appliedNotificationRules = 0;
   let appliedCleanup = false;
   let discoverLayoutApplied = false;
+  let appliedDashboardLayouts = 0;
+  let appliedWatchlistItems = 0;
+  let appliedWatchlistTags = 0;
   let appSettingsTxnResult: AppSettingsTxnResult | null = null;
 
   try {
@@ -491,6 +828,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         } else {
           skipped.push('Discover layout: invalid format, skipped');
         }
+      }
+
+      if (body.dashboardLayouts && typeof body.dashboardLayouts === 'object') {
+        appliedDashboardLayouts = await applyDashboardLayoutsInTxn(tx, body.dashboardLayouts, skipped);
+      }
+
+      if (body.watchlist && typeof body.watchlist === 'object') {
+        const r = await applyWatchlistInTxn(tx, body.watchlist, skipped);
+        appliedWatchlistItems = r.items;
+        appliedWatchlistTags = r.tags;
       }
 
       return innerAppSettings;
@@ -559,12 +906,25 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
   }
 
+  // After dashboard layouts change, drop the cached active layouts so the next
+  // dashboard fetch reads the new defaults.
+  if (appliedDashboardLayouts > 0) {
+    try {
+      await invalidateLayoutCache();
+    } catch (err) {
+      console.warn('Failed to invalidate dashboard layout cache after import', err);
+    }
+  }
+
   const result: ImportResult = {
     applied: {
       appSettings: appliedAppSettings,
       services: appliedServices,
       notificationRules: appliedNotificationRules,
       cleanup: appliedCleanup,
+      dashboardLayouts: appliedDashboardLayouts,
+      watchlistItems: appliedWatchlistItems,
+      watchlistTags: appliedWatchlistTags,
     },
     skipped,
     pollingRestarted,

@@ -20,7 +20,9 @@ export type UiPrefCategoryId =
   | 'torrents'
   | 'activity'
   | 'notificationFilters'
-  | 'calendar';
+  | 'calendar'
+  | 'cleanup'
+  | 'dashboardTheme';
 
 export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   navigation: 'Navigation',
@@ -31,10 +33,12 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   activity: 'Activity',
   notificationFilters: 'Notification filters',
   calendar: 'Calendar',
+  cleanup: 'Cleanup history filters',
+  dashboardTheme: 'Dashboard theme',
 };
 
 export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]> = {
-  navigation: ['navPosition', 'navOrder', 'disabledNavItems', 'defaultPage'],
+  navigation: ['navPosition', 'navOrder', 'disabledNavItems', 'defaultPage', 'sidebarCollapsed'],
   mediaViews: [
     'mediaView',
     'moviesView', 'moviesPosterSize', 'moviesSort', 'moviesSearch',
@@ -48,6 +52,11 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   activity: ['activityTab', 'activitySortBy', 'activityFilterBy'],
   notificationFilters: ['notificationsFilters'],
   calendar: ['calendarView', 'calendarTypeFilter', 'calendarMonitoredOnly'],
+  cleanup: ['cleanupHistoryFilters'],
+  dashboardTheme: [
+    'dashboardAccent', 'dashboardPalette', 'dashboardGradient', 'dashboardFont',
+    'dashboardFg', 'dashboardFgMute', 'dashboardFgSubtle',
+  ],
 };
 
 export const UI_PREF_CATEGORY_IDS: readonly UiPrefCategoryId[] = Object.keys(
@@ -119,6 +128,46 @@ export interface ExportedCleanup {
   seedingRules: SeedingRuleShape[];
 }
 
+export interface ExportedDashboardLayout {
+  name: string;
+  isBuiltIn: boolean;
+  slug: 'desktop' | 'mobile' | null;
+  // Widget instances — validated at import via the dashboard-layouts validators.
+  widgets: unknown[];
+}
+
+export interface ExportedDashboardLayouts {
+  layouts: ExportedDashboardLayout[];
+  // Default-layout references by name (IDs are install-local). Built-ins can
+  // also be matched via slug as a fallback.
+  defaultDesktopLayoutName: string | null;
+  defaultMobileLayoutName: string | null;
+}
+
+export interface ExportedWatchlistTag {
+  name: string;
+  color: string | null;
+}
+
+export interface ExportedWatchlistItem {
+  source: string;
+  externalId: string;
+  mediaType: string;
+  title: string;
+  year: number | null;
+  posterUrl: string | null;
+  overview: string | null;
+  rating: number | null;
+  addedAt: string;
+  reminderAt: string | null;
+  tags: string[];
+}
+
+export interface ExportedWatchlist {
+  items: ExportedWatchlistItem[];
+  tags: ExportedWatchlistTag[];
+}
+
 export interface SettingsExportPayload {
   kind: typeof EXPORT_FORMAT_KIND;
   version: number;
@@ -131,6 +180,8 @@ export interface SettingsExportPayload {
   notificationPrefs?: ExportedNotificationDevice[];
   cleanup?: ExportedCleanup;
   discoverLayout?: Record<string, unknown>;
+  dashboardLayouts?: ExportedDashboardLayouts;
+  watchlist?: ExportedWatchlist;
 }
 
 export function extractUiPrefsByCategory(
@@ -204,6 +255,24 @@ export function validateImportFile(
       Array.isArray(obj.discoverLayout))
   ) {
     return { ok: false, error: 'Invalid discoverLayout section.' };
+  }
+  if (
+    obj.dashboardLayouts !== undefined &&
+    (typeof obj.dashboardLayouts !== 'object' ||
+      obj.dashboardLayouts === null ||
+      Array.isArray(obj.dashboardLayouts) ||
+      !Array.isArray((obj.dashboardLayouts as { layouts?: unknown }).layouts))
+  ) {
+    return { ok: false, error: 'Invalid dashboardLayouts section.' };
+  }
+  if (
+    obj.watchlist !== undefined &&
+    (typeof obj.watchlist !== 'object' ||
+      obj.watchlist === null ||
+      Array.isArray(obj.watchlist) ||
+      !Array.isArray((obj.watchlist as { items?: unknown }).items))
+  ) {
+    return { ok: false, error: 'Invalid watchlist section.' };
   }
 
   if (Array.isArray(obj.notificationPrefs)) {
