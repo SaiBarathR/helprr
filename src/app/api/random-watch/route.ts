@@ -66,21 +66,40 @@ function pickSeries(s: SonarrSeries): RandomPick {
   };
 }
 
+// Module-scope pool cache. Helprr is single-instance today; the cache lives
+// per-process. If that ever changes (multi-replica deploy), move this behind
+// Redis or accept the per-process cost.
+const POOL_TTL_MS = 5 * 60 * 1000;
+let moviePoolCache: { at: number; value: RadarrMovie[] } | null = null;
+let seriesPoolCache: { at: number; value: SonarrSeries[] } | null = null;
+
 async function fetchMoviePool(): Promise<RadarrMovie[]> {
+  const now = Date.now();
+  if (moviePoolCache && now - moviePoolCache.at < POOL_TTL_MS) {
+    return moviePoolCache.value;
+  }
   try {
     const client = await getRadarrClient();
     const all = await client.getMovies();
-    return all.filter((m) => m.hasFile === true);
+    const filtered = all.filter((m) => m.hasFile === true);
+    moviePoolCache = { at: now, value: filtered };
+    return filtered;
   } catch {
     return [];
   }
 }
 
 async function fetchSeriesPool(): Promise<SonarrSeries[]> {
+  const now = Date.now();
+  if (seriesPoolCache && now - seriesPoolCache.at < POOL_TTL_MS) {
+    return seriesPoolCache.value;
+  }
   try {
     const client = await getSonarrClient();
     const all = await client.getSeries();
-    return all.filter((s) => (s.statistics?.episodeFileCount ?? 0) > 0);
+    const filtered = all.filter((s) => (s.statistics?.episodeFileCount ?? 0) > 0);
+    seriesPoolCache = { at: now, value: filtered };
+    return filtered;
   } catch {
     return [];
   }

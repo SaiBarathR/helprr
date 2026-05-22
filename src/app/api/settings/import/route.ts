@@ -659,18 +659,39 @@ async function applyWatchlistInTxn(
   const allTagNames = new Set(incomingTags.map((t) => t.name));
   for (const n of itemTagNames) allTagNames.add(n);
 
-  let tagCount = 0;
+  // Batch: fetch what already exists, bulk-create the rest, then re-read so
+  // we have ids for every name. Same pattern as ensureTagIds() — avoids one
+  // round-trip per tag inside the transaction. We intentionally don't update
+  // colors of pre-existing tags on import; users tend to recolor in-app and
+  // wouldn't expect an import to clobber that.
+  const incomingColorByName = new Map(incomingTags.map((t) => [t.name, t.color]));
   const tagIdByName = new Map<string, string>();
-  for (const name of allTagNames) {
-    const color = incomingTags.find((t) => t.name === name)?.color ?? pickTagColor(name);
-    const row = await tx.watchlistTag.upsert({
-      where: { name },
-      update: { color },
-      create: { name, color },
+  let tagCount = 0;
+  if (allTagNames.size > 0) {
+    const names = Array.from(allTagNames);
+    const existing = await tx.watchlistTag.findMany({
+      where: { name: { in: names } },
       select: { id: true, name: true },
     });
-    tagIdByName.set(row.name, row.id);
-    tagCount += 1;
+    for (const row of existing) tagIdByName.set(row.name, row.id);
+    tagCount = existing.length;
+
+    const toCreate = names.filter((n) => !tagIdByName.has(n));
+    if (toCreate.length > 0) {
+      await tx.watchlistTag.createMany({
+        data: toCreate.map((name) => ({
+          name,
+          color: incomingColorByName.get(name) ?? pickTagColor(name),
+        })),
+        skipDuplicates: true,
+      });
+      const fresh = await tx.watchlistTag.findMany({
+        where: { name: { in: toCreate } },
+        select: { id: true, name: true },
+      });
+      for (const row of fresh) tagIdByName.set(row.name, row.id);
+      tagCount += fresh.length;
+    }
   }
 
   let itemCount = 0;
@@ -745,7 +766,9 @@ async function applyWatchlistInTxn(
         reminderAt,
         // Reset notifiedAt so a freshly-set reminder fires on the next poll.
         reminderNotifiedAt: null,
-        tags: { set: tagIds.map((id) => ({ id })) },
+        // `connect` (merge) instead of `set` (replace) — re-importing a
+        // backup shouldn't silently drop tags the user has added since.
+        tags: { connect: tagIds.map((id) => ({ id })) },
       },
     });
     itemCount += 1;

@@ -7,10 +7,12 @@ import {
   isValidMediaType,
   isValidSource,
   normalizeTagName,
-  watchlistHrefFor,
 } from '@/lib/watchlist-helpers';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
-import type { RadarrMovie, SonarrSeries } from '@/types';
+import {
+  getLibraryLookups,
+  resolveHrefFromLookups,
+  type LibraryHrefLookups,
+} from '@/lib/watchlist-library-lookup';
 
 interface PostBody {
   source?: unknown;
@@ -28,100 +30,29 @@ interface PostBody {
 const REMINDER_INVALID = Symbol('reminderInvalid');
 type ReminderResult = Date | null | undefined | typeof REMINDER_INVALID;
 
+const MAX_TITLE_LEN = 200;
+const MAX_POSTER_URL_LEN = 500;
+const MAX_OVERVIEW_LEN = 2000;
+
 function parseReminderAt(raw: unknown): ReminderResult {
   if (raw === undefined) return undefined; // no change
   if (raw === null || raw === '') return null; // explicit clear
   if (typeof raw !== 'string' && !(raw instanceof Date)) return REMINDER_INVALID;
   const d = raw instanceof Date ? raw : new Date(raw);
-  return Number.isFinite(d.getTime()) ? d : REMINDER_INVALID;
+  if (!Number.isFinite(d.getTime())) return REMINDER_INVALID;
+  // Reject obviously-stale reminders so a wrong-year typo doesn't immediately
+  // fire a push on the next poll cycle.
+  if (d.getTime() < Date.now()) return REMINDER_INVALID;
+  return d;
 }
 
-interface LibraryHrefLookups {
-  radarrByTmdbId: Map<number, number>;
-  sonarrByTvdbId: Map<number, number>;
-  sonarrByTmdbId: Map<number, number>;
-}
-
-const LOOKUPS_TTL_MS = 5 * 60 * 1000;
-let lookupsCache: { at: number; value: LibraryHrefLookups } | null = null;
-
-async function buildLibraryHrefLookups(needed: {
-  tmdbMovie: boolean;
-  tvdbSeries: boolean;
-  tmdbSeries: boolean;
-}): Promise<LibraryHrefLookups> {
-  const now = Date.now();
-  if (lookupsCache && now - lookupsCache.at < LOOKUPS_TTL_MS) {
-    return lookupsCache.value;
-  }
-
-  const needRadarr = needed.tmdbMovie;
-  const needSonarr = needed.tvdbSeries || needed.tmdbSeries;
-
-  const [movies, series] = await Promise.all([
-    needRadarr
-      ? (async () => {
-          try {
-            const c = await getRadarrClient();
-            return await c.getMovies();
-          } catch {
-            return [] as RadarrMovie[];
-          }
-        })()
-      : Promise.resolve([] as RadarrMovie[]),
-    needSonarr
-      ? (async () => {
-          try {
-            const c = await getSonarrClient();
-            return await c.getSeries();
-          } catch {
-            return [] as SonarrSeries[];
-          }
-        })()
-      : Promise.resolve([] as SonarrSeries[]),
-  ]);
-
-  const radarrByTmdbId = new Map<number, number>();
-  for (const m of movies) {
-    if (m.tmdbId) radarrByTmdbId.set(m.tmdbId, m.id);
-  }
-  const sonarrByTvdbId = new Map<number, number>();
-  const sonarrByTmdbId = new Map<number, number>();
-  for (const s of series) {
-    if (s.tvdbId) sonarrByTvdbId.set(s.tvdbId, s.id);
-    const tmdbId = (s as SonarrSeries & { tmdbId?: number }).tmdbId;
-    if (tmdbId) sonarrByTmdbId.set(tmdbId, s.id);
-  }
-
-  const value: LibraryHrefLookups = { radarrByTmdbId, sonarrByTvdbId, sonarrByTmdbId };
-  lookupsCache = { at: now, value };
-  return value;
-}
-
-function resolveHref(
-  source: string,
-  externalId: string,
-  mediaType: string,
-  lookups: LibraryHrefLookups | null
-): string | null {
-  if (lookups) {
-    const externalNum = Number.parseInt(externalId, 10);
-    if (Number.isFinite(externalNum)) {
-      if (source === 'TMDB' && mediaType === 'movie') {
-        const id = lookups.radarrByTmdbId.get(externalNum);
-        if (id) return `/movies/${id}`;
-      }
-      if (source === 'TVDB' && mediaType === 'series') {
-        const id = lookups.sonarrByTvdbId.get(externalNum);
-        if (id) return `/series/${id}`;
-      }
-      if (source === 'TMDB' && mediaType === 'series') {
-        const id = lookups.sonarrByTmdbId.get(externalNum);
-        if (id) return `/series/${id}`;
-      }
-    }
-  }
-  return watchlistHrefFor(source, externalId, mediaType);
+function validatePosterUrl(raw: string): string | null {
+  if (raw.length > MAX_POSTER_URL_LEN) return null;
+  // Allow only http(s) — `<img src="javascript:...">` doesn't execute in
+  // modern browsers, but `data:` and unknown schemes are still bytes we'd
+  // rather not store unbounded.
+  if (!/^https?:\/\//i.test(raw)) return null;
+  return raw;
 }
 
 function serialize(
@@ -147,7 +78,7 @@ function serialize(
     addedAt: item.addedAt.toISOString(),
     reminderAt: item.reminderAt ? item.reminderAt.toISOString() : null,
     reminderNotifiedAt: item.reminderNotifiedAt ? item.reminderNotifiedAt.toISOString() : null,
-    href: resolveHref(item.source, item.externalId, item.mediaType, lookups),
+    href: resolveHrefFromLookups(item.source, item.externalId, item.mediaType, lookups),
   };
 }
 
@@ -181,7 +112,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   };
   const lookups =
     needed.tmdbMovie || needed.tvdbSeries || needed.tmdbSeries
-      ? await buildLibraryHrefLookups(needed)
+      ? await getLibraryLookups(needed)
       : null;
 
   return NextResponse.json(items.map((i) => serialize(i, lookups)));
@@ -202,7 +133,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const externalId = typeof body.externalId === 'string' ? body.externalId
     : typeof body.externalId === 'number' ? String(body.externalId) : '';
   const mediaType = typeof body.mediaType === 'string' ? body.mediaType.toLowerCase() : '';
-  const title = typeof body.title === 'string' ? body.title.trim() : '';
+  const title = typeof body.title === 'string' ? body.title.trim().slice(0, MAX_TITLE_LEN) : '';
 
   if (!isValidSource(source)) {
     return NextResponse.json({ error: 'Invalid source' }, { status: 400 });
@@ -219,10 +150,23 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const year = typeof body.year === 'number' && Number.isFinite(body.year) ? body.year : null;
   // `null` means "clear it"; missing field means "leave it alone" (handled below).
-  const posterUrl =
-    body.posterUrl === undefined ? undefined : typeof body.posterUrl === 'string' ? body.posterUrl : null;
+  // Strings get scheme-validated (posterUrl) or length-capped (overview) before
+  // hitting the DB — these end up rendered in the UI / persisted as TEXT.
+  let posterUrl: string | null | undefined;
+  if (body.posterUrl === undefined) posterUrl = undefined;
+  else if (typeof body.posterUrl === 'string') {
+    const validated = validatePosterUrl(body.posterUrl);
+    if (validated === null) {
+      return NextResponse.json({ error: 'Invalid posterUrl' }, { status: 400 });
+    }
+    posterUrl = validated;
+  } else posterUrl = null;
   const overview =
-    body.overview === undefined ? undefined : typeof body.overview === 'string' ? body.overview : null;
+    body.overview === undefined
+      ? undefined
+      : typeof body.overview === 'string'
+        ? body.overview.slice(0, MAX_OVERVIEW_LEN)
+        : null;
   const rating =
     body.rating === undefined
       ? undefined

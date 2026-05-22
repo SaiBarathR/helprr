@@ -5,6 +5,7 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import { logger } from '@/lib/logger';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
+import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
 
@@ -775,7 +776,39 @@ export class PollingService {
     if (due.length === 0) return;
     logger.debug('Watchlist reminders due', { count: due.length }, { scope: 'polling' });
 
+    // If any due items might resolve into Sonarr/Radarr, fetch the lookups
+    // once so we can silently mark already-downloaded items as notified —
+    // pinging the user about something they've already added is noise.
+    const needsLookup = due.some(
+      (i) =>
+        (i.source === 'TMDB' && i.mediaType === 'movie') ||
+        (i.source === 'TMDB' && i.mediaType === 'series') ||
+        (i.source === 'TVDB' && i.mediaType === 'series') ||
+        i.source === 'SONARR' ||
+        i.source === 'RADARR'
+    );
+    const lookups = needsLookup
+      ? await getLibraryLookups({
+          tmdbMovie: due.some((i) => i.source === 'TMDB' && i.mediaType === 'movie'),
+          tvdbSeries: due.some((i) => i.source === 'TVDB' && i.mediaType === 'series'),
+          tmdbSeries: due.some((i) => i.source === 'TMDB' && i.mediaType === 'series'),
+        }).catch((error) => {
+          logger.warn('Watchlist reminder library lookup failed; sending reminders without library skip', { error }, { scope: 'polling' });
+          return null;
+        })
+      : null;
+
     for (const item of due) {
+      if (lookups && isItemInLibrary(item.source, item.externalId, item.mediaType, lookups)) {
+        await prisma.watchlistItem.update({
+          where: { id: item.id },
+          data: { reminderNotifiedAt: now },
+        }).catch((error) => {
+          logger.warn('Failed to mark in-library watchlist reminder as notified', { itemId: item.id, error }, { scope: 'polling' });
+        });
+        continue;
+      }
+
       const yearSuffix = item.year ? ` (${item.year})` : '';
       const body = `${item.title}${yearSuffix}`;
       const redirect = watchlistHrefFor(item.source, item.externalId, item.mediaType) ?? '/watchlist';

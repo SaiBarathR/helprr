@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isIP } from 'net';
 import { createSession, verifyPassword, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
 import { getRedisClient } from '@/lib/redis';
 import { withApiLogging } from '@/lib/api-logger';
@@ -32,10 +33,11 @@ function getClientIp(request: NextRequest): string | null {
   if (forwardedFor) {
     const [firstIp] = forwardedFor.split(',');
     const trimmed = firstIp?.trim();
-    if (trimmed) return trimmed;
+    if (trimmed && isIP(trimmed) !== 0) return trimmed;
   }
   const realIp = request.headers.get('x-real-ip')?.trim();
-  return realIp || null;
+  if (realIp && isIP(realIp) !== 0) return realIp;
+  return null;
 }
 
 function attemptsKey(ip: string): string {
