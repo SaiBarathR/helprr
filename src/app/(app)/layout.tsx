@@ -5,6 +5,12 @@ import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
 import { getSession } from '@/lib/auth';
 
+// Revocation is enforced server-side here (getSession() hits the DB on every
+// invocation). Force-dynamic guarantees this layout re-runs on every request
+// instead of being served from Next.js's full-route cache, so a session
+// revoked from another device takes effect on the very next navigation.
+export const dynamic = 'force-dynamic';
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Edge middleware only checks the JWT signature/sid claim; it can't reach
   // the DB to confirm the Session row hasn't been revoked. Gate every
