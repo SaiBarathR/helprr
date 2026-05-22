@@ -8,6 +8,8 @@ import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
 
+const MAX_REMINDER_ATTEMPTS = 3;
+
 type NotificationEventInput = {
   eventType: string;
   title: string;
@@ -766,6 +768,7 @@ export class PollingService {
       where: {
         reminderAt: { lte: now },
         reminderNotifiedAt: null,
+        reminderAttempts: { lt: MAX_REMINDER_ATTEMPTS },
       },
       take: 50,
     });
@@ -776,6 +779,7 @@ export class PollingService {
       const yearSuffix = item.year ? ` (${item.year})` : '';
       const body = `${item.title}${yearSuffix}`;
       const redirect = watchlistHrefFor(item.source, item.externalId, item.mediaType) ?? '/watchlist';
+      let delivered = false;
       try {
         await this.notifyAndLog({
           eventType: 'watchlistReminder',
@@ -788,18 +792,26 @@ export class PollingService {
           },
           url: redirect,
         }, { service: 'watchlist', reason: 'reminder-due', itemId: item.id });
-      } finally {
-        // Mark notified even on push failure so we don't spam every poll cycle.
-        await prisma.watchlistItem.update({
-          where: { id: item.id },
-          data: { reminderNotifiedAt: now },
-        }).catch((error) => {
-          logger.warn('Failed to mark watchlist reminder as notified', { itemId: item.id, error }, { scope: 'polling' });
-        });
+        delivered = true;
+      } catch (error) {
+        logger.warn('Watchlist reminder push failed; will retry', { itemId: item.id, attempt: item.reminderAttempts + 1, error }, { scope: 'polling' });
       }
+
+      const nextAttempts = item.reminderAttempts + 1;
+      const giveUp = !delivered && nextAttempts >= MAX_REMINDER_ATTEMPTS;
+      await prisma.watchlistItem.update({
+        where: { id: item.id },
+        data: {
+          reminderAttempts: nextAttempts,
+          // Stamp notified on success OR after we exhaust retries — both
+          // states mean "stop trying this reminder".
+          reminderNotifiedAt: delivered || giveUp ? now : null,
+        },
+      }).catch((error) => {
+        logger.warn('Failed to update watchlist reminder state', { itemId: item.id, error }, { scope: 'polling' });
+      });
     }
   }
 }
-
 
 export const pollingService = new PollingService();

@@ -57,6 +57,7 @@ model WatchlistItem {
   addedAt            DateTime       @default(now())
   reminderAt         DateTime?
   reminderNotifiedAt DateTime?
+  reminderAttempts   Int            @default(0)
   tags               WatchlistTag[] @relation("WatchlistItemTags")
 
   @@unique([source, externalId, mediaType])

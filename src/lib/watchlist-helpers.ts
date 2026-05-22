@@ -1,3 +1,5 @@
+import { prisma } from '@/lib/db';
+
 const TAG_PALETTE = [
   '#f59e0b', // amber
   '#f43f5e', // rose
@@ -50,4 +52,35 @@ export function watchlistHrefFor(
   if (source === 'TMDB' && mediaType === 'series') return `/discover/tv/${externalId}`;
   if (source === 'TVDB' && mediaType === 'series') return null;
   return null;
+}
+
+export async function ensureTagIds(rawNames: string[]): Promise<string[]> {
+  const cleaned = Array.from(
+    new Set(
+      rawNames
+        .map((t) => normalizeTagName(t))
+        .filter((t) => t.length > 0 && t.length <= 50)
+    )
+  );
+  if (cleaned.length === 0) return [];
+
+  const existing = await prisma.watchlistTag.findMany({
+    where: { name: { in: cleaned } },
+    select: { id: true, name: true },
+  });
+  const byName = new Map(existing.map((t) => [t.name, t.id]));
+  const toCreate = cleaned.filter((n) => !byName.has(n));
+  if (toCreate.length > 0) {
+    await prisma.watchlistTag.createMany({
+      data: toCreate.map((name) => ({ name, color: pickTagColor(name) })),
+      skipDuplicates: true,
+    });
+    const fresh = await prisma.watchlistTag.findMany({
+      where: { name: { in: toCreate } },
+      select: { id: true, name: true },
+    });
+    for (const t of fresh) byName.set(t.name, t.id);
+  }
+
+  return cleaned.map((n) => byName.get(n)).filter((id): id is string => Boolean(id));
 }
