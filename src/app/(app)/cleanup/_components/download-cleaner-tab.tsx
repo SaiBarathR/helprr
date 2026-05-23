@@ -186,6 +186,14 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
         toast.info('Global "Auto-remove imported" was turned off because this rule uses per-rule import confirmation.');
         // Reflect the server-side flip locally so the section disables.
         setCfg((prev) => (prev ? { ...prev, autoRemoveImportedEnabled: false } : prev));
+        // Keep the snapshot in sync so the dirty-detection memo doesn't fire
+        // on a flip the server already persisted.
+        if (serverSnapshot.current) {
+          serverSnapshot.current = {
+            ...serverSnapshot.current,
+            config: { ...serverSnapshot.current.config, autoRemoveImportedEnabled: false },
+          };
+        }
       }
     } catch (err) {
       toast.error((err as Error).message ?? 'Create failed');

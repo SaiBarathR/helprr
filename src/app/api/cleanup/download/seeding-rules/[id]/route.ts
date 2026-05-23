@@ -3,7 +3,8 @@ import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { validateSeedingRulePayload } from '../_validator';
-import { disableGlobalIfRuleClaimsConfirmation } from '../_mutual-exclusion';
+import { disableGlobalIfRuleClaimsConfirmationTx } from '../_mutual-exclusion';
+import { restartDownloadCleaner } from '@/lib/cleanup/scheduler';
 
 async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const err = await requireAuth();
@@ -21,25 +22,32 @@ async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string 
   const v = validateSeedingRulePayload(body);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
 
-  const updated = await prisma.seedingRule.update({
-    where: { id },
-    data: {
-      name: v.value.name,
-      enabled: v.value.enabled,
-      priority: v.value.priority,
-      categories: v.value.categories,
-      trackerPatterns: v.value.trackerPatterns,
-      tagsAny: v.value.tagsAny,
-      tagsAll: v.value.tagsAll,
-      privacyType: v.value.privacyType,
-      maxRatio: v.value.maxRatio,
-      minSeedTimeHours: v.value.minSeedTimeHours,
-      maxSeedTimeHours: v.value.maxSeedTimeHours,
-      deleteSourceFiles: v.value.deleteSourceFiles,
-      requireImportedConfirmation: v.value.requireImportedConfirmation,
-    },
+  // Wrap the rule update and the mutual-exclusion global flip in one
+  // transaction. A failure in the second step rolls back the first so we
+  // never end up with a rule-level rule enabled while the global is still on.
+  const { updated, globalAutoRemoveDisabled } = await prisma.$transaction(async (tx) => {
+    const row = await tx.seedingRule.update({
+      where: { id },
+      data: {
+        name: v.value.name,
+        enabled: v.value.enabled,
+        priority: v.value.priority,
+        categories: v.value.categories,
+        trackerPatterns: v.value.trackerPatterns,
+        tagsAny: v.value.tagsAny,
+        tagsAll: v.value.tagsAll,
+        privacyType: v.value.privacyType,
+        maxRatio: v.value.maxRatio,
+        minSeedTimeHours: v.value.minSeedTimeHours,
+        maxSeedTimeHours: v.value.maxSeedTimeHours,
+        deleteSourceFiles: v.value.deleteSourceFiles,
+        requireImportedConfirmation: v.value.requireImportedConfirmation,
+      },
+    });
+    const flipped = await disableGlobalIfRuleClaimsConfirmationTx(tx, v.value);
+    return { updated: row, globalAutoRemoveDisabled: flipped };
   });
-  const globalAutoRemoveDisabled = await disableGlobalIfRuleClaimsConfirmation(v.value);
+  if (globalAutoRemoveDisabled) await restartDownloadCleaner();
   return NextResponse.json({ ...updated, globalAutoRemoveDisabled });
 }
 

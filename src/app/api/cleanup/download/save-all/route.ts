@@ -120,6 +120,10 @@ async function postHandler(req: NextRequest) {
     }, { status: 409 });
   }
 
+  // Commit rule updates AND the cleaner-config write in one transaction so
+  // we never leave the DB with rules saved but config stale (or vice versa).
+  // `syncSystemSeedingRule` and the scheduler restart run after the tx
+  // commits — both are idempotent and run on a successful row state.
   await prisma.$transaction(async (tx) => {
     for (const { id, value } of ruleValidated) {
       await tx.seedingRule.update({
@@ -141,9 +145,20 @@ async function postHandler(req: NextRequest) {
         },
       });
     }
+    if (cfgResult.ok) {
+      await tx.downloadCleanerConfig.upsert({
+        where: { id: 'singleton' },
+        create: { id: 'singleton', ...cfgResult.value },
+        update: cfgResult.value,
+      });
+    }
   });
 
   if (cfgResult.ok) {
+    // Re-run saveDownloadCleanerConfig to drive syncSystemSeedingRule with
+    // the just-committed config. The inner upsert is a no-op (rules+config
+    // already match), so the extra cost is one redundant write — worth it
+    // to keep the system-rule sync flow centralised in one place.
     await saveDownloadCleanerConfig(cfgResult.value);
     await restartDownloadCleaner();
   }

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 import {
   loadDownloadCleanerConfig,
   saveDownloadCleanerConfig,
@@ -6,11 +7,40 @@ import {
 import { restartDownloadCleaner } from '@/lib/cleanup/scheduler';
 import type { SeedingRuleShape } from '@/lib/cleanup/types';
 
+type Tx = Prisma.TransactionClient;
+
 /**
- * Rule-level `requireImportedConfirmation` and the global
- * `autoRemoveImportedEnabled` toggle are mutually exclusive. When a user
- * enables the rule-level flag on any rule, the global toggle is force-flipped
- * to off so there is exactly one "delete on import" mechanism active.
+ * Transaction-scoped variant: when the caller is already inside a
+ * `prisma.$transaction`, flip the global toggle and tear down the system rule
+ * using the same `tx` client so the rule write and the mutual-exclusion flip
+ * succeed or roll back together.
+ *
+ * Returns `true` when this call flipped the global toggle. The caller is
+ * expected to invoke `restartDownloadCleaner()` after the transaction
+ * commits (the scheduler is a global side-effect and can't participate in
+ * the transaction).
+ */
+export async function disableGlobalIfRuleClaimsConfirmationTx(
+  tx: Tx,
+  rule: Pick<SeedingRuleShape, 'enabled' | 'requireImportedConfirmation'>,
+): Promise<boolean> {
+  if (!rule.enabled || !rule.requireImportedConfirmation) return false;
+  const row = await tx.downloadCleanerConfig.findUnique({ where: { id: 'singleton' } });
+  if (!row || !row.autoRemoveImportedEnabled) return false;
+  await tx.downloadCleanerConfig.update({
+    where: { id: 'singleton' },
+    data: { autoRemoveImportedEnabled: false },
+  });
+  // Mirror the system-rule teardown in syncSystemSeedingRule: when the global
+  // toggle goes off the system row must go with it.
+  await tx.seedingRule.deleteMany({ where: { isSystem: true } });
+  return true;
+}
+
+/**
+ * Convenience wrapper for callers not already in a transaction. Opens its own
+ * `$transaction` and uses the tx-aware helper above, then triggers the
+ * scheduler restart.
  *
  * Returns `true` when this call flipped the global toggle, so the route can
  * surface that to the UI for a toast.
