@@ -262,6 +262,12 @@ model SeedingRule {
   minSeedTimeHours  Float    @default(0)
   maxSeedTimeHours  Float    @default(-1)
   deleteSourceFiles Boolean  @default(true)
+  // When true, deletion is gated on Sonarr/Radarr history confirming a
+  // successful import for this torrent. The ratio/seedtime predicate still
+  // applies on top, so users can compose "imported AND seeded N hours".
+  // Mutually exclusive with DownloadCleanerConfig.autoRemoveImportedEnabled
+  // (enforced at the API layer).
+  requireImportedConfirmation Boolean @default(false)
   isSystem          Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

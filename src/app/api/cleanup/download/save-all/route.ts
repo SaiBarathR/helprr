@@ -87,6 +87,20 @@ async function postHandler(req: NextRequest) {
     return NextResponse.json({ error: 'validation failed', fieldErrors: errors }, { status: 400 });
   }
 
+  // Mutual exclusion: rule-level `requireImportedConfirmation` and the global
+  // `autoRemoveImportedEnabled` cannot both be on. If any incoming rule claims
+  // import confirmation while the incoming config still has the global on,
+  // force the global off and surface the flip in the response so the UI can
+  // toast the user. Disabled rules don't count toward the conflict.
+  let globalAutoRemoveDisabled = false;
+  const anyRuleClaimsConfirmation = ruleValidated.some(
+    (r) => r.value.enabled && r.value.requireImportedConfirmation,
+  );
+  if (anyRuleClaimsConfirmation && cfgResult.value.autoRemoveImportedEnabled) {
+    cfgResult.value.autoRemoveImportedEnabled = false;
+    globalAutoRemoveDisabled = true;
+  }
+
   // Verify rule IDs exist, and refuse to touch any system rule (those are
   // managed by the config toggle, not the user-editable rule list).
   const ids = ruleValidated.map((r) => r.id);
@@ -123,6 +137,7 @@ async function postHandler(req: NextRequest) {
           minSeedTimeHours: value.minSeedTimeHours,
           maxSeedTimeHours: value.maxSeedTimeHours,
           deleteSourceFiles: value.deleteSourceFiles,
+          requireImportedConfirmation: value.requireImportedConfirmation,
         },
       });
     }
@@ -141,6 +156,7 @@ async function postHandler(req: NextRequest) {
     config: freshConfig,
     // System rules are hidden from the list returned to the UI (matches GET behavior).
     seedingRules: freshRules.filter((r) => !r.isSystem),
+    globalAutoRemoveDisabled,
   });
 }
 

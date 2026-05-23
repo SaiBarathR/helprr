@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { validateSeedingRulePayload } from './_validator';
+import { disableGlobalIfRuleClaimsConfirmation } from './_mutual-exclusion';
 
 function serialize<T extends { categories: unknown; trackerPatterns: unknown; tagsAny: unknown; tagsAll: unknown }>(r: T): T {
   return {
@@ -48,10 +49,12 @@ async function postHandler(req: NextRequest) {
       minSeedTimeHours: v.value.minSeedTimeHours,
       maxSeedTimeHours: v.value.maxSeedTimeHours,
       deleteSourceFiles: v.value.deleteSourceFiles,
+      requireImportedConfirmation: v.value.requireImportedConfirmation,
       isSystem: false,
     },
   });
-  return NextResponse.json(serialize(created));
+  const globalAutoRemoveDisabled = await disableGlobalIfRuleClaimsConfirmation(v.value);
+  return NextResponse.json({ ...serialize(created), globalAutoRemoveDisabled });
 }
 
 export const GET = withApiLogging(getHandler, 'api/cleanup/download/seeding-rules');

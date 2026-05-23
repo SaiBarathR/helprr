@@ -121,9 +121,12 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
       }
       setCfg(json.config);
       setRules(json.seedingRules);
-      serverSnapshot.current = json;
+      serverSnapshot.current = { config: json.config, seedingRules: json.seedingRules };
       setEditingIds(new Set());
       toast.success('Download Cleaner settings saved');
+      if (json.globalAutoRemoveDisabled) {
+        toast.info('Global "Auto-remove imported" was turned off because a rule now uses per-rule import confirmation.');
+      }
     } catch (err) {
       toast.error((err as Error).message ?? 'Save failed');
     } finally {
@@ -167,7 +170,8 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
         toast.error(j?.error ?? 'Create failed');
         return;
       }
-      const created = (await r.json()) as SeedingRuleShape;
+      const json = (await r.json()) as SeedingRuleShape & { globalAutoRemoveDisabled?: boolean };
+      const { globalAutoRemoveDisabled, ...created } = json;
       setRules((prev) => [...prev, created]);
       if (serverSnapshot.current) {
         serverSnapshot.current = {
@@ -178,6 +182,11 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
       setRuleEditing(created.id, true);
       scrollNewRuleIntoView(created.id);
       toast.success('Seeding rule created');
+      if (globalAutoRemoveDisabled) {
+        toast.info('Global "Auto-remove imported" was turned off because this rule uses per-rule import confirmation.');
+        // Reflect the server-side flip locally so the section disables.
+        setCfg((prev) => (prev ? { ...prev, autoRemoveImportedEnabled: false } : prev));
+      }
     } catch (err) {
       toast.error((err as Error).message ?? 'Create failed');
     }
@@ -220,6 +229,14 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
   const configError = fieldErrors.find((e) => e.scope === 'config')?.message;
   const errorFor = (id: string): string | undefined =>
     fieldErrors.find((e) => e.scope === 'rule' && e.id === id)?.message;
+
+  // Rule-level `requireImportedConfirmation` and the global toggle are
+  // mutually exclusive. Surface any enabled user rule with the flag set so
+  // the section can disable its controls and the global Switch.
+  const ruleLevelConflicts = useMemo(
+    () => rules.filter((r) => r.enabled && r.requireImportedConfirmation),
+    [rules],
+  );
 
   if (loading || !cfg) {
     return <div className="py-12 flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>;
@@ -297,13 +314,30 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
         <section className="grouped-section">
           <div className="grouped-section-title">Auto-remove imported downloads</div>
           <div className="grouped-section-content">
+            {ruleLevelConflicts.length > 0 && (
+              <div className="px-4 py-3 text-xs text-muted-foreground border-b last:border-b-0 flex items-start gap-2 bg-muted/30">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  Disabled — {ruleLevelConflicts.length} rule{ruleLevelConflicts.length === 1 ? '' : 's'} ({ruleLevelConflicts.map((r) => r.name).join(', ')}) use rule-level import confirmation. Turn that off on those rules first to use this section.
+                </span>
+              </div>
+            )}
             <div className="grouped-row">
               <div>
                 <Label>Enabled</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Removes torrents in the listed categories as soon as Sonarr/Radarr finish importing them. Managed internally as a hidden system rule.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Removes torrents in the listed categories as soon as Sonarr/Radarr finish importing them. Managed internally as a hidden system rule. Mutually exclusive with rule-level import confirmation.</p>
               </div>
-              <Switch checked={cfg.autoRemoveImportedEnabled}
-                onCheckedChange={(v) => setCfg({ ...cfg, autoRemoveImportedEnabled: v })} />
+              <Switch
+                checked={cfg.autoRemoveImportedEnabled}
+                disabled={ruleLevelConflicts.length > 0}
+                onCheckedChange={(v) => {
+                  if (v && ruleLevelConflicts.length > 0) {
+                    toast.error('Disable rule-level import confirmation on existing rules first.');
+                    return;
+                  }
+                  setCfg({ ...cfg, autoRemoveImportedEnabled: v });
+                }}
+              />
             </div>
             <div className="grouped-row flex-col items-stretch gap-2">
               <Label>Categories</Label>
@@ -640,6 +674,16 @@ function SeedingRuleCard({
           >
             <Switch checked={rule.deleteSourceFiles} onCheckedChange={(v) => onChange({ ...rule, deleteSourceFiles: v })} />
           </FieldRow>
+          <FieldRow
+            label="Require import confirmation"
+            hint="Only delete after Sonarr/Radarr confirms a successful import. Saving this on will turn off the global 'Auto-remove imported' toggle (mutually exclusive)."
+            active={rule.requireImportedConfirmation}
+          >
+            <Switch
+              checked={rule.requireImportedConfirmation}
+              onCheckedChange={(v) => onChange({ ...rule, requireImportedConfirmation: v })}
+            />
+          </FieldRow>
         </div>
       ) : (
         <SeedingRuleSummary rule={rule} />
@@ -660,7 +704,9 @@ function makeDefaultSeeding(): Omit<SeedingRuleShape, 'id' | 'isSystem'> {
     name: 'Seeding rule',
     enabled: true,
     priority: 0,
-    categories: [],
+    // The validator now rejects a rule with no category/tracker/tag filter,
+    // so seed a sensible default the user can adjust.
+    categories: ['sonarr'],
     trackerPatterns: [],
     tagsAny: [],
     tagsAll: [],
@@ -669,5 +715,6 @@ function makeDefaultSeeding(): Omit<SeedingRuleShape, 'id' | 'isSystem'> {
     minSeedTimeHours: 0,
     maxSeedTimeHours: -1,
     deleteSourceFiles: true,
+    requireImportedConfirmation: false,
   };
 }

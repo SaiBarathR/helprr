@@ -92,6 +92,7 @@ export interface SeedingRuleShape {
   minSeedTimeHours: number;
   maxSeedTimeHours: number; // -1 disables
   deleteSourceFiles: boolean;
+  requireImportedConfirmation: boolean;
   isSystem: boolean;
 }
 

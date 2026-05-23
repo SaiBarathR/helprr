@@ -309,46 +309,59 @@ export function formatError(err: unknown): string {
 
 export type ImportConfirmationSource = 'sonarr' | 'radarr';
 
-export interface ImportConfirmation {
-  source: ImportConfirmationSource;
-  eventType: string;
-}
+export type ImportConfirmation =
+  | { status: 'imported'; source: ImportConfirmationSource; eventType: string }
+  | { status: 'unconfirmed' } // at least one arr was reachable and reported no import
+  | { status: 'unreachable' }; // no arrs configured, or every configured arr threw
 
 /**
  * Query Sonarr+Radarr history for any successful-import event whose
- * downloadId matches the given torrent hash. Returns the first confirmation
- * found, or null if neither arr has imported it.
+ * downloadId matches the given torrent hash.
  *
- * Fails closed: if an arr is configured but the API call throws, we treat that
- * arr as "cannot confirm" and move on. Caller is responsible for skipping the
- * removal when this returns null.
+ * Sonarr/Radarr's qBittorrent download client persists History.DownloadId as
+ * torrent.Hash.ToUpper(); the /api/v3/history filter is a case-sensitive SQL
+ * equality, so we must send uppercase even though qBit returns lowercase.
+ *
+ * Returns:
+ *  - `imported` if any arr's history shows a successful-import event.
+ *  - `unconfirmed` if at least one arr was reachable and returned no hit
+ *    (common case — torrent just hasn't been imported yet).
+ *  - `unreachable` if no arr is configured, or every configured arr threw.
+ *
+ * Callers distinguish the latter two so an arr outage can be surfaced
+ * (`unreachable`) while routine "not imported yet" silence stays quiet.
  */
 export async function confirmImportedViaHistory(
   hash: string,
   arrs: { sonarr: SonarrClient | null; radarr: RadarrClient | null },
-): Promise<ImportConfirmation | null> {
-  // Sonarr/Radarr's qBittorrent download client persists History.DownloadId as
-  // torrent.Hash.ToUpper(); the /api/v3/history filter is a case-sensitive SQL
-  // equality, so we must send uppercase here even though qBit returns lowercase.
+): Promise<ImportConfirmation> {
   const downloadId = hash.toUpperCase();
+  let anyReachable = false;
+  let anyConfigured = false;
+
   if (arrs.sonarr) {
+    anyConfigured = true;
     try {
       const res = await arrs.sonarr.getHistory(1, 50, 'date', 'descending', { downloadId });
+      anyReachable = true;
       const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
-      if (hit) return { source: 'sonarr', eventType: hit.eventType };
+      if (hit) return { status: 'imported', source: 'sonarr', eventType: hit.eventType };
     } catch {
-      // swallow — caller logs cycle-level failures; per-torrent noise isn't useful
+      // sonarr threw; treat as unreachable for this arr
     }
   }
   if (arrs.radarr) {
+    anyConfigured = true;
     try {
       const res = await arrs.radarr.getHistory(1, 50, 'date', 'descending', { downloadId });
+      anyReachable = true;
       const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
-      if (hit) return { source: 'radarr', eventType: hit.eventType };
+      if (hit) return { status: 'imported', source: 'radarr', eventType: hit.eventType };
     } catch {
       // swallow
     }
   }
-  return null;
+  if (!anyConfigured || !anyReachable) return { status: 'unreachable' };
+  return { status: 'unconfirmed' };
 }
 
