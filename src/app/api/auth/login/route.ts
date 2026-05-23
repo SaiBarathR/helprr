@@ -21,13 +21,13 @@ function formatWindowDuration(ms: number): string {
 
 const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
 
-function getClientIp(request: NextRequest): string | null {
+function getClientIp(request: NextRequest): string | undefined {
   // Without a sanitized reverse proxy, x-forwarded-* is attacker-controlled
   // — feeding it into rate limiting lets one client trivially bypass the
   // 5/min cap by rotating the header, and persisting it into Session.ip
   // would store a forged value. TRUST_FORWARDED_PROTO is the same gate the
   // login response already uses for the Secure cookie flag.
-  if (process.env.TRUST_FORWARDED_PROTO !== 'true') return null;
+  if (process.env.TRUST_FORWARDED_PROTO !== 'true') return undefined;
 
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
@@ -37,7 +37,7 @@ function getClientIp(request: NextRequest): string | null {
   }
   const realIp = request.headers.get('x-real-ip')?.trim();
   if (realIp && isIP(realIp) !== 0) return realIp;
-  return null;
+  return undefined;
 }
 
 function attemptsKey(ip: string): string {
@@ -74,23 +74,27 @@ async function clearAttempts(ip: string): Promise<void> {
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const ip = getClientIp(request);
-  const rateLimitKey = ip ?? 'unknown';
 
-  let attempts: number;
-  try {
-    attempts = await incrementAttempts(rateLimitKey);
-  } catch {
-    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
-  }
+  // No trusted IP means no safe per-client key — skip the IP-bucket entirely
+  // rather than collapse every caller into a shared bucket (which would let
+  // one attacker exhaust the global cap and lock everyone out).
+  if (ip !== undefined) {
+    let attempts: number;
+    try {
+      attempts = await incrementAttempts(ip);
+    } catch {
+      return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+    }
 
-  if (attempts > LOGIN_MAX_ATTEMPTS) {
-    return NextResponse.json(
-      { error: `Too many login attempts. Try again in ${LOGIN_WINDOW_TEXT}.` },
-      {
-        status: 429,
-        headers: { 'Retry-After': String(LOGIN_WINDOW_SECONDS) },
-      }
-    );
+    if (attempts > LOGIN_MAX_ATTEMPTS) {
+      return NextResponse.json(
+        { error: `Too many login attempts. Try again in ${LOGIN_WINDOW_TEXT}.` },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(LOGIN_WINDOW_SECONDS) },
+        }
+      );
+    }
   }
 
   let body: unknown;
@@ -110,11 +114,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid password' }, { status: 401 });
   }
 
-  try {
-    await clearAttempts(rateLimitKey);
-  } catch (error) {
-    console.error('[Auth] Failed to clear login attempts:', error);
-    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  if (ip !== undefined) {
+    try {
+      await clearAttempts(ip);
+    } catch (error) {
+      console.error('[Auth] Failed to clear login attempts:', error);
+      return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+    }
   }
 
   const userAgent = request.headers.get('user-agent');

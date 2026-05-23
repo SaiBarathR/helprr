@@ -272,7 +272,8 @@ export function validateImportFile(
     (typeof obj.watchlist !== 'object' ||
       obj.watchlist === null ||
       Array.isArray(obj.watchlist) ||
-      !Array.isArray((obj.watchlist as { items?: unknown }).items))
+      !Array.isArray((obj.watchlist as { items?: unknown }).items) ||
+      !Array.isArray((obj.watchlist as { tags?: unknown }).tags))
   ) {
     return { ok: false, error: 'Invalid watchlist section.' };
   }
