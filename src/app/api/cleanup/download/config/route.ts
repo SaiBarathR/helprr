@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { loadDownloadCleanerConfig, saveDownloadCleanerConfig } from '@/lib/cleanup/download-cleaner';
 import { restartDownloadCleaner } from '@/lib/cleanup/scheduler';
 import { AUTO_RUN_MODES, AutoRunMode, DownloadCleanerConfigShape, PrivacyType } from '@/lib/cleanup/types';
+import { findConflictingRuleLevelRules } from '../seeding-rules/_mutual-exclusion';
 
 const PRIVACY_TYPES: PrivacyType[] = ['public', 'private', 'both'];
 
@@ -66,6 +67,20 @@ async function putHandler(req: NextRequest) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
   const v = validate(body);
   if (!v.ok) return NextResponse.json({ error: v.error }, { status: 400 });
+
+  if (v.value.autoRemoveImportedEnabled) {
+    const conflicts = await findConflictingRuleLevelRules();
+    if (conflicts) {
+      return NextResponse.json(
+        {
+          error: 'Disable rule-level import confirmation on the listed rules first.',
+          conflictingRules: conflicts,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
   await saveDownloadCleanerConfig(v.value);
   await restartDownloadCleaner();
   return NextResponse.json(v.value);

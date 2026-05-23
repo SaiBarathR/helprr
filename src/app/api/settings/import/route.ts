@@ -419,13 +419,20 @@ async function applyCleanupInTxn(
 
   if (Array.isArray(data.seedingRules)) {
     await tx.seedingRule.deleteMany({ where: { isSystem: false } });
+    let restoredRuleLevelConfirmation = false;
     for (const r of data.seedingRules) {
       if (!r || typeof r !== 'object') continue;
+      const requireImportedConfirmation = Boolean(r.requireImportedConfirmation);
+      const enabled = Boolean(r.enabled);
+      if (enabled && requireImportedConfirmation) restoredRuleLevelConfirmation = true;
       await tx.seedingRule.create({
         data: {
           name: String(r.name ?? 'Seeding rule'),
-          enabled: Boolean(r.enabled),
-          priority: Number(r.priority) || 0,
+          enabled,
+          // Clamp restored priority to >= 0 — the system row's -1000 is
+          // reserved and a backup from a buggy build could otherwise land an
+          // unconstrained negative.
+          priority: Math.max(0, Number(r.priority) || 0),
           categories: Array.isArray(r.categories) ? r.categories : [],
           trackerPatterns: Array.isArray(r.trackerPatterns) ? r.trackerPatterns : [],
           tagsAny: Array.isArray(r.tagsAny) ? r.tagsAny : [],
@@ -435,8 +442,19 @@ async function applyCleanupInTxn(
           minSeedTimeHours: Math.max(0, Number(r.minSeedTimeHours) || 0),
           maxSeedTimeHours: Number.isFinite(Number(r.maxSeedTimeHours)) ? Number(r.maxSeedTimeHours) : -1,
           deleteSourceFiles: Boolean(r.deleteSourceFiles),
+          requireImportedConfirmation,
           isSystem: false,
         },
+      });
+    }
+    // Enforce mutual exclusion after the rules transaction. If a restored
+    // backup contains both the global toggle on AND any rule-level rule, the
+    // global wins of the global toggle is the more conservative state; flip it
+    // off and let the rule-level rules be the active mechanism.
+    if (restoredRuleLevelConfirmation) {
+      await tx.downloadCleanerConfig.update({
+        where: { id: 'singleton' },
+        data: { autoRemoveImportedEnabled: false },
       });
     }
   }

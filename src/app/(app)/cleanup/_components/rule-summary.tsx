@@ -119,6 +119,7 @@ export function SeedingRuleSummary({ rule }: { rule: SeedingRuleShape }) {
       )}
       {rule.tagsAny.length > 0 && <Chip tone="muted">any: {rule.tagsAny.join(', ')}</Chip>}
       {rule.tagsAll.length > 0 && <Chip tone="muted">all: {rule.tagsAll.join(', ')}</Chip>}
+      {rule.requireImportedConfirmation && <Chip>Imported only</Chip>}
       <Chip tone="muted">{rule.deleteSourceFiles ? 'Delete files' : 'Keep files'}</Chip>
       {rule.priority !== 0 && <Chip tone="muted">priority {rule.priority}</Chip>}
     </SummaryRow>

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { validateSeedingRulePayload } from '../_validator';
+import { disableGlobalIfRuleClaimsConfirmation } from '../_mutual-exclusion';
 
 async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const err = await requireAuth();
@@ -35,9 +36,11 @@ async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string 
       minSeedTimeHours: v.value.minSeedTimeHours,
       maxSeedTimeHours: v.value.maxSeedTimeHours,
       deleteSourceFiles: v.value.deleteSourceFiles,
+      requireImportedConfirmation: v.value.requireImportedConfirmation,
     },
   });
-  return NextResponse.json(updated);
+  const globalAutoRemoveDisabled = await disableGlobalIfRuleClaimsConfirmation(v.value);
+  return NextResponse.json({ ...updated, globalAutoRemoveDisabled });
 }
 
 async function deleteHandler(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
