@@ -240,6 +240,9 @@ model DownloadCleanerConfig {
   autoRemoveImportedEnabled     Boolean  @default(false)
   autoRemoveImportedCategories  Json     @default("[\"sonarr\",\"radarr\",\"tv-sonarr\"]")
   autoRemoveImportedDeleteFiles Boolean  @default(true)
+  // 'public' | 'private' | 'both'. Controls which trackers the system rule
+  // applies to. Default 'public' matches historical behaviour.
+  autoRemoveImportedPrivacyType String   @default("public")
   // "disabled" (default — no auto cycles), "dryRun" (auto cycles, log only), "enabled" (auto delete)
   autoRunMode                   String   @default("disabled")
   updatedAt                     DateTime @updatedAt

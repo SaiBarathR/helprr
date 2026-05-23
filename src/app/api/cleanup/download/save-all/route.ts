@@ -8,7 +8,9 @@ import {
   saveDownloadCleanerConfig,
 } from '@/lib/cleanup/download-cleaner';
 import { restartDownloadCleaner } from '@/lib/cleanup/scheduler';
-import { AUTO_RUN_MODES, AutoRunMode, DownloadCleanerConfigShape, SeedingRuleShape } from '@/lib/cleanup/types';
+import { AUTO_RUN_MODES, AutoRunMode, DownloadCleanerConfigShape, PrivacyType, SeedingRuleShape } from '@/lib/cleanup/types';
+
+const PRIVACY_TYPES: PrivacyType[] = ['public', 'private', 'both'];
 import { validateSeedingRulePayload } from '../seeding-rules/_validator';
 
 type SeedingRuleInput = Omit<SeedingRuleShape, 'id' | 'isSystem'>;
@@ -34,6 +36,11 @@ function validateConfig(b: Record<string, unknown>): { ok: true; value: Download
     return { ok: false, error: 'autoRemoveImported: at least one category required when this feature is on' };
   }
   const autoRemoveImportedDeleteFiles = b.autoRemoveImportedDeleteFiles === undefined ? true : Boolean(b.autoRemoveImportedDeleteFiles);
+  const privacyRaw = String(b.autoRemoveImportedPrivacyType ?? 'public');
+  if (!(PRIVACY_TYPES as string[]).includes(privacyRaw)) {
+    return { ok: false, error: `autoRemoveImportedPrivacyType must be one of: ${PRIVACY_TYPES.join(', ')}` };
+  }
+  const autoRemoveImportedPrivacyType = privacyRaw as PrivacyType;
   const autoRunModeRaw = String(b.autoRunMode ?? 'disabled');
   if (!(AUTO_RUN_MODES as string[]).includes(autoRunModeRaw)) {
     return { ok: false, error: `autoRunMode must be one of: ${AUTO_RUN_MODES.join(', ')}` };
@@ -48,6 +55,7 @@ function validateConfig(b: Record<string, unknown>): { ok: true; value: Download
       autoRemoveImportedEnabled,
       autoRemoveImportedCategories: cats,
       autoRemoveImportedDeleteFiles,
+      autoRemoveImportedPrivacyType,
       autoRunMode,
     },
   };

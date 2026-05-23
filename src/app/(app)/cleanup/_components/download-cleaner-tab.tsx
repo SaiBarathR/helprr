@@ -328,6 +328,24 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
             </div>
             <div className="grouped-row">
               <div>
+                <Label>Tracker privacy</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Which trackers this applies to. Default Public — opt in to Private only if your tracker permits early-deletes (most do not).</p>
+              </div>
+              <Select
+                value={cfg.autoRemoveImportedPrivacyType}
+                onValueChange={(v) => setCfg({ ...cfg, autoRemoveImportedPrivacyType: v as 'public' | 'private' | 'both' })}
+                disabled={!cfg.autoRemoveImportedEnabled}
+              >
+                <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">Public only</SelectItem>
+                  <SelectItem value="private">Private only</SelectItem>
+                  <SelectItem value="both">Public &amp; private</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grouped-row">
+              <div>
                 <Label>Delete files</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Also delete the source files on disk. Off keeps the files and only removes from qBittorrent.</p>
               </div>

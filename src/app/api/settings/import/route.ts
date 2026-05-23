@@ -326,6 +326,10 @@ async function applyCleanupInTxn(
 
   if (data.downloadConfig && typeof data.downloadConfig === 'object') {
     const c = data.downloadConfig;
+    const importedPrivacy = typeof c.autoRemoveImportedPrivacyType === 'string'
+      && ['public', 'private', 'both'].includes(c.autoRemoveImportedPrivacyType)
+      ? c.autoRemoveImportedPrivacyType
+      : 'public';
     await tx.downloadCleanerConfig.upsert({
       where: { id: 'singleton' },
       create: {
@@ -336,6 +340,7 @@ async function applyCleanupInTxn(
         autoRemoveImportedEnabled: Boolean(c.autoRemoveImportedEnabled),
         autoRemoveImportedCategories: Array.isArray(c.autoRemoveImportedCategories) ? c.autoRemoveImportedCategories : [],
         autoRemoveImportedDeleteFiles: Boolean(c.autoRemoveImportedDeleteFiles),
+        autoRemoveImportedPrivacyType: importedPrivacy,
         autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
       },
       update: {
@@ -345,6 +350,7 @@ async function applyCleanupInTxn(
         autoRemoveImportedEnabled: Boolean(c.autoRemoveImportedEnabled),
         autoRemoveImportedCategories: Array.isArray(c.autoRemoveImportedCategories) ? c.autoRemoveImportedCategories : [],
         autoRemoveImportedDeleteFiles: Boolean(c.autoRemoveImportedDeleteFiles),
+        autoRemoveImportedPrivacyType: importedPrivacy,
         autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
       },
     });

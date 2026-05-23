@@ -327,11 +327,13 @@ export async function confirmImportedViaHistory(
   hash: string,
   arrs: { sonarr: SonarrClient | null; radarr: RadarrClient | null },
 ): Promise<ImportConfirmation | null> {
-  // Sonarr first — anime/TV is the more common case in the user's setup, and
-  // either source confirming is sufficient.
+  // Sonarr/Radarr's qBittorrent download client persists History.DownloadId as
+  // torrent.Hash.ToUpper(); the /api/v3/history filter is a case-sensitive SQL
+  // equality, so we must send uppercase here even though qBit returns lowercase.
+  const downloadId = hash.toUpperCase();
   if (arrs.sonarr) {
     try {
-      const res = await arrs.sonarr.getHistory(1, 50, 'date', 'descending', { downloadId: hash });
+      const res = await arrs.sonarr.getHistory(1, 50, 'date', 'descending', { downloadId });
       const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
       if (hit) return { source: 'sonarr', eventType: hit.eventType };
     } catch {
@@ -340,7 +342,7 @@ export async function confirmImportedViaHistory(
   }
   if (arrs.radarr) {
     try {
-      const res = await arrs.radarr.getHistory(1, 50, 'date', 'descending', { downloadId: hash });
+      const res = await arrs.radarr.getHistory(1, 50, 'date', 'descending', { downloadId });
       const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
       if (hit) return { source: 'radarr', eventType: hit.eventType };
     } catch {

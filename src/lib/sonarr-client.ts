@@ -65,6 +65,7 @@ export class SonarrClient {
         'X-Api-Key': apiKey,
         'Content-Type': 'application/json',
       },
+      timeout: 30_000,
     });
   }
 
