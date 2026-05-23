@@ -452,9 +452,12 @@ async function applyCleanupInTxn(
     // global wins of the global toggle is the more conservative state; flip it
     // off and let the rule-level rules be the active mechanism.
     if (restoredRuleLevelConfirmation) {
-      await tx.downloadCleanerConfig.update({
+      // upsert (not update) because the backup may not have included
+      // downloadConfig, in which case the singleton row may not exist yet.
+      await tx.downloadCleanerConfig.upsert({
         where: { id: 'singleton' },
-        data: { autoRemoveImportedEnabled: false },
+        create: { id: 'singleton', autoRemoveImportedEnabled: false },
+        update: { autoRemoveImportedEnabled: false },
       });
     }
   }
