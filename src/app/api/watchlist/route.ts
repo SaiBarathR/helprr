@@ -148,10 +148,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'title is required' }, { status: 400 });
   }
 
-  const year = typeof body.year === 'number' && Number.isFinite(body.year) ? body.year : null;
   // `null` means "clear it"; missing field means "leave it alone" (handled below).
   // Strings get scheme-validated (posterUrl) or length-capped (overview) before
   // hitting the DB — these end up rendered in the UI / persisted as TEXT.
+  let year: number | null | undefined;
+  if (body.year === undefined) year = undefined;
+  else if (typeof body.year === 'number' && Number.isFinite(body.year)) year = body.year;
+  else year = null;
   let posterUrl: string | null | undefined;
   if (body.posterUrl === undefined) posterUrl = undefined;
   else if (typeof body.posterUrl === 'string') {
@@ -193,7 +196,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       externalId,
       mediaType,
       title,
-      year,
+      year: year ?? null,
       posterUrl: posterUrl ?? null,
       overview: overview ?? null,
       rating: rating ?? null,
@@ -202,7 +205,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     },
     update: {
       title,
-      year,
+      ...(year !== undefined ? { year } : {}),
       ...(posterUrl !== undefined ? { posterUrl } : {}),
       ...(overview !== undefined ? { overview } : {}),
       ...(rating !== undefined ? { rating } : {}),

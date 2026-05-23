@@ -21,10 +21,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     try {
       await revokeSession(sid);
     } catch (err) {
-      // Clear the cookie regardless so the client appears logged out, but
-      // surface the failure so the operator can investigate (DB down, etc.).
+      // Don't clear the cookie if revoke failed — otherwise the client looks
+      // logged out while the server-side session is still valid, so anything
+      // that knows the cookie value (other tabs, lifted backups) keeps full
+      // access. Surfacing the 500 lets the user retry once the DB recovers.
       console.error('[Auth] Failed to revoke session on logout:', err);
-      return clearedCookieResponse(request, { error: 'Failed to revoke session on logout' }, 500);
+      return NextResponse.json(
+        { error: 'Failed to revoke session on logout' },
+        { status: 500 }
+      );
     }
   }
 

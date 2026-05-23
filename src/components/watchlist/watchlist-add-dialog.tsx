@@ -78,8 +78,13 @@ async function fetchKnownTags(): Promise<KnownTag[]> {
   if (tagCache && now - tagCache.at < TAG_CACHE_TTL_MS) return tagCache.tags;
   if (tagInFlight) return tagInFlight;
   tagInFlight = fetch('/api/watchlist/tags')
-    .then((r) => (r.ok ? (r.json() as Promise<KnownTag[]>) : []))
+    .then((r) => {
+      if (!r.ok) throw new Error(`tags fetch failed: ${r.status}`);
+      return r.json() as Promise<KnownTag[]>;
+    })
     .then((tags) => {
+      // Only memoize successful responses — caching `[]` on a transient 500
+      // would hide all tag suggestions for the full TTL window.
       tagCache = { at: Date.now(), tags };
       return tags;
     })

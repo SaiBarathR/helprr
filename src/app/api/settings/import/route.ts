@@ -45,6 +45,18 @@ import {
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
 
+// Watchlist field caps — match the regular POST /api/watchlist handler so an
+// imported backup can't smuggle past validations the live UI enforces.
+const WATCHLIST_MAX_TITLE_LEN = 200;
+const WATCHLIST_MAX_POSTER_URL_LEN = 500;
+const WATCHLIST_MAX_OVERVIEW_LEN = 2000;
+
+function validateImportedPosterUrl(raw: string): string | null {
+  if (raw.length > WATCHLIST_MAX_POSTER_URL_LEN) return null;
+  if (!/^https?:\/\//i.test(raw)) return null;
+  return raw;
+}
+
 interface ImportRequestBody {
   appSettings?: Partial<ExportedAppSettings>;
   serviceConnections?: ExportedServiceConnection[];
@@ -583,13 +595,25 @@ async function applyDashboardLayoutsInTxn(
     : null;
   const desktopBuiltIn = await tx.dashboardLayout.findUnique({ where: { slug: 'desktop' }, select: { id: true, name: true } });
   const mobileBuiltIn = await tx.dashboardLayout.findUnique({ where: { slug: 'mobile' }, select: { id: true, name: true } });
+  // Match built-ins by slug FIRST (case-insensitive). If the imported name is
+  // "Desktop"/"Mobile" — the canonical built-in name — and the local built-in
+  // happens to have been renamed (or had its name suffixed away by the
+  // collision logic above when a user layout already owned "Desktop"), the
+  // name-only lookup would otherwise resolve to the user layout. That made
+  // the wrong row get persisted as the default.
   const desktopRow = desktopName
-    ? (desktopBuiltIn && desktopBuiltIn.name === desktopName
+    ? (desktopBuiltIn && (
+          desktopName.toLowerCase() === 'desktop' ||
+          desktopBuiltIn.name === desktopName
+        )
         ? desktopBuiltIn
         : await tx.dashboardLayout.findUnique({ where: { name: desktopName }, select: { id: true } }))
     : null;
   const mobileRow = mobileName
-    ? (mobileBuiltIn && mobileBuiltIn.name === mobileName
+    ? (mobileBuiltIn && (
+          mobileName.toLowerCase() === 'mobile' ||
+          mobileBuiltIn.name === mobileName
+        )
         ? mobileBuiltIn
         : await tx.dashboardLayout.findUnique({ where: { name: mobileName }, select: { id: true } }))
     : null;
@@ -701,22 +725,38 @@ async function applyWatchlistInTxn(
     const mediaType = typeof it.mediaType === 'string' ? it.mediaType.toLowerCase() : '';
     const externalId = typeof it.externalId === 'string' ? it.externalId
       : typeof it.externalId === 'number' ? String(it.externalId) : '';
-    const title = typeof it.title === 'string' ? it.title.trim() : '';
-    if (!isValidSource(sourceRaw) || !isValidMediaType(mediaType) || !externalId || !title) {
-      skipped.push(`Watchlist item "${title || externalId}" skipped: invalid identifying fields`);
+    const titleRaw = typeof it.title === 'string' ? it.title.trim() : '';
+    if (!isValidSource(sourceRaw) || !isValidMediaType(mediaType) || !externalId || !titleRaw) {
+      skipped.push(`Watchlist item "${titleRaw || externalId}" skipped: invalid identifying fields`);
       continue;
     }
+    const title = titleRaw.slice(0, WATCHLIST_MAX_TITLE_LEN);
 
     const year = typeof it.year === 'number' && Number.isFinite(it.year) ? it.year : null;
-    const posterUrl = typeof it.posterUrl === 'string' ? it.posterUrl : null;
-    const overview = typeof it.overview === 'string' ? it.overview : null;
+    let posterUrl: string | null = null;
+    if (typeof it.posterUrl === 'string' && it.posterUrl.length > 0) {
+      posterUrl = validateImportedPosterUrl(it.posterUrl);
+      if (posterUrl === null) {
+        skipped.push(`Watchlist item "${title}": posterUrl dropped (invalid scheme or too long)`);
+      }
+    }
+    const overview = typeof it.overview === 'string'
+      ? it.overview.slice(0, WATCHLIST_MAX_OVERVIEW_LEN)
+      : null;
     const rating = typeof it.rating === 'number' && Number.isFinite(it.rating)
       ? Math.max(0, Math.min(100, it.rating))
       : null;
+    // Drop reminders whose timestamp is already in the past so importing a
+    // stale backup doesn't fire a push on the very next poll cycle.
     const reminderAt = typeof it.reminderAt === 'string' && it.reminderAt.length > 0
       ? (() => {
           const d = new Date(it.reminderAt);
-          return Number.isFinite(d.getTime()) ? d : null;
+          if (!Number.isFinite(d.getTime())) return null;
+          if (d.getTime() < Date.now()) {
+            skipped.push(`Watchlist item "${title}": reminderAt dropped (past timestamp)`);
+            return null;
+          }
+          return d;
         })()
       : null;
     const addedAt = typeof it.addedAt === 'string' && it.addedAt.length > 0
@@ -796,7 +836,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
-  if (raw.length > MAX_IMPORT_BYTES) {
+  // `raw.length` counts UTF-16 code units, not bytes — a multi-byte emoji
+  // counts as 1–2 there but 4 bytes on the wire. Compare bytes against the
+  // byte cap.
+  if (Buffer.byteLength(raw, 'utf8') > MAX_IMPORT_BYTES) {
     return NextResponse.json(
       { error: `File too large (max ${MAX_IMPORT_BYTES} bytes)` },
       { status: 413 }

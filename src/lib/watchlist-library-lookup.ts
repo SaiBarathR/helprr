@@ -18,16 +18,30 @@ const LOOKUPS_TTL_MS = 5 * 60 * 1000;
 
 // Module-scope cache. Helprr is single-instance today; if that ever changes,
 // move this behind Redis (the dashboard layout cache is the existing pattern).
-let lookupsCache: { at: number; value: LibraryHrefLookups } | null = null;
+// Keyed by which datasets the caller asked for so a request for
+// {tmdbMovie:true} doesn't get served a cached value that was populated with
+// only Radarr data (empty Sonarr maps) — and vice versa.
+let lookupsCache: { key: string; at: number; value: LibraryHrefLookups } | null = null;
+
+function cacheKeyFor(needs: LookupNeeds): string {
+  return `${needs.tmdbMovie ? 1 : 0}${needs.tvdbSeries ? 1 : 0}${needs.tmdbSeries ? 1 : 0}`;
+}
 
 export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHrefLookups> {
   const now = Date.now();
-  if (lookupsCache && now - lookupsCache.at < LOOKUPS_TTL_MS) {
+  const cacheKey = cacheKeyFor(needs);
+  if (lookupsCache && lookupsCache.key === cacheKey && now - lookupsCache.at < LOOKUPS_TTL_MS) {
     return lookupsCache.value;
   }
 
   const needRadarr = needs.tmdbMovie;
   const needSonarr = needs.tvdbSeries || needs.tmdbSeries;
+
+  // Track per-service failures so we can serve a (possibly partial) result
+  // for *this* request without poisoning the cache. Caching an empty map on
+  // a transient Sonarr 503 would hide every TVDB-series href for 5 minutes.
+  let radarrFailed = false;
+  let sonarrFailed = false;
 
   const [movies, series] = await Promise.all([
     needRadarr
@@ -36,6 +50,7 @@ export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHref
             const c = await getRadarrClient();
             return await c.getMovies();
           } catch {
+            radarrFailed = true;
             return [] as RadarrMovie[];
           }
         })()
@@ -46,6 +61,7 @@ export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHref
             const c = await getSonarrClient();
             return await c.getSeries();
           } catch {
+            sonarrFailed = true;
             return [] as SonarrSeries[];
           }
         })()
@@ -65,7 +81,9 @@ export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHref
   }
 
   const value: LibraryHrefLookups = { radarrByTmdbId, sonarrByTvdbId, sonarrByTmdbId };
-  lookupsCache = { at: now, value };
+  if (!radarrFailed && !sonarrFailed) {
+    lookupsCache = { key: cacheKey, at: now, value };
+  }
   return value;
 }
 
