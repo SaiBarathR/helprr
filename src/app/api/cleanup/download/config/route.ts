@@ -3,7 +3,9 @@ import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { loadDownloadCleanerConfig, saveDownloadCleanerConfig } from '@/lib/cleanup/download-cleaner';
 import { restartDownloadCleaner } from '@/lib/cleanup/scheduler';
-import { AUTO_RUN_MODES, AutoRunMode, DownloadCleanerConfigShape } from '@/lib/cleanup/types';
+import { AUTO_RUN_MODES, AutoRunMode, DownloadCleanerConfigShape, PrivacyType } from '@/lib/cleanup/types';
+
+const PRIVACY_TYPES: PrivacyType[] = ['public', 'private', 'both'];
 
 function validate(body: unknown): { ok: true; value: DownloadCleanerConfigShape } | { ok: false; error: string } {
   if (!body || typeof body !== 'object') return { ok: false, error: 'invalid body' };
@@ -23,6 +25,12 @@ function validate(body: unknown): { ok: true; value: DownloadCleanerConfigShape 
   }
   const autoRemoveImportedDeleteFiles = b.autoRemoveImportedDeleteFiles === undefined ? true : Boolean(b.autoRemoveImportedDeleteFiles);
 
+  const privacyRaw = String(b.autoRemoveImportedPrivacyType ?? 'public');
+  if (!(PRIVACY_TYPES as string[]).includes(privacyRaw)) {
+    return { ok: false, error: `autoRemoveImportedPrivacyType must be one of: ${PRIVACY_TYPES.join(', ')}` };
+  }
+  const autoRemoveImportedPrivacyType = privacyRaw as PrivacyType;
+
   const autoRunModeRaw = String(b.autoRunMode ?? 'disabled');
   if (!(AUTO_RUN_MODES as string[]).includes(autoRunModeRaw)) {
     return { ok: false, error: `autoRunMode must be one of: ${AUTO_RUN_MODES.join(', ')}` };
@@ -38,6 +46,7 @@ function validate(body: unknown): { ok: true; value: DownloadCleanerConfigShape 
       autoRemoveImportedEnabled,
       autoRemoveImportedCategories: cats,
       autoRemoveImportedDeleteFiles,
+      autoRemoveImportedPrivacyType,
       autoRunMode,
     },
   };

@@ -147,7 +147,7 @@ const DOWNLOADING_STATES = new Set([
   'downloading', 'metaDL', 'allocating', 'stalledDL', 'queuedDL', 'checkingDL', 'forcedDL',
 ]);
 const SEEDING_STATES = new Set([
-  'uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP', 'pausedUP',
+  'uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP', 'pausedUP', 'stoppedUP',
 ]);
 // qBittorrent 5.x renamed pausedDL/pausedUP to stoppedDL/stoppedUP.
 const PAUSED_STATES = new Set(['pausedDL', 'pausedUP', 'stoppedDL', 'stoppedUP']);

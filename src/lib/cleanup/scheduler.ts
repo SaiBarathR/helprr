@@ -9,6 +9,27 @@ import type {
 
 const LOG = 'cleanup-scheduler';
 
+// Hard cap on a single cleanup cycle. Without this, a stuck Sonarr/Radarr/qBit
+// HTTP call would pin `inFlight` forever and silently no-op every subsequent
+// tick. 5 minutes is well above a normal cycle (~seconds) but short enough that
+// recovery is reasonable.
+const CYCLE_TIMEOUT_MS = 5 * 60_000;
+
+async function runWithTimeout<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      logger.error(`${label} cycle exceeded ${CYCLE_TIMEOUT_MS}ms watchdog — abandoning`, {}, { scope: LOG });
+      resolve(null);
+    }, CYCLE_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([fn(), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 interface JobState {
   timer: NodeJS.Timeout | null;
   intervalMinutes: number;
@@ -53,7 +74,7 @@ async function safeRunQueue(): Promise<QueueEvaluationResult | null> {
   // writes dryRunPreview history rows so users can see what would happen.
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    return await runQueueCleanerCycle({ dryRun, triggeredBy: 'auto' });
+    return await runWithTimeout('Queue cleaner', () => runQueueCleanerCycle({ dryRun, triggeredBy: 'auto' }));
   } catch (err) {
     logger.error('Queue cleaner cycle threw', { err: String(err) }, { scope: LOG });
     return null;
@@ -64,7 +85,7 @@ async function safeRunDownload(): Promise<DownloadEvaluationResult | null> {
   const job = getState().download;
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    return await runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto' });
+    return await runWithTimeout('Download cleaner', () => runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto' }));
   } catch (err) {
     logger.error('Download cleaner cycle threw', { err: String(err) }, { scope: LOG });
     return null;

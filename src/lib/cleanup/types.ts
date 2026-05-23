@@ -102,6 +102,7 @@ export interface DownloadCleanerConfigShape {
   autoRemoveImportedEnabled: boolean;
   autoRemoveImportedCategories: string[];
   autoRemoveImportedDeleteFiles: boolean;
+  autoRemoveImportedPrivacyType: PrivacyType;
   autoRunMode: AutoRunMode;
 }
 

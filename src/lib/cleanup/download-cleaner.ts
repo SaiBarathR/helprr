@@ -28,9 +28,12 @@ import {
   DownloadCleanerConfigShape,
   DownloadDecision,
   DownloadEvaluationResult,
+  PrivacyType,
   SeedingRuleShape,
   TriggeredBy,
 } from './types';
+
+const VALID_PRIVACY_TYPES: PrivacyType[] = ['public', 'private', 'both'];
 import { processWithLimit } from './concurrency';
 
 const LOG = 'download-cleaner';
@@ -53,6 +56,9 @@ export async function loadDownloadCleanerConfig(): Promise<DownloadCleanerConfig
       ? (row.autoRemoveImportedCategories as string[])
       : ['sonarr', 'radarr', 'tv-sonarr'],
     autoRemoveImportedDeleteFiles: row.autoRemoveImportedDeleteFiles,
+    autoRemoveImportedPrivacyType: (VALID_PRIVACY_TYPES as string[]).includes(row.autoRemoveImportedPrivacyType)
+      ? (row.autoRemoveImportedPrivacyType as PrivacyType)
+      : 'public',
     autoRunMode: (AUTO_RUN_MODES as string[]).includes(row.autoRunMode)
       ? (row.autoRunMode as AutoRunMode)
       : 'disabled',
@@ -70,6 +76,7 @@ export async function saveDownloadCleanerConfig(input: DownloadCleanerConfigShap
       autoRemoveImportedEnabled: input.autoRemoveImportedEnabled,
       autoRemoveImportedCategories: input.autoRemoveImportedCategories,
       autoRemoveImportedDeleteFiles: input.autoRemoveImportedDeleteFiles,
+      autoRemoveImportedPrivacyType: input.autoRemoveImportedPrivacyType,
       autoRunMode: input.autoRunMode,
     },
     update: {
@@ -79,6 +86,7 @@ export async function saveDownloadCleanerConfig(input: DownloadCleanerConfigShap
       autoRemoveImportedEnabled: input.autoRemoveImportedEnabled,
       autoRemoveImportedCategories: input.autoRemoveImportedCategories,
       autoRemoveImportedDeleteFiles: input.autoRemoveImportedDeleteFiles,
+      autoRemoveImportedPrivacyType: input.autoRemoveImportedPrivacyType,
       autoRunMode: input.autoRunMode,
     },
   });
@@ -97,7 +105,7 @@ async function syncSystemSeedingRule(cfg: DownloadCleanerConfigShape): Promise<v
       trackerPatterns: [] as string[],
       tagsAny: [] as string[],
       tagsAll: [] as string[],
-      privacyType: 'public',
+      privacyType: cfg.autoRemoveImportedPrivacyType,
       maxRatio: 0,
       minSeedTimeHours: 0,
       maxSeedTimeHours: -1,
@@ -486,12 +494,16 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
 
 function isSeedingState(t: QBittorrentTorrent): boolean {
   if (t.progress < 1) return false;
+  // qBittorrent 5.x renamed pausedUP → stoppedUP; both can appear depending on
+  // the user's qBit version. progress<1 above already excludes mid-download
+  // stops.
   return (
     t.state === 'uploading' ||
     t.state === 'stalledUP' ||
     t.state === 'queuedUP' ||
     t.state === 'forcedUP' ||
     t.state === 'pausedUP' ||
+    t.state === 'stoppedUP' ||
     t.state === 'checkingUP'
   );
 }

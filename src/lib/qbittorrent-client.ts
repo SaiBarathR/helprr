@@ -74,6 +74,7 @@ export class QBittorrentClient {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
+      timeout: 30_000,
     });
   }
 
