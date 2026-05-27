@@ -1,5 +1,5 @@
-import type { SeerrClient, SeerrMediaDetail } from '@/lib/seerr-client';
-import type { SeerrRequest } from '@/types/seerr';
+import type { SeerrClient } from '@/lib/seerr-client';
+import type { SeerrMediaDetail, SeerrRequest } from '@/types/seerr';
 
 const DETAIL_CACHE_TTL_MS = 10 * 60 * 1000;
 const DETAIL_CACHE_MAX = 500;
