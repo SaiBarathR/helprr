@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
+  SeerrMediaDetail,
   SeerrPaginated,
   SeerrRequest,
   SeerrRequestCount,
@@ -105,6 +106,13 @@ export class SeerrClient {
     await this.del(`/request/${id}`);
   }
 
+  async getMediaDetail(
+    mediaType: 'movie' | 'tv',
+    tmdbId: number
+  ): Promise<SeerrMediaDetail> {
+    return this.get<SeerrMediaDetail>(`/${mediaType}/${tmdbId}`);
+  }
+
   async listUsers(params: SeerrListUserParams = {}): Promise<SeerrPaginated<SeerrUserSummary>> {
     return this.get<SeerrPaginated<SeerrUserSummary>>('/user', {
       take: params.take ?? 100,
@@ -126,23 +134,4 @@ export class SeerrClient {
   async getUserQuota(userId: number): Promise<SeerrUserQuota> {
     return this.get<SeerrUserQuota>(`/user/${userId}/quota`);
   }
-
-  async getMediaDetail(
-    mediaType: 'movie' | 'tv',
-    tmdbId: number
-  ): Promise<SeerrMediaDetail> {
-    return this.get<SeerrMediaDetail>(`/${mediaType}/${tmdbId}`);
-  }
-}
-
-export interface SeerrMediaDetail {
-  id: number;
-  title?: string;
-  name?: string;
-  posterPath?: string | null;
-  backdropPath?: string | null;
-  releaseDate?: string;
-  firstAirDate?: string;
-  overview?: string;
-  voteAverage?: number;
 }

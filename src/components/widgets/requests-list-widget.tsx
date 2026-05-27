@@ -144,7 +144,10 @@ export function RequestsListWidget({
     setExtraPages([]);
   }, [filter, take]);
 
-  const firstPageItems = data?.results ?? [];
+  const firstPageItems = useMemo<EnrichedSeerrRequest[]>(
+    () => data?.results ?? [],
+    [data]
+  );
   const items = useMemo<EnrichedSeerrRequest[]>(() => {
     if (!unbounded) return firstPageItems;
     if (extraPages.length === 0) return firstPageItems;

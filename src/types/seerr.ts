@@ -137,3 +137,15 @@ export interface SeerrStatus {
   updateAvailable?: boolean;
   commitsBehind?: number;
 }
+
+export interface SeerrMediaDetail {
+  id: number;
+  title?: string;
+  name?: string;
+  posterPath?: string | null;
+  backdropPath?: string | null;
+  releaseDate?: string;
+  firstAirDate?: string;
+  overview?: string;
+  voteAverage?: number;
+}
