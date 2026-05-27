@@ -20,7 +20,7 @@ interface ServiceCount {
   total: number;
 }
 
-const SERVICE_TYPES = ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB'] as const;
+const SERVICE_TYPES = ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'SEERR'] as const;
 
 export default function SettingsIndexPage() {
   const [serviceCount, setServiceCount] = useState<ServiceCount | null>(null);

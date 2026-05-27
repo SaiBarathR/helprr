@@ -45,6 +45,10 @@ import { JellyfinHourlyActivityWidget } from '@/components/widgets/jellyfin-hour
 import { JellyfinServerWidget } from '@/components/widgets/jellyfin-server-widget';
 import { JellyfinScheduledTasksWidget } from '@/components/widgets/jellyfin-scheduled-tasks-widget';
 
+// Seerr widgets
+import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
+import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
+
 import { AnimeCarouselWidget } from '@/components/widgets/anime-carousel-widget';
 import { ANIME_CAROUSEL_MAP, DEFAULT_ANIME_CAROUSEL_ORDER } from '@/lib/anime-carousel-config';
 
@@ -497,6 +501,46 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 30,
     component: JellyfinScheduledTasksWidget,
     requiredServices: ['JELLYFIN'],
+  },
+
+  // ── Seerr (requests) ──
+  {
+    id: 'seerr-pending-requests',
+    name: 'Pending Requests',
+    description: 'Pending Seerr requests with approve/decline actions',
+    icon: 'Inbox',
+    category: 'monitoring',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 60,
+    component: (props: WidgetProps) =>
+      React.createElement(RequestsListWidget, { filter: 'pending', ...props }),
+    requiredServices: ['SEERR'],
+  },
+  {
+    id: 'seerr-recent-requests',
+    name: 'Recent Requests',
+    description: 'All Seerr requests, newest first',
+    icon: 'List',
+    category: 'monitoring',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 60,
+    component: (props: WidgetProps) =>
+      React.createElement(RequestsListWidget, { filter: 'all', ...props }),
+    requiredServices: ['SEERR'],
+  },
+  {
+    id: 'seerr-users',
+    name: 'Seerr Users',
+    description: 'Seerr users with request counts and quotas',
+    icon: 'Users',
+    category: 'monitoring',
+    defaultDesktopSpan: span(4, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 120,
+    component: RequestsUsersWidget,
+    requiredServices: ['SEERR'],
   },
 ];
 

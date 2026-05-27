@@ -1,0 +1,139 @@
+export const SEERR_REQUEST_STATUS = {
+  PENDING_APPROVAL: 1,
+  APPROVED: 2,
+  DECLINED: 3,
+  FAILED: 4,
+  COMPLETED: 5,
+} as const;
+
+export const SEERR_MEDIA_STATUS = {
+  UNKNOWN: 1,
+  PENDING: 2,
+  PROCESSING: 3,
+  PARTIALLY_AVAILABLE: 4,
+  AVAILABLE: 5,
+  DELETED: 6,
+} as const;
+
+export type SeerrRequestStatus = (typeof SEERR_REQUEST_STATUS)[keyof typeof SEERR_REQUEST_STATUS];
+export type SeerrMediaStatus = (typeof SEERR_MEDIA_STATUS)[keyof typeof SEERR_MEDIA_STATUS];
+
+export type SeerrMediaType = 'movie' | 'tv';
+
+export type SeerrRequestFilter =
+  | 'all'
+  | 'approved'
+  | 'pending'
+  | 'available'
+  | 'processing'
+  | 'unavailable'
+  | 'failed';
+
+export type SeerrRequestSort = 'added' | 'modified';
+export type SeerrSortDirection = 'asc' | 'desc';
+
+export interface SeerrPageInfo {
+  page: number;
+  pages: number;
+  pageSize: number;
+  results: number;
+}
+
+export interface SeerrPaginated<T> {
+  pageInfo: SeerrPageInfo;
+  results: T[];
+}
+
+export interface SeerrUserSummary {
+  id: number;
+  email?: string;
+  username?: string | null;
+  plexUsername?: string | null;
+  jellyfinUsername?: string | null;
+  displayName?: string;
+  avatar?: string;
+  requestCount?: number;
+  movieQuotaLimit?: number | null;
+  movieQuotaDays?: number | null;
+  tvQuotaLimit?: number | null;
+  tvQuotaDays?: number | null;
+  permissions?: number;
+  userType?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SeerrMediaInfo {
+  id: number;
+  mediaType: SeerrMediaType;
+  tmdbId: number;
+  tvdbId?: number | null;
+  imdbId?: string | null;
+  status: SeerrMediaStatus;
+  status4k?: SeerrMediaStatus;
+  createdAt?: string;
+  updatedAt?: string;
+  lastSeasonChange?: string;
+  jellyfinMediaId?: string | null;
+  jellyfinMediaId4k?: string | null;
+  mediaUrl?: string | null;
+  serviceUrl?: string | null;
+  externalServiceId?: number | null;
+  externalServiceSlug?: string | null;
+}
+
+export interface SeerrSeasonRequest {
+  id: number;
+  seasonNumber: number;
+  status: SeerrRequestStatus;
+}
+
+export interface SeerrRequest {
+  id: number;
+  status: SeerrRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  type: SeerrMediaType;
+  is4k: boolean;
+  serverId?: number | null;
+  profileId?: number | null;
+  rootFolder?: string | null;
+  languageProfileId?: number | null;
+  tags?: number[];
+  media: SeerrMediaInfo;
+  seasons?: SeerrSeasonRequest[];
+  modifiedBy?: SeerrUserSummary | null;
+  requestedBy: SeerrUserSummary;
+  seasonCount?: number;
+}
+
+export interface SeerrRequestCount {
+  total: number;
+  movie: number;
+  tv: number;
+  pending: number;
+  approved: number;
+  declined: number;
+  processing: number;
+  available: number;
+}
+
+export interface SeerrQuotaStatus {
+  days: number;
+  limit: number;
+  used: number;
+  remaining: number;
+  restricted: boolean;
+}
+
+export interface SeerrUserQuota {
+  movie: SeerrQuotaStatus;
+  tv: SeerrQuotaStatus;
+}
+
+export interface SeerrStatus {
+  version: string;
+  commitTag?: string;
+  updateAvailable?: boolean;
+  commitsBehind?: number;
+}

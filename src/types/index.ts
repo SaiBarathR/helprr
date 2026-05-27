@@ -536,7 +536,7 @@ export interface CalendarEvent {
 
 // App Types
 export interface ServiceConnectionConfig {
-  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB';
+  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR';
   url: string;
   apiKey: string;
 }

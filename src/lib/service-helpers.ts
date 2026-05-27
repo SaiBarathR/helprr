@@ -7,6 +7,7 @@ import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
+import { SeerrClient } from '@/lib/seerr-client';
 
 let cachedQBittorrentClient: QBittorrentClient | null = null;
 let cachedQBittorrentConfigKey: string | null = null;
@@ -132,6 +133,18 @@ export async function getJellyfinClientContext(): Promise<{
     connection,
     connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
   };
+}
+
+export async function getSeerrClient(): Promise<SeerrClient> {
+  const connection = await prisma.serviceConnection.findUnique({
+    where: { type: 'SEERR' },
+  });
+
+  if (!connection) {
+    throw new Error('Seerr is not configured. Please add a Seerr connection in Settings.');
+  }
+
+  return new SeerrClient(connection.url, connection.apiKey);
 }
 
 export async function getTMDBClient(): Promise<TmdbClient> {

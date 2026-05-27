@@ -7,11 +7,13 @@ export const EVENT_TYPES = [
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
   'watchlistReminder',
+  'requestCreated', 'requestApproved', 'requestAvailable',
+  'requestDeclined', 'requestFailed',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'requests';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -107,6 +109,36 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'A watchlist item reached its reminder date',
     iconName: 'Bell', colorClass: 'bg-amber-500/10 text-amber-400',
   },
+  requestCreated: {
+    type: 'requestCreated', group: 'requests',
+    label: 'New Request',
+    description: 'A new Seerr request was submitted',
+    iconName: 'Bell', colorClass: 'bg-amber-500/10 text-amber-500',
+  },
+  requestApproved: {
+    type: 'requestApproved', group: 'requests',
+    label: 'Request Approved',
+    description: 'A Seerr request was approved',
+    iconName: 'Check', colorClass: 'bg-blue-500/10 text-blue-500',
+  },
+  requestAvailable: {
+    type: 'requestAvailable', group: 'requests',
+    label: 'Request Available',
+    description: 'Requested media is now available in your library',
+    iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
+  },
+  requestDeclined: {
+    type: 'requestDeclined', group: 'requests',
+    label: 'Request Declined',
+    description: 'A Seerr request was declined',
+    iconName: 'X', colorClass: 'bg-rose-500/10 text-rose-500',
+  },
+  requestFailed: {
+    type: 'requestFailed', group: 'requests',
+    label: 'Request Failed',
+    description: 'A Seerr request failed to fulfil',
+    iconName: 'AlertTriangle', colorClass: 'bg-red-500/10 text-red-500',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -134,6 +166,17 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'watchlist',
     title: 'Watchlist',
     types: ['watchlistReminder'],
+  },
+  {
+    id: 'requests',
+    title: 'Requests (Seerr)',
+    types: [
+      'requestCreated',
+      'requestApproved',
+      'requestAvailable',
+      'requestDeclined',
+      'requestFailed',
+    ],
   },
 ];
 

@@ -60,7 +60,7 @@ export interface WidgetDefinition {
   /** Layout variant chosen when narrow=true or row-stack is preferable. */
   mobileLayout?: WidgetLayoutVariant;
   component: ComponentType<WidgetProps>;
-  requiredServices?: ('SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB')[];
+  requiredServices?: ('SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR')[];
 }
 
 export interface WidgetInstance {

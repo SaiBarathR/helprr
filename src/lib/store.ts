@@ -113,6 +113,16 @@ export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
 export type ActivityFilterPreference = 'all' | 'sonarr' | 'radarr';
 export type NotificationsReadStatePreference = 'all' | 'unread' | 'read';
 
+export type RequestsTabPreference = 'requests' | 'users';
+export type RequestsFilterPreference =
+  | 'all'
+  | 'pending'
+  | 'approved'
+  | 'processing'
+  | 'available'
+  | 'unavailable'
+  | 'failed';
+
 export interface NotificationsFiltersState {
   search: string;
   eventTypes: string[];
@@ -195,7 +205,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 23;
+export const STORE_VERSION = 24;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -301,6 +311,10 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     // persisted client state so they don't linger as inert junk in localStorage.
     delete state.dashboardLayout;
   }
+  if (version < 24) {
+    state.requestsTab = 'requests';
+    state.requestsFilter = 'pending';
+  }
   return state;
 }
 
@@ -371,6 +385,11 @@ interface UIState {
   setActivitySortBy: (sortBy: ActivitySortPreference) => void;
   activityFilterBy: ActivityFilterPreference;
   setActivityFilterBy: (filterBy: ActivityFilterPreference) => void;
+  // Requests page (Seerr)
+  requestsTab: RequestsTabPreference;
+  setRequestsTab: (tab: RequestsTabPreference) => void;
+  requestsFilter: RequestsFilterPreference;
+  setRequestsFilter: (filter: RequestsFilterPreference) => void;
   // Notifications filters
   notificationsFilters: NotificationsFiltersState;
   setNotificationsSearch: (search: string) => void;
@@ -461,6 +480,8 @@ const PERSISTED_KEYS = [
   'activityTab',
   'activitySortBy',
   'activityFilterBy',
+  'requestsTab',
+  'requestsFilter',
   'notificationsFilters',
   'cleanupHistoryFilters',
   'calendarTypeFilter',
@@ -575,6 +596,11 @@ export const useUIStore = create<UIState>()(
       setActivitySortBy: (sortBy) => set({ activitySortBy: sortBy }),
       activityFilterBy: 'all',
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
+      // Requests
+      requestsTab: 'requests',
+      setRequestsTab: (tab) => set({ requestsTab: tab }),
+      requestsFilter: 'pending',
+      setRequestsFilter: (filter) => set({ requestsFilter: filter }),
       // Notifications filters
       notificationsFilters: cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS),
       setNotificationsSearch: (search) =>
