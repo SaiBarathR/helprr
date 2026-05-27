@@ -21,6 +21,7 @@ export type UiPrefCategoryId =
   | 'anime'
   | 'torrents'
   | 'activity'
+  | 'requests'
   | 'notificationFilters'
   | 'calendar'
   | 'cleanup'
@@ -33,6 +34,7 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   anime: 'Anime',
   torrents: 'Torrents',
   activity: 'Activity',
+  requests: 'Requests (Seerr)',
   notificationFilters: 'Notification filters',
   calendar: 'Calendar',
   cleanup: 'Cleanup history filters',
@@ -52,6 +54,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   anime: ['animeSort', 'animeFilters', 'animeCarouselOrder', 'disabledAnimeCarousels'],
   torrents: ['torrentsFilter', 'torrentsSortKey', 'torrentsSortDir'],
   activity: ['activityTab', 'activitySortBy', 'activityFilterBy'],
+  requests: ['requestsTab', 'requestsFilter'],
   notificationFilters: ['notificationsFilters'],
   calendar: ['calendarView', 'calendarTypeFilter', 'calendarMonitoredOnly'],
   cleanup: ['cleanupHistoryFilters'],
@@ -66,7 +69,7 @@ export const UI_PREF_CATEGORY_IDS: readonly UiPrefCategoryId[] = Object.keys(
 ) as UiPrefCategoryId[];
 
 export const SERVICE_TYPES_EXPORTABLE: readonly ServiceType[] = [
-  'RADARR', 'SONARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST',
+  'RADARR', 'SONARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR',
 ] as const;
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
@@ -77,6 +80,7 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   JELLYFIN: 'Jellyfin',
   TMDB: 'TMDB',
   ANILIST: 'AniList',
+  SEERR: 'Seerr',
 };
 
 export interface ExportedServiceConnection {

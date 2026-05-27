@@ -1,4 +1,4 @@
-import { Film, Tv, Download, Search, MonitorPlay, Compass } from 'lucide-react';
+import { Film, Tv, Download, Search, MonitorPlay, Compass, Inbox } from 'lucide-react';
 
 export const SERVICE_CONFIG = [
   {
@@ -66,6 +66,17 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-cyan-400',
     placeholder: 'https://api.themoviedb.org/3',
     supportsExternalUrl: false,
+  },
+  {
+    type: 'SEERR' as const,
+    slug: 'seerr',
+    label: 'Seerr',
+    icon: Inbox,
+    dotColor: 'bg-amber-500',
+    iconBg: 'bg-amber-500/10',
+    iconColor: 'text-amber-400',
+    placeholder: 'http://localhost:5055',
+    supportsExternalUrl: true,
   },
 ] as const;
 

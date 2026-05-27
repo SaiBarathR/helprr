@@ -5,6 +5,7 @@ import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
+import { SeerrClient } from '@/lib/seerr-client';
 import { requireAuth } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import type { ServiceType } from '@prisma/client';
@@ -170,6 +171,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({
           success: true,
           version: 'API reachable',
+        });
+      }
+
+      case 'SEERR': {
+        const client = new SeerrClient(cleanUrl, resolvedApiKey);
+        const [me, status] = await Promise.all([client.verify(), client.getStatus()]);
+        return NextResponse.json({
+          success: true,
+          version: status.version,
+          userId: me.id,
+          username: me.displayName ?? me.username ?? me.email ?? null,
         });
       }
 

@@ -8,6 +8,7 @@ import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
+import { SeerrClient } from '@/lib/seerr-client';
 import { withApiLogging } from '@/lib/api-logger';
 
 interface ServiceHealthStatus {
@@ -24,6 +25,7 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   JELLYFIN: 'Jellyfin',
   TMDB: 'TMDB',
   ANILIST: 'AniList',
+  SEERR: 'Seerr',
 };
 
 async function checkServiceHealth(connection: ServiceConnection): Promise<void> {
@@ -76,6 +78,13 @@ async function checkServiceHealth(connection: ServiceConnection): Promise<void> 
       if (connection.tokenExpiresAt && connection.tokenExpiresAt.getTime() < Date.now()) {
         throw new Error('AniList token expired');
       }
+      return;
+    }
+    case 'SEERR': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('Seerr URL is not configured');
+      const client = new SeerrClient(baseUrl, connection.apiKey);
+      await client.verify();
       return;
     }
     default:

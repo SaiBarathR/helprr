@@ -15,6 +15,7 @@ enum ServiceType {
   JELLYFIN
   TMDB
   ANILIST
+  SEERR
 }
 
 model ServiceConnection {
