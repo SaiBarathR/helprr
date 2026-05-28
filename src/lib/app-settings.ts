@@ -25,6 +25,9 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     upcomingNotifyBeforeMins: 60,
     upcomingDailyNotifyHour: 9,
     watchProviderRegion: 'US',
+    activityDigestMode: 'off',
+    activityDigestHour: 8,
+    activityDigestDayOfWeek: 1,
   };
 }
 

@@ -9,18 +9,19 @@ export const EVENT_TYPES = [
   'watchlistReminder',
   'requestCreated', 'requestApproved', 'requestAvailable',
   'requestDeclined', 'requestFailed',
+  'activityDigest',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'requests';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'requests' | 'digests';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
   group: NotificationEventGroupId;
   label: string;
   description: string;
-  iconName: 'Download' | 'Check' | 'X' | 'AlertTriangle' | 'Clock' | 'Trash2' | 'Play' | 'Bell';
+  iconName: 'Download' | 'Check' | 'X' | 'AlertTriangle' | 'Clock' | 'Trash2' | 'Play' | 'Bell' | 'Newspaper';
   colorClass: string;
 }
 
@@ -139,6 +140,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'A Seerr request failed to fulfil',
     iconName: 'AlertTriangle', colorClass: 'bg-red-500/10 text-red-500',
   },
+  activityDigest: {
+    type: 'activityDigest', group: 'digests',
+    label: 'Activity Digest',
+    description: 'A daily or weekly summary of activity (imports, failures, releases)',
+    iconName: 'Newspaper', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -177,6 +184,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
       'requestDeclined',
       'requestFailed',
     ],
+  },
+  {
+    id: 'digests',
+    title: 'Digests',
+    types: ['activityDigest'],
   },
 ];
 

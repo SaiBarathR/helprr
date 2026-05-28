@@ -11,6 +11,7 @@ import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone'
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
+const ACTIVITY_DIGEST_MODES = new Set(['off', 'daily', 'weekly']);
 
 function parseIntegerSetting(
   value: unknown,
@@ -94,6 +95,7 @@ async function putHandler(request: NextRequest) {
       logFailedRequestBodies,
       logFailedResponseBodies,
       watchProviderRegion,
+      activityDigestMode, activityDigestHour, activityDigestDayOfWeek,
     } = body;
 
     const current = await prisma.appSettings.findUnique({
@@ -201,6 +203,25 @@ async function putHandler(request: NextRequest) {
       }
       data.watchProviderRegion = code;
     }
+    if (activityDigestMode !== undefined) {
+      if (typeof activityDigestMode !== 'string' || !ACTIVITY_DIGEST_MODES.has(activityDigestMode)) {
+        return NextResponse.json(
+          { error: 'Invalid activity digest mode' },
+          { status: 400 }
+        );
+      }
+      data.activityDigestMode = activityDigestMode;
+    }
+    if (activityDigestHour !== undefined) {
+      const parsed = parseIntegerSetting(activityDigestHour, 'Activity digest hour', 0, 23);
+      if ('error' in parsed) return parsed.error;
+      data.activityDigestHour = parsed.value;
+    }
+    if (activityDigestDayOfWeek !== undefined) {
+      const parsed = parseIntegerSetting(activityDigestDayOfWeek, 'Activity digest day of week', 0, 6);
+      if ('error' in parsed) return parsed.error;
+      data.activityDigestDayOfWeek = parsed.value;
+    }
 
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -223,6 +244,9 @@ async function putHandler(request: NextRequest) {
         upcomingNotifyBeforeMins: (data.upcomingNotifyBeforeMins as number | undefined) ?? 60,
         upcomingDailyNotifyHour: (data.upcomingDailyNotifyHour as number | undefined) ?? 9,
         watchProviderRegion: (data.watchProviderRegion as string | undefined) ?? 'US',
+        activityDigestMode: (data.activityDigestMode as string | undefined) ?? 'off',
+        activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
+        activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
       },
     });
 
