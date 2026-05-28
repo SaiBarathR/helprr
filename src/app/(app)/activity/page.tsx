@@ -741,7 +741,7 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
                 variant="secondary"
                 className="bg-red-500/10 text-red-500 border-red-500/20 mt-1 text-[10px]"
               >
-                <AlertTriangle className="h-3 w-3 mr-1" /> Import Failed
+                <AlertTriangle className="h-3 w-3 mr-1" /> {statusLabel(item)}
               </Badge>
               {item.statusMessages?.map((msg, i) => (
                 <p key={i} className="text-xs text-muted-foreground mt-1 break-words">
