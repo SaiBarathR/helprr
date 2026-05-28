@@ -63,10 +63,12 @@ function formatKbps(kbps: number): string {
 }
 
 function formatWindow(rule: BandwidthRule): string {
-  const wrap = rule.endHour * 60 + rule.endMinute <= rule.startHour * 60 + rule.startMinute;
+  const startMin = rule.startHour * 60 + rule.startMinute;
+  const endMin = rule.endHour * 60 + rule.endMinute;
   const start = `${String(rule.startHour).padStart(2, '0')}:${String(rule.startMinute).padStart(2, '0')}`;
   const end = `${String(rule.endHour).padStart(2, '0')}:${String(rule.endMinute).padStart(2, '0')}`;
-  return wrap ? `${start} → ${end} (next day)` : `${start} → ${end}`;
+  if (endMin === startMin) return 'All day';
+  return endMin < startMin ? `${start} → ${end} (next day)` : `${start} → ${end}`;
 }
 
 export default function DownloadsSettingsPage() {
@@ -335,11 +337,15 @@ function RuleCard({ rule, isActive, onChange, onRemove }: RuleCardProps) {
         </div>
       </div>
 
-      {rule.endHour * 60 + rule.endMinute <= rule.startHour * 60 + rule.startMinute && (
+      {rule.endHour * 60 + rule.endMinute === rule.startHour * 60 + rule.startMinute ? (
         <p className="text-[11px] text-muted-foreground/80">
-          End is at or before Start — rule wraps past midnight.
+          Start and End are equal — rule is active all day on the selected days.
         </p>
-      )}
+      ) : rule.endHour * 60 + rule.endMinute < rule.startHour * 60 + rule.startMinute ? (
+        <p className="text-[11px] text-muted-foreground/80">
+          End is before Start — rule wraps past midnight.
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
