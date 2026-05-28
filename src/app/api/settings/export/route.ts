@@ -86,7 +86,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         logClientConsoleEnabled: settings.logClientConsoleEnabled,
         logFailedRequestBodies: settings.logFailedRequestBodies,
         logFailedResponseBodies: settings.logFailedResponseBodies,
-        upcomingAlertHours: settings.upcomingAlertHours,
         upcomingNotifyMode: settings.upcomingNotifyMode,
         upcomingNotifyBeforeMins: settings.upcomingNotifyBeforeMins,
         upcomingDailyNotifyHour: settings.upcomingDailyNotifyHour,

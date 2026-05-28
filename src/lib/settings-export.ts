@@ -106,7 +106,6 @@ export interface ExportedAppSettings {
   logClientConsoleEnabled: boolean;
   logFailedRequestBodies: boolean;
   logFailedResponseBodies: boolean;
-  upcomingAlertHours: number;
   upcomingNotifyMode: string;
   upcomingNotifyBeforeMins: number;
   upcomingDailyNotifyHour: number;

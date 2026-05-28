@@ -109,6 +109,9 @@ model NotificationHistory {
   metadata  Json?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+  dedupeKey String?
+
+  @@index([eventType, dedupeKey])
 }
 
 model PollingState {
@@ -134,9 +137,8 @@ model AppSettings {
   logClientConsoleEnabled  Boolean @default(true)
   logFailedRequestBodies   Boolean @default(false)
   logFailedResponseBodies  Boolean @default(false)
-  upcomingAlertHours       Int     @default(24)
-  upcomingNotifyMode       String  @default("before_air") // "once_in_window" | "before_air" | "daily_digest"
-  upcomingNotifyBeforeMins Int     @default(60)
+  upcomingNotifyMode       String  @default("before_air") // "before_air" | "daily_digest"
+  upcomingNotifyBeforeMins Int     @default(60)           // 0 = at air time
   upcomingDailyNotifyHour  Int     @default(9)            // 0-23, for daily_digest mode
   discoverLayout           Json?                          // User-configured discover homepage layout (sections order, visibility, custom carousels)
   defaultDesktopLayoutId   String?                        // Active DashboardLayout for desktop viewport

@@ -4,14 +4,22 @@ import { SEERR_MEDIA_STATUS, SEERR_REQUEST_STATUS } from '@/types/seerr';
 import { getCachedSeerrMediaDetail, formatSeerrMediaLabel } from '@/lib/seerr-helpers';
 import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
-import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { startOfLocalDay, endOfLocalDay, toZonedDate } from '@/lib/timezone';
 import { logger } from '@/lib/logger';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import type { QueueItem } from '@/types';
-import { addHours } from 'date-fns';
 import crypto from 'crypto';
+
+// Tolerance (minutes) for the "before_air" firing window. Lets a sluggish poll
+// still catch an item that just slipped past its computed notify time —
+// important for the "0 min / at air time" case, where the notify moment is
+// the air moment itself.
+const BEFORE_AIR_GRACE_MIN = 5;
+// Extra calendar fetch padding past notifyBeforeMins so an item near the upper
+// edge isn't excluded by clock skew between us and Sonarr/Radarr.
+const FETCH_END_BUFFER_MS = 60_000;
 
 const MAX_REMINDER_ATTEMPTS = 3;
 
@@ -69,6 +77,7 @@ type NotificationEventInput = {
   body: string;
   metadata?: Record<string, unknown>;
   url?: string;
+  dedupeKey?: string;
 };
 
 type PollNotificationContext = Record<string, unknown> & {
@@ -873,17 +882,25 @@ export class PollingService {
     const settings = await getOrCreateAppSettings();
     const timeZone = settings.timeZone;
 
-    const mode = settings.upcomingNotifyMode || 'before_air';
+    const mode: 'before_air' | 'daily_digest' =
+      settings.upcomingNotifyMode === 'daily_digest' ? 'daily_digest' : 'before_air';
     const now = new Date();
     logger.debug('Upcoming poll started', {
       mode,
       timeZone,
-      alertHours: settings.upcomingAlertHours,
       dailyNotifyHour: settings.upcomingDailyNotifyHour,
       notifyBeforeMins: settings.upcomingNotifyBeforeMins,
     }, { scope: 'polling' });
 
-    // Daily digest: only run at the configured hour, once per day
+    // Compute the calendar fetch window per mode:
+    //   before_air   : [now - grace, now + notifyBeforeMins + buffer]
+    //                  Grace lets "0 min / at air time" still fire when the
+    //                  poll lands a few seconds after the air moment.
+    //   daily_digest : the entire local calendar day (only fires once per day,
+    //                  gated by hour and the alreadySentToday check below).
+    let fetchStartMs: number;
+    let fetchEndMs: number;
+
     if (mode === 'daily_digest') {
       const localHour = toZonedDate(now, timeZone).getHours();
       if (localHour !== settings.upcomingDailyNotifyHour) {
@@ -909,20 +926,47 @@ export class PollingService {
         }, { scope: 'polling' });
         return;
       }
+
+      fetchStartMs = todayStart.getTime();
+      fetchEndMs = endOfLocalDay(now, timeZone).getTime();
+    } else {
+      fetchStartMs = now.getTime() - BEFORE_AIR_GRACE_MIN * 60_000;
+      fetchEndMs = now.getTime() + settings.upcomingNotifyBeforeMins * 60_000 + FETCH_END_BUFFER_MS;
     }
 
-    // Per-item dedupe cutoff: align with daily_digest's local-day boundary so
-    // items already sent in today's digest don't slip past, and use a 24h
-    // rolling window for before_air mode where the digest concept doesn't apply.
-    const dedupeSince = mode === 'daily_digest'
-      ? startOfLocalDay(now, timeZone)
-      : new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const start = new Date(fetchStartMs).toISOString();
+    const end = new Date(fetchEndMs).toISOString();
 
-    const alertEnd = addHours(now, settings.upcomingAlertHours);
-    const start = now.toISOString();
-    const end = alertEnd.toISOString();
+    // Helpers ----------------------------------------------------------------
+    const dayKey = (ms: number): string => {
+      const d = new Date(ms);
+      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    };
 
-    // Sonarr calendar
+    // For each candidate item we ask: "have we ever notified for this exact
+    // (item, air-date) pair?" If not, fire. The dedupeKey embeds the day so a
+    // reschedule cleanly produces a fresh notification. Body-string fallback
+    // preserves dedupe for rows created before the migration added dedupeKey.
+    const alreadyNotified = async (dedupeKey: string, body: string): Promise<boolean> => {
+      const hit = await prisma.notificationHistory.findFirst({
+        where: {
+          eventType: 'upcomingPremiere',
+          OR: [{ dedupeKey }, { dedupeKey: null, body }],
+        },
+        select: { id: true },
+      });
+      return Boolean(hit);
+    };
+
+    const shouldFireBeforeAir = (airTimeMs: number): boolean => {
+      const minsUntilAir = (airTimeMs - now.getTime()) / 60_000;
+      return (
+        minsUntilAir <= settings.upcomingNotifyBeforeMins &&
+        minsUntilAir > -BEFORE_AIR_GRACE_MIN
+      );
+    };
+
+    // Sonarr calendar --------------------------------------------------------
     try {
       const client = await getSonarrClient();
       const calendar = await client.getCalendar(start, end);
@@ -933,21 +977,22 @@ export class PollingService {
         mode,
       }, { scope: 'polling' });
       for (const ep of calendar) {
-        if (!ep.series) continue;
+        if (!ep.series || !ep.airDateUtc) continue;
+        const airTimeMs = new Date(ep.airDateUtc).getTime();
+        if (!Number.isFinite(airTimeMs)) continue;
 
-        // For before_air mode, only notify within the configured window before air time
-        if (mode === 'before_air' && ep.airDateUtc) {
-          const airTime = new Date(ep.airDateUtc);
-          const minsUntilAir = (airTime.getTime() - now.getTime()) / 60000;
-          if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) {
-            logger.debug('Skipping Sonarr upcoming item outside before-air window', {
-              seriesId: ep.seriesId,
-              episodeId: ep.id,
-              minsUntilAir,
-              notifyBeforeMins: settings.upcomingNotifyBeforeMins,
-            }, { scope: 'polling' });
-            continue;
-          }
+        // For daily_digest, the fetch already constrains to today, but keep a
+        // defensive guard in case Sonarr returns an item outside the window.
+        if (airTimeMs < fetchStartMs || airTimeMs > fetchEndMs) continue;
+
+        if (mode === 'before_air' && !shouldFireBeforeAir(airTimeMs)) {
+          logger.debug('Skipping Sonarr upcoming item outside before-air window', {
+            seriesId: ep.seriesId,
+            episodeId: ep.id,
+            minsUntilAir: (airTimeMs - now.getTime()) / 60_000,
+            notifyBeforeMins: settings.upcomingNotifyBeforeMins,
+          }, { scope: 'polling' });
+          continue;
         }
 
         const finaleLabel =
@@ -961,48 +1006,44 @@ export class PollingService {
         const baseBody = `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
         const body = finaleLabel ? `${baseBody} (${finaleLabel})` : baseBody;
         const notificationTitle = ep.finaleType === 'series' ? 'Series Finale Airing Soon' : 'Upcoming Episode';
-        const already = await prisma.notificationHistory.findFirst({
-          where: {
-            eventType: 'upcomingPremiere',
-            body,
-            createdAt: { gte: dedupeSince },
-          },
-        });
-        if (!already) {
-          await this.notifyAndLog({
-            eventType: 'upcomingPremiere',
-            title: notificationTitle,
-            body,
-            metadata: {
-              source: 'sonarr',
-              seriesId: ep.seriesId,
-              seasonNumber: ep.seasonNumber,
-              episodeId: ep.id,
-              ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
-              redirect: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`,
-            },
-            url: `/series/${ep.seriesId}`,
-          }, {
-            service: 'sonarr',
-            reason: 'upcoming-premiere',
-            seriesId: ep.seriesId,
-            episodeId: ep.id,
-            dedupeSince,
-          });
-        } else {
+        const dedupeKey = `sonarr-ep-${ep.id}-${dayKey(airTimeMs)}`;
+
+        if (await alreadyNotified(dedupeKey, body)) {
           logger.debug('Skipping duplicate Sonarr upcoming notification', {
             seriesId: ep.seriesId,
             episodeId: ep.id,
-            dedupeSince,
-            historyId: already.id,
+            dedupeKey,
           }, { scope: 'polling' });
+          continue;
         }
+
+        await this.notifyAndLog({
+          eventType: 'upcomingPremiere',
+          title: notificationTitle,
+          body,
+          dedupeKey,
+          metadata: {
+            source: 'sonarr',
+            seriesId: ep.seriesId,
+            seasonNumber: ep.seasonNumber,
+            episodeId: ep.id,
+            ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
+            redirect: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`,
+          },
+          url: `/series/${ep.seriesId}`,
+        }, {
+          service: 'sonarr',
+          reason: 'upcoming-premiere',
+          seriesId: ep.seriesId,
+          episodeId: ep.id,
+          dedupeKey,
+        });
       }
     } catch (error) {
       logger.warn('Sonarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
 
-    // Radarr calendar
+    // Radarr calendar --------------------------------------------------------
     try {
       const client = await getRadarrClient();
       const calendar = await client.getCalendar(start, end);
@@ -1025,57 +1066,55 @@ export class PollingService {
         ];
         for (const [releaseType, dateStr] of releases) {
           if (!dateStr) continue;
-          const airTime = new Date(dateStr);
-          if (!Number.isFinite(airTime.getTime())) continue;
+          const releaseMs = new Date(dateStr).getTime();
+          if (!Number.isFinite(releaseMs)) continue;
 
-          if (mode === 'before_air') {
-            const minsUntilAir = (airTime.getTime() - now.getTime()) / 60000;
-            if (minsUntilAir > settings.upcomingNotifyBeforeMins || minsUntilAir < 0) {
-              logger.debug('Skipping Radarr upcoming item outside before-air window', {
-                movieId: movie.id,
-                releaseType,
-                minsUntilAir,
-                notifyBeforeMins: settings.upcomingNotifyBeforeMins,
-              }, { scope: 'polling' });
-              continue;
-            }
+          // Skip release dates outside the fetch window. Radarr returns a
+          // movie if ANY of its 3 release dates falls in the window, so the
+          // other two might be years away (e.g., cinema 2010, digital today).
+          if (releaseMs < fetchStartMs || releaseMs > fetchEndMs) continue;
+
+          if (mode === 'before_air' && !shouldFireBeforeAir(releaseMs)) {
+            logger.debug('Skipping Radarr upcoming item outside before-air window', {
+              movieId: movie.id,
+              releaseType,
+              minsUntilAir: (releaseMs - now.getTime()) / 60_000,
+              notifyBeforeMins: settings.upcomingNotifyBeforeMins,
+            }, { scope: 'polling' });
+            continue;
           }
 
           const body = `${movie.title} (${movie.year}) — ${releaseTypeLabels[releaseType]}`;
-          const already = await prisma.notificationHistory.findFirst({
-            where: {
-              eventType: 'upcomingPremiere',
-              body,
-              createdAt: { gte: dedupeSince },
-            },
-          });
-          if (!already) {
-            await this.notifyAndLog({
-              eventType: 'upcomingPremiere',
-              title: 'Upcoming Movie',
-              body,
-              metadata: {
-                source: 'radarr',
-                movieId: movie.id,
-                releaseType,
-                redirect: `/movies/${movie.id}`,
-              },
-              url: `/movies/${movie.id}`,
-            }, {
-              service: 'radarr',
-              reason: 'upcoming-premiere',
-              movieId: movie.id,
-              releaseType,
-              dedupeSince,
-            });
-          } else {
+          const dedupeKey = `radarr-${movie.id}-${releaseType}-${dayKey(releaseMs)}`;
+
+          if (await alreadyNotified(dedupeKey, body)) {
             logger.debug('Skipping duplicate Radarr upcoming notification', {
               movieId: movie.id,
               releaseType,
-              dedupeSince,
-              historyId: already.id,
+              dedupeKey,
             }, { scope: 'polling' });
+            continue;
           }
+
+          await this.notifyAndLog({
+            eventType: 'upcomingPremiere',
+            title: 'Upcoming Movie',
+            body,
+            dedupeKey,
+            metadata: {
+              source: 'radarr',
+              movieId: movie.id,
+              releaseType,
+              redirect: `/movies/${movie.id}`,
+            },
+            url: `/movies/${movie.id}`,
+          }, {
+            service: 'radarr',
+            reason: 'upcoming-premiere',
+            movieId: movie.id,
+            releaseType,
+            dedupeKey,
+          });
         }
       }
     } catch (error) {
