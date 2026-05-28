@@ -39,6 +39,7 @@ import {
   Loader2,
   Trash2,
   Play,
+  Newspaper,
   Search,
   SlidersHorizontal,
   Calendar as CalendarIcon,
@@ -75,7 +76,7 @@ interface Notification {
 }
 
 const ICON_MAP = {
-  Download, Check, X, AlertTriangle, Clock, Trash2, Play, Bell,
+  Download, Check, X, AlertTriangle, Clock, Trash2, Play, Bell, Newspaper,
 } as const;
 
 function eventIcon(type: string) {

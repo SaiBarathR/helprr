@@ -22,6 +22,22 @@ const TIMING_OPTIONS = [
   { value: 'daily_digest', label: 'Daily digest' },
 ];
 
+const DIGEST_MODE_OPTIONS = [
+  { value: 'off', label: 'Off' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+];
+
+const DAY_OF_WEEK_OPTIONS = [
+  { value: '0', label: 'Sunday' },
+  { value: '1', label: 'Monday' },
+  { value: '2', label: 'Tuesday' },
+  { value: '3', label: 'Wednesday' },
+  { value: '4', label: 'Thursday' },
+  { value: '5', label: 'Friday' },
+  { value: '6', label: 'Saturday' },
+];
+
 const NOTIFY_BEFORE_OPTIONS = [
   { value: '0', label: 'At air time' },
   { value: '15', label: '15 minutes' },
@@ -57,6 +73,7 @@ export default function NotificationsSettingsPage() {
   const [testing, setTesting] = useState(false);
 
   const mode = settings?.upcomingNotifyMode ?? 'before_air';
+  const digestMode = settings?.activityDigestMode ?? 'off';
 
   async function handleSubscribe() {
     const result = await subscribe();
@@ -276,6 +293,73 @@ export default function NotificationsSettingsPage() {
                   <SelectItem key={i} value={String(i)}>
                     {hourLabel(i)}
                   </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </GroupedSection>
+
+      <GroupedSection
+        title="Activity digest"
+        footer="A summary of imports, failures, and releases — sent once at the configured time."
+      >
+        <div className="grouped-row">
+          <span className="text-sm">Frequency</span>
+          <Select
+            value={digestMode}
+            onValueChange={(v) =>
+              void update({ activityDigestMode: v as 'off' | 'daily' | 'weekly' })
+            }
+            disabled={loading}
+          >
+            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DIGEST_MODE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {(digestMode === 'daily' || digestMode === 'weekly') && (
+          <div className="grouped-row">
+            <span className="text-sm">Send at</span>
+            <Select
+              value={String(settings?.activityDigestHour ?? 8)}
+              onValueChange={(v) => void update({ activityDigestHour: parseInt(v, 10) })}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <SelectItem key={i} value={String(i)}>
+                    {hourLabel(i)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {digestMode === 'weekly' && (
+          <div className="grouped-row">
+            <span className="text-sm">Day</span>
+            <Select
+              value={String(settings?.activityDigestDayOfWeek ?? 1)}
+              onValueChange={(v) => void update({ activityDigestDayOfWeek: parseInt(v, 10) })}
+              disabled={loading}
+            >
+              <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DAY_OF_WEEK_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

@@ -5,6 +5,7 @@ import { getCachedSeerrMediaDetail, formatSeerrMediaLabel } from '@/lib/seerr-he
 import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, endOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
 import { logger } from '@/lib/logger';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
@@ -192,6 +193,7 @@ export class PollingService {
         'pollSeerr',
         'checkUpcoming',
         'checkWatchlistReminders',
+        'checkActivityDigest',
       ] as const;
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled([
@@ -202,6 +204,7 @@ export class PollingService {
         this.pollSeerr(),
         this.checkUpcoming(),
         this.checkWatchlistReminders(),
+        this.checkActivityDigest(),
       ]);
 
       const rejected = results.flatMap((result, index) => {
@@ -1188,6 +1191,101 @@ export class PollingService {
         logger.warn('Failed to update watchlist reminder state', { itemId: item.id, error }, { scope: 'polling' });
       });
     }
+  }
+
+  private async checkActivityDigest(): Promise<void> {
+    const settings = await getOrCreateAppSettings();
+    const mode = settings.activityDigestMode;
+    if (mode !== 'daily' && mode !== 'weekly') return;
+
+    const period: ActivityDigestPeriod = mode;
+    const timeZone = settings.timeZone;
+    const now = new Date();
+    const zoned = toZonedDate(now, timeZone);
+    const localHour = zoned.getHours();
+    const localDow = zoned.getDay(); // 0=Sun..6=Sat
+    const localDateLabel = `${zoned.getFullYear()}-${String(zoned.getMonth() + 1).padStart(2, '0')}-${String(zoned.getDate()).padStart(2, '0')}`;
+
+    if (localHour !== settings.activityDigestHour) {
+      logger.debug('Skipping activity digest outside configured hour', {
+        period,
+        localHour,
+        digestHour: settings.activityDigestHour,
+        timeZone,
+      }, { scope: 'polling' });
+      return;
+    }
+
+    if (period === 'weekly' && localDow !== settings.activityDigestDayOfWeek) {
+      logger.debug('Skipping activity digest outside configured day-of-week', {
+        period,
+        localDow,
+        digestDayOfWeek: settings.activityDigestDayOfWeek,
+        timeZone,
+      }, { scope: 'polling' });
+      return;
+    }
+
+    // dedupeKey carries period + local date so a daily digest and a weekly
+    // digest landing on the same morning don't collide. notifyEvent checks
+    // NotificationHistory for an existing row with the same dedupeKey before
+    // sending, mirroring the upcoming-digest pattern.
+    const dedupeKey = `activity-digest-${period}-${localDateLabel}`;
+    const existing = await prisma.notificationHistory.findFirst({
+      where: { eventType: 'activityDigest', dedupeKey },
+      select: { id: true },
+    });
+    if (existing) {
+      logger.debug('Skipping duplicate activity digest in same window', {
+        period,
+        dedupeKey,
+      }, { scope: 'polling' });
+      return;
+    }
+
+    // Pull the digest window. Daily = past 24h ending now; weekly = past 7d.
+    const windowMs = period === 'daily' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    const windowStart = new Date(now.getTime() - windowMs);
+    const rows = await prisma.notificationHistory.findMany({
+      where: {
+        createdAt: { gte: windowStart },
+        // Don't summarize the digest itself.
+        eventType: { not: 'activityDigest' },
+      },
+      select: { eventType: true, title: true, body: true, metadata: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
+    const digest = buildActivityDigest({ period, rows });
+    if (digest.eventCount === 0) {
+      logger.debug('Skipping activity digest: nothing happened in the window', {
+        period,
+        windowStart: windowStart.toISOString(),
+      }, { scope: 'polling' });
+      return;
+    }
+
+    await this.notifyAndLog({
+      eventType: 'activityDigest',
+      title: digest.title,
+      body: digest.body,
+      dedupeKey,
+      metadata: {
+        source: 'digest',
+        period,
+        windowStart: windowStart.toISOString(),
+        eventCount: digest.eventCount,
+        sourceCounts: digest.sourceCounts,
+        redirect: '/notifications',
+      },
+      url: '/notifications',
+    }, {
+      service: 'digest',
+      reason: 'activity-digest',
+      period,
+      dedupeKey,
+    });
   }
 }
 
