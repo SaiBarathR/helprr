@@ -52,6 +52,9 @@ import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget'
 import { AnimeCarouselWidget } from '@/components/widgets/anime-carousel-widget';
 import { ANIME_CAROUSEL_MAP, DEFAULT_ANIME_CAROUSEL_ORDER } from '@/lib/anime-carousel-config';
 
+// For You recommendations
+import { ForYouWidget } from '@/components/widgets/for-you-widget';
+
 const span = (colSpan: WidgetSpan['colSpan'], rowSpan: WidgetSpan['rowSpan']): WidgetSpan => ({
   colSpan,
   rowSpan,
@@ -179,6 +182,20 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     desktopLayout: 'posters',
     mobileLayout: 'posters',
     component: RecentlyAddedWidget,
+  },
+  {
+    id: 'for-you',
+    name: 'For You',
+    description: 'Recommendations based on what you recently added',
+    icon: 'Sparkles',
+    category: 'discover',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 1),
+    defaultRefreshIntervalSecs: 300,
+    desktopLayout: 'carousel',
+    mobileLayout: 'carousel',
+    component: ForYouWidget,
+    requiredServices: ['TMDB'],
   },
   {
     id: 'upcoming',
