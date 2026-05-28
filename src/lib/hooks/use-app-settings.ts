@@ -20,6 +20,7 @@ export interface AppSettingsState {
   upcomingNotifyMode: 'before_air' | 'daily_digest';
   upcomingNotifyBeforeMins: number;
   upcomingDailyNotifyHour: number;
+  watchProviderRegion: string;
 }
 
 export type AppSettingsPatch = Partial<Omit<AppSettingsState, 'envTimeZone'>>;
@@ -94,7 +95,14 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     upcomingNotifyMode: pickEnum(raw.upcomingNotifyMode, UPCOMING_NOTIFY_MODES, 'before_air'),
     upcomingNotifyBeforeMins: numberOr(raw.upcomingNotifyBeforeMins, 60),
     upcomingDailyNotifyHour: numberOr(raw.upcomingDailyNotifyHour, 9),
+    watchProviderRegion: normalizeRegionCode(raw.watchProviderRegion) ?? 'US',
   };
+}
+
+function normalizeRegionCode(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(trimmed) ? trimmed : null;
 }
 
 function numberOr(value: unknown, fallback: number): number {

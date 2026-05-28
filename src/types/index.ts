@@ -806,6 +806,10 @@ export interface DiscoverWatchProviderEntry {
 }
 
 export interface DiscoverWatchProviders {
+  /** Region the returned entries belong to (ISO 3166-1 alpha-2). */
+  region: string;
+  /** Region the caller asked for; may differ from `region` when a fallback was used. */
+  requestedRegion: string;
   link?: string;
   flatrate?: DiscoverWatchProviderEntry[];
   rent?: DiscoverWatchProviderEntry[];
