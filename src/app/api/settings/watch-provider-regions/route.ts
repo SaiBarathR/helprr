@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth';
 import { getTMDBClient } from '@/lib/service-helpers';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import { withApiLogging } from '@/lib/api-logger';
+import { logger } from '@/lib/logger';
 
 /**
  * Returns the list of TMDB watch-provider regions sorted by English name.
@@ -21,8 +22,8 @@ async function getHandler(): Promise<NextResponse> {
     const tmdb = await getTMDBClient();
     const regions = await tmdb.watchProviderRegions();
     const formatted = regions
-      .filter((r) => r.iso_3166_1 && r.english_name)
-      .map((r) => ({ code: r.iso_3166_1, name: r.english_name }))
+      .map((r) => ({ code: String(r.iso_3166_1).toUpperCase(), name: r.english_name }))
+      .filter((r) => /^[A-Z]{2}$/.test(r.code) && r.name)
       .sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({ regions: formatted });
@@ -38,8 +39,10 @@ async function getHandler(): Promise<NextResponse> {
         { status: 429 }
       );
     }
-    const message = error instanceof Error ? error.message : 'Failed to load regions';
-    return NextResponse.json({ error: message }, { status: 500 });
+    logger.error('Failed to load watch-provider regions', error, {
+      scope: 'api/settings/watch-provider-regions',
+    });
+    return NextResponse.json({ error: 'Failed to load regions' }, { status: 500 });
   }
 }
 
