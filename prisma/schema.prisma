@@ -144,6 +144,7 @@ model AppSettings {
   activityDigestMode       String  @default("off")        // "off" | "daily" | "weekly"
   activityDigestHour       Int     @default(8)            // 0-23, hour of day to fire the digest
   activityDigestDayOfWeek  Int     @default(1)            // 0=Sun..6=Sat, used when mode=weekly
+  qbtBandwidthSchedule     Json?                          // Bandwidth-schedule rules applied to qBittorrent global limits
   discoverLayout           Json?                          // User-configured discover homepage layout (sections order, visibility, custom carousels)
   defaultDesktopLayoutId   String?                        // Active DashboardLayout for desktop viewport
   defaultMobileLayoutId    String?                        // Active DashboardLayout for mobile viewport

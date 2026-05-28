@@ -11,6 +11,7 @@ import {
   Download as DownloadIcon,
   UserCircle,
   Shield,
+  Gauge,
 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
@@ -97,6 +98,14 @@ export default function SettingsIndexPage() {
           iconColor="text-indigo-400"
           label="Logging"
           subtitle="Level, rotation, retention"
+        />
+        <CategoryRow
+          href="/settings/downloads"
+          icon={Gauge}
+          iconBg="bg-amber-500/10"
+          iconColor="text-amber-400"
+          label="Downloads"
+          subtitle="qBittorrent bandwidth scheduler"
         />
       </GroupedSection>
 

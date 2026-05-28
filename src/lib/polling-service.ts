@@ -6,6 +6,8 @@ import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, endOfLocalDay, toZonedDate } from '@/lib/timezone';
 import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
+import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
+import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger } from '@/lib/logger';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
@@ -127,6 +129,14 @@ export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
   private isPolling = false;
+  // Tracks the bandwidth-schedule rule (and limits) we last pushed to
+  // qBittorrent so we only re-send on actual changes. Process-restart loses
+  // this — the next cycle will re-apply once (idempotent).
+  private appliedBandwidth: {
+    ruleId: string;
+    downloadKbps: number;
+    uploadKbps: number;
+  } | null = null;
 
   private async notifyAndLog(
     event: NotificationEventInput,
@@ -194,6 +204,7 @@ export class PollingService {
         'checkUpcoming',
         'checkWatchlistReminders',
         'checkActivityDigest',
+        'applyBandwidthSchedule',
       ] as const;
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled([
@@ -205,6 +216,7 @@ export class PollingService {
         this.checkUpcoming(),
         this.checkWatchlistReminders(),
         this.checkActivityDigest(),
+        this.applyBandwidthSchedule(),
       ]);
 
       const rejected = results.flatMap((result, index) => {
@@ -1291,6 +1303,74 @@ export class PollingService {
       period,
       dedupeKey,
     });
+  }
+
+  private async applyBandwidthSchedule(): Promise<void> {
+    const settings = await getOrCreateAppSettings();
+    const schedule = parseBandwidthSchedule(settings.qbtBandwidthSchedule);
+    if (schedule.rules.length === 0) {
+      // Empty schedule. Strict additive: never touch qBit when no rules exist.
+      // Forget any prior intent so the user can manage limits manually.
+      this.appliedBandwidth = null;
+      return;
+    }
+
+    const active = pickActiveRule(schedule.rules, new Date(), settings.timeZone);
+
+    // No active rule. Don't fight the user — leave qBit limits alone, even if
+    // we applied one earlier. The "rule ended" boundary is implicit.
+    if (!active) {
+      if (this.appliedBandwidth) {
+        logger.info('Bandwidth schedule: no active rule, releasing tracking', {
+          previousRuleId: this.appliedBandwidth.ruleId,
+        }, { scope: 'polling' });
+      }
+      this.appliedBandwidth = null;
+      return;
+    }
+
+    const intent = {
+      ruleId: active.id,
+      downloadKbps: active.downloadLimitKbps,
+      uploadKbps: active.uploadLimitKbps,
+    };
+
+    if (
+      this.appliedBandwidth &&
+      this.appliedBandwidth.ruleId === intent.ruleId &&
+      this.appliedBandwidth.downloadKbps === intent.downloadKbps &&
+      this.appliedBandwidth.uploadKbps === intent.uploadKbps
+    ) {
+      return;
+    }
+
+    let client;
+    try {
+      client = await getQBittorrentClient();
+    } catch (error) {
+      logger.debug('Skipping bandwidth schedule because qBittorrent is unavailable', { error }, { scope: 'polling' });
+      return;
+    }
+
+    // qBittorrent's transfer API takes bytes/sec; UI/DB use KB/s.
+    const downloadBytes = intent.downloadKbps * 1024;
+    const uploadBytes = intent.uploadKbps * 1024;
+
+    try {
+      await Promise.all([
+        client.setGlobalDownloadLimit(downloadBytes),
+        client.setGlobalUploadLimit(uploadBytes),
+      ]);
+      this.appliedBandwidth = intent;
+      logger.info('Bandwidth schedule applied', {
+        ruleId: intent.ruleId,
+        ruleName: active.name,
+        downloadKbps: intent.downloadKbps,
+        uploadKbps: intent.uploadKbps,
+      }, { scope: 'polling' });
+    } catch (error) {
+      logger.warn('Failed to apply bandwidth schedule', { ruleId: intent.ruleId, error }, { scope: 'polling' });
+    }
   }
 }
 
