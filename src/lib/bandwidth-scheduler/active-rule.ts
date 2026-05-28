@@ -9,7 +9,7 @@ function minutesOfDay(hour: number, minute: number): number {
  * Tests whether `rule` is active given the wall-clock day-of-week and
  * minutes-past-midnight, accounting for windows that wrap midnight.
  *
- * A rule with `endMinutes <= startMinutes` is treated as wrapping; the test
+ * A rule with `endMinutes < startMinutes` is treated as wrapping; the test
  * has to consider both today's day-of-week (for the "after start" tail) and
  * yesterday's day-of-week (for the "before end" head). A rule with start ===
  * end is treated as a 24h window on each selected day.
