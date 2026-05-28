@@ -115,4 +115,70 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 }
 
+interface CreateBody {
+  mediaType?: unknown;
+  tmdbId?: unknown;
+  is4k?: unknown;
+  seasons?: unknown;
+}
+
+function parseSeasons(value: unknown): number[] | 'all' | undefined {
+  if (value === undefined) return undefined;
+  if (value === 'all') return 'all';
+  if (!Array.isArray(value)) return undefined;
+  const cleaned: number[] = [];
+  for (const entry of value) {
+    if (!Number.isInteger(entry) || (entry as number) < 0) return undefined;
+    cleaned.push(entry as number);
+  }
+  return cleaned;
+}
+
+async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
+  let body: CreateBody;
+  try {
+    body = (await request.json()) as CreateBody;
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const mediaType = body.mediaType;
+  if (mediaType !== 'movie' && mediaType !== 'tv') {
+    return NextResponse.json(
+      { error: "mediaType must be 'movie' or 'tv'" },
+      { status: 400 }
+    );
+  }
+  const tmdbId = typeof body.tmdbId === 'number' ? body.tmdbId : Number(body.tmdbId);
+  if (!Number.isInteger(tmdbId) || tmdbId <= 0) {
+    return NextResponse.json({ error: 'tmdbId must be a positive integer' }, { status: 400 });
+  }
+  const is4k = body.is4k === true;
+  const seasons = parseSeasons(body.seasons);
+  if (body.seasons !== undefined && seasons === undefined) {
+    return NextResponse.json(
+      { error: "seasons must be 'all' or an array of non-negative integers" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const client = await getSeerrClient();
+    const created = await client.createRequest({
+      mediaType,
+      mediaId: tmdbId,
+      is4k,
+      seasons,
+    });
+    return NextResponse.json({ request: created });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create request';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export const GET = withApiLogging(getHandler, 'api/seerr/requests');
+export const POST = withApiLogging(postHandler, 'api/seerr/requests');
