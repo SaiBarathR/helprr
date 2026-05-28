@@ -183,6 +183,14 @@ interface TmdbExternalIdsResponse {
   tvdb_id?: number | null;
 }
 
+export interface TmdbFindResponse {
+  movie_results: TmdbListItem[];
+  tv_results: TmdbListItem[];
+  person_results: TmdbListItem[];
+}
+
+export type TmdbExternalSource = 'imdb_id' | 'tvdb_id' | 'freebase_mid' | 'freebase_id';
+
 export interface TmdbPersonDetail {
   id: number;
   name: string;
@@ -795,6 +803,10 @@ export class TmdbClient {
 
   async tvExternalIds(id: number): Promise<TmdbExternalIdsResponse> {
     return this.get<TmdbExternalIdsResponse>(`/tv/${id}/external_ids`);
+  }
+
+  async findByExternalId(externalId: string, source: TmdbExternalSource): Promise<TmdbFindResponse> {
+    return this.get<TmdbFindResponse>(`/find/${externalId}`, { external_source: source });
   }
 
   async movieGenres(): Promise<TmdbGenre[]> {
