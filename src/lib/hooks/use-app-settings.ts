@@ -21,6 +21,9 @@ export interface AppSettingsState {
   upcomingNotifyBeforeMins: number;
   upcomingDailyNotifyHour: number;
   watchProviderRegion: string;
+  activityDigestMode: 'off' | 'daily' | 'weekly';
+  activityDigestHour: number;
+  activityDigestDayOfWeek: number;
 }
 
 export type AppSettingsPatch = Partial<Omit<AppSettingsState, 'envTimeZone'>>;
@@ -66,6 +69,7 @@ async function fetchSettings(): Promise<AppSettingsState | null> {
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 const UPCOMING_NOTIFY_MODES = ['before_air', 'daily_digest'] as const;
+const ACTIVITY_DIGEST_MODES = ['off', 'daily', 'weekly'] as const;
 
 function pickEnum<T extends readonly string[]>(
   value: unknown,
@@ -96,6 +100,9 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     upcomingNotifyBeforeMins: numberOr(raw.upcomingNotifyBeforeMins, 60),
     upcomingDailyNotifyHour: numberOr(raw.upcomingDailyNotifyHour, 9),
     watchProviderRegion: normalizeRegionCode(raw.watchProviderRegion) ?? 'US',
+    activityDigestMode: pickEnum(raw.activityDigestMode, ACTIVITY_DIGEST_MODES, 'off'),
+    activityDigestHour: numberOr(raw.activityDigestHour, 8),
+    activityDigestDayOfWeek: numberOr(raw.activityDigestDayOfWeek, 1),
   };
 }
 
