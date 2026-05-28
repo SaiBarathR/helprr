@@ -27,6 +27,21 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
   return response;
 }
 
+/**
+ * Redirects an unauthenticated page request to /login, preserving the original
+ * path + query as a `next` param so deep links (e.g. /protocol?u=...) survive
+ * the login round-trip. The login page validates and honors `next`.
+ */
+function redirectToLogin(request: NextRequest): NextResponse {
+  const { pathname, search } = request.nextUrl;
+  const loginUrl = new URL('/login', request.url);
+  const target = `${pathname}${search}`;
+  if (pathname !== '/' && pathname !== '/login') {
+    loginUrl.searchParams.set('next', target);
+  }
+  return addSecurityHeaders(NextResponse.redirect(loginUrl));
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -60,7 +75,7 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }
-    return addSecurityHeaders(NextResponse.redirect(new URL('/login', request.url)));
+    return redirectToLogin(request);
   }
 
   try {
@@ -69,14 +84,14 @@ export async function middleware(request: NextRequest) {
       if (pathname.startsWith('/api/')) {
         return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
       }
-      return addSecurityHeaders(NextResponse.redirect(new URL('/login', request.url)));
+      return redirectToLogin(request);
     }
     return addSecurityHeaders(NextResponse.next());
   } catch {
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }
-    return addSecurityHeaders(NextResponse.redirect(new URL('/login', request.url)));
+    return redirectToLogin(request);
   }
 }
 
