@@ -6,10 +6,10 @@ import { tmdbImageUrl } from '@/lib/discover';
 import { getLibraryLookups } from '@/lib/watchlist-library-lookup';
 import { getCachedSeerrMediaDetail } from '@/lib/seerr-helpers';
 import type {
+  EnrichedSeerrRequest,
   SeerrRequestFilter,
   SeerrRequestSort,
   SeerrSortDirection,
-  SeerrRequest,
 } from '@/types/seerr';
 
 const VALID_FILTERS: SeerrRequestFilter[] = [
@@ -27,19 +27,18 @@ function parseFilter(value: string | null): SeerrRequestFilter | undefined {
   return (VALID_FILTERS as string[]).includes(value) ? (value as SeerrRequestFilter) : undefined;
 }
 
-function parseInt32(value: string | null): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) ? n : undefined;
-}
+const MAX_PAGE_SIZE = 1000;
 
-export interface EnrichedSeerrRequest extends SeerrRequest {
-  enriched: {
-    title: string | null;
-    year: number | null;
-    posterUrl: string | null;
-    helprr: { type: 'movie' | 'series'; id: number } | null;
-  };
+function parseInt32(
+  value: string | null,
+  opts?: { min?: number; max?: number }
+): number | undefined {
+  if (!value) return undefined;
+  const n = Math.trunc(Number.parseInt(value, 10));
+  if (!Number.isFinite(n)) return undefined;
+  const min = opts?.min ?? 0;
+  const max = opts?.max ?? Number.MAX_SAFE_INTEGER;
+  return Math.min(Math.max(n, min), max);
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -50,12 +49,12 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const sp = request.nextUrl.searchParams;
     const client = await getSeerrClient();
     const data = await client.listRequests({
-      take: parseInt32(sp.get('take')) ?? 50,
-      skip: parseInt32(sp.get('skip')) ?? 0,
+      take: parseInt32(sp.get('take'), { min: 1, max: MAX_PAGE_SIZE }) ?? 50,
+      skip: parseInt32(sp.get('skip'), { min: 0 }) ?? 0,
       filter: parseFilter(sp.get('filter')) ?? 'all',
       sort: (sp.get('sort') === 'modified' ? 'modified' : 'added') as SeerrRequestSort,
       sortDirection: (sp.get('sortDirection') === 'asc' ? 'asc' : 'desc') as SeerrSortDirection,
-      requestedBy: parseInt32(sp.get('requestedBy')),
+      requestedBy: parseInt32(sp.get('requestedBy'), { min: 1 }),
     });
 
     // Best-effort library lookup so we can deep-link each request into Helprr's

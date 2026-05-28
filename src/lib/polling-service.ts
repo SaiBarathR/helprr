@@ -611,7 +611,6 @@ export class PollingService {
         req.requestedBy?.username ??
         req.requestedBy?.plexUsername ??
         req.requestedBy?.jellyfinUsername ??
-        req.requestedBy?.email ??
         `User ${req.requestedBy?.id ?? '?'}`;
       const tmdbId = req.media?.tmdbId;
 

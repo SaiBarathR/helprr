@@ -12,6 +12,9 @@ async function getHandler(
 
   try {
     const { id: raw } = await params;
+    if (!/^\d+$/.test(raw)) {
+      return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+    }
     const id = Number.parseInt(raw, 10);
     if (!Number.isFinite(id) || id <= 0) {
       return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });

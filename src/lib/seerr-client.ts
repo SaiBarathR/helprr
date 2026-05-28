@@ -123,7 +123,7 @@ export class SeerrClient {
 
   async getUserRequests(
     userId: number,
-    params: SeerrListRequestParams = {}
+    params: { take?: number; skip?: number } = {}
   ): Promise<SeerrPaginated<SeerrRequest>> {
     return this.get<SeerrPaginated<SeerrRequest>>(`/user/${userId}/requests`, {
       take: params.take ?? 20,

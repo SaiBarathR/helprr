@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { logger } from '@/lib/logger';
 
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -12,8 +13,14 @@ async function getHandler(): Promise<NextResponse> {
     const counts = await client.getRequestCount();
     return NextResponse.json(counts);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch request counts';
-    return NextResponse.json({ error: message }, { status: 500 });
+    logger.error(
+      'Seerr request count failed',
+      error instanceof Error
+        ? { message: error.message, stack: error.stack }
+        : { error },
+      { scope: 'api/seerr/requests/count' }
+    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
