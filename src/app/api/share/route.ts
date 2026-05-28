@@ -20,7 +20,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // doesn't lose context: send them to /login?next=/share?...
     const fallback = await readSharedParams(request);
     const next = `/share?${fallback.toString()}`;
-    return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, request.url));
+    return NextResponse.redirect(new URL(`/login?next=${encodeURIComponent(next)}`, request.url), 303);
   }
 
   const params = await readSharedParams(request);
