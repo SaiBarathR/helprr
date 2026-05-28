@@ -45,17 +45,18 @@ export async function middleware(request: NextRequest) {
     return addSecurityHeaders(NextResponse.next());
   }
 
+  // Web Share Target POSTs hit /api/share directly from the OS share sheet.
+  // Let the request through so the route handler can run its own requireAuth
+  // check and, when unauthenticated, 303-redirect through /login while
+  // preserving the shared payload (middleware can't read the multipart body to
+  // forward it, and a JSON 401 here would land the user on a raw error page).
+  if (pathname === '/api/share') {
+    return addSecurityHeaders(NextResponse.next());
+  }
+
   const token = request.cookies.get(COOKIE_NAME)?.value;
 
   if (!token) {
-    // Web Share Target POSTs hit /api/share directly from the OS share sheet.
-    // Returning a JSON 401 lands the user on a raw error page; instead redirect
-    // through /login so they can sign in and re-attempt the share manually.
-    if (pathname === '/api/share') {
-      return addSecurityHeaders(
-        NextResponse.redirect(new URL('/login?next=/share', request.url)),
-      );
-    }
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }

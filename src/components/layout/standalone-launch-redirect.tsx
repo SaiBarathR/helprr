@@ -39,11 +39,10 @@ export function StandaloneLaunchRedirect() {
 
     hasCheckedInitialLaunch.current = true;
 
+    // Only the initial /dashboard launch is redirected; share-target and
+    // protocol-handler launches open directly on /share or /protocol and are
+    // left untouched by the pathname check below.
     if (!standaloneMode || pathname !== '/dashboard') return;
-
-    // Share-target and protocol-handler launches drop the user on /share or
-    // /protocol; we don't want the dashboard-redirect to second-guess that.
-    if (pathname.startsWith('/share') || pathname.startsWith('/protocol')) return;
 
     const targetHref = resolveDefaultPageHref({
       defaultPage,

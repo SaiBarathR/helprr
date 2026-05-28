@@ -29,7 +29,7 @@ function buildSonarrSeeds(series: SonarrSeries[]): Seed[] {
     tmdbId: s.tmdbId,
     mediaType: 'tv',
     title: s.title,
-    // Recency weight: 1.0 for newest, decaying toward 0.5 for the 5th seed.
+    // Recency weight: 1.0 for the newest seed, decaying by 0.1 each step (0.6 for the 5th).
     weight: 1 - index * 0.1,
   }));
 }
