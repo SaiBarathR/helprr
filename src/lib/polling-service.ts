@@ -8,10 +8,60 @@ import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import { logger } from '@/lib/logger';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
+import { classifyQueueIssue } from '@/lib/queue-state';
+import type { QueueItem } from '@/types';
 import { addHours } from 'date-fns';
 import crypto from 'crypto';
 
 const MAX_REMINDER_ATTEMPTS = 3;
+
+function firstStatusMessage(item: QueueItem): string | null {
+  const messages = item.statusMessages;
+  if (!messages || messages.length === 0) return null;
+  for (const group of messages) {
+    const first = group.messages?.find((m) => m && m.trim().length > 0);
+    if (first) return first.trim();
+  }
+  return null;
+}
+
+function importFailureBody(item: QueueItem): string {
+  const reason = firstStatusMessage(item) ?? item.errorMessage?.trim() ?? '';
+  return reason ? `${item.title} — ${reason}` : item.title;
+}
+
+function downloadFailureBody(item: QueueItem): string {
+  const reason = item.errorMessage?.trim() || firstStatusMessage(item) || '';
+  return reason ? `${item.title} — ${reason}` : item.title;
+}
+
+type QueueSnapshot = { id: number; state: string; status: string };
+
+function readQueueSnapshots(raw: unknown): Map<number, QueueSnapshot | 'legacy'> {
+  const map = new Map<number, QueueSnapshot | 'legacy'>();
+  if (!Array.isArray(raw)) return map;
+  for (const entry of raw) {
+    // Legacy shape was bare numbers; we know the id existed last cycle but
+    // can't tell what state it was in, so we can't fire transition events for
+    // it. Treat as a sentinel so we don't double-fire a "new item" notification
+    // for an item that was actually known.
+    if (typeof entry === 'number') {
+      map.set(entry, 'legacy');
+      continue;
+    }
+    if (entry && typeof entry === 'object') {
+      const e = entry as Partial<QueueSnapshot>;
+      if (typeof e.id === 'number') {
+        map.set(e.id, {
+          id: e.id,
+          state: typeof e.state === 'string' ? e.state : '',
+          status: typeof e.status === 'string' ? e.status : '',
+        });
+      }
+    }
+  }
+  return map;
+}
 
 type NotificationEventInput = {
   eventType: string;
@@ -186,16 +236,17 @@ export class PollingService {
 
     // Queue polling
     const queue = await client.getQueue(1, 100);
-    const currentIds = queue.records.map((r) => r.id);
-    const prevIds = (state.lastQueueIds as number[]) || [];
-    const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
-    logger.debug('Sonarr queue polled', {
-      queueCount: queue.records.length,
-      previousQueueCount: prevIds.length,
-      newQueueCount: newItems.length,
-    }, { scope: 'polling' });
+    const prevMap = readQueueSnapshots(state.lastQueueIds);
+    const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
+      id: r.id,
+      state: r.trackedDownloadState ?? '',
+      status: r.trackedDownloadStatus ?? '',
+    }));
+    let newQueueCount = 0;
+    let importIssueCount = 0;
+    let downloadFailedCount = 0;
 
-    for (const item of newItems) {
+    for (const item of queue.records) {
       const metadata = {
         source: 'sonarr' as const,
         id: item.id,
@@ -203,34 +254,85 @@ export class PollingService {
         seasonNumber: item.seasonNumber ?? item.episode?.seasonNumber,
         episodeId: item.episodeId ?? item.episode?.id,
       };
-      const redirect = getMediaHrefFromIds(metadata) ?? '/activity?tab=queue&source=sonarr';
+      const mediaHref = getMediaHrefFromIds(metadata);
+      const queueHref = '/activity?tab=queue&source=sonarr';
+      const failedTabHref = '/activity?tab=failed&source=sonarr';
 
-      if (item.trackedDownloadState === 'importFailed') {
-        await this.notifyAndLog({
-          eventType: 'importFailed',
-          title: 'Import Failed',
-          body: `${item.title}`,
-          metadata: { ...metadata, redirect },
-          url: redirect,
-        }, { service: 'sonarr', reason: 'queue-import-failed', itemId: item.id });
-      } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
-        await this.notifyAndLog({
-          eventType: 'downloadFailed',
-          title: 'Download Failed',
-          body: `${item.title}`,
-          metadata: { ...metadata, redirect },
-          url: redirect,
-        }, { service: 'sonarr', reason: 'queue-download-failed', itemId: item.id });
-      } else {
-        await this.notifyAndLog({
-          eventType: 'grabbed',
-          title: 'Download Started',
-          body: `${item.title}`,
-          metadata: { ...metadata, redirect },
-          url: redirect,
-        }, { service: 'sonarr', reason: 'queue-new-item', itemId: item.id });
+      const prev = prevMap.get(item.id);
+      const currentIssue = classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus);
+      const prevIssue =
+        prev && prev !== 'legacy'
+          ? classifyQueueIssue(prev.state, prev.status)
+          : null;
+
+      if (!prev) {
+        // Item is new in the queue this cycle.
+        newQueueCount++;
+        if (currentIssue === 'import') {
+          importIssueCount++;
+          const redirect = failedTabHref;
+          await this.notifyAndLog({
+            eventType: 'importFailed',
+            title: 'Manual Import Required',
+            body: importFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'sonarr', reason: 'queue-import-blocked-new', itemId: item.id });
+        } else if (currentIssue === 'download') {
+          downloadFailedCount++;
+          const redirect = queueHref;
+          await this.notifyAndLog({
+            eventType: 'downloadFailed',
+            title: 'Download Failed',
+            body: downloadFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'sonarr', reason: 'queue-download-failed-new', itemId: item.id });
+        } else {
+          const redirect = mediaHref ?? queueHref;
+          await this.notifyAndLog({
+            eventType: 'grabbed',
+            title: 'Download Started',
+            body: item.title,
+            metadata: { ...metadata, redirect },
+            url: redirect,
+          }, { service: 'sonarr', reason: 'queue-new-item', itemId: item.id });
+        }
+      } else if (prev !== 'legacy' && currentIssue !== prevIssue) {
+        // Transition into a problematic state — fire the matching notification.
+        // Transitions back to normal are silent (success is announced by the
+        // history "imported" event).
+        if (currentIssue === 'import') {
+          importIssueCount++;
+          const redirect = failedTabHref;
+          await this.notifyAndLog({
+            eventType: 'importFailed',
+            title: 'Manual Import Required',
+            body: importFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'sonarr', reason: 'queue-import-blocked-transition', itemId: item.id });
+        } else if (currentIssue === 'download') {
+          downloadFailedCount++;
+          const redirect = queueHref;
+          await this.notifyAndLog({
+            eventType: 'downloadFailed',
+            title: 'Download Failed',
+            body: downloadFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'sonarr', reason: 'queue-download-failed-transition', itemId: item.id });
+        }
       }
     }
+
+    logger.debug('Sonarr queue polled', {
+      queueCount: queue.records.length,
+      previousQueueCount: prevMap.size,
+      newQueueCount,
+      importIssueCount,
+      downloadFailedCount,
+    }, { scope: 'polling' });
 
     // History polling
     const history = await client.getHistory(1, 50, 'date', 'descending');
@@ -285,13 +387,13 @@ export class PollingService {
     await prisma.pollingState.update({
       where: { serviceType: 'SONARR' },
       data: {
-        lastQueueIds: currentIds,
+        lastQueueIds: currentSnapshots as unknown as object,
         lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
         lastHealthHash: healthHash,
       },
     });
     logger.debug('Sonarr polling state updated', {
-      queueCount: currentIds.length,
+      queueCount: currentSnapshots.length,
       lastHistoryDate: history.records[0]?.date ?? state.lastHistoryDate,
       healthHash,
     }, { scope: 'polling' });
@@ -313,49 +415,97 @@ export class PollingService {
     });
 
     const queue = await client.getQueue(1, 100);
-    const currentIds = queue.records.map((r) => r.id);
-    const prevIds = (state.lastQueueIds as number[]) || [];
-    const newItems = queue.records.filter((r) => !prevIds.includes(r.id));
-    logger.debug('Radarr queue polled', {
-      queueCount: queue.records.length,
-      previousQueueCount: prevIds.length,
-      newQueueCount: newItems.length,
-    }, { scope: 'polling' });
+    const prevMap = readQueueSnapshots(state.lastQueueIds);
+    const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
+      id: r.id,
+      state: r.trackedDownloadState ?? '',
+      status: r.trackedDownloadStatus ?? '',
+    }));
+    let newQueueCount = 0;
+    let importIssueCount = 0;
+    let downloadFailedCount = 0;
 
-    for (const item of newItems) {
+    for (const item of queue.records) {
       const metadata = {
         source: 'radarr' as const,
         id: item.id,
         movieId: item.movieId,
       };
-      const redirect = getMediaHrefFromIds(metadata) ?? '/activity?tab=queue&source=radarr';
+      const mediaHref = getMediaHrefFromIds(metadata);
+      const queueHref = '/activity?tab=queue&source=radarr';
+      const failedTabHref = '/activity?tab=failed&source=radarr';
 
-      if (item.trackedDownloadState === 'importFailed') {
-        await this.notifyAndLog({
-          eventType: 'importFailed',
-          title: 'Movie Import Failed',
-          body: `${item.title}`,
-          metadata: { ...metadata, redirect },
-          url: redirect,
-        }, { service: 'radarr', reason: 'queue-import-failed', itemId: item.id });
-      } else if (item.trackedDownloadStatus === 'warning' || item.trackedDownloadStatus === 'error') {
-        await this.notifyAndLog({
-          eventType: 'downloadFailed',
-          title: 'Movie Download Failed',
-          body: `${item.title}`,
-          metadata: { ...metadata, redirect },
-          url: redirect,
-        }, { service: 'radarr', reason: 'queue-download-failed', itemId: item.id });
-      } else {
-        await this.notifyAndLog({
-          eventType: 'grabbed',
-          title: 'Movie Download Started',
-          body: `${item.title}`,
-          metadata: { ...metadata, redirect },
-          url: redirect,
-        }, { service: 'radarr', reason: 'queue-new-item', itemId: item.id });
+      const prev = prevMap.get(item.id);
+      const currentIssue = classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus);
+      const prevIssue =
+        prev && prev !== 'legacy'
+          ? classifyQueueIssue(prev.state, prev.status)
+          : null;
+
+      if (!prev) {
+        newQueueCount++;
+        if (currentIssue === 'import') {
+          importIssueCount++;
+          const redirect = failedTabHref;
+          await this.notifyAndLog({
+            eventType: 'importFailed',
+            title: 'Movie Manual Import Required',
+            body: importFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'radarr', reason: 'queue-import-blocked-new', itemId: item.id });
+        } else if (currentIssue === 'download') {
+          downloadFailedCount++;
+          const redirect = queueHref;
+          await this.notifyAndLog({
+            eventType: 'downloadFailed',
+            title: 'Movie Download Failed',
+            body: downloadFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'radarr', reason: 'queue-download-failed-new', itemId: item.id });
+        } else {
+          const redirect = mediaHref ?? queueHref;
+          await this.notifyAndLog({
+            eventType: 'grabbed',
+            title: 'Movie Download Started',
+            body: item.title,
+            metadata: { ...metadata, redirect },
+            url: redirect,
+          }, { service: 'radarr', reason: 'queue-new-item', itemId: item.id });
+        }
+      } else if (prev !== 'legacy' && currentIssue !== prevIssue) {
+        if (currentIssue === 'import') {
+          importIssueCount++;
+          const redirect = failedTabHref;
+          await this.notifyAndLog({
+            eventType: 'importFailed',
+            title: 'Movie Manual Import Required',
+            body: importFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'radarr', reason: 'queue-import-blocked-transition', itemId: item.id });
+        } else if (currentIssue === 'download') {
+          downloadFailedCount++;
+          const redirect = queueHref;
+          await this.notifyAndLog({
+            eventType: 'downloadFailed',
+            title: 'Movie Download Failed',
+            body: downloadFailureBody(item),
+            metadata: { ...metadata, redirect, state: item.trackedDownloadState },
+            url: redirect,
+          }, { service: 'radarr', reason: 'queue-download-failed-transition', itemId: item.id });
+        }
       }
     }
+
+    logger.debug('Radarr queue polled', {
+      queueCount: queue.records.length,
+      previousQueueCount: prevMap.size,
+      newQueueCount,
+      importIssueCount,
+      downloadFailedCount,
+    }, { scope: 'polling' });
 
     const history = await client.getHistory(1, 50, 'date', 'descending');
     const lastDate = state.lastHistoryDate;
@@ -405,13 +555,13 @@ export class PollingService {
     await prisma.pollingState.update({
       where: { serviceType: 'RADARR' },
       data: {
-        lastQueueIds: currentIds,
+        lastQueueIds: currentSnapshots as unknown as object,
         lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
         lastHealthHash: healthHash,
       },
     });
     logger.debug('Radarr polling state updated', {
-      queueCount: currentIds.length,
+      queueCount: currentSnapshots.length,
       lastHistoryDate: history.records[0]?.date ?? state.lastHistoryDate,
       healthHash,
     }, { scope: 'polling' });

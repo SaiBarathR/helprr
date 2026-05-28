@@ -29,6 +29,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
 
 // --- Status helpers ---
@@ -43,7 +44,10 @@ function statusColor(status: string, tracked?: string) {
 }
 
 function statusLabel(item: QueueItem & { source?: string }) {
-  if (item.trackedDownloadState === 'importFailed') return 'IMPORT FAILED';
+  const issue = classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus);
+  if (issue === 'import') return 'MANUAL IMPORT';
+  if (issue === 'download') return 'DOWNLOAD FAILED';
+  if (item.trackedDownloadState === 'importing') return 'IMPORTING';
   if (item.trackedDownloadState === 'importPending') return 'IMPORT PENDING';
   if (item.trackedDownloadState === 'downloading') return 'DOWNLOADING';
   if (item.status === 'completed') return 'COMPLETED';
@@ -670,13 +674,14 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
   const [loading, setLoading] = useState(true);
 
   /**
-   * Load failed import entries from the activity queue and update component state.
+   * Load queue items that need manual import and update component state.
    *
-   * Fetches /api/activity/queue, selects records whose `trackedDownloadState` is
-   * `"importFailed"` or whose `trackedDownloadStatus` is `"warning"`, applies the
-   * `filterBy` source filter when it is not `"all"`, and stores the resulting list
-   * via `setQueue`. Always calls `setLoading(false)` when finished; errors are
-   * ignored.
+   * Fetches /api/activity/queue, selects records that classifyQueueIssue
+   * marks as `'import'` (Sonarr/Radarr `importBlocked`, or `importPending`
+   * with a warning/error status — the TBA-style stuck imports), applies the
+   * `filterBy` source filter when it is not `"all"`, and stores the resulting
+   * list via `setQueue`. Always calls `setLoading(false)` when finished;
+   * errors are ignored.
    */
   const fetchFailed = useCallback(async () => {
     try {
@@ -684,7 +689,7 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
       if (res.ok) {
         const data = await res.json();
         let failed = (data.records || []).filter(
-          (r: QueueItem) => r.trackedDownloadState === 'importFailed' || r.trackedDownloadStatus === 'warning'
+          (r: QueueItem) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) === 'import'
         );
         if (filterBy !== 'all') {
           failed = failed.filter((r: QueueItem & { source?: string }) => r.source === filterBy);
