@@ -24,6 +24,7 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     upcomingNotifyMode: 'before_air',
     upcomingNotifyBeforeMins: 60,
     upcomingDailyNotifyHour: 9,
+    watchProviderRegion: 'US',
   };
 }
 

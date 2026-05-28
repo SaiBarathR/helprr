@@ -93,6 +93,7 @@ async function putHandler(request: NextRequest) {
       logClientConsoleEnabled,
       logFailedRequestBodies,
       logFailedResponseBodies,
+      watchProviderRegion,
     } = body;
 
     const current = await prisma.appSettings.findUnique({
@@ -184,6 +185,22 @@ async function putHandler(request: NextRequest) {
       data.logFailedRequestBodies = Boolean(logFailedRequestBodies);
     if (logFailedResponseBodies !== undefined)
       data.logFailedResponseBodies = Boolean(logFailedResponseBodies);
+    if (watchProviderRegion !== undefined) {
+      if (typeof watchProviderRegion !== 'string') {
+        return NextResponse.json(
+          { error: 'Watch provider region must be an ISO 3166-1 alpha-2 code' },
+          { status: 400 }
+        );
+      }
+      const code = watchProviderRegion.trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(code)) {
+        return NextResponse.json(
+          { error: 'Watch provider region must be a 2-letter ISO country code' },
+          { status: 400 }
+        );
+      }
+      data.watchProviderRegion = code;
+    }
 
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -205,6 +222,7 @@ async function putHandler(request: NextRequest) {
         upcomingNotifyMode: (data.upcomingNotifyMode as string | undefined) ?? 'before_air',
         upcomingNotifyBeforeMins: (data.upcomingNotifyBeforeMins as number | undefined) ?? 60,
         upcomingDailyNotifyHour: (data.upcomingDailyNotifyHour as number | undefined) ?? 9,
+        watchProviderRegion: (data.watchProviderRegion as string | undefined) ?? 'US',
       },
     });
 

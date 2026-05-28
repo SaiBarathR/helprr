@@ -11,6 +11,8 @@ import {
 import { crewRolePriority } from '@/lib/crew-priority';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import { withApiLogging } from '@/lib/api-logger';
+import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { resolveTitleWatchProviders } from '@/lib/watch-providers';
 import type {
   DiscoverTvFullDetail,
   DiscoverItem,
@@ -61,6 +63,7 @@ async function getHandler(
     }
 
     const tmdb = await getTMDBClient();
+    const appSettings = await getOrCreateAppSettings();
     const details = await tmdb.tvDetails(id);
 
     const [
@@ -132,13 +135,10 @@ async function getHandler(
       return annotateDiscoverItems(normalized, libraryData.movies, libraryData.series);
     };
 
-    const usProviders = watchProvidersData.results?.['US'] ?? null;
-    const mapProviders = (list?: Array<{ logo_path: string; provider_id: number; provider_name: string }>) =>
-      list?.map((p) => ({
-        logoPath: `https://image.tmdb.org/t/p/w92${p.logo_path}`,
-        providerId: p.provider_id,
-        providerName: p.provider_name,
-      }));
+    const resolvedWatchProviders = resolveTitleWatchProviders(
+      watchProvidersData,
+      appSettings.watchProviderRegion,
+    );
 
     const filteredVideos = (videos.results || [])
       .filter((v) => v.site === 'YouTube' && ['Trailer', 'Teaser', 'Clip', 'Featurette'].includes(v.type))
@@ -252,14 +252,7 @@ async function getHandler(
       })),
       similar: normalizeList(similarData.results || []).slice(0, 12),
       recommendations: normalizeList(recommendationsData.results || []).slice(0, 12),
-      watchProviders: usProviders
-        ? {
-            link: usProviders.link,
-            flatrate: mapProviders(usProviders.flatrate),
-            rent: mapProviders(usProviders.rent),
-            buy: mapProviders(usProviders.buy),
-          }
-        : null,
+      watchProviders: resolvedWatchProviders,
     };
 
     return NextResponse.json(payload);
