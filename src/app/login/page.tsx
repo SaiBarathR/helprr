@@ -10,6 +10,17 @@ import { Clapperboard, Loader2 } from 'lucide-react';
 const DEVICE_COOKIE = 'helprr-device';
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
+// Where to land after a successful login. The share-target fallback sends
+// unauthenticated users to /login?next=/share?... so the shared payload
+// survives the round-trip; honor it for same-origin relative paths only,
+// rejecting protocol-relative (//) and absolute URLs to avoid open redirects.
+function getPostLoginTarget(): string {
+  if (typeof window === 'undefined') return '/';
+  const next = new URLSearchParams(window.location.search).get('next');
+  if (next && next.startsWith('/') && !next.startsWith('//')) return next;
+  return '/';
+}
+
 function setDeviceCookieFromMatchMedia(): void {
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
   const device = window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop';
@@ -48,7 +59,7 @@ export default function LoginPage() {
         // Re-read device class right before redirect in case the user resized
         // the window between mount and login.
         setDeviceCookieFromMatchMedia();
-        router.replace('/');
+        router.replace(getPostLoginTarget());
         router.refresh();
       } else {
         setError('Incorrect password');
