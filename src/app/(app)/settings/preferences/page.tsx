@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,24 @@ import {
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
+
+interface RegionOption {
+  code: string;
+  name: string;
+}
+
+const REGION_FALLBACK: RegionOption[] = [
+  { code: 'US', name: 'United States' },
+  { code: 'GB', name: 'United Kingdom' },
+  { code: 'CA', name: 'Canada' },
+  { code: 'AU', name: 'Australia' },
+  { code: 'IN', name: 'India' },
+  { code: 'DE', name: 'Germany' },
+  { code: 'FR', name: 'France' },
+  { code: 'JP', name: 'Japan' },
+  { code: 'BR', name: 'Brazil' },
+  { code: 'MX', name: 'Mexico' },
+];
 
 const POLLING_OPTIONS = [
   { value: '15', label: '15 seconds' },
@@ -39,6 +57,32 @@ export default function PreferencesPage() {
   const [draft, setDraft] = useState<string | null>(null);
   const tzTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTz = draft ?? settings?.timeZone ?? '';
+
+  const [regions, setRegions] = useState<RegionOption[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/settings/watch-provider-regions');
+        if (!res.ok) return;
+        const data = await res.json();
+        const list = Array.isArray(data?.regions) ? (data.regions as RegionOption[]) : null;
+        if (!cancelled && list && list.length > 0) setRegions(list);
+      } catch {
+        // Leave as null; UI falls back to the static common-regions list below.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const regionOptions = useMemo<RegionOption[]>(() => {
+    const base = regions ?? REGION_FALLBACK;
+    const currentCode = settings?.watchProviderRegion;
+    if (!currentCode || base.some((r) => r.code === currentCode)) return base;
+    return [{ code: currentCode, name: currentCode }, ...base];
+  }, [regions, settings?.watchProviderRegion]);
 
   function onTimeZoneChange(value: string) {
     setDraft(value);
@@ -143,6 +187,36 @@ export default function PreferencesPage() {
             <SelectContent>
               {REFRESH_OPTIONS.map((o) => (
                 <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </GroupedSection>
+
+      <GroupedSection
+        title="Where to Watch"
+        footer="Used by Discover, Movies, and Series detail pages to show streaming availability"
+      >
+        <div className="grouped-row">
+          <span className="text-sm">Region</span>
+          <Select
+            value={settings?.watchProviderRegion ?? 'US'}
+            onValueChange={(v) =>
+              void update(
+                { watchProviderRegion: v },
+                { successMessage: () => `Region set to ${v}` },
+              )
+            }
+            disabled={loading}
+          >
+            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-80">
+              {regionOptions.map((r) => (
+                <SelectItem key={r.code} value={r.code}>
+                  {r.name} · {r.code}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>

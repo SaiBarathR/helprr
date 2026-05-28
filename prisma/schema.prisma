@@ -140,6 +140,7 @@ model AppSettings {
   upcomingNotifyMode       String  @default("before_air") // "before_air" | "daily_digest"
   upcomingNotifyBeforeMins Int     @default(60)           // 0 = at air time
   upcomingDailyNotifyHour  Int     @default(9)            // 0-23, for daily_digest mode
+  watchProviderRegion      String  @default("US")         // ISO 3166-1 alpha-2 country for TMDB watch providers
   discoverLayout           Json?                          // User-configured discover homepage layout (sections order, visibility, custom carousels)
   defaultDesktopLayoutId   String?                        // Active DashboardLayout for desktop viewport
   defaultMobileLayoutId    String?                        // Active DashboardLayout for mobile viewport

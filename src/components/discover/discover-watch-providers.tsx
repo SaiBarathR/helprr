@@ -12,14 +12,14 @@ function ProviderGroup({ label, entries }: { label: string; entries: DiscoverWat
   if (!entries.length) return null;
   return (
     <div>
-      <p className="text-xs text-muted-foreground mb-1.5">{label}</p>
+      <p className="tracked-mid text-[10px] text-muted-foreground mb-2">{label}</p>
       <div className="flex gap-2 flex-wrap">
         {entries.map((p) => {
           const logoSrc = toCachedImageSrc(p.logoPath, 'tmdb') || p.logoPath;
           return (
             <div
               key={p.providerId}
-              className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted border border-border/40"
+              className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted/40 border border-[oklch(1_0_0/8%)]"
               title={p.providerName}
             >
               {logoSrc && (
@@ -44,9 +44,21 @@ export function DiscoverWatchProvidersSection({ providers }: DiscoverWatchProvid
   const hasAny = (providers.flatrate?.length || 0) + (providers.rent?.length || 0) + (providers.buy?.length || 0) > 0;
   if (!hasAny) return null;
 
+  const fellBack = providers.region !== providers.requestedRegion;
+
   return (
     <div>
-      <h2 className="text-base font-semibold mb-2">Where to Watch</h2>
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <h2 className="text-base font-semibold">Where to Watch</h2>
+        <span className="tracked-caps text-[10px] text-muted-foreground">
+          {providers.region}
+          {fellBack && (
+            <span className="ml-1 text-muted-foreground/70 normal-case tracking-normal font-normal">
+              · not in {providers.requestedRegion}
+            </span>
+          )}
+        </span>
+      </div>
       <div className="space-y-3">
         {providers.flatrate && <ProviderGroup label="Stream" entries={providers.flatrate} />}
         {providers.rent && <ProviderGroup label="Rent" entries={providers.rent} />}
@@ -57,7 +69,7 @@ export function DiscoverWatchProvidersSection({ providers }: DiscoverWatchProvid
           href={providers.link}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block mt-2 text-xs text-primary font-medium"
+          className="inline-block mt-3 text-xs text-primary font-medium hover:underline underline-offset-4"
         >
           View on JustWatch
         </a>
