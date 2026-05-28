@@ -896,8 +896,8 @@ export class PollingService {
     //   before_air   : [now - grace, now + notifyBeforeMins + buffer]
     //                  Grace lets "0 min / at air time" still fire when the
     //                  poll lands a few seconds after the air moment.
-    //   daily_digest : the entire local calendar day (only fires once per day,
-    //                  gated by hour and the alreadySentToday check below).
+    //   daily_digest : the entire local calendar day, gated by hour. Per-item
+    //                  dedupeKey prevents duplicates within the digest hour.
     let fetchStartMs: number;
     let fetchEndMs: number;
 
@@ -912,22 +912,11 @@ export class PollingService {
         return;
       }
 
-      const todayStart = startOfLocalDay(now, timeZone);
-      const alreadySentToday = await prisma.notificationHistory.findFirst({
-        where: {
-          eventType: 'upcomingPremiere',
-          createdAt: { gte: todayStart },
-        },
-      });
-      if (alreadySentToday) {
-        logger.debug('Skipping upcoming daily digest because one was already sent today', {
-          todayStart,
-          historyId: alreadySentToday.id,
-        }, { scope: 'polling' });
-        return;
-      }
-
-      fetchStartMs = todayStart.getTime();
+      // Per-item dedupeKey suppresses duplicates within the digest hour, so we
+      // don't need a coarse "any-row-today → bail" guard. Removing it also
+      // means a partial-failure digest can resume on the next poll instead of
+      // locking out the rest of the day's items.
+      fetchStartMs = startOfLocalDay(now, timeZone).getTime();
       fetchEndMs = endOfLocalDay(now, timeZone).getTime();
     } else {
       fetchStartMs = now.getTime() - BEFORE_AIR_GRACE_MIN * 60_000;
@@ -938,15 +927,11 @@ export class PollingService {
     const end = new Date(fetchEndMs).toISOString();
 
     // Helpers ----------------------------------------------------------------
-    const dayKey = (ms: number): string => {
-      const d = new Date(ms);
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-    };
-
     // For each candidate item we ask: "have we ever notified for this exact
-    // (item, air-date) pair?" If not, fire. The dedupeKey embeds the day so a
-    // reschedule cleanly produces a fresh notification. Body-string fallback
-    // preserves dedupe for rows created before the migration added dedupeKey.
+    // (item, air-time) pair?" If not, fire. The dedupeKey embeds the full air
+    // timestamp so any reschedule — even same-day — produces a fresh key and
+    // a fresh notification. Body-string fallback preserves dedupe for rows
+    // created before the migration added dedupeKey.
     const alreadyNotified = async (dedupeKey: string, body: string): Promise<boolean> => {
       const hit = await prisma.notificationHistory.findFirst({
         where: {
@@ -962,7 +947,7 @@ export class PollingService {
       const minsUntilAir = (airTimeMs - now.getTime()) / 60_000;
       return (
         minsUntilAir <= settings.upcomingNotifyBeforeMins &&
-        minsUntilAir > -BEFORE_AIR_GRACE_MIN
+        minsUntilAir >= -BEFORE_AIR_GRACE_MIN
       );
     };
 
@@ -1006,7 +991,7 @@ export class PollingService {
         const baseBody = `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
         const body = finaleLabel ? `${baseBody} (${finaleLabel})` : baseBody;
         const notificationTitle = ep.finaleType === 'series' ? 'Series Finale Airing Soon' : 'Upcoming Episode';
-        const dedupeKey = `sonarr-ep-${ep.id}-${dayKey(airTimeMs)}`;
+        const dedupeKey = `sonarr-ep-${ep.id}-${airTimeMs}`;
 
         if (await alreadyNotified(dedupeKey, body)) {
           logger.debug('Skipping duplicate Sonarr upcoming notification', {
@@ -1085,7 +1070,7 @@ export class PollingService {
           }
 
           const body = `${movie.title} (${movie.year}) — ${releaseTypeLabels[releaseType]}`;
-          const dedupeKey = `radarr-${movie.id}-${releaseType}-${dayKey(releaseMs)}`;
+          const dedupeKey = `radarr-${movie.id}-${releaseType}-${releaseMs}`;
 
           if (await alreadyNotified(dedupeKey, body)) {
             logger.debug('Skipping duplicate Radarr upcoming notification', {
