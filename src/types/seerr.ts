@@ -149,3 +149,12 @@ export interface SeerrMediaDetail {
   overview?: string;
   voteAverage?: number;
 }
+
+export interface EnrichedSeerrRequest extends SeerrRequest {
+  enriched: {
+    title: string | null;
+    year: number | null;
+    posterUrl: string | null;
+    helprr: { type: 'movie' | 'series'; id: number } | null;
+  };
+}

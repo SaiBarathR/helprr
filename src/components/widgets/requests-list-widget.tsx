@@ -25,9 +25,9 @@ import {
 import {
   SEERR_MEDIA_STATUS,
   SEERR_REQUEST_STATUS,
+  type EnrichedSeerrRequest,
   type SeerrRequestFilter,
 } from '@/types/seerr';
-import type { EnrichedSeerrRequest } from '@/app/api/seerr/requests/route';
 
 const ROW_HEIGHT = 64;
 const DEFAULT_FETCH_SIZE = 30;
@@ -138,10 +138,19 @@ export function RequestsListWidget({
 
   const [extraPages, setExtraPages] = useState<EnrichedSeerrRequest[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [exhausted, setExhausted] = useState(false);
+
+  // Independent cursor — advances by the size of the fetched page, not by how
+  // many rows we ended up rendering. If the upstream window shifts (a new
+  // request slid in, pushing duplicates into our skip range), this still moves
+  // forward instead of refetching the same offset forever.
+  const skipRef = useRef(0);
 
   // Reset accumulated pages whenever the underlying query identity changes.
   useEffect(() => {
     setExtraPages([]);
+    setExhausted(false);
+    skipRef.current = 0;
   }, [filter, take]);
 
   const firstPageItems = useMemo<EnrichedSeerrRequest[]>(
@@ -157,41 +166,50 @@ export function RequestsListWidget({
   }, [firstPageItems, extraPages, unbounded]);
 
   const totalResults = data?.pageInfo?.results ?? 0;
-  const hasMore = unbounded && items.length < totalResults;
+  const hasMore = unbounded && !exhausted && items.length < totalResults;
 
   const itemsLengthRef = useRef(items.length);
   itemsLengthRef.current = items.length;
 
   const loadMore = useCallback(async () => {
     if (!unbounded) return;
-    if (loadingMore) return;
+    if (loadingMore || exhausted) return;
     if (!data) return;
-    const currentCount = itemsLengthRef.current;
-    if (currentCount >= (data.pageInfo?.results ?? 0)) return;
+    // Use the larger of the cursor and the rendered count so we never refetch
+    // an offset we've already crossed.
+    const skip = Math.max(skipRef.current, itemsLengthRef.current);
+    if (skip >= (data.pageInfo?.results ?? 0)) {
+      setExhausted(true);
+      return;
+    }
 
     setLoadingMore(true);
     try {
-      const next = await fetchRequestsPage(filter, take, currentCount);
+      const next = await fetchRequestsPage(filter, take, skip);
+      let appended = 0;
       setExtraPages((prev) => {
-        // Use the latest first-page set when deduping, not the one captured
-        // when the effect started — avoids re-adding rows that the refresh
-        // tick pulled in just before.
-        const merged = [...prev, ...next.results];
-        const dedup: EnrichedSeerrRequest[] = [];
         const seen = new Set<number>();
-        for (const r of merged) {
+        for (const r of firstPageItems) seen.add(r.id);
+        for (const r of prev) seen.add(r.id);
+        const merged = [...prev];
+        for (const r of next.results) {
           if (seen.has(r.id)) continue;
           seen.add(r.id);
-          dedup.push(r);
+          merged.push(r);
+          appended++;
         }
-        return dedup;
+        return merged;
       });
+      skipRef.current = skip + next.results.length;
+      if (next.results.length === 0 || appended === 0) {
+        setExhausted(true);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to load more');
     } finally {
       setLoadingMore(false);
     }
-  }, [unbounded, loadingMore, data, filter, take]);
+  }, [unbounded, loadingMore, exhausted, data, filter, take, firstPageItems]);
 
   // IntersectionObserver on a sentinel at the bottom of the list — fires
   // loadMore the moment the user scrolls within `LOAD_MORE_ROOT_MARGIN` of it.
