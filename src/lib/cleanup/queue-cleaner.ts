@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import type { QBittorrentTorrent, QueueItem } from '@/types';
 import { getQBittorrentClient, getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { notifyEvent } from '@/lib/notification-service';
+import { classifyQueueIssue } from '@/lib/queue-state';
 import {
   activeHours,
   batchFetchTrackerDomains,
@@ -272,8 +273,18 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
         } else if (skip === 'notInClient') {
           skippedFailedImport++;
         } else {
-          const tds = linked.queueItem.trackedDownloadState;
-          const isFailed = tds === 'importFailed' || tds === 'downloadFailed';
+          // Original check was `tds === 'importFailed' || tds === 'downloadFailed'`
+          // — neither string is a valid Sonarr/Radarr v3 trackedDownloadState,
+          // so this rule has been a no-op. classifyQueueIssue returns
+          // 'import' for importBlocked / importPending+warning and 'download'
+          // for failed / failedPending, which matches the original intent
+          // (both kinds of terminal failure) plus the TBA-stuck importPending
+          // case the user explicitly opted into when they raised maxStrikes.
+          const issue = classifyQueueIssue(
+            linked.queueItem.trackedDownloadState,
+            linked.queueItem.trackedDownloadStatus,
+          );
+          const isFailed = issue !== null;
           if (isFailed) {
             const messages = collectStatusMessages(linked.queueItem);
             const matchesPats = matchesPatterns(messages, cfg.failedImport.patterns, cfg.failedImport.patternMode);
