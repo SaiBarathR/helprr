@@ -48,6 +48,14 @@ export async function middleware(request: NextRequest) {
   const token = request.cookies.get(COOKIE_NAME)?.value;
 
   if (!token) {
+    // Web Share Target POSTs hit /api/share directly from the OS share sheet.
+    // Returning a JSON 401 lands the user on a raw error page; instead redirect
+    // through /login so they can sign in and re-attempt the share manually.
+    if (pathname === '/api/share') {
+      return addSecurityHeaders(
+        NextResponse.redirect(new URL('/login?next=/share', request.url)),
+      );
+    }
     if (pathname.startsWith('/api/')) {
       return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
     }

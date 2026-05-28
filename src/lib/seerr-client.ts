@@ -113,6 +113,30 @@ export class SeerrClient {
     return this.get<SeerrMediaDetail>(`/${mediaType}/${tmdbId}`);
   }
 
+  /**
+   * Create a new Overseerr/Jellyseerr request.
+   *
+   * For TV requests, callers may pass an array of season numbers, the literal
+   * string `'all'`, or omit `seasons` entirely (Seerr's default is "all"). The
+   * `is4k` flag falls back to false to match the standard non-4K request flow.
+   */
+  async createRequest(params: {
+    mediaType: 'movie' | 'tv';
+    mediaId: number;
+    is4k?: boolean;
+    seasons?: number[] | 'all';
+  }): Promise<SeerrRequest> {
+    const body: Record<string, unknown> = {
+      mediaType: params.mediaType,
+      mediaId: params.mediaId,
+      is4k: params.is4k ?? false,
+    };
+    if (params.mediaType === 'tv' && params.seasons !== undefined) {
+      body.seasons = params.seasons;
+    }
+    return this.post<SeerrRequest>('/request', body);
+  }
+
   async listUsers(params: SeerrListUserParams = {}): Promise<SeerrPaginated<SeerrUserSummary>> {
     return this.get<SeerrPaginated<SeerrUserSummary>>('/user', {
       take: params.take ?? 100,
