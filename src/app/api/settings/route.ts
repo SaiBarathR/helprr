@@ -10,7 +10,7 @@ import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
 import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
-const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
+const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
 
 function parseIntegerSetting(
   value: unknown,
@@ -69,7 +69,7 @@ async function getHandler() {
  *
  * Accepts a JSON body with any of the following optional fields to update the singleton settings:
  * `pollingIntervalSecs`, `activityRefreshIntervalSecs`, `torrentsRefreshIntervalSecs`,
- * `upcomingAlertHours`, `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
+ * `upcomingNotifyMode`, `upcomingNotifyBeforeMins`, `upcomingDailyNotifyHour`.
  *
  * @param request - Incoming Next.js request whose JSON body supplies the settings to set or update.
  * @returns The resulting settings object as JSON on success; on failure returns `{ error: 'Failed to update settings' }` with HTTP status 500.
@@ -81,7 +81,7 @@ async function putHandler(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      pollingIntervalSecs, upcomingAlertHours,
+      pollingIntervalSecs,
       activityRefreshIntervalSecs, torrentsRefreshIntervalSecs,
       upcomingNotifyMode, upcomingNotifyBeforeMins, upcomingDailyNotifyHour,
       cacheImagesEnabled,
@@ -115,11 +115,6 @@ async function putHandler(request: NextRequest) {
       if ('error' in parsed) return parsed.error;
       data.torrentsRefreshIntervalSecs = parsed.value;
     }
-    if (upcomingAlertHours !== undefined) {
-      const parsed = parseIntegerSetting(upcomingAlertHours, 'Upcoming alert hours', 1, 8_760);
-      if ('error' in parsed) return parsed.error;
-      data.upcomingAlertHours = parsed.value;
-    }
     if (upcomingNotifyMode !== undefined) {
       if (typeof upcomingNotifyMode !== 'string' || !UPCOMING_NOTIFY_MODES.has(upcomingNotifyMode)) {
         return NextResponse.json(
@@ -130,7 +125,7 @@ async function putHandler(request: NextRequest) {
       data.upcomingNotifyMode = upcomingNotifyMode;
     }
     if (upcomingNotifyBeforeMins !== undefined) {
-      const parsed = parseIntegerSetting(upcomingNotifyBeforeMins, 'Upcoming notification lead time', 1, 10_080);
+      const parsed = parseIntegerSetting(upcomingNotifyBeforeMins, 'Upcoming notification lead time', 0, 10_080);
       if ('error' in parsed) return parsed.error;
       data.upcomingNotifyBeforeMins = parsed.value;
     }
@@ -207,7 +202,6 @@ async function putHandler(request: NextRequest) {
         logClientConsoleEnabled: (data.logClientConsoleEnabled as boolean | undefined) ?? true,
         logFailedRequestBodies: (data.logFailedRequestBodies as boolean | undefined) ?? false,
         logFailedResponseBodies: (data.logFailedResponseBodies as boolean | undefined) ?? false,
-        upcomingAlertHours: (data.upcomingAlertHours as number | undefined) ?? 24,
         upcomingNotifyMode: (data.upcomingNotifyMode as string | undefined) ?? 'before_air',
         upcomingNotifyBeforeMins: (data.upcomingNotifyBeforeMins as number | undefined) ?? 60,
         upcomingDailyNotifyHour: (data.upcomingDailyNotifyHour as number | undefined) ?? 9,

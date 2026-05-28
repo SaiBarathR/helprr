@@ -114,6 +114,13 @@ export function startOfLocalDay(input: Date | string | number, timeZone: string)
   return new TZDate(year, month - 1, day, 0, 0, 0, 0, tz);
 }
 
+export function endOfLocalDay(input: Date | string | number, timeZone: string): Date {
+  const tz = normalizeTimeZone(timeZone);
+  const parts = getLocalDateParts(input, timeZone) ?? getLocalDateParts(new Date(), tz)!;
+  const { year, month, day } = parts;
+  return new TZDate(year, month - 1, day, 23, 59, 59, 999, tz);
+}
+
 export function dateInTimeZone(
   timeZone: string,
   year: number,

@@ -17,21 +17,13 @@ import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { EventTypePrefs } from '@/components/notifications/event-type-prefs';
 
-const ALERT_WINDOW_OPTIONS = [
-  { value: '6', label: '6 hours' },
-  { value: '12', label: '12 hours' },
-  { value: '24', label: '24 hours' },
-  { value: '48', label: '48 hours' },
-  { value: '72', label: '72 hours' },
-];
-
 const TIMING_OPTIONS = [
   { value: 'before_air', label: 'Before air time' },
-  { value: 'once_in_window', label: 'Once when entering window' },
   { value: 'daily_digest', label: 'Daily digest' },
 ];
 
 const NOTIFY_BEFORE_OPTIONS = [
+  { value: '0', label: 'At air time' },
   { value: '15', label: '15 minutes' },
   { value: '30', label: '30 minutes' },
   { value: '60', label: '1 hour' },
@@ -229,29 +221,11 @@ export default function NotificationsSettingsPage() {
 
       <GroupedSection title="Upcoming releases" footer="Synced across devices">
         <div className="grouped-row">
-          <span className="text-sm">Alert window</span>
-          <Select
-            value={String(settings?.upcomingAlertHours ?? 24)}
-            onValueChange={(v) => void update({ upcomingAlertHours: parseInt(v, 10) })}
-            disabled={loading}
-          >
-            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ALERT_WINDOW_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="grouped-row">
           <span className="text-sm">Timing</span>
           <Select
             value={mode}
             onValueChange={(v) =>
-              void update({ upcomingNotifyMode: v as 'before_air' | 'once_in_window' | 'daily_digest' })
+              void update({ upcomingNotifyMode: v as 'before_air' | 'daily_digest' })
             }
             disabled={loading}
           >

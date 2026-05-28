@@ -17,8 +17,7 @@ export interface AppSettingsState {
   logClientConsoleEnabled: boolean;
   logFailedRequestBodies: boolean;
   logFailedResponseBodies: boolean;
-  upcomingAlertHours: number;
-  upcomingNotifyMode: 'before_air' | 'once_in_window' | 'daily_digest';
+  upcomingNotifyMode: 'before_air' | 'daily_digest';
   upcomingNotifyBeforeMins: number;
   upcomingDailyNotifyHour: number;
 }
@@ -65,7 +64,7 @@ async function fetchSettings(): Promise<AppSettingsState | null> {
 }
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
-const UPCOMING_NOTIFY_MODES = ['before_air', 'once_in_window', 'daily_digest'] as const;
+const UPCOMING_NOTIFY_MODES = ['before_air', 'daily_digest'] as const;
 
 function pickEnum<T extends readonly string[]>(
   value: unknown,
@@ -92,7 +91,6 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     logClientConsoleEnabled: raw.logClientConsoleEnabled !== false,
     logFailedRequestBodies: Boolean(raw.logFailedRequestBodies),
     logFailedResponseBodies: Boolean(raw.logFailedResponseBodies),
-    upcomingAlertHours: numberOr(raw.upcomingAlertHours, 24),
     upcomingNotifyMode: pickEnum(raw.upcomingNotifyMode, UPCOMING_NOTIFY_MODES, 'before_air'),
     upcomingNotifyBeforeMins: numberOr(raw.upcomingNotifyBeforeMins, 60),
     upcomingDailyNotifyHour: numberOr(raw.upcomingDailyNotifyHour, 9),

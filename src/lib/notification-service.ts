@@ -246,6 +246,7 @@ export async function notifyEvent(event: {
   body: string;
   metadata?: Record<string, unknown>;
   url?: string;
+  dedupeKey?: string;
 }): Promise<number> {
   const metadata = { ...(event.metadata ?? {}) };
   const metadataRedirect = typeof metadata.redirect === 'string' ? metadata.redirect : undefined;
@@ -299,6 +300,7 @@ export async function notifyEvent(event: {
       eventType: event.eventType,
       title: event.title,
       body: event.body,
+      dedupeKey: event.dedupeKey ?? null,
       metadata: JSON.parse(JSON.stringify({
         ...metadata,
         sentCount: sent,

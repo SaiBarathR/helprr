@@ -43,7 +43,7 @@ import {
 } from '@/lib/watchlist-helpers';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
-const UPCOMING_NOTIFY_MODES = new Set(['once_in_window', 'before_air', 'daily_digest']);
+const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
 
 // Watchlist field caps — match the regular POST /api/watchlist handler so an
 // imported backup can't smuggle past validations the live UI enforces.
@@ -125,12 +125,12 @@ function buildAppSettingsUpdate(
     out.logFailedRequestBodies = Boolean(input.logFailedRequestBodies);
   if (input.logFailedResponseBodies !== undefined)
     out.logFailedResponseBodies = Boolean(input.logFailedResponseBodies);
-  if (input.upcomingAlertHours !== undefined)
-    out.upcomingAlertHours = clampInt(input.upcomingAlertHours, 1, 8760, 24);
+  // `upcomingAlertHours` was removed; older exports may still carry it.
+  // Silently drop it — there is no corresponding column to write to.
   if (input.upcomingNotifyMode !== undefined)
     out.upcomingNotifyMode = pickEnum(input.upcomingNotifyMode, UPCOMING_NOTIFY_MODES, 'before_air');
   if (input.upcomingNotifyBeforeMins !== undefined)
-    out.upcomingNotifyBeforeMins = clampInt(input.upcomingNotifyBeforeMins, 1, 10_080, 60);
+    out.upcomingNotifyBeforeMins = clampInt(input.upcomingNotifyBeforeMins, 0, 10_080, 60);
   if (input.upcomingDailyNotifyHour !== undefined)
     out.upcomingDailyNotifyHour = clampInt(input.upcomingDailyNotifyHour, 0, 23, 9);
   return out;
@@ -170,7 +170,6 @@ async function applyAppSettingsInTxn(
       logClientConsoleEnabled: (data.logClientConsoleEnabled as boolean | undefined) ?? true,
       logFailedRequestBodies: (data.logFailedRequestBodies as boolean | undefined) ?? false,
       logFailedResponseBodies: (data.logFailedResponseBodies as boolean | undefined) ?? false,
-      upcomingAlertHours: (data.upcomingAlertHours as number | undefined) ?? 24,
       upcomingNotifyMode: (data.upcomingNotifyMode as string | undefined) ?? 'before_air',
       upcomingNotifyBeforeMins: (data.upcomingNotifyBeforeMins as number | undefined) ?? 60,
       upcomingDailyNotifyHour: (data.upcomingDailyNotifyHour as number | undefined) ?? 9,

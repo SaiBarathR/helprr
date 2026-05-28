@@ -21,7 +21,6 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     logClientConsoleEnabled: true,
     logFailedRequestBodies: false,
     logFailedResponseBodies: false,
-    upcomingAlertHours: 24,
     upcomingNotifyMode: 'before_air',
     upcomingNotifyBeforeMins: 60,
     upcomingDailyNotifyHour: 9,
