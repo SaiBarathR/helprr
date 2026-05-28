@@ -4,9 +4,10 @@ import { withApiLogging } from '@/lib/api-logger';
 
 /**
  * Receives the POST from the Web Share Target action declared in
- * `manifest.json`. The Android Chrome flow POSTs multipart/form-data;
- * iOS Shortcuts and manual URL flows GET with query params. Either way,
- * we forward to `/share` for the resolution UI.
+ * `manifest.json` (which is fixed to `method: POST`, `enctype:
+ * multipart/form-data`). We read the shared fields and forward to `/share`
+ * for the resolution UI. iOS Shortcuts and manual URL flows don't hit this
+ * route — they go to `/protocol` or `/share` directly with query params.
  *
  * We don't resolve here — that happens server-side on the /share page —
  * because /share is auth-gated by middleware and can render rich UI on

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { logger } from '@/lib/logger';
 import { tmdbImageUrl } from '@/lib/discover';
 import { getLibraryLookups } from '@/lib/watchlist-library-lookup';
 import { getCachedSeerrMediaDetail } from '@/lib/seerr-helpers';
@@ -175,8 +176,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json({ request: created });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create request';
-    return NextResponse.json({ error: message }, { status: 500 });
+    logger.error(
+      'Seerr create request failed',
+      error instanceof Error
+        ? { message: error.message, stack: error.stack }
+        : { error },
+      { scope: 'api/seerr/requests' }
+    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
