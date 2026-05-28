@@ -514,10 +514,14 @@ export default function EpisodeDetailPage() {
             <span>{tmdbEpisode?.runtime || series.runtime} min</span>
           </>
         )}
-        {episode.airDate && (
+        {(episode.airDateUtc || episode.airDate) && (
           <>
             <span className="text-muted-foreground/40">|</span>
-            <span>{format(new Date(episode.airDate), 'MMM d, yyyy')}</span>
+            <span>
+              {episode.airDateUtc
+                ? format(new Date(episode.airDateUtc), "MMM d, yyyy 'at' h:mm a")
+                : format(new Date(episode.airDate), 'MMM d, yyyy')}
+            </span>
           </>
         )}
       </div>

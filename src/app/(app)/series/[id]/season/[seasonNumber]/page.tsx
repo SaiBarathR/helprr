@@ -472,9 +472,11 @@ export default function SeasonDetailPage() {
                       MISSING
                     </Badge>
                   ) : null}
-                  {ep.airDate && (
+                  {(ep.airDateUtc || ep.airDate) && (
                     <span className="text-xs text-muted-foreground">
-                      {format(new Date(ep.airDate), 'MMM d, yyyy')}
+                      {ep.airDateUtc
+                        ? format(new Date(ep.airDateUtc), "MMM d, yyyy 'at' h:mm a")
+                        : format(new Date(ep.airDate), 'MMM d, yyyy')}
                     </span>
                   )}
                   {tmdbEp && tmdbEp.runtime && (
