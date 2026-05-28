@@ -1243,16 +1243,21 @@ export class PollingService {
       return;
     }
 
-    // Pull the digest window. Daily = past 24h ending now; weekly = past 7d.
-    const windowMs = period === 'daily' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
-    const windowStart = new Date(now.getTime() - windowMs);
+    // Pull the digest window, aligned to the local calendar so the title is
+    // accurate: daily = since midnight today; weekly = the trailing 7 local
+    // days (today plus the prior six), ending now.
+    const dayStart = startOfLocalDay(now, timeZone);
+    const windowStart =
+      period === 'daily'
+        ? dayStart
+        : new Date(dayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
     const rows = await prisma.notificationHistory.findMany({
       where: {
         createdAt: { gte: windowStart },
         // Don't summarize the digest itself.
         eventType: { not: 'activityDigest' },
       },
-      select: { eventType: true, title: true, body: true, metadata: true, createdAt: true },
+      select: { eventType: true, body: true, metadata: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
       take: 500,
     });

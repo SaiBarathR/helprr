@@ -14,7 +14,7 @@ export interface ActivityDigestResult {
 interface BuildOptions {
   period: ActivityDigestPeriod;
   /** History rows in the digest window, oldest-to-newest is fine — we re-sort. */
-  rows: Pick<NotificationHistory, 'eventType' | 'title' | 'body' | 'metadata' | 'createdAt'>[];
+  rows: Pick<NotificationHistory, 'eventType' | 'body' | 'metadata' | 'createdAt'>[];
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -114,7 +114,6 @@ export function buildActivityDigest(options: BuildOptions): ActivityDigestResult
 
   const sourceSummary = (() => {
     const entries = Object.entries(sourceCounts)
-      .filter(([source]) => source !== 'digest')
       .map(([source, count]) => `${count} ${SOURCE_LABELS[source] ?? source}`)
       .join(', ');
     return entries ? `via ${entries}` : '';
