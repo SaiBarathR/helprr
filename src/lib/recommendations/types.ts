@@ -17,6 +17,10 @@ export interface ForYouItem {
 
 export interface ForYouResponse {
   items: ForYouItem[];
-  /** True when no seeds were available (e.g. neither Sonarr nor Radarr configured). */
+  /**
+   * True when there are no recommendations to display — whether because no
+   * seeds were available (neither Sonarr nor Radarr configured), TMDB was
+   * unreachable, or the seeds produced no results.
+   */
   empty: boolean;
 }

@@ -136,6 +136,7 @@ export default function DownloadsSettingsPage() {
         return;
       }
       setRules(payload.schedule.rules);
+      setTimeZone(payload.timeZone);
       setActiveRuleId(payload.activeRuleId);
       setDirty(false);
       toast.success('Schedule saved');
@@ -296,6 +297,7 @@ function RuleCard({ rule, isActive, onChange, onRemove }: RuleCardProps) {
                 type="button"
                 onClick={() => toggleDay(dow)}
                 title={DAY_NAMES[dow]}
+                aria-label={DAY_NAMES[dow]}
                 className={`h-9 w-9 rounded-md text-xs font-mono transition-colors border ${
                   active
                     ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'

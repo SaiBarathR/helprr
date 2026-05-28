@@ -806,7 +806,7 @@ export class TmdbClient {
   }
 
   async findByExternalId(externalId: string, source: TmdbExternalSource): Promise<TmdbFindResponse> {
-    return this.get<TmdbFindResponse>(`/find/${externalId}`, { external_source: source });
+    return this.get<TmdbFindResponse>(`/find/${encodeURIComponent(externalId)}`, { external_source: source });
   }
 
   async movieGenres(): Promise<TmdbGenre[]> {
