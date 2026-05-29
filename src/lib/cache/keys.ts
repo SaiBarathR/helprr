@@ -40,6 +40,10 @@ export function buildJellyfinLookupKey(generation: number, keySeed: string): str
   return `helprr:cache:jellyfin-lookup:v${generation}:${sha256Hex(keySeed)}`;
 }
 
+export function buildLibraryGapsKey(generation: number): string {
+  return `helprr:cache:library-gaps:v${generation}`;
+}
+
 export function buildLockKey(scope: string, keySeed: string): string {
   return `helprr:cache:lock:${scope}:${sha256Hex(keySeed)}`;
 }

@@ -3,6 +3,7 @@ import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
+import { getCachedLibraryGaps, setCachedLibraryGaps } from '@/lib/cache/library-gaps-cache';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type {
@@ -26,12 +27,23 @@ function pad(n: number | undefined): string {
   return String(n ?? 0).padStart(2, '0');
 }
 
-function emptySection(id: LibraryGapSection['id'], available: boolean): LibraryGapSection {
-  return { id, count: 0, items: [], available };
+function emptySection(id: LibraryGapSection['id'], available: boolean, error = false): LibraryGapSection {
+  return { id, count: 0, items: [], available, error };
 }
 
-function toSection(id: LibraryGapSection['id'], items: LibraryGapItem[], available: boolean): LibraryGapSection {
-  return { id, count: items.length, items: items.slice(0, MAX_ITEMS_PER_SECTION), available };
+function toSection(
+  id: LibraryGapSection['id'],
+  items: LibraryGapItem[],
+  available: boolean,
+  opts: { count?: number; error?: boolean } = {}
+): LibraryGapSection {
+  return {
+    id,
+    count: opts.count ?? items.length,
+    items: items.slice(0, MAX_ITEMS_PER_SECTION),
+    available,
+    error: opts.error ?? false,
+  };
 }
 
 /**
@@ -75,7 +87,7 @@ function classifySeasons(series: SonarrSeries[] | null) {
       const stats = newest.statistics;
       if (
         stats &&
-        newest.monitored !== false &&
+        newest.monitored &&
         stats.episodeFileCount === 0 &&
         stats.episodeCount === 0 &&
         stats.totalEpisodeCount > 0
@@ -98,20 +110,21 @@ function classifySeasons(series: SonarrSeries[] | null) {
 }
 
 async function buildCollectionGaps(radarr: RadarrClient | null): Promise<LibraryGapSection> {
-  if (!radarr) return emptySection('collectionGaps', false);
+  if (!radarr) return emptySection('collectionGaps', false); // Radarr not connected
 
   const [collections, movies] = await Promise.all([
     radarr.getCollections().catch(() => null),
     radarr.getMovies().catch(() => null),
   ]);
 
-  if (!collections || !movies) return emptySection('collectionGaps', false);
+  if (!collections || !movies) return emptySection('collectionGaps', false, true); // configured but fetch failed
 
   const librarySet = new Set(movies.map((m) => m.tmdbId));
   const seen = new Set<number>();
   const items: LibraryGapItem[] = [];
 
   for (const collection of collections) {
+    if (!collection.monitored) continue; // only surface gaps from collections you actually track
     for (const part of collection.movies ?? []) {
       if (!part.tmdbId || librarySet.has(part.tmdbId) || seen.has(part.tmdbId)) continue;
       seen.add(part.tmdbId);
@@ -142,18 +155,27 @@ async function buildOverdue(
   radarr: RadarrClient | null,
   missingSeasonKeys: Set<string>
 ): Promise<LibraryGapSection> {
+  if (sonarr === null && radarr === null) return emptySection('overdue', false); // neither connected
+
   const [sonarrMissing, radarrMissing] = await Promise.all([
     sonarr ? sonarr.getWantedMissing(1, MAX_ITEMS_PER_SECTION).catch(() => null) : Promise.resolve(null),
     radarr ? radarr.getWantedMissing(1, MAX_ITEMS_PER_SECTION).catch(() => null) : Promise.resolve(null),
   ]);
 
-  const available = sonarrMissing !== null || radarrMissing !== null;
-  if (!available) return emptySection('overdue', false);
+  // Available when at least one configured service returned data; if every configured
+  // service failed, surface an error state rather than "not connected".
+  const available =
+    (sonarr !== null && sonarrMissing !== null) || (radarr !== null && radarrMissing !== null);
+  if (!available) return emptySection('overdue', false, true);
 
   const items: LibraryGapItem[] = [];
+  let dedupedCount = 0; // Sonarr episodes folded into a Missing Seasons row
 
   for (const ep of sonarrMissing?.records ?? []) {
-    if (missingSeasonKeys.has(`${ep.seriesId}:${ep.seasonNumber}`)) continue;
+    if (missingSeasonKeys.has(`${ep.seriesId}:${ep.seasonNumber}`)) {
+      dedupedCount++;
+      continue;
+    }
     items.push({
       key: `overdue-ep-${ep.id}`,
       title: `${ep.series?.title ?? 'Unknown'} — S${pad(ep.seasonNumber)}E${pad(ep.episodeNumber)}`,
@@ -178,12 +200,22 @@ async function buildOverdue(
     });
   }
 
-  return toSection('overdue', items, true);
+  // True backlog from upstream totals (across all pages), minus the page-1 episodes folded
+  // into Missing Seasons. May slightly overcount if a deduped season has further missing
+  // episodes beyond page 1, but never undercounts the rows actually shown.
+  const sonarrTotal = sonarrMissing?.totalRecords ?? 0;
+  const radarrTotal = radarrMissing?.totalRecords ?? 0;
+  const count = Math.max(0, sonarrTotal - dedupedCount) + radarrTotal;
+
+  return toSection('overdue', items, true, { count });
 }
 
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+
+  const cached = await getCachedLibraryGaps();
+  if (cached) return NextResponse.json(cached);
 
   try {
     const [sonarr, radarr] = await Promise.all([
@@ -191,8 +223,10 @@ async function getHandler(): Promise<NextResponse> {
       getRadarrClient().catch(() => null),
     ]);
 
+    // null client ⇒ Sonarr not configured; non-null client whose fetch fails ⇒ transient error.
     const series = sonarr ? await sonarr.getSeries().catch(() => null) : null;
-    const sonarrSeriesAvailable = series !== null;
+    const sonarrAvailable = sonarr !== null && series !== null;
+    const sonarrError = sonarr !== null && series === null;
     const { missing, upcoming, missingKeys } = classifySeasons(series);
 
     const [collectionGaps, overdue] = await Promise.all([
@@ -202,12 +236,17 @@ async function getHandler(): Promise<NextResponse> {
 
     const response: LibraryGapsResponse = {
       sections: [
-        toSection('missingSeasons', missing, sonarrSeriesAvailable),
-        toSection('newUpcoming', upcoming, sonarrSeriesAvailable),
+        toSection('missingSeasons', missing, sonarrAvailable, { error: sonarrError }),
+        toSection('newUpcoming', upcoming, sonarrAvailable, { error: sonarrError }),
         collectionGaps,
         overdue,
       ],
     };
+
+    // Cache only fully-healthy responses so transient failures self-heal on the next load.
+    if (response.sections.every((s) => !s.error)) {
+      await setCachedLibraryGaps(response);
+    }
 
     return NextResponse.json(response);
   } catch (error) {
