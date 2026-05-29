@@ -63,8 +63,10 @@ async function getHandler(
     }
 
     const tmdb = await getTMDBClient();
-    const appSettings = await getOrCreateAppSettings();
-    const details = await tmdb.tvDetails(id);
+    const [details, appSettings] = await Promise.all([
+      tmdb.tvDetails(id),
+      getOrCreateAppSettings(),
+    ]);
 
     const [
       externalIdsResult,

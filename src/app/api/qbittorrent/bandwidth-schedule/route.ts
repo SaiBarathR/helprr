@@ -53,6 +53,33 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // The count check above catches dropped rules, but parseRule also silently
+  // normalizes two fields while keeping the rule: it dedupes/sorts daysOfWeek
+  // and trims/truncates/defaults the name. Reject those so a save never
+  // persists values the user didn't actually enter. Rules align positionally
+  // here because the count matched (parse preserves order when nothing drops).
+  for (let i = 0; i < parsed.rules.length; i++) {
+    const raw = incoming.rules[i] as Record<string, unknown>;
+    const rule = parsed.rules[i];
+    if (raw.name !== rule.name) {
+      return NextResponse.json(
+        { error: `Rule name must be trimmed, non-empty, and at most 80 characters` },
+        { status: 400 }
+      );
+    }
+    const rawDays = raw.daysOfWeek;
+    if (
+      !Array.isArray(rawDays) ||
+      rawDays.length !== rule.daysOfWeek.length ||
+      rule.daysOfWeek.some((d, j) => d !== rawDays[j])
+    ) {
+      return NextResponse.json(
+        { error: 'Days of week must be unique and sorted ascending' },
+        { status: 400 }
+      );
+    }
+  }
+
   const persisted = parsed as unknown as Prisma.InputJsonValue;
   await prisma.appSettings.upsert({
     where: { id: 'singleton' },

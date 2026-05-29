@@ -8,6 +8,7 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { configureLogger } from '@/lib/logger';
 import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
 import { getEnvTimeZone, isValidTimeZone, setAppTimeZone } from '@/lib/timezone';
+import { normalizeRegionCode } from '@/lib/region';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
@@ -188,16 +189,10 @@ async function putHandler(request: NextRequest) {
     if (logFailedResponseBodies !== undefined)
       data.logFailedResponseBodies = Boolean(logFailedResponseBodies);
     if (watchProviderRegion !== undefined) {
-      if (typeof watchProviderRegion !== 'string') {
+      const code = normalizeRegionCode(watchProviderRegion);
+      if (!code) {
         return NextResponse.json(
-          { error: 'Watch provider region must be an ISO 3166-1 alpha-2 code' },
-          { status: 400 }
-        );
-      }
-      const code = watchProviderRegion.trim().toUpperCase();
-      if (!/^[A-Z]{2}$/.test(code)) {
-        return NextResponse.json(
-          { error: 'Watch provider region must be a 2-letter ISO country code' },
+          { error: 'Watch provider region must be a 2-letter ISO 3166-1 alpha-2 code' },
           { status: 400 }
         );
       }

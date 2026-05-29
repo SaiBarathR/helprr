@@ -4,6 +4,7 @@ import { getTMDBClient } from '@/lib/service-helpers';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import { withApiLogging } from '@/lib/api-logger';
 import { logger } from '@/lib/logger';
+import { normalizeRegionCode } from '@/lib/region';
 
 /**
  * Returns the list of TMDB watch-provider regions sorted by English name.
@@ -22,8 +23,8 @@ async function getHandler(): Promise<NextResponse> {
     const tmdb = await getTMDBClient();
     const regions = await tmdb.watchProviderRegions();
     const formatted = regions
-      .map((r) => ({ code: String(r.iso_3166_1).toUpperCase(), name: r.english_name }))
-      .filter((r) => /^[A-Z]{2}$/.test(r.code) && r.name)
+      .map((r) => ({ code: normalizeRegionCode(r.iso_3166_1), name: r.english_name }))
+      .filter((r): r is { code: string; name: string } => Boolean(r.code && r.name))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     return NextResponse.json({ regions: formatted });

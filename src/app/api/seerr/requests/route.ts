@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAxiosError } from 'axios';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
@@ -158,13 +159,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'tmdbId must be a positive integer' }, { status: 400 });
   }
   const is4k = body.is4k === true;
-  const seasons = parseSeasons(body.seasons);
-  if (body.seasons !== undefined && seasons === undefined) {
+  const parsedSeasons = parseSeasons(body.seasons);
+  if (body.seasons !== undefined && parsedSeasons === undefined) {
     return NextResponse.json(
       { error: "seasons must be 'all' or an array of non-negative integers" },
       { status: 400 }
     );
   }
+  // An empty array means "no seasons specified" — fall back to the 'all' default
+  // (createRequest sends 'all') rather than forwarding a zero-season request.
+  const seasons =
+    Array.isArray(parsedSeasons) && parsedSeasons.length === 0 ? undefined : parsedSeasons;
 
   try {
     const client = await getSeerrClient();
@@ -183,6 +188,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         : { error },
       { scope: 'api/seerr/requests' }
     );
+    // Surface client-level upstream errors (e.g. 409 "already requested",
+    // 400 validation) with Seerr's own status + message so the caller can tell
+    // a duplicate from a genuine fault. Seerr's message is user-facing API
+    // copy, not sensitive internals. Anything else stays a generic 500.
+    if (isAxiosError(error) && error.response && error.response.status < 500) {
+      const data = error.response.data as { message?: unknown } | undefined;
+      const message =
+        typeof data?.message === 'string' ? data.message : 'Seerr rejected the request';
+      return NextResponse.json({ error: message }, { status: error.response.status });
+    }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
