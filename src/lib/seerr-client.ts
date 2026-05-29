@@ -134,7 +134,10 @@ export class SeerrClient {
       is4k: params.is4k ?? false,
     };
     if (params.mediaType === 'tv') {
-      body.seasons = params.seasons ?? 'all';
+      body.seasons =
+        Array.isArray(params.seasons) && params.seasons.length === 0
+          ? 'all'
+          : params.seasons ?? 'all';
     }
     return this.post<SeerrRequest>('/request', body);
   }
