@@ -149,6 +149,8 @@ function GapSectionView({ section }: { section: LibraryGapSection }) {
         <h2 className="text-sm font-semibold">{meta.title}</h2>
         {section.available ? (
           <Badge variant="secondary" className="text-[10px]">{section.count}</Badge>
+        ) : section.error ? (
+          <Badge variant="outline" className="text-[10px]">{meta.service} unavailable</Badge>
         ) : (
           <Badge variant="outline" className="text-[10px]">{meta.service} not connected</Badge>
         )}

@@ -595,15 +595,11 @@ export interface RadarrCollection {
 }
 
 // Library Gaps page
-export type LibraryGapSearchKind = 'episode' | 'season' | 'movie' | 'none';
-
-export interface LibraryGapSearchTarget {
-  kind: LibraryGapSearchKind;
-  sonarrSeriesId?: number;
-  seasonNumber?: number;
-  episodeId?: number;
-  radarrMovieId?: number;
-}
+export type LibraryGapSearchTarget =
+  | { kind: 'episode'; episodeId: number }
+  | { kind: 'season'; sonarrSeriesId: number; seasonNumber: number }
+  | { kind: 'movie'; radarrMovieId: number }
+  | { kind: 'none' };
 
 export interface LibraryGapItem {
   key: string;
@@ -624,7 +620,8 @@ export interface LibraryGapSection {
   id: LibraryGapSectionId;
   count: number; // true total found (may exceed items.length when truncated)
   items: LibraryGapItem[];
-  available: boolean; // false when the backing service is unconfigured/down
+  available: boolean; // false when the backing service is unconfigured or its fetch failed
+  error?: boolean; // true when the service is configured but the fetch failed (vs. simply not connected)
 }
 
 export interface LibraryGapsResponse {
