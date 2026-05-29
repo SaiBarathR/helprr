@@ -16,6 +16,7 @@ import {
   Bookmark,
   Dices,
   Inbox,
+  LibraryBig,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -29,6 +30,7 @@ export type NavItemId =
   | 'requests'
   | 'random'
   | 'calendar'
+  | 'library-gaps'
   | 'torrents'
   | 'cleanup'
   | 'prowlarr'
@@ -58,6 +60,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests' },
   { id: 'random', href: '/random', icon: Dices, label: 'Random Watch', shortLabel: 'Random' },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar' },
+  { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps' },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents' },
   { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup' },
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr' },

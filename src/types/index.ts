@@ -576,6 +576,61 @@ export interface WantedResponse {
   records: WantedMissingRecord[];
 }
 
+// Radarr collections (GET /api/v3/collection) — only the fields the gaps page uses
+export interface RadarrCollectionMovie {
+  tmdbId: number;
+  title: string;
+  year?: number;
+  images?: MediaImage[];
+  monitored?: boolean;
+}
+
+export interface RadarrCollection {
+  id: number;
+  title: string;
+  tmdbId?: number;
+  monitored: boolean;
+  images?: MediaImage[];
+  movies: RadarrCollectionMovie[];
+}
+
+// Library Gaps page
+export type LibraryGapSearchKind = 'episode' | 'season' | 'movie' | 'none';
+
+export interface LibraryGapSearchTarget {
+  kind: LibraryGapSearchKind;
+  sonarrSeriesId?: number;
+  seasonNumber?: number;
+  episodeId?: number;
+  radarrMovieId?: number;
+}
+
+export interface LibraryGapItem {
+  key: string;
+  title: string;
+  subtitle?: string;
+  date?: string; // ISO; rendered as relative time client-side
+  year?: number;
+  poster: string | null;
+  href?: string;
+  search: LibraryGapSearchTarget;
+  collectionTitle?: string;
+  tmdbId?: number;
+}
+
+export type LibraryGapSectionId = 'missingSeasons' | 'newUpcoming' | 'collectionGaps' | 'overdue';
+
+export interface LibraryGapSection {
+  id: LibraryGapSectionId;
+  count: number; // true total found (may exceed items.length when truncated)
+  items: LibraryGapItem[];
+  available: boolean; // false when the backing service is unconfigured/down
+}
+
+export interface LibraryGapsResponse {
+  sections: LibraryGapSection[];
+}
+
 // Radarr Credit
 export interface RadarrCredit {
   id: number;
