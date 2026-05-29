@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
   RadarrMovie,
+  RadarrCollection,
   RadarrCalendarEntry,
   RadarrCredit,
   RadarrRenamePreview,
@@ -148,6 +149,11 @@ export class RadarrClient {
   // Calendar
   async getCalendar(start: string, end: string): Promise<RadarrCalendarEntry[]> {
     return this.get<RadarrCalendarEntry[]>('/api/v3/calendar', { start, end });
+  }
+
+  // Collections
+  async getCollections(): Promise<RadarrCollection[]> {
+    return this.get<RadarrCollection[]>('/api/v3/collection');
   }
 
   // Queue
