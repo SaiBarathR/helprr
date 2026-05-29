@@ -168,7 +168,8 @@ async function buildOverdue(
     (sonarr !== null && sonarrMissing !== null) || (radarr !== null && radarrMissing !== null);
   if (!available) return emptySection('overdue', false, true);
 
-  const items: LibraryGapItem[] = [];
+  const sonarrItems: LibraryGapItem[] = [];
+  const radarrItems: LibraryGapItem[] = [];
   let dedupedCount = 0; // Sonarr episodes folded into a Missing Seasons row
 
   for (const ep of sonarrMissing?.records ?? []) {
@@ -176,7 +177,7 @@ async function buildOverdue(
       dedupedCount++;
       continue;
     }
-    items.push({
+    sonarrItems.push({
       key: `overdue-ep-${ep.id}`,
       title: `${ep.series?.title ?? 'Unknown'} — S${pad(ep.seasonNumber)}E${pad(ep.episodeNumber)}`,
       subtitle: ep.title || undefined,
@@ -188,7 +189,7 @@ async function buildOverdue(
   }
 
   for (const movie of radarrMissing?.records ?? []) {
-    items.push({
+    radarrItems.push({
       key: `overdue-movie-${movie.id}`,
       title: movie.title,
       subtitle: movie.year ? String(movie.year) : undefined,
@@ -198,6 +199,14 @@ async function buildOverdue(
       href: `/movies/${movie.id}`,
       search: { kind: 'movie', radarrMovieId: movie.id },
     });
+  }
+
+  // Interleave the two sources so both survive the MAX_ITEMS_PER_SECTION slice in toSection;
+  // concatenating would let a full page of Sonarr episodes push every Radarr movie out of view.
+  const items: LibraryGapItem[] = [];
+  for (let i = 0; i < Math.max(sonarrItems.length, radarrItems.length); i++) {
+    if (i < sonarrItems.length) items.push(sonarrItems[i]);
+    if (i < radarrItems.length) items.push(radarrItems[i]);
   }
 
   // True backlog from upstream totals (across all pages), minus the page-1 episodes folded
