@@ -23,6 +23,8 @@ interface TimePickerProps {
   onChange: (value: string) => void
   disabled?: boolean
   className?: string
+  /** Show the seconds (SS) column. Defaults to true. */
+  showSeconds?: boolean
 }
 
 function parseTime(value: string): [string, string, string] {
@@ -39,7 +41,7 @@ function pad(value: string | number): string {
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"))
 const SIXTIES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"))
 
-export function TimePicker({ value, onChange, disabled, className }: TimePickerProps) {
+export function TimePicker({ value, onChange, disabled, className, showSeconds = true }: TimePickerProps) {
   const [hours, minutes, seconds] = parseTime(value)
 
   function emit(h: string, m: string, s: string) {
@@ -59,7 +61,7 @@ export function TimePicker({ value, onChange, disabled, className }: TimePickerP
           )}
         >
           <Clock className="h-4 w-4 text-muted-foreground" />
-          {`${hours}:${minutes}:${seconds}`}
+          {showSeconds ? `${hours}:${minutes}:${seconds}` : `${hours}:${minutes}`}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-auto p-3">
@@ -77,13 +79,17 @@ export function TimePicker({ value, onChange, disabled, className }: TimePickerP
             value={minutes}
             onChange={(v) => emit(hours, v, seconds)}
           />
-          <span className="text-muted-foreground">:</span>
-          <TimeColumn
-            label="SS"
-            options={SIXTIES}
-            value={seconds}
-            onChange={(v) => emit(hours, minutes, v)}
-          />
+          {showSeconds && (
+            <>
+              <span className="text-muted-foreground">:</span>
+              <TimeColumn
+                label="SS"
+                options={SIXTIES}
+                value={seconds}
+                onChange={(v) => emit(hours, minutes, v)}
+              />
+            </>
+          )}
         </div>
       </PopoverContent>
     </Popover>

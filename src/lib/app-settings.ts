@@ -32,11 +32,17 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
 }
 
 export async function getOrCreateAppSettings() {
-  const settings = await prisma.appSettings.upsert({
-    where: { id: 'singleton' },
-    update: {},
-    create: buildDefaultAppSettings(),
-  });
+  // Read-first: once the singleton row exists (the steady state) this is a
+  // plain SELECT. Only fall back to an upsert when the row is missing, so the
+  // many per-cycle callers don't each issue a write. The upsert remains
+  // race-safe — concurrent first-time callers converge on the same row.
+  const settings =
+    (await prisma.appSettings.findUnique({ where: { id: 'singleton' } })) ??
+    (await prisma.appSettings.upsert({
+      where: { id: 'singleton' },
+      update: {},
+      create: buildDefaultAppSettings(),
+    }));
 
   return {
     ...settings,

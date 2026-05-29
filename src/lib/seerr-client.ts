@@ -117,8 +117,10 @@ export class SeerrClient {
    * Create a new Overseerr/Jellyseerr request.
    *
    * For TV requests, callers may pass an array of season numbers, the literal
-   * string `'all'`, or omit `seasons` entirely (Seerr's default is "all"). The
-   * `is4k` flag falls back to false to match the standard non-4K request flow.
+   * string `'all'`, or omit `seasons` entirely. Seerr's POST /request rejects a
+   * TV request whose `seasons` is missing/empty, so we send `'all'` explicitly
+   * when no seasons are given rather than omitting the field. The `is4k` flag
+   * falls back to false to match the standard non-4K request flow.
    */
   async createRequest(params: {
     mediaType: 'movie' | 'tv';
@@ -131,8 +133,8 @@ export class SeerrClient {
       mediaId: params.mediaId,
       is4k: params.is4k ?? false,
     };
-    if (params.mediaType === 'tv' && params.seasons !== undefined) {
-      body.seasons = params.seasons;
+    if (params.mediaType === 'tv') {
+      body.seasons = params.seasons ?? 'all';
     }
     return this.post<SeerrRequest>('/request', body);
   }

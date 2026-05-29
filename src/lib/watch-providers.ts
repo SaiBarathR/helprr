@@ -6,9 +6,9 @@ import type {
   DiscoverWatchProviderEntry,
   DiscoverWatchProviders,
 } from '@/types';
+import { FALLBACK_REGION, normalizeRegionCode } from '@/lib/region';
 
 const TMDB_LOGO_BASE = 'https://image.tmdb.org/t/p/w92';
-const FALLBACK_REGION = 'US';
 
 function mapEntries(
   list: TmdbWatchProviderEntry[] | undefined,
@@ -34,9 +34,7 @@ function hasAnyEntries(
 }
 
 function normalizeRegion(code: string | null | undefined): string {
-  if (!code) return FALLBACK_REGION;
-  const trimmed = code.trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(trimmed) ? trimmed : FALLBACK_REGION;
+  return normalizeRegionCode(code) ?? FALLBACK_REGION;
 }
 
 /**

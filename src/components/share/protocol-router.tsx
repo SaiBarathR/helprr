@@ -33,12 +33,19 @@ export function ProtocolRouter({ command, params }: ProtocolRouterProps) {
         setStatus('running');
 
         const mediaType = params.type === 'tv' || params.mediaType === 'tv' ? 'tv' : 'movie';
-        const tmdbId = Number(params.tmdbId);
+        // Accept the id from ?tmdbId= or from a positional path segment, so both
+        // helprr://watchlist?tmdbId=123 and helprr://watchlist/add/123 work
+        // (protocol/page.tsx stashes trailing path segments in params.args).
+        const positionalId = params.args?.split('/').find((s) => /^\d+$/.test(s));
+        // Number('') is 0 and Number.isFinite(0) is true, so guard on a positive
+        // integer to reject empty/zero/fractional tmdbId values.
+        const tmdbId = Number(params.tmdbId || positionalId);
+        const hasValidTmdbId = Number.isInteger(tmdbId) && tmdbId > 0;
 
         switch (command) {
           case 'watchlist':
           case 'watchlist/add': {
-            if (!Number.isFinite(tmdbId)) throw new Error('tmdbId is required');
+            if (!hasValidTmdbId) throw new Error('tmdbId is required');
             await addToWatchlist({
               tmdbId,
               mediaType: mediaType === 'tv' ? 'series' : 'movie',
@@ -52,7 +59,7 @@ export function ProtocolRouter({ command, params }: ProtocolRouterProps) {
             return;
           }
           case 'request': {
-            if (!Number.isFinite(tmdbId)) throw new Error('tmdbId is required');
+            if (!hasValidTmdbId) throw new Error('tmdbId is required');
             await createSeerrRequest({ tmdbId, mediaType });
             setStatus('done');
             setMessage('Request submitted');

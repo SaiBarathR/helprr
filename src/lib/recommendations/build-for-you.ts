@@ -23,10 +23,14 @@ interface BuildInput {
    * failure that we already absorbed at the API layer).
    */
   recommendationsBySeed: Map<string, TmdbListItem[]>;
-  /** TMDB ids of titles already in the user's Sonarr/Radarr library. */
-  libraryTmdbIds: Set<number>;
-  /** TMDB ids of titles in the watchlist. */
-  watchlistTmdbIds: Set<number>;
+  /**
+   * Keys (`${mediaType}:${tmdbId}`) of titles already in the user's
+   * Sonarr/Radarr library. Keyed by media type because TMDB's movie and TV id
+   * namespaces overlap — a movie #1399 must not suppress an unrelated TV #1399.
+   */
+  libraryKeys: Set<string>;
+  /** Keys (`${mediaType}:${tmdbId}`) of titles in the watchlist. */
+  watchlistKeys: Set<string>;
   /** Cap on returned items. */
   limit: number;
 }
@@ -63,7 +67,7 @@ function detailHref(mediaType: 'movie' | 'tv', id: number): string {
  * the user keeps engaging with."
  */
 export function buildForYou(input: BuildInput): ForYouItem[] {
-  const { seeds, recommendationsBySeed, libraryTmdbIds, watchlistTmdbIds, limit } = input;
+  const { seeds, recommendationsBySeed, libraryKeys, watchlistKeys, limit } = input;
 
   const accumulator = new Map<
     string,
@@ -72,6 +76,9 @@ export function buildForYou(input: BuildInput): ForYouItem[] {
       mediaType: 'movie' | 'tv';
       score: number;
       reason: string;
+      // Weight of the seed that produced `reason`, so a later, higher-weight
+      // seed can relabel the item to credit the strongest contributor.
+      reasonWeight: number;
     }
   >();
 
@@ -79,22 +86,28 @@ export function buildForYou(input: BuildInput): ForYouItem[] {
     const recs = recommendationsBySeed.get(seedKey(seed)) ?? [];
     for (const rec of recs) {
       if (!rec.id) continue;
-      if (libraryTmdbIds.has(rec.id)) continue;
-      if (watchlistTmdbIds.has(rec.id)) continue;
 
       const key = `${seed.mediaType}:${rec.id}`;
+      if (libraryKeys.has(key)) continue;
+      if (watchlistKeys.has(key)) continue;
+
       const vote = typeof rec.vote_average === 'number' ? rec.vote_average : 0;
       const contribution = seed.weight + Math.min(0.1, vote / 100);
 
       const existing = accumulator.get(key);
       if (existing) {
         existing.score += contribution;
+        if (seed.weight > existing.reasonWeight) {
+          existing.reason = `Like ${seed.title}`;
+          existing.reasonWeight = seed.weight;
+        }
       } else {
         accumulator.set(key, {
           item: rec,
           mediaType: seed.mediaType,
           score: contribution,
           reason: `Like ${seed.title}`,
+          reasonWeight: seed.weight,
         });
       }
     }

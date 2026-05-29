@@ -69,7 +69,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     })(),
     prisma.watchlistItem.findMany({
       where: { source: 'TMDB' },
-      select: { externalId: true },
+      select: { externalId: true, mediaType: true },
     }),
   ]);
 
@@ -85,18 +85,21 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   // TMDB-driven library set: titles we already own (and shouldn't recommend).
-  const libraryTmdbIds = new Set<number>();
+  // Keyed by `${mediaType}:${tmdbId}` because TMDB movie/TV ids overlap.
+  const libraryKeys = new Set<string>();
   for (const s of series) {
-    if (typeof s.tmdbId === 'number' && s.tmdbId > 0) libraryTmdbIds.add(s.tmdbId);
+    if (typeof s.tmdbId === 'number' && s.tmdbId > 0) libraryKeys.add(`tv:${s.tmdbId}`);
   }
   for (const m of movies) {
-    if (typeof m.tmdbId === 'number' && m.tmdbId > 0) libraryTmdbIds.add(m.tmdbId);
+    if (typeof m.tmdbId === 'number' && m.tmdbId > 0) libraryKeys.add(`movie:${m.tmdbId}`);
   }
 
-  const watchlistTmdbIds = new Set<number>();
+  const watchlistKeys = new Set<string>();
   for (const w of watchlistRows) {
     const id = Number(w.externalId);
-    if (Number.isFinite(id)) watchlistTmdbIds.add(id);
+    if (!Number.isFinite(id)) continue;
+    const mediaType = w.mediaType === 'series' ? 'tv' : 'movie';
+    watchlistKeys.add(`${mediaType}:${id}`);
   }
 
   let tmdb;
@@ -128,8 +131,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const items = buildForYou({
     seeds,
     recommendationsBySeed,
-    libraryTmdbIds,
-    watchlistTmdbIds,
+    libraryKeys,
+    watchlistKeys,
     limit,
   });
 

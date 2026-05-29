@@ -70,7 +70,8 @@ function pluralize(count: number, { singular, plural }: { singular: string; plur
  */
 export function buildActivityDigest(options: BuildOptions): ActivityDigestResult {
   const { period, rows } = options;
-  const noun = period === 'weekly' ? 'This week' : 'Today';
+  // Daily digest summarizes the prior full local day, so "Yesterday".
+  const noun = period === 'weekly' ? 'This week' : 'Yesterday';
   const title = `${noun} on Helprr`;
 
   const counts: Record<string, number> = {};

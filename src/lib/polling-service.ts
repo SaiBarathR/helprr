@@ -4,7 +4,7 @@ import { SEERR_MEDIA_STATUS, SEERR_REQUEST_STATUS } from '@/types/seerr';
 import { getCachedSeerrMediaDetail, formatSeerrMediaLabel } from '@/lib/seerr-helpers';
 import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
-import { startOfLocalDay, endOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { startOfLocalDay, endOfLocalDay, toZonedDate, dateInTimeZone } from '@/lib/timezone';
 import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
@@ -1218,8 +1218,12 @@ export class PollingService {
     const localDow = zoned.getDay(); // 0=Sun..6=Sat
     const localDateLabel = `${zoned.getFullYear()}-${String(zoned.getMonth() + 1).padStart(2, '0')}-${String(zoned.getDate()).padStart(2, '0')}`;
 
-    if (localHour !== settings.activityDigestHour) {
-      logger.debug('Skipping activity digest outside configured hour', {
+    // Catch-up: fire on the first poll AT OR AFTER the configured hour rather
+    // than only on the exact hour, so a missed hour (downtime, deploy, DST gap)
+    // still sends later the same day. The per-window dedupeKey below guarantees
+    // it only sends once.
+    if (localHour < settings.activityDigestHour) {
+      logger.debug('Skipping activity digest before configured hour', {
         period,
         localHour,
         digestHour: settings.activityDigestHour,
@@ -1239,9 +1243,10 @@ export class PollingService {
     }
 
     // dedupeKey carries period + local date so a daily digest and a weekly
-    // digest landing on the same morning don't collide. notifyEvent checks
-    // NotificationHistory for an existing row with the same dedupeKey before
-    // sending, mirroring the upcoming-digest pattern.
+    // digest landing on the same morning don't collide. notifyEvent itself does
+    // NOT dedupe (it only stamps dedupeKey onto the history row it writes), so
+    // the findFirst guard below is what prevents re-sending within the window —
+    // do not remove it.
     const dedupeKey = `activity-digest-${period}-${localDateLabel}`;
     const existing = await prisma.notificationHistory.findFirst({
       where: { eventType: 'activityDigest', dedupeKey },
@@ -1255,17 +1260,24 @@ export class PollingService {
       return;
     }
 
-    // Pull the digest window, aligned to the local calendar so the title is
-    // accurate: daily = since midnight today; weekly = the trailing 7 local
-    // days (today plus the prior six), ending now.
+    // Pull the digest window, aligned to the local calendar. Windows are
+    // computed via calendar arithmetic (not fixed ms math) so a DST transition
+    // inside the window doesn't shift the boundary by an hour.
+    //   daily  = the prior full local day [yesterday 00:00, today 00:00) — fired
+    //            in the morning it summarizes the complete previous day rather
+    //            than the few hours since midnight.
+    //   weekly = the trailing 7 local days (today plus the prior six), ending now.
     const dayStart = startOfLocalDay(now, timeZone);
     const windowStart =
       period === 'daily'
-        ? dayStart
-        : new Date(dayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+        ? dateInTimeZone(timeZone, zoned.getFullYear(), zoned.getMonth(), zoned.getDate() - 1)
+        : dateInTimeZone(timeZone, zoned.getFullYear(), zoned.getMonth(), zoned.getDate() - 6);
+    // Daily is a closed prior-day window; weekly runs up to now (no upper bound).
+    const createdAt =
+      period === 'daily' ? { gte: windowStart, lt: dayStart } : { gte: windowStart };
     const rows = await prisma.notificationHistory.findMany({
       where: {
-        createdAt: { gte: windowStart },
+        createdAt,
         // Don't summarize the digest itself.
         eventType: { not: 'activityDigest' },
       },
@@ -1305,27 +1317,58 @@ export class PollingService {
     });
   }
 
+  // Restore qBit to unlimited (0) if — and only if — we previously applied a
+  // limit. This lifts the throttle when a rule's window ends or when the user
+  // deletes all rules. When we never applied one, it's a no-op, preserving the
+  // strict-additive promise of leaving the user's manual limits alone. Tracking
+  // is held until the restore succeeds so a transient qBit outage retries next
+  // poll rather than silently dropping the release.
+  private async releaseAppliedBandwidth(context: string): Promise<void> {
+    const previous = this.appliedBandwidth;
+    if (!previous) return;
+
+    let client;
+    try {
+      client = await getQBittorrentClient();
+    } catch (error) {
+      logger.debug('Bandwidth schedule: release deferred, qBittorrent unavailable; will retry', { context, error }, { scope: 'polling' });
+      return;
+    }
+
+    try {
+      await Promise.all([
+        client.setGlobalDownloadLimit(0),
+        client.setGlobalUploadLimit(0),
+      ]);
+      logger.info('Bandwidth schedule: restored unlimited', {
+        context,
+        previousRuleId: previous.ruleId,
+      }, { scope: 'polling' });
+      this.appliedBandwidth = null;
+    } catch (error) {
+      logger.warn('Failed to restore bandwidth', {
+        context,
+        previousRuleId: previous.ruleId,
+        error,
+      }, { scope: 'polling' });
+    }
+  }
+
   private async applyBandwidthSchedule(): Promise<void> {
     const settings = await getOrCreateAppSettings();
     const schedule = parseBandwidthSchedule(settings.qbtBandwidthSchedule);
     if (schedule.rules.length === 0) {
-      // Empty schedule. Strict additive: never touch qBit when no rules exist.
-      // Forget any prior intent so the user can manage limits manually.
-      this.appliedBandwidth = null;
+      // No rules (or all deleted). Release any throttle we applied so the limit
+      // lifts; if we never applied one, this leaves the user's settings alone.
+      await this.releaseAppliedBandwidth('schedule-empty');
       return;
     }
 
     const active = pickActiveRule(schedule.rules, new Date(), settings.timeZone);
 
-    // No active rule. Don't fight the user — leave qBit limits alone, even if
-    // we applied one earlier. The "rule ended" boundary is implicit.
+    // No active rule — the window has ended. Release the throttle we applied.
     if (!active) {
-      if (this.appliedBandwidth) {
-        logger.info('Bandwidth schedule: no active rule, releasing tracking', {
-          previousRuleId: this.appliedBandwidth.ruleId,
-        }, { scope: 'polling' });
-      }
-      this.appliedBandwidth = null;
+      await this.releaseAppliedBandwidth('rule-ended');
       return;
     }
 

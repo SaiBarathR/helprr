@@ -14,10 +14,14 @@ const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 // unauthenticated users to /login?next=/share?... so the shared payload
 // survives the round-trip; honor it for same-origin relative paths only,
 // rejecting protocol-relative (//) and absolute URLs to avoid open redirects.
+// Backslashes are rejected too: the WHATWG URL parser treats "\" as "/", so a
+// value like "/\evil.com" would normalize to "//evil.com" and redirect offsite.
 function getPostLoginTarget(): string {
   if (typeof window === 'undefined') return '/';
   const next = new URLSearchParams(window.location.search).get('next');
-  if (next && next.startsWith('/') && !next.startsWith('//')) return next;
+  if (next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\')) {
+    return next;
+  }
   return '/';
 }
 

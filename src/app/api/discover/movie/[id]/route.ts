@@ -63,7 +63,6 @@ async function getHandler(
     }
 
     const tmdb = await getTMDBClient();
-    const appSettings = await getOrCreateAppSettings();
 
     const [
       details,
@@ -75,6 +74,7 @@ async function getHandler(
       recommendationsData,
       similarData,
       libraryData,
+      appSettings,
     ] = await Promise.all([
       tmdb.movieDetails(id),
       tmdb.movieExternalIds(id),
@@ -85,6 +85,7 @@ async function getHandler(
       tmdb.movieRecommendations(id),
       tmdb.movieSimilar(id),
       getLibraries(),
+      getOrCreateAppSettings(),
     ]);
 
     const lookups = buildLibraryLookups(libraryData.movies, libraryData.series);

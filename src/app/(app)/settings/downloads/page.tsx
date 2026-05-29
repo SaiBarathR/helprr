@@ -319,6 +319,7 @@ function RuleCard({ rule, isActive, onChange, onRemove }: RuleCardProps) {
           </Label>
           <TimePicker
             value={startStr}
+            showSeconds={false}
             onChange={(v) => {
               const { hour, minute } = parseTime(v);
               onChange({ startHour: hour, startMinute: minute });
@@ -331,6 +332,7 @@ function RuleCard({ rule, isActive, onChange, onRemove }: RuleCardProps) {
           </Label>
           <TimePicker
             value={endStr}
+            showSeconds={false}
             onChange={(v) => {
               const { hour, minute } = parseTime(v);
               onChange({ endHour: hour, endMinute: minute });

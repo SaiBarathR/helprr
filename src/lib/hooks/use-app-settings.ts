@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { normalizeRegionCode } from '@/lib/region';
 
 export interface AppSettingsState {
   pollingIntervalSecs: number;
@@ -104,12 +105,6 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     activityDigestHour: numberOr(raw.activityDigestHour, 8),
     activityDigestDayOfWeek: numberOr(raw.activityDigestDayOfWeek, 1),
   };
-}
-
-function normalizeRegionCode(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim().toUpperCase();
-  return /^[A-Z]{2}$/.test(trimmed) ? trimmed : null;
 }
 
 function numberOr(value: unknown, fallback: number): number {
