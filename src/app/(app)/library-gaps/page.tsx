@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toast } from 'sonner';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, isValid } from 'date-fns';
 import {
   Search, Loader2, Plus, Tv, Film, CalendarClock, Clock, Layers, CheckCircle2,
   type LucideIcon,
@@ -112,10 +112,16 @@ function GapRow({ item }: { item: LibraryGapItem }) {
 
   const titleEl = <p className="truncate text-sm">{item.title}</p>;
 
+  // Guard against malformed API dates: formatDistanceToNow throws on an invalid Date.
+  const dateObj = item.date ? new Date(item.date) : null;
+  const relativeDate = dateObj && isValid(dateObj) ? formatDistanceToNow(dateObj, { addSuffix: true }) : null;
+
   return (
     <div className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-muted/50 active:bg-muted/50">
       {item.href ? (
-        <Link href={item.href} className="shrink-0">
+        // Decorative: the title link below navigates to the same target, so keep this
+        // text-less thumbnail link out of the a11y tree / tab order to avoid a duplicate.
+        <Link href={item.href} className="shrink-0" aria-hidden="true" tabIndex={-1}>
           <Thumb item={item} fallback={FallbackIcon} />
         </Link>
       ) : (
@@ -125,9 +131,7 @@ function GapRow({ item }: { item: LibraryGapItem }) {
         {item.href ? <Link href={item.href} className="block">{titleEl}</Link> : titleEl}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {item.subtitle && <span className="truncate">{item.subtitle}</span>}
-          {item.date && (
-            <span className="shrink-0">{formatDistanceToNow(new Date(item.date), { addSuffix: true })}</span>
-          )}
+          {relativeDate && <span className="shrink-0">{relativeDate}</span>}
         </div>
       </div>
       {action}
