@@ -36,7 +36,7 @@ function parseRule(raw: unknown): BandwidthRule | null {
 
   const id = typeof r.id === 'string' && r.id.length > 0 ? r.id : null;
   const name = typeof r.name === 'string' ? r.name.trim().slice(0, 80) : '';
-  const enabled = Boolean(r.enabled);
+  const enabled = typeof r.enabled === 'boolean' ? r.enabled : null;
   const daysOfWeek = parseDaysOfWeek(r.daysOfWeek);
   const startHour = clampHour(r.startHour);
   const startMinute = clampMinute(r.startMinute);
@@ -47,6 +47,7 @@ function parseRule(raw: unknown): BandwidthRule | null {
 
   if (
     !id ||
+    enabled === null ||
     !daysOfWeek ||
     startHour === null ||
     startMinute === null ||
