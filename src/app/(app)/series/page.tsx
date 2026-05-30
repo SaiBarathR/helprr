@@ -20,6 +20,7 @@ import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw } from 'lucide-react';
+import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import {
   getCachedListData,
@@ -127,6 +128,8 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
  * @returns The page's JSX element that displays and manages Sonarr series.
  */
 export default function SeriesPage() {
+  // Members can't add directly to Sonarr — they request via Seerr from a detail page.
+  const canAddSeries = useCan('series.add');
   const [series, setSeries] = useState<SonarrSeriesListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
@@ -590,18 +593,20 @@ export default function SeriesPage() {
             <TooltipContent>Refresh Series</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                href="/series/add"
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-                aria-label="Add Series"
-              >
-                <Plus className="h-5 w-5" />
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>Add Series</TooltipContent>
-          </Tooltip>
+          {canAddSeries && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  href="/series/add"
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  aria-label="Add Series"
+                >
+                  <Plus className="h-5 w-5" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Add Series</TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." />

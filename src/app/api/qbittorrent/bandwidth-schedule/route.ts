@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
@@ -24,6 +24,8 @@ async function getHandler(): Promise<NextResponse> {
 async function putHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('torrents.bandwidth');
+  if (capError) return capError;
 
   let body: unknown;
   try {

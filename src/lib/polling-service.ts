@@ -81,6 +81,8 @@ type NotificationEventInput = {
   metadata?: Record<string, unknown>;
   url?: string;
   dedupeKey?: string;
+  userIds?: string[];
+  ownerUserId?: string | null;
 };
 
 type PollNotificationContext = Record<string, unknown> & {
@@ -776,6 +778,15 @@ export class PollingService {
       firstRun,
     }, { scope: 'polling' });
 
+    // Request-status notifications go to the requesting member plus every admin
+    // (approvers stay in the loop). Resolve the admin list once per cycle.
+    const adminIds = (
+      await prisma.user.findMany({
+        where: { role: 'admin', status: 'active' },
+        select: { id: true },
+      })
+    ).map((u) => u.id);
+
     for (const req of requests) {
       const reqStatus = Number(req.status);
       const mediaStatus = Number(req.media?.status ?? 0);
@@ -823,14 +834,31 @@ export class PollingService {
         redirect: '/requests',
       };
 
+      // The Helprr user behind this Seerr request (if linked); status updates are
+      // owned by them, with admins copied in.
+      let ownerId: string | null = null;
+      if (willCreate || willStatusChange || willBecomeAvailable) {
+        const seerrId = req.requestedBy?.id;
+        if (seerrId != null) {
+          const owner = await prisma.user.findFirst({
+            where: { seerrUserId: String(seerrId) },
+            select: { id: true },
+          });
+          ownerId = owner?.id ?? null;
+        }
+      }
+      const ownerAndAdmins = Array.from(new Set([...(ownerId ? [ownerId] : []), ...adminIds]));
+
       if (!prev) {
         if (firstRun || req.id <= lastMaxId) continue;
+        // A brand-new request notifies approvers (admins), not the requester.
         await this.notifyAndLog({
           eventType: 'requestCreated',
           title: 'New Request',
           body: `${requesterLabel} requested ${mediaLabel}`,
           metadata: metadataBase,
           url: '/requests',
+          userIds: adminIds.length ? adminIds : undefined,
         }, { service: 'seerr', reason: 'request-created', requestId: req.id });
         continue;
       }
@@ -843,6 +871,8 @@ export class PollingService {
             body: `${requesterLabel}'s request for ${mediaLabel} was approved`,
             metadata: metadataBase,
             url: '/requests',
+            userIds: ownerAndAdmins.length ? ownerAndAdmins : undefined,
+            ownerUserId: ownerId,
           }, { service: 'seerr', reason: 'request-approved', requestId: req.id });
         } else if (reqStatus === SEERR_REQUEST_STATUS.DECLINED) {
           await this.notifyAndLog({
@@ -851,6 +881,8 @@ export class PollingService {
             body: `${requesterLabel}'s request for ${mediaLabel} was declined`,
             metadata: metadataBase,
             url: '/requests',
+            userIds: ownerAndAdmins.length ? ownerAndAdmins : undefined,
+            ownerUserId: ownerId,
           }, { service: 'seerr', reason: 'request-declined', requestId: req.id });
         } else if (reqStatus === SEERR_REQUEST_STATUS.FAILED) {
           await this.notifyAndLog({
@@ -859,6 +891,8 @@ export class PollingService {
             body: `${requesterLabel}'s request for ${mediaLabel} failed`,
             metadata: metadataBase,
             url: '/requests',
+            userIds: ownerAndAdmins.length ? ownerAndAdmins : undefined,
+            ownerUserId: ownerId,
           }, { service: 'seerr', reason: 'request-failed', requestId: req.id });
         }
       }
@@ -874,6 +908,8 @@ export class PollingService {
           body: `${mediaLabel} is now available (requested by ${requesterLabel})`,
           metadata: metadataBase,
           url: '/requests',
+          userIds: ownerAndAdmins.length ? ownerAndAdmins : undefined,
+          ownerUserId: ownerId,
         }, { service: 'seerr', reason: 'request-available', requestId: req.id });
       }
     }
@@ -1183,6 +1219,9 @@ export class PollingService {
             redirect,
           },
           url: redirect,
+          // A watchlist reminder is personal: only ping the owner's devices and
+          // stamp the history row to the owner so it shows in *their* list.
+          ...(item.userId ? { userIds: [item.userId], ownerUserId: item.userId } : {}),
         }, { service: 'watchlist', reason: 'reminder-due', itemId: item.id });
         delivered = true;
       } catch (error) {

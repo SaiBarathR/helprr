@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function postHandler() {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   try {
     await prisma.notificationHistory.updateMany({
-      where: { read: false },
+      // Members mark only their own as read; admins clear everything.
+      where: { read: false, ...(auth.user.role === 'admin' ? {} : { userId: auth.user.id }) },
       data: { read: true },
     });
     return NextResponse.json({ success: true });

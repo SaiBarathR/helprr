@@ -13,6 +13,7 @@ import {
 import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems, getBottomNavLayout } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
+import { useMe, hasCapability } from '@/components/permission-provider';
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -22,11 +23,14 @@ export function BottomNav() {
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
   const navPosition = useUIStore((s) => s.navPosition);
   const isBottom = navPosition === 'bottom';
+  const me = useMe();
 
   const { tabs, moreItems } = useMemo(() => {
-    const enabled = getEnabledNavItems(navOrder, disabledNavItems);
+    const enabled = getEnabledNavItems(navOrder, disabledNavItems).filter(
+      (item) => !item.requiredCapability || hasCapability(me, item.requiredCapability)
+    );
     return getBottomNavLayout(enabled);
-  }, [navOrder, disabledNavItems]);
+  }, [navOrder, disabledNavItems, me]);
 
   const isMoreActive = moreItems.some(
     (item) => pathname === item.href || pathname.startsWith(item.href + '/')

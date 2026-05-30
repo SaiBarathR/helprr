@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { loadQueueCleanerConfig, saveQueueCleanerConfig } from '@/lib/cleanup/queue-cleaner';
 import { restartQueueCleaner } from '@/lib/cleanup/scheduler';
@@ -73,6 +73,8 @@ function validateConfig(body: unknown): { ok: true; value: QueueCleanerConfigSha
 async function getHandler() {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.view');
+  if (capError) return capError;
   const cfg = await loadQueueCleanerConfig();
   return NextResponse.json(cfg);
 }
@@ -80,6 +82,8 @@ async function getHandler() {
 async function putHandler(req: NextRequest) {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.manage');
+  if (capError) return capError;
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
   const result = validateConfig(body);

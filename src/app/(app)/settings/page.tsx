@@ -12,9 +12,11 @@ import {
   UserCircle,
   Shield,
   Gauge,
+  Users,
 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
+import { useMe, hasCapability } from '@/components/permission-provider';
 
 interface ServiceCount {
   configured: number;
@@ -25,8 +27,11 @@ const SERVICE_TYPES = ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN'
 
 export default function SettingsIndexPage() {
   const [serviceCount, setServiceCount] = useState<ServiceCount | null>(null);
+  const me = useMe();
+  const canInstances = hasCapability(me, 'settings.instances');
 
   useEffect(() => {
+    if (!canInstances) return; // members can't read connections; skip the 403.
     let cancelled = false;
     async function load() {
       try {
@@ -47,24 +52,45 @@ export default function SettingsIndexPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canInstances]);
 
   const instancesSubtitle = serviceCount
     ? `${serviceCount.configured} of ${serviceCount.total} connected`
     : 'Connect Sonarr, Radarr, qBittorrent, and more';
 
+  const canStorage = hasCapability(me, 'settings.storage');
+  const canLogging = hasCapability(me, 'settings.logging');
+  const canDownloads = hasCapability(me, 'settings.downloads');
+  const canBackup = hasCapability(me, 'settings.backup');
+  const canUsers = hasCapability(me, 'users.manage');
+
   return (
     <div className="animate-content-in pb-12">
-      <GroupedSection>
-        <CategoryRow
-          href="/settings/instances"
-          icon={Server}
-          iconBg="bg-amber-500/10"
-          iconColor="text-amber-500"
-          label="Instances"
-          subtitle={instancesSubtitle}
-        />
-      </GroupedSection>
+      {canInstances && (
+        <GroupedSection>
+          <CategoryRow
+            href="/settings/instances"
+            icon={Server}
+            iconBg="bg-amber-500/10"
+            iconColor="text-amber-500"
+            label="Instances"
+            subtitle={instancesSubtitle}
+          />
+        </GroupedSection>
+      )}
+
+      {canUsers && (
+        <GroupedSection>
+          <CategoryRow
+            href="/settings/users"
+            icon={Users}
+            iconBg="bg-violet-500/10"
+            iconColor="text-violet-400"
+            label="Users"
+            subtitle="Members, roles, and permissions"
+          />
+        </GroupedSection>
+      )}
 
       <GroupedSection>
         <CategoryRow
@@ -83,30 +109,36 @@ export default function SettingsIndexPage() {
           label="Notifications"
           subtitle="Push, event types, devices, upcoming"
         />
-        <CategoryRow
-          href="/settings/storage"
-          icon={HardDrive}
-          iconBg="bg-emerald-500/10"
-          iconColor="text-emerald-400"
-          label="Storage"
-          subtitle="Cache and cleanup history"
-        />
-        <CategoryRow
-          href="/settings/logging"
-          icon={ScrollText}
-          iconBg="bg-indigo-500/10"
-          iconColor="text-indigo-400"
-          label="Logging"
-          subtitle="Level, rotation, retention"
-        />
-        <CategoryRow
-          href="/settings/downloads"
-          icon={Gauge}
-          iconBg="bg-amber-500/10"
-          iconColor="text-amber-400"
-          label="Downloads"
-          subtitle="qBittorrent bandwidth scheduler"
-        />
+        {canStorage && (
+          <CategoryRow
+            href="/settings/storage"
+            icon={HardDrive}
+            iconBg="bg-emerald-500/10"
+            iconColor="text-emerald-400"
+            label="Storage"
+            subtitle="Cache and cleanup history"
+          />
+        )}
+        {canLogging && (
+          <CategoryRow
+            href="/settings/logging"
+            icon={ScrollText}
+            iconBg="bg-indigo-500/10"
+            iconColor="text-indigo-400"
+            label="Logging"
+            subtitle="Level, rotation, retention"
+          />
+        )}
+        {canDownloads && (
+          <CategoryRow
+            href="/settings/downloads"
+            icon={Gauge}
+            iconBg="bg-amber-500/10"
+            iconColor="text-amber-400"
+            label="Downloads"
+            subtitle="qBittorrent bandwidth scheduler"
+          />
+        )}
       </GroupedSection>
 
       <GroupedSection>
@@ -121,14 +153,16 @@ export default function SettingsIndexPage() {
       </GroupedSection>
 
       <GroupedSection>
-        <CategoryRow
-          href="/settings/backup"
-          icon={DownloadIcon}
-          iconBg="bg-yellow-500/10"
-          iconColor="text-yellow-400"
-          label="Backup & Restore"
-          subtitle="Export or import your settings"
-        />
+        {canBackup && (
+          <CategoryRow
+            href="/settings/backup"
+            icon={DownloadIcon}
+            iconBg="bg-yellow-500/10"
+            iconColor="text-yellow-400"
+            label="Backup & Restore"
+            subtitle="Export or import your settings"
+          />
+        )}
         <CategoryRow
           href="/settings/sessions"
           icon={Shield}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { runDownloadCleanerCycle } from '@/lib/cleanup/download-cleaner';
 import { awaitInFlightDownload } from '@/lib/cleanup/scheduler';
@@ -29,6 +29,8 @@ function serializeResult(r: Awaited<ReturnType<typeof runDownloadCleanerCycle>>)
 async function postHandler(req: NextRequest) {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.manage');
+  if (capError) return capError;
   let body: { dryRun?: unknown };
   try { body = (await req.json()) as { dryRun?: unknown }; }
   catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }

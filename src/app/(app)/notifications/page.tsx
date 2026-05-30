@@ -48,6 +48,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
+import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import type { HistoryItem, QueueItem } from '@/types';
 
 type NotificationSource = 'sonarr' | 'radarr' | 'qbittorrent' | 'jellyfin';
@@ -142,6 +144,7 @@ const QUICK_RANGES = [
 type DeleteMode = 'all' | 'filtered';
 
 export default function NotificationsPage() {
+  const me = useMe();
   const router = useRouter();
 
   const filters = useUIStore((s) => s.notificationsFilters);
@@ -630,11 +633,16 @@ export default function NotificationsPage() {
             {/* Event types */}
             <div className="space-y-3">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Event types</p>
-              {EVENT_GROUPS.map((group) => (
+              {EVENT_GROUPS.map((group) => {
+                const visibleTypes = group.types.filter((t) =>
+                  hasCapability(me, EVENT_TYPE_TO_CAPABILITY[t])
+                );
+                if (visibleTypes.length === 0) return null;
+                return (
                 <div key={group.id} className="space-y-1.5">
                   <p className="text-[11px] font-medium text-muted-foreground">{group.title}</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {group.types.map((type) => {
+                    {visibleTypes.map((type) => {
                       const selected = filters.eventTypes.includes(type);
                       return (
                         <button
@@ -652,7 +660,8 @@ export default function NotificationsPage() {
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
 
             <Separator />

@@ -150,6 +150,43 @@ export interface SeerrMediaDetail {
   voteAverage?: number;
 }
 
+// ── Service data (Radarr/Sonarr) for request/approve overrides ──
+export interface SeerrQualityProfile {
+  id: number;
+  name: string;
+}
+
+export interface SeerrRootFolder {
+  id: number;
+  path: string;
+  freeSpace?: number;
+}
+
+export interface SeerrTag {
+  id: number;
+  label: string;
+}
+
+/** Resolved service options for the default server, surfaced to the request modal. */
+export interface SeerrServiceData {
+  serverId: number | null;
+  profiles: SeerrQualityProfile[];
+  rootFolders: SeerrRootFolder[];
+  tags: SeerrTag[];
+  defaultProfileId: number | null;
+  defaultRootFolder: string | null;
+  defaultTags: number[];
+}
+
+// ── TV season info for the season-selection table ──
+export interface SeerrSeasonInfo {
+  seasonNumber: number;
+  episodeCount: number;
+  name?: string;
+  /** Current Seerr media status for the season (PENDING/AVAILABLE/…), or null. */
+  status: SeerrMediaStatus | null;
+}
+
 export interface EnrichedSeerrRequest extends SeerrRequest {
   enriched: {
     title: string | null;

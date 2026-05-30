@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { CleanupAction } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Only completed removal actions count toward "Removed" tiles. Excludes
@@ -17,6 +17,8 @@ const REMOVED_ACTIONS: CleanupAction[] = [
 async function getHandler() {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.view');
+  if (capError) return capError;
   const now = new Date();
   const startToday = new Date(now);
   startToday.setHours(0, 0, 0, 0);

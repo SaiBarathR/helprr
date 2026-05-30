@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { COOKIE_NAME, requireSession, revokeSession } from '@/lib/auth';
+import { COOKIE_NAME, requireUser, revokeSession } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 
@@ -8,17 +8,19 @@ async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
+  const isAdmin = auth.user.role === 'admin';
 
   try {
     const existing = await prisma.session.findUnique({
       where: { id },
-      select: { id: true, revokedAt: true },
+      select: { id: true, revokedAt: true, userId: true },
     });
-    if (!existing) {
+    // Members can only revoke their own sessions; admins can revoke anyone's.
+    if (!existing || (!isAdmin && existing.userId !== auth.user.id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     if (existing.revokedAt) {

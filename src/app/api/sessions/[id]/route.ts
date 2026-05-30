@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function patchHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
+  const isAdmin = auth.user.role === 'admin';
   let body: { label?: unknown };
   try {
     body = (await request.json()) as { label?: unknown };
@@ -27,9 +28,11 @@ async function patchHandler(
   try {
     const existing = await prisma.session.findUnique({
       where: { id },
-      select: { id: true, revokedAt: true },
+      select: { id: true, revokedAt: true, userId: true },
     });
-    if (!existing || existing.revokedAt) {
+    // Members may only touch their own sessions; report someone else's as 404
+    // so the endpoint can't be used to probe which session ids exist.
+    if (!existing || existing.revokedAt || (!isAdmin && existing.userId !== auth.user.id)) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     await prisma.session.update({ where: { id }, data: { label } });

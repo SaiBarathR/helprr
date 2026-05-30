@@ -7,6 +7,7 @@ import 'react-resizable/css/styles.css';
 import { useUIStore } from '@/lib/store';
 import type { ColSpan, RowSpan, WidgetInstance } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { BentoCell, BentoEditChrome } from './bento-cell';
 import { WidgetRenderer } from './widget-renderer';
@@ -91,10 +92,16 @@ export function WidgetGridDesktop() {
   const { widgets: dashboardLayout, removeWidget, updateWidgetPositions } = useDashboardLayout();
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const me = useMe();
 
   const visibleWidgets = useMemo(
-    () => dashboardLayout.filter((instance) => getWidgetDefinition(instance.widgetId, discoverLayout)),
-    [dashboardLayout, discoverLayout],
+    () =>
+      dashboardLayout.filter((instance) => {
+        const def = getWidgetDefinition(instance.widgetId, discoverLayout);
+        // Drop widgets the user lacks the capability for (e.g. cleanup for members).
+        return !!def && (!def.requiredCapability || hasCapability(me, def.requiredCapability));
+      }),
+    [dashboardLayout, discoverLayout, me],
   );
 
   const layoutItems: Layout = useMemo(

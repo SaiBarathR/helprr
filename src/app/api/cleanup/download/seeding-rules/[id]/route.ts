@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { validateSeedingRulePayload } from '../_validator';
 import { disableGlobalIfRuleClaimsConfirmationTx } from '../_mutual-exclusion';
@@ -9,6 +9,8 @@ import { restartDownloadCleaner } from '@/lib/cleanup/scheduler';
 async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.manage');
+  if (capError) return capError;
   const { id } = await ctx.params;
 
   const existing = await prisma.seedingRule.findUnique({ where: { id } });
@@ -54,6 +56,8 @@ async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string 
 async function deleteHandler(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.manage');
+  if (capError) return capError;
   const { id } = await ctx.params;
   const existing = await prisma.seedingRule.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: 'not found' }, { status: 404 });

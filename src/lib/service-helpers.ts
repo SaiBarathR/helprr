@@ -1,4 +1,4 @@
-import type { ServiceConnection } from '@prisma/client';
+import type { ServiceConnection, User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import { SonarrClient } from '@/lib/sonarr-client';
@@ -133,6 +133,39 @@ export async function getJellyfinClientContext(): Promise<{
     connection,
     connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
   };
+}
+
+/** Thrown when a member has no linked Jellyfin account, so their user-scoped reads
+ * can't resolve. Routes catch it and return `{ linked: false }` instead of 500ing. */
+export class JellyfinNotLinkedError extends Error {
+  constructor(message = 'Jellyfin account not linked') {
+    super(message);
+    this.name = 'JellyfinNotLinkedError';
+  }
+}
+
+/**
+ * Jellyfin client scoped to a specific Helprr user. Uses the admin API key (which
+ * can read any user's user-scoped endpoints) but the *member's* jellyfinUserId, so
+ * a member sees their own resume/history — never the admin's. Admins fall back to
+ * the connection's configured user when they have no personal link (preserves
+ * pre-multi-user behavior).
+ */
+export async function getJellyfinClientForUser(
+  user: Pick<User, 'role' | 'jellyfinUserId'>
+): Promise<JellyfinClient> {
+  const connection = await prisma.serviceConnection.findUnique({ where: { type: 'JELLYFIN' } });
+  if (!connection) {
+    throw new Error('Jellyfin is not configured. Please add a Jellyfin connection in Settings.');
+  }
+
+  const userId =
+    user.role === 'admin' ? user.jellyfinUserId ?? connection.username ?? null : user.jellyfinUserId;
+  if (!userId) {
+    throw new JellyfinNotLinkedError();
+  }
+
+  return new JellyfinClient(connection.url, connection.apiKey, userId);
 }
 
 export async function getSeerrClient(): Promise<SeerrClient> {

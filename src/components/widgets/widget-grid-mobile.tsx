@@ -7,6 +7,7 @@ import 'react-resizable/css/styles.css';
 import { useUIStore } from '@/lib/store';
 import type { ColSpan, RowSpan } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { WidgetGridItem } from './widget-grid-desktop';
 import { ThemeInspector } from './theme-inspector';
@@ -18,10 +19,15 @@ export function WidgetGridMobile() {
   const { widgets: dashboardLayout, removeWidget, updateMobileWidgetPositions } = useDashboardLayout();
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const me = useMe();
 
   const visibleWidgets = useMemo(
-    () => dashboardLayout.filter((instance) => getWidgetDefinition(instance.widgetId, discoverLayout)),
-    [dashboardLayout, discoverLayout],
+    () =>
+      dashboardLayout.filter((instance) => {
+        const def = getWidgetDefinition(instance.widgetId, discoverLayout);
+        return !!def && (!def.requiredCapability || hasCapability(me, def.requiredCapability));
+      }),
+    [dashboardLayout, discoverLayout, me],
   );
 
   const { layoutItems, layoutLookup } = useMemo(() => {

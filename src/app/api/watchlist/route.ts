@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import {
   ensureTagIds,
@@ -58,6 +59,7 @@ function validatePosterUrl(raw: string): string | null {
 function serialize(
   item: {
     id: string;
+    userId?: string | null;
     source: string;
     externalId: string;
     mediaType: string;
@@ -83,8 +85,11 @@ function serialize(
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'watchlist.view')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const url = new URL(request.url);
   const tag = url.searchParams.get('tag')?.trim() || null;
@@ -98,6 +103,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   const items = await prisma.watchlistItem.findMany({
     where: {
+      // Each user sees only their own watchlist (admins included — it's personal).
+      userId: auth.user.id,
       ...tagFilter,
       ...(q ? { title: { contains: q, mode: 'insensitive' as const } } : {}),
     },
@@ -119,8 +126,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'watchlist.edit')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   let body: PostBody;
   try {
@@ -185,13 +195,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const tagIds = tags ? await ensureTagIds(tags) : null;
 
-  const existing = await prisma.watchlistItem.findUnique({
-    where: { source_externalId_mediaType: { source, externalId, mediaType } },
-  });
+  const userId = auth.user.id;
+  const uniqueWhere = {
+    userId_source_externalId_mediaType: { userId, source, externalId, mediaType },
+  };
+
+  const existing = await prisma.watchlistItem.findUnique({ where: uniqueWhere });
 
   const item = await prisma.watchlistItem.upsert({
-    where: { source_externalId_mediaType: { source, externalId, mediaType } },
+    where: uniqueWhere,
     create: {
+      userId,
       source,
       externalId,
       mediaType,
@@ -223,8 +237,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 async function deleteHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'watchlist.edit')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   // Wipe-all is destructive enough that a stray GET-turned-DELETE or an
   // accidental fetch shouldn't trigger it. Require an explicit sentinel.
@@ -244,7 +261,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const result = await prisma.watchlistItem.deleteMany({});
+  // Only ever wipes the caller's own watchlist.
+  const result = await prisma.watchlistItem.deleteMany({ where: { userId: auth.user.id } });
   return NextResponse.json({ ok: true, count: result.count });
 }
 

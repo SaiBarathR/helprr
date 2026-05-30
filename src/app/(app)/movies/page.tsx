@@ -20,6 +20,7 @@ import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw } from 'lucide-react';
+import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import {
   getCachedListData,
@@ -177,6 +178,8 @@ function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, p
  * @returns The Movies page JSX element.
  */
 export default function MoviesPage() {
+  // Members can't add directly to Radarr — they request via Seerr from a detail page.
+  const canAddMovies = useCan('movies.add');
   const [movies, setMovies] = useState<RadarrMovieListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
@@ -665,18 +668,20 @@ export default function MoviesPage() {
             <TooltipContent>Refresh Movies</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                href="/movies/add"
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-                aria-label="Add Movie"
-              >
-                <Plus className="h-5 w-5" />
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>Add Movie</TooltipContent>
-          </Tooltip>
+          {canAddMovies && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  href="/movies/add"
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  aria-label="Add Movie"
+                >
+                  <Plus className="h-5 w-5" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Add Movie</TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." />

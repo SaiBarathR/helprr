@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { withApiLogging } from '@/lib/api-logger';
 import {
@@ -37,6 +37,8 @@ interface ExportRequestBody {
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.backup');
+  if (capError) return capError;
 
   let body: ExportRequestBody;
   try {
@@ -185,8 +187,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     if (wantWatchlist) {
+      // Watchlist is per-user; back up the exporting admin's own list.
+      const exporter = await getCurrentUser();
       const [items, tags] = await Promise.all([
         prisma.watchlistItem.findMany({
+          where: { userId: exporter?.id ?? undefined },
           include: { tags: { select: { name: true } } },
           orderBy: { addedAt: 'asc' },
         }),

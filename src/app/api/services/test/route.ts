@@ -6,7 +6,7 @@ import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import type { ServiceType } from '@prisma/client';
 import { withApiLogging } from '@/lib/api-logger';
@@ -23,6 +23,8 @@ import { withApiLogging } from '@/lib/api-logger';
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.instances');
+  if (capError) return capError;
 
   let attemptedType: ServiceType | null = null;
 

@@ -26,6 +26,8 @@ interface Session {
   ip: string | null;
   label: string | null;
   isCurrent: boolean;
+  isOwn: boolean;
+  ownerName: string | null;
 }
 
 function parseUserAgent(ua: string | null): string {
@@ -52,6 +54,12 @@ function parseUserAgent(ua: string | null): string {
 function displayName(s: Session): string {
   if (s.label && s.label.trim()) return s.label.trim();
   return parseUserAgent(s.userAgent);
+}
+
+// Admins see other members' sessions too — prefix those with the owner's name.
+function sessionTitle(s: Session): string {
+  const base = !s.isOwn && s.ownerName ? `${s.ownerName} · ${displayName(s)}` : displayName(s);
+  return s.isCurrent ? `${base} · This device` : base;
 }
 
 function relativeTime(iso: string | null): string {
@@ -163,7 +171,9 @@ export default function SessionsPage() {
     }
   }
 
-  const otherCount = (sessions ?? []).filter((s) => !s.isCurrent).length;
+  // "Revoke all other sessions" only touches the viewer's own devices, so the
+  // count must exclude other members' rows that admins can see in the list.
+  const otherCount = (sessions ?? []).filter((s) => s.isOwn && !s.isCurrent).length;
 
   return (
     <div className="animate-content-in pb-12">
@@ -201,7 +211,7 @@ export default function SessionsPage() {
         sessions?.map((s) => (
           <GroupedSection
             key={s.id}
-            title={s.isCurrent ? `${displayName(s)} · This device` : displayName(s)}
+            title={sessionTitle(s)}
           >
             <div className="grouped-row">
               <span className="text-sm">Signed in</span>

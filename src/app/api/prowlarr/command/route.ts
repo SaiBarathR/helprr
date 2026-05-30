@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 /**
@@ -13,6 +13,8 @@ import { withApiLogging } from '@/lib/api-logger';
 async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('prowlarr.manage');
+  if (capError) return capError;
 
   try {
     const body = await request.json();

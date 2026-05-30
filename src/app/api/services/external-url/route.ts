@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { isServiceType } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.instances');
+  if (capError) return capError;
 
   let body: Record<string, unknown>;
   try {

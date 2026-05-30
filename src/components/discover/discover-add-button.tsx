@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { Plus, Sparkles } from 'lucide-react';
 import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
+import { RequestMediaButton } from '@/components/discover/request-media-button';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { tmdbImageUrl } from '@/lib/discover';
 
 interface DiscoverAddButtonProps {
@@ -33,10 +35,16 @@ function buildAddHref(detail: DiscoverDetail): string | null {
 }
 
 export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
+  const me = useMe();
   const href = buildAddHref(detail);
   if (!href) return null;
 
   const service = detail.mediaType === 'movie' ? 'Radarr' : 'Sonarr';
+  const seerrMediaType = detail.mediaType === 'movie' ? 'movie' : 'tv';
+  // Admins can add directly (Radarr/Sonarr); anyone with requests.create can
+  // also request via Seerr when it's configured. Members only get Request.
+  const canAddDirectly = hasCapability(me, detail.mediaType === 'movie' ? 'movies.add' : 'series.add');
+  const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
   const watchlistDraft = {
     source: 'TMDB' as const,
     externalId: String(detail.tmdbId),
@@ -69,6 +77,9 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
     );
   }
 
+  const pillClass =
+    'inline-flex items-center gap-1.5 rounded-full bg-background/25 backdrop-blur-md text-foreground px-2 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors disabled:opacity-60';
+
   return (
     <div className="absolute top-1 right-1 md:top-2 md:right-2 hero-meta-fade flex items-center gap-1.5">
       <WatchlistButton
@@ -76,15 +87,20 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
         variant="icon"
         className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/25 backdrop-blur-md text-foreground hover:bg-background/70"
       />
-      <Link
-        href={href}
-        className="inline-flex items-center gap-1.5 rounded-full bg-background/25 backdrop-blur-md text-foreground px-2 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
-      >
-        <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-        <span className="tracking-widest">
-          Add to {service}
-        </span>
-      </Link>
+      {canAddDirectly && (
+        <Link href={href} className={pillClass}>
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+          <span className="tracking-widest">Add to {service}</span>
+        </Link>
+      )}
+      {canRequest && (
+        <RequestMediaButton
+          tmdbId={detail.tmdbId}
+          mediaType={seerrMediaType}
+          title={detail.title}
+          className={pillClass}
+        />
+      )}
     </div>
   );
 }

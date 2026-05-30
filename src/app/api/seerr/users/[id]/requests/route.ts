@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 
 function parseInt32(value: string | null): number | undefined {
@@ -13,17 +14,29 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'requests.view')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   try {
     const { id: raw } = await params;
     if (!/^\d+$/.test(raw)) {
       return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
     }
-    const id = Number.parseInt(raw, 10);
-    if (!Number.isFinite(id) || id <= 0) {
+    const requestedId = Number.parseInt(raw, 10);
+    if (!Number.isFinite(requestedId) || requestedId <= 0) {
       return NextResponse.json({ error: 'Invalid user id' }, { status: 400 });
+    }
+    // Non-admins only ever read their own request list.
+    let id = requestedId;
+    if (auth.user.role !== 'admin') {
+      const own = auth.user.seerrUserId ? Number.parseInt(auth.user.seerrUserId, 10) : NaN;
+      if (!Number.isInteger(own)) {
+        return NextResponse.json({ results: [], linked: false });
+      }
+      id = own;
     }
     const sp = request.nextUrl.searchParams;
     const client = await getSeerrClient();

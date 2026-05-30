@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { logger } from '@/lib/logger';
 
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  // Aggregate request counts are an admin/approver dashboard metric.
+  const capError = await requireCapability('requests.approve');
+  if (capError) return capError;
 
   try {
     const client = await getSeerrClient();

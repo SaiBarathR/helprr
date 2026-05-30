@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { copyLayout, ServiceError } from '@/lib/dashboard-layouts';
 
@@ -10,6 +10,8 @@ interface RouteContext {
 async function postHandler(_request: NextRequest, context: RouteContext) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('dashboard.customize');
+  if (capError) return capError;
 
   const { id } = await context.params;
   try {

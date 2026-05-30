@@ -10,6 +10,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
+import { useMe, hasCapability } from '@/components/permission-provider';
 
 /**
  * Render the application's responsive, collapsible navigation sidebar.
@@ -26,10 +27,14 @@ export function Sidebar() {
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
+  const me = useMe();
 
   const navItems = useMemo(
-    () => getEnabledNavItems(navOrder, disabledNavItems),
-    [navOrder, disabledNavItems]
+    () =>
+      getEnabledNavItems(navOrder, disabledNavItems).filter(
+        (item) => !item.requiredCapability || hasCapability(me, item.requiredCapability)
+      ),
+    [navOrder, disabledNavItems, me]
   );
 
   return (

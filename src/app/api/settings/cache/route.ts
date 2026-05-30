@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import {
   getActiveCacheUsage,
   getCacheMaintenanceMeta,
@@ -11,6 +11,8 @@ import { withApiLogging } from '@/lib/api-logger';
 async function getHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.storage');
+  if (capError) return capError;
 
   try {
     const [enabled, usage, maintenance] = await Promise.all([
@@ -34,6 +36,8 @@ async function getHandler() {
 async function deleteHandler() {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.storage');
+  if (capError) return capError;
 
   try {
     const result = await purgeActiveCache();

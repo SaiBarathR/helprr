@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireAdmin } from '@/lib/auth';
 import { getSonarrClient } from '@/lib/service-helpers';
 import {
   clearManualSeriesAniListMapping,
@@ -67,6 +67,9 @@ async function putHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  // AniListSeriesMapping is global/admin state, so editing the mapping is admin-only.
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   try {
     const body = await request.json() as PutPayload;
@@ -96,6 +99,8 @@ async function deleteHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   try {
     const { id } = await params;

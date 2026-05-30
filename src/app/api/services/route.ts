@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { JellyfinClient } from '@/lib/jellyfin-client';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -43,6 +43,8 @@ function getUpstream4xxMessage(error: unknown): string {
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.instances');
+  if (capError) return capError;
 
   try {
     const connections = await prisma.serviceConnection.findMany({
@@ -77,6 +79,8 @@ async function getHandler(): Promise<NextResponse> {
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.instances');
+  if (capError) return capError;
 
   let attemptedType: string | null = null;
 

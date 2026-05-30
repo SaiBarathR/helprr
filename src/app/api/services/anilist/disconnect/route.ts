@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { deleteAniListConnection } from '@/lib/anilist-oauth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function postHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.instances');
+  if (capError) return capError;
 
   await deleteAniListConnection();
   return NextResponse.json({ ok: true });

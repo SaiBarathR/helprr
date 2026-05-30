@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -62,6 +62,8 @@ async function getHandler(request: NextRequest) {
 async function postHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('movies.add');
+  if (capError) return capError;
   const startedAt = performance.now();
 
   try {

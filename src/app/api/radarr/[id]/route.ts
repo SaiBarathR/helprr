@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
+import { diffMovieEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { withApiLogging } from '@/lib/api-logger';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
@@ -55,6 +56,17 @@ async function putHandler(
     }
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const client = await getRadarrClient();
+
+    // Diff vs the live movie: 403 a member changing monitoring / tags / root
+    // folder without the matching capability.
+    const current = await client.getMovieById(pathId);
+    const guardError = await guardLibraryEdit(diffMovieEdit(current, body), {
+      tags: 'movies.editTags',
+      path: 'movies.changePath',
+      monitoring: 'movies.editMonitoring',
+    });
+    if (guardError) return guardError;
+
     const result = await client.updateMovie(body, moveFiles);
     return NextResponse.json(result);
   } catch (error) {
@@ -69,6 +81,8 @@ async function deleteHandler(
 ): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('movies.delete');
+  if (capError) return capError;
 
   try {
     const { id } = await params;
