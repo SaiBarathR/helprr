@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { endOfDay } from 'date-fns';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { isKnownEventType } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -51,8 +51,8 @@ function buildWhere(searchParams: URLSearchParams): Prisma.NotificationHistoryWh
 }
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = request.nextUrl;
@@ -60,6 +60,9 @@ async function getHandler(request: NextRequest) {
     const pageSize = parseInt(searchParams.get('pageSize') || '50');
 
     const where = buildWhere(searchParams);
+    // Members see only their own owned events; admins see everything (incl. the
+    // null-owner instance/global events).
+    if (auth.user.role !== 'admin') where.userId = auth.user.id;
 
     const [records, totalRecords] = await Promise.all([
       prisma.notificationHistory.findMany({
@@ -78,15 +81,18 @@ async function getHandler(request: NextRequest) {
 }
 
 async function deleteHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = request.nextUrl;
     const where = buildWhere(searchParams);
     const all = searchParams.get('all') === 'true';
+    // Members can only ever clear their own history.
+    const scoped = auth.user.role !== 'admin';
+    if (scoped) where.userId = auth.user.id;
 
-    if (Object.keys(where).length === 0 && !all) {
+    if (Object.keys(where).length === 0 && !all && !scoped) {
       return NextResponse.json(
         { error: 'Refusing unfiltered delete; pass ?all=true to confirm' },
         { status: 400 },

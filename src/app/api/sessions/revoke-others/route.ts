@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireSession } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function postHandler(): Promise<NextResponse> {
-  const auth = await requireSession();
+  const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
   try {
+    // "Revoke all other sessions" means *my* other devices — for admins too.
+    // Force-logging out a specific member is done via the per-session revoke.
     const result = await prisma.session.updateMany({
       where: {
         revokedAt: null,
+        userId: auth.user.id,
         NOT: { id: auth.session.id },
       },
       data: { revokedAt: new Date() },

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { getQBittorrentClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { MagnetParseError, parseMagnetInfoHash } from '@/lib/magnet';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
@@ -74,6 +74,8 @@ async function getHandler(request: NextRequest) {
 async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('torrents.add');
+  if (capError) return capError;
   const startedAt = performance.now();
 
   try {

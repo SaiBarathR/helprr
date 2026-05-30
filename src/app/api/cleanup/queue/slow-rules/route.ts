@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { validateSlowRulePayload } from '../_validators';
 
 async function getHandler() {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.view');
+  if (capError) return capError;
   const rows = await prisma.slowRule.findMany({ orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }] });
   return NextResponse.json(rows.map((r) => ({
     ...r,
@@ -17,6 +19,8 @@ async function getHandler() {
 async function postHandler(req: NextRequest) {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.manage');
+  if (capError) return capError;
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
   const v = validateSlowRulePayload(body);

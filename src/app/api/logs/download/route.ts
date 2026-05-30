@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { getSafeLogFilePath, streamFilteredLogs } from '@/lib/logger';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -17,6 +17,8 @@ function parseCsv(raw: string | null, allowed: Set<string>): string[] | undefine
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('logs.view');
+  if (capError) return capError;
 
   const params = request.nextUrl.searchParams;
   const file = params.get('file');

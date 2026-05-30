@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
+import { prisma } from '@/lib/db';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
+import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
 import { logger } from '@/lib/logger';
 import { tmdbImageUrl } from '@/lib/discover';
@@ -44,11 +47,32 @@ function parseInt32(
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'requests.view')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   try {
     const sp = request.nextUrl.searchParams;
+
+    // Non-admins only ever see their own Seerr requests (ignore ?requestedBy=);
+    // admins may filter by any user or see all. An unlinked member sees nothing.
+    let requestedBy: number | undefined;
+    if (auth.user.role === 'admin') {
+      requestedBy = parseInt32(sp.get('requestedBy'), { min: 1 });
+    } else {
+      const own = auth.user.seerrUserId ? Number.parseInt(auth.user.seerrUserId, 10) : NaN;
+      if (!Number.isInteger(own)) {
+        return NextResponse.json({
+          results: [],
+          pageInfo: { page: 1, pages: 0, pageSize: 0, results: 0 },
+          linked: false,
+        });
+      }
+      requestedBy = own;
+    }
+
     const client = await getSeerrClient();
     const data = await client.listRequests({
       take: parseInt32(sp.get('take'), { min: 1, max: MAX_PAGE_SIZE }) ?? 50,
@@ -56,7 +80,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       filter: parseFilter(sp.get('filter')) ?? 'all',
       sort: (sp.get('sort') === 'modified' ? 'modified' : 'added') as SeerrRequestSort,
       sortDirection: (sp.get('sortDirection') === 'asc' ? 'asc' : 'desc') as SeerrSortDirection,
-      requestedBy: parseInt32(sp.get('requestedBy'), { min: 1 }),
+      requestedBy,
     });
 
     // Best-effort library lookup so we can deep-link each request into Helprr's
@@ -120,8 +144,23 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 interface CreateBody {
   mediaType?: unknown;
   tmdbId?: unknown;
+  title?: unknown;
   is4k?: unknown;
   seasons?: unknown;
+  // Advanced overrides (Seerr "Advanced" section).
+  serverId?: unknown;
+  profileId?: unknown;
+  rootFolder?: unknown;
+  languageProfileId?: unknown;
+  tags?: unknown;
+  // Admin-only: attribute the request to a specific Seerr user ("Request As").
+  requestAs?: unknown;
+}
+
+function parseTags(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = value.filter((t): t is number => Number.isInteger(t) && (t as number) >= 0);
+  return out;
 }
 
 function parseSeasons(value: unknown): number[] | 'all' | undefined {
@@ -137,8 +176,26 @@ function parseSeasons(value: unknown): number[] | 'all' | undefined {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'requests.create')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  // Attribute to the caller's linked Seerr user. Non-admins must be linked
+  // (otherwise the request would silently land on the admin's quota); admins
+  // attribute to themselves when linked, else fall back to the API key's user.
+  let attributeUserId: number | undefined;
+  if (auth.user.seerrUserId) {
+    const parsed = Number.parseInt(auth.user.seerrUserId, 10);
+    if (Number.isInteger(parsed)) attributeUserId = parsed;
+  }
+  if (auth.user.role !== 'admin' && attributeUserId === undefined) {
+    return NextResponse.json(
+      { error: 'Your account is not linked to a Seerr user. Ask your admin to link it.' },
+      { status: 409 }
+    );
+  }
 
   let body: CreateBody;
   try {
@@ -171,6 +228,63 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const seasons =
     Array.isArray(parsedSeasons) && parsedSeasons.length === 0 ? undefined : parsedSeasons;
 
+  // Admins may attribute the request to another Seerr user via "Request As";
+  // members are always pinned to their own linked account (set above).
+  if (auth.user.role === 'admin' && typeof body.requestAs === 'number' && Number.isInteger(body.requestAs) && body.requestAs > 0) {
+    attributeUserId = body.requestAs;
+  }
+
+  const overrides = {
+    serverId: typeof body.serverId === 'number' ? body.serverId : undefined,
+    profileId: typeof body.profileId === 'number' ? body.profileId : undefined,
+    rootFolder: typeof body.rootFolder === 'string' && body.rootFolder ? body.rootFolder : undefined,
+    languageProfileId: typeof body.languageProfileId === 'number' ? body.languageProfileId : undefined,
+    tags: parseTags(body.tags),
+  };
+
+  // Approval gate: anyone WITHOUT requests.autoApprove (members by default) has
+  // their request parked in Helprr for admin approval instead of hitting Seerr
+  // — Seerr's API would auto-approve it (approval follows the admin API key, not
+  // the attributed user). Admins (and members granted the capability) go straight through.
+  if (!can(auth.user, 'requests.autoApprove')) {
+    const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim() : null;
+    const pending = await prisma.pendingRequest.create({
+      data: {
+        userId: auth.user.id,
+        mediaType,
+        tmdbId,
+        title,
+        is4k,
+        seasons: Array.isArray(seasons) ? seasons : undefined,
+        serverId: overrides.serverId,
+        profileId: overrides.profileId,
+        rootFolder: overrides.rootFolder ?? null,
+        languageProfileId: overrides.languageProfileId,
+        tags: overrides.tags ?? undefined,
+        seerrUserId: attributeUserId != null ? String(attributeUserId) : null,
+      },
+      select: { id: true },
+    });
+
+    // Notify every active admin that there's something to approve.
+    const adminIds = (
+      await prisma.user.findMany({
+        where: { role: 'admin', status: 'active' },
+        select: { id: true },
+      })
+    ).map((u) => u.id);
+    await notifyEvent({
+      eventType: 'requestCreated',
+      title: 'New request to approve',
+      body: `${auth.user.displayName} requested ${title ?? (mediaType === 'tv' ? 'a series' : 'a movie')}`,
+      url: '/requests',
+      metadata: { source: 'helprr-pending', id: pending.id, tmdbId, mediaType, redirect: '/requests' },
+      userIds: adminIds.length ? adminIds : undefined,
+    }).catch((err) => logger.warn('Pending-request notify failed', { err }, { scope: 'api/seerr/requests' }));
+
+    return NextResponse.json({ pending: true, id: pending.id });
+  }
+
   try {
     const client = await getSeerrClient();
     const created = await client.createRequest({
@@ -178,6 +292,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       mediaId: tmdbId,
       is4k,
       seasons,
+      userId: attributeUserId,
+      ...overrides,
     });
     return NextResponse.json({ request: created });
   } catch (error) {

@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function postHandler(request: Request) {
   const authError = await requireAuth();
   if (authError) return authError;
+  // Commands (search / refresh / rename / manual import) are activity-management
+  // actions; members are read-only here.
+  const capError = await requireCapability('activity.manage');
+  if (capError) return capError;
 
   try {
     const body = await request.json();

@@ -5,6 +5,8 @@ import { ArrowUpRight, Plus, Sparkles } from 'lucide-react';
 import { isMovieFormat, buildSonarrAddParams, buildRadarrAddParams } from '@/lib/anilist-helpers';
 import type { AniListMediaFormat } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
+import { RequestMediaButton } from '@/components/discover/request-media-button';
+import { useMe, hasCapability } from '@/components/permission-provider';
 
 interface AnimeAddButtonProps {
   title: string;
@@ -19,6 +21,7 @@ interface AnimeAddButtonProps {
 }
 
 export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, libraryAvailability }: AnimeAddButtonProps) {
+  const me = useMe();
   const isMovie = isMovieFormat(format);
   const serviceAvailable = isMovie
     ? libraryAvailability?.radarr !== 'unavailable'
@@ -42,24 +45,35 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
   }
 
   const service = isMovie ? 'Radarr' : 'Sonarr';
+  const seerrMediaType: 'movie' | 'tv' = isMovie ? 'movie' : 'tv';
+  // Direct add (Radarr/Sonarr) needs the service available + the add capability;
+  // requesting via Seerr only needs a TMDB id + requests.create when Seerr is set up.
+  const canAddDirectly =
+    serviceAvailable && hasCapability(me, isMovie ? 'movies.add' : 'series.add');
+  const canRequest =
+    !!me?.seerrConfigured && hasCapability(me, 'requests.create') && tmdbId != null;
 
-  if (!serviceAvailable) {
-    return <></>
+  if (!canAddDirectly && !canRequest) {
+    return <></>;
   }
 
   const href = isMovie
     ? `/movies/add?${buildRadarrAddParams({ title, tmdbId })}`
     : `/series/add?${buildSonarrAddParams({ title, tvdbId })}`;
+  const pillClass =
+    'inline-flex items-center gap-1.5 rounded-full bg-background/25 backdrop-blur-md text-foreground px-2 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors disabled:opacity-60';
 
   return (
-    <Link
-      href={href}
-      className="inline-flex items-center gap-1.5 rounded-full bg-background/25 backdrop-blur-md text-foreground px-2 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
-    >
-      <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-      <span className="tracking-widest">
-        Add to {service}
-      </span>
-    </Link>
+    <div className="flex items-center gap-1.5">
+      {canAddDirectly && (
+        <Link href={href} className={pillClass}>
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+          <span className="tracking-widest">Add to {service}</span>
+        </Link>
+      )}
+      {canRequest && tmdbId != null && (
+        <RequestMediaButton tmdbId={tmdbId} mediaType={seerrMediaType} title={title} className={pillClass} />
+      )}
+    </div>
   );
 }

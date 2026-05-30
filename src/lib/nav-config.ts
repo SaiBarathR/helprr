@@ -19,6 +19,7 @@ import {
   LibraryBig,
   type LucideIcon,
 } from 'lucide-react';
+import type { Capability } from '@/lib/capabilities';
 
 export type NavItemId =
   | 'dashboard'
@@ -47,27 +48,30 @@ export interface NavItemDef {
   label: string;
   shortLabel: string;
   pinned?: boolean;
+  // When set, the item is hidden from users who lack this capability (UX only;
+  // the page + its API routes enforce server-side).
+  requiredCapability?: Capability;
 }
 
 /** Master ordered array of all navigation items — single source of truth */
 export const NAV_ITEMS: NavItemDef[] = [
-  { id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard' },
-  { id: 'discover', href: '/discover', icon: Compass, label: 'Discover', shortLabel: 'Discover' },
-  { id: 'anime', href: '/anime', icon: Sparkles, label: 'Anime', shortLabel: 'Anime' },
-  { id: 'movies', href: '/movies', icon: Film, label: 'Movies', shortLabel: 'Movies' },
-  { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series' },
-  { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist' },
-  { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests' },
-  { id: 'random', href: '/random', icon: Dices, label: 'Random Watch', shortLabel: 'Random' },
-  { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar' },
+  { id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard', requiredCapability: 'dashboard.view' },
+  { id: 'discover', href: '/discover', icon: Compass, label: 'Discover', shortLabel: 'Discover', requiredCapability: 'discover.view' },
+  { id: 'anime', href: '/anime', icon: Sparkles, label: 'Anime', shortLabel: 'Anime', requiredCapability: 'anime.view' },
+  { id: 'movies', href: '/movies', icon: Film, label: 'Movies', shortLabel: 'Movies', requiredCapability: 'movies.view' },
+  { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series', requiredCapability: 'series.view' },
+  { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist', requiredCapability: 'watchlist.view' },
+  { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests', requiredCapability: 'requests.view' },
+  { id: 'random', href: '/random', icon: Dices, label: 'Random Watch', shortLabel: 'Random', requiredCapability: 'random.view' },
+  { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', requiredCapability: 'calendar.view' },
   { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps' },
-  { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents' },
-  { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup' },
-  { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr' },
-  { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin' },
-  { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity' },
-  { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts' },
-  { id: 'logs', href: '/logs', icon: ScrollText, label: 'Logs', shortLabel: 'Logs' },
+  { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', requiredCapability: 'torrents.view' },
+  { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup', requiredCapability: 'cleanup.view' },
+  { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', requiredCapability: 'prowlarr.view' },
+  { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', requiredCapability: 'jellyfin.view' },
+  { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view' },
+  { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view' },
+  { id: 'logs', href: '/logs', icon: ScrollText, label: 'Logs', shortLabel: 'Logs', requiredCapability: 'logs.view' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },
 ];
 

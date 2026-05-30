@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireAdmin } from '@/lib/auth';
 import { pollingService } from '@/lib/polling-service';
 import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
 import { setCachedCacheImagesEnabled } from '@/lib/cache/state';
@@ -79,6 +79,11 @@ async function getHandler() {
 async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  // The singleton AppSettings is global infrastructure (polling intervals,
+  // logging, timezone, etc.) — only admins write it. Genuinely-personal
+  // settings live on the per-user UserSettings route.
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   try {
     const body = await request.json();

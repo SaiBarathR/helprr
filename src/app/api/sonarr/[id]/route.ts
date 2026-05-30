@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
+import { diffSeriesEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(
@@ -29,6 +30,17 @@ async function putHandler(request: NextRequest) {
     const body = await request.json();
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const client = await getSonarrClient();
+
+    // Diff the submitted body against the live series and 403 if a member is
+    // changing monitoring / tags / root folder without the matching capability.
+    const current = await client.getSeriesById(Number((body as { id?: unknown })?.id));
+    const guardError = await guardLibraryEdit(diffSeriesEdit(current, body), {
+      tags: 'series.editTags',
+      path: 'series.changePath',
+      monitoring: 'series.editMonitoring',
+    });
+    if (guardError) return guardError;
+
     const result = await client.updateSeries(body, moveFiles);
     return NextResponse.json(result);
   } catch (error) {
@@ -43,6 +55,8 @@ async function deleteHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('series.delete');
+  if (capError) return capError;
 
   try {
     const { id } = await params;

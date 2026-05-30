@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  const ownerScope = auth.user.role === 'admin' ? {} : { userId: auth.user.id };
 
   try {
     const rows = await prisma.pushSubscription.findMany({
-      where: { revokedAt: null },
+      where: { revokedAt: null, ...ownerScope },
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -31,8 +32,9 @@ async function getHandler(): Promise<NextResponse> {
 }
 
 async function deleteHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  const ownerScope = auth.user.role === 'admin' ? {} : { userId: auth.user.id };
 
   try {
     const body = (await request.json().catch(() => ({}))) as {
@@ -43,7 +45,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
 
     if (body.all === true) {
       const targets = await prisma.pushSubscription.findMany({
-        where: { revokedAt: null },
+        where: { revokedAt: null, ...ownerScope },
         select: { id: true },
       });
       const ids = targets.map((t) => t.id);
@@ -62,8 +64,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'id or all=true required' }, { status: 400 });
     }
 
-    const existing = await prisma.pushSubscription.findUnique({
-      where: { id: body.id },
+    const existing = await prisma.pushSubscription.findFirst({
+      where: { id: body.id, ...ownerScope },
       select: { id: true, revokedAt: true },
     });
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CleanupAction, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 const VALID_CLEANER = new Set(['queue', 'download']);
@@ -73,6 +73,8 @@ function serialize<T extends { torrentSize: bigint | null }>(r: T) {
 async function getHandler(req: NextRequest) {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.view');
+  if (capError) return capError;
   const sp = req.nextUrl.searchParams;
 
   if (sp.get('summary') === 'true') {
@@ -117,6 +119,8 @@ async function getHandler(req: NextRequest) {
 async function deleteHandler(req: NextRequest) {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.manage');
+  if (capError) return capError;
   const sp = req.nextUrl.searchParams;
   const all = sp.get('all') === 'true';
   if (all) {

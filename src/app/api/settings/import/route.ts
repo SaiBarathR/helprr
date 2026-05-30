@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { AppSettings, Prisma, ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
+import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { withApiLogging } from '@/lib/api-logger';
 import { pollingService } from '@/lib/polling-service';
 import { setCachedCacheImagesEnabled } from '@/lib/cache/state';
@@ -676,6 +677,7 @@ async function applyWatchlistInTxn(
   tx: Prisma.TransactionClient,
   data: ExportedWatchlist,
   skipped: string[],
+  ownerUserId: string,
 ): Promise<WatchlistApplyResult> {
   if (!Array.isArray(data.items)) {
     skipped.push('Watchlist: missing items array');
@@ -804,13 +806,15 @@ async function applyWatchlistInTxn(
 
     await tx.watchlistItem.upsert({
       where: {
-        source_externalId_mediaType: {
+        userId_source_externalId_mediaType: {
+          userId: ownerUserId,
           source: sourceRaw,
           externalId,
           mediaType,
         },
       },
       create: {
+        userId: ownerUserId,
         source: sourceRaw,
         externalId,
         mediaType,
@@ -846,6 +850,13 @@ async function applyWatchlistInTxn(
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('settings.backup');
+  if (capError) return capError;
+
+  // Imported watchlist items are attributed to the importing admin (the export
+  // format is owner-agnostic). Falls back to the bootstrap admin defensively.
+  const importer = await getCurrentUser();
+  const importerId = importer?.id ?? BOOTSTRAP_ADMIN_ID;
 
   const contentLength = Number(request.headers.get('content-length'));
   if (Number.isFinite(contentLength) && contentLength > MAX_IMPORT_BYTES) {
@@ -944,7 +955,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       if (body.watchlist && typeof body.watchlist === 'object') {
-        const r = await applyWatchlistInTxn(tx, body.watchlist, skipped);
+        const r = await applyWatchlistInTxn(tx, body.watchlist, skipped, importerId);
         appliedWatchlistItems = r.items;
         appliedWatchlistTags = r.tags;
       }

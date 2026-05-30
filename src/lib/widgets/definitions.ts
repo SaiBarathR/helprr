@@ -1,4 +1,5 @@
 import type { WidgetDefinition, WidgetProps, WidgetSpan } from './types';
+import type { Capability } from '@/lib/capabilities';
 import * as React from 'react';
 
 // Existing widgets (refactored from dashboard)
@@ -578,4 +579,41 @@ for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
     component: (props: WidgetProps) =>
       React.createElement(AnimeCarouselWidget, { carouselId: id, ...props }),
   } as WidgetDefinition);
+}
+
+// Capability-gated widgets: hidden from the dashboard + gallery for users who
+// lack the capability (a member never sees cleanup / prowlarr / Jellyfin
+// analytics / storage / Seerr-admin tiles). Library + personal widgets
+// (recently-added, continue-watching, etc.) stay ungated.
+const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability>> = {
+  'prowlarr-indexers': 'prowlarr.view',
+  'prowlarr-stats-summary': 'prowlarr.view',
+  'prowlarr-response-time': 'prowlarr.view',
+  'prowlarr-failure-rate': 'prowlarr.view',
+  'prowlarr-queries-by-indexer': 'prowlarr.view',
+  'prowlarr-grabs-by-indexer': 'prowlarr.view',
+  'prowlarr-user-agent-queries': 'prowlarr.view',
+  'prowlarr-user-agent-grabs': 'prowlarr.view',
+  'now-streaming': 'jellyfin.sessions',
+  'jellyfin-server': 'jellyfin.control',
+  'jellyfin-scheduled-tasks': 'jellyfin.control',
+  'jellyfin-user-activity': 'jellyfin.stats',
+  'jellyfin-play-history': 'jellyfin.stats',
+  'jellyfin-playback-methods': 'jellyfin.stats',
+  'jellyfin-top-tv-shows': 'jellyfin.stats',
+  'jellyfin-top-movies': 'jellyfin.stats',
+  'jellyfin-top-clients': 'jellyfin.stats',
+  'jellyfin-top-devices': 'jellyfin.stats',
+  'jellyfin-play-activity': 'jellyfin.stats',
+  'jellyfin-hourly-activity': 'jellyfin.stats',
+  'cleanup-status': 'cleanup.view',
+  'cleanup-history': 'cleanup.view',
+  'storage-usage': 'settings.storage',
+  'seerr-pending-requests': 'requests.approve',
+  'seerr-recent-requests': 'requests.approve',
+  'seerr-users': 'requests.approve',
+};
+for (const def of ALL_WIDGET_DEFINITIONS) {
+  const cap = WIDGET_REQUIRED_CAPABILITY[def.id];
+  if (cap) def.requiredCapability = cap;
 }

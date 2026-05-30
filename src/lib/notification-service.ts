@@ -4,6 +4,9 @@ import https from 'https';
 import util from 'util';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
+import { can } from '@/lib/permissions';
+import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
+import { isKnownEventType } from '@/lib/notification-events';
 
 let vapidInitialized = false;
 let vapidMissingLogged = false;
@@ -247,6 +250,12 @@ export async function notifyEvent(event: {
   metadata?: Record<string, unknown>;
   url?: string;
   dedupeKey?: string;
+  // When set, only these users' devices are eligible (e.g. a watchlist reminder
+  // targets the item's owner). Omit for broadcast-to-all-capable.
+  userIds?: string[];
+  // Stamped onto the NotificationHistory row so an owned event shows in the
+  // owner's in-app list; leave undefined for instance/global events (null).
+  ownerUserId?: string | null;
 }): Promise<number> {
   const metadata = { ...(event.metadata ?? {}) };
   const metadataRedirect = typeof metadata.redirect === 'string' ? metadata.redirect : undefined;
@@ -260,15 +269,31 @@ export async function notifyEvent(event: {
   }, { scope: 'notifications' });
 
   const subscriptions = await prisma.pushSubscription.findMany({
-    where: { revokedAt: null },
-    include: { preferences: true },
+    where: {
+      revokedAt: null,
+      ...(event.userIds ? { userId: { in: event.userIds } } : {}),
+    },
+    include: { preferences: true, user: true },
   });
 
   const tag = buildTag(event.eventType, metadata);
 
+  // Outer gate: the owning user must hold the capability mapped to this event
+  // type (a Member never receives cleanup/health/admin pushes). Unmapped event
+  // types are admin-only. The per-device NotificationPreference.enabled is the
+  // inner gate, checked after.
+  const requiredCap = isKnownEventType(event.eventType)
+    ? EVENT_TYPE_TO_CAPABILITY[event.eventType]
+    : undefined;
+
   type SendOutcome = { kind: 'sent' } | { kind: 'failed' } | { kind: 'skipped' };
   const results = await Promise.allSettled(
     subscriptions.map(async (sub): Promise<SendOutcome> => {
+      if (requiredCap) {
+        if (!sub.user || !can(sub.user, requiredCap)) return { kind: 'skipped' };
+      } else if (!sub.user || sub.user.role !== 'admin') {
+        return { kind: 'skipped' };
+      }
       const pref = sub.preferences.find((p) => p.eventType === event.eventType);
       if (pref?.enabled === false) return { kind: 'skipped' };
       const success = await sendPushNotification(
@@ -298,6 +323,7 @@ export async function notifyEvent(event: {
   await prisma.notificationHistory.create({
     data: {
       eventType: event.eventType,
+      userId: event.ownerUserId ?? null,
       title: event.title,
       body: event.body,
       dedupeKey: event.dedupeKey ?? null,

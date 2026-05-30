@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getQBittorrentClient, getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { torrentTags } from '@/lib/cleanup/helpers';
@@ -7,6 +7,8 @@ import { torrentTags } from '@/lib/cleanup/helpers';
 async function getHandler() {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.view');
+  if (capError) return capError;
 
   const result: {
     qbitCategories: string[];

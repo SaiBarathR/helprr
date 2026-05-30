@@ -16,6 +16,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { EventTypePrefs } from '@/components/notifications/event-type-prefs';
+import { useMe } from '@/components/permission-provider';
 
 const TIMING_OPTIONS = [
   { value: 'before_air', label: 'Before air time' },
@@ -58,6 +59,10 @@ function hourLabel(h: number): string {
 
 export default function NotificationsSettingsPage() {
   const { settings, loading, update } = useAppSettings();
+  // Upcoming-release timing + activity digest write the global AppSettings
+  // (admin-only). Members manage only their per-device event toggles above and
+  // inherit the household's timing.
+  const isAdmin = useMe()?.role === 'admin';
   const {
     isSupported,
     isSubscribed,
@@ -236,6 +241,7 @@ export default function NotificationsSettingsPage() {
         <EventTypePrefs subscriptionEndpoint={subscriptionEndpoint} />
       )}
 
+      {isAdmin && (
       <GroupedSection title="Upcoming releases" footer="Synced across devices">
         <div className="grouped-row">
           <span className="text-sm">Timing</span>
@@ -299,7 +305,9 @@ export default function NotificationsSettingsPage() {
           </div>
         )}
       </GroupedSection>
+      )}
 
+      {isAdmin && (
       <GroupedSection
         title="Activity digest"
         footer="A summary of imports, failures, and releases — sent once at the configured time."
@@ -366,6 +374,7 @@ export default function NotificationsSettingsPage() {
           </div>
         )}
       </GroupedSection>
+      )}
     </div>
   );
 }

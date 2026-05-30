@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler() {
   const err = await requireAuth();
   if (err) return err;
+  const capError = await requireCapability('cleanup.view');
+  if (capError) return capError;
   const [strikes, stallRules, slowRules] = await Promise.all([
     prisma.cleanupStrike.findMany({ orderBy: { lastSeenAt: 'desc' } }),
     prisma.stallRule.findMany({ select: { id: true, name: true, maxStrikes: true } }),

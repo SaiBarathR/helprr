@@ -18,6 +18,43 @@ enum ServiceType {
   SEERR
 }
 
+enum UserRole {
+  admin
+  member
+}
+
+enum UserStatus {
+  active
+  pending
+  disabled
+}
+
+model User {
+  id             String     @id @default(cuid())
+  username       String     @unique
+  displayName    String
+  passwordHash   String? // nullable → Jellyfin-only accounts (local login impossible, JF login works)
+  role           UserRole   @default(member)
+  status         UserStatus @default(active)
+  template       String     @default("member") // "admin" | "member" — preset the overrides layer on
+  permissions    Json       @default("{}") // Partial<Record<Capability, boolean>> — DELTAS only
+  jellyfinUserId String?    @unique
+  seerrUserId    String?
+  jellyfinToken  String? // cached AccessToken from "Sign in with Jellyfin"; non-authoritative
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  sessions       Session[]
+  watchlistItems WatchlistItem[]
+  pushSubscriptions PushSubscription[]
+  notificationHistory NotificationHistory[]
+  pendingRequests PendingRequest[]
+  aniListLink    UserAniListLink?
+  settings       UserSettings?
+
+  @@index([jellyfinUserId])
+  @@index([status])
+}
+
 model ServiceConnection {
   id             String      @id @default(cuid())
   type           ServiceType @unique
@@ -41,12 +78,20 @@ model Session {
   ip         String?
   label      String?
   revokedAt  DateTime?
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([revokedAt])
+  @@index([userId])
 }
 
 model WatchlistItem {
   id                 String         @id @default(cuid())
+  // Nullable so `db push` can add it to a populated table non-destructively;
+  // ensureBootstrapAdmin() backfills existing rows to the admin on boot, and
+  // every write sets it. The unique below is per-user.
+  userId             String?
+  user               User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   source             String
   externalId         String
   mediaType          String
@@ -61,8 +106,8 @@ model WatchlistItem {
   reminderAttempts   Int            @default(0)
   tags               WatchlistTag[] @relation("WatchlistItemTags")
 
-  @@unique([source, externalId, mediaType])
-  @@index([addedAt])
+  @@unique([userId, source, externalId, mediaType])
+  @@index([userId, addedAt])
   @@index([reminderAt, reminderNotifiedAt])
 }
 
@@ -75,6 +120,10 @@ model WatchlistTag {
 
 model PushSubscription {
   id                  String                   @id @default(cuid())
+  // Nullable for non-destructive `db push`; set at subscribe time and
+  // backfilled to the admin on boot. endpoint stays globally unique.
+  userId              String?
+  user                User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   endpoint            String                   @unique
   p256dh              String
   auth                String
@@ -85,6 +134,8 @@ model PushSubscription {
   revokedAt           DateTime?
   createdAt           DateTime                 @default(now())
   preferences         NotificationPreference[]
+
+  @@index([userId])
 }
 
 model NotificationPreference {
@@ -103,6 +154,11 @@ model NotificationPreference {
 
 model NotificationHistory {
   id        String   @id @default(cuid())
+  // Nullable on purpose: ownership-scoped events (watchlist reminders, a
+  // member's request updates) stamp the owner; instance/infrastructure events
+  // (imports, health, cleanup) stay null = admin/global. Avoids a hard backfill.
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   eventType String
   title     String
   body      String
@@ -112,6 +168,7 @@ model NotificationHistory {
   dedupeKey String?
 
   @@index([eventType, dedupeKey])
+  @@index([userId, createdAt])
 }
 
 model PollingState {
@@ -165,6 +222,67 @@ model DashboardLayout {
   desktopDefaults AppSettings[] @relation("DesktopDefault")
   mobileDefaults  AppSettings[] @relation("MobileDefault")
 
+  @@index([createdAt])
+}
+
+// Per-user AniList token + identity. The global ServiceConnection(type=ANILIST)
+// keeps holding the app credential (clientId/secret); this holds each member's
+// OAuth tokens (encrypted) and resolved AniList identity.
+model UserAniListLink {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken    String? // encrypted (enc:v1:)
+  refreshToken   String? // encrypted (enc:v1:)
+  tokenExpiresAt DateTime?
+  anilistUserId  Int?
+  username       String?
+  avatar         String?
+  siteUrl        String?
+  scoreFormat    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// Genuinely-personal settings. Every column is nullable = "inherit AppSettings".
+// getUserSettings() coalesces these against the global singleton.
+model UserSettings {
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeZone               String?
+  upcomingNotifyMode     String?
+  activityDigestMode     String?
+  defaultDesktopLayoutId String?
+  defaultMobileLayoutId  String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
+
+// Helprr-side approval gate for Seerr requests. Jellyseerr's API auto-approves
+// anything created with the admin key (approval is tied to the authenticating
+// user, not the attributed one), so a member's request is parked here until an
+// admin approves it — at which point it's created in Seerr and this row deleted.
+// Transient: only pending rows ever exist (approve/decline remove them).
+model PendingRequest {
+  id                String   @id @default(cuid())
+  userId            String?
+  user              User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mediaType         String // 'movie' | 'tv'
+  tmdbId            Int
+  title             String?
+  posterUrl         String?
+  is4k              Boolean  @default(false)
+  seasons           Json? // number[]
+  serverId          Int?
+  profileId         Int?
+  rootFolder        String?
+  languageProfileId Int?
+  tags              Json? // number[]
+  seerrUserId       String? // attributed member's Seerr user id (snapshot)
+  createdAt         DateTime @default(now())
+
+  @@index([userId, createdAt])
   @@index([createdAt])
 }
 

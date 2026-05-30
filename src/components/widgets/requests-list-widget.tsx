@@ -5,9 +5,10 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   MoreHorizontal, Check, X, RefreshCw, Trash2, Film, Tv, Loader2,
-  ExternalLink, MonitorPlay, Inbox,
+  ExternalLink, MonitorPlay, Inbox, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -237,6 +238,8 @@ export function RequestsListWidget({
   }, [unbounded, hasMore, loadMore]);
 
   const [busy, setBusy] = useState<Set<number>>(new Set());
+  // Approve/edit open the full Seerr modal (overrides, seasons, Request As).
+  const [modal, setModal] = useState<{ req: EnrichedSeerrRequest; mode: 'approve' | 'edit' } | null>(null);
 
   const runAction = useCallback(
     async (id: number, action: 'approve' | 'decline' | 'retry' | 'delete') => {
@@ -525,8 +528,13 @@ export function RequestsListWidget({
                     ) : null}
                     {hasOpenLink ? <DropdownMenuSeparator /> : null}
                     {canApprove ? (
-                      <DropdownMenuItem onClick={() => void runAction(req.id, 'approve')}>
-                        <Check size={14} /> Approve
+                      <DropdownMenuItem onClick={() => setModal({ req, mode: 'approve' })}>
+                        <Check size={14} /> Approve…
+                      </DropdownMenuItem>
+                    ) : null}
+                    {canApprove ? (
+                      <DropdownMenuItem onClick={() => setModal({ req, mode: 'edit' })}>
+                        <Pencil size={14} /> Edit Request
                       </DropdownMenuItem>
                     ) : null}
                     {canDecline ? (
@@ -591,6 +599,29 @@ export function RequestsListWidget({
           </div>
         ) : null}
       </div>
+
+      {modal && (
+        <SeerrRequestModal
+          open
+          onOpenChange={(o) => {
+            if (!o) setModal(null);
+          }}
+          mode={modal.mode}
+          mediaType={modal.req.type}
+          tmdbId={modal.req.media?.tmdbId ?? 0}
+          title={modal.req.enriched.title ?? ''}
+          requestId={modal.req.id}
+          initialSeasons={modal.req.seasons?.map((s) => s.seasonNumber)}
+          initialProfileId={modal.req.profileId ?? null}
+          initialRootFolder={modal.req.rootFolder ?? null}
+          initialTags={modal.req.tags}
+          initialRequestedById={modal.req.requestedBy?.id ?? null}
+          onDone={() => {
+            setModal(null);
+            void refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

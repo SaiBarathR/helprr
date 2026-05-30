@@ -7,7 +7,7 @@ import {
   parsePlaybackDateRange,
   escapeSqlLiteral,
 } from '@/lib/jellyfin-playback-query';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(
@@ -16,6 +16,9 @@ async function getHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+
+  const capError = await requireCapability('jellyfin.stats');
+  if (capError) return capError;
 
   try {
     const { type } = await params;

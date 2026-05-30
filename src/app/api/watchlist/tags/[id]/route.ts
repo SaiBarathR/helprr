@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { normalizeTagName } from '@/lib/watchlist-helpers';
 
@@ -11,6 +11,8 @@ async function patchHandler(
 ): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('watchlist.edit');
+  if (capError) return capError;
 
   const { id } = await params;
   let body: { name?: unknown; color?: unknown };
@@ -73,6 +75,8 @@ async function deleteHandler(
 ): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('watchlist.edit');
+  if (capError) return capError;
   const { id } = await params;
   try {
     await prisma.watchlistTag.delete({ where: { id } });

@@ -15,6 +15,7 @@ import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useUIStore, type RequestsFilterPreference } from '@/lib/store';
 import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
 import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
+import { PendingApprovalSection } from '@/components/seerr/pending-approval-section';
 import type { SeerrRequestCount } from '@/types/seerr';
 
 const TABS = [
@@ -156,12 +157,15 @@ export default function RequestsPage() {
         className="flex-1 min-h-0 pt-2"
       >
         {tab === 'requests' ? (
-          <RequestsListWidget
-            refreshInterval={30_000}
-            filter={filter}
-            hideHeader
-            unbounded
-          />
+          <>
+            <PendingApprovalSection onChanged={handleRefresh} />
+            <RequestsListWidget
+              refreshInterval={30_000}
+              filter={filter}
+              hideHeader
+              unbounded
+            />
+          </>
         ) : (
           <RequestsUsersWidget refreshInterval={60_000} hideHeader />
         )}

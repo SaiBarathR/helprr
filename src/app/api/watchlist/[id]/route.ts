@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { ensureTagIds, watchlistHrefFor } from '@/lib/watchlist-helpers';
 
@@ -13,17 +14,21 @@ async function deleteHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'watchlist.edit')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { id } = await params;
   try {
-    await prisma.watchlistItem.delete({ where: { id } });
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    if (isNotFound(err)) {
+    // Scope by owner so a member can't delete another user's item by guessing its id.
+    const result = await prisma.watchlistItem.deleteMany({ where: { id, userId: auth.user.id } });
+    if (result.count === 0) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
     console.error('[Watchlist] delete failed:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
@@ -33,10 +38,21 @@ async function patchHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'watchlist.edit')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { id } = await params;
+  // Confirm the item belongs to the caller before mutating it.
+  const owned = await prisma.watchlistItem.findFirst({
+    where: { id, userId: auth.user.id },
+    select: { id: true },
+  });
+  if (!owned) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   let body: { title?: unknown; tags?: unknown };
   try {
     body = (await request.json()) as { title?: unknown; tags?: unknown };

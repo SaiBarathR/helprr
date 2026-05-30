@@ -21,6 +21,13 @@ export async function register() {
     getJwtSecret();
     registerRedisShutdownHandlers();
 
+    try {
+      const { ensureBootstrapAdmin } = await import('@/lib/bootstrap-admin');
+      await ensureBootstrapAdmin();
+    } catch (adminErr) {
+      console.warn('[Helprr] Could not ensure bootstrap admin:', adminErr);
+    }
+
     const { pollingService } = await import('@/lib/polling-service');
     const { getOrCreateAppSettings } = await import('@/lib/app-settings');
     const { configureApiLogging } = await import('@/lib/api-logger');

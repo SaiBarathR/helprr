@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import {
   reconcileDiscoverLayout,
@@ -38,6 +38,9 @@ async function getHandler() {
 async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  // The Discover homepage layout is a single global config shared by everyone.
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   let body: unknown;
   try {

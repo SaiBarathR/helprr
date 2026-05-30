@@ -1,8 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
+import type { Capability } from '@/lib/capabilities';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+
+// Per-action capability: delete is the most destructive, bandwidth-limit changes
+// are their own grant, everything else is general torrent management.
+function actionCapability(action: unknown): Capability | null {
+  switch (action) {
+    case 'delete':
+      return 'torrents.delete';
+    case 'setDownloadLimit':
+    case 'setUploadLimit':
+    case 'setShareLimits':
+      return 'torrents.bandwidth';
+    case 'pause':
+    case 'stop':
+    case 'resume':
+    case 'start':
+    case 'forceStart':
+    case 'toggleSequentialDownload':
+    case 'toggleFirstLastPiecePrio':
+    case 'setCategory':
+    case 'recheck':
+    case 'reannounce':
+    case 'setAutoManagement':
+    case 'rename':
+      return 'torrents.manage';
+    default:
+      return null; // unknown action falls through to the switch's 400
+  }
+}
 
 async function postHandler(
   request: NextRequest,
@@ -17,6 +46,13 @@ async function postHandler(
     const { hash } = await params;
     const body = await request.json();
     action = body?.action;
+
+    const requiredCap = actionCapability(action);
+    if (requiredCap) {
+      const capError = await requireCapability(requiredCap);
+      if (capError) return capError;
+    }
+
     const client = await getQBittorrentClient();
 
     switch (action) {

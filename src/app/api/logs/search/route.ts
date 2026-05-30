@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { searchLogs } from '@/lib/logger';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -25,6 +25,8 @@ function parseLimit(raw: string | null): number {
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('logs.view');
+  if (capError) return capError;
 
   const params = request.nextUrl.searchParams;
   const fromRaw = params.get('from') || undefined;

@@ -45,6 +45,57 @@ export class JellyfinClient {
     return this.serverUrl;
   }
 
+  /**
+   * Validate a username + password against a Jellyfin server via
+   * POST /Users/AuthenticateByName. Used only by "Sign in with Jellyfin"; it
+   * needs no pre-existing token, so it's static and constructs its own request.
+   *
+   * Returns a discriminated result rather than throwing so the caller can map
+   * cleanly: bad password → 'invalid_credentials' (401), anything else (server
+   * down, changed API, network error) → 'unavailable' so the UI steers the user
+   * back to local password login. Helprr never becomes hard-dependent on JF.
+   */
+  static async authenticateByName(
+    serverUrl: string,
+    username: string,
+    password: string
+  ): Promise<
+    | { ok: true; userId: string; accessToken: string; userName: string }
+    | { ok: false; reason: 'invalid_credentials' | 'unavailable' }
+  > {
+    const base = serverUrl.replace(/\/+$/, '');
+    const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`;
+    try {
+      const response = await axios.post(
+        `${base}/Users/AuthenticateByName`,
+        { Username: username, Pw: password },
+        {
+          headers: {
+            'X-Emby-Authorization': authHeader,
+            Authorization: authHeader,
+            'Content-Type': 'application/json',
+          },
+          timeout: 15000,
+        }
+      );
+      const data = response.data as {
+        User?: { Id?: string; Name?: string };
+        AccessToken?: string;
+      };
+      const userId = data?.User?.Id;
+      const accessToken = data?.AccessToken;
+      if (!userId || !accessToken) {
+        return { ok: false, reason: 'unavailable' };
+      }
+      return { ok: true, userId, accessToken, userName: data.User?.Name ?? username };
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        return { ok: false, reason: 'invalid_credentials' };
+      }
+      return { ok: false, reason: 'unavailable' };
+    }
+  }
+
   getImageUrl(
     itemId: string,
     type: string = 'Primary',

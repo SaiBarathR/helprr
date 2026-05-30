@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { getAllWidgetDefinitions } from '@/lib/widgets/registry';
 import { useUIStore } from '@/lib/store';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
 import type { WidgetCategory } from '@/lib/widgets/types';
 
@@ -95,6 +96,7 @@ interface WidgetGalleryProps {
 export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   const { widgets: dashboardLayout, addWidget } = useDashboardLayout();
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const me = useMe();
   const [query, setQuery] = useState('');
 
   // Reset the query when the caller closes the drawer. Wrapping
@@ -106,8 +108,11 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   }
 
   const allDefinitions = useMemo(
-    () => getAllWidgetDefinitions(discoverLayout),
-    [discoverLayout]
+    () =>
+      getAllWidgetDefinitions(discoverLayout).filter(
+        (def) => !def.requiredCapability || hasCapability(me, def.requiredCapability)
+      ),
+    [discoverLayout, me]
   );
   const addedWidgetIds = useMemo(
     () => new Set(dashboardLayout.map((w) => w.widgetId)),

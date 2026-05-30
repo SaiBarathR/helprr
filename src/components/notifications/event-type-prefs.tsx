@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { EVENT_GROUPS, EVENT_META } from '@/lib/notification-events';
+import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
+import { useMe, hasCapability } from '@/components/permission-provider';
 
 interface Preference {
   id: string;
@@ -21,6 +23,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const me = useMe();
 
   const loadPreferences = useCallback(async () => {
     setLoading(true);
@@ -65,9 +68,16 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
 
   return (
     <>
-      {EVENT_GROUPS.map((group) => (
+      {EVENT_GROUPS.map((group) => {
+        // Only show toggles for events the user is actually eligible to receive
+        // (a Member never sees Cleanup/Health). Hide a group that's fully gated.
+        const visibleTypes = group.types.filter((t) =>
+          hasCapability(me, EVENT_TYPE_TO_CAPABILITY[t])
+        );
+        if (visibleTypes.length === 0) return null;
+        return (
         <GroupedSection key={group.id} title={group.title}>
-          {group.types.map((eventType) => {
+          {visibleTypes.map((eventType) => {
             const meta = EVENT_META[eventType];
             const pref = preferences.find((p) => p.eventType === eventType);
             const checked = pref?.enabled ?? true;
@@ -89,7 +99,8 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
             );
           })}
         </GroupedSection>
-      ))}
+        );
+      })}
     </>
   );
 }

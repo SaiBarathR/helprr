@@ -3,7 +3,10 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { AppShell } from '@/components/layout/app-shell';
 import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-redirect';
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
-import { getSession } from '@/lib/auth';
+import { PermissionProvider, type MePayload } from '@/components/permission-provider';
+import { getCurrentUser } from '@/lib/auth';
+import { effectiveCapabilities } from '@/lib/permissions';
+import { prisma } from '@/lib/db';
 
 // Revocation is enforced server-side here (getSession() hits the DB on every
 // invocation). Force-dynamic guarantees this layout re-runs on every request
@@ -13,19 +16,35 @@ export const dynamic = 'force-dynamic';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Edge middleware only checks the JWT signature/sid claim; it can't reach
-  // the DB to confirm the Session row hasn't been revoked. Gate every
-  // protected page here (node runtime) so revocation takes effect for SSR
-  // navs, not just on the next API call.
-  if (!(await getSession())) {
+  // the DB to confirm the Session row hasn't been revoked (or the user
+  // disabled). Resolve the user here (node runtime) so revocation/disable take
+  // effect for SSR navs, and so the permission provider is seeded server-side.
+  const user = await getCurrentUser();
+  if (!user) {
     redirect('/login');
   }
 
+  const seerrConfigured = (await prisma.serviceConnection.count({ where: { type: 'SEERR' } })) > 0;
+
+  const me: MePayload = {
+    id: user.id,
+    name: user.displayName,
+    username: user.username,
+    role: user.role,
+    template: user.template,
+    capabilities: effectiveCapabilities(user),
+    seerrConfigured,
+    seerrUserId: user.seerrUserId,
+  };
+
   return (
-    <div className="flex min-h-screen bg-background">
-      <StandaloneLaunchRedirect />
-      <DiscoverLayoutHydrator />
-      <Sidebar />
-      <AppShell>{children}</AppShell>
-    </div>
+    <PermissionProvider value={me}>
+      <div className="flex min-h-screen bg-background">
+        <StandaloneLaunchRedirect />
+        <DiscoverLayoutHydrator />
+        <Sidebar />
+        <AppShell>{children}</AppShell>
+      </div>
+    </PermissionProvider>
   );
 }
