@@ -66,6 +66,7 @@ async function patchHandler(
   }
   if (Array.isArray(body.tags)) {
     const tagIds = await ensureTagIds(
+      auth.user.id,
       body.tags.filter((t): t is string => typeof t === 'string')
     );
     data.tags = { set: tagIds.map((tid) => ({ id: tid })) };

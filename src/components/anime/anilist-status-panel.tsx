@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Sparkles, Pencil, Plus, Loader2, AlertTriangle } from 'lucide-react';
 import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
+import { useMe } from '@/components/permission-provider';
 import type { AniListMediaListEntryBase, AniListMediaListStatus } from '@/lib/anilist-mutations';
 
 interface ViewerSummary {
@@ -65,6 +66,10 @@ export function AnilistStatusPanel({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // AniList is a single shared operator account — tracking is admin-only. Members
+  // must not see (or be aware of) the add/edit-entry UI.
+  const me = useMe();
+  const isAdmin = me?.role === 'admin';
 
   const loadEntry = useCallback(async (viewData: ViewerSummary) => {
     try {
@@ -91,6 +96,10 @@ export function AnilistStatusPanel({
   }, [mediaId]);
 
   useEffect(() => {
+    if (!isAdmin) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     async function loadAll() {
       try {
@@ -113,7 +122,9 @@ export function AnilistStatusPanel({
     return () => {
       cancelled = true;
     };
-  }, [loadEntry]);
+  }, [loadEntry, isAdmin]);
+
+  if (!isAdmin) return null;
 
   if (loading) {
     return (

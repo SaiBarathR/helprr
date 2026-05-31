@@ -898,14 +898,16 @@ export default function MovieDetailPage() {
               Automatic
             </Button>
           )}
-          <Button
-            onClick={() => setInteractiveSearch(true)}
-            className="flex-1 rounded-full h-10"
-            variant="secondary"
-          >
-            <Search className="h-4 w-4 mr-2" />
-            Interactive
-          </Button>
+          {canManageActivity && (
+            <Button
+              onClick={() => setInteractiveSearch(true)}
+              className="flex-1 rounded-full h-10"
+              variant="secondary"
+            >
+              <Search className="h-4 w-4 mr-2" />
+              Interactive
+            </Button>
+          )}
         </div>
         <div>
           <Button

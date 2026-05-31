@@ -71,6 +71,7 @@ import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { useCan } from '@/components/permission-provider';
 
 type JellyfinServerAction = 'restart' | 'shutdown' | 'scan-libraries';
 
@@ -126,6 +127,19 @@ const MAX_DAYS = 18250;
 
 export default function JellyfinPage() {
   const [tab, setTab] = useState<TabKey>('overview');
+  // Users (sessions) and Stats are admin analytics; members keep Overview and
+  // their own per-user History.
+  const canSessions = useCan('jellyfin.sessions');
+  const canStats = useCan('jellyfin.stats');
+  const visibleTabs = useMemo(
+    () =>
+      TABS.filter((t) => {
+        if (t.key === 'users') return canSessions;
+        if (t.key === 'stats') return canStats;
+        return true;
+      }),
+    [canSessions, canStats]
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const refreshingRef = useRef(refreshing);
@@ -170,7 +184,7 @@ export default function JellyfinPage() {
 
       <div className="sticky z-30 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.key}
               id={`tab-${t.key}`}
@@ -258,24 +272,33 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [pendingServerAction, setPendingServerAction] = useState<JellyfinServerAction | null>(null);
   const externalUrls = useExternalUrls();
   const jellyfinUrl = externalUrls.JELLYFIN;
+  // Server info, scan/restart/shutdown, and scheduled tasks are admin-only —
+  // members never see (or fetch) them.
+  const canControl = useCan('jellyfin.control');
 
   const fetchData = useCallback(async () => {
-    const [sysRes, sessRes, resumeRes, countsRes, recentRes, taskRes] = await Promise.allSettled([
-      fetch('/api/jellyfin/system'),
+    const [sessRes, resumeRes, countsRes, recentRes] = await Promise.allSettled([
       fetch('/api/jellyfin/sessions'),
       fetch('/api/jellyfin/resume'),
       fetch('/api/jellyfin/counts'),
       fetch('/api/jellyfin/recently-added?limit=20'),
-      fetch('/api/jellyfin/tasks'),
     ]);
-    if (sysRes.status === 'fulfilled' && sysRes.value.ok) setSystem((await sysRes.value.json()).system);
     if (sessRes.status === 'fulfilled' && sessRes.value.ok) setSessions((await sessRes.value.json()).sessions || []);
     if (resumeRes.status === 'fulfilled' && resumeRes.value.ok) setResumeItems((await resumeRes.value.json()).items || []);
     if (countsRes.status === 'fulfilled' && countsRes.value.ok) setCounts((await countsRes.value.json()).counts);
     if (recentRes.status === 'fulfilled' && recentRes.value.ok) setRecentlyAdded((await recentRes.value.json()).items || []);
-    if (taskRes.status === 'fulfilled' && taskRes.value.ok) setTasks((await taskRes.value.json()).tasks || []);
+
+    // Server administration data is control-gated; skip the fetches for members.
+    if (canControl) {
+      const [sysRes, taskRes] = await Promise.allSettled([
+        fetch('/api/jellyfin/system'),
+        fetch('/api/jellyfin/tasks'),
+      ]);
+      if (sysRes.status === 'fulfilled' && sysRes.value.ok) setSystem((await sysRes.value.json()).system);
+      if (taskRes.status === 'fulfilled' && taskRes.value.ok) setTasks((await taskRes.value.json()).tasks || []);
+    }
     setLoading(false);
-  }, []);
+  }, [canControl]);
 
   const refreshTasks = useCallback(async () => {
     const res = await fetch('/api/jellyfin/tasks');
@@ -359,7 +382,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
       )}
 
 
-      {system && (
+      {canControl && system && (
         <div className="rounded-xl bg-card overflow-hidden">
           <div className="p-3 flex items-center gap-3">
             <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Server className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
@@ -410,7 +433,7 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         </div>
       )}
       
-      {tasks.length > 0 && <ScheduledTasksList tasks={tasks} onRefresh={refreshTasks} />}
+      {canControl && tasks.length > 0 && <ScheduledTasksList tasks={tasks} onRefresh={refreshTasks} />}
 
       {counts && (
         <div className="grid gap-3 grid-cols-2">

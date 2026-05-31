@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -10,6 +10,8 @@ async function getHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('torrents.view');
+  if (capError) return capError;
   const startedAt = performance.now();
 
   try {

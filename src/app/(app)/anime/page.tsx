@@ -9,6 +9,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Search, Star, Sparkles, CalendarClock } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useUIStore } from '@/lib/store';
+import { useMe } from '@/components/permission-provider';
 import {
   type AnimeCarouselId,
   reconcileAnimeCarouselOrder,
@@ -149,6 +150,10 @@ export default function AnimeHomePage() {
   const [viewer, setViewer] = useState<ViewerSummary | null>(null);
   const [watchingEntries, setWatchingEntries] = useState<AniListMediaListEntry[]>([]);
   const [planningEntries, setPlanningEntries] = useState<AniListMediaListEntry[]>([]);
+  // AniList is a single shared operator account; its list (My Library, Continue
+  // Watching, Plan to Watch) is admin-only — members never see it.
+  const me = useMe();
+  const isAdmin = me?.role === 'admin';
 
   useEffect(() => {
     async function fetchHome() {
@@ -170,6 +175,10 @@ export default function AnimeHomePage() {
   }, []);
 
   useEffect(() => {
+    if (!isAdmin) {
+      setViewer({ connected: false });
+      return;
+    }
     let cancelled = false;
     async function loadViewer() {
       try {
@@ -209,7 +218,7 @@ export default function AnimeHomePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isAdmin]);
 
   const animeCarouselOrder = useUIStore((s) => s.animeCarouselOrder);
   const disabledAnimeCarousels = useUIStore((s) => s.disabledAnimeCarousels);

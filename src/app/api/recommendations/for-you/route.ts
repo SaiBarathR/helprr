@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getRadarrClient, getSonarrClient, getTMDBClient } from '@/lib/service-helpers';
 import { prisma } from '@/lib/db';
@@ -48,8 +48,8 @@ function buildRadarrSeeds(movies: RadarrMovie[]): Seed[] {
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = new URL(request.url);
   const limitParam = Number(searchParams.get('limit'));
@@ -68,7 +68,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       return client.getMovies();
     })(),
     prisma.watchlistItem.findMany({
-      where: { source: 'TMDB' },
+      // Per-user: only the caller's own watchlist excludes/seeds their recommendations.
+      where: { userId: auth.user.id, source: 'TMDB' },
       select: { externalId: true, mediaType: true },
     }),
   ]);

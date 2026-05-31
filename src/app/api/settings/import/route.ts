@@ -722,7 +722,7 @@ async function applyWatchlistInTxn(
   if (allTagNames.size > 0) {
     const names = Array.from(allTagNames);
     const existing = await tx.watchlistTag.findMany({
-      where: { name: { in: names } },
+      where: { userId: ownerUserId, name: { in: names } },
       select: { id: true, name: true },
     });
     for (const row of existing) tagIdByName.set(row.name, row.id);
@@ -732,13 +732,14 @@ async function applyWatchlistInTxn(
     if (toCreate.length > 0) {
       await tx.watchlistTag.createMany({
         data: toCreate.map((name) => ({
+          userId: ownerUserId,
           name,
           color: incomingColorByName.get(name) ?? pickTagColor(name),
         })),
         skipDuplicates: true,
       });
       const fresh = await tx.watchlistTag.findMany({
-        where: { name: { in: toCreate } },
+        where: { userId: ownerUserId, name: { in: toCreate } },
         select: { id: true, name: true },
       });
       for (const row of fresh) tagIdByName.set(row.name, row.id);

@@ -21,6 +21,10 @@ export interface LibraryEditDiff {
   tags: boolean;
   path: boolean;
   monitoring: boolean;
+  // True when the body changes a protected settings field (quality profile, type,
+  // folder/availability options). No capability covers these — they are admin-only,
+  // so a non-admin who trips this is rejected outright.
+  other: boolean;
 }
 
 export interface LibraryEditCaps {
@@ -29,8 +33,45 @@ export interface LibraryEditCaps {
   monitoring: Capability;
 }
 
+// Settings fields a member must never change. There is no capability for them, so
+// for non-admins any explicit change here is forbidden. Kept as an explicit list
+// (rather than diffing the whole object) because the client round-trips the entire
+// series/movie object, whose volatile fields (statistics, airing dates, ratings)
+// drift between fetch and PUT and would otherwise false-positive. Review this list
+// if Sonarr/Radarr add new editable settings to their PUT schema.
+const SERIES_PROTECTED_KEYS = [
+  'qualityProfileId',
+  'languageProfileId',
+  'seriesType',
+  'seasonFolder',
+  'monitorNewItems',
+] as const;
+
+const MOVIE_PROTECTED_KEYS = ['qualityProfileId', 'minimumAvailability'] as const;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * Whether the body explicitly sets a protected settings field to a value differing
+ * from the live item. Only a present, differing primitive counts — an omitted field
+ * isn't treated as a change (the member UI sends the full object, so omission only
+ * happens on a crafted body, which the upstream API validates).
+ */
+function protectedFieldChanged(
+  current: unknown,
+  body: Record<string, unknown>,
+  keys: readonly string[]
+): boolean {
+  const cur = asRecord(current);
+  for (const key of keys) {
+    if (!(key in body)) continue;
+    const submitted = body[key];
+    if (submitted === undefined) continue;
+    if (submitted !== cur[key]) return true;
+  }
+  return false;
 }
 
 function tagSetChanged(current: number[] | undefined, submitted: unknown): boolean {
@@ -45,6 +86,14 @@ function normPath(p: string): string {
   return p.replace(/[\\/]+$/, '');
 }
 
+/** Whether `child` lives under `parent`, matching on full path segments (not raw
+ * string prefix) so `/media/tv-shows` is NOT considered under `/media/tv`. */
+function isUnder(child: string, parent: string): boolean {
+  const c = normPath(child);
+  const p = normPath(parent);
+  return c === p || c.startsWith(`${p}/`) || c.startsWith(`${p}\\`);
+}
+
 function pathChanged(currentPath: string | undefined, body: Record<string, unknown>): boolean {
   const submittedPath = typeof body.path === 'string' ? body.path : undefined;
   if (submittedPath !== undefined && submittedPath !== currentPath) return true;
@@ -52,7 +101,8 @@ function pathChanged(currentPath: string | undefined, body: Record<string, unkno
   const submittedRoot = typeof body.rootFolderPath === 'string' ? body.rootFolderPath : undefined;
   if (submittedRoot !== undefined && currentPath !== undefined) {
     // A new root folder the current full path doesn't already live under = a move.
-    if (!normPath(currentPath).startsWith(normPath(submittedRoot))) return true;
+    // Segment-aware so a sibling root (/media/tv vs /media/tv-shows) is still a move.
+    if (!isUnder(currentPath, submittedRoot)) return true;
   }
   return false;
 }
@@ -88,7 +138,9 @@ export function diffSeriesEdit(
     }
   }
 
-  return { tags, path, monitoring };
+  const other = protectedFieldChanged(current, body, SERIES_PROTECTED_KEYS);
+
+  return { tags, path, monitoring, other };
 }
 
 /** Diff a Radarr movie PUT body (no seasons) against the current movie. */
@@ -102,6 +154,7 @@ export function diffMovieEdit(
     tags: tagSetChanged(current.tags, body.tags),
     path: pathChanged(current.path, body),
     monitoring: submittedMonitored !== (current.monitored ?? false),
+    other: protectedFieldChanged(current, body, MOVIE_PROTECTED_KEYS),
   };
 }
 
@@ -114,11 +167,19 @@ export async function guardLibraryEdit(
   diff: LibraryEditDiff,
   caps: LibraryEditCaps
 ): Promise<NextResponse | null> {
-  if (!diff.tags && !diff.path && !diff.monitoring) return null;
+  if (!diff.tags && !diff.path && !diff.monitoring && !diff.other) return null;
 
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (user.role === 'admin') return null;
+
+  // Protected settings have no capability — only an admin may change them.
+  if (diff.other) {
+    return NextResponse.json(
+      { error: 'Forbidden: only an admin can change these fields' },
+      { status: 403 }
+    );
+  }
 
   const missing: Capability[] = [];
   if (diff.tags && !can(user, caps.tags)) missing.push(caps.tags);

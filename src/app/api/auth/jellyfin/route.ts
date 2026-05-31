@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { createSession, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
 import { JellyfinClient } from '@/lib/jellyfin-client';
-import { getClientIp, enforceLoginRateLimit, clearLoginAttempts } from '@/lib/login-rate-limit';
+import {
+  getClientIp,
+  enforceLoginRateLimit,
+  clearLoginAttempts,
+  enforceUsernameBackoff,
+  recordUsernameFailure,
+  clearUsernameBackoff,
+} from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 
@@ -35,6 +42,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Password is required' }, { status: 400 });
   }
 
+  // Layer 2: per-username backoff (shared key with /api/auth/login so an attacker
+  // can't alternate endpoints to dodge the cap).
+  const backoff = await enforceUsernameBackoff(username);
+  if (backoff) return backoff;
+
   const connection = await prisma.serviceConnection.findUnique({
     where: { type: 'JELLYFIN' },
     select: { url: true },
@@ -46,6 +58,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await JellyfinClient.authenticateByName(connection.url, username.trim(), password);
   if (!auth.ok) {
     if (auth.reason === 'invalid_credentials') {
+      // Only a wrong password counts toward backoff — a Jellyfin outage (502) is
+      // not a guess and must not throttle the user out.
+      await recordUsernameFailure(username, password);
       return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
     }
     return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
@@ -63,6 +78,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       { status: 403 }
     );
   }
+
+  await clearUsernameBackoff(username);
 
   if (ip !== undefined) {
     try {

@@ -54,7 +54,9 @@ export function watchlistHrefFor(
   return null;
 }
 
-export async function ensureTagIds(rawNames: string[]): Promise<string[]> {
+/** Resolve tag names to ids for a specific user, creating any that are missing.
+ *  Tags are per-user, so lookups and creates are always scoped to `userId`. */
+export async function ensureTagIds(userId: string, rawNames: string[]): Promise<string[]> {
   const cleaned = Array.from(
     new Set(
       rawNames
@@ -65,18 +67,18 @@ export async function ensureTagIds(rawNames: string[]): Promise<string[]> {
   if (cleaned.length === 0) return [];
 
   const existing = await prisma.watchlistTag.findMany({
-    where: { name: { in: cleaned } },
+    where: { userId, name: { in: cleaned } },
     select: { id: true, name: true },
   });
   const byName = new Map(existing.map((t) => [t.name, t.id]));
   const toCreate = cleaned.filter((n) => !byName.has(n));
   if (toCreate.length > 0) {
     await prisma.watchlistTag.createMany({
-      data: toCreate.map((name) => ({ name, color: pickTagColor(name) })),
+      data: toCreate.map((name) => ({ userId, name, color: pickTagColor(name) })),
       skipDuplicates: true,
     });
     const fresh = await prisma.watchlistTag.findMany({
-      where: { name: { in: toCreate } },
+      where: { userId, name: { in: toCreate } },
       select: { id: true, name: true },
     });
     for (const t of fresh) byName.set(t.name, t.id);

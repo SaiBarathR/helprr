@@ -15,3 +15,15 @@ export async function assertPageCapability(cap: Capability): Promise<void> {
     notFound();
   }
 }
+
+/**
+ * Server-side page guard for admin-only pages with no dedicated capability
+ * (e.g. the AniList library, which is tied to the single shared operator
+ * account). Renders a 404 for non-admins.
+ */
+export async function assertPageAdmin(): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'admin') {
+    notFound();
+  }
+}

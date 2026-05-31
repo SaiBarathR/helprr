@@ -594,6 +594,7 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability>> = {
   'prowlarr-grabs-by-indexer': 'prowlarr.view',
   'prowlarr-user-agent-queries': 'prowlarr.view',
   'prowlarr-user-agent-grabs': 'prowlarr.view',
+  'torrent-overview': 'torrents.view',
   'now-streaming': 'jellyfin.sessions',
   'jellyfin-server': 'jellyfin.control',
   'jellyfin-scheduled-tasks': 'jellyfin.control',

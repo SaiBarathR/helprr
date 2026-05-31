@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { AniListReauthRequiredError, loadAniListConnection } from '@/lib/anilist-oauth';
 import {
   fetchMediaListCollection,
@@ -21,8 +21,9 @@ const VALID_STATUSES: AniListMediaListStatus[] = [
 ];
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // AniList is a single shared operator account — its list is admin-only.
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   const conn = await loadAniListConnection();
   if (!conn || !conn.accessToken || !conn.anilistUserId) {
