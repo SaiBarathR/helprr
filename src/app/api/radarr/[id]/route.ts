@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffMovieEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -57,15 +57,21 @@ async function putHandler(
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const client = await getRadarrClient();
 
-    // Diff vs the live movie: 403 a member changing monitoring / tags / root
-    // folder without the matching capability.
-    const current = await client.getMovieById(pathId);
-    const guardError = await guardLibraryEdit(diffMovieEdit(current, body), {
-      tags: 'movies.editTags',
-      path: 'movies.changePath',
-      monitoring: 'movies.editMonitoring',
-    });
-    if (guardError) return guardError;
+    // Admins edit freely; only members are diffed against the live movie and 403'd
+    // for changing monitoring / tags / root folder without the matching capability.
+    // Skipping the fetch for admins avoids an extra upstream round-trip and keeps a
+    // transient detail-fetch error from failing an otherwise-valid admin edit.
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role !== 'admin') {
+      const current = await client.getMovieById(pathId);
+      const guardError = await guardLibraryEdit(diffMovieEdit(current, body), {
+        tags: 'movies.editTags',
+        path: 'movies.changePath',
+        monitoring: 'movies.editMonitoring',
+      });
+      if (guardError) return guardError;
+    }
 
     const result = await client.updateMovie(body, moveFiles);
     return NextResponse.json(result);

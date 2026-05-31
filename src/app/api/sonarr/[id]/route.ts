@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffSeriesEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -45,16 +45,21 @@ async function putHandler(
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const client = await getSonarrClient();
 
-    // Diff the submitted body against the live series (fetched by the route id, not
-    // the body id) and 403 if a member is changing monitoring / tags / root folder
-    // without the matching capability.
-    const current = await client.getSeriesById(pathId);
-    const guardError = await guardLibraryEdit(diffSeriesEdit(current, body), {
-      tags: 'series.editTags',
-      path: 'series.changePath',
-      monitoring: 'series.editMonitoring',
-    });
-    if (guardError) return guardError;
+    // Admins edit freely; only members are diffed against the live series and 403'd
+    // for changing monitoring / tags / root folder without the matching capability.
+    // Skipping the fetch for admins avoids an extra upstream round-trip and keeps a
+    // transient detail-fetch error from failing an otherwise-valid admin edit.
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (user.role !== 'admin') {
+      const current = await client.getSeriesById(pathId);
+      const guardError = await guardLibraryEdit(diffSeriesEdit(current, body), {
+        tags: 'series.editTags',
+        path: 'series.changePath',
+        monitoring: 'series.editMonitoring',
+      });
+      if (guardError) return guardError;
+    }
 
     const result = await client.updateSeries(body, moveFiles);
     return NextResponse.json(result);
