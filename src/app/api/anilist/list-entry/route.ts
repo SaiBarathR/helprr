@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { AniListReauthRequiredError, loadAniListConnection } from '@/lib/anilist-oauth';
 import { withApiLogging } from '@/lib/api-logger';
 import {
@@ -58,8 +58,9 @@ function hasOwn(value: Record<string, unknown>, key: string): boolean {
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Shared operator account — reading the entry status is admin-only (see postHandler).
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   const mediaId = Number(request.nextUrl.searchParams.get('mediaId'));
   if (!Number.isFinite(mediaId) || mediaId <= 0) {
@@ -88,8 +89,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // The AniList connection is a single shared operator account (one OAuth token),
+  // so mutating the list is admin-only — a member must not alter the operator's list.
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   let body: unknown;
   try {
@@ -167,8 +170,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 async function deleteHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Shared operator account — deletion is admin-only (see postHandler).
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   const idParam = request.nextUrl.searchParams.get('id');
   const id = Number(idParam);

@@ -247,8 +247,8 @@ function buildLayout(positions: DefaultPosition[]): WidgetInstance[] {
 
 // ── Member default ──
 // Simple starter layout for member accounts: only widgets a member can access
-// (library, discover, their own requests, read-only torrents/activity). Each
-// member gets a personal copy on first dashboard load and can customize it.
+// (library, discover, their own requests, read-only activity). Torrents are
+// admin-only. Each member gets a personal copy on first dashboard load.
 const DEFAULT_MEMBER_POSITIONS: DefaultPosition[] = [
   { id: 'm-stats-grid-1', widgetId: 'stats-grid', x: 0, y: 0, colSpan: 4, rowSpan: 2,
     mobileX: 0, mobileY: 0, mobileColSpan: 4, mobileRowSpan: 1, layoutOverride: 'default' },
@@ -266,12 +266,10 @@ const DEFAULT_MEMBER_POSITIONS: DefaultPosition[] = [
     mobileX: 0, mobileY: 15, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel' },
   { id: 'm-for-you-1', widgetId: 'for-you', x: 6, y: 11, colSpan: 6, rowSpan: 3,
     mobileX: 0, mobileY: 17, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'carousel' },
-  { id: 'm-active-downloads-1', widgetId: 'active-downloads', x: 0, y: 14, colSpan: 8, rowSpan: 2,
+  { id: 'm-active-downloads-1', widgetId: 'active-downloads', x: 0, y: 14, colSpan: 12, rowSpan: 2,
     mobileX: 0, mobileY: 20, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel' },
-  { id: 'm-torrent-overview-1', widgetId: 'torrent-overview', x: 8, y: 14, colSpan: 4, rowSpan: 2,
-    mobileX: 0, mobileY: 22, mobileColSpan: 2, mobileRowSpan: 1, layoutOverride: 'vertical' },
   { id: 'm-notifications-1', widgetId: 'notifications', x: 0, y: 16, colSpan: 12, rowSpan: 3,
-    mobileX: 0, mobileY: 23, mobileColSpan: 4, mobileRowSpan: 3 },
+    mobileX: 0, mobileY: 22, mobileColSpan: 4, mobileRowSpan: 3 },
 ];
 
 export const DEFAULT_DESKTOP_LAYOUT: WidgetInstance[] = buildLayout(DEFAULT_DESKTOP_POSITIONS);

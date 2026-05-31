@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
@@ -78,7 +79,11 @@ async function decodeToken(token: string): Promise<DecodedToken | null> {
   }
 }
 
-async function loadAndTouchSession(sid: string): Promise<SessionRow | null> {
+// Memoized per request (React cache): requireAuth + requireCapability (and any
+// other guard) on the same request share a single session+user load instead of
+// each issuing its own findUnique + JWT verify. Scoped to one request, so it
+// never leaks a session across requests.
+const loadAndTouchSession = cache(async (sid: string): Promise<SessionRow | null> => {
   const session = await prisma.session.findUnique({
     where: { id: sid },
     include: { user: true },
@@ -103,7 +108,7 @@ async function loadAndTouchSession(sid: string): Promise<SessionRow | null> {
   }
 
   return session;
-}
+});
 
 async function readToken(): Promise<string | null> {
   const cookieStore = await cookies();

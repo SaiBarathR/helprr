@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { createSession, verifyUserPassword, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
 import { getDummyPasswordHash, verifyPasswordHash } from '@/lib/password';
-import { getClientIp, enforceLoginRateLimit, clearLoginAttempts } from '@/lib/login-rate-limit';
+import {
+  getClientIp,
+  enforceLoginRateLimit,
+  clearLoginAttempts,
+  enforceUsernameBackoff,
+  recordUsernameFailure,
+  clearUsernameBackoff,
+} from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 
@@ -32,6 +39,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Username is required' }, { status: 400 });
   }
 
+  // Layer 2: per-username backoff (always on, even without a trusted proxy IP).
+  const backoff = await enforceUsernameBackoff(username);
+  if (backoff) return backoff;
+
   const user = await prisma.user.findFirst({
     where: { username: username.trim(), status: 'active' },
     select: { id: true, role: true, passwordHash: true },
@@ -41,12 +52,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Spend the same scrypt work on a throwaway hash so an unknown username
     // can't be distinguished from a wrong password by response latency.
     await verifyPasswordHash(password, await getDummyPasswordHash());
+    await recordUsernameFailure(username, password);
     return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
 
   if (!(await verifyUserPassword(user, password))) {
+    await recordUsernameFailure(username, password);
     return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
+
+  await clearUsernameBackoff(username);
 
   if (ip !== undefined) {
     try {

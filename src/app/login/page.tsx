@@ -41,7 +41,14 @@ export default function LoginPage() {
   // 'local' | 'jellyfin' | null — tracks which button is mid-flight so only the
   // pressed one shows a spinner.
   const [pending, setPending] = useState<'local' | 'jellyfin' | null>(null);
+  // When the server returns 429, hold the retry deadline (epoch ms) so the error
+  // can count down live instead of showing a frozen "try again in N seconds".
+  const [retryAt, setRetryAt] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const router = useRouter();
+
+  const retrySeconds =
+    retryAt !== null ? Math.max(0, Math.ceil((retryAt - nowMs) / 1000)) : 0;
 
   // Detect device class on the login page so the dashboard SSR reads the
   // correct cookie on the very first authenticated render — avoids the
@@ -50,10 +57,23 @@ export default function LoginPage() {
     setDeviceCookieFromMatchMedia();
   }, []);
 
+  // Tick once a second while a retry countdown is active; clear it when it hits 0.
+  useEffect(() => {
+    if (retryAt === null) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNowMs(t);
+      if (t >= retryAt) setRetryAt(null);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [retryAt]);
+
   async function submit(endpoint: string, mode: 'local' | 'jellyfin') {
     if (pending) return;
+    if (retryAt !== null && retryAt > Date.now()) return; // still in cooldown
     setPending(mode);
     setError('');
+    setRetryAt(null);
 
     try {
       const res = await fetch(endpoint, {
@@ -69,6 +89,16 @@ export default function LoginPage() {
         router.replace(getPostLoginTarget());
         router.refresh();
         return;
+      }
+
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get('Retry-After'));
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          // Live countdown replaces the static error text.
+          setNowMs(Date.now());
+          setRetryAt(Date.now() + retryAfter * 1000);
+          return;
+        }
       }
 
       let message = 'Sign in failed';
@@ -124,10 +154,18 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
-            {error && (
+            {retrySeconds > 0 ? (
+              <p className="text-sm text-destructive text-center">
+                Too many login attempts. Try again in {retrySeconds}s.
+              </p>
+            ) : error ? (
               <p className="text-sm text-destructive text-center">{error}</p>
-            )}
-            <Button type="submit" className="w-full" disabled={pending !== null}>
+            ) : null}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={pending !== null || retrySeconds > 0}
+            >
               {pending === 'local' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Sign In
             </Button>
@@ -143,7 +181,7 @@ export default function LoginPage() {
               type="button"
               variant="outline"
               className="w-full"
-              disabled={pending !== null}
+              disabled={pending !== null || retrySeconds > 0}
               onClick={() => submit('/api/auth/jellyfin', 'jellyfin')}
             >
               {pending === 'jellyfin' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

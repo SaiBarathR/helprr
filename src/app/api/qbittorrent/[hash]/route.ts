@@ -29,7 +29,7 @@ function actionCapability(action: unknown): Capability | null {
     case 'rename':
       return 'torrents.manage';
     default:
-      return null; // unknown action falls through to the switch's 400
+      return null; // unknown/unmapped action → rejected up front (deny-by-default)
   }
 }
 
@@ -47,11 +47,16 @@ async function postHandler(
     const body = await request.json();
     action = body?.action;
 
+    // Deny-by-default: an action with no capability mapping is rejected here
+    // rather than reaching the dispatch switch, so a new action added below
+    // without a matching capability entry can never run unchecked.
     const requiredCap = actionCapability(action);
-    if (requiredCap) {
-      const capError = await requireCapability(requiredCap);
-      if (capError) return capError;
+    if (!requiredCap) {
+      logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, invalidAction: true });
+      return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
+    const capError = await requireCapability(requiredCap);
+    if (capError) return capError;
 
     const client = await getQBittorrentClient();
 

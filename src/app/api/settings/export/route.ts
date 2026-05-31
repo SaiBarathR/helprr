@@ -188,14 +188,19 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     if (wantWatchlist) {
       // Watchlist is per-user; back up the exporting admin's own list.
+      // Hard-fail rather than let `userId: undefined` collapse the filter and
+      // dump every user's watchlist if the user row vanished mid-request.
       const exporter = await getCurrentUser();
+      if (!exporter) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
       const [items, tags] = await Promise.all([
         prisma.watchlistItem.findMany({
-          where: { userId: exporter?.id ?? undefined },
+          where: { userId: exporter.id },
           include: { tags: { select: { name: true } } },
           orderBy: { addedAt: 'asc' },
         }),
-        prisma.watchlistTag.findMany({ orderBy: { name: 'asc' } }),
+        prisma.watchlistTag.findMany({ where: { userId: exporter.id }, orderBy: { name: 'asc' } }),
       ]);
       const exportedItems: ExportedWatchlistItem[] = items.map((i) => ({
         source: i.source,

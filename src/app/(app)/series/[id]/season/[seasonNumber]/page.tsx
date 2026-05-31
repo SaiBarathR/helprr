@@ -59,6 +59,7 @@ export default function SeasonDetailPage() {
 
   const canEditMonitoring = useCan('series.editMonitoring');
   const canDeleteSeries = useCan('series.delete');
+  const canManageActivity = useCan('activity.manage');
 
   const persistSeasonSnapshot = useCallback((next: {
     series?: SonarrSeries | null;
@@ -391,30 +392,32 @@ export default function SeasonDetailPage() {
         <span>{fileCount}/{episodes.length} episodes</span>
       </div>
 
-      {/* Pill buttons */}
-      <div className="flex gap-2">
-        <Button
-          variant="secondary"
-          className="rounded-full flex-1"
-          onClick={handleAutomaticSearch}
-          disabled={!!actionLoading}
-        >
-          {actionLoading === 'search' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
+      {/* Pill buttons — searching/grabbing is an activity.manage action */}
+      {canManageActivity && (
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            className="rounded-full flex-1"
+            onClick={handleAutomaticSearch}
+            disabled={!!actionLoading}
+          >
+            {actionLoading === 'search' ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="mr-2 h-4 w-4" />
+            )}
+            Automatic
+          </Button>
+          <Button
+            variant="secondary"
+            className="rounded-full flex-1"
+            onClick={() => setInteractiveSearch(true)}
+          >
             <Search className="mr-2 h-4 w-4" />
-          )}
-          Automatic
-        </Button>
-        <Button
-          variant="secondary"
-          className="rounded-full flex-1"
-          onClick={() => setInteractiveSearch(true)}
-        >
-          <Search className="mr-2 h-4 w-4" />
-          Interactive
-        </Button>
-      </div>
+            Interactive
+          </Button>
+        </div>
+      )}
 
       {/* Episode list */}
       <div className="space-y-0.5">

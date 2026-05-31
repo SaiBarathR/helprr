@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { normalizeTagName } from '@/lib/watchlist-helpers';
 
@@ -9,10 +10,11 @@ async function patchHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('watchlist.edit');
-  if (capError) return capError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'watchlist.edit')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { id } = await params;
   let body: { name?: unknown; color?: unknown };
@@ -41,6 +43,15 @@ async function patchHandler(
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: 'no changes' }, { status: 400 });
+  }
+
+  // Confirm the tag belongs to the caller before mutating it.
+  const owned = await prisma.watchlistTag.findFirst({
+    where: { id, userId: auth.user.id },
+    select: { id: true },
+  });
+  if (!owned) {
+    return NextResponse.json({ error: 'Tag not found' }, { status: 404 });
   }
 
   try {
@@ -73,18 +84,20 @@ async function deleteHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('watchlist.edit');
-  if (capError) return capError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'watchlist.edit')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const { id } = await params;
   try {
-    await prisma.watchlistTag.delete({ where: { id } });
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+    // Scope to the caller so a member can't delete another user's tag by id.
+    const result = await prisma.watchlistTag.deleteMany({ where: { id, userId: auth.user.id } });
+    if (result.count === 0) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    return NextResponse.json({ ok: true });
+  } catch (err) {
     console.error('[WatchlistTag] delete failed:', err);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

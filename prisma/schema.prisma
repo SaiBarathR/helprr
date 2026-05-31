@@ -45,6 +45,7 @@ model User {
   updatedAt      DateTime   @updatedAt
   sessions       Session[]
   watchlistItems WatchlistItem[]
+  watchlistTags  WatchlistTag[]
   pushSubscriptions PushSubscription[]
   notificationHistory NotificationHistory[]
   pendingRequests PendingRequest[]
@@ -113,10 +114,16 @@ model WatchlistItem {
 }
 
 model WatchlistTag {
-  id    String          @id @default(cuid())
-  name  String          @unique
-  color String?
-  items WatchlistItem[] @relation("WatchlistItemTags")
+  id     String          @id @default(cuid())
+  // Per-user: tags are a private vocabulary, never shared across accounts.
+  userId String
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name   String
+  color  String?
+  items  WatchlistItem[] @relation("WatchlistItemTags")
+
+  @@unique([userId, name])
+  @@index([userId])
 }
 
 model PushSubscription {

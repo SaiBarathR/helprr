@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import {
   AniListReauthRequiredError,
   loadAniListConnection,
@@ -26,8 +26,9 @@ interface ViewerResponse {
 }
 
 async function getHandler(): Promise<NextResponse<ViewerResponse>> {
-  const authError = await requireAuth();
-  if (authError) return authError as unknown as NextResponse<ViewerResponse>;
+  // AniList is a single shared operator account — viewer status is admin-only.
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response as unknown as NextResponse<ViewerResponse>;
 
   const conn = await loadAniListConnection();
   if (!conn) {

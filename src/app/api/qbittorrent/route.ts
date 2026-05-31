@@ -45,6 +45,8 @@ async function waitForTorrentHash(client: QBittorrentClient, hash: string): Prom
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('torrents.view');
+  if (capError) return capError;
   const startedAt = performance.now();
 
   try {

@@ -10,6 +10,8 @@ import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('torrents.view');
+  if (capError) return capError;
 
   const settings = await getOrCreateAppSettings();
   const schedule = parseBandwidthSchedule(settings.qbtBandwidthSchedule);

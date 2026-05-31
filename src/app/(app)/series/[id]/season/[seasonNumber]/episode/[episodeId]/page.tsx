@@ -177,6 +177,8 @@ export default function EpisodeDetailPage() {
   const episodeNumber = episode?.episodeNumber;
 
   const canDeleteSeries = useCan('series.delete');
+  const canManageActivity = useCan('activity.manage');
+  const canEditMonitoring = useCan('series.editMonitoring');
 
   const fetchData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId) || !Number.isFinite(episodeId)) {
@@ -405,20 +407,22 @@ export default function EpisodeDetailPage() {
             {refreshing && !loading && (
               <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
             )}
-            {/* Monitor toggle */}
-            <button
-              onClick={handleToggleMonitor}
-              disabled={actionLoading === 'monitor'}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-            >
-              {actionLoading === 'monitor' ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : episode.monitored ? (
-                <BookmarkCheck className="h-5 w-5" />
-              ) : (
-                <Bookmark className="h-5 w-5" />
-              )}
-            </button>
+            {/* Monitor toggle — admin-gated */}
+            {canEditMonitoring && (
+              <button
+                onClick={handleToggleMonitor}
+                disabled={actionLoading === 'monitor'}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+              >
+                {actionLoading === 'monitor' ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : episode.monitored ? (
+                  <BookmarkCheck className="h-5 w-5" />
+                ) : (
+                  <Bookmark className="h-5 w-5" />
+                )}
+              </button>
+            )}
 
             {/* 3-dot menu */}
             <DropdownMenu>
@@ -583,30 +587,32 @@ export default function EpisodeDetailPage() {
         </div>
       )}
 
-      {/* Pill buttons */}
-      <div className="flex gap-2">
-        <Button
-          variant="secondary"
-          className="rounded-full flex-1"
-          onClick={handleAutomaticSearch}
-          disabled={!!actionLoading}
-        >
-          {actionLoading === 'search' ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
+      {/* Pill buttons — searching/grabbing is an activity.manage action */}
+      {canManageActivity && (
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            className="rounded-full flex-1"
+            onClick={handleAutomaticSearch}
+            disabled={!!actionLoading}
+          >
+            {actionLoading === 'search' ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="mr-2 h-4 w-4" />
+            )}
+            Automatic
+          </Button>
+          <Button
+            variant="secondary"
+            className="rounded-full flex-1"
+            onClick={() => setInteractiveSearch(true)}
+          >
             <Search className="mr-2 h-4 w-4" />
-          )}
-          Automatic
-        </Button>
-        <Button
-          variant="secondary"
-          className="rounded-full flex-1"
-          onClick={() => setInteractiveSearch(true)}
-        >
-          <Search className="mr-2 h-4 w-4" />
-          Interactive
-        </Button>
-      </div>
+            Interactive
+          </Button>
+        </div>
+      )}
 
       {/* File section */}
       {episode.hasFile && episodeFile && (

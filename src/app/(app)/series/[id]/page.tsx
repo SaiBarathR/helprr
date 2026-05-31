@@ -1022,20 +1022,22 @@ export default function SeriesDetailPage() {
             {refreshing && !loading && (
               <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
             )}
-            {/* Bookmark / Monitor toggle */}
-            <button
-              onClick={handleToggleMonitored}
-              disabled={actionLoading === 'monitor'}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-            >
-              {actionLoading === 'monitor' ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : series.monitored ? (
-                <Bookmark className="h-5 w-5 fill-current" />
-              ) : (
-                <Bookmark className="h-5 w-5" />
-              )}
-            </button>
+            {/* Bookmark / Monitor toggle — monitoring changes are admin-gated */}
+            {canEditMonitoring && (
+              <button
+                onClick={handleToggleMonitored}
+                disabled={actionLoading === 'monitor'}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+              >
+                {actionLoading === 'monitor' ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : series.monitored ? (
+                  <Bookmark className="h-5 w-5 fill-current" />
+                ) : (
+                  <Bookmark className="h-5 w-5" />
+                )}
+              </button>
+            )}
 
             {/* 3-dot dropdown */}
             <DropdownMenu>
@@ -1439,17 +1441,19 @@ export default function SeriesDetailPage() {
                         {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                       </button>
                     )}
-                    {/* Monitor toggle */}
-                    <button
-                      onClick={() => handleToggleSeasonMonitor(sn, !isMonitored)}
-                      className="min-w-[36px] min-h-[44px] flex items-center justify-center"
-                    >
-                      {isMonitored ? (
-                        <Bookmark className="h-5 w-5 fill-current text-foreground" />
-                      ) : (
-                        <Bookmark className="h-5 w-5 text-muted-foreground" />
-                      )}
-                    </button>
+                    {/* Monitor toggle — admin-gated */}
+                    {canEditMonitoring && (
+                      <button
+                        onClick={() => handleToggleSeasonMonitor(sn, !isMonitored)}
+                        className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                      >
+                        {isMonitored ? (
+                          <Bookmark className="h-5 w-5 fill-current text-foreground" />
+                        ) : (
+                          <Bookmark className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </button>
+                    )}
                   </div>
                   {/* Expanded episode cards */}
                   {isExpanded && (

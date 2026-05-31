@@ -22,18 +22,33 @@ async function getHandler(
   }
 }
 
-async function putHandler(request: NextRequest) {
+async function putHandler(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const authError = await requireAuth();
   if (authError) return authError;
 
   try {
+    const { id } = await params;
+    const pathId = Number(id);
+    if (!Number.isInteger(pathId) || pathId <= 0) {
+      return NextResponse.json({ error: 'Invalid series id' }, { status: 400 });
+    }
     const body = await request.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+    }
+    if ('id' in body && Number((body as { id?: unknown }).id) !== pathId) {
+      return NextResponse.json({ error: 'Path id and body id must match' }, { status: 400 });
+    }
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const client = await getSonarrClient();
 
-    // Diff the submitted body against the live series and 403 if a member is
-    // changing monitoring / tags / root folder without the matching capability.
-    const current = await client.getSeriesById(Number((body as { id?: unknown })?.id));
+    // Diff the submitted body against the live series (fetched by the route id, not
+    // the body id) and 403 if a member is changing monitoring / tags / root folder
+    // without the matching capability.
+    const current = await client.getSeriesById(pathId);
     const guardError = await guardLibraryEdit(diffSeriesEdit(current, body), {
       tags: 'series.editTags',
       path: 'series.changePath',

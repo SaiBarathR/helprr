@@ -77,7 +77,7 @@ export const CAPABILITY_GROUPS = [
     title: 'Jellyfin',
     items: [
       { cap: 'jellyfin.view', label: 'View Jellyfin library' },
-      { cap: 'jellyfin.control', label: 'Control playback / server tasks' },
+      { cap: 'jellyfin.control', label: 'Control server (scan / restart / tasks)' },
       { cap: 'jellyfin.sessions', label: 'View active sessions' },
       { cap: 'jellyfin.stats', label: 'View playback analytics' },
     ],

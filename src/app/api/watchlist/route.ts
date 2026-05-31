@@ -193,9 +193,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   const reminderAt: Date | null | undefined = reminderResult;
 
-  const tagIds = tags ? await ensureTagIds(tags) : null;
-
   const userId = auth.user.id;
+  const tagIds = tags ? await ensureTagIds(userId, tags) : null;
+
   const uniqueWhere = {
     userId_source_externalId_mediaType: { userId, source, externalId, mediaType },
   };
