@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
-import { deleteLayout, updateLayout, ServiceError } from '@/lib/dashboard-layouts';
+import { deleteLayout, updateLayout, layoutScopeForUser, ServiceError } from '@/lib/dashboard-layouts';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
 async function putHandler(request: NextRequest, context: RouteContext) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('dashboard.customize');
-  if (capError) return capError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'dashboard.customize')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { id } = await context.params;
   let body: unknown;
@@ -23,7 +25,7 @@ async function putHandler(request: NextRequest, context: RouteContext) {
   const { name, widgets } = (body ?? {}) as { name?: unknown; widgets?: unknown };
 
   try {
-    const row = await updateLayout(id, { name, widgets });
+    const row = await updateLayout(id, { name, widgets }, layoutScopeForUser(auth.user));
     return NextResponse.json(row);
   } catch (error) {
     if (error instanceof ServiceError) {
@@ -35,14 +37,15 @@ async function putHandler(request: NextRequest, context: RouteContext) {
 }
 
 async function deleteHandler(_request: NextRequest, context: RouteContext) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('dashboard.customize');
-  if (capError) return capError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'dashboard.customize')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { id } = await context.params;
   try {
-    await deleteLayout(id);
+    await deleteLayout(id, layoutScopeForUser(auth.user));
     return NextResponse.json({ ok: true });
   } catch (error) {
     if (error instanceof ServiceError) {

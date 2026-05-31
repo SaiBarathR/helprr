@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
+import { PendingApprovalSection } from '@/components/seerr/pending-approval-section';
+import { useCan } from '@/components/permission-provider';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -240,6 +242,8 @@ export function RequestsListWidget({
   const [busy, setBusy] = useState<Set<number>>(new Set());
   // Approve/edit open the full Seerr modal (overrides, seasons, Request As).
   const [modal, setModal] = useState<{ req: EnrichedSeerrRequest; mode: 'approve' | 'edit' } | null>(null);
+  // Only approvers see request-management actions (approve/decline/edit/retry/delete).
+  const canManageRequests = useCan('requests.approve');
 
   const runAction = useCallback(
     async (id: number, action: 'approve' | 'decline' | 'retry' | 'delete') => {
@@ -296,10 +300,16 @@ export function RequestsListWidget({
     />
   );
 
+  // Helprr-side pending requests (the approval gate). Renders above the Seerr
+  // list in every state — including when there are no Seerr requests yet — and
+  // returns null when there are none. Approving here refreshes the Seerr list.
+  const pendingNode = <PendingApprovalSection onChanged={refresh} />;
+
   if (loading && items.length === 0) {
     return (
       <div ref={ref} style={shellStyle}>
         {header}
+        {pendingNode}
         <div style={emptyShellStyle}>
           <span style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</span>
         </div>
@@ -311,6 +321,7 @@ export function RequestsListWidget({
     return (
       <div ref={ref} style={shellStyle}>
         {header}
+        {pendingNode}
         <div style={emptyShellStyle}>
           <span style={{ fontSize: 11, color: HPR.rose }}>{error}</span>
         </div>
@@ -322,6 +333,7 @@ export function RequestsListWidget({
     return (
       <div ref={ref} style={shellStyle}>
         {header}
+        {pendingNode}
         <div style={emptyShellStyle}>
           <span style={{ fontSize: 11, color: HPR.fgSubtle }}>
             No {filter !== 'all' ? filter : ''} requests
@@ -336,6 +348,7 @@ export function RequestsListWidget({
   return (
     <div ref={ref} style={shellStyle}>
       {header}
+      {pendingNode}
       <div
         className="no-scrollbar scroll-fade-y"
         style={{
@@ -355,9 +368,9 @@ export function RequestsListWidget({
           const poster = req.enriched.posterUrl;
           const Icon = req.type === 'tv' ? Tv : Film;
           const isBusy = busy.has(req.id);
-          const canApprove = Number(req.status) === SEERR_REQUEST_STATUS.PENDING_APPROVAL;
-          const canDecline = Number(req.status) === SEERR_REQUEST_STATUS.PENDING_APPROVAL;
-          const canRetry = Number(req.status) === SEERR_REQUEST_STATUS.FAILED;
+          const canApprove = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.PENDING_APPROVAL;
+          const canDecline = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.PENDING_APPROVAL;
+          const canRetry = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.FAILED;
 
           const helprrHref = req.enriched.helprr
             ? `/${req.enriched.helprr.type === 'series' ? 'series' : 'movies'}/${req.enriched.helprr.id}`
@@ -547,13 +560,15 @@ export function RequestsListWidget({
                         <RefreshCw size={14} /> Retry
                       </DropdownMenuItem>
                     ) : null}
-                    {hasActionAboveDelete ? <DropdownMenuSeparator /> : null}
+                    {hasActionAboveDelete && canManageRequests ? <DropdownMenuSeparator /> : null}
+                    {canManageRequests ? (
                     <DropdownMenuItem
                       onClick={() => void runAction(req.id, 'delete')}
                       style={{ color: 'var(--destructive)' }}
                     >
                       <Trash2 size={14} /> Delete
                     </DropdownMenuItem>
+                    ) : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}

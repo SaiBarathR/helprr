@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getActiveLayoutCached } from '@/lib/cache/dashboard-layout-cache';
-import { seedInitialLayouts } from '@/lib/dashboard-layouts';
+import { seedInitialLayouts, getActiveLayoutForUser } from '@/lib/dashboard-layouts';
+import { getCurrentUser } from '@/lib/auth';
 import { DashboardClient, type InitialDashboardLayout } from './dashboard-client';
 import type { WidgetInstance } from '@/lib/widgets/types';
 
@@ -12,8 +12,13 @@ export default async function DashboardPage() {
   const cookieValue = cookieStore.get(DEVICE_COOKIE)?.value;
   const device: 'desktop' | 'mobile' = cookieValue === 'mobile' ? 'mobile' : 'desktop';
 
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+
+  // Global built-ins are seeded for admins; members get their own personal set
+  // (seeded on first load) resolved inside getActiveLayoutForUser.
   await seedInitialLayouts();
-  const layout = await getActiveLayoutCached(device);
+  const layout = await getActiveLayoutForUser({ id: user.id, role: user.role }, device);
 
   if (!layout) {
     // seedInitialLayouts guarantees at least two rows exist; if we somehow still

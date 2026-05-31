@@ -48,6 +48,7 @@ model User {
   pushSubscriptions PushSubscription[]
   notificationHistory NotificationHistory[]
   pendingRequests PendingRequest[]
+  dashboardLayouts DashboardLayout[]
   aniListLink    UserAniListLink?
   settings       UserSettings?
 
@@ -212,16 +213,24 @@ model AppSettings {
 
 model DashboardLayout {
   id        String   @id @default(cuid())
-  name      String   @unique
+  // null = global/admin layout (the shared built-ins); non-null = a member's
+  // own personal layout. Each user manages only their own scope.
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
   widgets   Json     // WidgetInstance[]
   isBuiltIn Boolean  @default(false)
-  slug      String?  @unique // 'desktop' | 'mobile' for built-ins; null otherwise
+  // Only the two global built-ins use 'desktop'/'mobile'; per-user layouts are
+  // null (Postgres @unique permits multiple NULLs).
+  slug      String?  @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   desktopDefaults AppSettings[] @relation("DesktopDefault")
   mobileDefaults  AppSettings[] @relation("MobileDefault")
 
+  @@unique([userId, name])
+  @@index([userId, createdAt])
   @@index([createdAt])
 }
 

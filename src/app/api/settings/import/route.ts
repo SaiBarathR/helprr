@@ -525,7 +525,7 @@ async function applyDashboardLayoutsInTxn(
       // Update widgets; rename only if the new name is free (otherwise keep
       // the existing name to avoid a unique-constraint violation).
       const nameTaken = name !== existing.name
-        ? await tx.dashboardLayout.findUnique({ where: { name }, select: { id: true } })
+        ? await tx.dashboardLayout.findFirst({ where: { name, userId: null }, select: { id: true } })
         : null;
       await tx.dashboardLayout.update({
         where: { id: existing.id },
@@ -541,12 +541,12 @@ async function applyDashboardLayoutsInTxn(
       // suffix until we land on something the unique(name) constraint will
       // accept, so a second import never blows up.
       let finalName = name;
-      const nameTaken = await tx.dashboardLayout.findUnique({ where: { name }, select: { id: true } });
+      const nameTaken = await tx.dashboardLayout.findFirst({ where: { name, userId: null }, select: { id: true } });
       if (nameTaken) {
         const base = slug === 'mobile' ? 'Mobile (built-in)' : 'Desktop (built-in)';
         finalName = base;
         let suffix = 2;
-        while (await tx.dashboardLayout.findUnique({ where: { name: finalName }, select: { id: true } })) {
+        while (await tx.dashboardLayout.findFirst({ where: { name: finalName, userId: null }, select: { id: true } })) {
           finalName = `${base} ${suffix}`;
           suffix += 1;
         }
@@ -564,8 +564,8 @@ async function applyDashboardLayoutsInTxn(
   }
 
   // Cap user-layout imports so we never blow past MAX_LAYOUTS.
-  const builtInCount = await tx.dashboardLayout.count({ where: { isBuiltIn: true } });
-  const userCountBefore = await tx.dashboardLayout.count({ where: { isBuiltIn: false } });
+  const builtInCount = await tx.dashboardLayout.count({ where: { isBuiltIn: true, userId: null } });
+  const userCountBefore = await tx.dashboardLayout.count({ where: { isBuiltIn: false, userId: null } });
   const remainingSlots = Math.max(0, MAX_LAYOUTS - builtInCount - userCountBefore);
 
   let createdUser = 0;
@@ -581,7 +581,7 @@ async function applyDashboardLayoutsInTxn(
       continue;
     }
     const sanitized = sanitizeDashboardLayout(widgets, discoverLayout);
-    const existing = await tx.dashboardLayout.findUnique({ where: { name } });
+    const existing = await tx.dashboardLayout.findFirst({ where: { name, userId: null } });
     if (existing) {
       // Don't downgrade an existing built-in to a user layout — skip and warn.
       if (existing.isBuiltIn) {
@@ -634,7 +634,7 @@ async function applyDashboardLayoutsInTxn(
           desktopBuiltIn.name === desktopName
         )
         ? desktopBuiltIn
-        : await tx.dashboardLayout.findUnique({ where: { name: desktopName }, select: { id: true } }))
+        : await tx.dashboardLayout.findFirst({ where: { name: desktopName, userId: null }, select: { id: true } }))
     : null;
   const mobileRow = mobileName
     ? (mobileBuiltIn && (
@@ -642,7 +642,7 @@ async function applyDashboardLayoutsInTxn(
           mobileBuiltIn.name === mobileName
         )
         ? mobileBuiltIn
-        : await tx.dashboardLayout.findUnique({ where: { name: mobileName }, select: { id: true } }))
+        : await tx.dashboardLayout.findFirst({ where: { name: mobileName, userId: null }, select: { id: true } }))
     : null;
   if (desktopRow || mobileRow) {
     await tx.appSettings.upsert({

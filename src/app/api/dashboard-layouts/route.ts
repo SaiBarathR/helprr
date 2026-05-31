@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
-import { createLayout, listLayouts, seedInitialLayouts, ServiceError } from '@/lib/dashboard-layouts';
+import {
+  createLayout,
+  listLayouts,
+  seedInitialLayouts,
+  layoutScopeForUser,
+  ServiceError,
+} from '@/lib/dashboard-layouts';
 
 async function getHandler() {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   try {
     await seedInitialLayouts();
-    const data = await listLayouts();
+    const data = await listLayouts(layoutScopeForUser(auth.user));
     return NextResponse.json(data);
   } catch (error) {
     if (error instanceof ServiceError) {
@@ -21,11 +28,12 @@ async function getHandler() {
 }
 
 async function postHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  // DashboardLayout definitions are shared across the household.
-  const capError = await requireCapability('dashboard.customize');
-  if (capError) return capError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  // Members may create their OWN layouts (scoped below); admins create global ones.
+  if (!can(auth.user, 'dashboard.customize')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   let body: unknown;
   try {
@@ -36,7 +44,7 @@ async function postHandler(request: NextRequest) {
   const { name, widgets } = (body ?? {}) as { name?: unknown; widgets?: unknown };
 
   try {
-    const row = await createLayout({ name, widgets });
+    const row = await createLayout({ name, widgets }, layoutScopeForUser(auth.user));
     return NextResponse.json(row);
   } catch (error) {
     if (error instanceof ServiceError) {

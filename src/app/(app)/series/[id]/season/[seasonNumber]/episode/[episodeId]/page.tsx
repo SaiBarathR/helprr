@@ -28,6 +28,7 @@ import {
   patchEpisodeAcrossSnapshots,
   setEpisodeDetailSnapshot,
 } from '@/lib/series-route-cache';
+import { useCan } from '@/components/permission-provider';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -174,6 +175,8 @@ export default function EpisodeDetailPage() {
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const [tmdbEpisode, setTmdbEpisode] = useState<DiscoverSeasonEpisode | null>(null);
   const episodeNumber = episode?.episodeNumber;
+
+  const canDeleteSeries = useCan('series.delete');
 
   const fetchData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId) || !Number.isFinite(episodeId)) {
@@ -454,7 +457,7 @@ export default function EpisodeDetailPage() {
                   <Search className="mr-2 h-4 w-4" />
                   Automatic Search
                 </DropdownMenuItem>
-                {episode.hasFile && (
+                {episode.hasFile && canDeleteSeries && (
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem

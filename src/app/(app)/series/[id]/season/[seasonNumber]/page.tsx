@@ -31,6 +31,7 @@ import {
   setSeasonDetailSnapshot,
   setSeriesDetailSnapshot,
 } from '@/lib/series-route-cache';
+import { useCan } from '@/components/permission-provider';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -55,6 +56,9 @@ export default function SeasonDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [tmdbSeason, setTmdbSeason] = useState<DiscoverSeasonDetailResponse | null>(null);
+
+  const canEditMonitoring = useCan('series.editMonitoring');
+  const canDeleteSeries = useCan('series.delete');
 
   const persistSeasonSnapshot = useCallback((next: {
     series?: SonarrSeries | null;
@@ -322,19 +326,21 @@ export default function SeasonDetailPage() {
               <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
             )}
             {/* Monitor toggle */}
-            <button
-              onClick={handleToggleSeasonMonitor}
-              disabled={actionLoading === 'monitor'}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-            >
-              {actionLoading === 'monitor' ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : isSeasonMonitored ? (
-                <BookmarkCheck className="h-5 w-5" />
-              ) : (
-                <Bookmark className="h-5 w-5" />
-              )}
-            </button>
+            {canEditMonitoring && (
+              <button
+                onClick={handleToggleSeasonMonitor}
+                disabled={actionLoading === 'monitor'}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+              >
+                {actionLoading === 'monitor' ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : isSeasonMonitored ? (
+                  <BookmarkCheck className="h-5 w-5" />
+                ) : (
+                  <Bookmark className="h-5 w-5" />
+                )}
+              </button>
+            )}
 
             {/* 3-dot menu */}
             <DropdownMenu>
@@ -352,14 +358,18 @@ export default function SeasonDetailPage() {
                   <Search className="mr-2 h-4 w-4" />
                   Automatic Search
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setShowDeleteDrawer(true)}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Unmonitor Season
-                </DropdownMenuItem>
+                {canDeleteSeries && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setShowDeleteDrawer(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Unmonitor Season
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -495,20 +505,22 @@ export default function SeasonDetailPage() {
               </div>
 
               {/* Monitor bookmark */}
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleToggleEpisodeMonitor(ep.id, !ep.monitored);
-                }}
-                className="min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
-              >
-                {ep.monitored ? (
-                  <BookmarkCheck className="h-4 w-4 text-primary" />
-                ) : (
-                  <Bookmark className="h-4 w-4 text-muted-foreground" />
-                )}
-              </button>
+              {canEditMonitoring && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleToggleEpisodeMonitor(ep.id, !ep.monitored);
+                  }}
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
+                >
+                  {ep.monitored ? (
+                    <BookmarkCheck className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Bookmark className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </button>
+              )}
             </Link>
           );
         })}

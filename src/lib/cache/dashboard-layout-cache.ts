@@ -75,15 +75,18 @@ async function fetchLayoutFromDb(device: DashboardDevice): Promise<ActiveLayout 
     : settings?.defaultMobileLayoutId;
 
   if (pointerId) {
-    const row = await prisma.dashboardLayout.findUnique({
-      where: { id: pointerId },
+    // Scope to a global (admin) layout so a stale pointer can't surface a
+    // member's personal layout to the admin dashboard.
+    const row = await prisma.dashboardLayout.findFirst({
+      where: { id: pointerId, userId: null },
       select: { id: true, name: true, widgets: true, isBuiltIn: true },
     });
     if (row) return row as ActiveLayout;
   }
 
-  // Pointer is null or stale — fall back to the oldest layout if any exist.
+  // Pointer is null or stale — fall back to the oldest GLOBAL layout if any exist.
   const fallback = await prisma.dashboardLayout.findFirst({
+    where: { userId: null },
     orderBy: { createdAt: 'asc' },
     select: { id: true, name: true, widgets: true, isBuiltIn: true },
   });

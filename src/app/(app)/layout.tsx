@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-redirect';
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
 import { PermissionProvider, type MePayload } from '@/components/permission-provider';
+import { RequestedMediaProvider } from '@/components/seerr/requested-media-provider';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
@@ -39,12 +40,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <PermissionProvider value={me}>
-      <div className="flex min-h-screen bg-background">
-        <StandaloneLaunchRedirect />
-        <DiscoverLayoutHydrator />
-        <Sidebar />
-        <AppShell>{children}</AppShell>
-      </div>
+      <RequestedMediaProvider>
+        <div className="flex min-h-screen bg-background">
+          <StandaloneLaunchRedirect />
+          <DiscoverLayoutHydrator />
+          <Sidebar />
+          <AppShell>{children}</AppShell>
+        </div>
+      </RequestedMediaProvider>
     </PermissionProvider>
   );
 }
