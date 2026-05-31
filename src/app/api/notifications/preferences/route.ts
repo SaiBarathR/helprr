@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
+import { ownerScope } from '@/lib/user-dto';
 import { EVENT_TYPES, ensureNotificationPreferences } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
-  const ownerScope = auth.user.role === 'admin' ? {} : { userId: auth.user.id };
 
   try {
     const { searchParams } = request.nextUrl;
@@ -22,14 +22,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     if (subscriptionId) {
       // Scope to the caller's own devices so a member can't read another's prefs.
       const sub = await prisma.pushSubscription.findFirst({
-        where: { id: subscriptionId, ...ownerScope },
+        where: { id: subscriptionId, ...ownerScope(auth.user) },
       });
       if (!sub) {
         return NextResponse.json({ error: 'subscription not found' }, { status: 404 });
       }
       resolvedSubscriptionId = sub.id;
     } else if (endpoint) {
-      const sub = await prisma.pushSubscription.findFirst({ where: { endpoint, ...ownerScope } });
+      const sub = await prisma.pushSubscription.findFirst({ where: { endpoint, ...ownerScope(auth.user) } });
       if (sub) {
         resolvedSubscriptionId = sub.id;
       }
@@ -57,7 +57,6 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
-  const ownerScope = auth.user.role === 'admin' ? {} : { userId: auth.user.id };
 
   try {
     const body = await request.json();
@@ -94,7 +93,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (normalizedQuality.error) return normalizedQuality.error;
 
     const subscription = await prisma.pushSubscription.findFirst({
-      where: { id: subscriptionId, ...ownerScope },
+      where: { id: subscriptionId, ...ownerScope(auth.user) },
       select: { id: true },
     });
     if (!subscription) {

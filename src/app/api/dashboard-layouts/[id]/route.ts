@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { deleteLayout, updateLayout, layoutScopeForUser, ServiceError } from '@/lib/dashboard-layouts';
 
@@ -9,11 +8,8 @@ interface RouteContext {
 }
 
 async function putHandler(request: NextRequest, context: RouteContext) {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('dashboard.customize');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'dashboard.customize')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const { id } = await context.params;
   let body: unknown;
@@ -37,11 +33,8 @@ async function putHandler(request: NextRequest, context: RouteContext) {
 }
 
 async function deleteHandler(_request: NextRequest, context: RouteContext) {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('dashboard.customize');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'dashboard.customize')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const { id } = await context.params;
   try {

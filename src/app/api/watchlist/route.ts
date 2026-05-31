@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import {
   ensureTagIds,
@@ -85,11 +84,8 @@ function serialize(
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('watchlist.view');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'watchlist.view')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const url = new URL(request.url);
   const tag = url.searchParams.get('tag')?.trim() || null;
@@ -126,11 +122,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('watchlist.edit');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'watchlist.edit')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   let body: PostBody;
   try {
@@ -237,11 +230,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 async function deleteHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('watchlist.edit');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'watchlist.edit')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   // Wipe-all is destructive enough that a stray GET-turned-DELETE or an
   // accidental fetch shouldn't trigger it. Require an explicit sentinel.

@@ -18,6 +18,15 @@ export function toSafeUser(u: User) {
   };
 }
 
+/**
+ * Prisma `where` fragment that scopes a per-user resource to its owner: admins
+ * see everything ({}), members are restricted to their own rows ({ userId }).
+ * Spread into a where clause: `where: { ...ownerScope(user), revokedAt: null }`.
+ */
+export function ownerScope(user: Pick<User, 'role' | 'id'>): { userId?: string } {
+  return user.role === 'admin' ? {} : { userId: user.id };
+}
+
 /** Count active admins, optionally excluding one user id (for last-admin guards). */
 export async function countActiveAdmins(excludeId?: string): Promise<number> {
   return prisma.user.count({

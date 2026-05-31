@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { normalizeTagName } from '@/lib/watchlist-helpers';
 
@@ -10,11 +9,8 @@ async function patchHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('watchlist.edit');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'watchlist.edit')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const { id } = await params;
   let body: { name?: unknown; color?: unknown };
@@ -84,11 +80,8 @@ async function deleteHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('watchlist.edit');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'watchlist.edit')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
   const { id } = await params;
   try {
     // Scope to the caller so a member can't delete another user's tag by id.

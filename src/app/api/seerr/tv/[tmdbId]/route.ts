@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Season list (numbers + episode counts + per-season Seerr status) for the
@@ -10,11 +9,8 @@ async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ tmdbId: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('requests.view');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'requests.view')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const { tmdbId: raw } = await params;
   const tmdbId = Number.parseInt(raw, 10);

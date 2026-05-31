@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { setDefaultForDevice, layoutScopeForUser, ServiceError } from '@/lib/dashboard-layouts';
 
 async function putHandler(request: NextRequest) {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('dashboard.customize');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'dashboard.customize')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   let body: unknown;
   try {
