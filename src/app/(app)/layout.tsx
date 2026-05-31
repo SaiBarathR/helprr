@@ -20,12 +20,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // the DB to confirm the Session row hasn't been revoked (or the user
   // disabled). Resolve the user here (node runtime) so revocation/disable take
   // effect for SSR navs, and so the permission provider is seeded server-side.
-  const user = await getCurrentUser();
+  // Independent of each other, so resolve in parallel to keep one DB round-trip
+  // off the critical path of every authenticated navigation.
+  const [user, seerrCount] = await Promise.all([
+    getCurrentUser(),
+    prisma.serviceConnection.count({ where: { type: 'SEERR' } }),
+  ]);
   if (!user) {
     redirect('/login');
   }
 
-  const seerrConfigured = (await prisma.serviceConnection.count({ where: { type: 'SEERR' } })) > 0;
+  const seerrConfigured = seerrCount > 0;
 
   const me: MePayload = {
     id: user.id,

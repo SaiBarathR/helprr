@@ -787,6 +787,28 @@ export class PollingService {
       })
     ).map((u) => u.id);
 
+    // Resolve the Helprr owner for every requester in this window in a single
+    // query (batched instead of one findFirst per notifying request), keyed by
+    // the Seerr user id so the loop is a Map lookup.
+    const seerrIds = Array.from(
+      new Set(
+        requests
+          .map((req) => req.requestedBy?.id)
+          .filter((id): id is number => id != null)
+          .map((id) => String(id))
+      )
+    );
+    const ownerBySeerrId = new Map(
+      seerrIds.length
+        ? (
+            await prisma.user.findMany({
+              where: { seerrUserId: { in: seerrIds } },
+              select: { id: true, seerrUserId: true },
+            })
+          ).map((u) => [u.seerrUserId as string, u.id])
+        : []
+    );
+
     for (const req of requests) {
       const reqStatus = Number(req.status);
       const mediaStatus = Number(req.media?.status ?? 0);
@@ -836,17 +858,8 @@ export class PollingService {
 
       // The Helprr user behind this Seerr request (if linked); status updates are
       // owned by them, with admins copied in.
-      let ownerId: string | null = null;
-      if (willCreate || willStatusChange || willBecomeAvailable) {
-        const seerrId = req.requestedBy?.id;
-        if (seerrId != null) {
-          const owner = await prisma.user.findFirst({
-            where: { seerrUserId: String(seerrId) },
-            select: { id: true },
-          });
-          ownerId = owner?.id ?? null;
-        }
-      }
+      const seerrId = req.requestedBy?.id;
+      const ownerId = seerrId != null ? ownerBySeerrId.get(String(seerrId)) ?? null : null;
       const ownerAndAdmins = Array.from(new Set([...(ownerId ? [ownerId] : []), ...adminIds]));
 
       if (!prev) {

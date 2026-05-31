@@ -54,6 +54,8 @@ export async function ensureBootstrapAdmin(): Promise<void> {
       },
     });
     console.log(`[Helprr] Bootstrap admin created from APP_PASSWORD (username: ${adminUsername})`);
+    // First-ever boot (db push path): attach any pre-existing single-tenant rows.
+    await attachOwnerlessRowsToAdmin();
   } else if (!existing.passwordHash || forceReset) {
     const passwordHash = await hashPassword(appPassword);
     await prisma.user.update({
@@ -65,6 +67,9 @@ export async function ensureBootstrapAdmin(): Promise<void> {
         ? '[Helprr] Bootstrap admin password reset from APP_PASSWORD (HELPRR_ADMIN_PASSWORD_RESET)'
         : '[Helprr] Bootstrap admin password seeded from APP_PASSWORD'
     );
+    // Migration path (seeded admin had no hash): attach pre-existing rows. Only
+    // runs on the upgrade boot, not on every steady-state reboot.
+    await attachOwnerlessRowsToAdmin();
   }
 
   // Keep the admin's username in sync with HELPRR_ADMIN_USERNAME (renames on
@@ -83,8 +88,6 @@ export async function ensureBootstrapAdmin(): Promise<void> {
       );
     }
   }
-
-  await attachOwnerlessRowsToAdmin();
 }
 
 /**
