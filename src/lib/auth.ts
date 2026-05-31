@@ -90,11 +90,12 @@ const loadAndTouchSession = cache(async (sid: string): Promise<SessionRow | null
   });
   if (!session || session.revokedAt) return null;
 
-  // A disabled (or pending) user is bounced on their very next request without
-  // having to revoke each of their sessions individually — same enforcement
-  // point as revokedAt. Sessions with no linked user (shouldn't occur after the
-  // 0015 backfill) stay valid so a botched upgrade never locks the operator out.
-  if (session.user && session.user.status !== 'active') return null;
+  // Every session must resolve to an active user. A disabled (or pending) user
+  // is bounced on their very next request without having to revoke each session
+  // individually — same enforcement point as revokedAt. An owner-less session
+  // (userId null) shouldn't exist post-reset (createSession always links one),
+  // so treat it as invalid rather than fail-open.
+  if (!session.user || session.user.status !== 'active') return null;
 
   const now = Date.now();
   const last = lastSeenTouched.get(sid) ?? session.lastSeenAt.getTime();
@@ -220,6 +221,24 @@ export async function verifyUserPassword(
 ): Promise<boolean> {
   if (!user.passwordHash) return false;
   return verifyPasswordHash(plain, user.passwordHash);
+}
+
+/**
+ * requireUser + capability check. Use on routes that need both the acting User
+ * (for per-user scoping) and a capability gate, instead of hand-rolling
+ * requireUser() + can() + a manual 403:
+ *
+ *   const auth = await requireUserCapability('jellyfin.view');
+ *   if (!auth.ok) return auth.response;
+ *   // auth.user is the capable, authenticated user
+ */
+export async function requireUserCapability(cap: Capability): Promise<RequireUserResult> {
+  const result = await requireUser();
+  if (!result.ok) return result;
+  if (!can(result.user, cap)) {
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+  return result;
 }
 
 /**
