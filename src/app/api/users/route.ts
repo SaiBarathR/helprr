@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { hashPassword } from '@/lib/password';
 import { toSafeUser } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
@@ -10,20 +10,16 @@ const ROLES = new Set(['admin', 'member']);
 const TEMPLATES = new Set(['admin', 'member']);
 
 async function getHandler(): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('users.manage');
-  if (capError) return capError;
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   const users = await prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
   return NextResponse.json(users.map(toSafeUser));
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('users.manage');
-  if (capError) return capError;
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   let body: Record<string, unknown>;
   try {
