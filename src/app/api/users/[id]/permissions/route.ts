@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import {
   parsePermissions,
   effectiveCapabilities,
@@ -16,10 +16,8 @@ async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('users.manage');
-  if (capError) return capError;
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   const { id } = await params;
   const user = await prisma.user.findUnique({ where: { id } });
@@ -36,10 +34,8 @@ async function putHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('users.manage');
-  if (capError) return capError;
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
 
   const { id } = await params;
   const user = await prisma.user.findUnique({ where: { id } });
