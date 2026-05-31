@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
-import { copyLayout, ServiceError } from '@/lib/dashboard-layouts';
+import { copyLayout, layoutScopeForUser, ServiceError } from '@/lib/dashboard-layouts';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
 async function postHandler(_request: NextRequest, context: RouteContext) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('dashboard.customize');
-  if (capError) return capError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'dashboard.customize')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { id } = await context.params;
   try {
-    const row = await copyLayout(id);
+    const row = await copyLayout(id, layoutScopeForUser(auth.user));
     return NextResponse.json(row);
   } catch (error) {
     if (error instanceof ServiceError) {

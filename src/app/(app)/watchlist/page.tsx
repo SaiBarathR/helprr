@@ -38,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { useCan } from '@/components/permission-provider';
 
 type MediaType = 'movie' | 'series' | 'anime';
 type Source = 'TMDB' | 'TVDB' | 'ANILIST' | 'SONARR' | 'RADARR';
@@ -141,6 +142,7 @@ function debounce<T extends (...args: never[]) => void>(fn: T, ms: number) {
 }
 
 export default function WatchlistPage() {
+  const canEdit = useCan('watchlist.edit');
   const [items, setItems] = useState<WatchlistItem[] | null>(null);
   const [tags, setTags] = useState<WatchlistTag[]>([]);
   const [search, setSearch] = useState('');
@@ -330,32 +332,34 @@ export default function WatchlistPage() {
         title="Watchlist"
         showBack={false}
         rightContent={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-                aria-label="Watchlist actions"
-              >
-                <MoreHorizontal className="h-5 w-5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => setManageOpen(true)}>
-                <Settings className="mr-2 h-4 w-4" />
-                Manage tags
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => setClearAllOpen(true)}
-                disabled={totalCount === 0}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Clear watchlist
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          canEdit ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+                  aria-label="Watchlist actions"
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setManageOpen(true)}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Manage tags
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setClearAllOpen(true)}
+                  disabled={totalCount === 0}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Clear watchlist
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : undefined
         }
       />
 
@@ -606,18 +610,20 @@ export default function WatchlistPage() {
         )}
       </div>
 
-      <ConfirmDialog
-        open={removeTarget !== null}
-        onOpenChange={(o) => {
-          if (!o) setRemoveTarget(null);
-        }}
-        title={removeTarget ? `Remove "${removeTarget.title}"?` : 'Remove?'}
-        description="This won't affect your media library — only the watchlist entry."
-        confirmLabel="Remove"
-        destructive
-        busy={removing}
-        onConfirm={() => (removeTarget ? handleRemove(removeTarget) : Promise.resolve())}
-      />
+      {canEdit && (
+        <ConfirmDialog
+          open={removeTarget !== null}
+          onOpenChange={(o) => {
+            if (!o) setRemoveTarget(null);
+          }}
+          title={removeTarget ? `Remove "${removeTarget.title}"?` : 'Remove?'}
+          description="This won't affect your media library — only the watchlist entry."
+          confirmLabel="Remove"
+          destructive
+          busy={removing}
+          onConfirm={() => (removeTarget ? handleRemove(removeTarget) : Promise.resolve())}
+        />
+      )}
 
       <ConfirmDialog
         open={clearAllOpen}
@@ -652,6 +658,7 @@ function WatchlistCard({
   item: WatchlistItem;
   onRemove: () => void;
 }) {
+  const canEdit = useCan('watchlist.edit');
   const poster = item.posterUrl
     ? (toCachedImageSrc(
         item.posterUrl,
@@ -713,18 +720,20 @@ function WatchlistCard({
           )}
         </div>
       )}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onRemove();
-        }}
-        aria-label="Remove from watchlist"
-        className="absolute top-1.5 left-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
-      >
-        <Trash2 className="h-3 w-3" />
-      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove();
+          }}
+          aria-label="Remove from watchlist"
+          className="absolute top-1.5 left-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      )}
     </div>
   );
   return item.href ? (

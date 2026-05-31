@@ -70,6 +70,7 @@ import {
   type TorrentsFilterPreference as FilterType,
   type TorrentsSortKeyPreference as SortKey,
 } from '@/lib/store';
+import { useCan } from '@/components/permission-provider';
 
 const TORRENT_ROW_HEIGHT = 160;
 
@@ -400,6 +401,8 @@ const TorrentRow = memo(function TorrentRow({
   onOpenCategoryDrawer,
   onOpenRenameDrawer,
 }: TorrentRowProps) {
+  const canManageTorrents = useCan('torrents.manage');
+  const canDeleteTorrents = useCan('torrents.delete');
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
 
   return (
@@ -419,47 +422,57 @@ const TorrentRow = memo(function TorrentRow({
             >
               {torrent.name}
             </button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-0.5">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'start')}>
-                  <Play className="mr-2 h-4 w-4" /> Start
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'stop')}>
-                  <Pause className="mr-2 h-4 w-4" /> Stop
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'forceStart')}>
-                  <Zap className="mr-2 h-4 w-4" /> Force Start
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'recheck')}>
-                  <CheckCircle2 className="mr-2 h-4 w-4" /> Recheck
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'reannounce')}>
-                  <Megaphone className="mr-2 h-4 w-4" /> Reannounce
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onOpenCategoryDrawer(torrent.hash)}>
-                  <Tag className="mr-2 h-4 w-4" /> Set Category
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onOpenRenameDrawer(torrent.hash, torrent.name)}>
-                  <Pencil className="mr-2 h-4 w-4" /> Rename
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, false)}>
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, true)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" /> Delete with files
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {(canManageTorrents || canDeleteTorrents) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-0.5">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {canManageTorrents && (
+                    <>
+                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'start')}>
+                        <Play className="mr-2 h-4 w-4" /> Start
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'stop')}>
+                        <Pause className="mr-2 h-4 w-4" /> Stop
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'forceStart')}>
+                        <Zap className="mr-2 h-4 w-4" /> Force Start
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'recheck')}>
+                        <CheckCircle2 className="mr-2 h-4 w-4" /> Recheck
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'reannounce')}>
+                        <Megaphone className="mr-2 h-4 w-4" /> Reannounce
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onOpenCategoryDrawer(torrent.hash)}>
+                        <Tag className="mr-2 h-4 w-4" /> Set Category
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onOpenRenameDrawer(torrent.hash, torrent.name)}>
+                        <Pencil className="mr-2 h-4 w-4" /> Rename
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {canManageTorrents && canDeleteTorrents && <DropdownMenuSeparator />}
+                  {canDeleteTorrents && (
+                    <>
+                      <DropdownMenuItem onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, false)}>
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, true)}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete with files
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
@@ -519,6 +532,10 @@ const TorrentRow = memo(function TorrentRow({
 
 export default function TorrentsPage() {
   const router = useRouter();
+  const canManageTorrents = useCan('torrents.manage');
+  const canDeleteTorrents = useCan('torrents.delete');
+  const canBandwidthTorrents = useCan('torrents.bandwidth');
+  const canAddTorrents = useCan('torrents.add');
   const hasHydrated = useUIStore((s) => s.hasHydrated);
   const filter = useUIStore((s) => s.torrentsFilter);
   const setFilter = useUIStore((s) => s.setTorrentsFilter);
@@ -996,53 +1013,59 @@ export default function TorrentsPage() {
             <TooltipContent>Refresh</TooltipContent>
           </Tooltip>
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
-                  speedLimitsMode === 1
-                    ? 'bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30'
-                    : 'hover:bg-accent active:bg-accent/80'
-                }`}
-                onClick={toggleAltSpeedMode}
-                aria-label="Alternative Speed Limits"
-              >
-                <Gauge className="h-5 w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{speedLimitsMode === 1 ? 'Alt Speed: ON' : 'Alt Speed: OFF'}</TooltipContent>
-          </Tooltip>
+          {canBandwidthTorrents && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                    speedLimitsMode === 1
+                      ? 'bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30'
+                      : 'hover:bg-accent active:bg-accent/80'
+                  }`}
+                  onClick={toggleAltSpeedMode}
+                  aria-label="Alternative Speed Limits"
+                >
+                  <Gauge className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{speedLimitsMode === 1 ? 'Alt Speed: ON' : 'Alt Speed: OFF'}</TooltipContent>
+            </Tooltip>
+          )}
 
           <div className="flex-1" />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                onClick={() => {
-                  setSettingsOpen(true);
-                  void fetchGlobalLimits();
-                }}
-                aria-label="Settings"
-              >
-                <Settings className="h-5 w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
-          </Tooltip>
+          {canBandwidthTorrents && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                  onClick={() => {
+                    setSettingsOpen(true);
+                    void fetchGlobalLimits();
+                  }}
+                  aria-label="Settings"
+                >
+                  <Settings className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Settings</TooltipContent>
+            </Tooltip>
+          )}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-                onClick={() => router.push('/torrents/add')}
-                aria-label="Add Torrent"
-              >
-                <Plus className="h-5 w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Add Torrent</TooltipContent>
-          </Tooltip>
+          {canAddTorrents && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  onClick={() => router.push('/torrents/add')}
+                  aria-label="Add Torrent"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Add Torrent</TooltipContent>
+            </Tooltip>
+          )}
         </div>
 
         {transferInfo && (
@@ -1072,49 +1095,59 @@ export default function TorrentsPage() {
       {selectedTorrents.size > 0 && (
         <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">
           <span className="text-xs text-muted-foreground mx-1 shrink-0">{selectedTorrents.size}</span>
-          <button
-            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => void bulkAction('start')}
-            aria-label="Start"
-          >
-            <Play className="h-4 w-4" />
-          </button>
-          <button
-            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => void bulkAction('stop')}
-            aria-label="Stop"
-          >
-            <Pause className="h-4 w-4" />
-          </button>
-          <button
-            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => void bulkAction('forceStart')}
-            aria-label="Force Start"
-          >
-            <Zap className="h-4 w-4" />
-          </button>
-          <button
-            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-            onClick={() => setBulkSpeedDrawer(true)}
-            aria-label="Speed Limits"
-          >
-            <Gauge className="h-4 w-4" />
-          </button>
-          <button
-            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-destructive"
-            onClick={() => {
-              const hashes = Array.from(selectedTorrents).join('|');
-              setDeleteDrawer({
-                open: true,
-                hash: hashes,
-                name: `${selectedTorrents.size} torrents`,
-                deleteFiles: false,
-              });
-            }}
-            aria-label="Delete"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          {canManageTorrents && (
+            <button
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+              onClick={() => void bulkAction('start')}
+              aria-label="Start"
+            >
+              <Play className="h-4 w-4" />
+            </button>
+          )}
+          {canManageTorrents && (
+            <button
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+              onClick={() => void bulkAction('stop')}
+              aria-label="Stop"
+            >
+              <Pause className="h-4 w-4" />
+            </button>
+          )}
+          {canManageTorrents && (
+            <button
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+              onClick={() => void bulkAction('forceStart')}
+              aria-label="Force Start"
+            >
+              <Zap className="h-4 w-4" />
+            </button>
+          )}
+          {canBandwidthTorrents && (
+            <button
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
+              onClick={() => setBulkSpeedDrawer(true)}
+              aria-label="Speed Limits"
+            >
+              <Gauge className="h-4 w-4" />
+            </button>
+          )}
+          {canDeleteTorrents && (
+            <button
+              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-destructive"
+              onClick={() => {
+                const hashes = Array.from(selectedTorrents).join('|');
+                setDeleteDrawer({
+                  open: true,
+                  hash: hashes,
+                  name: `${selectedTorrents.size} torrents`,
+                  deleteFiles: false,
+                });
+              }}
+              aria-label="Delete"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
           <div className="flex-1" />
           <button
             className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-xs text-muted-foreground"
@@ -1234,7 +1267,7 @@ export default function TorrentsPage() {
                 )}
 
                 {/* Speed Limits */}
-                {detailHash && (
+                {detailHash && canBandwidthTorrents && (
                   <div>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Speed Limits</h3>
                     <div className="rounded-lg border divide-y">
@@ -1278,7 +1311,7 @@ export default function TorrentsPage() {
                 </div>
 
                 {/* Options */}
-                {detailHash && detailTorrent && (
+                {detailHash && detailTorrent && canManageTorrents && (
                   <div>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Options</h3>
                     <div className="rounded-lg border divide-y">

@@ -1,12 +1,28 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { invalidateLayoutCache, type DashboardDevice } from '@/lib/cache/dashboard-layout-cache';
+import {
+  invalidateLayoutCache,
+  getActiveLayoutCached,
+  type DashboardDevice,
+  type ActiveLayout,
+} from '@/lib/cache/dashboard-layout-cache';
 import {
   DEFAULT_DESKTOP_LAYOUT,
   DEFAULT_MOBILE_LAYOUT,
+  DEFAULT_MEMBER_DESKTOP_LAYOUT,
+  DEFAULT_MEMBER_MOBILE_LAYOUT,
   getDefaultLayoutForSlug,
   type DashboardLayoutSlug,
 } from '@/lib/widgets/registry';
+
+// Ownership scope for layout operations: `null` = the global/admin layouts
+// (shared built-ins); a user id = that member's personal layouts.
+export type LayoutScope = string | null;
+
+/** Admins operate on the shared/global layouts (null); members on their own. */
+export function layoutScopeForUser(user: { id: string; role: 'admin' | 'member' }): LayoutScope {
+  return user.role === 'admin' ? null : user.id;
+}
 import { sanitizeDashboardLayout } from '@/lib/widgets/sanitize';
 import type { WidgetInstance } from '@/lib/widgets/types';
 import {
@@ -140,28 +156,30 @@ export function seedInitialLayouts(): Promise<void> {
     // try to create — saved by `name @unique` today, but checking inside the
     // tx keeps the contract explicit.
     const changed = await prisma.$transaction(async (tx) => {
-      const existing = await tx.dashboardLayout.count();
+      // Scope to GLOBAL (admin) layouts — member-owned rows (userId set) must
+      // not make the global built-in seed think it has already run.
+      const existing = await tx.dashboardLayout.count({ where: { userId: null } });
       if (existing > 0) {
         // Backfill `isBuiltIn`/`slug` for installs that pre-date these
         // columns so the read-only lock + Built-in badge apply correctly.
         // Match the two seeded layouts by their original names; the
         // `slug: null` predicate makes the update idempotent on warm starts.
         const desktopUpdate = await tx.dashboardLayout.updateMany({
-          where: { name: 'Desktop', slug: null },
+          where: { name: 'Desktop', slug: null, userId: null },
           data: { isBuiltIn: true, slug: 'desktop' },
         });
         const mobileUpdate = await tx.dashboardLayout.updateMany({
-          where: { name: 'Mobile', slug: null },
+          where: { name: 'Mobile', slug: null, userId: null },
           data: { isBuiltIn: true, slug: 'mobile' },
         });
         return desktopUpdate.count > 0 || mobileUpdate.count > 0;
       }
 
       const desktopRow = await tx.dashboardLayout.create({
-        data: { name: 'Desktop', widgets: desktopJson, isBuiltIn: true, slug: 'desktop' },
+        data: { name: 'Desktop', widgets: desktopJson, isBuiltIn: true, slug: 'desktop', userId: null },
       });
       const mobileRow = await tx.dashboardLayout.create({
-        data: { name: 'Mobile', widgets: mobileJson, isBuiltIn: true, slug: 'mobile' },
+        data: { name: 'Mobile', widgets: mobileJson, isBuiltIn: true, slug: 'mobile', userId: null },
       });
       await tx.appSettings.upsert({
         where: { id: 'singleton' },
@@ -188,24 +206,41 @@ export function seedInitialLayouts(): Promise<void> {
   return seedPromise;
 }
 
-export async function listLayouts(): Promise<LayoutListResponse> {
-  const [rows, settings] = await Promise.all([
-    prisma.dashboardLayout.findMany({ orderBy: { createdAt: 'asc' } }),
-    prisma.appSettings.findUnique({
+export async function listLayouts(scope: LayoutScope): Promise<LayoutListResponse> {
+  if (scope) await ensureMemberLayouts(scope);
+  const rows = await prisma.dashboardLayout.findMany({
+    where: { userId: scope },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Active-default pointers live on AppSettings for admins (scope=null) and on
+  // the member's UserSettings otherwise.
+  let defaultDesktopLayoutId: string | null = null;
+  let defaultMobileLayoutId: string | null = null;
+  if (scope) {
+    const us = await prisma.userSettings.findUnique({
+      where: { userId: scope },
+      select: { defaultDesktopLayoutId: true, defaultMobileLayoutId: true },
+    });
+    defaultDesktopLayoutId = us?.defaultDesktopLayoutId ?? null;
+    defaultMobileLayoutId = us?.defaultMobileLayoutId ?? null;
+  } else {
+    const settings = await prisma.appSettings.findUnique({
       where: { id: 'singleton' },
       select: { defaultDesktopLayoutId: true, defaultMobileLayoutId: true },
-    }),
-  ]);
+    });
+    defaultDesktopLayoutId = settings?.defaultDesktopLayoutId ?? null;
+    defaultMobileLayoutId = settings?.defaultMobileLayoutId ?? null;
+  }
 
-  return {
-    layouts: rows.map(rowToRecord),
-    defaultDesktopLayoutId: settings?.defaultDesktopLayoutId ?? null,
-    defaultMobileLayoutId: settings?.defaultMobileLayoutId ?? null,
-  };
+  return { layouts: rows.map(rowToRecord), defaultDesktopLayoutId, defaultMobileLayoutId };
 }
 
-export async function createLayout(input: { name: unknown; widgets: unknown }): Promise<DashboardLayoutRecord> {
-  const count = await prisma.dashboardLayout.count();
+export async function createLayout(
+  input: { name: unknown; widgets: unknown },
+  scope: LayoutScope,
+): Promise<DashboardLayoutRecord> {
+  const count = await prisma.dashboardLayout.count({ where: { userId: scope } });
   if (count >= MAX_LAYOUTS) {
     throw new ServiceError(`Maximum of ${MAX_LAYOUTS} layouts reached`, 400);
   }
@@ -218,6 +253,7 @@ export async function createLayout(input: { name: unknown; widgets: unknown }): 
   try {
     row = await prisma.dashboardLayout.create({
       data: {
+        userId: scope,
         name,
         widgets: sanitized as unknown as Prisma.InputJsonValue,
       },
@@ -235,8 +271,11 @@ export async function createLayout(input: { name: unknown; widgets: unknown }): 
 export async function updateLayout(
   id: string,
   input: { name?: unknown; widgets?: unknown },
+  scope: LayoutScope,
 ): Promise<DashboardLayoutRecord> {
-  const existing = await prisma.dashboardLayout.findUnique({ where: { id } });
+  // Scope-bounded lookup enforces ownership: a member can only touch their own
+  // layouts; an admin only the global ones.
+  const existing = await prisma.dashboardLayout.findFirst({ where: { id, userId: scope } });
   if (!existing) throw new ServiceError('Layout not found', 404);
 
   const data: Prisma.DashboardLayoutUpdateInput = {};
@@ -262,17 +301,17 @@ export async function updateLayout(
   return rowToRecord(row);
 }
 
-export async function copyLayout(id: string): Promise<DashboardLayoutRecord> {
-  const source = await prisma.dashboardLayout.findUnique({ where: { id } });
+export async function copyLayout(id: string, scope: LayoutScope): Promise<DashboardLayoutRecord> {
+  const source = await prisma.dashboardLayout.findFirst({ where: { id, userId: scope } });
   if (!source) throw new ServiceError('Layout not found', 404);
 
-  const count = await prisma.dashboardLayout.count();
+  const count = await prisma.dashboardLayout.count({ where: { userId: scope } });
   if (count >= MAX_LAYOUTS) {
     throw new ServiceError(`Maximum of ${MAX_LAYOUTS} layouts reached`, 400);
   }
 
   const existingNames = new Set(
-    (await prisma.dashboardLayout.findMany({ select: { name: true } })).map((r) => r.name),
+    (await prisma.dashboardLayout.findMany({ where: { userId: scope }, select: { name: true } })).map((r) => r.name),
   );
   // Trim the source name first so there is always room for the `_copy_NN`
   // suffix. Without this, a 49-character name would produce candidates that
@@ -294,6 +333,7 @@ export async function copyLayout(id: string): Promise<DashboardLayoutRecord> {
   try {
     row = await prisma.dashboardLayout.create({
       data: {
+        userId: scope,
         name: candidate,
         widgets: source.widgets as Prisma.InputJsonValue,
       },
@@ -311,17 +351,23 @@ export async function copyLayout(id: string): Promise<DashboardLayoutRecord> {
   return rowToRecord(row);
 }
 
-export async function deleteLayout(id: string): Promise<void> {
-  const existing = await prisma.dashboardLayout.findUnique({ where: { id } });
+export async function deleteLayout(id: string, scope: LayoutScope): Promise<void> {
+  const existing = await prisma.dashboardLayout.findFirst({ where: { id, userId: scope } });
   if (!existing) throw new ServiceError('Layout not found', 404);
   if (existing.isBuiltIn) {
     throw new ServiceError('Built-in layouts cannot be deleted. Use Reset to restore the default widgets.', 400);
   }
-  const settings = await prisma.appSettings.findUnique({
-    where: { id: 'singleton' },
-    select: { defaultDesktopLayoutId: true, defaultMobileLayoutId: true },
-  });
-  if (settings?.defaultDesktopLayoutId === id || settings?.defaultMobileLayoutId === id) {
+  // The active-default lives on AppSettings (admin) or the member's UserSettings.
+  const defaults = scope
+    ? await prisma.userSettings.findUnique({
+        where: { userId: scope },
+        select: { defaultDesktopLayoutId: true, defaultMobileLayoutId: true },
+      })
+    : await prisma.appSettings.findUnique({
+        where: { id: 'singleton' },
+        select: { defaultDesktopLayoutId: true, defaultMobileLayoutId: true },
+      });
+  if (defaults?.defaultDesktopLayoutId === id || defaults?.defaultMobileLayoutId === id) {
     throw new ServiceError(
       'Cannot delete a layout that is currently set as a device default. Pick a different default first.',
       400,
@@ -332,8 +378,8 @@ export async function deleteLayout(id: string): Promise<void> {
   await invalidateLayoutCache();
 }
 
-export async function resetLayoutToDefault(id: string): Promise<DashboardLayoutRecord> {
-  const existing = await prisma.dashboardLayout.findUnique({ where: { id } });
+export async function resetLayoutToDefault(id: string, scope: LayoutScope): Promise<DashboardLayoutRecord> {
+  const existing = await prisma.dashboardLayout.findFirst({ where: { id, userId: scope } });
   if (!existing) throw new ServiceError('Layout not found', 404);
   if (!existing.isBuiltIn || (existing.slug !== 'desktop' && existing.slug !== 'mobile')) {
     throw new ServiceError('Only built-in layouts can be reset', 400);
@@ -354,9 +400,28 @@ export async function resetLayoutToDefault(id: string): Promise<DashboardLayoutR
   return rowToRecord(row);
 }
 
-export async function setDefaultForDevice(layoutId: string, device: DashboardDevice): Promise<void> {
-  const existing = await prisma.dashboardLayout.findUnique({ where: { id: layoutId } });
+export async function setDefaultForDevice(
+  layoutId: string,
+  device: DashboardDevice,
+  scope: LayoutScope,
+): Promise<void> {
+  const existing = await prisma.dashboardLayout.findFirst({ where: { id: layoutId, userId: scope } });
   if (!existing) throw new ServiceError('Layout not found', 404);
+
+  if (scope) {
+    // Member: their own active-layout pointer on UserSettings.
+    await prisma.userSettings.upsert({
+      where: { userId: scope },
+      update: device === 'desktop' ? { defaultDesktopLayoutId: layoutId } : { defaultMobileLayoutId: layoutId },
+      create: {
+        userId: scope,
+        defaultDesktopLayoutId: device === 'desktop' ? layoutId : null,
+        defaultMobileLayoutId: device === 'mobile' ? layoutId : null,
+      },
+    });
+    await invalidateLayoutCache();
+    return;
+  }
 
   await prisma.appSettings.upsert({
     where: { id: 'singleton' },
@@ -370,4 +435,76 @@ export async function setDefaultForDevice(layoutId: string, device: DashboardDev
     },
   });
   await invalidateLayoutCache();
+}
+
+/**
+ * Seed a member their own starter layouts (Desktop + Mobile) from the member
+ * default, and point their UserSettings at them. Idempotent: no-op once they
+ * have any layout of their own. Concurrent first-loads are deduped by the
+ * unique [userId, name] constraint (the loser's create is swallowed).
+ */
+export async function ensureMemberLayouts(userId: string): Promise<void> {
+  const count = await prisma.dashboardLayout.count({ where: { userId } });
+  if (count > 0) return;
+
+  const discoverLayout = await getDiscoverLayout();
+  const desktopWidgets = sanitizeDashboardLayout(
+    DEFAULT_MEMBER_DESKTOP_LAYOUT.map((w) => ({ ...w })),
+    discoverLayout,
+  ) as unknown as Prisma.InputJsonValue;
+  const mobileWidgets = sanitizeDashboardLayout(
+    DEFAULT_MEMBER_MOBILE_LAYOUT.map((w) => ({ ...w })),
+    discoverLayout,
+  ) as unknown as Prisma.InputJsonValue;
+
+  try {
+    const desktopRow = await prisma.dashboardLayout.create({
+      data: { userId, name: 'Desktop', widgets: desktopWidgets, isBuiltIn: false },
+    });
+    const mobileRow = await prisma.dashboardLayout.create({
+      data: { userId, name: 'Mobile', widgets: mobileWidgets, isBuiltIn: false },
+    });
+    await prisma.userSettings.upsert({
+      where: { userId },
+      update: { defaultDesktopLayoutId: desktopRow.id, defaultMobileLayoutId: mobileRow.id },
+      create: { userId, defaultDesktopLayoutId: desktopRow.id, defaultMobileLayoutId: mobileRow.id },
+    });
+  } catch (error) {
+    // Another concurrent first-load already seeded them — fine.
+    if (!isUniqueViolation(error)) throw error;
+  }
+}
+
+/**
+ * The active layout for a given user + device. Admins use the shared/global
+ * pointers (cached); members use their own UserSettings pointer over their own
+ * seeded layouts.
+ */
+export async function getActiveLayoutForUser(
+  user: { id: string; role: 'admin' | 'member' },
+  device: DashboardDevice,
+): Promise<ActiveLayout | null> {
+  if (user.role === 'admin') {
+    return getActiveLayoutCached(device);
+  }
+
+  await ensureMemberLayouts(user.id);
+  const us = await prisma.userSettings.findUnique({
+    where: { userId: user.id },
+    select: { defaultDesktopLayoutId: true, defaultMobileLayoutId: true },
+  });
+  const pointerId = device === 'desktop' ? us?.defaultDesktopLayoutId : us?.defaultMobileLayoutId;
+  if (pointerId) {
+    const row = await prisma.dashboardLayout.findFirst({
+      where: { id: pointerId, userId: user.id },
+      select: { id: true, name: true, widgets: true, isBuiltIn: true },
+    });
+    if (row) return row as ActiveLayout;
+  }
+  const fallback = await prisma.dashboardLayout.findFirst({
+    where: { userId: user.id },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, name: true, widgets: true, isBuiltIn: true },
+  });
+  return (fallback as ActiveLayout | null) ?? null;
 }

@@ -245,8 +245,41 @@ function buildLayout(positions: DefaultPosition[]): WidgetInstance[] {
   });
 }
 
+// ── Member default ──
+// Simple starter layout for member accounts: only widgets a member can access
+// (library, discover, their own requests, read-only torrents/activity). Each
+// member gets a personal copy on first dashboard load and can customize it.
+const DEFAULT_MEMBER_POSITIONS: DefaultPosition[] = [
+  { id: 'm-stats-grid-1', widgetId: 'stats-grid', x: 0, y: 0, colSpan: 4, rowSpan: 2,
+    mobileX: 0, mobileY: 0, mobileColSpan: 4, mobileRowSpan: 1, layoutOverride: 'default' },
+  { id: 'm-continue-watching-1', widgetId: 'continue-watching', x: 4, y: 0, colSpan: 8, rowSpan: 2,
+    mobileX: 0, mobileY: 1, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel' },
+  { id: 'm-seerr-recent-requests-1', widgetId: 'seerr-recent-requests', x: 0, y: 2, colSpan: 6, rowSpan: 3,
+    mobileX: 0, mobileY: 3, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'list' },
+  { id: 'm-activity-history-1', widgetId: 'activity-history', x: 6, y: 2, colSpan: 6, rowSpan: 3,
+    mobileX: 0, mobileY: 6, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'list' },
+  { id: 'm-recently-added-1', widgetId: 'recently-added', x: 0, y: 5, colSpan: 12, rowSpan: 3,
+    mobileX: 0, mobileY: 9, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'carousel' },
+  { id: 'm-upcoming-1', widgetId: 'upcoming', x: 0, y: 8, colSpan: 12, rowSpan: 3,
+    mobileX: 0, mobileY: 12, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'carousel' },
+  { id: 'm-today-calendar-1', widgetId: 'today-calendar', x: 0, y: 11, colSpan: 6, rowSpan: 3,
+    mobileX: 0, mobileY: 15, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel' },
+  { id: 'm-for-you-1', widgetId: 'for-you', x: 6, y: 11, colSpan: 6, rowSpan: 3,
+    mobileX: 0, mobileY: 17, mobileColSpan: 4, mobileRowSpan: 3, layoutOverride: 'carousel' },
+  { id: 'm-active-downloads-1', widgetId: 'active-downloads', x: 0, y: 14, colSpan: 8, rowSpan: 2,
+    mobileX: 0, mobileY: 20, mobileColSpan: 4, mobileRowSpan: 2, layoutOverride: 'carousel' },
+  { id: 'm-torrent-overview-1', widgetId: 'torrent-overview', x: 8, y: 14, colSpan: 4, rowSpan: 2,
+    mobileX: 0, mobileY: 22, mobileColSpan: 2, mobileRowSpan: 1, layoutOverride: 'vertical' },
+  { id: 'm-notifications-1', widgetId: 'notifications', x: 0, y: 16, colSpan: 12, rowSpan: 3,
+    mobileX: 0, mobileY: 23, mobileColSpan: 4, mobileRowSpan: 3 },
+];
+
 export const DEFAULT_DESKTOP_LAYOUT: WidgetInstance[] = buildLayout(DEFAULT_DESKTOP_POSITIONS);
 export const DEFAULT_MOBILE_LAYOUT: WidgetInstance[] = buildLayout(DEFAULT_MOBILE_POSITIONS);
+// One position set serves both member grids — each position carries its mobile
+// coords/spans, so the 4-col mobile grid is driven by the same array.
+export const DEFAULT_MEMBER_DESKTOP_LAYOUT: WidgetInstance[] = buildLayout(DEFAULT_MEMBER_POSITIONS);
+export const DEFAULT_MEMBER_MOBILE_LAYOUT: WidgetInstance[] = buildLayout(DEFAULT_MEMBER_POSITIONS);
 
 // Back-compat alias for any code still importing the old name.
 export const DEFAULT_LAYOUT: WidgetInstance[] = DEFAULT_DESKTOP_LAYOUT;

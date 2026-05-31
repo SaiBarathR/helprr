@@ -610,7 +610,9 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability>> = {
   'cleanup-history': 'cleanup.view',
   'storage-usage': 'settings.storage',
   'seerr-pending-requests': 'requests.approve',
-  'seerr-recent-requests': 'requests.approve',
+  // Recent-requests is member-safe: it scopes to the viewer's own requests and
+  // surfaces their pending-approval items, so members may add it.
+  'seerr-recent-requests': 'requests.view',
   'seerr-users': 'requests.approve',
 };
 for (const def of ALL_WIDGET_DEFINITIONS) {

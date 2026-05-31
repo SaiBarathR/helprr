@@ -20,6 +20,8 @@ export type CapabilityMap = Partial<Record<Capability, boolean>>;
 const MEMBER_ALLOWED: readonly Capability[] = [
   // Library — read everything that isn't an admin subsystem.
   'dashboard.view',
+  // Members manage their OWN dashboard layouts (per-user; never the admin's).
+  'dashboard.customize',
   'discover.view',
   'anime.view',
   'movies.view',

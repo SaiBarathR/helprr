@@ -31,6 +31,7 @@ import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
+import { useCan } from '@/components/permission-provider';
 
 // --- Status helpers ---
 
@@ -371,6 +372,7 @@ function QueueTab({
   filterBy: FilterKey;
   onCountChange: (count: number) => void;
 }) {
+  const canManageActivity = useCan('activity.manage');
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
@@ -594,19 +596,21 @@ function QueueTab({
                   </div>
 
                   {/* Remove button */}
-                  <Button
-                    variant="outline"
-                    className="w-full border-destructive text-destructive hover:bg-destructive/10"
-                    onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr')}
-                    disabled={removing}
-                  >
-                    {removing ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="mr-2 h-4 w-4" />
-                    )}
-                    Remove
-                  </Button>
+                  {canManageActivity && (
+                    <Button
+                      variant="outline"
+                      className="w-full border-destructive text-destructive hover:bg-destructive/10"
+                      onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr')}
+                      disabled={removing}
+                    >
+                      {removing ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="mr-2 h-4 w-4" />
+                      )}
+                      Remove
+                    </Button>
+                  )}
 
                   {/* Information section */}
                   <div>
@@ -670,6 +674,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
   const router = useRouter();
+  const canManageActivity = useCan('activity.manage');
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -749,9 +754,11 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
                 </p>
               ))}
             </div>
-            <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => openManualImport(item)}>
-              <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
-            </Button>
+            {canManageActivity && (
+              <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => openManualImport(item)}>
+                <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
+              </Button>
+            )}
           </div>
         </div>
       ))}

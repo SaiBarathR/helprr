@@ -28,7 +28,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
-  Clock, Trophy, TrendingUp, FileEdit, Sparkles,
+  Trophy, TrendingUp, FileEdit, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
@@ -56,6 +56,7 @@ import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helper
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
+import { useCan } from '@/components/permission-provider';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -162,6 +163,13 @@ export default function SeriesDetailPage() {
     () => initialSnapshot?.seasonEpisodes ?? new Map()
   );
   const [animeNowMs, setAnimeNowMs] = useState(() => Date.now());
+
+  const canManageActivity = useCan('activity.manage');
+  const canEditMonitoring = useCan('series.editMonitoring');
+  const canEditTags = useCan('series.editTags');
+  const canChangePath = useCan('series.changePath');
+  const canDeleteSeries = useCan('series.delete');
+  const canEditSeries = canEditMonitoring || canEditTags || canChangePath;
 
   const MONITOR_OPTIONS = [
     { value: 'all', label: 'All Episodes' },
@@ -1037,14 +1045,18 @@ export default function SeriesDetailPage() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={handleRefresh} disabled={actionLoading === 'refresh'}>
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleSearchAll} disabled={actionLoading === 'search'}>
-                  <Search className="h-4 w-4" />
-                  Search Monitored
-                </DropdownMenuItem>
+                {canManageActivity && (
+                  <DropdownMenuItem onClick={handleRefresh} disabled={actionLoading === 'refresh'}>
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </DropdownMenuItem>
+                )}
+                {canManageActivity && (
+                  <DropdownMenuItem onClick={handleSearchAll} disabled={actionLoading === 'search'}>
+                    <Search className="h-4 w-4" />
+                    Search Monitored
+                  </DropdownMenuItem>
+                )}
                 {isAnimeSeries && (
                   <DropdownMenuItem asChild>
                     <Link href={openInAnimeHref}>
@@ -1103,22 +1115,30 @@ export default function SeriesDetailPage() {
                   <Bookmark className="h-4 w-4" />
                   Add to Watchlist…
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowMonitorEdit(true)}>
-                  <Eye className="h-4 w-4" />
-                  Monitor
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push(`/series/${id}/edit`)}>
-                  <Pencil className="h-4 w-4" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
-                  <FileEdit className="h-4 w-4" />
-                  Preview Rename
-                </DropdownMenuItem>
-                <DropdownMenuItem variant="destructive" onClick={() => setShowDelete(true)}>
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
+                {canEditMonitoring && (
+                  <DropdownMenuItem onClick={() => setShowMonitorEdit(true)}>
+                    <Eye className="h-4 w-4" />
+                    Monitor
+                  </DropdownMenuItem>
+                )}
+                {canEditSeries && (
+                  <DropdownMenuItem onClick={() => router.push(`/series/${id}/edit`)}>
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {canManageActivity && (
+                  <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
+                    <FileEdit className="h-4 w-4" />
+                    Preview Rename
+                  </DropdownMenuItem>
+                )}
+                {canDeleteSeries && (
+                  <DropdownMenuItem variant="destructive" onClick={() => setShowDelete(true)}>
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>

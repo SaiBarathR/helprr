@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getActiveLayoutCached } from '@/lib/cache/dashboard-layout-cache';
-import { seedInitialLayouts } from '@/lib/dashboard-layouts';
+import { seedInitialLayouts, getActiveLayoutForUser } from '@/lib/dashboard-layouts';
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   const device = request.nextUrl.searchParams.get('device');
   if (device !== 'desktop' && device !== 'mobile') {
@@ -15,7 +14,10 @@ async function getHandler(request: NextRequest) {
 
   try {
     await seedInitialLayouts();
-    const layout = await getActiveLayoutCached(device);
+    const layout = await getActiveLayoutForUser(
+      { id: auth.user.id, role: auth.user.role },
+      device,
+    );
     return NextResponse.json(layout);
   } catch (error) {
     console.error('Failed to fetch active dashboard layout:', error);

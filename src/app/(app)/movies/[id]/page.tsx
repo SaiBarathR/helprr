@@ -65,6 +65,7 @@ import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
+import { useCan } from '@/components/permission-provider';
 
 type RatingItem = {
   label: string;
@@ -121,6 +122,13 @@ export default function MovieDetailPage() {
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
+
+  const canEditMonitoring = useCan('movies.editMonitoring');
+  const canEditTags = useCan('movies.editTags');
+  const canChangePath = useCan('movies.changePath');
+  const canManageActivity = useCan('activity.manage');
+  const canDeleteMovie = useCan('movies.delete');
+  const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
 
   // Reference data
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>(() => initialSnapshot?.qualityProfiles ?? []);
@@ -563,19 +571,21 @@ export default function MovieDetailPage() {
         rightContent={
           <>
             {/* Bookmark / Monitored toggle */}
-            <button
-              onClick={handleToggleMonitored}
-              disabled={actionLoading === 'monitor'}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-            >
-              {actionLoading === 'monitor' ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : movie.monitored ? (
-                <BookmarkCheck className="h-5 w-5 fill-primary" />
-              ) : (
-                <Bookmark className="h-5 w-5" />
-              )}
-            </button>
+            {canEditMonitoring && (
+              <button
+                onClick={handleToggleMonitored}
+                disabled={actionLoading === 'monitor'}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+              >
+                {actionLoading === 'monitor' ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : movie.monitored ? (
+                  <BookmarkCheck className="h-5 w-5 fill-primary" />
+                ) : (
+                  <Bookmark className="h-5 w-5" />
+                )}
+              </button>
+            )}
 
             {/* 3-dot menu */}
             <DropdownMenu>
@@ -585,20 +595,24 @@ export default function MovieDetailPage() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem
-                  onClick={handleRefresh}
-                  disabled={!!actionLoading}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={handleSearch}
-                  disabled={!!actionLoading}
-                >
-                  <Search className="h-4 w-4" />
-                  Automatic Search
-                </DropdownMenuItem>
+                {canManageActivity && (
+                  <DropdownMenuItem
+                    onClick={handleRefresh}
+                    disabled={!!actionLoading}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </DropdownMenuItem>
+                )}
+                {canManageActivity && (
+                  <DropdownMenuItem
+                    onClick={handleSearch}
+                    disabled={!!actionLoading}
+                  >
+                    <Search className="h-4 w-4" />
+                    Automatic Search
+                  </DropdownMenuItem>
+                )}
                 {movie.genres?.includes('Animation') && (
                   <DropdownMenuItem asChild>
                     <Link href={`/anime/explore?search=${encodeURIComponent(movie.title)}`}>
@@ -633,24 +647,32 @@ export default function MovieDetailPage() {
                   <Bookmark className="h-4 w-4" />
                   Add to Watchlist…
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => router.push(`/movies/${movie.id}/edit`)}
-                >
-                  <Pencil className="h-4 w-4" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
-                  <FileEdit className="h-4 w-4" />
-                  Preview Rename
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  onClick={() => setShowDelete(true)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
+                {canEditMovie && (
+                  <DropdownMenuItem
+                    onClick={() => router.push(`/movies/${movie.id}/edit`)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {canManageActivity && (
+                  <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
+                    <FileEdit className="h-4 w-4" />
+                    Preview Rename
+                  </DropdownMenuItem>
+                )}
+                {canDeleteMovie && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => setShowDelete(true)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </>
@@ -861,19 +883,21 @@ export default function MovieDetailPage() {
 
         {/* Pill buttons */}
         <div className="flex gap-3">
-          <Button
-            onClick={handleSearch}
-            disabled={!!actionLoading}
-            className="flex-1 rounded-full h-10"
-            variant="secondary"
-          >
-            {actionLoading === 'search' ? (
-              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <Search className="h-4 w-4 mr-2" />
-            )}
-            Automatic
-          </Button>
+          {canManageActivity && (
+            <Button
+              onClick={handleSearch}
+              disabled={!!actionLoading}
+              className="flex-1 rounded-full h-10"
+              variant="secondary"
+            >
+              {actionLoading === 'search' ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Search className="h-4 w-4 mr-2" />
+              )}
+              Automatic
+            </Button>
+          )}
           <Button
             onClick={() => setInteractiveSearch(true)}
             className="flex-1 rounded-full h-10"
