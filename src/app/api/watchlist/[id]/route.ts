@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { ensureTagIds, watchlistHrefFor } from '@/lib/watchlist-helpers';
 
@@ -14,11 +13,8 @@ async function deleteHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('watchlist.edit');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'watchlist.edit')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const { id } = await params;
   try {
@@ -38,11 +34,8 @@ async function patchHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('watchlist.edit');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'watchlist.edit')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const { id } = await params;
   // Confirm the item belongs to the caller before mutating it.

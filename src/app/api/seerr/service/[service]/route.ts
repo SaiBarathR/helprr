@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Quality profiles / root folders / tags for the request + approve modals.
@@ -9,11 +8,8 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ service: string }> }
 ): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('requests.create');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'requests.create')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const { service } = await params;
   if (service !== 'radarr' && service !== 'sonarr') {

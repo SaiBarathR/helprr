@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
-import { can } from '@/lib/permissions';
+import { requireUser, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import {
   createLayout,
@@ -28,12 +27,9 @@ async function getHandler() {
 }
 
 async function postHandler(request: NextRequest) {
-  const auth = await requireUser();
-  if (!auth.ok) return auth.response;
   // Members may create their OWN layouts (scoped below); admins create global ones.
-  if (!can(auth.user, 'dashboard.customize')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const auth = await requireUserCapability('dashboard.customize');
+  if (!auth.ok) return auth.response;
 
   let body: unknown;
   try {

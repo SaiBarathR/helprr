@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import { prisma } from '@/lib/db';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
@@ -47,11 +47,8 @@ function parseInt32(
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('requests.view');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'requests.view')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   try {
     const sp = request.nextUrl.searchParams;
@@ -176,11 +173,8 @@ function parseSeasons(value: unknown): number[] | 'all' | undefined {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('requests.create');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'requests.create')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   // Attribute to the caller's linked Seerr user. Non-admins must be linked
   // (otherwise the request would silently land on the admin's quota); admins

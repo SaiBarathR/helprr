@@ -316,6 +316,16 @@ export async function notifyEvent(event: {
     }
   }
 
+  // Owner-less subscriptions are skipped by the gate above. Post-reset every
+  // subscription has a userId, so this surfaces the anomaly (e.g. a botched
+  // backfill) instead of silently delivering nothing.
+  if (attempted === 0 && subscriptions.some((sub) => !sub.user)) {
+    logger.warn('Push skipped: owner-less subscriptions encountered', {
+      eventType: event.eventType,
+      subscriptionCount: subscriptions.length,
+    }, { scope: 'notifications' });
+  }
+
   if (!metadataRedirect && targetUrl) {
     metadata.redirect = targetUrl;
   }

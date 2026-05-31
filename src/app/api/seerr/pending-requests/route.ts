@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { getCachedSeerrMediaDetail } from '@/lib/seerr-helpers';
@@ -11,11 +11,8 @@ import { logger } from '@/lib/logger';
 // Helprr-side pending requests awaiting admin approval. Admins (requests.approve)
 // see everyone's; members see only their own.
 async function getHandler(): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('requests.view');
   if (!auth.ok) return auth.response;
-  if (!can(auth.user, 'requests.view')) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
 
   const isApprover = can(auth.user, 'requests.approve');
   const rows = await prisma.pendingRequest.findMany({
