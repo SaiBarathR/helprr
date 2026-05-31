@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-helpers';
-import { requireUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('jellyfin.view');
   if (!auth.ok) return auth.response;
 
   try {

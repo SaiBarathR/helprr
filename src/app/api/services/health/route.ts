@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import type { ServiceConnection, ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
+import type { Capability } from '@/lib/capabilities';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
@@ -26,6 +28,20 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
   TMDB: 'TMDB',
   ANILIST: 'AniList',
   SEERR: 'Seerr',
+};
+
+// The view capability that gates each service's health. Members only see the
+// services they're allowed to view; admins short-circuit can() and see all.
+// qBittorrent/Prowlarr are admin-only (privacy), so members never learn they exist.
+const SERVICE_VIEW_CAP: Record<ServiceType, Capability> = {
+  SONARR: 'series.view',
+  RADARR: 'movies.view',
+  QBITTORRENT: 'torrents.view',
+  PROWLARR: 'prowlarr.view',
+  JELLYFIN: 'jellyfin.view',
+  TMDB: 'discover.view',
+  ANILIST: 'anime.view',
+  SEERR: 'requests.view',
 };
 
 async function checkServiceHealth(connection: ServiceConnection): Promise<void> {
@@ -93,13 +109,13 @@ async function checkServiceHealth(connection: ServiceConnection): Promise<void> 
 }
 
 async function getHandler() {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   try {
-    const connections = await prisma.serviceConnection.findMany({
-      orderBy: { type: 'asc' },
-    });
+    const connections = (
+      await prisma.serviceConnection.findMany({ orderBy: { type: 'asc' } })
+    ).filter((connection) => can(auth.user, SERVICE_VIEW_CAP[connection.type]));
 
     const statuses = await Promise.all(
       connections.map(async (connection): Promise<ServiceHealthStatus> => {
