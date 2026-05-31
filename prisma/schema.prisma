@@ -39,7 +39,7 @@ model User {
   template       String     @default("member") // "admin" | "member" — preset the overrides layer on
   permissions    Json       @default("{}") // Partial<Record<Capability, boolean>> — DELTAS only
   jellyfinUserId String?    @unique
-  seerrUserId    String?
+  seerrUserId    String?    @unique
   jellyfinToken  String? // cached AccessToken from "Sign in with Jellyfin"; non-authoritative
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
