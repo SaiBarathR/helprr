@@ -3,7 +3,7 @@ import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { hashPassword } from '@/lib/password';
-import { toSafeUser, countActiveAdmins } from '@/lib/user-dto';
+import { toSafeUser } from '@/lib/user-dto';
 import { parsePermissions } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -110,16 +110,27 @@ async function patchHandler(
     existing.role === 'admin' &&
     existing.status === 'active' &&
     ((data.role && data.role !== 'admin') || (data.status && data.status !== 'active'));
-  if (losingAdmin && (await countActiveAdmins(id)) === 0) {
-    return NextResponse.json(
-      { error: 'Cannot demote or disable the last active admin' },
-      { status: 409 }
-    );
-  }
 
   try {
-    const updated = await prisma.user.update({ where: { id }, data });
-    return NextResponse.json(toSafeUser(updated));
+    // Re-check the admin count and write in one transaction so two concurrent
+    // demotions can't both pass the guard and leave zero active admins.
+    const result = await prisma.$transaction(async (tx) => {
+      if (losingAdmin) {
+        const remaining = await tx.user.count({
+          where: { role: 'admin', status: 'active', NOT: { id } },
+        });
+        if (remaining === 0) return { ok: false as const };
+      }
+      const updated = await tx.user.update({ where: { id }, data });
+      return { ok: true as const, updated };
+    });
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: 'Cannot demote or disable the last active admin' },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(toSafeUser(result.updated));
   } catch (error) {
     if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2002') {
       return NextResponse.json({ error: 'Username or Jellyfin link already in use' }, { status: 409 });
@@ -140,13 +151,23 @@ async function deleteHandler(
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  if (existing.role === 'admin' && existing.status === 'active' && (await countActiveAdmins(id)) === 0) {
+  // Re-check the admin count and delete in one transaction so the last active
+  // admin can't be removed by two concurrent requests racing the guard.
+  const ok = await prisma.$transaction(async (tx) => {
+    if (existing.role === 'admin' && existing.status === 'active') {
+      const remaining = await tx.user.count({
+        where: { role: 'admin', status: 'active', NOT: { id } },
+      });
+      if (remaining === 0) return false;
+    }
+    // Cascade (schema onDelete: Cascade) drops their sessions, watchlist, push
+    // subscriptions, AniList link, and settings with them.
+    await tx.user.delete({ where: { id } });
+    return true;
+  });
+  if (!ok) {
     return NextResponse.json({ error: 'Cannot delete the last active admin' }, { status: 409 });
   }
-
-  // Cascade (schema onDelete: Cascade) drops their sessions, watchlist, push
-  // subscriptions, AniList link, and settings with them.
-  await prisma.user.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }
 

@@ -65,6 +65,10 @@ export interface WidgetDefinition {
   /** When set, the widget is hidden (dashboard + gallery) from users who lack
    *  this capability — so a member never sees cleanup/prowlarr/analytics tiles. */
   requiredCapability?: Capability;
+  /** When true, the widget is hidden (dashboard + gallery) from non-admins.
+   *  Used for AniList account-dependent carousels that read the single shared
+   *  operator account (admin-only). */
+  adminOnly?: boolean;
 }
 
 export interface WidgetInstance {

@@ -576,6 +576,9 @@ for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
     defaultRefreshIntervalSecs: 300,
     desktopLayout: 'carousel',
     mobileLayout: 'carousel',
+    // continue-watching / plan-to-watch read the shared operator's AniList
+    // account (admin-only endpoints), so hide them from members.
+    adminOnly: id === 'continueWatching' || id === 'planToWatch',
     component: (props: WidgetProps) =>
       React.createElement(AnimeCarouselWidget, { carouselId: id, ...props }),
   } as WidgetDefinition);

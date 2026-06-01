@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { logger } from '@/lib/logger';
 
 async function getHandler(
   _req: NextRequest,
@@ -32,8 +33,12 @@ async function getHandler(
     const data = await client.getUserQuota(id);
     return NextResponse.json(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch user quota';
-    return NextResponse.json({ error: message }, { status: 500 });
+    logger.error(
+      'Seerr user quota fetch failed',
+      error instanceof Error ? { message: error.message, stack: error.stack } : { error },
+      { scope: 'api/seerr/users/[id]/quota' }
+    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

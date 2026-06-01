@@ -98,8 +98,13 @@ export function WidgetGridDesktop() {
     () =>
       dashboardLayout.filter((instance) => {
         const def = getWidgetDefinition(instance.widgetId, discoverLayout);
-        // Drop widgets the user lacks the capability for (e.g. cleanup for members).
-        return !!def && (!def.requiredCapability || hasCapability(me, def.requiredCapability));
+        // Drop widgets the user lacks the capability for (e.g. cleanup for members)
+        // or that are admin-only (AniList account carousels).
+        return (
+          !!def &&
+          (!def.requiredCapability || hasCapability(me, def.requiredCapability)) &&
+          (!def.adminOnly || me?.role === 'admin')
+        );
       }),
     [dashboardLayout, discoverLayout, me],
   );
