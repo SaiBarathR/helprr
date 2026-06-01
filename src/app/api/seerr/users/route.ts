@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { logger } from '@/lib/logger';
 
 function parseInt32(value: string | null): number | undefined {
   if (!value) return undefined;
@@ -32,8 +33,12 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch users';
-    return NextResponse.json({ error: message }, { status: 500 });
+    logger.error(
+      'Seerr users fetch failed',
+      error instanceof Error ? { message: error.message, stack: error.stack } : { error },
+      { scope: 'api/seerr/users' }
+    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

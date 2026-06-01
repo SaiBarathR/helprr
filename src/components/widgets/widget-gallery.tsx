@@ -110,7 +110,9 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   const allDefinitions = useMemo(
     () =>
       getAllWidgetDefinitions(discoverLayout).filter(
-        (def) => !def.requiredCapability || hasCapability(me, def.requiredCapability)
+        (def) =>
+          (!def.requiredCapability || hasCapability(me, def.requiredCapability)) &&
+          (!def.adminOnly || me?.role === 'admin')
       ),
     [discoverLayout, me]
   );

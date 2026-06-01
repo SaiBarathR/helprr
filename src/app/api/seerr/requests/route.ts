@@ -113,7 +113,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
             enriched: { title: null, year: null, posterUrl: null, helprr },
           };
         }
-        const detail = await getCachedSeerrMediaDetail(client, req.type, tmdbId);
+        // Per-item enrichment is best-effort: a single TMDB detail failure must
+        // not 500 the whole list (the row just renders without metadata).
+        const detail = await getCachedSeerrMediaDetail(client, req.type, tmdbId).catch(() => null);
         const dateStr = req.type === 'movie' ? detail?.releaseDate : detail?.firstAirDate;
         const year = dateStr ? Number.parseInt(dateStr.slice(0, 4), 10) || null : null;
         return {

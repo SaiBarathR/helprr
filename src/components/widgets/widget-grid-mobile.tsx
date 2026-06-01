@@ -25,7 +25,11 @@ export function WidgetGridMobile() {
     () =>
       dashboardLayout.filter((instance) => {
         const def = getWidgetDefinition(instance.widgetId, discoverLayout);
-        return !!def && (!def.requiredCapability || hasCapability(me, def.requiredCapability));
+        return (
+          !!def &&
+          (!def.requiredCapability || hasCapability(me, def.requiredCapability)) &&
+          (!def.adminOnly || me?.role === 'admin')
+        );
       }),
     [dashboardLayout, discoverLayout, me],
   );
