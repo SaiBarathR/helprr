@@ -14,7 +14,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { SonarrRenamePreview, RadarrRenamePreview } from '@/types';
+import type { SonarrRenamePreview, RadarrRenamePreview, LidarrRenamePreview } from '@/types';
+
+type RenameService = 'sonarr' | 'radarr' | 'lidarr';
 
 type RenameRow = {
   fileId: number;
@@ -26,7 +28,7 @@ type RenameRow = {
 interface RenamePreviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  service: 'sonarr' | 'radarr';
+  service: RenameService;
   mediaId: number;
   mediaTitle: string;
 }
@@ -36,8 +38,8 @@ function pad(n: number) {
 }
 
 function toRows(
-  service: 'sonarr' | 'radarr',
-  data: SonarrRenamePreview[] | RadarrRenamePreview[]
+  service: RenameService,
+  data: SonarrRenamePreview[] | RadarrRenamePreview[] | LidarrRenamePreview[]
 ): RenameRow[] {
   if (service === 'sonarr') {
     return (data as SonarrRenamePreview[]).map((d) => ({
@@ -47,6 +49,14 @@ function toRows(
       meta: `S${pad(d.seasonNumber)}${(d.episodeNumbers ?? [])
         .map((e) => `E${pad(e)}`)
         .join('')}`,
+    }));
+  }
+  if (service === 'lidarr') {
+    return (data as LidarrRenamePreview[]).map((d) => ({
+      fileId: d.trackFileId,
+      existingPath: d.existingPath,
+      newPath: d.newPath,
+      meta: (d.trackNumbers ?? []).map((t) => `#${t}`).join(' '),
     }));
   }
   return (data as RadarrRenamePreview[]).map((d) => ({
@@ -76,13 +86,13 @@ export function RenamePreviewDialog({
     setRows([]);
     setSelected(new Set());
 
-    const queryKey = service === 'sonarr' ? 'seriesId' : 'movieId';
+    const queryKey = service === 'sonarr' ? 'seriesId' : service === 'lidarr' ? 'artistId' : 'movieId';
     const url = `/api/${service}/rename?${queryKey}=${mediaId}`;
 
     fetch(url)
       .then(async (r) => {
         if (!r.ok) throw new Error(await r.text());
-        return r.json() as Promise<SonarrRenamePreview[] | RadarrRenamePreview[]>;
+        return r.json() as Promise<SonarrRenamePreview[] | RadarrRenamePreview[] | LidarrRenamePreview[]>;
       })
       .then((data) => {
         if (cancelled) return;
@@ -125,7 +135,9 @@ export function RenamePreviewDialog({
       const body =
         service === 'sonarr'
           ? { name: 'RenameFiles', seriesId: mediaId, files: Array.from(selected) }
-          : { name: 'RenameFiles', movieId: mediaId, files: Array.from(selected) };
+          : service === 'lidarr'
+            ? { name: 'RenameFiles', artistId: mediaId, files: Array.from(selected) }
+            : { name: 'RenameFiles', movieId: mediaId, files: Array.from(selected) };
       const res = await fetch(`/api/${service}/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

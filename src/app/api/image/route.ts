@@ -4,10 +4,10 @@ import { requireAuth } from '@/lib/auth';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { withApiLogging } from '@/lib/api-logger';
 
-type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist';
+type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist' | 'lidarr';
 
 interface ConnectionLike {
-  type: 'RADARR' | 'SONARR' | 'JELLYFIN' | 'TMDB';
+  type: 'RADARR' | 'SONARR' | 'JELLYFIN' | 'TMDB' | 'LIDARR';
   url: string;
   apiKey: string;
 }
@@ -17,12 +17,13 @@ const IMAGE_PATH_EXTENSION_RE = /\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|web
 const SERVICE_IMAGE_PATH_PATTERNS: Record<ConnectionLike['type'], RegExp[]> = {
   RADARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
   SONARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
+  LIDARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
   JELLYFIN: [/^\/items\/[^/]+\/images\/[^/]+(?:\/\d+)?$/i],
   TMDB: [/^\/t\/p\//i],
 };
 
 function parseServiceHint(value: string | null): ServiceHint | null {
-  if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'jellyfin' || value === 'anilist') {
+  if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'jellyfin' || value === 'anilist' || value === 'lidarr') {
     return value;
   }
   return null;
@@ -40,6 +41,8 @@ const DEFAULT_EXTERNAL_IMAGE_HOSTS = new Set<string>([
   's1.anilist.co',
   's2.anilist.co',
   's3.anilist.co',
+  'images.lidarr.audio',
+  'lidarr.servarr.com',
 ]);
 
 function getAllowedExternalImageHosts(): Set<string> {
@@ -131,7 +134,7 @@ function isMatchedConnectionImagePathAllowed(connection: ConnectionLike, target:
 function resolveAuthHeaders(connection: ConnectionLike | null): HeadersInit | undefined {
   if (!connection) return undefined;
 
-  if (connection.type === 'RADARR' || connection.type === 'SONARR') {
+  if (connection.type === 'RADARR' || connection.type === 'SONARR' || connection.type === 'LIDARR') {
     return {
       'X-Api-Key': connection.apiKey,
     };
@@ -187,7 +190,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const connectionsRaw = await prisma.serviceConnection.findMany({
       where: {
         type: {
-          in: ['RADARR', 'SONARR', 'JELLYFIN', 'TMDB'],
+          in: ['RADARR', 'SONARR', 'JELLYFIN', 'TMDB', 'LIDARR'],
         },
       },
       select: {

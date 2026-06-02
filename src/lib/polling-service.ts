@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { getSonarrClient, getRadarrClient, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getLidarrClient, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
 import { SEERR_MEDIA_STATUS, SEERR_REQUEST_STATUS } from '@/types/seerr';
 import { getCachedSeerrMediaDetail, formatSeerrMediaLabel } from '@/lib/seerr-helpers';
 import { notifyEvent, initVapid } from '@/lib/notification-service';
@@ -108,9 +108,16 @@ function getMediaHrefFromIds(args: {
   seasonNumber?: unknown;
   episodeId?: unknown;
   movieId?: unknown;
+  albumId?: unknown;
+  artistId?: unknown;
 }): string | null {
   const movieId = toNumber(args.movieId);
   if (movieId) return `/movies/${movieId}`;
+
+  const albumId = toNumber(args.albumId);
+  if (albumId) return `/music/album/${albumId}`;
+  const artistId = toNumber(args.artistId);
+  if (artistId) return `/music/${artistId}`;
 
   const seriesId = toNumber(args.seriesId);
   const seasonNumber = toNumber(args.seasonNumber);
@@ -200,6 +207,7 @@ export class PollingService {
       const pollSources = [
         'pollSonarr',
         'pollRadarr',
+        'pollLidarr',
         'pollQBittorrent',
         'pollJellyfin',
         'pollSeerr',
@@ -212,6 +220,7 @@ export class PollingService {
       const results = await Promise.allSettled([
         this.pollSonarr(),
         this.pollRadarr(),
+        this.pollLidarr(),
         this.pollQBittorrent(),
         this.pollJellyfin(),
         this.pollSeerr(),
@@ -590,6 +599,144 @@ export class PollingService {
       queueCount: currentSnapshots.length,
       lastHistoryDate: history.records[0]?.date ?? state.lastHistoryDate,
       healthHash,
+    }, { scope: 'polling' });
+  }
+
+  private async pollLidarr() {
+    let client;
+    try {
+      client = await getLidarrClient();
+    } catch (error) {
+      logger.debug('Skipping Lidarr poll because client is unavailable', { error }, { scope: 'polling' });
+      return;
+    }
+
+    const state = await prisma.pollingState.upsert({
+      where: { serviceType: 'LIDARR' },
+      update: {},
+      create: { serviceType: 'LIDARR', lastQueueIds: [] },
+    });
+
+    const queue = await client.getQueue(1, 100);
+    const prevMap = readQueueSnapshots(state.lastQueueIds);
+    const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
+      id: r.id,
+      state: r.trackedDownloadState ?? '',
+      status: r.trackedDownloadStatus ?? '',
+    }));
+
+    for (const item of queue.records) {
+      const metadata = {
+        source: 'lidarr' as const,
+        id: item.id,
+        artistId: item.artistId,
+        albumId: item.albumId,
+      };
+      const mediaHref = getMediaHrefFromIds(metadata);
+      const queueHref = '/activity?tab=queue&source=lidarr';
+      const failedTabHref = '/activity?tab=failed&source=lidarr';
+
+      const prev = prevMap.get(item.id);
+      const currentIssue = classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus);
+      const prevIssue =
+        prev && prev !== 'legacy'
+          ? classifyQueueIssue(prev.state, prev.status)
+          : null;
+
+      if (!prev) {
+        if (currentIssue === 'import') {
+          await this.notifyAndLog({
+            eventType: 'importFailed',
+            title: 'Album Manual Import Required',
+            body: importFailureBody(item),
+            metadata: { ...metadata, redirect: failedTabHref, state: item.trackedDownloadState },
+            url: failedTabHref,
+          }, { service: 'lidarr', reason: 'queue-import-blocked-new', itemId: item.id });
+        } else if (currentIssue === 'download') {
+          await this.notifyAndLog({
+            eventType: 'downloadFailed',
+            title: 'Album Download Failed',
+            body: downloadFailureBody(item),
+            metadata: { ...metadata, redirect: queueHref, state: item.trackedDownloadState },
+            url: queueHref,
+          }, { service: 'lidarr', reason: 'queue-download-failed-new', itemId: item.id });
+        } else {
+          const redirect = mediaHref ?? queueHref;
+          await this.notifyAndLog({
+            eventType: 'grabbed',
+            title: 'Album Download Started',
+            body: item.title,
+            metadata: { ...metadata, redirect },
+            url: redirect,
+          }, { service: 'lidarr', reason: 'queue-new-item', itemId: item.id });
+        }
+      } else if (prev !== 'legacy' && currentIssue !== prevIssue) {
+        if (currentIssue === 'import') {
+          await this.notifyAndLog({
+            eventType: 'importFailed',
+            title: 'Album Manual Import Required',
+            body: importFailureBody(item),
+            metadata: { ...metadata, redirect: failedTabHref, state: item.trackedDownloadState },
+            url: failedTabHref,
+          }, { service: 'lidarr', reason: 'queue-import-blocked-transition', itemId: item.id });
+        } else if (currentIssue === 'download') {
+          await this.notifyAndLog({
+            eventType: 'downloadFailed',
+            title: 'Album Download Failed',
+            body: downloadFailureBody(item),
+            metadata: { ...metadata, redirect: queueHref, state: item.trackedDownloadState },
+            url: queueHref,
+          }, { service: 'lidarr', reason: 'queue-download-failed-transition', itemId: item.id });
+        }
+      }
+    }
+
+    const history = await client.getHistory(1, 50, 'date', 'descending');
+    const lastDate = state.lastHistoryDate;
+    const newHistory = lastDate
+      ? history.records.filter((r) => new Date(r.date) > new Date(lastDate))
+      : [];
+
+    for (const item of newHistory) {
+      if (item.eventType === 'downloadImported' || item.eventType === 'trackFileImported') {
+        const metadata = {
+          source: 'lidarr' as const,
+          id: item.id,
+          artistId: item.artistId,
+          albumId: item.albumId,
+        };
+        const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
+        await this.notifyAndLog({
+          eventType: 'imported',
+          title: 'Album Imported',
+          body: `${item.sourceTitle}`,
+          metadata: { ...metadata, redirect },
+          url: redirect,
+        }, { service: 'lidarr', reason: 'history-imported', historyId: item.id });
+      }
+    }
+
+    const health = await client.getHealth();
+    const healthHash = crypto.createHash('md5').update(JSON.stringify(health)).digest('hex');
+    if (state.lastHealthHash && healthHash !== state.lastHealthHash && health.length > 0) {
+      await this.notifyAndLog({
+        eventType: 'healthWarning',
+        title: 'Lidarr Health Warning',
+        body: health.map((h) => h.message).join('; ').slice(0, 200),
+        url: '/settings',
+      }, { service: 'lidarr', reason: 'health-changed', healthCount: health.length });
+    }
+
+    await prisma.pollingState.update({
+      where: { serviceType: 'LIDARR' },
+      data: {
+        lastQueueIds: currentSnapshots as unknown as object,
+        lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
+        lastHealthHash: healthHash,
+      },
+    });
+    logger.debug('Lidarr polling state updated', {
+      queueCount: currentSnapshots.length,
     }, { scope: 'polling' });
   }
 
@@ -1168,6 +1315,51 @@ export class PollingService {
       }
     } catch (error) {
       logger.warn('Radarr upcoming calendar poll failed', error, { scope: 'polling' });
+    }
+
+    // Lidarr calendar --------------------------------------------------------
+    try {
+      const client = await getLidarrClient();
+      const calendar = await client.getCalendar(start, end);
+      logger.debug('Lidarr upcoming calendar polled', {
+        calendarCount: calendar.length,
+        start,
+        end,
+        mode,
+      }, { scope: 'polling' });
+      for (const album of calendar) {
+        if (!album.releaseDate) continue;
+        const releaseMs = new Date(album.releaseDate).getTime();
+        if (!Number.isFinite(releaseMs)) continue;
+        if (releaseMs < fetchStartMs || releaseMs > fetchEndMs) continue;
+        if (mode === 'before_air' && !shouldFireBeforeAir(releaseMs)) continue;
+
+        const artistName = album.artist?.artistName ?? '';
+        const body = `${artistName ? `${artistName} — ` : ''}${album.title}`;
+        const dedupeKey = `lidarr-${album.id}-${releaseMs}`;
+        if (await alreadyNotified(dedupeKey, body)) continue;
+
+        await this.notifyAndLog({
+          eventType: 'upcomingPremiere',
+          title: 'Upcoming Album',
+          body,
+          dedupeKey,
+          metadata: {
+            source: 'lidarr',
+            artistId: album.artistId,
+            albumId: album.id,
+            redirect: `/music/album/${album.id}`,
+          },
+          url: `/music/album/${album.id}`,
+        }, {
+          service: 'lidarr',
+          reason: 'upcoming-premiere',
+          albumId: album.id,
+          dedupeKey,
+        });
+      }
+    } catch (error) {
+      logger.warn('Lidarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
   }
 

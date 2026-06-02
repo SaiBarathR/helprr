@@ -29,7 +29,7 @@ export type UiPrefCategoryId =
 
 export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   navigation: 'Navigation',
-  mediaViews: 'Movies & series views',
+  mediaViews: 'Movies, series & music views',
   discover: 'Discover',
   anime: 'Anime',
   torrents: 'Torrents',
@@ -49,6 +49,8 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'moviesSortDirection', 'moviesFilter', 'moviesVisibleFields',
     'seriesView', 'seriesPosterSize', 'seriesSort', 'seriesSearch',
     'seriesSortDirection', 'seriesFilter', 'seriesVisibleFields',
+    'musicView', 'musicPosterSize', 'musicSort', 'musicSearch',
+    'musicSortDirection', 'musicFilter', 'musicVisibleFields',
   ],
   discover: ['discoverContentType', 'discoverSort', 'discoverSortDirection', 'discoverFilters'],
   anime: ['animeSort', 'animeFilters', 'animeCarouselOrder', 'disabledAnimeCarousels'],
@@ -69,12 +71,13 @@ export const UI_PREF_CATEGORY_IDS: readonly UiPrefCategoryId[] = Object.keys(
 ) as UiPrefCategoryId[];
 
 export const SERVICE_TYPES_EXPORTABLE: readonly ServiceType[] = [
-  'RADARR', 'SONARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR',
+  'RADARR', 'SONARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR',
 ] as const;
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   RADARR: 'Radarr',
   SONARR: 'Sonarr',
+  LIDARR: 'Lidarr',
   QBITTORRENT: 'qBittorrent',
   PROWLARR: 'Prowlarr',
   JELLYFIN: 'Jellyfin',

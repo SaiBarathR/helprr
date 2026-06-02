@@ -53,6 +53,12 @@ const DEFAULT_SERIES_FIELDS: VisibleFieldsByMode = {
   table: ['monitored', 'year', 'qualityProfile', 'network', 'episodeProgress', 'rating', 'sizeOnDisk'],
 };
 
+const DEFAULT_MUSIC_FIELDS: VisibleFieldsByMode = {
+  posters: ['rating', 'monitored'],
+  overview: ['qualityProfile', 'metadataProfile', 'rating', 'artistType', 'albumCount', 'trackProgress', 'sizeOnDisk', 'monitored', 'genres', 'overview', 'images'],
+  table: ['monitored', 'artistType', 'qualityProfile', 'albumCount', 'trackProgress', 'rating', 'sizeOnDisk'],
+};
+
 export const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
   genres: [],
   yearFrom: '',
@@ -110,7 +116,7 @@ export type TorrentsSortKeyPreference =
 export type TorrentsSortDirectionPreference = 'asc' | 'desc';
 export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
 export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
-export type ActivityFilterPreference = 'all' | 'sonarr' | 'radarr';
+export type ActivityFilterPreference = 'all' | 'sonarr' | 'radarr' | 'lidarr';
 export type NotificationsReadStatePreference = 'all' | 'unread' | 'read';
 
 export type RequestsTabPreference = 'requests' | 'users';
@@ -205,7 +211,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 24;
+export const STORE_VERSION = 26;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -315,6 +321,23 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     state.requestsTab = 'requests';
     state.requestsFilter = 'pending';
   }
+  if (version < 25) {
+    state.musicView = 'posters';
+    state.musicPosterSize = 'medium';
+    state.musicSort = 'sortName';
+    state.musicSearch = '';
+    state.musicSortDirection = 'asc';
+    state.musicFilter = [];
+    state.musicVisibleFields = { ...DEFAULT_MUSIC_FIELDS };
+  }
+  if (version < 26) {
+    // activityFilterBy moved from a single source string to a multi-select array
+    // (empty = all).
+    const prev = state.activityFilterBy;
+    state.activityFilterBy = typeof prev === 'string'
+      ? (prev && prev !== 'all' ? [prev] : [])
+      : Array.isArray(prev) ? prev : [];
+  }
   return state;
 }
 
@@ -357,6 +380,21 @@ interface UIState {
   setSeriesFilter: (filter: string[]) => void;
   seriesVisibleFields: VisibleFieldsByMode;
   setSeriesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
+  // Music preferences (artist-centric)
+  musicView: MediaViewMode;
+  setMusicView: (view: MediaViewMode) => void;
+  musicPosterSize: PosterSize;
+  setMusicPosterSize: (size: PosterSize) => void;
+  musicSort: string;
+  setMusicSort: (sort: string) => void;
+  musicSearch: string;
+  setMusicSearch: (search: string) => void;
+  musicSortDirection: 'asc' | 'desc';
+  setMusicSortDirection: (dir: 'asc' | 'desc') => void;
+  musicFilter: string[];
+  setMusicFilter: (filter: string[]) => void;
+  musicVisibleFields: VisibleFieldsByMode;
+  setMusicVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Discover preferences
   discoverContentType: DiscoverContentType;
   setDiscoverContentType: (type: DiscoverContentType) => void;
@@ -383,8 +421,9 @@ interface UIState {
   setActivityTab: (tab: ActivityTabPreference) => void;
   activitySortBy: ActivitySortPreference;
   setActivitySortBy: (sortBy: ActivitySortPreference) => void;
-  activityFilterBy: ActivityFilterPreference;
-  setActivityFilterBy: (filterBy: ActivityFilterPreference) => void;
+  // Empty array = all instances. Multi-select set of sources (sonarr/radarr/lidarr).
+  activityFilterBy: string[];
+  setActivityFilterBy: (filterBy: string[]) => void;
   // Requests page (Seerr)
   requestsTab: RequestsTabPreference;
   setRequestsTab: (tab: RequestsTabPreference) => void;
@@ -402,8 +441,8 @@ interface UIState {
   setCleanupHistoryFilters: (filters: Partial<CleanupHistoryFiltersState>) => void;
   resetCleanupHistoryFilters: () => void;
   // Calendar preferences
-  calendarTypeFilter: 'all' | 'episode' | 'movie';
-  setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie') => void;
+  calendarTypeFilter: 'all' | 'episode' | 'movie' | 'album';
+  setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie' | 'album') => void;
   calendarMonitoredOnly: boolean;
   setCalendarMonitoredOnly: (v: boolean) => void;
   // Navigation preferences
@@ -468,6 +507,13 @@ const PERSISTED_KEYS = [
   'seriesSortDirection',
   'seriesFilter',
   'seriesVisibleFields',
+  'musicView',
+  'musicPosterSize',
+  'musicSort',
+  'musicSearch',
+  'musicSortDirection',
+  'musicFilter',
+  'musicVisibleFields',
   'discoverContentType',
   'discoverSort',
   'discoverSortDirection',
@@ -513,6 +559,9 @@ const ARRAY_PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'moviesVisibleFields',
   'seriesFilter',
   'seriesVisibleFields',
+  'musicFilter',
+  'musicVisibleFields',
+  'activityFilterBy',
   'discoverFilters',
   'animeFilters',
   'torrentsFilter',
@@ -568,6 +617,23 @@ export const useUIStore = create<UIState>()(
       setSeriesVisibleFields: (mode, fields) => set((state) => ({
         seriesVisibleFields: { ...state.seriesVisibleFields, [mode]: fields },
       })),
+      // Music (artist-centric)
+      musicView: 'posters',
+      setMusicView: (view) => set({ musicView: view }),
+      musicPosterSize: 'medium',
+      setMusicPosterSize: (size) => set({ musicPosterSize: size }),
+      musicSort: 'sortName',
+      setMusicSort: (sort) => set({ musicSort: sort }),
+      musicSearch: '',
+      setMusicSearch: (search) => set({ musicSearch: search }),
+      musicSortDirection: 'asc',
+      setMusicSortDirection: (dir) => set({ musicSortDirection: dir }),
+      musicFilter: [],
+      setMusicFilter: (filter) => set({ musicFilter: filter }),
+      musicVisibleFields: { ...DEFAULT_MUSIC_FIELDS },
+      setMusicVisibleFields: (mode, fields) => set((state) => ({
+        musicVisibleFields: { ...state.musicVisibleFields, [mode]: fields },
+      })),
       // Discover
       discoverContentType: 'all',
       setDiscoverContentType: (type) => set({ discoverContentType: type }),
@@ -594,7 +660,7 @@ export const useUIStore = create<UIState>()(
       setActivityTab: (tab) => set({ activityTab: tab }),
       activitySortBy: 'progress',
       setActivitySortBy: (sortBy) => set({ activitySortBy: sortBy }),
-      activityFilterBy: 'all',
+      activityFilterBy: [],
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
       // Requests
       requestsTab: 'requests',

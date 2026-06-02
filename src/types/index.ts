@@ -284,6 +284,228 @@ export interface RadarrRenamePreview {
   newPath: string;
 }
 
+// Lidarr Types
+export interface LidarrArtistStatistics {
+  albumCount: number;
+  trackFileCount: number;
+  trackCount: number;
+  totalTrackCount: number;
+  sizeOnDisk: number;
+  percentOfTracks: number;
+}
+
+export interface LidarrAlbumStatistics {
+  trackFileCount: number;
+  trackCount: number;
+  totalTrackCount: number;
+  sizeOnDisk: number;
+  percentOfTracks: number;
+}
+
+export interface LidarrMedium {
+  mediumNumber: number;
+  mediumName: string;
+  mediumFormat: string;
+}
+
+export interface LidarrLink {
+  url: string;
+  name: string;
+}
+
+export interface LidarrArtist {
+  id: number;
+  artistName: string;
+  foreignArtistId: string; // MusicBrainz artist ID
+  mbId?: string;
+  tadbId?: number;
+  discogsId?: number;
+  overview: string;
+  artistType: string; // Person, Group, ...
+  disambiguation: string;
+  status: string; // continuing, ended
+  ended: boolean;
+  sortName: string;
+  cleanName?: string;
+  monitored: boolean;
+  monitorNewItems?: string; // all, none
+  images: MediaImage[];
+  links: LidarrLink[];
+  genres: string[];
+  ratings: { votes: number; value: number };
+  qualityProfileId: number;
+  metadataProfileId: number;
+  rootFolderPath?: string;
+  path?: string;
+  tags: number[];
+  added: string;
+  statistics?: LidarrArtistStatistics;
+  lastAlbum?: LidarrAlbum;
+  nextAlbum?: LidarrAlbum;
+}
+
+export type LidarrArtistListItem = Pick<
+  LidarrArtist,
+  | 'id'
+  | 'artistName'
+  | 'foreignArtistId'
+  | 'sortName'
+  | 'status'
+  | 'ended'
+  | 'artistType'
+  | 'disambiguation'
+  | 'overview'
+  | 'images'
+  | 'genres'
+  | 'monitored'
+  | 'qualityProfileId'
+  | 'metadataProfileId'
+  | 'ratings'
+  | 'added'
+  | 'statistics'
+  | 'path'
+  | 'tags'
+  | 'nextAlbum'
+  | 'lastAlbum'
+>;
+
+export interface LidarrRelease {
+  id: number;
+  albumId: number;
+  foreignReleaseId: string;
+  title: string;
+  status: string;
+  duration: number;
+  trackCount: number;
+  media: LidarrMedium[];
+  mediumCount: number;
+  disambiguation: string;
+  country: string[];
+  label: string[];
+  format: string;
+  monitored: boolean;
+}
+
+export interface LidarrAlbum {
+  id: number;
+  title: string;
+  disambiguation: string;
+  overview: string;
+  artistId: number;
+  foreignAlbumId: string; // MusicBrainz release-group ID
+  monitored: boolean;
+  anyReleaseOk: boolean;
+  profileId: number;
+  duration: number;
+  albumType: string; // Album, EP, Single, Broadcast, Other
+  secondaryTypes: string[];
+  mediumCount: number;
+  ratings: { votes: number; value: number };
+  releaseDate: string;
+  releases: LidarrRelease[];
+  images: MediaImage[];
+  links: LidarrLink[];
+  genres: string[];
+  media?: LidarrMedium[];
+  artist?: LidarrArtist;
+  statistics?: LidarrAlbumStatistics;
+  remoteCover?: string; // present on lookup results
+}
+
+export interface LidarrTrack {
+  id: number;
+  artistId: number;
+  albumId: number;
+  foreignTrackId: string;
+  foreignRecordingId: string;
+  trackFileId: number;
+  explicit: boolean;
+  absoluteTrackNumber: number;
+  trackNumber: string;
+  title: string;
+  duration: number; // milliseconds
+  mediumNumber: number;
+  hasFile: boolean;
+  ratings: { votes: number; value: number };
+}
+
+export interface LidarrMediaInfo {
+  audioChannels?: number;
+  audioBitRate?: string;
+  audioCodec?: string;
+  audioBits?: string;
+  audioSampleRate?: string;
+}
+
+export interface LidarrTrackFile {
+  id: number;
+  artistId: number;
+  albumId: number;
+  path: string;
+  size: number;
+  dateAdded: string;
+  quality: {
+    quality: { id: number; name: string };
+    revision?: { version: number; real: number; isRepack: boolean };
+  };
+  mediaInfo?: LidarrMediaInfo;
+  qualityCutoffNotMet?: boolean;
+  qualityWeight?: number;
+  customFormats?: QueueCustomFormat[];
+  customFormatScore?: number;
+}
+
+export type LidarrCalendarEntry = LidarrAlbum & { artist: LidarrArtist };
+
+export interface LidarrArtistLookupResult {
+  id?: number | null;
+  artistName: string;
+  foreignArtistId: string;
+  artistType: string;
+  disambiguation: string;
+  status: string;
+  ended: boolean;
+  overview: string;
+  images: MediaImage[];
+  links: LidarrLink[];
+  genres: string[];
+  ratings: { votes: number; value: number };
+  remotePoster?: string;
+  library?: DiscoverLibraryStatus;
+}
+
+export interface LidarrAlbumLookupResult {
+  id?: number | null;
+  title: string;
+  foreignAlbumId: string;
+  artistId?: number;
+  artist?: LidarrArtist;
+  albumType: string;
+  secondaryTypes: string[];
+  releaseDate: string;
+  disambiguation: string;
+  overview: string;
+  images: MediaImage[];
+  links: LidarrLink[];
+  genres: string[];
+  ratings: { votes: number; value: number };
+  remoteCover?: string;
+}
+
+export interface LidarrMetadataProfile {
+  id: number;
+  name: string;
+}
+
+export interface LidarrRenamePreview {
+  artistId: number;
+  albumId: number;
+  trackNumbers: number[];
+  trackFileId: number;
+  existingPath: string;
+  newPath: string;
+}
+
 // Shared Types
 export interface MediaImage {
   coverType: string;
@@ -340,7 +562,7 @@ export interface QueueItem {
   customFormats?: QueueCustomFormat[];
   customFormatScore?: number;
   languages?: QueueLanguage[];
-  source?: 'sonarr' | 'radarr';
+  source?: 'sonarr' | 'radarr' | 'lidarr';
   // Sonarr-specific
   seriesId?: number;
   episodeId?: number;
@@ -351,6 +573,12 @@ export interface QueueItem {
   // Radarr-specific
   movieId?: number;
   movie?: RadarrMovie;
+  // Lidarr-specific
+  artistId?: number;
+  albumId?: number;
+  trackId?: number;
+  artist?: LidarrArtist;
+  album?: LidarrAlbum;
 }
 
 export interface QueueResponse {
@@ -378,6 +606,12 @@ export interface HistoryItem {
   // Radarr-specific
   movieId?: number;
   movie?: RadarrMovie;
+  // Lidarr-specific
+  artistId?: number;
+  albumId?: number;
+  trackId?: number;
+  artist?: LidarrArtist;
+  album?: LidarrAlbum;
 }
 
 export interface HistoryResponse {
@@ -434,6 +668,9 @@ export interface Release {
   fullSeason?: boolean;
   // Radarr-specific
   movieId?: number;
+  // Lidarr-specific
+  artistId?: number;
+  albumId?: number;
 }
 
 export interface DownloadClient {
@@ -521,7 +758,7 @@ export type EpisodeFinaleType = 'series' | 'season' | 'midseason';
 
 export interface CalendarEvent {
   id: string;
-  type: 'episode' | 'movie';
+  type: 'episode' | 'movie' | 'album';
   title: string;
   subtitle: string;
   date: string;
@@ -529,6 +766,8 @@ export interface CalendarEvent {
   monitored: boolean;
   seriesId?: number;
   movieId?: number;
+  artistId?: number;
+  albumId?: number;
   images: MediaImage[];
   releaseType?: MovieReleaseType;
   finaleType?: EpisodeFinaleType;
@@ -536,7 +775,7 @@ export interface CalendarEvent {
 
 // App Types
 export interface ServiceConnectionConfig {
-  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR';
+  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR' | 'LIDARR';
   url: string;
   apiKey: string;
 }
@@ -551,8 +790,8 @@ export interface NotificationEvent {
 
 // Wanted Responses
 export interface WantedMissingRecord {
-  source: 'sonarr' | 'radarr';
-  mediaType: 'episode' | 'movie';
+  source: 'sonarr' | 'radarr' | 'lidarr';
+  mediaType: 'episode' | 'movie' | 'album';
   id: number;
   title?: string;
   // Sonarr episode fields
@@ -567,6 +806,11 @@ export interface WantedMissingRecord {
   monitored?: boolean;
   hasFile?: boolean;
   images?: MediaImage[];
+  // Lidarr album fields
+  artistId?: number;
+  albumId?: number;
+  releaseDate?: string;
+  artist?: LidarrArtist;
 }
 
 export interface WantedResponse {

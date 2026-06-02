@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Film, Tv, Star } from 'lucide-react';
+import { Film, Tv, Disc3, Star } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
@@ -14,7 +14,7 @@ interface MediaCardProps {
   status?: string;
   hasFile?: boolean;
   monitored?: boolean;
-  type: 'movie' | 'series';
+  type: 'movie' | 'series' | 'artist';
   href: string;
   visibleFields?: string[];
   rating?: number;
@@ -45,7 +45,8 @@ export function MediaCard({
   onNavigate,
   cornerAction,
 }: MediaCardProps) {
-  const poster = getImageUrl(images, 'poster', type === 'movie' ? 'radarr' : 'sonarr');
+  const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
+  const poster = getImageUrl(images, 'poster', posterHint);
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
   return (
@@ -63,7 +64,7 @@ export function MediaCard({
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-              {type === 'movie' ? <Film className="h-10 w-10" /> : <Tv className="h-10 w-10" />}
+              {type === 'movie' ? <Film className="h-10 w-10" /> : type === 'artist' ? <Disc3 className="h-10 w-10" /> : <Tv className="h-10 w-10" />}
             </div>
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />

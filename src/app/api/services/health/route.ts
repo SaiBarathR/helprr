@@ -6,6 +6,7 @@ import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
+import { LidarrClient } from '@/lib/lidarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
@@ -22,6 +23,7 @@ interface ServiceHealthStatus {
 const SERVICE_LABELS: Record<ServiceType, string> = {
   SONARR: 'Sonarr',
   RADARR: 'Radarr',
+  LIDARR: 'Lidarr',
   QBITTORRENT: 'qBittorrent',
   PROWLARR: 'Prowlarr',
   JELLYFIN: 'Jellyfin',
@@ -36,6 +38,7 @@ const SERVICE_LABELS: Record<ServiceType, string> = {
 const SERVICE_VIEW_CAP: Record<ServiceType, Capability> = {
   SONARR: 'series.view',
   RADARR: 'movies.view',
+  LIDARR: 'music.view',
   QBITTORRENT: 'torrents.view',
   PROWLARR: 'prowlarr.view',
   JELLYFIN: 'jellyfin.view',
@@ -57,6 +60,13 @@ async function checkServiceHealth(connection: ServiceConnection): Promise<void> 
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new Error('Radarr URL is not configured');
       const client = new RadarrClient(baseUrl, connection.apiKey);
+      await client.getSystemStatus();
+      return;
+    }
+    case 'LIDARR': {
+      const baseUrl = connection.url?.replace(/\/+$/, '');
+      if (!baseUrl) throw new Error('Lidarr URL is not configured');
+      const client = new LidarrClient(baseUrl, connection.apiKey);
       await client.getSystemStatus();
       return;
     }

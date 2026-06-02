@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
@@ -9,6 +9,7 @@ import type {
   MovieReleaseType,
   SonarrCalendarEntry,
   RadarrCalendarEntry,
+  LidarrCalendarEntry,
 } from '@/types';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -94,8 +95,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     const events: CalendarEvent[] = [];
 
-    // Fetch from Sonarr and Radarr in parallel
-    const [sonarrResult, radarrResult] = await Promise.allSettled([
+    // Fetch from Sonarr, Radarr and Lidarr in parallel
+    const [sonarrResult, radarrResult, lidarrResult] = await Promise.allSettled([
       (async () => {
         try {
           const sonarr = await getSonarrClient();
@@ -110,6 +111,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           return await radarr.getCalendar(start!, end!);
         } catch {
           return [] as RadarrCalendarEntry[];
+        }
+      })(),
+      (async () => {
+        try {
+          const lidarr = await getLidarrClient();
+          return await lidarr.getCalendar(start!, end!);
+        } catch {
+          return [] as LidarrCalendarEntry[];
         }
       })(),
     ]);
@@ -161,6 +170,29 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
             releaseType,
           });
         }
+      }
+    }
+
+    // Transform Lidarr album releases
+    if (lidarrResult.status === 'fulfilled') {
+      for (const album of lidarrResult.value) {
+        if (!album.releaseDate) continue;
+        const ms = new Date(album.releaseDate).getTime();
+        if (!Number.isFinite(ms) || ms < startMs || ms > endMs) continue;
+        const stats = album.statistics;
+        const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
+        events.push({
+          id: `lidarr-${album.id}`,
+          type: 'album',
+          title: album.artist?.artistName ?? album.title,
+          subtitle: album.title,
+          date: album.releaseDate,
+          hasFile: complete,
+          monitored: album.monitored,
+          artistId: album.artistId,
+          albumId: album.id,
+          images: album.images,
+        });
       }
     }
 

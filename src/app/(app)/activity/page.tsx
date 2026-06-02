@@ -17,12 +17,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuCheckboxItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
   Download, Trash2, AlertTriangle,
-  Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Scissors,
+  Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Disc3, Scissors,
   Clock, Filter, ArrowUpDown, ChevronRight,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -48,13 +49,15 @@ function statusLabel(item: QueueItem & { source?: string }) {
   const issue = classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus);
   if (issue === 'import') return 'MANUAL IMPORT';
   if (issue === 'download') return 'DOWNLOAD FAILED';
+  // Download-client status wins over the tracked state: a paused/queued item can
+  // still report trackedDownloadState 'downloading' upstream.
+  if (item.status === 'paused') return 'PAUSED';
+  if (item.status === 'queued') return 'QUEUED';
+  if (item.status === 'delay') return 'DELAYED';
   if (item.trackedDownloadState === 'importing') return 'IMPORTING';
   if (item.trackedDownloadState === 'importPending') return 'IMPORT PENDING';
   if (item.trackedDownloadState === 'downloading') return 'DOWNLOADING';
   if (item.status === 'completed') return 'COMPLETED';
-  if (item.status === 'queued') return 'QUEUED';
-  if (item.status === 'delay') return 'DELAYED';
-  if (item.status === 'paused') return 'PAUSED';
   return (item.trackedDownloadState || item.status || 'UNKNOWN').toUpperCase();
 }
 
@@ -91,6 +94,14 @@ function getQueueMediaHref(item: QueueItem & { source?: string }): string | null
   const movieId = item.movieId ?? item.movie?.id;
   if (movieId) {
     return `/movies/${movieId}`;
+  }
+  const albumId = item.albumId ?? item.album?.id;
+  if (albumId) {
+    return `/music/album/${albumId}`;
+  }
+  const artistId = item.artistId ?? item.artist?.id;
+  if (artistId) {
+    return `/music/${artistId}`;
   }
   return null;
 }
@@ -134,12 +145,13 @@ function isSortKey(value: string): value is SortKey {
 
 // --- Filter options ---
 
-type FilterKey = 'all' | 'sonarr' | 'radarr';
+type FilterKey = 'all' | 'sonarr' | 'radarr' | 'lidarr';
 
 const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'sonarr', label: 'Sonarr' },
   { key: 'radarr', label: 'Radarr' },
+  { key: 'lidarr', label: 'Lidarr' },
 ];
 
 function isFilterKey(value: string): value is FilterKey {
@@ -182,8 +194,8 @@ export default function ActivityPage() {
     if (requestedTab && isTabKey(requestedTab) && requestedTab !== currentState.activityTab) {
       setActivityTab(requestedTab);
     }
-    if (requestedSource && isFilterKey(requestedSource) && requestedSource !== currentState.activityFilterBy) {
-      setFilterBy(requestedSource);
+    if (requestedSource && isFilterKey(requestedSource) && requestedSource !== 'all') {
+      setFilterBy([requestedSource]);
     }
     if (requestedSort && isSortKey(requestedSort) && requestedSort !== currentState.activitySortBy) {
       setSortBy(requestedSort);
@@ -244,14 +256,26 @@ export default function ActivityPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {FILTER_OPTIONS.map((opt) => (
-                  <DropdownMenuItem
+                <DropdownMenuCheckboxItem
+                  checked={filterBy.length === 0}
+                  onCheckedChange={() => setFilterBy([])}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  All
+                </DropdownMenuCheckboxItem>
+                {FILTER_OPTIONS.filter((opt) => opt.key !== 'all').map((opt) => (
+                  <DropdownMenuCheckboxItem
                     key={opt.key}
-                    onClick={() => setFilterBy(opt.key)}
-                    className={filterBy === opt.key ? 'bg-accent' : ''}
+                    checked={filterBy.includes(opt.key)}
+                    onCheckedChange={() => setFilterBy(
+                      filterBy.includes(opt.key)
+                        ? filterBy.filter((s) => s !== opt.key)
+                        : [...filterBy, opt.key]
+                    )}
+                    onSelect={(e) => e.preventDefault()}
                   >
                     {opt.label}
-                  </DropdownMenuItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -369,7 +393,7 @@ function QueueTab({
   onCountChange,
 }: {
   sortBy: SortKey;
-  filterBy: FilterKey;
+  filterBy: string[];
   onCountChange: (count: number) => void;
 }) {
   const canManageActivity = useCan('activity.manage');
@@ -409,9 +433,9 @@ function QueueTab({
   }, [fetchQueue, refreshIntervalMs]);
 
   // Apply filter
-  const filtered = filterBy === 'all'
+  const filtered = filterBy.length === 0
     ? queue
-    : queue.filter((item) => item.source === filterBy);
+    : queue.filter((item) => item.source !== undefined && filterBy.includes(item.source));
 
   // Apply sort
   const sorted = [...filtered].sort((a, b) => {
@@ -493,6 +517,11 @@ function QueueTab({
                     {typeof item.customFormatScore === 'number' && (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                         CF {item.customFormatScore}
+                      </Badge>
+                    )}
+                    {item.indexer && (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {item.indexer}
                       </Badge>
                     )}
                   </div>
@@ -672,7 +701,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
  * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
  */
 
-function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
+function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
@@ -696,8 +725,8 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
         let failed = (data.records || []).filter(
           (r: QueueItem) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) === 'import'
         );
-        if (filterBy !== 'all') {
-          failed = failed.filter((r: QueueItem & { source?: string }) => r.source === filterBy);
+        if (filterBy.length > 0) {
+          failed = failed.filter((r: QueueItem & { source?: string }) => r.source !== undefined && filterBy.includes(r.source));
         }
         setQueue(failed);
       }
@@ -770,8 +799,8 @@ function FailedImportsTab({ filterBy }: { filterBy: FilterKey }) {
 
 interface WantedRecord {
   id: number;
-  source: 'sonarr' | 'radarr';
-  mediaType: 'episode' | 'movie';
+  source: 'sonarr' | 'radarr' | 'lidarr';
+  mediaType: 'episode' | 'movie' | 'album';
   title?: string;
   seriesId?: number;
   seasonNumber?: number;
@@ -782,6 +811,11 @@ interface WantedRecord {
   year?: number;
   added?: string;
   monitored?: boolean;
+  // Lidarr album fields
+  artistId?: number;
+  albumId?: number;
+  releaseDate?: string;
+  artist?: { id: number; artistName: string };
 }
 
 /**
@@ -791,7 +825,7 @@ interface WantedRecord {
  * @param filterBy - Source filter for results (`'all'`, `'sonarr'`, or `'radarr'`); when not `'all'` the list is limited to that source.
  * @returns The tab content element that lists records, shows loading and empty states, provides a per-record search action, and supports "Load more" pagination.
  */
-function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: FilterKey }) {
+function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: string[] }) {
   const [records, setRecords] = useState<WantedRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -802,12 +836,17 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
     setLoading(true);
     try {
       const params = new URLSearchParams({ type, page: String(p), pageSize: '20' });
-      if (filterBy !== 'all') params.set('source', filterBy);
+      // Server-side source filter only handles a single source; for multi-select
+      // we fetch all and narrow client-side below.
+      if (filterBy.length === 1) params.set('source', filterBy[0]);
       const res = await fetch(`/api/activity/wanted?${params}`);
       if (res.ok) {
         const data = await res.json();
-        if (p === 1) setRecords(data.records || []);
-        else setRecords((prev) => [...prev, ...(data.records || [])]);
+        const incoming: WantedRecord[] = filterBy.length > 1
+          ? (data.records || []).filter((r: WantedRecord) => filterBy.includes(r.source))
+          : (data.records || []);
+        if (p === 1) setRecords(incoming);
+        else setRecords((prev) => [...prev, ...incoming]);
         setTotal(data.totalRecords || 0);
       }
     } catch { } finally { setLoading(false); }
@@ -824,6 +863,12 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [record.id] }),
+        });
+      } else if (record.source === 'lidarr') {
+        await fetch('/api/lidarr/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'AlbumSearch', albumIds: [record.id] }),
         });
       } else {
         await fetch('/api/radarr/command', {
@@ -864,30 +909,36 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: F
       {records.map((record) => {
         const key = `${record.source}-${record.id}`;
         const isEpisode = record.mediaType === 'episode';
+        const isAlbum = record.mediaType === 'album';
+        const albumYear = record.releaseDate ? new Date(record.releaseDate).getFullYear() : undefined;
         const displayTitle = isEpisode
           ? `${record.series?.title || 'Unknown'} - S${String(record.seasonNumber ?? 0).padStart(2, '0')}E${String(record.episodeNumber ?? 0).padStart(2, '0')} - ${record.title || 'TBA'}`
-          : `${record.title || 'Unknown'} (${record.year || '?'})`;
-        const dateStr = isEpisode ? record.airDateUtc || record.airDate : record.added;
+          : isAlbum
+            ? `${record.artist?.artistName ? `${record.artist.artistName} - ` : ''}${record.title || 'Unknown'}${albumYear ? ` (${albumYear})` : ''}`
+            : `${record.title || 'Unknown'} (${record.year || '?'})`;
+        const dateStr = isEpisode ? record.airDateUtc || record.airDate : isAlbum ? record.releaseDate : record.added;
 
         const hasSeriesId = Number.isFinite(record.seriesId);
         const hasSeasonNumber = Number.isFinite(record.seasonNumber);
-        const href = isEpisode && hasSeriesId && hasSeasonNumber
-          ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
-          : isEpisode && hasSeriesId
-            ? `/series/${record.seriesId}`
-            : !isEpisode
-              ? `/movies/${record.id}`
-              : null;
+        const href = isAlbum
+          ? `/music/album/${record.id}`
+          : isEpisode && hasSeriesId && hasSeasonNumber
+            ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
+            : isEpisode && hasSeriesId
+              ? `/series/${record.seriesId}`
+              : !isEpisode
+                ? `/movies/${record.id}`
+                : null;
 
         return (
           <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
             {href ? (
               <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
-                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
+                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
               </Link>
             ) : (
               <div className="p-1.5 rounded bg-muted">
-                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
+                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
               </div>
             )}
             <div className="flex-1 min-w-0">

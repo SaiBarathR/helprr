@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Film, Tv, Eye, EyeOff } from 'lucide-react';
+import { Film, Tv, Disc3, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { MediaImage } from '@/types';
@@ -38,12 +38,13 @@ export interface MediaOverviewItemProps {
   year: number;
   images: MediaImage[];
   href: string;
-  type: 'movie' | 'series';
+  type: 'movie' | 'series' | 'artist';
   monitored?: boolean;
   visibleFields: string[];
   posterSize?: PosterSize;
   // Optional data fields
   qualityProfile?: string;
+  metadataProfile?: string;
   network?: string;
   studio?: string;
   certification?: string;
@@ -52,6 +53,10 @@ export interface MediaOverviewItemProps {
   sizeOnDisk?: number;
   runtime?: number;
   episodeProgress?: string;
+  // Music (artist) fields
+  artistType?: string;
+  albumCount?: number;
+  trackProgress?: string;
   genres?: string[];
   hasFile?: boolean;
   status?: string;
@@ -68,6 +73,7 @@ export function MediaOverviewItem({
   visibleFields,
   posterSize = 'medium',
   qualityProfile,
+  metadataProfile,
   network,
   studio,
   certification,
@@ -76,10 +82,14 @@ export function MediaOverviewItem({
   sizeOnDisk,
   runtime,
   episodeProgress,
+  artistType,
+  albumCount,
+  trackProgress,
   genres,
   onNavigate,
 }: MediaOverviewItemProps) {
-  const poster = getImageUrl(images, 'poster', type === 'movie' ? 'radarr' : 'sonarr');
+  const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
+  const poster = getImageUrl(images, 'poster', posterHint);
   const show = (field: string) => visibleFields.includes(field);
 
   return (
@@ -102,7 +112,7 @@ export function MediaOverviewItem({
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-              {type === 'movie' ? <Film className="h-6 w-6" /> : <Tv className="h-6 w-6" />}
+              {type === 'movie' ? <Film className="h-6 w-6" /> : type === 'artist' ? <Disc3 className="h-6 w-6" /> : <Tv className="h-6 w-6" />}
             </div>
           )}
           {monitored === false && <div className="absolute inset-0 bg-background/40" />}
@@ -127,6 +137,18 @@ export function MediaOverviewItem({
         <div className="flex flex-wrap gap-1.5">
           {show('qualityProfile') && qualityProfile && (
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{qualityProfile}</Badge>
+          )}
+          {show('metadataProfile') && metadataProfile && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{metadataProfile}</Badge>
+          )}
+          {show('artistType') && artistType && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{artistType}</Badge>
+          )}
+          {show('albumCount') && albumCount !== undefined && albumCount > 0 && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{albumCount} albums</Badge>
+          )}
+          {show('trackProgress') && trackProgress && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{trackProgress}</Badge>
           )}
           {show('network') && network && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">{network}</Badge>

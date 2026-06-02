@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
+import { LidarrClient } from '@/lib/lidarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
@@ -52,6 +53,26 @@ export async function getRadarrClient(): Promise<RadarrClient> {
   }
 
   return new RadarrClient(connection.url, connection.apiKey);
+}
+
+/**
+ * Create a LidarrClient configured from the stored LIDARR service connection.
+ *
+ * @returns A LidarrClient configured with the stored connection's URL and API key.
+ * @throws Error if no LIDARR service connection is configured.
+ */
+export async function getLidarrClient(): Promise<LidarrClient> {
+  const connection = await prisma.serviceConnection.findUnique({
+    where: { type: 'LIDARR' },
+  });
+
+  if (!connection) {
+    throw new Error(
+      'Lidarr is not configured. Please add a Lidarr connection in Settings.'
+    );
+  }
+
+  return new LidarrClient(connection.url, connection.apiKey);
 }
 
 /**

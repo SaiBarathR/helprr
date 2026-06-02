@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 type WantedType = 'missing' | 'cutoff';
-type WantedSource = 'sonarr' | 'radarr';
+type WantedSource = 'sonarr' | 'radarr' | 'lidarr';
 type WantedPageResponse<T> = {
   page: number;
   pageSize: number;
@@ -60,9 +60,10 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
   const startIndex = (safePage - 1) * safePageSize;
   const endIndex = startIndex + safePageSize;
 
-  const [sonarrClient, radarrClient] = await Promise.all([
-    sourceFilter === 'radarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
-    sourceFilter === 'sonarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
+  const [sonarrClient, radarrClient, lidarrClient] = await Promise.all([
+    sourceFilter && sourceFilter !== 'sonarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
+    sourceFilter && sourceFilter !== 'radarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
+    sourceFilter && sourceFilter !== 'lidarr' ? Promise.resolve(null) : getLidarrClient().catch(() => null),
   ]);
 
   const sonarrFetchPage = sonarrClient
@@ -79,25 +80,36 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
           : radarrClient.getWantedMissing(nextPage, nextPageSize)
     : null;
 
-  const [sonarrTotal, radarrTotal] = await Promise.all([
+  const lidarrFetchPage = lidarrClient
+    ? (nextPage: number, nextPageSize: number) =>
+        type === 'cutoff'
+          ? lidarrClient.getCutoffUnmet(nextPage, nextPageSize)
+          : lidarrClient.getWantedMissing(nextPage, nextPageSize)
+    : null;
+
+  const [sonarrTotal, radarrTotal, lidarrTotal] = await Promise.all([
     sonarrFetchPage ? getWantedTotal(sonarrFetchPage) : Promise.resolve(0),
     radarrFetchPage ? getWantedTotal(radarrFetchPage) : Promise.resolve(0),
+    lidarrFetchPage ? getWantedTotal(lidarrFetchPage) : Promise.resolve(0),
   ]);
 
   const sonarrStart = Math.min(startIndex, sonarrTotal);
   const sonarrEnd = Math.min(endIndex, sonarrTotal);
   const radarrStart = Math.max(0, startIndex - sonarrTotal);
   const radarrEnd = Math.max(0, Math.min(endIndex - sonarrTotal, radarrTotal));
+  const lidarrStart = Math.max(0, startIndex - sonarrTotal - radarrTotal);
+  const lidarrEnd = Math.max(0, Math.min(endIndex - sonarrTotal - radarrTotal, lidarrTotal));
 
-  const [sonarrRecords, radarrRecords] = await Promise.all([
+  const [sonarrRecords, radarrRecords, lidarrRecords] = await Promise.all([
     sonarrFetchPage ? getWantedSlice(sonarrFetchPage, sonarrStart, sonarrEnd, safePageSize) : Promise.resolve([]),
     radarrFetchPage ? getWantedSlice(radarrFetchPage, radarrStart, radarrEnd, safePageSize) : Promise.resolve([]),
+    lidarrFetchPage ? getWantedSlice(lidarrFetchPage, lidarrStart, lidarrEnd, safePageSize) : Promise.resolve([]),
   ]);
 
   return {
     page: safePage,
     pageSize: safePageSize,
-    totalRecords: sonarrTotal + radarrTotal,
+    totalRecords: sonarrTotal + radarrTotal + lidarrTotal,
     records: [
       ...sonarrRecords.map((record) => ({
         ...record,
@@ -109,14 +121,22 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
         source: 'radarr' as const,
         mediaType: 'movie' as const,
       })),
+      ...lidarrRecords.map((record) => ({
+        ...record,
+        source: 'lidarr' as const,
+        mediaType: 'album' as const,
+        albumId: record.id,
+        artistId: record.artistId,
+      })),
     ],
   };
 }
 
 async function fetchWantedCounts(sourceFilter?: WantedSource) {
-  const [sonarrClient, radarrClient] = await Promise.all([
-    sourceFilter === 'radarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
-    sourceFilter === 'sonarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
+  const [sonarrClient, radarrClient, lidarrClient] = await Promise.all([
+    sourceFilter && sourceFilter !== 'sonarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
+    sourceFilter && sourceFilter !== 'radarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
+    sourceFilter && sourceFilter !== 'lidarr' ? Promise.resolve(null) : getLidarrClient().catch(() => null),
   ]);
 
   const getFetcher = <T,>(client: WantedCapableClient<T> | null, type: WantedType): WantedFetcher<T> | null => {
@@ -127,23 +147,20 @@ async function fetchWantedCounts(sourceFilter?: WantedSource) {
         : client.getWantedMissing(page, pageSize);
   };
 
+  const totalFor = (type: WantedType) => {
+    const sonarrFetcher = getFetcher(sonarrClient, type);
+    const radarrFetcher = getFetcher(radarrClient, type);
+    const lidarrFetcher = getFetcher(lidarrClient, type);
+    return Promise.all([
+      sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
+      radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
+      lidarrFetcher ? getWantedTotal(lidarrFetcher) : Promise.resolve(0),
+    ]).then((totals) => totals.reduce((sum, n) => sum + n, 0));
+  };
+
   const [missingResult, cutoffResult] = await Promise.all([
-    (() => {
-      const sonarrFetcher = getFetcher(sonarrClient, 'missing');
-      const radarrFetcher = getFetcher(radarrClient, 'missing');
-      return Promise.all([
-        sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
-        radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
-      ]).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult);
-    })(),
-    (() => {
-      const sonarrFetcher = getFetcher(sonarrClient, 'cutoff');
-      const radarrFetcher = getFetcher(radarrClient, 'cutoff');
-      return Promise.all([
-        sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
-        radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
-      ]).then(([sonarrResult, radarrResult]) => sonarrResult + radarrResult);
-    })(),
+    totalFor('missing'),
+    totalFor('cutoff'),
   ]);
 
   return {
@@ -179,7 +196,7 @@ async function getHandler(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
     const source = searchParams.get('source');
-    const sourceFilter = source === 'sonarr' || source === 'radarr' ? source : undefined;
+    const sourceFilter = source === 'sonarr' || source === 'radarr' || source === 'lidarr' ? source : undefined;
 
     if (typeParam !== null && type === null) {
       return NextResponse.json({ error: 'Unknown wanted type' }, { status: 400 });

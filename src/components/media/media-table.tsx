@@ -31,6 +31,10 @@ export interface MediaTableRow {
   runtime?: number;
   certification?: string;
   genres?: string[];
+  // Music (artist) fields
+  artistType?: string;
+  albumCount?: number;
+  trackProgress?: string;
 }
 
 export function MediaTable({
@@ -43,7 +47,7 @@ export function MediaTable({
 }: {
   rows: MediaTableRow[];
   visibleFields: string[];
-  type: 'movie' | 'series';
+  type: 'movie' | 'series' | 'artist';
   topSpacerHeight?: number;
   bottomSpacerHeight?: number;
   onNavigate?: () => void;
@@ -53,10 +57,13 @@ export function MediaTable({
     show('monitored'),
     true,
     show('year'),
+    show('artistType') && type === 'artist',
     show('qualityProfile'),
     show('network') && type === 'series',
     show('studio') && type === 'movie',
+    show('albumCount') && type === 'artist',
     show('episodeProgress') && type === 'series',
+    show('trackProgress') && type === 'artist',
     show('rating'),
     show('sizeOnDisk'),
   ].filter(Boolean).length;
@@ -70,10 +77,13 @@ export function MediaTable({
               {show('monitored') && <th className="w-8 px-3 py-2"></th>}
               <th className="text-left px-3 py-2 font-medium">Title</th>
               {show('year') && <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Year</th>}
+              {show('artistType') && type === 'artist' && <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Type</th>}
               {show('qualityProfile') && <th className="text-left px-3 py-2 font-medium hidden md:table-cell">Quality</th>}
               {show('network') && type === 'series' && <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Network</th>}
               {show('studio') && type === 'movie' && <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Studio</th>}
+              {show('albumCount') && type === 'artist' && <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Albums</th>}
               {show('episodeProgress') && type === 'series' && <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Episodes</th>}
+              {show('trackProgress') && type === 'artist' && <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Tracks</th>}
               {show('rating') && <th className="text-left px-3 py-2 font-medium hidden md:table-cell">Rating</th>}
               {show('sizeOnDisk') && <th className="text-right px-3 py-2 font-medium hidden sm:table-cell">Size</th>}
             </tr>
@@ -110,10 +120,13 @@ export function MediaTable({
                   </Link>
                 </td>
                 {show('year') && <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{row.year}</td>}
+                {show('artistType') && type === 'artist' && <td className="px-3 py-2 text-muted-foreground hidden lg:table-cell">{row.artistType || '-'}</td>}
                 {show('qualityProfile') && <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{row.qualityProfile || '-'}</td>}
                 {show('network') && type === 'series' && <td className="px-3 py-2 text-muted-foreground hidden lg:table-cell">{row.network || '-'}</td>}
                 {show('studio') && type === 'movie' && <td className="px-3 py-2 text-muted-foreground hidden lg:table-cell">{row.studio || '-'}</td>}
+                {show('albumCount') && type === 'artist' && <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{row.albumCount ?? '-'}</td>}
                 {show('episodeProgress') && type === 'series' && <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{row.episodeProgress || '-'}</td>}
+                {show('trackProgress') && type === 'artist' && <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{row.trackProgress || '-'}</td>}
                 {show('rating') && <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{row.rating && row.rating > 0 ? row.rating.toFixed(1) : '-'}</td>}
                 {show('sizeOnDisk') && <td className="px-3 py-2 text-muted-foreground text-right hidden sm:table-cell">{row.sizeOnDisk ? formatBytes(row.sizeOnDisk) : '-'}</td>}
               </tr>

@@ -28,7 +28,7 @@ interface InteractiveSearchDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  service: 'sonarr' | 'radarr';
+  service: 'sonarr' | 'radarr' | 'lidarr';
   searchParams: Record<string, string | number>;
   showSeasonPackFilter?: boolean;
 }

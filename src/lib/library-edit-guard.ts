@@ -49,6 +49,8 @@ const SERIES_PROTECTED_KEYS = [
 
 const MOVIE_PROTECTED_KEYS = ['qualityProfileId', 'minimumAvailability'] as const;
 
+const ARTIST_PROTECTED_KEYS = ['qualityProfileId', 'metadataProfileId', 'monitorNewItems'] as const;
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
@@ -155,6 +157,21 @@ export function diffMovieEdit(
     path: pathChanged(current.path, body),
     monitoring: submittedMonitored !== (current.monitored ?? false),
     other: protectedFieldChanged(current, body, MOVIE_PROTECTED_KEYS),
+  };
+}
+
+/** Diff a Lidarr artist PUT body (no seasons) against the current artist. */
+export function diffArtistEdit(
+  current: { path?: string; monitored?: boolean; tags?: number[] },
+  submittedBody: unknown
+): LibraryEditDiff {
+  const body = asRecord(submittedBody);
+  const submittedMonitored = typeof body.monitored === 'boolean' ? body.monitored : false;
+  return {
+    tags: tagSetChanged(current.tags, body.tags),
+    path: pathChanged(current.path, body),
+    monitoring: submittedMonitored !== (current.monitored ?? false),
+    other: protectedFieldChanged(current, body, ARTIST_PROTECTED_KEYS),
   };
 }
 
