@@ -15,8 +15,16 @@ export async function getRedisClient(): Promise<HelprrRedisClient> {
     throw new Error('REDIS_URL env var is required');
   }
 
+  const redisPassword = process.env.REDIS_PASSWORD;
+  if (!redisPassword) {
+    throw new Error('REDIS_PASSWORD env var is required');
+  }
+
   if (!globalForRedis.redisClient) {
-    const client = createClient({ url: redisUrl });
+    const client = createClient({
+      url: redisUrl,
+      password: redisPassword,
+    });
     client.on('error', (error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error('[Redis] Client error:', message);
