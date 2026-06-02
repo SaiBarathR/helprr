@@ -21,10 +21,15 @@ services:
     image: redis:7-alpine
     container_name: helprr-redis
     restart: unless-stopped
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: [ "sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes" ]
+    volumes:
+      - helprr-redis-data:/data
     networks:
       - helprr-net
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: [ "CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -48,6 +53,7 @@ services:
       - LOG_DIR=${LOG_DIR:-/app/logs}
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@helprr-db:5432/helprr}
       - REDIS_URL=${REDIS_URL:-redis://helprr-redis:6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
       - APP_PASSWORD=${APP_PASSWORD}
       - HELPRR_ADMIN_USERNAME=${HELPRR_ADMIN_USERNAME}
       - HELPRR_ADMIN_PASSWORD_RESET=${HELPRR_ADMIN_PASSWORD_RESET}
@@ -69,3 +75,4 @@ networks:
 volumes:
   helprr-db-data:
   helprr-logs:
+  helprr-redis-data:
