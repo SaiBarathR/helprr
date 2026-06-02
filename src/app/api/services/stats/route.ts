@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient, getJellyfinClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getLidarrClient, getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { DiskSpace, ServicesStatsResponse } from '@/types/service-stats';
 import { withApiLogging } from '@/lib/api-logger';
@@ -44,6 +44,24 @@ async function getHandler() {
 
     if (!stats.diskSpace) {
       const diskSpace = await sonarr.getDiskSpace();
+      if (Array.isArray(diskSpace)) {
+        stats.diskSpace = mapDiskSpace(diskSpace);
+      }
+    }
+  } catch {}
+
+  // Fetch Lidarr stats
+  try {
+    const lidarr = await getLidarrClient();
+    const artists = await lidarr.getArtists();
+    stats.totalArtists = artists.length;
+
+    const queue = await lidarr.getQueue(1, 1);
+    activeDownloads += queue.totalRecords ?? 0;
+    hasDownloadCount = true;
+
+    if (!stats.diskSpace) {
+      const diskSpace = await lidarr.getDiskSpace();
       if (Array.isArray(diskSpace)) {
         stats.diskSpace = mapDiskSpace(diskSpace);
       }

@@ -1,4 +1,4 @@
-import { Film, Tv, Download, Search, MonitorPlay, Compass, Inbox } from 'lucide-react';
+import { Film, Tv, Download, Search, MonitorPlay, Compass, Inbox, Disc3 } from 'lucide-react';
 
 export const SERVICE_CONFIG = [
   {
@@ -21,6 +21,17 @@ export const SERVICE_CONFIG = [
     iconBg: 'bg-blue-500/10',
     iconColor: 'text-blue-400',
     placeholder: 'http://localhost:8989',
+    supportsExternalUrl: true,
+  },
+  {
+    type: 'LIDARR' as const,
+    slug: 'lidarr',
+    label: 'Lidarr',
+    icon: Disc3,
+    dotColor: 'bg-emerald-500',
+    iconBg: 'bg-emerald-500/10',
+    iconColor: 'text-emerald-400',
+    placeholder: 'http://localhost:8686',
     supportsExternalUrl: true,
   },
   {

@@ -2,7 +2,9 @@ export type DetailViewKey =
   | `anime:${string | number}`
   | `manga:${string | number}`
   | `movie:${string | number}`
-  | `series:${string | number}`;
+  | `series:${string | number}`
+  | `artist:${string | number}`
+  | `album:${string | number}`;
 
 export interface DetailViewState {
   scrollY: number;

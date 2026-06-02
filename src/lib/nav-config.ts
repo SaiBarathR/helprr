@@ -3,6 +3,7 @@ import {
   Compass,
   Film,
   Tv,
+  Disc3,
   CalendarDays,
   HardDrive,
   Search,
@@ -27,6 +28,7 @@ export type NavItemId =
   | 'anime'
   | 'movies'
   | 'series'
+  | 'music'
   | 'watchlist'
   | 'requests'
   | 'random'
@@ -60,6 +62,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'anime', href: '/anime', icon: Sparkles, label: 'Anime', shortLabel: 'Anime', requiredCapability: 'anime.view' },
   { id: 'movies', href: '/movies', icon: Film, label: 'Movies', shortLabel: 'Movies', requiredCapability: 'movies.view' },
   { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series', requiredCapability: 'series.view' },
+  { id: 'music', href: '/music', icon: Disc3, label: 'Music', shortLabel: 'Music', requiredCapability: 'music.view' },
   { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist', requiredCapability: 'watchlist.view' },
   { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests', requiredCapability: 'requests.view' },
   { id: 'random', href: '/random', icon: Dices, label: 'Random Watch', shortLabel: 'Random', requiredCapability: 'random.view' },

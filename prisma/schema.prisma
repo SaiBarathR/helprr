@@ -16,6 +16,7 @@ enum ServiceType {
   TMDB
   ANILIST
   SEERR
+  LIDARR
 }
 
 enum UserRole {

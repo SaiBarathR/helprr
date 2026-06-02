@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Tv,
   Film,
+  Disc3,
   Bookmark,
   Eye,
   EyeOff,
@@ -35,6 +36,13 @@ import {
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
 import type { CalendarEvent } from '@/types';
+
+/** Detail-page link for a calendar event, by media type. */
+function eventHref(event: CalendarEvent): string {
+  if (event.type === 'episode') return `/series/${event.seriesId}`;
+  if (event.type === 'album') return `/music/album/${event.albumId}`;
+  return `/movies/${event.movieId}`;
+}
 
 /**
  * Render a compact set of filter controls used by the calendar header.
@@ -52,8 +60,8 @@ function CompactFilters({
   monitoredOnly,
   setMonitoredOnly,
 }: {
-  typeFilter: 'all' | 'episode' | 'movie';
-  setTypeFilter: (v: 'all' | 'episode' | 'movie') => void;
+  typeFilter: 'all' | 'episode' | 'movie' | 'album';
+  setTypeFilter: (v: 'all' | 'episode' | 'movie' | 'album') => void;
   monitoredOnly: boolean;
   setMonitoredOnly: (v: boolean) => void;
 }) {
@@ -89,6 +97,16 @@ function CompactFilters({
         title="Movies"
       >
         <Film className="h-3.5 w-3.5" />
+      </button>
+      <button
+        onClick={() => setTypeFilter('album')}
+        className={`p-1.5 rounded-md transition-colors ${typeFilter === 'album'
+          ? 'bg-emerald-500/15 text-emerald-400'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        title="Music"
+      >
+        <Disc3 className="h-3.5 w-3.5" />
       </button>
 
       <div className="w-px h-4 bg-border/50 mx-0.5" />
@@ -152,10 +170,7 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
 
         return dayEvents.map((event, idx) => {
           const isFirstOfDay = idx === 0;
-          const href =
-            event.type === 'episode'
-              ? `/series/${event.seriesId}`
-              : `/movies/${event.movieId}`;
+          const href = eventHref(event);
           const eventDate = new Date(event.date);
 
           return (
@@ -195,6 +210,8 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
                     <div className="flex items-center gap-1.5 min-w-0">
                       {event.type === 'episode' ? (
                         <Tv className="h-3 w-3 text-blue-400 shrink-0" />
+                      ) : event.type === 'album' ? (
+                        <Disc3 className="h-3 w-3 text-emerald-400 shrink-0" />
                       ) : (
                         <Film className="h-3 w-3 text-orange-400 shrink-0" />
                       )}
@@ -304,10 +321,7 @@ function MonthView({
               </div>
               <div className="space-y-0.5">
                 {dayEvents.slice(0, 3).map((event) => {
-                  const href =
-                    event.type === 'episode'
-                      ? `/series/${event.seriesId}`
-                      : `/movies/${event.movieId}`;
+                  const href = eventHref(event);
                   const accentKey = event.releaseType ?? event.finaleType;
                   const accent = getMonthBorderClass(accentKey);
                   return (
@@ -315,12 +329,16 @@ function MonthView({
                       <div
                         className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] leading-tight font-medium truncate transition-opacity hover:opacity-80 ${event.type === 'episode'
                           ? 'bg-blue-500/15 text-blue-400'
-                          : 'bg-orange-500/15 text-orange-400'
+                          : event.type === 'album'
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-orange-500/15 text-orange-400'
                           } ${accent} ${!event.monitored ? 'opacity-50' : ''} ${event.hasFile ? 'line-through decoration-1' : ''
                           }`}
                       >
                         {event.type === 'episode' ? (
                           <Tv className="h-2 w-2 shrink-0" />
+                        ) : event.type === 'album' ? (
+                          <Disc3 className="h-2 w-2 shrink-0" />
                         ) : (
                           <Film className="h-2 w-2 shrink-0" />
                         )}
@@ -405,10 +423,7 @@ function WeekView({
             ) : (
               <div>
                 {dayEvents.map((event) => {
-                  const href =
-                    event.type === 'episode'
-                      ? `/series/${event.seriesId}`
-                      : `/movies/${event.movieId}`;
+                  const href = eventHref(event);
                   return (
                     <Link key={event.id} href={href} className="block">
                       <div
@@ -417,6 +432,8 @@ function WeekView({
                       >
                         {event.type === 'episode' ? (
                           <Tv className="h-3 w-3 text-blue-400 shrink-0" />
+                        ) : event.type === 'album' ? (
+                          <Disc3 className="h-3 w-3 text-emerald-400 shrink-0" />
                         ) : (
                           <Film className="h-3 w-3 text-orange-400 shrink-0" />
                         )}

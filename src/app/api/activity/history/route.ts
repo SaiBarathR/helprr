@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { HistoryItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
@@ -27,6 +27,17 @@ const CANONICAL_EVENT_SET = new Set<CanonicalHistoryEvent>([
   'renamed',
   'ignored',
 ]);
+
+// Lidarr history uses string event types (no numeric eventType filter like Sonarr/Radarr),
+// so its rows are fetched unfiltered and narrowed to a canonical filter locally.
+const LIDARR_EVENTS_BY_CANONICAL: Record<CanonicalHistoryEvent, string[]> = {
+  grabbed: ['grabbed'],
+  imported: ['downloadImported', 'trackFileImported'],
+  failed: ['downloadFailed', 'albumImportIncomplete'],
+  deleted: ['trackFileDeleted'],
+  renamed: ['trackFileRenamed'],
+  ignored: ['downloadIgnored'],
+};
 
 const LEGACY_EVENT_ALIASES: Record<string, CanonicalHistoryEvent> = {
   grabbed: 'grabbed',
@@ -121,14 +132,14 @@ async function getHandler(request: NextRequest) {
     const seriesId = searchParams.get('seriesId') ? parseInt(searchParams.get('seriesId')!, 10) : undefined;
     const movieId = searchParams.get('movieId') ? parseInt(searchParams.get('movieId')!, 10) : undefined;
     const source = searchParams.get('source');
-    const sourceFilter = source === 'sonarr' || source === 'radarr' ? source : undefined;
+    const sourceFilter = source === 'sonarr' || source === 'radarr' || source === 'lidarr' ? source : undefined;
 
     // Fetch large batches from both services so we can merge and re-sort
     const fetchSize = 500;
 
-    const [sonarrResult, radarrResult] = await Promise.allSettled([
+    const [sonarrResult, radarrResult, lidarrResult] = await Promise.allSettled([
       (async () => {
-        if (sourceFilter === 'radarr') return null;
+        if (sourceFilter === 'radarr' || sourceFilter === 'lidarr') return null;
         // Skip Sonarr fetch if filtering by movieId only
         if (movieId && !episodeId && !seriesId) return null;
         try {
@@ -143,7 +154,7 @@ async function getHandler(request: NextRequest) {
         }
       })(),
       (async () => {
-        if (sourceFilter === 'sonarr') return null;
+        if (sourceFilter === 'sonarr' || sourceFilter === 'lidarr') return null;
         // Skip Radarr fetch if filtering by episodeId/seriesId only
         if ((episodeId || seriesId) && !movieId) return null;
         try {
@@ -152,6 +163,19 @@ async function getHandler(request: NextRequest) {
             movieId,
             eventType: resolveUpstreamEventType('radarr', eventTypeFilter),
           });
+        } catch {
+          return null;
+        }
+      })(),
+      (async () => {
+        if (sourceFilter === 'sonarr' || sourceFilter === 'radarr') return null;
+        // Lidarr has no movie/series/episode ids; skip when narrowing to those.
+        if (episodeId || seriesId || movieId) return null;
+        // Numeric upstream codes are service-specific; can't map to Lidarr.
+        if (eventTypeFilter.kind === 'numeric') return null;
+        try {
+          const lidarr = await getLidarrClient();
+          return await lidarr.getHistory(1, fetchSize, sortKey, sortDirection);
         } catch {
           return null;
         }
@@ -178,7 +202,27 @@ async function getHandler(request: NextRequest) {
       source: 'radarr' as const,
     }));
 
-    let mergedRecords = [...sonarrRecords, ...radarrRecords];
+    const lidarrData =
+      lidarrResult.status === 'fulfilled' && lidarrResult.value
+        ? lidarrResult.value
+        : { records: [], totalRecords: 0 };
+
+    let lidarrRecords = lidarrData.records.map((record: HistoryItem) => ({
+      ...record,
+      source: 'lidarr' as const,
+    }));
+
+    // Canonical filters are applied upstream for Sonarr/Radarr (numeric codes) but
+    // must be applied locally for Lidarr (string event types). Raw filters fall
+    // through to the shared post-merge filter below.
+    if (eventTypeFilter.kind === 'canonical') {
+      const allowed = new Set(
+        LIDARR_EVENTS_BY_CANONICAL[eventTypeFilter.value].map((e) => e.toLowerCase())
+      );
+      lidarrRecords = lidarrRecords.filter((record) => allowed.has(record.eventType.toLowerCase()));
+    }
+
+    let mergedRecords = [...sonarrRecords, ...radarrRecords, ...lidarrRecords];
 
     // Sort by date descending
     mergedRecords.sort((a, b) => {

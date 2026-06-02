@@ -3,6 +3,7 @@ export const MEDIA_LIST_CACHE_TTL_MS = 60_000;
 export type MediaListKey =
   | 'movies'
   | 'series'
+  | 'music'
   | `anime-library:${string}`
   | `anime-explore:${string}`;
 

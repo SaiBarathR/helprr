@@ -26,6 +26,7 @@ const MEMBER_ALLOWED: readonly Capability[] = [
   'anime.view',
   'movies.view',
   'series.view',
+  'music.view',
   'watchlist.view',
   'watchlist.edit',
   'random.view',

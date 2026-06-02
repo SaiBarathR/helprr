@@ -44,13 +44,14 @@ const EVENT_FILTERS: EventFilterOption[] = [
 
 // --- Instance filter ---
 
-type InstanceFilter = 'all' | 'sonarr' | 'radarr';
+type InstanceFilter = 'all' | 'sonarr' | 'radarr' | 'lidarr';
 type DrawerMode = 'basic' | 'detailed';
 
 const INSTANCE_OPTIONS: { key: InstanceFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'sonarr', label: 'Sonarr' },
   { key: 'radarr', label: 'Radarr' },
+  { key: 'lidarr', label: 'Lidarr' },
 ];
 
 // --- Event styling ---
@@ -436,6 +437,28 @@ export default function HistoryPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium">{selectedItem.movie.title}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.movie.year}</p>
+                        </div>
+                        {href && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                      </>
+                    );
+                    return href ? (
+                      <Link href={href} className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors">
+                        {content}
+                      </Link>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">{content}</div>
+                    );
+                  })()}
+                  {selectedItem.album && (() => {
+                    const albumId = selectedItem.albumId || selectedItem.album.id;
+                    const href = albumId ? `/music/album/${albumId}` : null;
+                    const content = (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{selectedItem.album.title}</p>
+                          {selectedItem.artist?.artistName && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.artist.artistName}</p>
+                          )}
                         </div>
                         {href && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
                       </>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
+import { LidarrClient } from '@/lib/lidarr-client';
 import { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
@@ -91,6 +92,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
       case 'RADARR': {
         const client = new RadarrClient(cleanUrl, resolvedApiKey);
+        const status = await client.getSystemStatus();
+        return NextResponse.json({
+          success: true,
+          version: status.version,
+        });
+      }
+
+      case 'LIDARR': {
+        const client = new LidarrClient(cleanUrl, resolvedApiKey);
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,

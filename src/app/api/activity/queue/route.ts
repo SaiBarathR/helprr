@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { QueueItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
@@ -13,7 +13,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '50', 10);
 
-    const [sonarrResult, radarrResult] = await Promise.allSettled([
+    const [sonarrResult, radarrResult, lidarrResult] = await Promise.allSettled([
       (async () => {
         try {
           const sonarr = await getSonarrClient();
@@ -30,6 +30,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           return null;
         }
       })(),
+      (async () => {
+        try {
+          const lidarr = await getLidarrClient();
+          return await lidarr.getQueue(page, pageSize);
+        } catch {
+          return null;
+        }
+      })(),
     ]);
 
     const sonarrData =
@@ -42,6 +50,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         ? radarrResult.value
         : { records: [], totalRecords: 0 };
 
+    const lidarrData =
+      lidarrResult.status === 'fulfilled' && lidarrResult.value
+        ? lidarrResult.value
+        : { records: [], totalRecords: 0 };
+
     const sonarrRecords = sonarrData.records.map((record: QueueItem) => ({
       ...record,
       source: 'sonarr' as const,
@@ -52,8 +65,13 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       source: 'radarr' as const,
     }));
 
-    const mergedRecords = [...sonarrRecords, ...radarrRecords];
-    const totalRecords = sonarrData.totalRecords + radarrData.totalRecords;
+    const lidarrRecords = lidarrData.records.map((record: QueueItem) => ({
+      ...record,
+      source: 'lidarr' as const,
+    }));
+
+    const mergedRecords = [...sonarrRecords, ...radarrRecords, ...lidarrRecords];
+    const totalRecords = sonarrData.totalRecords + radarrData.totalRecords + lidarrData.totalRecords;
 
     return NextResponse.json({ records: mergedRecords, totalRecords });
   } catch (error) {

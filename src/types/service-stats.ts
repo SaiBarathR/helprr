@@ -8,6 +8,7 @@ export type DiskSpace = {
 export interface ServicesStatsResponse {
   totalMovies?: number;
   totalSeries?: number;
+  totalArtists?: number;
   activeDownloads?: number;
   diskSpace?: DiskSpace[];
   jellyfin?: {
