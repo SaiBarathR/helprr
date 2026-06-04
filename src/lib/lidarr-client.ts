@@ -322,8 +322,11 @@ export class LidarrClient {
   }
 
   async renameArtistFiles(artistId: number, files?: number[]): Promise<CommandResponse> {
+    if (files && files.length === 0) {
+      return Promise.reject(new Error('renameArtistFiles requires at least one file id'));
+    }
     const body: Record<string, unknown> = { name: 'RenameFiles', artistId };
-    if (files) body.files = files;
+    if (files && files.length > 0) body.files = files;
     return this.post<CommandResponse>('/api/v1/command', body);
   }
 

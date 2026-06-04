@@ -53,15 +53,18 @@ Copy `.env.example` to `.env.local` (for local dev), or set these in your deploy
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | PostgreSQL connection string used by Prisma |
-| `REDIS_URL` | yes | Redis connection string used for login rate limiting |
+| `REDIS_URL` | yes | Redis connection string used for caching and login rate limiting — `getRedisClient()` throws if unset |
+| `REDIS_PASSWORD` | yes | Redis AUTH password (sets `--requirepass` in docker-compose, sent as the client AUTH password) — `getRedisClient()` throws if unset |
 | `APP_PASSWORD` | yes | Seeds the **bootstrap admin** password on first boot (not checked at login afterward — login verifies the per-user hash in the DB) |
+| `JWT_SECRET` | yes | Signs the auth cookie — `getJwtSecret()` throws if unset, so the app will not serve authenticated requests without it |
 | `HELPRR_ADMIN_USERNAME` | optional | Bootstrap admin login username (default `admin`) |
 | `HELPRR_ADMIN_PASSWORD_RESET` | optional | Set `true` to force-reset the admin password from `APP_PASSWORD` on next boot (recovery); remove it afterward |
-| `JWT_SECRET` | recommended | Signs the auth cookie (set this in production) |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | optional | Public VAPID key (enables push notifications; must be available at build time for Docker builds) |
 | `VAPID_PRIVATE_KEY` | optional | Private VAPID key (server-side) |
 | `VAPID_SUBJECT` | optional | VAPID subject, e.g. `mailto:you@example.com` |
 | `TZ` | optional | Timezone for displaying dates/times (defaults to UTC) |
+
+`DATABASE_URL`, `REDIS_URL`, `REDIS_PASSWORD`, `APP_PASSWORD`, and `JWT_SECRET` are all **required for startup** — the app throws on boot (or on the first request that touches Redis/auth) if any are missing. Note that `APP_PASSWORD` only seeds the bootstrap admin on first boot; it is **not** used as a live login password.
 
 If VAPID vars are not set, Helprr will still run, but **push notifications are disabled**.
 
@@ -86,6 +89,7 @@ Example (adjust credentials/host to match your Postgres setup):
 ```bash
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/helprr
 REDIS_URL=redis://localhost:6379
+REDIS_PASSWORD=change-me-redis
 
 APP_PASSWORD=change-me
 JWT_SECRET=change-me-too
@@ -121,11 +125,12 @@ The repository includes a `docker-compose.yml` with a Postgres container and the
 - `POSTGRES_PASSWORD` (optional override; defaults to `postgres`)
 - `DATABASE_URL` (optional override; defaults to the internal compose URL)
 - `REDIS_URL` (optional override; defaults to `redis://helprr-redis:6379`)
+- `REDIS_PASSWORD` (**required**; sets the Redis `--requirepass` password and the client AUTH password — the app fails to start without it)
 - `APP_PASSWORD` (seeds the bootstrap admin password on first boot)
+- `JWT_SECRET` (**required**; signs the auth cookie — the app fails to start without it)
 - `HELPRR_ADMIN_USERNAME` (optional; bootstrap admin login username, default `admin`)
 - `HELPRR_ADMIN_PASSWORD_RESET` (optional; set `true` to force-reset the admin password from `APP_PASSWORD`, then remove)
 - `TZ` (optional override; defaults to `UTC`)
-- `JWT_SECRET`
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (build-time)
 - `VAPID_PRIVATE_KEY`
 - `VAPID_SUBJECT`

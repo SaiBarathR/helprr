@@ -65,6 +65,8 @@ export default function AlbumDetailPage() {
   const detailViewKey: DetailViewKey = `album:${albumId}`;
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
+  // Guards against a stale loadData (older album) resolving after a newer one.
+  const loadRequestRef = useRef(0);
 
   const [album, setAlbum] = useState<LidarrAlbum | null>(() => initialSnapshot?.album ?? null);
   const [tracks, setTracks] = useState<LidarrTrack[]>(() => initialSnapshot?.tracks ?? []);
@@ -88,6 +90,7 @@ export default function AlbumDetailPage() {
     }
     if (hasCachedData) setLoading(false);
 
+    const requestId = ++loadRequestRef.current;
     try {
       const [albumResult, nextTracks, nextFiles] = await Promise.all([
         fetch(`/api/lidarr/album/${albumId}`).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
@@ -95,18 +98,20 @@ export default function AlbumDetailPage() {
         fetch(`/api/lidarr/trackfile?albumId=${albumId}`).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
       ]);
 
+      if (requestId !== loadRequestRef.current) return;
       setAlbum(albumResult);
       setTracks(nextTracks);
       setTrackFiles(nextFiles);
       setAlbumDetailSnapshot(albumId, { album: albumResult, tracks: nextTracks, trackFiles: nextFiles });
     } catch {
+      if (requestId !== loadRequestRef.current) return;
       if (!hasCachedData) {
         setAlbum(null);
         setTracks([]);
         setTrackFiles([]);
       }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }, [albumId]);
 
@@ -169,11 +174,12 @@ export default function AlbumDetailPage() {
     if (!album) return;
     setActionLoading('search');
     try {
-      await fetch('/api/lidarr/command', {
+      const res = await fetch('/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'AlbumSearch', albumIds: [album.id] }),
       });
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
       toast.success('Search started');
     } catch { toast.error('Search failed'); }
     finally { setActionLoading(''); }

@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+
+function isPositiveIntParam(value: string): boolean {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0;
+}
 
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('music.view');
+  if (capError) return capError;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -15,8 +22,17 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'artistId or albumId is required' }, { status: 400 });
     }
     const params: { artistId?: number; albumId?: number } = {};
-    if (albumIdParam) params.albumId = Number(albumIdParam);
-    else if (artistIdParam) params.artistId = Number(artistIdParam);
+    if (albumIdParam) {
+      if (!isPositiveIntParam(albumIdParam)) {
+        return NextResponse.json({ error: 'albumId must be a positive integer' }, { status: 400 });
+      }
+      params.albumId = Number(albumIdParam);
+    } else if (artistIdParam) {
+      if (!isPositiveIntParam(artistIdParam)) {
+        return NextResponse.json({ error: 'artistId must be a positive integer' }, { status: 400 });
+      }
+      params.artistId = Number(artistIdParam);
+    }
 
     const client = await getLidarrClient();
     const files = await client.getTrackFiles(params);

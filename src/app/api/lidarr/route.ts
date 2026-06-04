@@ -38,6 +38,11 @@ async function getHandler(request: NextRequest) {
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true, authError: true });
     return authError;
   }
+  const capError = await requireCapability('music.view');
+  if (capError) {
+    logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true, authError: true });
+    return capError;
+  }
 
   try {
     const full = request.nextUrl.searchParams.get('full') === 'true';

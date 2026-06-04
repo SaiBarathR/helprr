@@ -3,6 +3,11 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
+function toPositiveInt(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -18,11 +23,22 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'albumId or artistId is required' }, { status: 400 });
     }
 
-    const client = await getLidarrClient();
     const params: { albumId?: number; artistId?: number } = {};
-    if (albumId) params.albumId = Number(albumId);
-    else params.artistId = Number(artistId);
+    if (albumId) {
+      const parsed = toPositiveInt(albumId);
+      if (parsed === null) {
+        return NextResponse.json({ error: 'albumId must be a positive integer' }, { status: 400 });
+      }
+      params.albumId = parsed;
+    } else {
+      const parsed = toPositiveInt(artistId);
+      if (parsed === null) {
+        return NextResponse.json({ error: 'artistId must be a positive integer' }, { status: 400 });
+      }
+      params.artistId = parsed;
+    }
 
+    const client = await getLidarrClient();
     const releases = await client.getReleases(params);
     return NextResponse.json(releases);
   } catch (error) {
@@ -41,12 +57,16 @@ async function postHandler(request: Request) {
     const body = await request.json();
     const { guid, indexerId, downloadClientId } = body;
 
-    if (!guid || indexerId === undefined) {
-      return NextResponse.json({ error: 'guid and indexerId are required' }, { status: 400 });
+    if (!guid || typeof guid !== 'string') {
+      return NextResponse.json({ error: 'guid is required' }, { status: 400 });
+    }
+    const parsedIndexerId = toPositiveInt(indexerId);
+    if (parsedIndexerId === null) {
+      return NextResponse.json({ error: 'indexerId must be a positive integer' }, { status: 400 });
     }
 
     const client = await getLidarrClient();
-    await client.grabRelease(guid, indexerId, downloadClientId);
+    await client.grabRelease(guid, parsedIndexerId, downloadClientId);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to grab release';

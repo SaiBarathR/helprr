@@ -555,11 +555,8 @@ const PERSISTED_KEY_SET: ReadonlySet<string> = new Set(PERSISTED_KEYS);
 // export) would break consumers that call .filter / .some / .includes on it.
 const ARRAY_PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'moviesFilter',
-  'moviesVisibleFields',
   'seriesFilter',
-  'seriesVisibleFields',
   'musicFilter',
-  'musicVisibleFields',
   'activityFilterBy',
   'discoverFilters',
   'animeFilters',
@@ -570,6 +567,23 @@ const ARRAY_PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'animeCarouselOrder',
   'disabledAnimeCarousels',
 ]);
+
+// Keys whose persisted shape is a VisibleFieldsByMode object ({ posters, overview,
+// table } of string arrays). These are NOT plain arrays, so applyImportedUiPrefs
+// validates the object shape instead of treating them as array-only.
+const VISIBLE_FIELDS_KEYS: ReadonlySet<string> = new Set([
+  'moviesVisibleFields',
+  'seriesVisibleFields',
+  'musicVisibleFields',
+]);
+
+function isVisibleFieldsByMode(value: unknown): value is VisibleFieldsByMode {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const obj = value as Record<string, unknown>;
+  return (['posters', 'overview', 'table'] as const).every(
+    (mode) => Array.isArray(obj[mode]) && (obj[mode] as unknown[]).every((f) => typeof f === 'string')
+  );
+}
 
 export const useUIStore = create<UIState>()(
   persist(
@@ -794,6 +808,11 @@ export const useUIStore = create<UIState>()(
             // Imported files can be hand-edited or come from an older export
             // where a string field has since become an array (e.g. moviesFilter).
             // Drop values whose shape would break call sites.
+            if (VISIBLE_FIELDS_KEYS.has(key)) {
+              if (!isVisibleFieldsByMode(value)) continue;
+              next[key] = value;
+              continue;
+            }
             if (ARRAY_PERSISTED_KEYS.has(key) && !Array.isArray(value)) continue;
             next[key] = value;
           }

@@ -14,7 +14,14 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'artistId is required' }, { status: 400 });
     }
     const albumIdParam = searchParams.get('albumId');
-    const albumId = albumIdParam ? Number(albumIdParam) : undefined;
+    let albumId: number | undefined;
+    if (albumIdParam) {
+      const parsed = Number(albumIdParam);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return NextResponse.json({ error: 'albumId must be a positive integer' }, { status: 400 });
+      }
+      albumId = parsed;
+    }
     const client = await getLidarrClient();
     const history = await client.getArtistHistory(artistId, albumId);
     return NextResponse.json(history);
