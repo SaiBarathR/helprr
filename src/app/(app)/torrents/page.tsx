@@ -734,7 +734,7 @@ export default function TorrentsPage() {
     };
   }, [selectedTorrents.size, loading, error, torrents.length, search]);
 
-  const torrentAction = useCallback(async (hash: string, action: string, extra?: Record<string, unknown>) => {
+  const torrentAction = useCallback(async (hash: string, action: string, extra?: Record<string, unknown>): Promise<boolean> => {
     try {
       const res = await fetch(`/api/qbittorrent/${hash}`, {
         method: 'POST',
@@ -764,8 +764,10 @@ export default function TorrentsPage() {
       setTimeout(() => {
         void fetchSummary();
       }, 500);
+      return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Action failed');
+      return false;
     }
   }, [fetchSummary]);
 
@@ -786,17 +788,21 @@ export default function TorrentsPage() {
     let attention = 0;
     for (const torrent of torrents) {
       if (!hashes.has(torrent.hash)) continue;
-      if (torrent.progress < 1) inFlight++;
-      if (torrent.state === 'error' || torrent.state === 'missingFiles' || torrent.state === 'stalledDL') {
-        attention++;
+      // attention is a subset of in-flight, matching the poll's badge definition.
+      if (torrent.progress < 1) {
+        inFlight++;
+        if (torrent.state === 'error' || torrent.state === 'missingFiles' || torrent.state === 'stalledDL') {
+          attention++;
+        }
       }
     }
     try {
-      await torrentAction(deleteDrawer.hash, 'delete', { deleteFiles: deleteDrawer.deleteFiles });
-      if (inFlight || attention) adjustBadge('downloads', -inFlight, -attention);
-      setDeleteDrawer({ open: false, hash: '', name: '', deleteFiles: false });
-    } catch {
-      // Error handled in torrentAction
+      const ok = await torrentAction(deleteDrawer.hash, 'delete', { deleteFiles: deleteDrawer.deleteFiles });
+      // Only adjust the badge / close the drawer when the delete actually succeeded.
+      if (ok) {
+        if (inFlight || attention) adjustBadge('downloads', -inFlight, -attention);
+        setDeleteDrawer({ open: false, hash: '', name: '', deleteFiles: false });
+      }
     } finally {
       setDeleting(false);
     }

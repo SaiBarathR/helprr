@@ -29,7 +29,13 @@ async function updateAppBadge() {
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     const res = await fetch('/api/badges', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
-    if (!res.ok) return;
+    if (!res.ok) {
+      // Session expired — clear the stale icon badge instead of leaving it.
+      if ((res.status === 401 || res.status === 403) && self.navigator.clearAppBadge) {
+        await self.navigator.clearAppBadge();
+      }
+      return;
+    }
     const data = await res.json();
     const count = (data && data.notifications && data.notifications.total) || 0;
     if (count > 0) await self.navigator.setAppBadge(count);
