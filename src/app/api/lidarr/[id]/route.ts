@@ -4,6 +4,14 @@ import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffArtistEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { withApiLogging } from '@/lib/api-logger';
 
+function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
+  const parsed = Number(id);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return { error: NextResponse.json({ error: 'Invalid artist id' }, { status: 400 }) };
+  }
+  return { value: parsed };
+}
+
 async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -13,8 +21,10 @@ async function getHandler(
 
   try {
     const { id } = await params;
+    const parsed = parsePositiveId(id);
+    if ('error' in parsed) return parsed.error;
     const client = await getLidarrClient();
-    const artist = await client.getArtistById(Number(id));
+    const artist = await client.getArtistById(parsed.value);
     return NextResponse.json(artist);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch artist';
@@ -31,10 +41,9 @@ async function putHandler(
 
   try {
     const { id } = await params;
-    const pathId = Number(id);
-    if (!Number.isInteger(pathId) || pathId <= 0) {
-      return NextResponse.json({ error: 'Invalid artist id' }, { status: 400 });
-    }
+    const parsed = parsePositiveId(id);
+    if ('error' in parsed) return parsed.error;
+    const pathId = parsed.value;
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
@@ -78,10 +87,12 @@ async function deleteHandler(
 
   try {
     const { id } = await params;
+    const parsed = parsePositiveId(id);
+    if ('error' in parsed) return parsed.error;
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
     const client = await getLidarrClient();
-    await client.deleteArtist(Number(id), deleteFiles);
+    await client.deleteArtist(parsed.value, deleteFiles);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete artist';

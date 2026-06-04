@@ -382,7 +382,7 @@ export default function ActivityPage() {
  * reports the visible item count via `onCountChange`, and exposes per-item details and removal from the queue.
  *
  * @param sortBy - Key used to sort visible queue items (title, progress, timeleft, or size)
- * @param filterBy - Source filter to limit items (e.g., 'all', 'sonarr', 'radarr')
+ * @param filterBy - Selected sources to limit items to (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
  * @param onCountChange - Callback invoked with the current number of visible items after filtering and sorting
  * @returns The rendered Queue tab content as a JSX element
  */
@@ -697,7 +697,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
  * Shows loading skeletons while fetching; if no failed imports are found it renders an empty-state message;
  * otherwise it renders each failed item with its messages and an Import button that navigates to the manual import page.
  *
- * @param filterBy - Source filter to apply (`'all'`, `'sonarr'`, or `'radarr'`)
+ * @param filterBy - Selected sources to apply (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
  * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
  */
 
@@ -712,8 +712,8 @@ function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
    *
    * Fetches /api/activity/queue, selects records that classifyQueueIssue
    * marks as `'import'` (Sonarr/Radarr `importBlocked`, or `importPending`
-   * with a warning/error status — the TBA-style stuck imports), applies the
-   * `filterBy` source filter when it is not `"all"`, and stores the resulting
+   * with a warning/error status — the TBA-style stuck imports), narrows to the
+   * selected `filterBy` sources when the array is non-empty, and stores the resulting
    * list via `setQueue`. Always calls `setLoading(false)` when finished;
    * errors are ignored.
    */
@@ -822,20 +822,21 @@ interface WantedRecord {
  * Render the Wanted tab showing either missing or cutoff items with per-item search and pagination.
  *
  * @param type - Specifies which set of wanted items to display: `'missing'` or `'cutoff'`.
- * @param filterBy - Source filter for results (`'all'`, `'sonarr'`, or `'radarr'`); when not `'all'` the list is limited to that source.
+ * @param filterBy - Selected sources for results (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources, otherwise results are limited to the selected sources.
  * @returns The tab content element that lists records, shows loading and empty states, provides a per-record search action, and supports "Load more" pagination.
  */
 function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: string[] }) {
+  const PAGE_SIZE = 20;
   const [records, setRecords] = useState<WantedRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [searching, setSearching] = useState<string | null>(null);
 
   const fetchWanted = useCallback(async (p: number) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ type, page: String(p), pageSize: '20' });
+      const params = new URLSearchParams({ type, page: String(p), pageSize: String(PAGE_SIZE) });
       // Server-side source filter only handles a single source; for multi-select
       // we fetch all and narrow client-side below.
       if (filterBy.length === 1) params.set('source', filterBy[0]);
@@ -847,7 +848,10 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
           : (data.records || []);
         if (p === 1) setRecords(incoming);
         else setRecords((prev) => [...prev, ...incoming]);
-        setTotal(data.totalRecords || 0);
+        // totalRecords counts raw (unfiltered) records, so gate "Load more" on
+        // whether the server has more raw pages — not the filtered local count,
+        // which would keep the button visible after all matches are loaded.
+        setHasMore(p * PAGE_SIZE < (data.totalRecords || 0));
       }
     } catch { } finally { setLoading(false); }
   }, [filterBy, type]);
@@ -972,7 +976,7 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
           </div>
         );
       })}
-      {records.length < total && (
+      {hasMore && (
         <Button
           variant="ghost"
           className="w-full"

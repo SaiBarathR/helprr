@@ -251,12 +251,13 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('search');
     try {
-      await fetch('/api/lidarr/command', {
+      const res = await fetch('/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'ArtistSearch', artistId: artist.id }),
       });
-      toast.success('Search started');
+      if (res.ok) toast.success('Search started');
+      else toast.error('Search failed');
     } catch { toast.error('Search failed'); }
     finally { setActionLoading(''); }
   }
@@ -265,12 +266,13 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('refresh');
     try {
-      await fetch('/api/lidarr/command', {
+      const res = await fetch('/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshArtist', artistId: artist.id }),
       });
-      toast.success('Refresh started');
+      if (res.ok) toast.success('Refresh started');
+      else toast.error('Refresh failed');
     } catch { toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }
@@ -321,9 +323,13 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setDeleting(true);
     try {
-      await fetch(`/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
-      toast.success('Artist deleted');
-      router.push('/music');
+      const res = await fetch(`/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
+      if (res.ok) {
+        toast.success('Artist deleted');
+        router.push('/music');
+      } else {
+        toast.error('Delete failed');
+      }
     } catch { toast.error('Delete failed'); }
     finally { setDeleting(false); }
   }

@@ -116,7 +116,6 @@ export type TorrentsSortKeyPreference =
 export type TorrentsSortDirectionPreference = 'asc' | 'desc';
 export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
 export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
-export type ActivityFilterPreference = 'all' | 'sonarr' | 'radarr' | 'lidarr';
 export type NotificationsReadStatePreference = 'all' | 'unread' | 'read';
 
 export type RequestsTabPreference = 'requests' | 'users';
