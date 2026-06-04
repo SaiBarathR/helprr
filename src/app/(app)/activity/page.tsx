@@ -33,6 +33,7 @@ import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
+import { useBadgeActions } from '@/components/layout/badge-provider';
 
 // --- Status helpers ---
 
@@ -397,6 +398,7 @@ function QueueTab({
   onCountChange: (count: number) => void;
 }) {
   const canManageActivity = useCan('activity.manage');
+  const { adjustBadge } = useBadgeActions();
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
@@ -462,9 +464,15 @@ function QueueTab({
 
   async function handleRemove(id: number, source: string) {
     setRemoving(true);
+    // The removed item leaves the queue (total -1) and, if it was in a
+    // failed/import-blocked state, the attention count too.
+    const wasAttention = selectedItem
+      ? classifyQueueIssue(selectedItem.trackedDownloadState, selectedItem.trackedDownloadStatus) !== null
+      : false;
     try {
       await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false`, { method: 'DELETE' });
       toast.success('Removed from queue');
+      adjustBadge('activity', -1, wasAttention ? -1 : 0);
       setSelectedItem(null);
       fetchQueue();
     } catch { toast.error('Failed to remove'); }

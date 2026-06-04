@@ -14,6 +14,9 @@ import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems, getBottomNavLayout } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
 import { useMe, hasCapability } from '@/components/permission-provider';
+import { useBadgeCounts } from '@/components/layout/badge-provider';
+import { NavBadge } from '@/components/layout/nav-badge';
+import type { BadgeSlice } from '@/types/badges';
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -24,6 +27,7 @@ export function BottomNav() {
   const navPosition = useUIStore((s) => s.navPosition);
   const isBottom = navPosition === 'bottom';
   const me = useMe();
+  const counts = useBadgeCounts();
 
   const { tabs, moreItems } = useMemo(() => {
     const enabled = getEnabledNavItems(navOrder, disabledNavItems).filter(
@@ -36,6 +40,23 @@ export function BottomNav() {
     (item) => pathname === item.href || pathname.startsWith(item.href + '/')
   );
 
+  // Roll the hidden items' badges into one indicator on the "More" button.
+  const moreBadge = useMemo<BadgeSlice>(
+    () =>
+      moreItems.reduce(
+        (acc, item) => {
+          const slice = item.badgeArea ? counts[item.badgeArea] : undefined;
+          if (slice) {
+            acc.total += slice.total;
+            acc.attention += slice.attention;
+          }
+          return acc;
+        },
+        { total: 0, attention: 0 },
+      ),
+    [moreItems, counts],
+  );
+
   return (
     <nav className={cn(
       'md:hidden z-50 border-border bg-background/95 backdrop-blur-sm',
@@ -44,7 +65,8 @@ export function BottomNav() {
         : 'sticky top-0 border-b pt-[env(safe-area-inset-top)]'
     )}>
       <div className="flex items-center justify-around h-12">
-        {tabs.map(({ href, icon: Icon, shortLabel }) => {
+        {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
+          const slice = badgeArea ? counts[badgeArea] : undefined;
           const isActive = pathname === href || pathname.startsWith(href + '/');
           const isPending = pendingHref === href;
           return (
@@ -63,11 +85,14 @@ export function BottomNav() {
                 isPending && 'opacity-70'
               )}
             >
-              {isPending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
-              )}
+              <span className="relative">
+                {isPending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
+                )}
+                <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[9px]" />
+              </span>
               {shortLabel}
             </Link>
           );
@@ -82,7 +107,10 @@ export function BottomNav() {
                   isMoreActive ? 'text-primary' : 'text-muted-foreground'
                 )}
               >
-                <MoreHorizontal className="h-5 w-5" strokeWidth={isMoreActive ? 2.5 : 2} />
+                <span className="relative">
+                  <MoreHorizontal className="h-5 w-5" strokeWidth={isMoreActive ? 2.5 : 2} />
+                  <NavBadge slice={moreBadge} dot className="absolute -right-1.5 -top-0.5" />
+                </span>
                 More
               </button>
             </PopoverTrigger>
@@ -93,7 +121,8 @@ export function BottomNav() {
               className="w-56 p-2"
             >
               <div className="space-y-0.5">
-                {moreItems.map(({ href, icon: Icon, label }) => {
+                {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {
+                  const slice = badgeArea ? counts[badgeArea] : undefined;
                   const isActive = pathname === href || pathname.startsWith(href + '/');
                   const isPending = pendingHref === href;
                   return (
@@ -117,6 +146,7 @@ export function BottomNav() {
                     >
                       {isPending ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" /> : <Icon className="h-5 w-5 shrink-0" />}
                       {label}
+                      <NavBadge slice={slice} className="ml-auto" />
                     </Link>
                   );
                 })}

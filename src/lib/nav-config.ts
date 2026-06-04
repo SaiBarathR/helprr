@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { Capability } from '@/lib/capabilities';
+import type { BadgeArea } from '@/types/badges';
 
 export type NavItemId =
   | 'dashboard'
@@ -53,6 +54,8 @@ export interface NavItemDef {
   // When set, the item is hidden from users who lack this capability (UX only;
   // the page + its API routes enforce server-side).
   requiredCapability?: Capability;
+  // When set, the item renders a live count badge from /api/badges.
+  badgeArea?: BadgeArea;
 }
 
 /** Master ordered array of all navigation items — single source of truth */
@@ -64,16 +67,16 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series', requiredCapability: 'series.view' },
   { id: 'music', href: '/music', icon: Disc3, label: 'Music', shortLabel: 'Music', requiredCapability: 'music.view' },
   { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist', requiredCapability: 'watchlist.view' },
-  { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests', requiredCapability: 'requests.view' },
+  { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests', requiredCapability: 'requests.view', badgeArea: 'requests' },
   { id: 'random', href: '/random', icon: Dices, label: 'Random Watch', shortLabel: 'Random', requiredCapability: 'random.view' },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', requiredCapability: 'calendar.view' },
   { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps' },
-  { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', requiredCapability: 'torrents.view' },
+  { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', requiredCapability: 'torrents.view', badgeArea: 'downloads' },
   { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup', requiredCapability: 'cleanup.view' },
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', requiredCapability: 'prowlarr.view' },
   { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', requiredCapability: 'jellyfin.view' },
-  { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view' },
-  { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view' },
+  { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view', badgeArea: 'activity' },
+  { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
   { id: 'logs', href: '/logs', icon: ScrollText, label: 'Logs', shortLabel: 'Logs', requiredCapability: 'logs.view' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },
 ];

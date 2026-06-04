@@ -71,6 +71,7 @@ import {
   type TorrentsSortKeyPreference as SortKey,
 } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
+import { useBadgeActions } from '@/components/layout/badge-provider';
 
 const TORRENT_ROW_HEIGHT = 160;
 
@@ -532,6 +533,7 @@ const TorrentRow = memo(function TorrentRow({
 
 export default function TorrentsPage() {
   const router = useRouter();
+  const { adjustBadge } = useBadgeActions();
   const canManageTorrents = useCan('torrents.manage');
   const canDeleteTorrents = useCan('torrents.delete');
   const canBandwidthTorrents = useCan('torrents.bandwidth');
@@ -776,15 +778,29 @@ export default function TorrentsPage() {
 
   const handleDelete = useCallback(async () => {
     setDeleting(true);
+    // Capture each removed torrent's badge contribution before the rows vanish:
+    // in-flight (progress < 1) counts toward the total, stalled/errored toward
+    // attention. deleteDrawer.hash is one hash or several joined with '|'.
+    const hashes = new Set(deleteDrawer.hash.split('|'));
+    let inFlight = 0;
+    let attention = 0;
+    for (const torrent of torrents) {
+      if (!hashes.has(torrent.hash)) continue;
+      if (torrent.progress < 1) inFlight++;
+      if (torrent.state === 'error' || torrent.state === 'missingFiles' || torrent.state === 'stalledDL') {
+        attention++;
+      }
+    }
     try {
       await torrentAction(deleteDrawer.hash, 'delete', { deleteFiles: deleteDrawer.deleteFiles });
+      if (inFlight || attention) adjustBadge('downloads', -inFlight, -attention);
       setDeleteDrawer({ open: false, hash: '', name: '', deleteFiles: false });
     } catch {
       // Error handled in torrentAction
     } finally {
       setDeleting(false);
     }
-  }, [deleteDrawer.deleteFiles, deleteDrawer.hash, torrentAction]);
+  }, [deleteDrawer.deleteFiles, deleteDrawer.hash, torrentAction, torrents, adjustBadge]);
 
   const toggleSelect = useCallback((hash: string) => {
     setSelectedTorrents((prev) => {

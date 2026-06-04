@@ -12,6 +12,7 @@ import { logger } from '@/lib/logger';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { classifyQueueIssue } from '@/lib/queue-state';
+import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import type { QueueItem } from '@/types';
 import crypto from 'crypto';
 
@@ -369,6 +370,15 @@ export class PollingService {
       downloadFailedCount,
     }, { scope: 'polling' });
 
+    // Nav badge: total = full queue size; attention = items currently in a
+    // failed/import-blocked state (computed over the fetched page).
+    await writeBadgeSlice('activity', 'sonarr', {
+      total: queue.totalRecords,
+      attention: queue.records.filter(
+        (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
+      ).length,
+    });
+
     // History polling
     const history = await client.getHistory(1, 50, 'date', 'descending');
     const lastDate = state.lastHistoryDate;
@@ -542,6 +552,15 @@ export class PollingService {
       downloadFailedCount,
     }, { scope: 'polling' });
 
+    // Nav badge: total = full queue size; attention = items currently in a
+    // failed/import-blocked state (computed over the fetched page).
+    await writeBadgeSlice('activity', 'radarr', {
+      total: queue.totalRecords,
+      attention: queue.records.filter(
+        (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
+      ).length,
+    });
+
     const history = await client.getHistory(1, 50, 'date', 'descending');
     const lastDate = state.lastHistoryDate;
     const newHistory = lastDate
@@ -691,6 +710,15 @@ export class PollingService {
       }
     }
 
+    // Nav badge: total = full queue size; attention = items currently in a
+    // failed/import-blocked state (computed over the fetched page).
+    await writeBadgeSlice('activity', 'lidarr', {
+      total: queue.totalRecords,
+      attention: queue.records.filter(
+        (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
+      ).length,
+    });
+
     const history = await client.getHistory(1, 50, 'date', 'descending');
     const lastDate = state.lastHistoryDate;
     const newHistory = lastDate
@@ -805,6 +833,15 @@ export class PollingService {
         }, { service: 'qbittorrent', reason: 'torrent-deleted', hash: prev.hash });
       }
     }
+
+    // Nav badge: total = downloads still in flight (progress < 1); attention =
+    // stalled or errored torrents that need a look.
+    await writeBadgeSlice('downloads', 'qbittorrent', {
+      total: torrents.filter((t) => t.progress < 1).length,
+      attention: torrents.filter(
+        (t) => t.state === 'error' || t.state === 'missingFiles' || t.state === 'stalledDL',
+      ).length,
+    });
 
     // Update state
     await prisma.pollingState.update({
@@ -1087,6 +1124,18 @@ export class PollingService {
     logger.debug('Seerr polling state updated', {
       requestCount: nextSnapshots.length,
     }, { scope: 'polling' });
+
+    // Nav badge: pending approvals. The top-50 window above can miss older
+    // pending items, so use the dedicated count endpoint for an accurate number.
+    try {
+      const counts = await client.getRequestCount();
+      await writeBadgeSlice('requests', 'seerr', {
+        total: counts.pending,
+        attention: counts.pending,
+      });
+    } catch (error) {
+      logger.debug('Seerr request-count badge fetch failed', { error }, { scope: 'polling' });
+    }
   }
 
   private async checkUpcoming() {

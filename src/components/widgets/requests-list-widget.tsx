@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { PendingApprovalSection } from '@/components/seerr/pending-approval-section';
 import { useCan } from '@/components/permission-provider';
+import { useBadgeActions } from '@/components/layout/badge-provider';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -244,9 +245,16 @@ export function RequestsListWidget({
   const [modal, setModal] = useState<{ req: EnrichedSeerrRequest; mode: 'approve' | 'edit' } | null>(null);
   // Only approvers see request-management actions (approve/decline/edit/retry/delete).
   const canManageRequests = useCan('requests.approve');
+  const { adjustBadge } = useBadgeActions();
 
   const runAction = useCallback(
     async (id: number, action: 'approve' | 'decline' | 'retry' | 'delete') => {
+      // Approving/declining/deleting a still-pending request clears one pending
+      // approval, so the nav badge drops by 1. Retry leaves a failed request
+      // failed, so it doesn't touch the count.
+      const wasPending =
+        action !== 'retry' &&
+        items.find((r) => r.id === id)?.status === SEERR_REQUEST_STATUS.PENDING_APPROVAL;
       setBusy((prev) => {
         const next = new Set(prev);
         next.add(id);
@@ -270,6 +278,7 @@ export function RequestsListWidget({
           delete: 'Deleted request',
         };
         toast.success(verbs[action]);
+        if (wasPending) adjustBadge('requests', -1, -1);
         if (action === 'delete') {
           // Drop the row from any extra pages we'd already loaded so it doesn't
           // pop back in until the upstream refresh catches up.
@@ -286,7 +295,7 @@ export function RequestsListWidget({
         });
       }
     },
-    [refresh]
+    [refresh, items, adjustBadge]
   );
 
   const header = hideHeader ? null : (
