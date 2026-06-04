@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
+import { setImageCacheGeneration, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
+import { getCacheGeneration } from '@/lib/cache/state';
 import { getCachedLibraryGaps, setCachedLibraryGaps } from '@/lib/cache/library-gaps-cache';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { RadarrClient } from '@/lib/radarr-client';
@@ -222,6 +223,10 @@ async function buildOverdue(
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+
+  // This route builds proxied image URLs via toCachedImageSrc outside the (app)
+  // layout tree, so seed the cache-busting token explicitly for this worker.
+  setImageCacheGeneration(await getCacheGeneration());
 
   const cached = await getCachedLibraryGaps();
   if (cached) return NextResponse.json(cached);

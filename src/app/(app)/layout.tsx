@@ -5,8 +5,11 @@ import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
 import { PermissionProvider, type MePayload } from '@/components/permission-provider';
 import { RequestedMediaProvider } from '@/components/seerr/requested-media-provider';
+import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
+import { setImageCacheGeneration } from '@/lib/image';
+import { getCacheGeneration } from '@/lib/cache/state';
 import { prisma } from '@/lib/db';
 
 // Revocation is enforced server-side here (getSession() hits the DB on every
@@ -22,13 +25,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // effect for SSR navs, and so the permission provider is seeded server-side.
   // Independent of each other, so resolve in parallel to keep one DB round-trip
   // off the critical path of every authenticated navigation.
-  const [user, seerrCount] = await Promise.all([
+  const [user, seerrCount, imageCacheGeneration] = await Promise.all([
     getCurrentUser(),
     prisma.serviceConnection.count({ where: { type: 'SEERR' } }),
+    getCacheGeneration(),
   ]);
   if (!user) {
     redirect('/login');
   }
+
+  // Seed the server bundle's token so SSR-rendered image URLs (in this and
+  // descendant server/client components) carry ?v=<generation>.
+  setImageCacheGeneration(imageCacheGeneration);
 
   const seerrConfigured = seerrCount > 0;
 
@@ -45,6 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <PermissionProvider value={me}>
+      <ImageCacheGenerationInit value={imageCacheGeneration} />
       <RequestedMediaProvider>
         <div className="flex min-h-screen bg-background">
           <StandaloneLaunchRedirect />
