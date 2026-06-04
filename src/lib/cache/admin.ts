@@ -183,11 +183,15 @@ export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {
 }
 
 export async function purgeActiveCache(): Promise<CachePurgeResult> {
-  const generation = await getCacheGeneration();
+  const previousGeneration = await getCacheGeneration();
   await setCachePurgeStatus('purging');
 
   try {
-    return await purgeGeneration(generation);
+    // Bump the generation so the new value flows into proxied image URLs as
+    // ?v=<generation>, invalidating browser/PWA HTTP caches — not just the
+    // server-side files/keys. Then free the previous generation's storage.
+    await bumpCacheGeneration();
+    return await purgeGeneration(previousGeneration);
   } finally {
     await setCachePurgeStatus('idle');
   }
