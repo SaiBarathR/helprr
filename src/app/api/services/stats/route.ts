@@ -35,7 +35,8 @@ async function getHandler() {
 
       const diskSpace = await radarr.getDiskSpace();
       if (Array.isArray(diskSpace)) {
-        stats.diskSpace = mapDiskSpace(diskSpace);
+        const mapped = mapDiskSpace(diskSpace);
+        if (mapped.length > 0) stats.diskSpace = mapped;
       }
     } catch {}
   }
@@ -51,10 +52,11 @@ async function getHandler() {
       activeDownloads += queue.totalRecords ?? 0;
       hasDownloadCount = true;
 
-      if (!stats.diskSpace) {
+      if (!stats.diskSpace?.length) {
         const diskSpace = await sonarr.getDiskSpace();
         if (Array.isArray(diskSpace)) {
-          stats.diskSpace = mapDiskSpace(diskSpace);
+          const mapped = mapDiskSpace(diskSpace);
+          if (mapped.length > 0) stats.diskSpace = mapped;
         }
       }
     } catch {}
@@ -71,10 +73,11 @@ async function getHandler() {
       activeDownloads += queue.totalRecords ?? 0;
       hasDownloadCount = true;
 
-      if (!stats.diskSpace) {
+      if (!stats.diskSpace?.length) {
         const diskSpace = await lidarr.getDiskSpace();
         if (Array.isArray(diskSpace)) {
-          stats.diskSpace = mapDiskSpace(diskSpace);
+          const mapped = mapDiskSpace(diskSpace);
+          if (mapped.length > 0) stats.diskSpace = mapped;
         }
       }
     } catch {}

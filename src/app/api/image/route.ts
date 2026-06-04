@@ -42,7 +42,6 @@ const DEFAULT_EXTERNAL_IMAGE_HOSTS = new Set<string>([
   's2.anilist.co',
   's3.anilist.co',
   'images.lidarr.audio',
-  'lidarr.servarr.com',
 ]);
 
 function getAllowedExternalImageHosts(): Set<string> {

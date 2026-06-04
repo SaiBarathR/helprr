@@ -63,9 +63,11 @@ function eventColor(eventType: string) {
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
+    case 'trackFileImported':
     case 'imported':
       return 'bg-green-500/10 text-green-400 border-green-500/20';
     case 'downloadFailed':
+    case 'albumImportIncomplete':
     case 'failed':
       return 'bg-red-500/10 text-red-400 border-red-500/20';
     case 'downloadIgnored':
@@ -73,11 +75,13 @@ function eventColor(eventType: string) {
       return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
     case 'episodeFileDeleted':
     case 'movieFileDeleted':
+    case 'trackFileDeleted':
     case 'deleted':
       return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
     case 'renamed':
     case 'episodeFileRenamed':
     case 'movieFileRenamed':
+    case 'trackFileRenamed':
       return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
     default:
       return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
@@ -90,9 +94,11 @@ function eventLabel(eventType: string) {
     case 'downloadFolderImported':
     case 'episodeFileImported':
     case 'movieFileImported':
+    case 'trackFileImported':
     case 'imported':
       return 'IMPORTED';
     case 'downloadFailed':
+    case 'albumImportIncomplete':
     case 'failed':
       return 'FAILED';
     case 'downloadIgnored':
@@ -100,11 +106,13 @@ function eventLabel(eventType: string) {
       return 'IGNORED';
     case 'episodeFileDeleted':
     case 'movieFileDeleted':
+    case 'trackFileDeleted':
     case 'deleted':
       return 'DELETED';
     case 'renamed':
     case 'episodeFileRenamed':
     case 'movieFileRenamed':
+    case 'trackFileRenamed':
       return 'RENAMED';
     default: return eventType.toUpperCase();
   }

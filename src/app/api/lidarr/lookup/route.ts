@@ -15,6 +15,9 @@ async function getHandler(request: NextRequest) {
     if (!term) {
       return NextResponse.json({ error: 'Missing search term' }, { status: 400 });
     }
+    if (type !== null && type !== 'album' && type !== 'artist') {
+      return NextResponse.json({ error: 'Unsupported type' }, { status: 400 });
+    }
     const client = await getLidarrClient();
 
     if (type === 'album') {

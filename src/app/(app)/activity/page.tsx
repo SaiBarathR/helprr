@@ -222,19 +222,19 @@ export default function ActivityPage() {
   async function handleRefreshActivity() {
     setRefreshing(true);
     try {
-      await Promise.allSettled([
-        fetch('/api/sonarr/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'RefreshMonitoredDownloads' }),
-        }),
-        fetch('/api/radarr/command', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'RefreshMonitoredDownloads' }),
-        }),
+      const body = JSON.stringify({ name: 'RefreshMonitoredDownloads' });
+      const headers = { 'Content-Type': 'application/json' };
+      const results = await Promise.allSettled([
+        fetch('/api/sonarr/command', { method: 'POST', headers, body }),
+        fetch('/api/radarr/command', { method: 'POST', headers, body }),
+        fetch('/api/lidarr/command', { method: 'POST', headers, body }),
       ]);
-      toast.success('Activity refresh triggered');
+      const anyOk = results.some((r) => r.status === 'fulfilled' && r.value.ok);
+      if (anyOk) {
+        toast.success('Activity refresh triggered');
+      } else {
+        toast.error('Failed to refresh activity');
+      }
     } catch {
       toast.error('Failed to refresh activity');
     } finally {
@@ -862,25 +862,27 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
     const key = `${record.source}-${record.id}`;
     setSearching(key);
     try {
+      let res: Response;
       if (record.source === 'sonarr') {
-        await fetch('/api/sonarr/command', {
+        res = await fetch('/api/sonarr/command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [record.id] }),
         });
       } else if (record.source === 'lidarr') {
-        await fetch('/api/lidarr/command', {
+        res = await fetch('/api/lidarr/command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'AlbumSearch', albumIds: [record.id] }),
         });
       } else {
-        await fetch('/api/radarr/command', {
+        res = await fetch('/api/radarr/command', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'MoviesSearch', movieIds: [record.id] }),
         });
       }
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
       toast.success('Search started');
     } catch { toast.error('Search failed'); }
     finally { setSearching(null); }

@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler() {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Root folders expose filesystem paths; gate behind the add/edit-path
+  // capabilities that actually consume them (add page, edit page).
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'music.add') && !can(auth.user, 'music.changePath')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   try {
     const client = await getLidarrClient();

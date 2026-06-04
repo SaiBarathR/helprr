@@ -229,9 +229,9 @@ export default function MusicPage() {
 
     try {
       const [a, q, mp] = await Promise.all([
-        fetch('/api/lidarr').then((r) => r.ok ? r.json() : []),
-        fetch('/api/lidarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-        fetch('/api/lidarr/metadataprofiles').then((r) => r.ok ? r.json() : []),
+        fetch('/api/lidarr').then((r) => { if (!r.ok) throw new Error('Failed to load artists'); return r.json(); }),
+        fetch('/api/lidarr/qualityprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load quality profiles'); return r.json(); }),
+        fetch('/api/lidarr/metadataprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load metadata profiles'); return r.json(); }),
       ]);
 
       const next: MusicPageCacheData = {
@@ -385,7 +385,7 @@ export default function MusicPage() {
           result = (a.statistics?.albumCount || 0) - (b.statistics?.albumCount || 0);
           break;
         case 'trackCount':
-          result = (a.statistics?.trackCount || 0) - (b.statistics?.trackCount || 0);
+          result = (a.statistics?.totalTrackCount || 0) - (b.statistics?.totalTrackCount || 0);
           break;
         case 'sizeOnDisk':
           result = (a.statistics?.sizeOnDisk || 0) - (b.statistics?.sizeOnDisk || 0);

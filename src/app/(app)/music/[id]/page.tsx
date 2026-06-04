@@ -98,6 +98,8 @@ export default function ArtistDetailPage() {
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
+  // Guards against a stale loadData (older artist) resolving after a newer one.
+  const loadRequestRef = useRef(0);
   const router = useRouter();
 
   const [artist, setArtist] = useState<LidarrArtist | null>(() => initialSnapshot?.artist ?? null);
@@ -139,6 +141,7 @@ export default function ArtistDetailPage() {
     }
     if (hasCachedData) setLoading(false);
 
+    const requestId = ++loadRequestRef.current;
     try {
       const [artistResult, nextAlbums, nextQp, nextMp, nextTags] = await Promise.all([
         fetch(`/api/lidarr/${artistId}`).then(async (r): Promise<LidarrArtist | null> => (r.ok ? (await r.json() as LidarrArtist) : null)),
@@ -148,6 +151,7 @@ export default function ArtistDetailPage() {
         fetch('/api/lidarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? (await r.json() as Tag[]) : [])),
       ]);
 
+      if (requestId !== loadRequestRef.current) return;
       setArtist(artistResult);
       setAlbums(nextAlbums);
       setQualityProfiles(nextQp);
@@ -161,12 +165,13 @@ export default function ArtistDetailPage() {
         tags: nextTags,
       });
     } catch {
+      if (requestId !== loadRequestRef.current) return;
       if (!hasCachedData) {
         setArtist(null);
         setAlbums([]);
       }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestRef.current) setLoading(false);
     }
   }, [artistId]);
 
