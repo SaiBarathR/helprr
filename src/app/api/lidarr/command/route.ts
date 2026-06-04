@@ -31,6 +31,9 @@ async function postHandler(request: Request) {
         result = await client.refreshMonitoredDownloads();
         break;
       case 'RenameFiles':
+        if (!Array.isArray(body.files) || body.files.length === 0) {
+          return NextResponse.json({ error: 'files must be a non-empty array' }, { status: 400 });
+        }
         result = await client.renameArtistFiles(body.artistId, body.files);
         break;
       default:

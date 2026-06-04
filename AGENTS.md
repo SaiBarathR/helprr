@@ -43,3 +43,4 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 ## Security & Configuration Tips
 - Copy `.env.example` for local setup and never commit secrets.
 - Treat `DATABASE_URL`, `APP_PASSWORD`, `JWT_SECRET`, and VAPID keys as sensitive.
+- Auth uses **per-user accounts** with scrypt password hashes in the DB (`User.passwordHash`); login verifies against that hash, not `APP_PASSWORD`. `APP_PASSWORD` only seeds the bootstrap admin on first boot and is never re-read on reboot. Admins manage other users' passwords in-app (Settings → Users). To force-reset the bootstrap admin's password from env, set `HELPRR_ADMIN_PASSWORD_RESET=true` (with the desired `APP_PASSWORD`), restart, then remove the flag. Only the bootstrap admin is affected; a reset does not revoke existing sessions.

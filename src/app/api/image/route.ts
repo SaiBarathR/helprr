@@ -71,13 +71,6 @@ function isExplicitlyPrivateHost(hostname: string): boolean {
   return false;
 }
 
-function isAllowedExternalHostForArr(hint: ServiceHint | null, target: URL): boolean {
-  if (hint !== 'sonarr' && hint !== 'radarr') return false;
-  if (isExplicitlyPrivateHost(target.hostname)) return false;
-  const allowedHosts = getAllowedExternalImageHosts();
-  return allowedHosts.has(target.hostname.toLowerCase());
-}
-
 function isAllowedKnownExternalImageHost(target: URL): boolean {
   if (isExplicitlyPrivateHost(target.hostname)) return false;
   const allowedHosts = getAllowedExternalImageHosts();
@@ -227,7 +220,6 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     const allowed = isTmdbImageHost
       || matchedConnectionPathAllowed
-      || isAllowedExternalHostForArr(hint, targetUrl)
       || isAllowedKnownExternalImageHost(targetUrl);
     if (!allowed) {
       return NextResponse.json({ error: 'Image source host is not allowed' }, { status: 403 });

@@ -3,7 +3,7 @@
 Entire site was built using Codex, Opus and Gemini. Using it daily, I haven’t found any issues in functionality so far, but I’ll update the README if I come across any bugs that I’m unable to fix. The UI is mobile-first, as I needed an Iphone app to control radarr, sonarr and qbittorrent with push notifications. I have only added features which I wanted to use myself to use from mobile, not all the options and features present in arr stack and qbittorrent is added. UI may not be the best, but I have opted for functionality and cramped as much info as possible in the dashboard and activity feed pages, so that I can get all the info at a glance on mobile. 
 
 Helprr is a self-hosted web dashboard (PWA) that connects to **Sonarr**, **Radarr**, **Prowlarr**, **Jellyfin**, **TMDb**, **AniList** and **qBittorrent**.
-It polls those services on an interval and can send **Web Push** notifications for common events (downloads starting/completing/failing, health warnings, upcoming releases, etc.) with per-device notification preferences. Provides pages to discover new content using TMDb and AniList APIs, and add it to Sonarr/Radarr. The UI is password-protected with a single shared app password (no user accounts), and the app can be used on mobile as PWA for push notifications or desktop or just in browser.
+It polls those services on an interval and can send **Web Push** notifications for common events (downloads starting/completing/failing, health warnings, upcoming releases, etc.) with per-device notification preferences. Provides pages to discover new content using TMDb and AniList APIs, and add it to Sonarr/Radarr. The UI is password-protected with per-user accounts (an initial admin is seeded from `APP_PASSWORD` on first run; admins manage additional users in-app), and the app can be used on mobile as PWA for push notifications or desktop or just in browser.
 
 End Goal: A simple, mobile-friendly app to monitor and control your media server with push notifications, without needing to pay subscriptions for mobile apps.
 
@@ -28,7 +28,7 @@ End Goal: A simple, mobile-friendly app to monitor and control your media server
 
 ## Features
 
-- Password-protected UI (single shared app password)
+- Password-protected UI with per-user accounts (initial admin seeded from `APP_PASSWORD`; admins manage other users in-app)
 - Connect/configure Sonarr, Radarr, qBittorrent from Settings
 - Dashboard + Activity feed + Calendar views
 - Notifications inbox + per-device notification preferences
@@ -54,7 +54,9 @@ Copy `.env.example` to `.env.local` (for local dev), or set these in your deploy
 | --- | --- | --- |
 | `DATABASE_URL` | yes | PostgreSQL connection string used by Prisma |
 | `REDIS_URL` | yes | Redis connection string used for login rate limiting |
-| `APP_PASSWORD` | yes | Password used on the `/login` screen |
+| `APP_PASSWORD` | yes | Seeds the **bootstrap admin** password on first boot (not checked at login afterward — login verifies the per-user hash in the DB) |
+| `HELPRR_ADMIN_USERNAME` | optional | Bootstrap admin login username (default `admin`) |
+| `HELPRR_ADMIN_PASSWORD_RESET` | optional | Set `true` to force-reset the admin password from `APP_PASSWORD` on next boot (recovery); remove it afterward |
 | `JWT_SECRET` | recommended | Signs the auth cookie (set this in production) |
 | `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | optional | Public VAPID key (enables push notifications; must be available at build time for Docker builds) |
 | `VAPID_PRIVATE_KEY` | optional | Private VAPID key (server-side) |
@@ -119,7 +121,9 @@ The repository includes a `docker-compose.yml` with a Postgres container and the
 - `POSTGRES_PASSWORD` (optional override; defaults to `postgres`)
 - `DATABASE_URL` (optional override; defaults to the internal compose URL)
 - `REDIS_URL` (optional override; defaults to `redis://helprr-redis:6379`)
-- `APP_PASSWORD`
+- `APP_PASSWORD` (seeds the bootstrap admin password on first boot)
+- `HELPRR_ADMIN_USERNAME` (optional; bootstrap admin login username, default `admin`)
+- `HELPRR_ADMIN_PASSWORD_RESET` (optional; set `true` to force-reset the admin password from `APP_PASSWORD`, then remove)
 - `TZ` (optional override; defaults to `UTC`)
 - `JWT_SECRET`
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (build-time)
@@ -174,3 +178,6 @@ npm run lint
 ## Security notes
 
 - Set strong values for `APP_PASSWORD` and `JWT_SECRET` in production.
+- Passwords are stored as per-user scrypt hashes in the database; login checks the hash, **not** `APP_PASSWORD`. `APP_PASSWORD` only seeds the first admin account on initial boot — changing it later and restarting does nothing on its own.
+- **Lost or compromised admin password?** Set `HELPRR_ADMIN_PASSWORD_RESET=true` (alongside the desired `APP_PASSWORD`) and restart to re-hash the admin password, then remove the flag (otherwise every reboot re-applies `APP_PASSWORD`). This resets **only** the bootstrap admin — admins change other users' passwords in-app (Settings → Users).
+- A password reset does **not** sign out existing sessions. To lock out someone who already has a session, also revoke sessions in Settings → Sessions (and/or disable the account).
