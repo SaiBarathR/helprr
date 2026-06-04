@@ -190,7 +190,12 @@ export async function purgeActiveCache(): Promise<CachePurgeResult> {
     // Bump the generation so the new value flows into proxied image URLs as
     // ?v=<generation>, invalidating browser/PWA HTTP caches — not just the
     // server-side files/keys. Then free the previous generation's storage.
-    await bumpCacheGeneration();
+    const nextGeneration = await bumpCacheGeneration();
+    if (nextGeneration <= previousGeneration) {
+      // Bump didn't advance (e.g. Redis error → fallback value): the token
+      // wouldn't change, so abort instead of deleting the still-active cache.
+      throw new Error('Cache generation did not advance; aborting purge');
+    }
     return await purgeGeneration(previousGeneration);
   } finally {
     await setCachePurgeStatus('idle');
