@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Info } from 'lucide-react';
@@ -11,6 +11,7 @@ import { formatDistanceToNowSafe } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { EventIcon, getEventHprColor } from '@/components/notifications/event-visuals';
 import { NotificationDetailDrawer } from '@/components/notifications/notification-detail-drawer';
+import { useBadgeActions } from '@/components/layout/badge-provider';
 import { FONT_MONO, HPR, SectionHeader, mix } from './bento-primitives';
 
 // Notification cards include 2 lines of body text + padding, so they're
@@ -39,6 +40,7 @@ export function NotificationsWidget({
   editMode = false,
 }: WidgetProps) {
   const router = useRouter();
+  const { adjustBadge } = useBadgeActions();
   const { ref, height } = useElementSize<HTMLDivElement>();
   const { visibleCount: maxItems, fetchSize: fetchPageSize } = useListFetchSize({
     height,
@@ -60,26 +62,33 @@ export function NotificationsWidget({
     return upstream.map((n) => (locallyRead.has(n.id) ? { ...n, read: true } : n));
   }, [data, locallyRead]);
 
+  // Synchronous "count this id exactly once" guard, so a rapid double-tap on the
+  // same unread item can't decrement the badge twice (setLocallyRead is async).
+  const markedRef = useRef<Set<string>>(new Set());
+
   const markRead = useCallback(async (n: NotificationRecord) => {
-    if (n.read) return;
+    if (n.read || markedRef.current.has(n.id)) return;
+    markedRef.current.add(n.id);
     setLocallyRead((prev) => {
-      if (prev.has(n.id)) return prev;
       const next = new Set(prev);
       next.add(n.id);
       return next;
     });
+    adjustBadge('notifications', -1, -1);
     try {
       const res = await fetch(`/api/notifications/${n.id}`, { method: 'PUT' });
       if (!res.ok) throw new Error(`PUT failed (${res.status})`);
     } catch {
+      markedRef.current.delete(n.id);
       setLocallyRead((prev) => {
         if (!prev.has(n.id)) return prev;
         const next = new Set(prev);
         next.delete(n.id);
         return next;
       });
+      adjustBadge('notifications', 1, 1);
     }
-  }, []);
+  }, [adjustBadge]);
 
   const handleClick = useCallback(
     (n: NotificationRecord) => {

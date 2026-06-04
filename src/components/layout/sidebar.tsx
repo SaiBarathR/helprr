@@ -11,6 +11,8 @@ import { useUIStore } from '@/lib/store';
 import { getEnabledNavItems } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
 import { useMe, hasCapability } from '@/components/permission-provider';
+import { useBadgeCounts } from '@/components/layout/badge-provider';
+import { NavBadge } from '@/components/layout/nav-badge';
 
 /**
  * Render the application's responsive, collapsible navigation sidebar.
@@ -28,6 +30,7 @@ export function Sidebar() {
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
   const me = useMe();
+  const counts = useBadgeCounts();
 
   const navItems = useMemo(
     () =>
@@ -50,7 +53,8 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 py-2 space-y-1 px-2">
-        {navItems.map(({ href, icon: Icon, label }) => {
+        {navItems.map(({ href, icon: Icon, label, badgeArea }) => {
+          const slice = badgeArea ? counts[badgeArea] : undefined;
           const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
           const isPending = pendingHref === href;
           const link = (
@@ -64,7 +68,7 @@ export function Sidebar() {
                 beginPending(href);
               }}
               className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-primary/10 text-primary'
                   : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
@@ -74,6 +78,8 @@ export function Sidebar() {
             >
               {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className="h-4 w-4 shrink-0" />}
               {!sidebarCollapsed && label}
+              {!sidebarCollapsed && <NavBadge slice={slice} className="ml-auto" />}
+              {sidebarCollapsed && <NavBadge slice={slice} dot className="absolute right-1.5 top-1.5" />}
             </Link>
           );
 

@@ -124,6 +124,33 @@ function logToClients(level: 'debug' | 'info' | 'warn' | 'error', message: strin
     .catch(() => {});
 }
 
+// Pull the live unread count for this device's session and mirror it onto the
+// home-screen app icon. Same-origin fetch carries the session cookie, so the
+// count is scoped to whoever is signed in here. Feature-detected.
+async function updateAppBadge(): Promise<void> {
+  const nav = self.navigator as WorkerNavigator & {
+    setAppBadge?: (count?: number) => Promise<void>;
+    clearAppBadge?: () => Promise<void>;
+  };
+  if (!nav.setAppBadge) return;
+  // Bound the fetch so a hanging request can't keep the push handler (and thus
+  // the service worker) alive via waitUntil.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch('/api/badges', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+    if (!res.ok) return;
+    const data = (await res.json()) as { notifications?: { total?: number } };
+    const count = data.notifications?.total ?? 0;
+    if (count > 0) await nav.setAppBadge(count);
+    else await nav.clearAppBadge?.();
+  } catch (error) {
+    logToClients('error', 'Service worker app-badge update failed', { error: String(error) });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Push notification handler
 self.addEventListener('push', (event) => {
   if (!event.data) return;
@@ -143,7 +170,12 @@ self.addEventListener('push', (event) => {
     data: { url: data.url || '/notifications' },
   };
 
-  event.waitUntil(self.registration.showNotification(data.title || 'Helprr', options));
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(data.title || 'Helprr', options),
+      updateAppBadge(),
+    ])
+  );
 });
 
 // Notification click handler

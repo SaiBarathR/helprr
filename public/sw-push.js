@@ -18,6 +18,29 @@ function logToClients(level, message, metadata) {
     .catch(() => {});
 }
 
+// Pull the live unread count for this device's session and mirror it onto the
+// home-screen app icon. Same-origin fetch carries the session cookie, so the
+// count is scoped to whoever is signed in here. Feature-detected.
+async function updateAppBadge() {
+  if (!self.navigator || !self.navigator.setAppBadge) return;
+  // Bound the fetch so a hanging request can't keep the push handler (and thus
+  // the service worker) alive via waitUntil.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch('/api/badges', { credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+    if (!res.ok) return;
+    const data = await res.json();
+    const count = (data && data.notifications && data.notifications.total) || 0;
+    if (count > 0) await self.navigator.setAppBadge(count);
+    else if (self.navigator.clearAppBadge) await self.navigator.clearAppBadge();
+  } catch (error) {
+    logToClients('error', 'Service worker app-badge update failed', { error: String(error) });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   let data;
@@ -34,7 +57,12 @@ self.addEventListener('push', (event) => {
     tag: data.tag || 'helprr-notification',
     data: { url: data.url || '/notifications' },
   };
-  event.waitUntil(self.registration.showNotification(data.title || 'Helprr', options));
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(data.title || 'Helprr', options),
+      updateAppBadge(),
+    ])
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {

@@ -48,6 +48,7 @@ import { EventIcon, getEventColorClass } from '@/components/notifications/event-
 import { NotificationDetailDrawer } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
+import { useBadgeActions } from '@/components/layout/badge-provider';
 import type { HistoryItem, QueueItem } from '@/types';
 
 type NotificationSource = 'sonarr' | 'radarr' | 'qbittorrent' | 'jellyfin';
@@ -129,6 +130,7 @@ type DeleteMode = 'all' | 'filtered';
 export default function NotificationsPage() {
   const me = useMe();
   const router = useRouter();
+  const { adjustBadge, setBadge, refreshBadges } = useBadgeActions();
 
   const filters = useUIStore((s) => s.notificationsFilters);
   const setSearch = useUIStore((s) => s.setNotificationsSearch);
@@ -229,8 +231,10 @@ export default function NotificationsPage() {
     try {
       await fetch(`/api/notifications/${id}`, { method: 'PUT' });
       setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+      // Callers only invoke this for an unread item, so the nav badge drops by 1.
+      adjustBadge('notifications', -1, -1);
     } catch { }
-  }, []);
+  }, [adjustBadge]);
 
   const resolveQueueNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
     const cacheKey = `${source}:${id}`;
@@ -403,6 +407,7 @@ export default function NotificationsPage() {
     try {
       await fetch('/api/notifications/read-all', { method: 'POST' });
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setBadge('notifications', { total: 0, attention: 0 });
       toast.success('All marked as read');
     } catch { toast.error('Failed'); }
     finally { setMarkingAll(false); }
@@ -475,6 +480,9 @@ export default function NotificationsPage() {
       setDeleteDialogOpen(false);
       setPage(1);
       await fetchNotifications(1, false);
+      // A delete can remove an unknown number of unread rows; the badge endpoint
+      // counts unread live from the DB, so refetch the authoritative number.
+      refreshBadges();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Delete failed');
     } finally {
