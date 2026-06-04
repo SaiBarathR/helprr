@@ -835,10 +835,11 @@ export class PollingService {
     }
 
     // Nav badge: total = downloads still in flight (progress < 1); attention =
-    // stalled or errored torrents that need a look.
+    // the in-flight subset that's stalled or errored (so attention <= total).
+    const inFlightTorrents = torrents.filter((t) => t.progress < 1);
     await writeBadgeSlice('downloads', 'qbittorrent', {
-      total: torrents.filter((t) => t.progress < 1).length,
-      attention: torrents.filter(
+      total: inFlightTorrents.length,
+      attention: inFlightTorrents.filter(
         (t) => t.state === 'error' || t.state === 'missingFiles' || t.state === 'stalledDL',
       ).length,
     });

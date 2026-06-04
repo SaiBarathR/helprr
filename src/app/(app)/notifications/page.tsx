@@ -229,7 +229,8 @@ export default function NotificationsPage() {
 
   const markAsRead = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/notifications/${id}`, { method: 'PUT' });
+      const res = await fetch(`/api/notifications/${id}`, { method: 'PUT' });
+      if (!res.ok) return;
       setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
       // Callers only invoke this for an unread item, so the nav badge drops by 1.
       adjustBadge('notifications', -1, -1);
@@ -405,7 +406,8 @@ export default function NotificationsPage() {
   async function markAllRead() {
     setMarkingAll(true);
     try {
-      await fetch('/api/notifications/read-all', { method: 'POST' });
+      const res = await fetch('/api/notifications/read-all', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed');
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setBadge('notifications', { total: 0, attention: 0 });
       toast.success('All marked as read');

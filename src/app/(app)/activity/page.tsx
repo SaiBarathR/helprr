@@ -470,12 +470,16 @@ function QueueTab({
       ? classifyQueueIssue(selectedItem.trackedDownloadState, selectedItem.trackedDownloadStatus) !== null
       : false;
     try {
-      await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false`, { method: 'DELETE' });
+      const res = await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to remove');
+      }
       toast.success('Removed from queue');
       adjustBadge('activity', -1, wasAttention ? -1 : 0);
       setSelectedItem(null);
       fetchQueue();
-    } catch { toast.error('Failed to remove'); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
     finally { setRemoving(false); }
   }
 
