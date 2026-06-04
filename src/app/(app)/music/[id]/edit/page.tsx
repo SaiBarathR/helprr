@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { invalidateListData } from '@/lib/media-list-cache';
+import { clearArtistDetailSnapshot } from '@/lib/music-route-cache';
 import type { LidarrArtist, QualityProfile, LidarrMetadataProfile, RootFolder, Tag } from '@/types';
 
 export default function ArtistEditPage() {
@@ -92,6 +94,8 @@ export default function ArtistEditPage() {
       });
 
       if (res.ok) {
+        invalidateListData('music');
+        clearArtistDetailSnapshot(artist.id);
         toast.success('Artist updated');
         router.back();
       } else {

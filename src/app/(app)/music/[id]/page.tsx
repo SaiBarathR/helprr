@@ -50,7 +50,10 @@ import { isProtectedApiImageSrc } from '@/lib/image';
 import {
   getArtistDetailSnapshot,
   setArtistDetailSnapshot,
+  clearArtistDetailSnapshot,
 } from '@/lib/music-route-cache';
+import { invalidateListData } from '@/lib/media-list-cache';
+import { pollCommand } from '@/lib/arr-command';
 import {
   getDetailViewState,
   setDetailViewState,
@@ -276,8 +279,13 @@ export default function ArtistDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshArtist', artistId: artist.id }),
       });
-      if (res.ok) toast.success('Refresh started');
-      else toast.error('Refresh failed');
+      if (!res.ok) throw new Error('Refresh failed');
+      const command = await res.json() as { id?: number };
+      toast.success('Refresh started');
+      if (command.id) await pollCommand('lidarr', command.id);
+      invalidateListData('music');
+      await loadData(false);
+      toast.success('Refresh complete');
     } catch { toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }
@@ -294,6 +302,7 @@ export default function ArtistDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         persistArtist(updated);
+        invalidateListData('music');
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       } else {
         toast.error('Failed to update');
@@ -330,6 +339,8 @@ export default function ArtistDetailPage() {
     try {
       const res = await fetch(`/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (res.ok) {
+        invalidateListData('music');
+        clearArtistDetailSnapshot(artist.id);
         toast.success('Artist deleted');
         router.push('/music');
       } else {

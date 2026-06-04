@@ -31,6 +31,8 @@ import {
   setSeasonDetailSnapshot,
   setSeriesDetailSnapshot,
 } from '@/lib/series-route-cache';
+import { invalidateListData } from '@/lib/media-list-cache';
+import { pollCommand } from '@/lib/arr-command';
 import { useCan } from '@/components/permission-provider';
 
 function formatBytes(bytes: number) {
@@ -162,12 +164,18 @@ export default function SeasonDetailPage() {
     if (!series) return;
     setActionLoading('refresh');
     try {
-      await fetch('/api/sonarr/command', {
+      const res = await fetch('/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: series.id }),
       });
+      if (!res.ok) throw new Error('Refresh failed');
+      const command = await res.json() as { id?: number };
       toast.success('Refresh started');
+      if (command.id) await pollCommand('sonarr', command.id);
+      invalidateListData('series');
+      await fetchData(false);
+      toast.success('Refresh complete');
     } catch {
       toast.error('Refresh failed');
     } finally {

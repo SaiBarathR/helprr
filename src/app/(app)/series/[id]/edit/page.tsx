@@ -11,6 +11,8 @@ import { Switch } from '@/components/ui/switch';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { invalidateListData } from '@/lib/media-list-cache';
+import { clearSeriesDetailSnapshot } from '@/lib/series-route-cache';
 import type { SonarrSeries, QualityProfile, RootFolder, Tag } from '@/types';
 
 export default function SeriesEditPage() {
@@ -93,6 +95,8 @@ export default function SeriesEditPage() {
         body: JSON.stringify(updatedSeries),
       });
       if (res.ok) {
+        invalidateListData('series');
+        clearSeriesDetailSnapshot(series.id);
         toast.success('Series updated');
         router.back();
       } else {

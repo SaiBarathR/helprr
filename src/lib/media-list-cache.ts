@@ -48,6 +48,10 @@ export function isListDataFresh<T>(entry: MediaListDataCache<T>, ttlMs = MEDIA_L
   return Date.now() - entry.fetchedAt <= ttlMs;
 }
 
+export function invalidateListData(key: MediaListKey) {
+  delete dataCache[key];
+}
+
 export function getListViewState(key: MediaListKey): MediaListViewState | null {
   const inMemory = viewCache[key];
   if (inMemory) return inMemory;
