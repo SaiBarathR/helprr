@@ -1,0 +1,34 @@
+type ArrService = 'radarr' | 'sonarr' | 'lidarr';
+
+const POLL_INTERVAL_MS = 1_500;
+const POLL_TIMEOUT_MS = 60_000;
+
+/**
+ * Poll a queued *arr command until it finishes. *arr commands are asynchronous:
+ * the POST that creates them returns immediately with status `queued`, then
+ * progresses through `started` to `completed`/`failed`. Callers use this to wait
+ * for completion before re-fetching the affected item.
+ *
+ * Resolves with the terminal status string, or `'timeout'` if the command is
+ * still running after POLL_TIMEOUT_MS. Never rejects — refresh is best-effort UI.
+ */
+export async function pollCommand(service: ArrService, id: number): Promise<string> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    try {
+      const res = await fetch(`/api/${service}/command/${id}`);
+      if (!res.ok) continue;
+      const command = (await res.json()) as { status?: string };
+      const status = command.status;
+      if (status === 'completed' || status === 'failed' || status === 'aborted') {
+        return status;
+      }
+    } catch {
+      // Transient fetch error — keep polling until the deadline.
+    }
+  }
+
+  return 'timeout';
+}

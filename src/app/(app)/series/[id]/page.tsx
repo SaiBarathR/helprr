@@ -38,7 +38,10 @@ import {
   getSeriesDetailSnapshot,
   patchSeasonAcrossSnapshots,
   setSeriesDetailSnapshot,
+  clearSeriesDetailSnapshot,
 } from '@/lib/series-route-cache';
+import { invalidateListData } from '@/lib/media-list-cache';
+import { pollCommand } from '@/lib/arr-command';
 import {
   getDetailViewState,
   setDetailViewState,
@@ -682,6 +685,7 @@ export default function SeriesDetailPage() {
         for (const season of updated.seasons) {
           patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season);
         }
+        invalidateListData('series');
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
     } catch { toast.error('Failed to update'); }
@@ -710,6 +714,7 @@ export default function SeriesDetailPage() {
         if (updatedSeason) {
           patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason);
         }
+        invalidateListData('series');
         toast.success(`Season ${seasonNumber} ${monitored ? 'monitored' : 'unmonitored'}`);
       }
     } catch { toast.error('Failed to update season'); }
@@ -767,6 +772,7 @@ export default function SeriesDetailPage() {
         for (const season of updated.seasons) {
           patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season);
         }
+        invalidateListData('series');
         toast.success(`Monitor set to: ${MONITOR_OPTIONS.find((o) => o.value === monitorOption)?.label}`);
         setShowMonitorEdit(false);
       } else {
@@ -780,12 +786,18 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('refresh');
     try {
-      await fetch('/api/sonarr/command', {
+      const res = await fetch('/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: series.id }),
       });
+      if (!res.ok) throw new Error('Refresh failed');
+      const command = await res.json() as { id?: number };
       toast.success('Refresh started');
+      if (command.id) await pollCommand('sonarr', command.id);
+      invalidateListData('series');
+      await loadData(false);
+      toast.success('Refresh complete');
     } catch { toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }
@@ -795,6 +807,8 @@ export default function SeriesDetailPage() {
     setDeleting(true);
     try {
       await fetch(`/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
+      invalidateListData('series');
+      clearSeriesDetailSnapshot(series.id);
       toast.success('Series deleted');
       router.push('/series');
     } catch { toast.error('Delete failed'); }

@@ -69,3 +69,11 @@ export function setAlbumDetailSnapshot(
 ) {
   setWithLimit(albumDetailCache, albumId, withFetchedAt(snapshot));
 }
+
+export function clearArtistDetailSnapshot(artistId: number) {
+  artistDetailCache.delete(artistId);
+}
+
+export function clearAlbumDetailSnapshot(albumId: number) {
+  albumDetailCache.delete(albumId);
+}

@@ -50,7 +50,10 @@ import { crewRolePriority } from '@/lib/crew-priority';
 import {
   getMovieDetailSnapshot,
   setMovieDetailSnapshot,
+  clearMovieDetailSnapshot,
 } from '@/lib/movie-route-cache';
+import { invalidateListData } from '@/lib/media-list-cache';
+import { pollCommand } from '@/lib/arr-command';
 import {
   getDetailViewState,
   setDetailViewState,
@@ -435,12 +438,18 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('refresh');
     try {
-      await fetch('/api/radarr/command', {
+      const res = await fetch('/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshMovie', movieId: movie.id }),
       });
+      if (!res.ok) throw new Error('Refresh failed');
+      const command = await res.json() as { id?: number };
       toast.success('Refresh started');
+      if (command.id) await pollCommand('radarr', command.id);
+      invalidateListData('movies');
+      await loadData(false);
+      toast.success('Refresh complete');
     } catch { toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }
@@ -458,6 +467,7 @@ export default function MovieDetailPage() {
         const updated = await res.json();
         setMovie(updated);
         persistMovieSnapshot({ movie: updated });
+        invalidateListData('movies');
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
     } catch { toast.error('Failed to update'); }
@@ -469,6 +479,8 @@ export default function MovieDetailPage() {
     setDeleting(true);
     try {
       await fetch(`/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
+      invalidateListData('movies');
+      clearMovieDetailSnapshot(movie.id);
       toast.success('Movie deleted');
       router.push('/movies');
     } catch { toast.error('Delete failed'); }

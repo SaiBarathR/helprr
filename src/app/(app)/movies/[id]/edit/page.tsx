@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { invalidateListData } from '@/lib/media-list-cache';
+import { clearMovieDetailSnapshot } from '@/lib/movie-route-cache';
 import type { RadarrMovie, QualityProfile, RootFolder, Tag } from '@/types';
 
 export default function MovieEditPage() {
@@ -94,6 +96,8 @@ export default function MovieEditPage() {
       });
 
       if (res.ok) {
+        invalidateListData('movies');
+        clearMovieDetailSnapshot(movie.id);
         toast.success('Movie updated');
         router.back();
       } else {

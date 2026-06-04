@@ -227,8 +227,12 @@ export class RadarrClient {
   async refreshMovie(movieId: number): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RefreshMovie',
-      movieId,
+      movieIds: [movieId],
     });
+  }
+
+  async getCommand(id: number): Promise<CommandResponse> {
+    return this.get<CommandResponse>(`/api/v3/command/${id}`);
   }
 
   async refreshMonitoredDownloads(): Promise<CommandResponse> {

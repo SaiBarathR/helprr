@@ -42,3 +42,7 @@ export function setMovieDetailSnapshot(
 ) {
   setWithLimit(movieDetailCache, movieId, withFetchedAt(snapshot));
 }
+
+export function clearMovieDetailSnapshot(movieId: number) {
+  movieDetailCache.delete(movieId);
+}

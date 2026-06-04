@@ -85,6 +85,17 @@ export function setSeriesDetailSnapshot(
   setWithLimit(seriesDetailCache, seriesId, withFetchedAt(snapshot));
 }
 
+export function clearSeriesDetailSnapshot(seriesId: number) {
+  seriesDetailCache.delete(seriesId);
+  const prefix = `${seriesId}:`;
+  for (const key of seasonDetailCache.keys()) {
+    if (key.startsWith(prefix)) seasonDetailCache.delete(key);
+  }
+  for (const key of episodeDetailCache.keys()) {
+    if (key.startsWith(prefix)) episodeDetailCache.delete(key);
+  }
+}
+
 export function getSeasonDetailSnapshot(
   seriesId: number,
   seasonNumber: number

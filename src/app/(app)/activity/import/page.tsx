@@ -10,6 +10,7 @@ import {
   Loader2, RefreshCw, Check, ChevronRight, Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { pollCommand } from '@/lib/arr-command';
 import type { ManualImportItem, SonarrEpisode } from '@/types';
 
 // ── View modes ──────────────────────────────────────────────────────────────
@@ -139,12 +140,15 @@ function ManualImportContent() {
     if (!seriesId) return;
     setRefreshingEpisodes(true);
     try {
-      await fetch('/api/sonarr/command', {
+      const commandRes = await fetch('/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: Number(seriesId) }),
       });
-      await new Promise((r) => setTimeout(r, 2000));
+      if (commandRes.ok) {
+        const command = await commandRes.json() as { id?: number };
+        if (command.id) await pollCommand('sonarr', command.id);
+      }
       const res = await fetch(`/api/sonarr/${seriesId}/episodes`);
       if (res.ok) {
         const episodes = await res.json();
