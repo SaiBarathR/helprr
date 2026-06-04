@@ -3,11 +3,14 @@
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Info } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
+import { EventIcon, getEventHprColor } from '@/components/notifications/event-visuals';
+import { NotificationDetailDrawer } from '@/components/notifications/notification-detail-drawer';
 import { FONT_MONO, HPR, SectionHeader, mix } from './bento-primitives';
 
 // Notification cards include 2 lines of body text + padding, so they're
@@ -31,30 +34,6 @@ async function fetchNotifications(pageSize: number): Promise<NotificationRecord[
   return data.records || [];
 }
 
-function eventKind(eventType: string): 'torrent' | 'jellyfin' | 'warning' | 'import' | 'default' {
-  if (eventType.startsWith('torrent')) return 'torrent';
-  if (eventType.startsWith('jellyfin')) return 'jellyfin';
-  if (eventType === 'healthWarning' || eventType.endsWith('Failed')) return 'warning';
-  if (eventType === 'imported' || eventType === 'grabbed') return 'import';
-  return 'default';
-}
-
-const KIND_COLORS = {
-  torrent: HPR.blue,
-  jellyfin: HPR.cyan,
-  warning: HPR.amber,
-  import: HPR.green,
-  default: HPR.fgMute,
-} as const;
-
-const KIND_ICONS = {
-  torrent: '⛁',
-  jellyfin: '▶',
-  warning: '⚠',
-  import: '✓',
-  default: '·',
-} as const;
-
 export function NotificationsWidget({
   refreshInterval,
   editMode = false,
@@ -74,38 +53,50 @@ export function NotificationsWidget({
     cacheKey: `notifications-${fetchPageSize}`,
   });
   const [locallyRead, setLocallyRead] = useState<Set<string>>(() => new Set());
+  const [detail, setDetail] = useState<NotificationRecord | null>(null);
   const items = useMemo<NotificationRecord[]>(() => {
     const upstream = data ?? [];
     if (locallyRead.size === 0) return upstream;
     return upstream.map((n) => (locallyRead.has(n.id) ? { ...n, read: true } : n));
   }, [data, locallyRead]);
 
+  const markRead = useCallback(async (n: NotificationRecord) => {
+    if (n.read) return;
+    setLocallyRead((prev) => {
+      if (prev.has(n.id)) return prev;
+      const next = new Set(prev);
+      next.add(n.id);
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/notifications/${n.id}`, { method: 'PUT' });
+      if (!res.ok) throw new Error(`PUT failed (${res.status})`);
+    } catch {
+      setLocallyRead((prev) => {
+        if (!prev.has(n.id)) return prev;
+        const next = new Set(prev);
+        next.delete(n.id);
+        return next;
+      });
+    }
+  }, []);
+
   const handleClick = useCallback(
     async (n: NotificationRecord) => {
       if (editMode) return;
-      if (!n.read) {
-        setLocallyRead((prev) => {
-          if (prev.has(n.id)) return prev;
-          const next = new Set(prev);
-          next.add(n.id);
-          return next;
-        });
-        try {
-          const res = await fetch(`/api/notifications/${n.id}`, { method: 'PUT' });
-          if (!res.ok) throw new Error(`PUT failed (${res.status})`);
-        } catch {
-          setLocallyRead((prev) => {
-            if (!prev.has(n.id)) return prev;
-            const next = new Set(prev);
-            next.delete(n.id);
-            return next;
-          });
-        }
-      }
-      const href = n.metadata?.redirect ?? '/notifications';
-      router.push(href);
+      await markRead(n);
+      router.push(n.metadata?.redirect ?? '/notifications');
     },
-    [router, editMode],
+    [router, editMode, markRead],
+  );
+
+  const handleOpenDetail = useCallback(
+    (n: NotificationRecord) => {
+      if (editMode) return;
+      void markRead(n);
+      setDetail(n.read ? n : { ...n, read: true });
+    },
+    [editMode, markRead],
   );
 
   if (loading && items.length === 0) {
@@ -158,8 +149,7 @@ export function NotificationsWidget({
         }}
       >
         {items.slice(0, maxItems).map((n) => {
-          const kind = eventKind(n.eventType);
-          const color = KIND_COLORS[kind];
+          const color = getEventHprColor(n.eventType);
           const unread = !n.read;
           return (
             <div
@@ -195,11 +185,10 @@ export function NotificationsWidget({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: 11,
                   flexShrink: 0,
                 }}
               >
-                {KIND_ICONS[kind]}
+                <EventIcon type={n.eventType} style={{ width: 13, height: 13 }} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div
@@ -250,10 +239,43 @@ export function NotificationsWidget({
                   </div>
                 )}
               </div>
+              {!editMode && (
+                <button
+                  type="button"
+                  aria-label="View details"
+                  onClick={(e) => { e.stopPropagation(); handleOpenDetail(n); }}
+                  style={{
+                    flexShrink: 0,
+                    alignSelf: 'flex-start',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 2,
+                    border: 'none',
+                    background: 'transparent',
+                    color: HPR.fgSubtle,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <Info style={{ width: 13, height: 13 }} />
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+      <NotificationDetailDrawer
+        notification={detail}
+        onClose={() => setDetail(null)}
+        canGoTo={!!detail?.metadata?.redirect}
+        onGoTo={detail
+          ? () => {
+              const n = detail;
+              setDetail(null);
+              void handleClick(n);
+            }
+          : undefined}
+      />
     </div>
   );
 }

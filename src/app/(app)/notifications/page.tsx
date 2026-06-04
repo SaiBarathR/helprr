@@ -31,15 +31,11 @@ import {
 import {
   Bell,
   Check,
-  Download,
   X,
-  AlertTriangle,
-  Clock,
   Settings2,
   Loader2,
   Trash2,
-  Play,
-  Newspaper,
+  Info,
   Search,
   SlidersHorizontal,
   Calendar as CalendarIcon,
@@ -48,6 +44,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
+import { EventIcon, getEventColorClass } from '@/components/notifications/event-visuals';
+import { NotificationDetailDrawer } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import type { HistoryItem, QueueItem } from '@/types';
@@ -75,21 +73,6 @@ interface Notification {
   metadata?: NotificationMetadata | null;
   read: boolean;
   createdAt: string;
-}
-
-const ICON_MAP = {
-  Download, Check, X, AlertTriangle, Clock, Trash2, Play, Bell, Newspaper,
-} as const;
-
-function eventIcon(type: string) {
-  const meta = EVENT_META[type as NotificationEventType];
-  const Icon = meta ? ICON_MAP[meta.iconName] : Bell;
-  return <Icon className="h-4 w-4" />;
-}
-
-function eventColor(type: string) {
-  const meta = EVENT_META[type as NotificationEventType];
-  return meta?.colorClass ?? 'bg-muted text-muted-foreground';
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -163,6 +146,8 @@ export default function NotificationsPage() {
   const [total, setTotal] = useState(0);
   const [markingAll, setMarkingAll] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
+  const [detailNotification, setDetailNotification] = useState<Notification | null>(null);
+  const [availableEventTypes, setAvailableEventTypes] = useState<Set<string>>(() => new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -224,6 +209,21 @@ export default function NotificationsPage() {
     setPage(1);
     fetchNotifications(1, false);
   }, [hasHydrated, debouncedSearch, filters.eventTypes, filters.readState, filters.dateFrom, filters.dateTo, fetchNotifications]);
+
+  // Event types present in the user's history — so anything they can see is
+  // filterable, even without the matching notify.* receive capability.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/notifications/event-types')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && Array.isArray(d?.eventTypes)) {
+          setAvailableEventTypes(new Set<string>(d.eventTypes));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const markAsRead = useCallback(async (id: string) => {
     try {
@@ -388,6 +388,15 @@ export default function NotificationsPage() {
     const href = await resolveNotificationHref(notification);
     router.push(href);
   }, [markAsRead, resolveNotificationHref, router]);
+
+  const handleOpenDetail = useCallback((notification: Notification) => {
+    if (!notification.read) {
+      void markAsRead(notification.id);
+      setDetailNotification({ ...notification, read: true });
+    } else {
+      setDetailNotification(notification);
+    }
+  }, [markAsRead]);
 
   async function markAllRead() {
     setMarkingAll(true);
@@ -592,14 +601,22 @@ export default function NotificationsPage() {
         <>
           <div className="space-y-0.5 animate-list-in">
             {notifications.map((n) => (
-              <button
+              <div
                 key={n.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => void handleNotificationClick(n)}
-                className={`w-full text-left flex items-start gap-3 py-3 transition-colors active:bg-muted/50 ${!n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    void handleNotificationClick(n);
+                  }
+                }}
+                className={`group w-full text-left flex items-start gap-3 py-3 cursor-pointer transition-colors active:bg-muted/50 ${!n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
                   }`}
               >
-                <div className={`p-1.5 rounded-lg mt-0.5 ${eventColor(n.eventType)}`}>
-                  {eventIcon(n.eventType)}
+                <div className={`p-1.5 rounded-lg mt-0.5 ${getEventColorClass(n.eventType)}`}>
+                  <EventIcon type={n.eventType} className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm ${!n.read ? 'font-semibold' : ''} truncate`}>{n.title}</p>
@@ -608,7 +625,15 @@ export default function NotificationsPage() {
                 <span className="text-[11px] text-muted-foreground shrink-0">
                   {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                 </span>
-              </button>
+                <button
+                  type="button"
+                  aria-label="View details"
+                  onClick={(e) => { e.stopPropagation(); handleOpenDetail(n); }}
+                  className="shrink-0 -mr-1 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+              </div>
             ))}
           </div>
           {notifications.length < total && (
@@ -623,6 +648,20 @@ export default function NotificationsPage() {
         </>
       )}
 
+      {/* Detail drawer */}
+      <NotificationDetailDrawer
+        notification={detailNotification}
+        onClose={() => setDetailNotification(null)}
+        canGoTo
+        onGoTo={detailNotification
+          ? () => {
+              const n = detailNotification;
+              setDetailNotification(null);
+              void handleNotificationClick(n);
+            }
+          : undefined}
+      />
+
       {/* Filter drawer */}
       <Drawer open={filterDrawerOpen} onOpenChange={setFilterDrawerOpen}>
         <DrawerContent>
@@ -635,7 +674,7 @@ export default function NotificationsPage() {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Event types</p>
               {EVENT_GROUPS.map((group) => {
                 const visibleTypes = group.types.filter((t) =>
-                  hasCapability(me, EVENT_TYPE_TO_CAPABILITY[t])
+                  hasCapability(me, EVENT_TYPE_TO_CAPABILITY[t]) || availableEventTypes.has(t)
                 );
                 if (visibleTypes.length === 0) return null;
                 return (
