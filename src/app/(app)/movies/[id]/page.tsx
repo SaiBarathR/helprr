@@ -446,10 +446,12 @@ export default function MovieDetailPage() {
       if (!res.ok) throw new Error('Refresh failed');
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
-      if (command.id) await pollCommand('radarr', command.id);
+      const status = command.id ? await pollCommand('radarr', command.id) : 'completed';
       invalidateListData('movies');
-      await loadData(false);
-      toast.success('Refresh complete');
+      await loadData(true);
+      if (status === 'completed') toast.success('Refresh complete');
+      else if (status === 'timeout') toast.warning('Refresh still running');
+      else toast.error('Refresh failed');
     } catch { toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }

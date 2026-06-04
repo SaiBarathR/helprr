@@ -19,7 +19,9 @@ export async function pollCommand(service: ArrService, id: number): Promise<stri
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
     try {
       const res = await fetch(`/api/${service}/command/${id}`);
-      if (!res.ok) continue;
+      // 4xx (auth, missing command) won't recover — stop instead of spinning to timeout.
+      if (res.status >= 400 && res.status < 500) return 'error';
+      if (!res.ok) continue; // 5xx/transient — keep polling until the deadline.
       const command = (await res.json()) as { status?: string };
       const status = command.status;
       if (status === 'completed' || status === 'failed' || status === 'aborted') {

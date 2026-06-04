@@ -145,10 +145,11 @@ function ManualImportContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: Number(seriesId) }),
       });
-      if (commandRes.ok) {
-        const command = await commandRes.json() as { id?: number };
-        if (command.id) await pollCommand('sonarr', command.id);
-      }
+      if (!commandRes.ok) throw new Error('Refresh failed');
+      const command = await commandRes.json() as { id?: number };
+      const status = command.id ? await pollCommand('sonarr', command.id) : 'completed';
+      if (status === 'timeout') { toast.warning('Refresh still running'); return; }
+      if (status !== 'completed') { toast.error('Failed to refresh episodes'); return; }
       const res = await fetch(`/api/sonarr/${seriesId}/episodes`);
       if (res.ok) {
         const episodes = await res.json();
