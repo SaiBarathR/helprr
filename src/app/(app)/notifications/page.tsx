@@ -607,7 +607,7 @@ export default function NotificationsPage() {
                 tabIndex={0}
                 onClick={() => void handleNotificationClick(n)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
+                  if (e.currentTarget === e.target && (e.key === 'Enter' || e.key === ' ')) {
                     e.preventDefault();
                     void handleNotificationClick(n);
                   }

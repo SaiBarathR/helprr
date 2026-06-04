@@ -82,9 +82,9 @@ export function NotificationsWidget({
   }, []);
 
   const handleClick = useCallback(
-    async (n: NotificationRecord) => {
+    (n: NotificationRecord) => {
       if (editMode) return;
-      await markRead(n);
+      void markRead(n);
       router.push(n.metadata?.redirect ?? '/notifications');
     },
     [router, editMode, markRead],
@@ -157,7 +157,7 @@ export function NotificationsWidget({
               onClick={() => void handleClick(n)}
               onKeyDown={(e) => {
                 if (editMode) return;
-                if (e.key === 'Enter' || e.key === ' ') {
+                if (e.currentTarget === e.target && (e.key === 'Enter' || e.key === ' ')) {
                   e.preventDefault();
                   void handleClick(n);
                 }
