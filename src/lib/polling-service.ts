@@ -1536,7 +1536,6 @@ export class PollingService {
   private async checkNotificationRetention(): Promise<void> {
     const now = Date.now();
     if (now - this.lastNotificationPruneAt < 86_400_000) return;
-    this.lastNotificationPruneAt = now;
 
     const settings = await getOrCreateAppSettings();
     const days = settings.notificationHistoryRetentionDays;
@@ -1544,6 +1543,9 @@ export class PollingService {
     const { count } = await prisma.notificationHistory.deleteMany({
       where: { createdAt: { lt: cutoff } },
     });
+    // Advance the throttle only after a successful sweep, so a transient DB
+    // error retries on the next cycle instead of being skipped for a full day.
+    this.lastNotificationPruneAt = now;
     if (count > 0) {
       logger.info(
         'Pruned old notification history',

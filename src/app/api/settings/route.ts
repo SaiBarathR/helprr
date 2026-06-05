@@ -248,6 +248,8 @@ async function putHandler(request: NextRequest) {
         logLevel: (data.logLevel as string | undefined) ?? 'debug',
         logMaxFileMb: (data.logMaxFileMb as number | undefined) ?? 50,
         logRetentionDays: (data.logRetentionDays as number | undefined) ?? 30,
+        notificationHistoryRetentionDays:
+          (data.notificationHistoryRetentionDays as number | undefined) ?? 90,
         logClientConsoleEnabled: (data.logClientConsoleEnabled as boolean | undefined) ?? true,
         logFailedRequestBodies: (data.logFailedRequestBodies as boolean | undefined) ?? false,
         logFailedResponseBodies: (data.logFailedResponseBodies as boolean | undefined) ?? false,
