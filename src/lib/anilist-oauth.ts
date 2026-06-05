@@ -65,9 +65,17 @@ function decryptToken(value: string | null): string | null {
   const iv = payload.subarray(0, 12);
   const tag = payload.subarray(12, 28);
   const encrypted = payload.subarray(28);
-  const decipher = crypto.createDecipheriv('aes-256-gcm', getTokenEncryptionKey(), iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+  try {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', getTokenEncryptionKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
+  } catch {
+    // Token was encrypted under a previous JWT_SECRET/APP_PASSWORD. Treat it as
+    // absent so callers hit the re-auth path (and the OAuth callback can store
+    // fresh tokens) instead of throwing a 500 on every AniList request.
+    console.warn('[AniList] Stored token cannot be decrypted with the current secret; re-authentication required');
+    return null;
+  }
 }
 
 function isDefinitiveRefreshAuthFailure(error: unknown): boolean {
