@@ -178,6 +178,7 @@ model NotificationHistory {
 
   @@index([eventType, dedupeKey])
   @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 model PollingState {
@@ -200,6 +201,7 @@ model AppSettings {
   logLevel                 String  @default("debug")
   logMaxFileMb             Int     @default(50)
   logRetentionDays         Int     @default(30)
+  notificationHistoryRetentionDays Int @default(90)
   logClientConsoleEnabled  Boolean @default(true)
   logFailedRequestBodies   Boolean @default(false)
   logFailedResponseBodies  Boolean @default(false)

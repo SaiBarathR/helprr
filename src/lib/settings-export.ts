@@ -106,6 +106,7 @@ export interface ExportedAppSettings {
   logLevel: string;
   logMaxFileMb: number;
   logRetentionDays: number;
+  notificationHistoryRetentionDays: number;
   logClientConsoleEnabled: boolean;
   logFailedRequestBodies: boolean;
   logFailedResponseBodies: boolean;

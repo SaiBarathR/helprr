@@ -85,6 +85,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         logLevel: settings.logLevel,
         logMaxFileMb: settings.logMaxFileMb,
         logRetentionDays: settings.logRetentionDays,
+        notificationHistoryRetentionDays: settings.notificationHistoryRetentionDays,
         logClientConsoleEnabled: settings.logClientConsoleEnabled,
         logFailedRequestBodies: settings.logFailedRequestBodies,
         logFailedResponseBodies: settings.logFailedResponseBodies,

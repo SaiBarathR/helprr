@@ -120,6 +120,8 @@ function buildAppSettingsUpdate(
   if (input.logLevel !== undefined) out.logLevel = pickEnum(input.logLevel, LOG_LEVELS, 'debug');
   if (input.logMaxFileMb !== undefined) out.logMaxFileMb = clampInt(input.logMaxFileMb, 1, 1024, 50);
   if (input.logRetentionDays !== undefined) out.logRetentionDays = clampInt(input.logRetentionDays, 1, 3650, 30);
+  if (input.notificationHistoryRetentionDays !== undefined)
+    out.notificationHistoryRetentionDays = clampInt(input.notificationHistoryRetentionDays, 1, 3650, 90);
   if (input.logClientConsoleEnabled !== undefined)
     out.logClientConsoleEnabled = Boolean(input.logClientConsoleEnabled);
   if (input.logFailedRequestBodies !== undefined)
@@ -168,6 +170,8 @@ async function applyAppSettingsInTxn(
       logLevel: (data.logLevel as string | undefined) ?? 'debug',
       logMaxFileMb: (data.logMaxFileMb as number | undefined) ?? 50,
       logRetentionDays: (data.logRetentionDays as number | undefined) ?? 30,
+      notificationHistoryRetentionDays:
+        (data.notificationHistoryRetentionDays as number | undefined) ?? 90,
       logClientConsoleEnabled: (data.logClientConsoleEnabled as boolean | undefined) ?? true,
       logFailedRequestBodies: (data.logFailedRequestBodies as boolean | undefined) ?? false,
       logFailedResponseBodies: (data.logFailedResponseBodies as boolean | undefined) ?? false,

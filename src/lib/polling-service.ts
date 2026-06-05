@@ -13,7 +13,7 @@ import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
-import type { QueueItem } from '@/types';
+import type { QueueItem, QueueResponse } from '@/types';
 import crypto from 'crypto';
 
 // Tolerance (minutes) for the "before_air" firing window. Lets a sluggish poll
@@ -73,6 +73,32 @@ function readQueueSnapshots(raw: unknown): Map<number, QueueSnapshot | 'legacy'>
     }
   }
   return map;
+}
+
+// Fetch the entire queue across pages. The *arr queue endpoint paginates, and a
+// single page misses everything past it — failed items beyond page 1 would never
+// notify, and old items would look "new" when they finally scroll onto page 1.
+// We page until we've collected totalRecords, with a safety cap on runaway queues.
+async function fetchAllQueueRecords(client: {
+  getQueue: (page: number, pageSize: number) => Promise<QueueResponse>;
+}): Promise<QueueResponse> {
+  const pageSize = 200;
+  const maxPages = 50; // ~10k items; bounds a pathological queue
+  const first = await client.getQueue(1, pageSize);
+  const records = [...first.records];
+  for (let page = 2; records.length < first.totalRecords && page <= maxPages; page++) {
+    const next = await client.getQueue(page, pageSize);
+    if (next.records.length === 0) break;
+    records.push(...next.records);
+  }
+  if (records.length < first.totalRecords) {
+    logger.warn(
+      'Queue pagination capped',
+      { collected: records.length, totalRecords: first.totalRecords },
+      { scope: 'polling' },
+    );
+  }
+  return { ...first, records, totalRecords: first.totalRecords };
 }
 
 type NotificationEventInput = {
@@ -139,6 +165,9 @@ export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
   private isPolling = false;
+  // Epoch ms of the last NotificationHistory retention sweep. The poll loop runs
+  // every ~30s but the sweep is throttled to once/day; 0 = run on first cycle.
+  private lastNotificationPruneAt = 0;
   // Tracks the bandwidth-schedule rule (and limits) we last pushed to
   // qBittorrent so we only re-send on actual changes. Process-restart loses
   // this — the next cycle will re-apply once (idempotent).
@@ -216,6 +245,7 @@ export class PollingService {
         'checkWatchlistReminders',
         'checkActivityDigest',
         'applyBandwidthSchedule',
+        'checkNotificationRetention',
       ] as const;
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled([
@@ -229,6 +259,7 @@ export class PollingService {
         this.checkWatchlistReminders(),
         this.checkActivityDigest(),
         this.applyBandwidthSchedule(),
+        this.checkNotificationRetention(),
       ]);
 
       const rejected = results.flatMap((result, index) => {
@@ -271,7 +302,7 @@ export class PollingService {
     });
 
     // Queue polling
-    const queue = await client.getQueue(1, 100);
+    const queue = await fetchAllQueueRecords(client);
     const prevMap = readQueueSnapshots(state.lastQueueIds);
     const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
       id: r.id,
@@ -459,7 +490,7 @@ export class PollingService {
       create: { serviceType: 'RADARR', lastQueueIds: [] },
     });
 
-    const queue = await client.getQueue(1, 100);
+    const queue = await fetchAllQueueRecords(client);
     const prevMap = readQueueSnapshots(state.lastQueueIds);
     const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
       id: r.id,
@@ -636,7 +667,7 @@ export class PollingService {
       create: { serviceType: 'LIDARR', lastQueueIds: [] },
     });
 
-    const queue = await client.getQueue(1, 100);
+    const queue = await fetchAllQueueRecords(client);
     const prevMap = readQueueSnapshots(state.lastQueueIds);
     const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
       id: r.id,
@@ -1496,6 +1527,29 @@ export class PollingService {
       }).catch((error) => {
         logger.warn('Failed to update watchlist reminder state', { itemId: item.id, error }, { scope: 'polling' });
       });
+    }
+  }
+
+  // Prune NotificationHistory rows past the configured retention window. The
+  // poll loop runs every ~30s, so throttle the actual DELETE to once/day. The
+  // @@index([createdAt]) keeps the sweep cheap even when nothing is due.
+  private async checkNotificationRetention(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastNotificationPruneAt < 86_400_000) return;
+    this.lastNotificationPruneAt = now;
+
+    const settings = await getOrCreateAppSettings();
+    const days = settings.notificationHistoryRetentionDays;
+    const cutoff = new Date(now - days * 86_400_000);
+    const { count } = await prisma.notificationHistory.deleteMany({
+      where: { createdAt: { lt: cutoff } },
+    });
+    if (count > 0) {
+      logger.info(
+        'Pruned old notification history',
+        { deleted: count, retentionDays: days },
+        { scope: 'polling' },
+      );
     }
   }
 
