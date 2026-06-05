@@ -50,6 +50,16 @@ const NOTIFY_BEFORE_OPTIONS = [
   { value: '1440', label: '24 hours' },
 ];
 
+const HISTORY_RETENTION_OPTIONS = [
+  { value: '7', label: '7 days' },
+  { value: '14', label: '14 days' },
+  { value: '30', label: '30 days' },
+  { value: '60', label: '60 days' },
+  { value: '90', label: '90 days' },
+  { value: '180', label: '180 days' },
+  { value: '365', label: '1 year' },
+];
+
 function hourLabel(h: number): string {
   if (h === 0) return '12:00 AM';
   if (h < 12) return `${h}:00 AM`;
@@ -373,6 +383,31 @@ export default function NotificationsSettingsPage() {
             </Select>
           </div>
         )}
+      </GroupedSection>
+      )}
+
+      {isAdmin && (
+      <GroupedSection
+        title="Notification history"
+        footer="In-app notification records older than this are pruned automatically each day."
+      >
+        <div className="grouped-row">
+          <span className="text-sm">Keep history for</span>
+          <Select
+            value={String(settings?.notificationHistoryRetentionDays ?? 90)}
+            onValueChange={(v) => void update({ notificationHistoryRetentionDays: parseInt(v, 10) })}
+            disabled={loading}
+          >
+            <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HISTORY_RETENTION_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </GroupedSection>
       )}
     </div>

@@ -5,6 +5,7 @@ import { getEnvTimeZone, normalizeTimeZone } from '@/lib/timezone';
 export const DEFAULT_LOG_LEVEL = 'debug';
 export const DEFAULT_LOG_MAX_FILE_MB = 50;
 export const DEFAULT_LOG_RETENTION_DAYS = 30;
+export const DEFAULT_NOTIFICATION_HISTORY_RETENTION_DAYS = 90;
 
 export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
   return {
@@ -18,6 +19,7 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     logLevel: DEFAULT_LOG_LEVEL,
     logMaxFileMb: DEFAULT_LOG_MAX_FILE_MB,
     logRetentionDays: DEFAULT_LOG_RETENTION_DAYS,
+    notificationHistoryRetentionDays: DEFAULT_NOTIFICATION_HISTORY_RETENTION_DAYS,
     logClientConsoleEnabled: true,
     logFailedRequestBodies: false,
     logFailedResponseBodies: false,

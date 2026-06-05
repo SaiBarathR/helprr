@@ -15,6 +15,7 @@ export interface AppSettingsState {
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   logMaxFileMb: number;
   logRetentionDays: number;
+  notificationHistoryRetentionDays: number;
   logClientConsoleEnabled: boolean;
   logFailedRequestBodies: boolean;
   logFailedResponseBodies: boolean;
@@ -94,6 +95,7 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     logLevel: pickEnum(raw.logLevel, LOG_LEVELS, 'debug'),
     logMaxFileMb: numberOr(raw.logMaxFileMb, 50),
     logRetentionDays: numberOr(raw.logRetentionDays, 30),
+    notificationHistoryRetentionDays: numberOr(raw.notificationHistoryRetentionDays, 90),
     logClientConsoleEnabled: raw.logClientConsoleEnabled !== false,
     logFailedRequestBodies: Boolean(raw.logFailedRequestBodies),
     logFailedResponseBodies: Boolean(raw.logFailedResponseBodies),

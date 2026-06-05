@@ -97,6 +97,7 @@ async function putHandler(request: NextRequest) {
       logLevel,
       logMaxFileMb,
       logRetentionDays,
+      notificationHistoryRetentionDays,
       logClientConsoleEnabled,
       logFailedRequestBodies,
       logFailedResponseBodies,
@@ -186,6 +187,16 @@ async function putHandler(request: NextRequest) {
         );
       }
       data.logRetentionDays = parsed;
+    }
+    if (notificationHistoryRetentionDays !== undefined) {
+      const parsed = Number(notificationHistoryRetentionDays);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 3650) {
+        return NextResponse.json(
+          { error: 'Notification history retention must be between 1 and 3650 days' },
+          { status: 400 }
+        );
+      }
+      data.notificationHistoryRetentionDays = parsed;
     }
     if (logClientConsoleEnabled !== undefined)
       data.logClientConsoleEnabled = Boolean(logClientConsoleEnabled);
