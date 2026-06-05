@@ -39,6 +39,8 @@ function toListItem(movie: RadarrMovie): RadarrMovieListItem {
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('movies.view');
+  if (capError) return capError;
   const startedAt = performance.now();
 
   try {

@@ -37,6 +37,11 @@ async function getHandler(request: NextRequest) {
     logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true, authError: true });
     return authError;
   }
+  const capError = await requireCapability('series.view');
+  if (capError) {
+    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true, authError: true });
+    return capError;
+  }
 
   try {
     const full = request.nextUrl.searchParams.get('full') === 'true';

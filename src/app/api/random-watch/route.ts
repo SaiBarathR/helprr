@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import type { RadarrMovie, SonarrSeries } from '@/types';
@@ -108,6 +108,8 @@ async function fetchSeriesPool(): Promise<SonarrSeries[]> {
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('random.view');
+  if (capError) return capError;
 
   const url = new URL(request.url);
   const raw = url.searchParams.get('type') ?? 'any';

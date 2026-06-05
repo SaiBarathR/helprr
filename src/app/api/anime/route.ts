@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import {
   searchAnime,
@@ -123,6 +123,8 @@ function parseOptionalYear(value: string | null) {
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('anime.view');
+  if (capError) return capError;
 
   try {
     const { searchParams } = new URL(request.url);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { annotateDiscoverItems, dedupeDiscoverItems, normalizeTmdbItem } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type {
@@ -567,6 +567,8 @@ async function discoverItems(params: {
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('discover.view');
+  if (capError) return capError;
 
   try {
     const { searchParams } = new URL(request.url);
