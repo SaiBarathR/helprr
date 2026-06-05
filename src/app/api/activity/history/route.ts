@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import type { HistoryItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -120,6 +120,8 @@ function resolveUpstreamEventType(
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('activity.view');
+  if (capError) return capError;
 
   try {
     const { searchParams } = new URL(request.url);

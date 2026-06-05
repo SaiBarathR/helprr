@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { setImageCacheGeneration, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
@@ -223,6 +223,11 @@ async function buildOverdue(
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  // Surfaces both libraries' gaps, so require read access to both.
+  const seriesCapError = await requireCapability('series.view');
+  if (seriesCapError) return seriesCapError;
+  const moviesCapError = await requireCapability('movies.view');
+  if (moviesCapError) return moviesCapError;
 
   // This route builds proxied image URLs via toCachedImageSrc outside the (app)
   // layout tree, so seed the cache-busting token explicitly for this worker.
