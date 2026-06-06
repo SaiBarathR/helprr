@@ -27,6 +27,7 @@ function toListItem(series: SonarrSeries): SonarrSeriesListItem {
     nextAiring: series.nextAiring,
     previousAiring: series.previousAiring,
     statistics: series.statistics,
+    seriesType: series.seriesType,
   };
 }
 

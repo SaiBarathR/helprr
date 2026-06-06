@@ -298,9 +298,19 @@ export interface SeriesAniListCandidate {
   matchScore: number;
 }
 
+/** One linked AniList entry for a Sonarr series (season-split anime support). */
+export interface SeriesAniListEntry {
+  anilistMediaId: number;
+  isPrimary: boolean;
+  order: number;
+}
+
 export interface SeriesAniListMapping {
   sonarrSeriesId: number;
-  anilistMediaId: number | null;
+  /** Convenience: the primary entry's AniList id (or null when unmatched). */
+  primaryAnilistMediaId: number | null;
+  /** All linked AniList entries, ordered (index 0 = primary). Empty when unmatched. */
+  entries: SeriesAniListEntry[];
   state: SeriesAniListMappingState;
   matchMethod: string | null;
   confidence: number | null;
@@ -309,7 +319,20 @@ export interface SeriesAniListMapping {
 
 export interface SeriesAniListResponse {
   mapping: SeriesAniListMapping;
-  detail: AniListDetailResponse | null;
+  /** One detail per linked entry, ordered (index 0 = primary). Empty when unmatched. */
+  details: AniListDetailResponse[];
+}
+
+/** A Sonarr series currently mapped to a given AniList media (reverse lookup). */
+export interface AnimeSonarrMappingItem {
+  sonarrSeriesId: number;
+  state: SeriesAniListMappingState;
+  seriesTitle: string;
+  seriesYear: number | null;
+}
+
+export interface AnimeSonarrMappingsResponse {
+  mappings: AnimeSonarrMappingItem[];
 }
 
 export interface AniListDetailResponse {

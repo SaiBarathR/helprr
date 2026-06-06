@@ -68,6 +68,7 @@ export type SonarrSeriesListItem = Pick<
   | 'nextAiring'
   | 'previousAiring'
   | 'statistics'
+  | 'seriesType'
 >;
 
 export interface SonarrSeason {

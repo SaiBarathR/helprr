@@ -16,13 +16,15 @@ import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { AnimeReviewCard } from '@/components/anime/anime-review-card';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
+import { SonarrMapDrawer } from '@/components/anime/sonarr-map-drawer';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { ExternalLink, Tv, Film, Loader2, Clock, Trophy, TrendingUp } from 'lucide-react';
+import { ExternalLink, Tv, Film, Loader2, Clock, Trophy, TrendingUp, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
-import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
+import { useMe } from '@/components/permission-provider';
+import { formatAniListRankingLabel, formatFuzzyDate, isMovieFormat } from '@/lib/anilist-helpers';
 import {
   getAnimeDetailSnapshot,
   setAnimeDetailSnapshot,
@@ -86,6 +88,9 @@ export default function AnimeDetailPage() {
   const externalUrls = useExternalUrls();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // AniList↔Sonarr mappings are global admin state, so the map action is admin-only.
+  const isAdmin = useMe()?.role === 'admin';
+  const [showSonarrMap, setShowSonarrMap] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -496,6 +501,20 @@ export default function AnimeDetailPage() {
         {/* Info Rows */}
         <DiscoverInfoRows title="Information" rows={infoRows} />
 
+        {/* Sonarr mapping — admin-only; Sonarr only carries series, so hide for movies */}
+        {isAdmin && !isMovieFormat(detail.format) && (
+          <button
+            onClick={() => setShowSonarrMap(true)}
+            className="flex justify-between items-center w-full py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
+          >
+            <span className="text-sm text-muted-foreground">Sonarr</span>
+            <span className="flex items-center gap-2 text-sm">
+              Map to Sonarr series
+              <Pencil className="h-3 w-3 text-muted-foreground" />
+            </span>
+          </button>
+        )}
+
         {/* Alternative Titles */}
         {altTitles.length > 0 && (
           <div>
@@ -720,6 +739,15 @@ export default function AnimeDetailPage() {
           </div>
         )}
       </div>
+
+      {isAdmin && !isMovieFormat(detail.format) && (
+        <SonarrMapDrawer
+          open={showSonarrMap}
+          onOpenChange={setShowSonarrMap}
+          anilistMediaId={detail.id}
+          animeTitle={detail.title}
+        />
+      )}
     </div>
   );
 }

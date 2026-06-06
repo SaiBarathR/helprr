@@ -1,4 +1,7 @@
-import type { AniListSeriesMapping as PrismaAniListSeriesMapping } from '@prisma/client';
+import type {
+  AniListSeriesMapping as PrismaAniListSeriesMapping,
+  AniListSeriesMappingEntry as PrismaEntry,
+} from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getAnimeDetail, getAnimeNextAiringEpisode, searchAnime } from '@/lib/anilist-client';
 import {
@@ -78,10 +81,32 @@ function snapshotMatches(record: PrismaAniListSeriesMapping, snapshot: SeriesSna
   );
 }
 
-function mappingFromRecord(record: PrismaAniListSeriesMapping): SeriesAniListMapping {
+type MappingWithEntries = PrismaAniListSeriesMapping & { entries: PrismaEntry[] };
+
+function snapshotFields(series: SonarrSeries) {
+  const snapshot = createSnapshot(series);
+  return {
+    seriesTitleSnapshot: snapshot.title,
+    seriesYearSnapshot: snapshot.year,
+    seriesTvdbIdSnapshot: snapshot.tvdbId,
+    seriesTmdbIdSnapshot: snapshot.tmdbId,
+  };
+}
+
+function mappingFromRecord(record: MappingWithEntries): SeriesAniListMapping {
+  const entries = [...record.entries]
+    .sort((a, b) => a.order - b.order)
+    .map((entry) => ({
+      anilistMediaId: entry.anilistMediaId,
+      isPrimary: entry.isPrimary,
+      order: entry.order,
+    }));
+  const primary = entries.find((entry) => entry.isPrimary) ?? entries[0] ?? null;
+
   return {
     sonarrSeriesId: record.sonarrSeriesId,
-    anilistMediaId: record.anilistMediaId,
+    primaryAnilistMediaId: primary?.anilistMediaId ?? null,
+    entries,
     state: record.state as SeriesAniListMappingState,
     matchMethod: record.matchMethod,
     confidence: record.confidence,
@@ -166,43 +191,57 @@ function shouldAcceptCandidate(best: ScoredCandidate | null, secondBest: ScoredC
   return best.score - secondBest.score >= 15;
 }
 
-async function persistMapping(
+async function loadRecord(seriesId: number): Promise<MappingWithEntries | null> {
+  return prisma.aniListSeriesMapping.findUnique({
+    where: { sonarrSeriesId: seriesId },
+    include: { entries: { orderBy: { order: 'asc' } } },
+  });
+}
+
+/**
+ * Upsert the per-series resolution row and (when `entryIds` is provided) replace
+ * its linked AniList entries with the given ordered list — index 0 becomes the
+ * primary. Pass `entryIds: []` to clear all entries (unmatched / cleared states).
+ * Omit `entryIds` to leave existing entries untouched.
+ */
+async function persistResolution(
   series: SonarrSeries,
   values: {
-    anilistMediaId: number | null;
     state: SeriesAniListMappingState;
     matchMethod?: string | null;
     confidence?: number | null;
+    entryIds?: number[];
   }
-): Promise<PrismaAniListSeriesMapping> {
-  const snapshot = createSnapshot(series);
+): Promise<MappingWithEntries> {
+  const base = {
+    state: values.state,
+    matchMethod: values.matchMethod ?? null,
+    confidence: values.confidence ?? null,
+    ...snapshotFields(series),
+    resolvedAt: new Date(),
+  };
 
-  return prisma.aniListSeriesMapping.upsert({
+  const record = await prisma.aniListSeriesMapping.upsert({
     where: { sonarrSeriesId: series.id },
-    update: {
-      anilistMediaId: values.anilistMediaId,
-      state: values.state,
-      matchMethod: values.matchMethod ?? null,
-      confidence: values.confidence ?? null,
-      seriesTitleSnapshot: snapshot.title,
-      seriesYearSnapshot: snapshot.year,
-      seriesTvdbIdSnapshot: snapshot.tvdbId,
-      seriesTmdbIdSnapshot: snapshot.tmdbId,
-      resolvedAt: new Date(),
-    },
-    create: {
-      sonarrSeriesId: series.id,
-      anilistMediaId: values.anilistMediaId,
-      state: values.state,
-      matchMethod: values.matchMethod ?? null,
-      confidence: values.confidence ?? null,
-      seriesTitleSnapshot: snapshot.title,
-      seriesYearSnapshot: snapshot.year,
-      seriesTvdbIdSnapshot: snapshot.tvdbId,
-      seriesTmdbIdSnapshot: snapshot.tmdbId,
-      resolvedAt: new Date(),
-    },
+    update: base,
+    create: { sonarrSeriesId: series.id, ...base },
   });
+
+  if (values.entryIds !== undefined) {
+    await prisma.aniListSeriesMappingEntry.deleteMany({ where: { mappingId: record.id } });
+    if (values.entryIds.length > 0) {
+      await prisma.aniListSeriesMappingEntry.createMany({
+        data: values.entryIds.map((anilistMediaId, index) => ({
+          mappingId: record.id,
+          anilistMediaId,
+          isPrimary: index === 0,
+          order: index,
+        })),
+      });
+    }
+  }
+
+  return (await loadRecord(series.id))!;
 }
 
 async function collectCandidates(query: string): Promise<AniListMedia[]> {
@@ -212,7 +251,7 @@ async function collectCandidates(query: string): Promise<AniListMedia[]> {
   return result.media;
 }
 
-async function autoResolveMapping(series: SonarrSeries): Promise<PrismaAniListSeriesMapping> {
+async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntries> {
   const queries = Array.from(
     new Set(
       [
@@ -241,27 +280,25 @@ async function autoResolveMapping(series: SonarrSeries): Promise<PrismaAniListSe
   const secondBest = scored[1] ?? null;
 
   if (!shouldAcceptCandidate(best, secondBest)) {
-    return persistMapping(series, {
-      anilistMediaId: null,
+    return persistResolution(series, {
       state: 'AUTO_UNMATCHED',
       matchMethod: best?.method ?? null,
       confidence: best ? Math.max(0, best.score) : null,
+      entryIds: [],
     });
   }
 
-  return persistMapping(series, {
-    anilistMediaId: best!.candidate.id,
+  return persistResolution(series, {
     state: 'AUTO_MATCH',
     matchMethod: best!.method ?? 'search_match',
     confidence: Math.max(0, best!.score),
+    entryIds: [best!.candidate.id],
   });
 }
 
-async function getCurrentMappingRecord(series: SonarrSeries): Promise<PrismaAniListSeriesMapping> {
+async function getCurrentMappingRecord(series: SonarrSeries): Promise<MappingWithEntries> {
   const snapshot = createSnapshot(series);
-  const existing = await prisma.aniListSeriesMapping.findUnique({
-    where: { sonarrSeriesId: series.id },
-  });
+  const existing = await loadRecord(series.id);
 
   if (existing?.state === 'MANUAL_MATCH' || existing?.state === 'MANUAL_NONE') {
     return existing;
@@ -317,35 +354,53 @@ async function normalizeSeriesDetailWithFreshAiring(anilistMediaId: number) {
 }
 
 export async function getSeriesAniListResponse(series: SonarrSeries): Promise<SeriesAniListResponse> {
-  const mappingRecord = await getCurrentMappingRecord(series);
+  const record = await getCurrentMappingRecord(series);
+  const orderedEntries = [...record.entries].sort((a, b) => a.order - b.order);
 
-  if (!mappingRecord.anilistMediaId) {
-    return {
-      mapping: mappingFromRecord(mappingRecord),
-      detail: null,
-    };
+  if (orderedEntries.length === 0) {
+    return { mapping: mappingFromRecord(record), details: [] };
   }
 
-  const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(mappingRecord.anilistMediaId);
+  const fetched = await Promise.all(
+    orderedEntries.map(async (entry) => {
+      try {
+        const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(entry.anilistMediaId);
+        return { entry, normalized: isRejectedSeriesFormat(detail.format) ? null : normalized };
+      } catch {
+        return { entry, normalized: null };
+      }
+    })
+  );
 
-  if (isRejectedSeriesFormat(detail.format)) {
-    const resetRecord = await persistMapping(series, {
-      anilistMediaId: null,
+  const valid = fetched.filter((item) => item.normalized !== null);
+  const droppedIds = fetched.filter((item) => item.normalized === null).map((item) => item.entry.id);
+
+  // Every linked entry is gone/invalid on AniList → reset to auto-unmatched so the
+  // series falls back to TMDB enrichment (mirrors the prior single-entry behavior).
+  if (valid.length === 0) {
+    const reset = await persistResolution(series, {
       state: 'AUTO_UNMATCHED',
       matchMethod: 'mapped_non_series_rejected',
       confidence: null,
+      entryIds: [],
     });
-
-    return {
-      mapping: mappingFromRecord(resetRecord),
-      detail: null,
-    };
+    return { mapping: mappingFromRecord(reset), details: [] };
   }
 
-  return {
-    mapping: mappingFromRecord(mappingRecord),
-    detail: normalized,
-  };
+  // Prune invalid secondaries; promote a fresh primary if the old one was dropped.
+  if (droppedIds.length > 0) {
+    await prisma.aniListSeriesMappingEntry.deleteMany({ where: { id: { in: droppedIds } } });
+    if (!valid.some((item) => item.entry.isPrimary)) {
+      await prisma.aniListSeriesMappingEntry.update({
+        where: { id: valid[0].entry.id },
+        data: { isPrimary: true },
+      });
+    }
+    const refreshed = (await loadRecord(series.id))!;
+    return { mapping: mappingFromRecord(refreshed), details: valid.map((item) => item.normalized!) };
+  }
+
+  return { mapping: mappingFromRecord(record), details: valid.map((item) => item.normalized!) };
 }
 
 export async function searchSeriesAniListCandidates(
@@ -364,35 +419,107 @@ export async function searchSeriesAniListCandidates(
     });
 }
 
-export async function setManualSeriesAniListMapping(
+/** Add (or keep) an AniList entry on a series as a manual link. The first entry becomes primary. */
+export async function addManualEntry(
   series: SonarrSeries,
   anilistMediaId: number
 ): Promise<SeriesAniListResponse> {
-  const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(anilistMediaId);
+  const { detail } = await normalizeSeriesDetailWithFreshAiring(anilistMediaId);
   if (isRejectedSeriesFormat(detail.format)) {
     throw new Error('Only AniList anime series formats can be mapped to Sonarr series.');
   }
 
-  const record = await persistMapping(series, {
-    anilistMediaId,
-    state: 'MANUAL_MATCH',
+  const base = {
+    state: 'MANUAL_MATCH' as const,
     matchMethod: 'manual',
     confidence: null,
+    ...snapshotFields(series),
+    resolvedAt: new Date(),
+  };
+  const record = await prisma.aniListSeriesMapping.upsert({
+    where: { sonarrSeriesId: series.id },
+    update: base,
+    create: { sonarrSeriesId: series.id, ...base },
   });
 
-  return {
-    mapping: mappingFromRecord(record),
-    detail: normalized,
-  };
+  const existing = await prisma.aniListSeriesMappingEntry.findMany({
+    where: { mappingId: record.id },
+    orderBy: { order: 'asc' },
+  });
+  if (!existing.some((entry) => entry.anilistMediaId === anilistMediaId)) {
+    const maxOrder = existing.reduce((max, entry) => Math.max(max, entry.order), -1);
+    await prisma.aniListSeriesMappingEntry.create({
+      data: {
+        mappingId: record.id,
+        anilistMediaId,
+        isPrimary: existing.length === 0,
+        order: maxOrder + 1,
+      },
+    });
+  }
+
+  return getSeriesAniListResponse(series);
 }
 
-export async function clearManualSeriesAniListMapping(series: SonarrSeries): Promise<SeriesAniListMapping> {
-  const record = await persistMapping(series, {
-    anilistMediaId: null,
+/** Remove one linked AniList entry. Promotes a new primary, or clears the mapping if it was the last. */
+export async function removeManualEntry(
+  series: SonarrSeries,
+  anilistMediaId: number
+): Promise<SeriesAniListResponse> {
+  const record = await loadRecord(series.id);
+  const target = record?.entries.find((entry) => entry.anilistMediaId === anilistMediaId);
+  if (record && target) {
+    await prisma.aniListSeriesMappingEntry.delete({ where: { id: target.id } });
+    const remaining = record.entries
+      .filter((entry) => entry.id !== target.id)
+      .sort((a, b) => a.order - b.order);
+    if (remaining.length === 0) {
+      await prisma.aniListSeriesMapping.update({
+        where: { id: record.id },
+        data: { state: 'MANUAL_NONE', matchMethod: 'manual_clear', confidence: null, resolvedAt: new Date() },
+      });
+    } else if (target.isPrimary) {
+      await prisma.aniListSeriesMappingEntry.update({
+        where: { id: remaining[0].id },
+        data: { isPrimary: true },
+      });
+    }
+  }
+
+  return getSeriesAniListResponse(series);
+}
+
+/** Make a linked entry the primary, moving it to the front of the tab order. */
+export async function setPrimaryEntry(
+  series: SonarrSeries,
+  anilistMediaId: number
+): Promise<SeriesAniListResponse> {
+  const record = await loadRecord(series.id);
+  const target = record?.entries.find((entry) => entry.anilistMediaId === anilistMediaId);
+  if (record && target) {
+    const reordered = [
+      target,
+      ...record.entries.filter((entry) => entry.id !== target.id).sort((a, b) => a.order - b.order),
+    ];
+    await prisma.$transaction(
+      reordered.map((entry, index) =>
+        prisma.aniListSeriesMappingEntry.update({
+          where: { id: entry.id },
+          data: { isPrimary: index === 0, order: index },
+        })
+      )
+    );
+  }
+
+  return getSeriesAniListResponse(series);
+}
+
+export async function clearManualSeriesAniListMapping(series: SonarrSeries): Promise<SeriesAniListResponse> {
+  await persistResolution(series, {
     state: 'MANUAL_NONE',
     matchMethod: 'manual_clear',
     confidence: null,
+    entryIds: [],
   });
-
-  return mappingFromRecord(record);
+  return getSeriesAniListResponse(series);
 }
