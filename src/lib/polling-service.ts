@@ -4,7 +4,9 @@ import { SEERR_MEDIA_STATUS, SEERR_REQUEST_STATUS } from '@/types/seerr';
 import { getCachedSeerrMediaDetail, formatSeerrMediaLabel } from '@/lib/seerr-helpers';
 import { notifyEvent, initVapid } from '@/lib/notification-service';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
-import { startOfLocalDay, endOfLocalDay, toZonedDate, dateInTimeZone } from '@/lib/timezone';
+import { ensureSeriesAniListMapping } from '@/lib/anilist-series-mapping';
+import { AniListRateLimitError } from '@/lib/anilist-client';
+import { startOfLocalDay, endOfLocalDay, toZonedDate, dateInTimeZone, getLocalDateKey } from '@/lib/timezone';
 import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
@@ -13,7 +15,7 @@ import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
-import type { QueueItem, QueueResponse } from '@/types';
+import type { QueueItem, QueueResponse, SonarrSeries } from '@/types';
 import crypto from 'crypto';
 
 // Tolerance (minutes) for the "before_air" firing window. Lets a sluggish poll
@@ -48,6 +50,15 @@ function downloadFailureBody(item: QueueItem): string {
 }
 
 type QueueSnapshot = { id: number; state: string; status: string };
+
+type AnimeAutoMapRun = {
+  startedAt: number;
+  stop: boolean;
+  processed: number;
+  failed: number;
+  queueTotal: number;
+  currentTitle: string | null;
+};
 
 function readQueueSnapshots(raw: unknown): Map<number, QueueSnapshot | 'legacy'> {
   const map = new Map<number, QueueSnapshot | 'legacy'>();
@@ -176,6 +187,14 @@ export class PollingService {
     downloadKbps: number;
     uploadKbps: number;
   } | null = null;
+  // Nightly anime auto-map run. The whole run lives in this one in-memory
+  // object so status can report real progress; a restart drops it on purpose —
+  // the scheduled gate re-triggers (lastRunAt was never stamped) and the
+  // rebuilt queue skips everything that already got a row. animeMapWake lets
+  // Stop cut the loop's sleeps short. In dev, HMR can transiently double the
+  // loop; the per-item row re-check bounds that to redundant idempotent work.
+  private animeMapRun: AnimeAutoMapRun | null = null;
+  private animeMapWake: (() => void) | null = null;
 
   private async notifyAndLog(
     event: NotificationEventInput,
@@ -246,6 +265,7 @@ export class PollingService {
         'checkActivityDigest',
         'applyBandwidthSchedule',
         'checkNotificationRetention',
+        'checkAnimeAutoMap',
       ] as const;
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled([
@@ -260,6 +280,7 @@ export class PollingService {
         this.checkActivityDigest(),
         this.applyBandwidthSchedule(),
         this.checkNotificationRetention(),
+        this.checkAnimeAutoMap(),
       ]);
 
       const rejected = results.flatMap((result, index) => {
@@ -284,6 +305,245 @@ export class PollingService {
     } finally {
       this.isPolling = false;
     }
+  }
+
+  /** Snapshot of the in-flight auto-map run for the status endpoint. */
+  getAnimeAutoMapState(): {
+    running: boolean;
+    run: { processed: number; queueTotal: number; failed: number; currentTitle: string | null } | null;
+  } {
+    const run = this.animeMapRun;
+    return {
+      running: run !== null,
+      run: run
+        ? {
+            processed: run.processed,
+            queueTotal: run.queueTotal,
+            failed: run.failed,
+            currentTitle: run.currentTitle,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Signal the run loop to stop after the current item; the loop's exit path
+   * stamps "done today". Returns false (and stamps nothing) when idle, so a
+   * stray Stop can't suppress tonight's scheduled run.
+   */
+  requestAnimeAutoMapStop(): boolean {
+    if (!this.animeMapRun) return false;
+    this.animeMapRun.stop = true;
+    this.animeMapWake?.();
+    return true;
+  }
+
+  /** Stamp "ran today" so the scheduled gate stays closed until tomorrow. */
+  private async stampAnimeAutoMapDone(): Promise<void> {
+    try {
+      await prisma.appSettings.update({
+        where: { id: 'singleton' },
+        data: { animeAutoMapLastRunAt: new Date() },
+      });
+    } catch (error) {
+      logger.error('Anime auto-map could not stamp its run date', {
+        error: errorMessage(error),
+      }, { scope: 'polling' });
+    }
+  }
+
+  /**
+   * Sleep that requestAnimeAutoMapStop() can cut short. The run loop is
+   * sequential, so at most one sleep is ever pending — one wake slot suffices.
+   */
+  private interruptibleSleep(ms: number): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        this.animeMapWake = null;
+        resolve();
+      }, ms);
+      this.animeMapWake = () => {
+        clearTimeout(timer);
+        this.animeMapWake = null;
+        resolve();
+      };
+    });
+  }
+
+  /**
+   * Start an anime auto-map run unless one is already active. Builds the queue
+   * of Sonarr anime that have never been mapped (no AniListSeriesMapping row —
+   * existing auto/manual mappings are never touched), then drains it on a
+   * detached loop at one series per minute. Never throws.
+   */
+  async startAnimeAutoMapRun(
+    reason: 'manual' | 'scheduled'
+  ): Promise<{ started: boolean; queued?: number; reason?: string }> {
+    // Claim synchronously before any await so a poll-tick scheduled start and
+    // a manual Run-now in the same tick can't both spin up loops.
+    if (this.animeMapRun) return { started: false, reason: 'already-running' };
+    const run: AnimeAutoMapRun = {
+      startedAt: Date.now(),
+      stop: false,
+      processed: 0,
+      failed: 0,
+      queueTotal: 0,
+      currentTitle: null,
+    };
+    this.animeMapRun = run;
+
+    let queue: SonarrSeries[];
+    try {
+      const settings = await getOrCreateAppSettings();
+      if (!settings.animeAutoMapEnabled) {
+        this.animeMapRun = null;
+        return { started: false, reason: 'disabled' };
+      }
+
+      const client = await getSonarrClient();
+      const anime = (await client.getSeries()).filter((s) => s.seriesType === 'anime');
+      const rows = await prisma.aniListSeriesMapping.findMany({
+        where: { sonarrSeriesId: { in: anime.map((s) => s.id) } },
+        select: { sonarrSeriesId: true },
+      });
+      const mappedIds = new Set(rows.map((row) => row.sonarrSeriesId));
+      queue = anime.filter((s) => !mappedIds.has(s.id));
+    } catch (error) {
+      // Sonarr/DB unavailable — release the claim WITHOUT stamping, so being
+      // down at the scheduled hour doesn't consume the day; a later poll retries.
+      this.animeMapRun = null;
+      logger.debug('Anime auto-map skipped: could not build its queue', {
+        error: errorMessage(error),
+      }, { scope: 'polling' });
+      return { started: false, reason: 'sonarr-unavailable' };
+    }
+
+    if (queue.length === 0) {
+      // Every anime already has a row — stamp "done today" so the scheduled
+      // gate stays closed instead of rebuilding this queue every poll cycle.
+      this.animeMapRun = null;
+      await this.stampAnimeAutoMapDone();
+      return { started: false, reason: 'nothing-to-map', queued: 0 };
+    }
+
+    run.queueTotal = queue.length;
+    logger.info('Anime auto-map run started', { reason, queued: queue.length }, { scope: 'polling' });
+    void this.runAnimeAutoMapLoop(queue);
+    return { started: true, queued: queue.length };
+  }
+
+  /**
+   * Detached drain: one never-mapped series per minute until the queue is done
+   * or Stop is requested. ensureSeriesAniListMapping() persists AUTO_MATCH
+   * (with season siblings auto-linked) or AUTO_UNMATCHED, so every handled
+   * series permanently leaves the backlog. A rate-limit error sleeps the
+   * window out and retries the same series (429s are global); any other error
+   * skips that series so one bad item can't wedge the queue. The exit path
+   * always stamps "done today" — including Stop ("done for tonight"; Run-now
+   * can override) — and a run that crosses midnight stamps the day it
+   * finishes, intentionally consuming that day's slot.
+   */
+  private async runAnimeAutoMapLoop(queue: SonarrSeries[]): Promise<void> {
+    const run = this.animeMapRun;
+    if (!run) return;
+    try {
+      for (let i = 0; i < queue.length; i++) {
+        if (run.stop) break;
+        const series = queue[i];
+        run.currentTitle = series.title;
+
+        // A row may have appeared since the queue was built (manual map, page
+        // visit, doubled dev loop) — never re-touch an existing mapping.
+        const existing = await prisma.aniListSeriesMapping.findUnique({
+          where: { sonarrSeriesId: series.id },
+          select: { id: true },
+        });
+        if (existing) {
+          run.processed += 1;
+          logger.debug('Anime auto-map skipped already-mapped series', {
+            seriesId: series.id,
+            title: series.title,
+          }, { scope: 'polling' });
+          continue;
+        }
+
+        let done = false;
+        let attemptStartedMs = Date.now();
+        while (!done && !run.stop) {
+          attemptStartedMs = Date.now();
+          try {
+            await ensureSeriesAniListMapping(series);
+            run.processed += 1;
+            done = true;
+            logger.debug('Anime auto-map resolved one series', {
+              seriesId: series.id,
+              title: series.title,
+              processed: run.processed,
+              queueTotal: run.queueTotal,
+            }, { scope: 'polling' });
+          } catch (error) {
+            if (error instanceof AniListRateLimitError) {
+              // Global cooldown — wait it out, then retry this same series.
+              logger.debug('Anime auto-map rate-limited; backing off', {
+                seriesId: series.id,
+                retryAfterSeconds: error.retryAfterSeconds,
+              }, { scope: 'polling' });
+              await this.interruptibleSleep(Math.max(error.retryAfterSeconds, 60) * 1000);
+            } else {
+              run.processed += 1;
+              run.failed += 1;
+              done = true;
+              logger.warn('Anime auto-map item failed; skipping it', {
+                seriesId: series.id,
+                title: series.title,
+                error: errorMessage(error),
+              }, { scope: 'polling' });
+            }
+          }
+        }
+        // Pace distinct items to ~one per minute. The shared AniList limiter's
+        // own waits are inside the elapsed time, so the two never stack.
+        if (done && i < queue.length - 1) {
+          await this.interruptibleSleep(Math.max(60_000 - (Date.now() - attemptStartedMs), 0));
+        }
+      }
+    } catch (error) {
+      logger.error('Anime auto-map run crashed', { error: errorMessage(error) }, { scope: 'polling' });
+    } finally {
+      logger.info('Anime auto-map run finished', {
+        processed: run.processed,
+        failed: run.failed,
+        queueTotal: run.queueTotal,
+        stopped: run.stop,
+      }, { scope: 'polling' });
+      await this.stampAnimeAutoMapDone();
+      this.animeMapRun = null;
+      this.animeMapWake = null;
+    }
+  }
+
+  // Daily anime auto-map scheduling gate. The run itself lives on a detached
+  // loop (startAnimeAutoMapRun); this only decides "is it time tonight?" —
+  // first poll at/after the configured local hour, once per local calendar
+  // day. Catch-up style: a server that was off at the hour still runs on its
+  // next poll that day. Toggling the setting off prevents the next scheduled
+  // run but doesn't kill an in-flight one (Stop is the halt control).
+  private async checkAnimeAutoMap(): Promise<void> {
+    if (this.animeMapRun) return;
+    const settings = await getOrCreateAppSettings();
+    if (!settings.animeAutoMapEnabled) return;
+
+    const timeZone = settings.timeZone;
+    const now = new Date();
+    if (toZonedDate(now, timeZone).getHours() < settings.animeAutoMapHour) return;
+    const lastRun = settings.animeAutoMapLastRunAt;
+    if (lastRun && getLocalDateKey(lastRun, timeZone) === getLocalDateKey(now, timeZone)) return;
+
+    void this.startAnimeAutoMapRun('scheduled').catch((error) =>
+      logger.error('Anime auto-map scheduled start failed', {
+        error: errorMessage(error),
+      }, { scope: 'polling' })
+    );
   }
 
   private async pollSonarr() {
@@ -1767,4 +2027,11 @@ export class PollingService {
   }
 }
 
-export const pollingService = new PollingService();
+// Stash the singleton on globalThis (same pattern as the cleanup scheduler):
+// instrumentation (which runs the poll loop and the anime auto-map run) and
+// API route handlers (which trigger/inspect/stop that run) are compiled into
+// separate bundles in dev, so a bare module-level instance would give routes
+// a blind duplicate that never sees the live run.
+const globalForPolling = globalThis as unknown as { __helprrPollingService?: PollingService };
+export const pollingService = globalForPolling.__helprrPollingService ?? new PollingService();
+globalForPolling.__helprrPollingService = pollingService;

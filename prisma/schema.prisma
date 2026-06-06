@@ -212,6 +212,9 @@ model AppSettings {
   activityDigestMode       String  @default("off")        // "off" | "daily" | "weekly"
   activityDigestHour       Int     @default(8)            // 0-23, hour of day to fire the digest
   activityDigestDayOfWeek  Int     @default(1)            // 0=Sun..6=Sat, used when mode=weekly
+  animeAutoMapEnabled      Boolean  @default(true)         // nightly job that auto-maps never-mapped Sonarr anime to AniList
+  animeAutoMapHour         Int      @default(0)            // 0-23 local hour the nightly drain starts (default midnight)
+  animeAutoMapLastRunAt    DateTime?                       // server-managed: when the last nightly drain completed
   // AniList API cache TTLs in minutes, per policy class. Stale-serve windows
   // scale with each class's default ratio (sections/browse ×6, detail ×7, airing ×3).
   anilistSectionsTtlMin    Int     @default(5)             // home / trending / seasonal rails
