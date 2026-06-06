@@ -1,11 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { getSonarrClient } from '@/lib/service-helpers';
+import { ensureSeriesAniListMapping } from '@/lib/anilist-series-mapping';
 import { withApiLogging } from '@/lib/api-logger';
-import type { AnimeSonarrMappingsResponse, SeriesAniListMappingState } from '@/types/anilist';
+import type { AnimeSonarrMappingItem, AnimeSonarrMappingsResponse, SeriesAniListMappingState } from '@/types/anilist';
+
+// Each linked entry points back to its series mapping; a series appears once
+// even if it links several AniList entries (we only filter by this one).
+async function loadMappings(anilistMediaId: number): Promise<AnimeSonarrMappingItem[]> {
+  const entries = await prisma.aniListSeriesMappingEntry.findMany({
+    where: { anilistMediaId },
+    include: { mapping: true },
+    orderBy: { mapping: { resolvedAt: 'desc' } },
+  });
+
+  const seen = new Set<number>();
+  const mappings: AnimeSonarrMappingItem[] = [];
+  for (const entry of entries) {
+    if (seen.has(entry.mapping.sonarrSeriesId)) continue;
+    seen.add(entry.mapping.sonarrSeriesId);
+    mappings.push({
+      sonarrSeriesId: entry.mapping.sonarrSeriesId,
+      state: entry.mapping.state as SeriesAniListMappingState,
+      seriesTitle: entry.mapping.seriesTitleSnapshot,
+      seriesYear: entry.mapping.seriesYearSnapshot,
+    });
+  }
+  return mappings;
+}
 
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -18,25 +44,32 @@ async function getHandler(
       return NextResponse.json({ error: 'Invalid anime ID' }, { status: 400 });
     }
 
-    // Each linked entry points back to its series mapping; a series appears once
-    // even if it links several AniList entries (we only filter by this one).
-    const entries = await prisma.aniListSeriesMappingEntry.findMany({
-      where: { anilistMediaId: id },
-      include: { mapping: true },
-      orderBy: { mapping: { resolvedAt: 'desc' } },
-    });
+    let mappings = await loadMappings(id);
 
-    const seen = new Set<number>();
-    const mappings = [];
-    for (const entry of entries) {
-      if (seen.has(entry.mapping.sonarrSeriesId)) continue;
-      seen.add(entry.mapping.sonarrSeriesId);
-      mappings.push({
-        sonarrSeriesId: entry.mapping.sonarrSeriesId,
-        state: entry.mapping.state as SeriesAniListMappingState,
-        seriesTitle: entry.mapping.seriesTitleSnapshot,
-        seriesYear: entry.mapping.seriesYearSnapshot,
-      });
+    // Mappings are created lazily when a series page is viewed, so an anime
+    // that's in the Sonarr library can read "Not mapped" purely because its
+    // series page was never opened. The anime page already knows the matching
+    // series (library lookup) and passes it as a hint — resolve it here the
+    // same way a series-page visit would. Best-effort: a Sonarr error or an
+    // AniList rate limit must not break the read.
+    const hintRaw = new URL(request.url).searchParams.get('sonarrSeriesId');
+    const hintId = hintRaw != null && hintRaw !== '' ? Number(hintRaw) : null;
+    if (
+      hintId != null
+      && Number.isFinite(hintId)
+      && hintId > 0
+      && !mappings.some((mapping) => mapping.sonarrSeriesId === hintId)
+    ) {
+      try {
+        const client = await getSonarrClient();
+        const series = await client.getSeriesById(hintId);
+        if (series && series.seriesType === 'anime') {
+          await ensureSeriesAniListMapping(series);
+          mappings = await loadMappings(id);
+        }
+      } catch {
+        // Leave the unhinted result — the row just keeps its current state.
+      }
     }
 
     return NextResponse.json({ mappings } satisfies AnimeSonarrMappingsResponse);

@@ -560,6 +560,16 @@ async function validateEntryDetail(
 }
 
 /**
+ * Lazily resolve a series' mapping (auto-match + season linking) without
+ * fetching any entry details — the same resolution a series-page visit
+ * triggers. Used by the anime-page reverse lookup so an anime that's in the
+ * Sonarr library shows as mapped even before its series page was ever opened.
+ */
+export async function ensureSeriesAniListMapping(series: SonarrSeries): Promise<void> {
+  await getCurrentMappingRecord(series);
+}
+
+/**
  * Resolve the mapping and fetch linked entry details. `scope: 'all'` (default —
  * used by all mutation responses) fetches every entry. `scope: 'primary'` (the
  * page-load GET) fetches/validates only the first entry, promoting past dead
