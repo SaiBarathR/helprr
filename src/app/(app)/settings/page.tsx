@@ -13,6 +13,7 @@ import {
   Shield,
   Gauge,
   Users,
+  Link2,
 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
@@ -88,6 +89,19 @@ export default function SettingsIndexPage() {
             iconColor="text-violet-400"
             label="Users"
             subtitle="Members, roles, and permissions"
+          />
+        </GroupedSection>
+      )}
+
+      {me?.role === 'admin' && (
+        <GroupedSection>
+          <CategoryRow
+            href="/settings/anime-mappings"
+            icon={Link2}
+            iconBg="bg-cyan-500/10"
+            iconColor="text-cyan-400"
+            label="Anime mappings"
+            subtitle="AniList season links, bulk reset"
           />
         </GroupedSection>
       )}
