@@ -12,6 +12,7 @@ import {
 } from '@/lib/anilist-series-mapping';
 import type { SonarrSeries } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
+import { anilistRateLimitResponse } from '@/lib/anilist-http';
 
 async function getAnimeSeries(id: string) {
   const seriesId = Number(id);
@@ -77,6 +78,8 @@ async function getHandler(
     const response = await getSeriesAniListResponse(series, { scope });
     return NextResponse.json(response);
   } catch (error) {
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     const message = error instanceof Error ? error.message : 'Failed to load AniList anime details';
     return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
@@ -105,6 +108,8 @@ async function postHandler(
     const response = await addManualEntry(series, anilistMediaId);
     return NextResponse.json(response);
   } catch (error) {
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     const message = error instanceof Error ? error.message : 'Failed to add AniList mapping';
     return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
@@ -132,6 +137,8 @@ async function patchHandler(
     const response = await setPrimaryEntry(series, primaryId);
     return NextResponse.json(response);
   } catch (error) {
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     const message = error instanceof Error ? error.message : 'Failed to update primary entry';
     return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
@@ -164,6 +171,8 @@ async function deleteHandler(
     const response = await clearManualSeriesAniListMapping(series);
     return NextResponse.json(response);
   } catch (error) {
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     const message = error instanceof Error ? error.message : 'Failed to clear AniList mapping';
     return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }

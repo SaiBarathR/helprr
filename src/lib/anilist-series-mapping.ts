@@ -3,7 +3,12 @@ import type {
   AniListSeriesMappingEntry as PrismaEntry,
 } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getAnimeDetail, getAnimeNextAiringEpisode, searchAnime } from '@/lib/anilist-client';
+import {
+  AniListRateLimitError,
+  getAnimeDetail,
+  getAnimeNextAiringEpisode,
+  searchAnime,
+} from '@/lib/anilist-client';
 import {
   extractTmdbId,
   extractTvdbId,
@@ -524,27 +529,32 @@ function mapCandidate(series: SonarrSeries, candidate: AniListMedia): SeriesAniL
   };
 }
 
-async function normalizeSeriesDetailWithFreshAiring(anilistMediaId: number) {
-  const [detail, nextAiringEpisode] = await Promise.all([
-    getAnimeDetail(anilistMediaId),
-    getAnimeNextAiringEpisode(anilistMediaId),
-  ]);
-
-  return {
-    detail,
-    normalized: {
-      ...normalizeAniListDetail(detail),
-      nextAiringEpisode,
-    },
-  };
+/**
+ * Normalize one entry's detail. `freshAiring` swaps the detail-embedded
+ * nextAiringEpisode (≤24h-stale, zero extra calls) for a dedicated 10-min-fresh
+ * lookup — only worth the extra AniList call where a countdown is on screen.
+ */
+async function normalizeSeriesDetail(anilistMediaId: number, opts: { freshAiring?: boolean } = {}) {
+  const detail = await getAnimeDetail(anilistMediaId);
+  const normalized = normalizeAniListDetail(detail);
+  if (opts.freshAiring) {
+    normalized.nextAiringEpisode = await getAnimeNextAiringEpisode(anilistMediaId);
+  }
+  return { detail, normalized };
 }
 
 /** Fetch + format-validate one entry's detail. Null = dead/invalid on AniList. */
-async function validateEntryDetail(entry: PrismaEntry): Promise<AniListDetailResponse | null> {
+async function validateEntryDetail(
+  entry: PrismaEntry,
+  opts: { freshAiring?: boolean } = {}
+): Promise<AniListDetailResponse | null> {
   try {
-    const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(entry.anilistMediaId);
+    const { detail, normalized } = await normalizeSeriesDetail(entry.anilistMediaId, opts);
     return isRejectedSeriesFormat(detail.format) ? null : normalized;
-  } catch {
+  } catch (error) {
+    // A rate-limit window says nothing about the entry's health — rethrow so
+    // callers 429 instead of pruning entries / resetting the mapping.
+    if (error instanceof AniListRateLimitError) throw error;
     return null;
   }
 }
@@ -572,7 +582,7 @@ export async function getSeriesAniListResponse(
     const droppedIds: string[] = [];
     let primaryDetail: AniListDetailResponse | null = null;
     while (remaining.length > 0 && primaryDetail === null) {
-      primaryDetail = await validateEntryDetail(remaining[0]);
+      primaryDetail = await validateEntryDetail(remaining[0], { freshAiring: true });
       if (primaryDetail === null) {
         droppedIds.push(remaining[0].id);
         remaining.shift();
@@ -602,8 +612,13 @@ export async function getSeriesAniListResponse(
     return { mapping: mappingFromRecord(record), details: [primaryDetail] };
   }
 
+  // Fresh airing only for the primary (the visible countdown); the rest keep
+  // the detail-embedded value — halves upstream calls on full-scope fetches.
   const fetched = await Promise.all(
-    orderedEntries.map(async (entry) => ({ entry, normalized: await validateEntryDetail(entry) }))
+    orderedEntries.map(async (entry, index) => ({
+      entry,
+      normalized: await validateEntryDetail(entry, { freshAiring: index === 0 }),
+    }))
   );
 
   const valid = fetched.filter((item) => item.normalized !== null);
@@ -657,7 +672,7 @@ export async function getSeriesEntryDetail(
     return { mapping: mappingFromRecord(record), detail: null };
   }
 
-  const detail = await validateEntryDetail(entry);
+  const detail = await validateEntryDetail(entry, { freshAiring: true });
   if (detail) {
     return { mapping: mappingFromRecord(record), detail };
   }
@@ -709,7 +724,7 @@ export async function addManualEntry(
   series: SonarrSeries,
   anilistMediaId: number
 ): Promise<SeriesAniListResponse> {
-  const { detail } = await normalizeSeriesDetailWithFreshAiring(anilistMediaId);
+  const { detail } = await normalizeSeriesDetail(anilistMediaId);
   if (isRejectedSeriesFormat(detail.format)) {
     throw new Error('Only AniList anime series formats can be mapped to Sonarr series.');
   }
