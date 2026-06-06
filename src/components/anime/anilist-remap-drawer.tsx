@@ -16,8 +16,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { isSeasonSibling, normalizeBaseTitle } from '@/lib/anilist-title-match';
 import type {
   AniListDetailResponse,
+  AniListMediaFormat,
   SeriesAniListCandidate,
   SeriesAniListMapping,
   SeriesAniListResponse,
@@ -42,6 +44,17 @@ interface CandidateResponse {
 // AniList formats are valid series links, so we don't suggest movies/manga.
 const ACCEPTABLE_FORMATS = new Set(['TV', 'TV_SHORT', 'OVA', 'ONA', 'SPECIAL']);
 
+// One suggestion row, whether it came from a linked entry's AniList relations
+// (has relationType) or from the primary's base-title search (no relationType).
+interface SeasonSuggestion {
+  id: number;
+  title: string;
+  coverImage: string | null;
+  format: AniListMediaFormat | null;
+  seasonYear: number | null;
+  relationType?: string;
+}
+
 function cover(src: string | null): string | null {
   if (!src) return null;
   return toCachedImageSrc(src, 'anilist') || src;
@@ -58,6 +71,7 @@ export function AniListRemapDrawer({
 }: AniListRemapDrawerProps) {
   const [query, setQuery] = useState(seriesTitle);
   const [results, setResults] = useState<SeriesAniListCandidate[]>([]);
+  const [seasonCandidates, setSeasonCandidates] = useState<SeriesAniListCandidate[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
@@ -85,16 +99,83 @@ export function AniListRemapDrawer({
     return map;
   }, [details]);
 
+  // Season-pattern candidates from one base-title search of the primary.
+  // Relations only reach one hop (S1 suggests S2 but never S3/S4); the search
+  // surfaces the whole "{base} Season {N}" family in one cached request.
+  const primaryId = details[0]?.id ?? null;
+  const primaryTitle = details[0]?.title ?? null;
+  useEffect(() => {
+    if (!open || primaryId == null) {
+      setSeasonCandidates([]);
+      return;
+    }
+    const base = normalizeBaseTitle(primaryTitle);
+    if (!base) {
+      setSeasonCandidates([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const params = new URLSearchParams({ q: base });
+        const res = await fetch(`/api/sonarr/${seriesId}/anime/candidates?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data: CandidateResponse = await res.json();
+        setSeasonCandidates(data.items);
+      } catch {
+        // Suggestions are best-effort; the manual search section still works.
+      }
+    })();
+
+    return () => controller.abort();
+  }, [open, seriesId, primaryId, primaryTitle]);
+
   // Related seasons surfaced from each linked entry's AniList relations
-  // (SEQUEL/PREQUEL/etc.). One-tap adds, so chaining S1 → S2 → S3 is easy.
+  // (SEQUEL/PREQUEL/etc.) merged with season-pattern search matches.
+  // One-tap adds, so chaining S1 → S2 → S3 is easy.
   const suggestions = useMemo(() => {
-    const map = new Map<number, AniListDetailResponse['relations'][number]>();
+    const map = new Map<number, SeasonSuggestion>();
     for (const detail of details) {
       for (const relation of detail.relations) {
         if (relation.type !== 'ANIME') continue;
         if (relation.format && !ACCEPTABLE_FORMATS.has(relation.format)) continue;
         if (linkedIds.has(relation.id)) continue;
-        if (!map.has(relation.id)) map.set(relation.id, relation);
+        if (!map.has(relation.id)) {
+          map.set(relation.id, {
+            id: relation.id,
+            title: relation.title,
+            coverImage: relation.coverImage,
+            format: relation.format,
+            seasonYear: relation.seasonYear,
+            relationType: relation.relationType,
+          });
+        }
+      }
+    }
+
+    const primary = details[0];
+    if (primary) {
+      const primaryInput = {
+        titles: [primary.title, primary.titleRomaji, primary.titleNative],
+        year: primary.seasonYear ?? primary.year,
+      };
+      for (const candidate of seasonCandidates) {
+        if (linkedIds.has(candidate.id) || map.has(candidate.id)) continue;
+        const candidateInput = {
+          titles: [candidate.title, candidate.titleRomaji, candidate.titleNative],
+          year: candidate.seasonYear,
+        };
+        if (!isSeasonSibling(primaryInput, candidateInput)) continue;
+        map.set(candidate.id, {
+          id: candidate.id,
+          title: candidate.title,
+          coverImage: candidate.coverImage,
+          format: candidate.format,
+          seasonYear: candidate.seasonYear,
+        });
       }
     }
 
@@ -102,15 +183,15 @@ export function AniListRemapDrawer({
     // "... Season 2" or "2nd Season") is almost always the entry you want to link,
     // so it sorts above OVAs / side-stories / movies. Other season markers,
     // sequel/prequel relation, and TV format break ties; then earliest year first.
-    const score = (rel: AniListDetailResponse['relations'][number]): number => {
-      const title = rel.title.toLowerCase();
+    const score = (item: SeasonSuggestion): number => {
+      const title = item.title.toLowerCase();
       let s = 0;
       if (/\bseasons?\b/.test(title)) s += 100;
       if (/\bpart\b|\bcour\b|\b\d+(?:st|nd|rd|th)\b|\b(?:ii|iii|iv)\b/.test(title)) s += 30;
-      const relationType = (rel.relationType || '').toUpperCase();
+      const relationType = (item.relationType || '').toUpperCase();
       if (relationType === 'SEQUEL' || relationType === 'PREQUEL') s += 20;
       else if (relationType === 'PARENT' || relationType === 'SIDE_STORY' || relationType === 'ALTERNATIVE') s += 8;
-      if (rel.format === 'TV' || rel.format === 'TV_SHORT') s += 5;
+      if (item.format === 'TV' || item.format === 'TV_SHORT') s += 5;
       return s;
     };
 
@@ -119,7 +200,7 @@ export function AniListRemapDrawer({
       if (diff !== 0) return diff;
       return (a.seasonYear ?? Infinity) - (b.seasonYear ?? Infinity);
     });
-  }, [details, linkedIds]);
+  }, [details, linkedIds, seasonCandidates]);
 
   useEffect(() => {
     if (!open) return;
@@ -267,7 +348,7 @@ export function AniListRemapDrawer({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium line-clamp-2">
-                        {detail?.title ?? `AniList #${entry.anilistMediaId}`}
+                        {detail?.title ?? entry.titleSnapshot ?? `AniList #${entry.anilistMediaId}`}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
                         {[detail?.format?.replace('_', ' '), detail?.seasonYear].filter(Boolean).join(' · ')}
@@ -286,6 +367,11 @@ export function AniListRemapDrawer({
                           >
                             Make primary
                           </button>
+                        )}
+                        {entry.source === 'auto' && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                            Auto
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -335,7 +421,7 @@ export function AniListRemapDrawer({
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium line-clamp-2">{relation.title}</p>
                       <p className="text-xs text-muted-foreground truncate">
-                        {[relation.relationType.replace(/_/g, ' ').toLowerCase(), relation.format?.replace('_', ' '), relation.seasonYear]
+                        {[relation.relationType?.replace(/_/g, ' ').toLowerCase(), relation.format?.replace('_', ' '), relation.seasonYear]
                           .filter(Boolean)
                           .join(' · ')}
                       </p>
