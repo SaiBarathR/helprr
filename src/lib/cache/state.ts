@@ -50,6 +50,65 @@ export function setCachedCacheImagesEnabled(value: boolean): void {
   cachedCacheImagesEnabledAt = Date.now();
 }
 
+export interface AnilistTtlSettings {
+  sectionsTtlMin: number;
+  browseTtlMin: number;
+  detailTtlMin: number;
+  airingTtlMin: number;
+}
+
+export const DEFAULT_ANILIST_TTLS: AnilistTtlSettings = {
+  sectionsTtlMin: 5,
+  browseTtlMin: 10,
+  detailTtlMin: 1440,
+  airingTtlMin: 10,
+};
+
+let cachedAnilistTtls: AnilistTtlSettings | null = null;
+let cachedAnilistTtlsAt = 0;
+
+function sanitizeTtlMin(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+/** Admin-configurable AniList cache TTLs (Settings → Anime mappings), memoized like the image flag. */
+export async function getAnilistTtlSettings(): Promise<AnilistTtlSettings> {
+  const now = Date.now();
+  if (cachedAnilistTtls !== null && now - cachedAnilistTtlsAt <= CACHE_IMAGES_SETTINGS_TTL_MS) {
+    return cachedAnilistTtls;
+  }
+
+  try {
+    const settings = await prisma.appSettings.findUnique({
+      where: { id: 'singleton' },
+      select: {
+        anilistSectionsTtlMin: true,
+        anilistBrowseTtlMin: true,
+        anilistDetailTtlMin: true,
+        anilistAiringTtlMin: true,
+      },
+    });
+
+    const next: AnilistTtlSettings = {
+      sectionsTtlMin: sanitizeTtlMin(settings?.anilistSectionsTtlMin, DEFAULT_ANILIST_TTLS.sectionsTtlMin),
+      browseTtlMin: sanitizeTtlMin(settings?.anilistBrowseTtlMin, DEFAULT_ANILIST_TTLS.browseTtlMin),
+      detailTtlMin: sanitizeTtlMin(settings?.anilistDetailTtlMin, DEFAULT_ANILIST_TTLS.detailTtlMin),
+      airingTtlMin: sanitizeTtlMin(settings?.anilistAiringTtlMin, DEFAULT_ANILIST_TTLS.airingTtlMin),
+    };
+    cachedAnilistTtls = next;
+    cachedAnilistTtlsAt = now;
+    return next;
+  } catch {
+    // Fail-open with defaults so AniList features keep working.
+    return cachedAnilistTtls ?? DEFAULT_ANILIST_TTLS;
+  }
+}
+
+export function setCachedAnilistTtlSettings(value: AnilistTtlSettings): void {
+  cachedAnilistTtls = value;
+  cachedAnilistTtlsAt = Date.now();
+}
+
 export async function getCacheGeneration(): Promise<number> {
   try {
     const redis = await getRedisClient();

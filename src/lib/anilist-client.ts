@@ -19,6 +19,7 @@ import type {
   AnimeBrowseSort,
 } from '@/types/anilist';
 import { getAnilistJsonWithCache, type AnilistCachePolicy } from '@/lib/cache/anilist-api-cache';
+import { getAnilistTtlSettings } from '@/lib/cache/state';
 import { getCurrentSeason } from '@/lib/anilist-helpers';
 
 const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
@@ -273,17 +274,20 @@ async function gqlRequest<T>(query: string, variables: Record<string, unknown>):
   return response.data.data;
 }
 
-function getCachePolicy(type: 'sections' | 'browse' | 'detail' | 'airing'): AnilistCachePolicy {
+// TTLs are admin-configurable (Settings → Anime mappings); the stale-serve
+// window keeps each class's default ratio relative to its TTL.
+async function getCachePolicy(type: 'sections' | 'browse' | 'detail' | 'airing'): Promise<AnilistCachePolicy> {
+  const ttls = await getAnilistTtlSettings();
   switch (type) {
     case 'sections':
-      return { ttlSeconds: 5 * 60, staleSeconds: 30 * 60 };
+      return { ttlSeconds: ttls.sectionsTtlMin * 60, staleSeconds: ttls.sectionsTtlMin * 60 * 6 };
     case 'airing':
-      return { ttlSeconds: 10 * 60, staleSeconds: 30 * 60 };
+      return { ttlSeconds: ttls.airingTtlMin * 60, staleSeconds: ttls.airingTtlMin * 60 * 3 };
     case 'detail':
-      return { ttlSeconds: 24 * 60 * 60, staleSeconds: 7 * 24 * 60 * 60 };
+      return { ttlSeconds: ttls.detailTtlMin * 60, staleSeconds: ttls.detailTtlMin * 60 * 7 };
     case 'browse':
     default:
-      return { ttlSeconds: 10 * 60, staleSeconds: 60 * 60 };
+      return { ttlSeconds: ttls.browseTtlMin * 60, staleSeconds: ttls.browseTtlMin * 60 * 6 };
   }
 }
 
@@ -306,7 +310,7 @@ export async function searchAnime(
   const result = await getAnilistJsonWithCache<PageData>({
     endpoint: 'search',
     params: { search: query, page, perPage },
-    policy: getCachePolicy('browse'),
+    policy: await getCachePolicy('browse'),
     fetcher: () => gqlRequest<PageData>(gqlQuery, { search: query, page, perPage }),
   });
 
@@ -325,7 +329,7 @@ export async function getAnimeDetail(id: number): Promise<AniListMediaDetail> {
   const result = await getAnilistJsonWithCache<MediaData>({
     endpoint: 'detail',
     params: { id },
-    policy: getCachePolicy('detail'),
+    policy: await getCachePolicy('detail'),
     fetcher: () => gqlRequest<MediaData>(gqlQuery, { id }),
   });
 
@@ -344,7 +348,7 @@ export async function getAnimeNextAiringEpisode(id: number): Promise<AniListNext
   const result = await getAnilistJsonWithCache<AiringMediaData>({
     endpoint: 'airing',
     params: { id },
-    policy: getCachePolicy('airing'),
+    policy: await getCachePolicy('airing'),
     fetcher: () => gqlRequest<AiringMediaData>(gqlQuery, { id }),
   });
 
@@ -423,7 +427,7 @@ export async function getAnimeAiringSchedule(params: {
   return getAnilistJsonWithCache<AniListAiringSchedule[]>({
     endpoint: 'airingSchedule',
     params: { weekStart: params.weekStart, weekEnd: params.weekEnd },
-    policy: getCachePolicy('airing'),
+    policy: await getCachePolicy('airing'),
     fetcher: fetchAllPages,
   });
 }
@@ -440,7 +444,7 @@ export async function getMangaDetail(id: number): Promise<AniListMangaDetail> {
   const result = await getAnilistJsonWithCache<MangaMediaData>({
     endpoint: 'mangaDetail',
     params: { id },
-    policy: getCachePolicy('detail'),
+    policy: await getCachePolicy('detail'),
     fetcher: () => gqlRequest<MangaMediaData>(gqlQuery, { id }),
   });
 
@@ -465,7 +469,7 @@ export async function getTopRated(
   const result = await getAnilistJsonWithCache<PageData>({
     endpoint: 'topRated',
     params: { page, perPage },
-    policy: getCachePolicy('sections'),
+    policy: await getCachePolicy('sections'),
     fetcher: () => gqlRequest<PageData>(gqlQuery, { page, perPage }),
   });
 
@@ -490,7 +494,7 @@ export async function getPopular(
   const result = await getAnilistJsonWithCache<PageData>({
     endpoint: 'popular',
     params: { page, perPage },
-    policy: getCachePolicy('sections'),
+    policy: await getCachePolicy('sections'),
     fetcher: () => gqlRequest<PageData>(gqlQuery, { page, perPage }),
   });
 
@@ -515,7 +519,7 @@ export async function getTrending(
   const result = await getAnilistJsonWithCache<PageData>({
     endpoint: 'trending',
     params: { page, perPage },
-    policy: getCachePolicy('sections'),
+    policy: await getCachePolicy('sections'),
     fetcher: () => gqlRequest<PageData>(gqlQuery, { page, perPage }),
   });
 
@@ -542,7 +546,7 @@ export async function getSeasonal(
   const result = await getAnilistJsonWithCache<PageData>({
     endpoint: 'seasonal',
     params: { season, seasonYear, page, perPage },
-    policy: getCachePolicy('sections'),
+    policy: await getCachePolicy('sections'),
     fetcher: () => gqlRequest<PageData>(gqlQuery, { season, seasonYear, page, perPage }),
   });
 
@@ -651,7 +655,7 @@ export async function browseAnime(params: {
   const result = await getAnilistJsonWithCache<PageData>({
     endpoint: 'browse',
     params: variables,
-    policy: getCachePolicy('browse'),
+    policy: await getCachePolicy('browse'),
     fetcher: () => gqlRequest<PageData>(gqlQuery, variables),
   });
 
@@ -716,7 +720,7 @@ export async function getAnimeHome(
   const result = await getAnilistJsonWithCache<HomeResponse>({
     endpoint: 'home',
     params: variables,
-    policy: getCachePolicy('sections'),
+    policy: await getCachePolicy('sections'),
     fetcher: () => gqlRequest<HomeResponse>(gqlQuery, variables),
   });
 
@@ -917,7 +921,7 @@ export async function getStaffDetail(
   const result = await getAnilistJsonWithCache<StaffResponse>({
     endpoint: 'staffDetail',
     params: variables,
-    policy: getCachePolicy('detail'),
+    policy: await getCachePolicy('detail'),
     fetcher: () => gqlRequest<StaffResponse>(gqlQuery, variables),
   });
 
@@ -985,7 +989,7 @@ export async function getStaffMediaPage(
   const result = await getAnilistJsonWithCache<StaffPageResponse>({
     endpoint: 'staffMediaPage',
     params: variables,
-    policy: getCachePolicy('detail'),
+    policy: await getCachePolicy('detail'),
     fetcher: () => gqlRequest<StaffPageResponse>(gqlQuery, variables),
   });
 
@@ -1036,7 +1040,7 @@ export async function getStaffCharacterMediaPage(
   const result = await getAnilistJsonWithCache<StaffCharacterMediaPageResponse>({
     endpoint: 'staffCharacterMediaPage',
     params: variables,
-    policy: getCachePolicy('detail'),
+    policy: await getCachePolicy('detail'),
     fetcher: () => gqlRequest<StaffCharacterMediaPageResponse>(gqlQuery, variables),
   });
 
@@ -1147,7 +1151,7 @@ export async function getCharacterDetail(
   const result = await getAnilistJsonWithCache<CharacterResponse>({
     endpoint: 'characterDetail',
     params: variables,
-    policy: getCachePolicy('detail'),
+    policy: await getCachePolicy('detail'),
     fetcher: () => gqlRequest<CharacterResponse>(gqlQuery, variables),
   });
 
@@ -1280,7 +1284,7 @@ export async function getStudioDetail(
   const result = await getAnilistJsonWithCache<StudioResponse>({
     endpoint: 'studioDetail.v2',
     params: variables,
-    policy: getCachePolicy('detail'),
+    policy: await getCachePolicy('detail'),
     fetcher: () => gqlRequest<StudioResponse>(gqlQuery, variables),
   });
 

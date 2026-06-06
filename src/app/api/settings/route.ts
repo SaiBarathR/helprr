@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth, requireAdmin } from '@/lib/auth';
 import { pollingService } from '@/lib/polling-service';
 import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
-import { setCachedCacheImagesEnabled } from '@/lib/cache/state';
+import { setCachedAnilistTtlSettings, setCachedCacheImagesEnabled } from '@/lib/cache/state';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { configureLogger } from '@/lib/logger';
 import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
@@ -103,6 +103,7 @@ async function putHandler(request: NextRequest) {
       logFailedResponseBodies,
       watchProviderRegion,
       activityDigestMode, activityDigestHour, activityDigestDayOfWeek,
+      anilistSectionsTtlMin, anilistBrowseTtlMin, anilistDetailTtlMin, anilistAiringTtlMin,
     } = body;
 
     const current = await prisma.appSettings.findUnique({
@@ -233,6 +234,27 @@ async function putHandler(request: NextRequest) {
       if ('error' in parsed) return parsed.error;
       data.activityDigestDayOfWeek = parsed.value;
     }
+    // AniList cache TTLs, in minutes (max 30 days).
+    if (anilistSectionsTtlMin !== undefined) {
+      const parsed = parseIntegerSetting(anilistSectionsTtlMin, 'AniList sections cache TTL', 1, 43_200);
+      if ('error' in parsed) return parsed.error;
+      data.anilistSectionsTtlMin = parsed.value;
+    }
+    if (anilistBrowseTtlMin !== undefined) {
+      const parsed = parseIntegerSetting(anilistBrowseTtlMin, 'AniList search cache TTL', 1, 43_200);
+      if ('error' in parsed) return parsed.error;
+      data.anilistBrowseTtlMin = parsed.value;
+    }
+    if (anilistDetailTtlMin !== undefined) {
+      const parsed = parseIntegerSetting(anilistDetailTtlMin, 'AniList detail cache TTL', 1, 43_200);
+      if ('error' in parsed) return parsed.error;
+      data.anilistDetailTtlMin = parsed.value;
+    }
+    if (anilistAiringTtlMin !== undefined) {
+      const parsed = parseIntegerSetting(anilistAiringTtlMin, 'AniList airing cache TTL', 1, 43_200);
+      if ('error' in parsed) return parsed.error;
+      data.anilistAiringTtlMin = parsed.value;
+    }
 
     const settings = await prisma.appSettings.upsert({
       where: { id: 'singleton' },
@@ -260,10 +282,20 @@ async function putHandler(request: NextRequest) {
         activityDigestMode: (data.activityDigestMode as string | undefined) ?? 'off',
         activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
         activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
+        anilistSectionsTtlMin: (data.anilistSectionsTtlMin as number | undefined) ?? 5,
+        anilistBrowseTtlMin: (data.anilistBrowseTtlMin as number | undefined) ?? 10,
+        anilistDetailTtlMin: (data.anilistDetailTtlMin as number | undefined) ?? 1440,
+        anilistAiringTtlMin: (data.anilistAiringTtlMin as number | undefined) ?? 10,
       },
     });
 
     setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
+    setCachedAnilistTtlSettings({
+      sectionsTtlMin: settings.anilistSectionsTtlMin,
+      browseTtlMin: settings.anilistBrowseTtlMin,
+      detailTtlMin: settings.anilistDetailTtlMin,
+      airingTtlMin: settings.anilistAiringTtlMin,
+    });
     setAppTimeZone(settings.timeZone);
     configureLogger({
       timeZone: settings.timeZone,

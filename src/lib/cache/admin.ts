@@ -182,6 +182,18 @@ export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {
   };
 }
 
+/**
+ * Delete only the AniList API cache keys for the active generation — images
+ * and TMDB stay untouched (no generation bump; entries simply refetch).
+ */
+export async function purgeAnilistCache(): Promise<{ deletedEntries: number; deletedBytes: number }> {
+  const generation = await getCacheGeneration();
+  const keys = await scanRedisKeys(`helprr:cache:anilist:v${generation}:*`);
+  const usage = await getRedisKeysUsage(keys);
+  await deleteRedisKeys(keys);
+  return { deletedEntries: usage.entries, deletedBytes: usage.bytes };
+}
+
 export async function purgeActiveCache(): Promise<CachePurgeResult> {
   const previousGeneration = await getCacheGeneration();
   await setCachePurgeStatus('purging');
