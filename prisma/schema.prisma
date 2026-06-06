@@ -308,7 +308,6 @@ model PendingRequest {
 model AniListSeriesMapping {
   id                   String   @id @default(cuid())
   sonarrSeriesId       Int      @unique
-  anilistMediaId       Int?
   state                String
   matchMethod          String?
   confidence           Int?
@@ -319,6 +318,22 @@ model AniListSeriesMapping {
   resolvedAt           DateTime @default(now())
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+  // 1 Sonarr series → N AniList entries (season-split anime). Matched states have
+  // ≥1 entry; AUTO_UNMATCHED / MANUAL_NONE have none.
+  entries              AniListSeriesMappingEntry[]
+}
+
+model AniListSeriesMappingEntry {
+  id             String               @id @default(cuid())
+  mappingId      String
+  mapping        AniListSeriesMapping @relation(fields: [mappingId], references: [id], onDelete: Cascade)
+  anilistMediaId Int
+  isPrimary      Boolean              @default(false) // exactly one true per mapping
+  order          Int                  @default(0) // tab order on the series detail page
+  createdAt      DateTime             @default(now())
+
+  @@unique([mappingId, anilistMediaId])
+  @@index([anilistMediaId]) // reverse lookup: AniList entry → Sonarr series
 }
 
 // ==================== Cleanup: Queue Cleaner ====================

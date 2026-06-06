@@ -3,17 +3,14 @@ import axios from 'axios';
 import { requireAuth, requireAdmin } from '@/lib/auth';
 import { getSonarrClient } from '@/lib/service-helpers';
 import {
+  addManualEntry,
   clearManualSeriesAniListMapping,
   getSeriesAniListResponse,
-  setManualSeriesAniListMapping,
+  removeManualEntry,
+  setPrimaryEntry,
 } from '@/lib/anilist-series-mapping';
 import type { SonarrSeries } from '@/types';
-import type { SeriesAniListResponse } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
-
-interface PutPayload {
-  anilistMediaId?: number | string | null;
-}
 
 async function getAnimeSeries(id: string) {
   const seriesId = Number(id);
@@ -42,6 +39,14 @@ async function getAnimeSeries(id: string) {
   return series;
 }
 
+function errorStatus(message: string): number {
+  return message === 'Invalid series ID'
+    || message === 'Series is not an anime item'
+    || message === 'Only AniList anime series formats can be mapped to Sonarr series.'
+    ? 400
+    : 500;
+}
+
 async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -56,23 +61,23 @@ async function getHandler(
     return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load AniList anime details';
-    const status = message === 'Invalid series ID' || message === 'Series is not an anime item' ? 400 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
 }
 
-async function putHandler(
+// Add a manual AniList entry to this series (1 series → N entries). Admin-only
+// because AniListSeriesMapping is global/admin state.
+async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
-  // AniListSeriesMapping is global/admin state, so editing the mapping is admin-only.
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
   try {
-    const body = await request.json() as PutPayload;
+    const body = await request.json() as { anilistMediaId?: number | string | null };
     const anilistMediaId = Number(body?.anilistMediaId);
     if (!Number.isFinite(anilistMediaId) || anilistMediaId <= 0) {
       return NextResponse.json({ error: 'Invalid AniList media ID' }, { status: 400 });
@@ -80,21 +85,44 @@ async function putHandler(
 
     const { id } = await params;
     const series = await getAnimeSeries(id);
-    const response = await setManualSeriesAniListMapping(series, anilistMediaId);
+    const response = await addManualEntry(series, anilistMediaId);
     return NextResponse.json(response);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to set AniList mapping';
-    const status = message === 'Invalid series ID'
-      || message === 'Series is not an anime item'
-      || message === 'Only AniList anime series formats can be mapped to Sonarr series.'
-      ? 400
-      : 500;
-    return NextResponse.json({ error: message }, { status });
+    const message = error instanceof Error ? error.message : 'Failed to add AniList mapping';
+    return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
 }
 
+// Set which linked entry is the primary (the default tab). Admin-only.
+async function patchHandler(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+  const admin = await requireAdmin();
+  if (!admin.ok) return admin.response;
+
+  try {
+    const body = await request.json() as { primaryId?: number | string | null };
+    const primaryId = Number(body?.primaryId);
+    if (!Number.isFinite(primaryId) || primaryId <= 0) {
+      return NextResponse.json({ error: 'Invalid AniList media ID' }, { status: 400 });
+    }
+
+    const { id } = await params;
+    const series = await getAnimeSeries(id);
+    const response = await setPrimaryEntry(series, primaryId);
+    return NextResponse.json(response);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update primary entry';
+    return NextResponse.json({ error: message }, { status: errorStatus(message) });
+  }
+}
+
+// Remove one linked entry (?anilistMediaId=...) or clear the whole mapping. Admin-only.
 async function deleteHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
@@ -105,15 +133,26 @@ async function deleteHandler(
   try {
     const { id } = await params;
     const series = await getAnimeSeries(id);
-    const mapping = await clearManualSeriesAniListMapping(series);
-    return NextResponse.json({ mapping, detail: null } satisfies SeriesAniListResponse);
+    const raw = new URL(request.url).searchParams.get('anilistMediaId');
+
+    if (raw != null && raw !== '') {
+      const anilistMediaId = Number(raw);
+      if (!Number.isFinite(anilistMediaId) || anilistMediaId <= 0) {
+        return NextResponse.json({ error: 'Invalid AniList media ID' }, { status: 400 });
+      }
+      const response = await removeManualEntry(series, anilistMediaId);
+      return NextResponse.json(response);
+    }
+
+    const response = await clearManualSeriesAniListMapping(series);
+    return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to clear AniList mapping';
-    const status = message === 'Invalid series ID' || message === 'Series is not an anime item' ? 400 : 500;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: errorStatus(message) });
   }
 }
 
 export const GET = withApiLogging(getHandler, 'api/sonarr/[id]/anime');
-export const PUT = withApiLogging(putHandler, 'api/sonarr/[id]/anime');
+export const POST = withApiLogging(postHandler, 'api/sonarr/[id]/anime');
+export const PATCH = withApiLogging(patchHandler, 'api/sonarr/[id]/anime');
 export const DELETE = withApiLogging(deleteHandler, 'api/sonarr/[id]/anime');

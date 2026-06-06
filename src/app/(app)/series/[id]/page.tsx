@@ -160,6 +160,7 @@ export default function SeriesDetailPage() {
   const [animeLoading, setAnimeLoading] = useState(false);
   const [animeOverviewExpanded, setAnimeOverviewExpanded] = useState(false);
   const [showAniListRemap, setShowAniListRemap] = useState(false);
+  const [activeAnimeTab, setActiveAnimeTab] = useState(0);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
   const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(
@@ -381,8 +382,13 @@ export default function SeriesDetailPage() {
     }
   }, [seriesId]);
 
+  // Anime with no AniList match (auto-unmatched or manually unmapped) fall back to
+  // TMDB series-level enrichment like normal shows. Episode-level TMDB data stays
+  // disabled for anime regardless — episode orders rarely line up with TMDB.
+  const animeTmdbFallback = series?.seriesType === 'anime' && animeData !== null && animeData.details.length === 0;
+
   useEffect(() => {
-    if (!Number.isFinite(seriesId) || !series?.id || series.seriesType === 'anime') {
+    if (!Number.isFinite(seriesId) || !series?.id || (series.seriesType === 'anime' && !animeTmdbFallback)) {
       setCredits({ cast: [], crew: [] });
       return;
     }
@@ -415,11 +421,11 @@ export default function SeriesDetailPage() {
     return () => {
       controller.abort();
     };
-  }, [series?.id, series?.seriesType, seriesId]);
+  }, [animeTmdbFallback, series?.id, series?.seriesType, seriesId]);
 
   // Background-fetch TMDB enrichment data
   useEffect(() => {
-    if (!series?.tmdbId || series.seriesType === 'anime') {
+    if (!series?.tmdbId || (series.seriesType === 'anime' && !animeTmdbFallback)) {
       setTmdbData(null);
       return;
     }
@@ -449,7 +455,7 @@ export default function SeriesDetailPage() {
         setTmdbData((prev) => prev ?? null);
       });
     return () => controller.abort();
-  }, [series?.seriesType, series?.tmdbId, seriesId]);
+  }, [animeTmdbFallback, series?.seriesType, series?.tmdbId, seriesId]);
 
   useEffect(() => {
     if (!series?.id || series.seriesType !== 'anime') {
@@ -562,7 +568,9 @@ export default function SeriesDetailPage() {
   useEffect(() => {
     setAnimeNowMs(Date.now());
 
-    if (!animeData?.detail?.nextAiringEpisode) return;
+    const list = animeData?.details ?? [];
+    const activeDetail = list[Math.min(activeAnimeTab, Math.max(0, list.length - 1))] ?? null;
+    if (!activeDetail?.nextAiringEpisode) return;
 
     const tick = window.setInterval(() => {
       setAnimeNowMs(Date.now());
@@ -571,7 +579,7 @@ export default function SeriesDetailPage() {
     return () => {
       window.clearInterval(tick);
     };
-  }, [animeData?.detail?.nextAiringEpisode]);
+  }, [animeData, activeAnimeTab]);
 
   function toggleSeasonExpand(seasonNumber: number) {
     setExpandedSeasons((prev) => {
@@ -646,6 +654,24 @@ export default function SeriesDetailPage() {
   function handleAniListUpdated(next: SeriesAniListResponse) {
     setAnimeData(next);
     setAnimeOverviewExpanded(false);
+    setActiveAnimeTab(0);
+    if (next.details.length > 0) {
+      // A match now exists — drop the TMDB fallback data (state + snapshot).
+      setTmdbData(null);
+      setCredits({ cast: [], crew: [] });
+      const cached = getSeriesDetailSnapshot(seriesId);
+      setSeriesDetailSnapshot(seriesId, {
+        series: cached?.series ?? series,
+        episodes: cached?.episodes ?? episodes,
+        qualityProfiles: cached?.qualityProfiles ?? qualityProfiles,
+        rootFolders: cached?.rootFolders ?? rootFolders,
+        tags: cached?.tags ?? tags,
+        animeData: next,
+        tmdbData: null,
+        credits: { cast: [], crew: [] },
+        seasonEpisodes: cached?.seasonEpisodes,
+      });
+    }
     toast.success(
       next.mapping.state === 'MANUAL_NONE'
         ? 'AniList mapping cleared'
@@ -847,7 +873,9 @@ export default function SeriesDetailPage() {
     ? format(new Date(series.nextAiring), "MMM d, yyyy 'at' h:mm a")
     : null;
   const isAnimeSeries = series.seriesType === 'anime';
-  const animeDetail = animeData?.detail ?? null;
+  const animeDetails = animeData?.details ?? [];
+  const activeAnimeIdx = animeDetails.length ? Math.min(activeAnimeTab, animeDetails.length - 1) : 0;
+  const animeDetail = animeDetails[activeAnimeIdx] ?? null;
   const animeMapping = animeData?.mapping ?? null;
   const nextAiringSeconds = animeDetail?.nextAiringEpisode
     ? Math.max(0, animeDetail.nextAiringEpisode.airingAt - Math.floor(animeNowMs / 1000))
@@ -1165,6 +1193,27 @@ export default function SeriesDetailPage() {
 
       <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-2 md:p-6">
         {/* Hero: Backdrop or flat poster layout */}
+        {isAnimeSeries && animeDetails.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pt-1 pb-3 -mx-2 px-2 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {animeDetails.map((detail, index) => {
+              const label = detail.seasonYear ? `${detail.title} · ${detail.seasonYear}` : detail.title;
+              const active = index === activeAnimeIdx;
+              return (
+                <button
+                  key={detail.id}
+                  onClick={() => setActiveAnimeTab(index)}
+                  className={`shrink-0 max-w-[180px] truncate rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                    active
+                      ? 'bg-[var(--hpr-amber)]/20 text-[var(--hpr-amber)]'
+                      : 'bg-muted/30 text-muted-foreground active:bg-muted/50'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {isAnimeSeries && animeDetail ? (
           <AnimeHero
             title={animeDetail.title}
@@ -1578,6 +1627,7 @@ export default function SeriesDetailPage() {
                 <span className="text-sm text-muted-foreground">AniList</span>
                 <span className="flex items-center gap-2 text-sm text-right">
                   {formatAniListMappingState(animeMapping?.state)}
+                  {animeDetails.length > 1 ? ` · ${animeDetails.length} seasons` : ''}
                   {animeMapping?.state === 'MANUAL_MATCH' ? (
                     <Badge className="bg-green-600/90 text-foreground text-[10px] px-1.5 py-0">Manual</Badge>
                   ) : animeMapping?.state === 'AUTO_MATCH' ? (
@@ -1590,7 +1640,9 @@ export default function SeriesDetailPage() {
           </div>
         </div>
 
-        {isAnimeSeries ? (
+        {/* AniList sections when matched; unmatched anime fall through to the
+            TMDB enrichment branch (series-level only — episode list stays Sonarr-only) */}
+        {isAnimeSeries && animeDetail ? (
           <div className="space-y-5 mt-2">
             {animeDescription && (
               <div>
@@ -1967,6 +2019,7 @@ export default function SeriesDetailPage() {
         seriesId={series.id}
         seriesTitle={series.title}
         mapping={animeMapping}
+        details={animeDetails}
         onUpdated={handleAniListUpdated}
       />
 

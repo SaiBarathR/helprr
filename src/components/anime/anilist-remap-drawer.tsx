@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { Search, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Search, Loader2, Plus, X, Star, Trash2 } from 'lucide-react';
 import {
   Drawer,
   DrawerContent,
@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
+  AniListDetailResponse,
   SeriesAniListCandidate,
   SeriesAniListMapping,
   SeriesAniListResponse,
@@ -28,6 +29,7 @@ interface AniListRemapDrawerProps {
   seriesId: number;
   seriesTitle: string;
   mapping: SeriesAniListMapping | null;
+  details: AniListDetailResponse[];
   onUpdated: (response: SeriesAniListResponse) => void;
 }
 
@@ -36,12 +38,13 @@ interface CandidateResponse {
   items: SeriesAniListCandidate[];
 }
 
-function formatState(mapping: SeriesAniListMapping | null): string {
-  if (!mapping) return 'No mapping';
-  if (mapping.state === 'MANUAL_MATCH') return 'Manual match';
-  if (mapping.state === 'MANUAL_NONE') return 'Manually unmapped';
-  if (mapping.state === 'AUTO_MATCH') return 'Auto matched';
-  return 'Auto unmatched';
+// Mirror of ACCEPTABLE_SERIES_FORMATS in anilist-series-mapping.ts — only these
+// AniList formats are valid series links, so we don't suggest movies/manga.
+const ACCEPTABLE_FORMATS = new Set(['TV', 'TV_SHORT', 'OVA', 'ONA', 'SPECIAL']);
+
+function cover(src: string | null): string | null {
+  if (!src) return null;
+  return toCachedImageSrc(src, 'anilist') || src;
 }
 
 export function AniListRemapDrawer({
@@ -50,12 +53,13 @@ export function AniListRemapDrawer({
   seriesId,
   seriesTitle,
   mapping,
+  details,
   onUpdated,
 }: AniListRemapDrawerProps) {
   const [query, setQuery] = useState(seriesTitle);
   const [results, setResults] = useState<SeriesAniListCandidate[]>([]);
   const [loading, setLoading] = useState(false);
-  const [savingId, setSavingId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,6 +76,50 @@ export function AniListRemapDrawer({
   }, [open, seriesTitle]);
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
+
+  const entries = useMemo(() => mapping?.entries ?? [], [mapping]);
+  const linkedIds = useMemo(() => new Set(entries.map((entry) => entry.anilistMediaId)), [entries]);
+  const detailById = useMemo(() => {
+    const map = new Map<number, AniListDetailResponse>();
+    for (const detail of details) map.set(detail.id, detail);
+    return map;
+  }, [details]);
+
+  // Related seasons surfaced from each linked entry's AniList relations
+  // (SEQUEL/PREQUEL/etc.). One-tap adds, so chaining S1 → S2 → S3 is easy.
+  const suggestions = useMemo(() => {
+    const map = new Map<number, AniListDetailResponse['relations'][number]>();
+    for (const detail of details) {
+      for (const relation of detail.relations) {
+        if (relation.type !== 'ANIME') continue;
+        if (relation.format && !ACCEPTABLE_FORMATS.has(relation.format)) continue;
+        if (linkedIds.has(relation.id)) continue;
+        if (!map.has(relation.id)) map.set(relation.id, relation);
+      }
+    }
+
+    // Rank season continuations first — a title containing "Season" (e.g.
+    // "... Season 2" or "2nd Season") is almost always the entry you want to link,
+    // so it sorts above OVAs / side-stories / movies. Other season markers,
+    // sequel/prequel relation, and TV format break ties; then earliest year first.
+    const score = (rel: AniListDetailResponse['relations'][number]): number => {
+      const title = rel.title.toLowerCase();
+      let s = 0;
+      if (/\bseasons?\b/.test(title)) s += 100;
+      if (/\bpart\b|\bcour\b|\b\d+(?:st|nd|rd|th)\b|\b(?:ii|iii|iv)\b/.test(title)) s += 30;
+      const relationType = (rel.relationType || '').toUpperCase();
+      if (relationType === 'SEQUEL' || relationType === 'PREQUEL') s += 20;
+      else if (relationType === 'PARENT' || relationType === 'SIDE_STORY' || relationType === 'ALTERNATIVE') s += 8;
+      if (rel.format === 'TV' || rel.format === 'TV_SHORT') s += 5;
+      return s;
+    };
+
+    return Array.from(map.values()).sort((a, b) => {
+      const diff = score(b) - score(a);
+      if (diff !== 0) return diff;
+      return (a.seasonYear ?? Infinity) - (b.seasonYear ?? Infinity);
+    });
+  }, [details, linkedIds]);
 
   useEffect(() => {
     if (!open) return;
@@ -111,43 +159,62 @@ export function AniListRemapDrawer({
     };
   }, [open, seriesId, trimmedQuery]);
 
-  async function handleSelect(anilistMediaId: number) {
-    setSavingId(anilistMediaId);
+  async function mutate(
+    init: RequestInit & { url?: string },
+    trackingId: number
+  ) {
+    setBusyId(trackingId);
     setError(null);
     try {
-      const res = await fetch(`/api/sonarr/${seriesId}/anime`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ anilistMediaId }),
-      });
+      const res = await fetch(init.url ?? `/api/sonarr/${seriesId}/anime`, init);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to save AniList mapping');
+        throw new Error(data.error || 'Failed to update AniList mapping');
       }
-
       onUpdated(data as SeriesAniListResponse);
-      onOpenChange(false);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save AniList mapping');
+    } catch (mutateError) {
+      setError(mutateError instanceof Error ? mutateError.message : 'Failed to update AniList mapping');
     } finally {
-      setSavingId(null);
+      setBusyId(null);
     }
   }
 
-  async function handleClear() {
+  const addEntry = (anilistMediaId: number) =>
+    mutate(
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ anilistMediaId }),
+      },
+      anilistMediaId
+    );
+
+  const removeEntry = (anilistMediaId: number) =>
+    mutate(
+      { method: 'DELETE', url: `/api/sonarr/${seriesId}/anime?anilistMediaId=${anilistMediaId}` },
+      anilistMediaId
+    );
+
+  const makePrimary = (anilistMediaId: number) =>
+    mutate(
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ primaryId: anilistMediaId }),
+      },
+      anilistMediaId
+    );
+
+  async function handleClearAll() {
     setClearing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sonarr/${seriesId}/anime`, {
-        method: 'DELETE',
-      });
+      const res = await fetch(`/api/sonarr/${seriesId}/anime`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || 'Failed to clear AniList mapping');
       }
-
       onUpdated(data as SeriesAniListResponse);
-      onOpenChange(false);
     } catch (clearError) {
       setError(clearError instanceof Error ? clearError.message : 'Failed to clear AniList mapping');
     } finally {
@@ -155,147 +222,229 @@ export function AniListRemapDrawer({
     }
   }
 
+  const busy = busyId !== null || clearing;
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader className="text-center">
-          <DrawerTitle>Remap AniList</DrawerTitle>
+          <DrawerTitle>Linked AniList seasons</DrawerTitle>
           <DrawerDescription>
-            Search AniList and attach the correct anime entry to this Sonarr series.
+            Link every AniList entry for {seriesTitle}. The primary shows first on the series page.
           </DrawerDescription>
         </DrawerHeader>
 
-        <div className="px-4 pb-2 space-y-3 flex-1 min-h-0 flex flex-col">
-          <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
-            <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-            <Input
-              value={query}
-              onChange={(event) => {
-                setResults([]);
-                setLoading(false);
-                setError(null);
-                setQuery(event.target.value);
-              }}
-              placeholder="Search AniList"
-              className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{seriesTitle}</p>
-              <p className="text-xs text-muted-foreground">{formatState(mapping)}</p>
-            </div>
-            {mapping?.state === 'MANUAL_MATCH' ? (
-              <Badge className="bg-green-600/90 text-foreground">Manual</Badge>
-            ) : mapping?.state === 'AUTO_MATCH' ? (
-              <Badge variant="outline">Auto</Badge>
-            ) : null}
-          </div>
-
+        <div className="px-4 pb-2 space-y-4 flex-1 min-h-0 flex flex-col overflow-y-auto">
           {error && (
             <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
               {error}
             </div>
           )}
 
-          <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pb-2">
+          {/* Linked entries */}
+          {entries.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Linked</p>
+              {entries.map((entry) => {
+                const detail = detailById.get(entry.anilistMediaId);
+                const coverSrc = cover(detail?.coverImage ?? null);
+                return (
+                  <div
+                    key={entry.anilistMediaId}
+                    className="flex gap-3 rounded-lg border border-border/30 bg-muted/10 p-3"
+                  >
+                    <div className="relative h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-muted">
+                      {coverSrc && (
+                        <Image
+                          src={coverSrc}
+                          alt={detail?.title ?? ''}
+                          fill
+                          sizes="48px"
+                          className="object-cover"
+                          unoptimized={isProtectedApiImageSrc(coverSrc)}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium line-clamp-2">
+                        {detail?.title ?? `AniList #${entry.anilistMediaId}`}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[detail?.format?.replace('_', ' '), detail?.seasonYear].filter(Boolean).join(' · ')}
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        {entry.isPrimary ? (
+                          <Badge className="bg-[var(--hpr-amber)]/20 text-[var(--hpr-amber)] text-[10px] px-1.5 py-0">
+                            <Star className="mr-1 h-2.5 w-2.5 fill-current" />
+                            Primary
+                          </Badge>
+                        ) : (
+                          <button
+                            onClick={() => makePrimary(entry.anilistMediaId)}
+                            disabled={busy}
+                            className="text-[11px] text-muted-foreground underline-offset-2 hover:underline disabled:opacity-60"
+                          >
+                            Make primary
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeEntry(entry.anilistMediaId)}
+                      disabled={busy}
+                      aria-label="Remove season"
+                      className="self-center min-w-[36px] min-h-[44px] flex items-center justify-center text-muted-foreground disabled:opacity-60"
+                    >
+                      {busyId === entry.anilistMediaId ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <X className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Suggested seasons (from AniList relations) */}
+          {suggestions.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Suggested seasons</p>
+              {suggestions.map((relation) => {
+                const coverSrc = cover(relation.coverImage);
+                return (
+                  <button
+                    key={relation.id}
+                    onClick={() => addEntry(relation.id)}
+                    disabled={busy}
+                    className="flex w-full gap-3 rounded-lg border border-border/30 bg-muted/10 p-3 text-left active:bg-muted/30 disabled:opacity-60"
+                  >
+                    <div className="relative h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-muted">
+                      {coverSrc && (
+                        <Image
+                          src={coverSrc}
+                          alt={relation.title}
+                          fill
+                          sizes="48px"
+                          className="object-cover"
+                          unoptimized={isProtectedApiImageSrc(coverSrc)}
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium line-clamp-2">{relation.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[relation.relationType.replace(/_/g, ' ').toLowerCase(), relation.format?.replace('_', ' '), relation.seasonYear]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </div>
+                    {busyId === relation.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin self-center shrink-0" />
+                    ) : (
+                      <Plus className="h-4 w-4 self-center shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Search */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search AniList</p>
+            <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Input
+                value={query}
+                onChange={(event) => {
+                  setResults([]);
+                  setLoading(false);
+                  setError(null);
+                  setQuery(event.target.value);
+                }}
+                placeholder="Search AniList"
+                className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+              />
+            </div>
+
             {loading ? (
-              Array.from({ length: 4 }).map((_, index) => (
+              Array.from({ length: 3 }).map((_, index) => (
                 <div key={index} className="flex gap-3 rounded-lg border border-border/30 p-3">
-                  <Skeleton className="h-[84px] w-[56px] rounded-md shrink-0" />
+                  <Skeleton className="h-[72px] w-[48px] rounded-md shrink-0" />
                   <div className="flex-1 space-y-2">
                     <Skeleton className="h-4 w-3/4" />
                     <Skeleton className="h-3 w-1/2" />
-                    <Skeleton className="h-3 w-2/3" />
                   </div>
                 </div>
               ))
             ) : results.length > 0 ? (
               results.map((candidate) => {
-                const coverSrc = candidate.coverImage
-                  ? toCachedImageSrc(candidate.coverImage, 'anilist') || candidate.coverImage
-                  : null;
-                const isCurrent = mapping?.anilistMediaId === candidate.id;
+                const coverSrc = cover(candidate.coverImage);
+                const isLinked = linkedIds.has(candidate.id);
 
                 return (
                   <button
                     key={candidate.id}
-                    onClick={() => handleSelect(candidate.id)}
-                    disabled={savingId !== null || clearing}
+                    onClick={() => addEntry(candidate.id)}
+                    disabled={busy || isLinked}
                     className="flex w-full gap-3 rounded-lg border border-border/30 bg-muted/10 p-3 text-left active:bg-muted/30 disabled:opacity-60"
                   >
-                    <div className="relative h-[84px] w-[56px] shrink-0 overflow-hidden rounded-md bg-muted">
-                      {coverSrc ? (
+                    <div className="relative h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-muted">
+                      {coverSrc && (
                         <Image
                           src={coverSrc}
                           alt={candidate.title}
                           fill
-                          sizes="56px"
+                          sizes="48px"
                           className="object-cover"
                           unoptimized={isProtectedApiImageSrc(coverSrc)}
                         />
-                      ) : null}
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium line-clamp-2">{candidate.title}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {[candidate.format?.replace('_', ' '), candidate.seasonYear].filter(Boolean).join(' · ')}
-                          </p>
-                        </div>
-                        {savingId === candidate.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                        ) : isCurrent ? (
-                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                        ) : null}
-                      </div>
+                      <p className="text-sm font-medium line-clamp-2">{candidate.title}</p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {[candidate.format?.replace('_', ' '), candidate.seasonYear].filter(Boolean).join(' · ')}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
                         {candidate.averageScore != null && (
-                          <Badge variant="outline" className="text-[10px]">
-                            {candidate.averageScore}%
-                          </Badge>
+                          <Badge variant="outline" className="text-[10px]">{candidate.averageScore}%</Badge>
                         )}
                         {candidate.episodes != null && (
-                          <Badge variant="outline" className="text-[10px]">
-                            {candidate.episodes} eps
-                          </Badge>
+                          <Badge variant="outline" className="text-[10px]">{candidate.episodes} eps</Badge>
                         )}
-                        <Badge variant="secondary" className="text-[10px]">
-                          Match {candidate.matchScore}
-                        </Badge>
+                        <Badge variant="secondary" className="text-[10px]">Match {candidate.matchScore}</Badge>
                       </div>
                     </div>
+                    {busyId === candidate.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin self-center shrink-0" />
+                    ) : isLinked ? (
+                      <Star className="h-4 w-4 self-center shrink-0 text-[var(--hpr-amber)] fill-current" />
+                    ) : (
+                      <Plus className="h-4 w-4 self-center shrink-0 text-muted-foreground" />
+                    )}
                   </button>
                 );
               })
             ) : (
-              <div className="rounded-lg border border-border/30 bg-muted/10 px-3 py-8 text-center text-sm text-muted-foreground">
+              <div className="rounded-lg border border-border/30 bg-muted/10 px-3 py-6 text-center text-sm text-muted-foreground">
                 No AniList candidates found.
               </div>
             )}
           </div>
         </div>
 
-        <DrawerFooter>
-          <Button
-            variant="outline"
-            onClick={handleClear}
-            disabled={clearing || savingId !== null}
-            className="w-full"
-          >
-            {clearing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Clearing...
-              </>
-            ) : (
-              <>
-                <XCircle className="mr-2 h-4 w-4" />
-                Clear Mapping
-              </>
-            )}
+        <DrawerFooter className="flex-row gap-2">
+          {entries.length > 0 && (
+            <Button variant="outline" onClick={handleClearAll} disabled={busy} className="flex-1">
+              {clearing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Clear all
+            </Button>
+          )}
+          <Button onClick={() => onOpenChange(false)} disabled={busy} className="flex-1">
+            Done
           </Button>
         </DrawerFooter>
       </DrawerContent>

@@ -53,4 +53,4 @@ ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 ENV LOG_DIR=/app/logs
 
-CMD ["sh", "-c", "npx prisma db execute --file prisma/manual-fixups.sql --schema prisma/schema.prisma && npx prisma db push --skip-generate && node server.js"]
+CMD ["sh", "-c", "npx prisma db execute --file prisma/manual-fixups.sql --schema prisma/schema.prisma && npx prisma db push --skip-generate --accept-data-loss && node server.js"]
