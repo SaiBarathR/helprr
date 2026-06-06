@@ -1,0 +1,303 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, Loader2, Search, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { GroupedSection } from '@/components/settings/grouped-section';
+import { Input } from '@/components/ui/input';
+import type {
+  AdminAnimeMappingRow,
+  AdminAnimeMappingsResponse,
+  SeriesAniListMappingState,
+} from '@/types/anilist';
+
+const STATE_META: Record<SeriesAniListMappingState, { label: string; className: string }> = {
+  AUTO_MATCH: { label: 'Auto', className: 'bg-emerald-500/15 text-emerald-400' },
+  MANUAL_MATCH: { label: 'Manual', className: 'bg-sky-500/15 text-sky-400' },
+  AUTO_UNMATCHED: { label: 'Unmatched', className: 'bg-amber-500/15 text-amber-400' },
+  MANUAL_NONE: { label: 'Cleared', className: 'bg-zinc-500/15 text-zinc-400' },
+};
+
+type StateFilter = 'ALL' | SeriesAniListMappingState;
+
+const FILTERS: Array<{ value: StateFilter; label: string }> = [
+  { value: 'ALL', label: 'All' },
+  { value: 'AUTO_MATCH', label: 'Auto' },
+  { value: 'MANUAL_MATCH', label: 'Manual' },
+  { value: 'AUTO_UNMATCHED', label: 'Unmatched' },
+  { value: 'MANUAL_NONE', label: 'Cleared' },
+];
+
+function relativeTime(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return '';
+  const diff = Date.now() - t;
+  if (diff < 0) return new Date(iso).toLocaleString();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function entryLabel(entry: AdminAnimeMappingRow['entries'][number]): string {
+  const title = entry.titleSnapshot ?? `AniList #${entry.anilistMediaId}`;
+  return entry.isPrimary ? `★ ${title}` : title;
+}
+
+export default function AnimeMappingListPage() {
+  const router = useRouter();
+  const [mappings, setMappings] = useState<AdminAnimeMappingRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [filter, setFilter] = useState<StateFilter>('ALL');
+  const [search, setSearch] = useState('');
+  const [confirmTarget, setConfirmTarget] = useState<AdminAnimeMappingRow | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/settings/anime-mappings');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as AdminAnimeMappingsResponse;
+      setMappings(data.mappings);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load mappings');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const counts = useMemo(() => {
+    const all = mappings ?? [];
+    const byState = { AUTO_MATCH: 0, MANUAL_MATCH: 0, AUTO_UNMATCHED: 0, MANUAL_NONE: 0 };
+    for (const row of all) byState[row.state] += 1;
+    return { total: all.length, ...byState };
+  }, [mappings]);
+
+  const filtered = useMemo(() => {
+    const all = mappings ?? [];
+    const query = search.trim().toLowerCase();
+    return all.filter((row) => {
+      if (filter !== 'ALL' && row.state !== filter) return false;
+      if (query && !row.seriesTitle.toLowerCase().includes(query)) return false;
+      return true;
+    });
+  }, [mappings, filter, search]);
+
+  async function handleResetOne(row: AdminAnimeMappingRow) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/settings/anime-mappings/${row.sonarrSeriesId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error || 'Failed to reset mapping');
+        return;
+      }
+      toast.success(`Reset ${row.seriesTitle}`);
+      await load();
+    } finally {
+      setBusy(false);
+      setConfirmTarget(null);
+    }
+  }
+
+  async function handleResetAll() {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/settings/anime-mappings', { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error || 'Failed to reset mappings');
+        return;
+      }
+      const data = (await res.json()) as { deleted: number };
+      toast.success(`Reset ${data.deleted} mapping${data.deleted === 1 ? '' : 's'}`);
+      await load();
+    } finally {
+      setBusy(false);
+      setConfirmAll(false);
+    }
+  }
+
+  return (
+    <div className="animate-content-in pb-12">
+      <div className="px-1 pt-1 pb-2">
+        <Link
+          href="/settings/anime-mappings"
+          className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
+        >
+          <ChevronLeft className="h-5 w-5" />
+          Anime mappings
+        </Link>
+      </div>
+
+      <div className="px-4 mb-4">
+        <h1 className="text-2xl font-semibold">Mapping list</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          AniList links for each Sonarr anime series. Reset a row to forget it — the series
+          re-auto-matches (seasons included) the next time it&apos;s viewed.
+        </p>
+      </div>
+
+      {error && (
+        <GroupedSection>
+          <div className="px-4 py-3 text-sm text-red-400">{error}</div>
+        </GroupedSection>
+      )}
+
+      {mappings === null && !error ? (
+        <GroupedSection>
+          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
+            Loading mappings…
+          </div>
+        </GroupedSection>
+      ) : mappings !== null ? (
+        <>
+          <div className="px-4 mb-3 space-y-2">
+            <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-1">
+              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Filter by series title"
+                className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+              />
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto">
+              {FILTERS.map((item) => {
+                const count =
+                  item.value === 'ALL' ? counts.total : counts[item.value as SeriesAniListMappingState];
+                return (
+                  <button
+                    key={item.value}
+                    onClick={() => setFilter(item.value)}
+                    className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
+                      filter === item.value
+                        ? 'border-primary/50 bg-primary/15 text-primary'
+                        : 'border-border/40 bg-muted/20 text-muted-foreground'
+                    }`}
+                  >
+                    {item.label} · {count}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <GroupedSection>
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                {counts.total === 0
+                  ? 'No mappings yet — they appear as anime series pages are viewed.'
+                  : 'No mappings match the current filter.'}
+              </div>
+            </GroupedSection>
+          ) : (
+            <GroupedSection title={`${filtered.length} of ${counts.total}`}>
+              {filtered.map((row) => {
+                const autoCount = row.entries.filter((entry) => entry.source === 'auto').length;
+                return (
+                  <div key={row.sonarrSeriesId} className="grouped-row gap-2">
+                    <button
+                      onClick={() => router.push(`/series/${row.sonarrSeriesId}`)}
+                      className="flex-1 min-w-0 py-2 text-left"
+                    >
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="text-sm font-medium truncate">{row.seriesTitle}</span>
+                        {row.seriesYear != null && (
+                          <span className="text-xs text-muted-foreground shrink-0">{row.seriesYear}</span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <Badge className={`${STATE_META[row.state].className} text-[10px] px-1.5 py-0`}>
+                          {STATE_META[row.state].label}
+                        </Badge>
+                        {row.entries.length > 0 && (
+                          <span className="text-[11px] text-muted-foreground">
+                            {row.entries.length} linked
+                            {autoCount > 0 ? ` · ${autoCount} auto` : ''}
+                          </span>
+                        )}
+                        {row.confidence != null && (
+                          <span className="text-[11px] text-muted-foreground">conf {row.confidence}</span>
+                        )}
+                        <span className="text-[11px] text-muted-foreground">{relativeTime(row.resolvedAt)}</span>
+                      </div>
+                      {row.entries.length > 0 && (
+                        <p className="mt-1 text-xs text-muted-foreground truncate">
+                          {row.entries.map(entryLabel).join(' · ')}
+                        </p>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setConfirmTarget(row)}
+                      disabled={busy}
+                      aria-label={`Reset mapping for ${row.seriesTitle}`}
+                      className="self-center min-w-[36px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-60"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </GroupedSection>
+          )}
+
+          {counts.total > 0 && (
+            <GroupedSection footer="Resets forget auto and manual links alike. Each series re-auto-matches with season auto-linking on its next view.">
+              <div className="px-4 py-3">
+                <Button
+                  variant="outline"
+                  className="w-full h-9 text-destructive hover:text-destructive"
+                  onClick={() => setConfirmAll(true)}
+                  disabled={busy}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Reset all mappings
+                </Button>
+              </div>
+            </GroupedSection>
+          )}
+        </>
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmTarget(null);
+        }}
+        title={confirmTarget ? `Reset ${confirmTarget.seriesTitle}?` : 'Reset mapping?'}
+        description="All AniList links for this series are forgotten — including manual ones. It re-auto-matches the next time someone views it."
+        confirmLabel="Reset"
+        destructive
+        busy={busy}
+        onConfirm={() => (confirmTarget ? handleResetOne(confirmTarget) : Promise.resolve())}
+      />
+
+      <ConfirmDialog
+        open={confirmAll}
+        onOpenChange={setConfirmAll}
+        title={`Reset all ${counts.total} mappings?`}
+        description="Every AniList link is forgotten — auto and manual alike. Each anime series re-auto-matches with season auto-linking the next time it's viewed."
+        confirmLabel="Reset all"
+        destructive
+        busy={busy}
+        onConfirm={handleResetAll}
+      />
+    </div>
+  );
+}

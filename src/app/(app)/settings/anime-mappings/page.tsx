@@ -1,39 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ChevronLeft, Loader2, Search, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Square, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { formatBytes } from '@/lib/format';
-import type {
-  AdminAnimeMappingRow,
-  AdminAnimeMappingsResponse,
-  SeriesAniListMappingState,
-} from '@/types/anilist';
-
-const STATE_META: Record<SeriesAniListMappingState, { label: string; className: string }> = {
-  AUTO_MATCH: { label: 'Auto', className: 'bg-emerald-500/15 text-emerald-400' },
-  MANUAL_MATCH: { label: 'Manual', className: 'bg-sky-500/15 text-sky-400' },
-  AUTO_UNMATCHED: { label: 'Unmatched', className: 'bg-amber-500/15 text-amber-400' },
-  MANUAL_NONE: { label: 'Cleared', className: 'bg-zinc-500/15 text-zinc-400' },
-};
-
-type StateFilter = 'ALL' | SeriesAniListMappingState;
-
-const FILTERS: Array<{ value: StateFilter; label: string }> = [
-  { value: 'ALL', label: 'All' },
-  { value: 'AUTO_MATCH', label: 'Auto' },
-  { value: 'MANUAL_MATCH', label: 'Manual' },
-  { value: 'AUTO_UNMATCHED', label: 'Unmatched' },
-  { value: 'MANUAL_NONE', label: 'Cleared' },
-];
 
 function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
@@ -51,9 +35,23 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-function entryLabel(entry: AdminAnimeMappingRow['entries'][number]): string {
-  const title = entry.titleSnapshot ?? `AniList #${entry.anilistMediaId}`;
-  return entry.isPrimary ? `★ ${title}` : title;
+function hourLabel(h: number): string {
+  if (h === 0) return '12:00 AM';
+  if (h < 12) return `${h}:00 AM`;
+  if (h === 12) return '12:00 PM';
+  return `${h - 12}:00 PM`;
+}
+
+interface AutoMapStatus {
+  enabled: boolean;
+  hour: number;
+  running: boolean;
+  run: { processed: number; queueTotal: number; failed: number; currentTitle: string | null } | null;
+  mapped: number | null;
+  unmatched: number | null;
+  neverMapped: number | null;
+  total: number | null;
+  lastRunAt: string | null;
 }
 
 const TTL_FIELDS = [
@@ -83,22 +81,17 @@ function formatMinutesHint(raw: string | undefined): string | null {
 }
 
 export default function AnimeMappingsPage() {
-  const router = useRouter();
-  const [mappings, setMappings] = useState<AdminAnimeMappingRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [filter, setFilter] = useState<StateFilter>('ALL');
-  const [search, setSearch] = useState('');
-  const [confirmTarget, setConfirmTarget] = useState<AdminAnimeMappingRow | null>(null);
-  const [confirmAll, setConfirmAll] = useState(false);
-
-  // AniList cache section
   const { settings, update: updateSettings } = useAppSettings();
   const [cacheUsage, setCacheUsage] = useState<AnilistCacheUsage | null>(null);
   const [ttlDraft, setTtlDraft] = useState<Record<TtlKey, string> | null>(null);
   const [savingTtls, setSavingTtls] = useState(false);
   const [confirmClearCache, setConfirmClearCache] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
+
+  // Nightly auto-map section
+  const [autoMapStatus, setAutoMapStatus] = useState<AutoMapStatus | null>(null);
+  const [runningAutoMap, setRunningAutoMap] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   const loadCacheUsage = useCallback(async () => {
     try {
@@ -116,9 +109,73 @@ export default function AnimeMappingsPage() {
     }
   }, []);
 
+  const loadAutoMapStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/anime/automap/status');
+      if (!res.ok) return;
+      setAutoMapStatus((await res.json()) as AutoMapStatus);
+    } catch {
+      // Status stays as an em dash.
+    }
+  }, []);
+
   useEffect(() => {
     void loadCacheUsage();
-  }, [loadCacheUsage]);
+    void loadAutoMapStatus();
+  }, [loadCacheUsage, loadAutoMapStatus]);
+
+  // While a drain is in progress, poll status so progress climbs and the UI
+  // flips back to "Run now" once it finishes or is stopped.
+  useEffect(() => {
+    if (!autoMapStatus?.running) return;
+    const id = window.setInterval(() => void loadAutoMapStatus(), 5000);
+    return () => window.clearInterval(id);
+  }, [autoMapStatus?.running, loadAutoMapStatus]);
+
+  async function handleRunAutoMapNow() {
+    setRunningAutoMap(true);
+    try {
+      const res = await fetch('/api/anime/automap/run', { method: 'POST' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error || 'Failed to start auto-mapping');
+        return;
+      }
+      // Always 200; { started, reason } says whether a run actually began.
+      const result = (await res.json()) as { started: boolean; queued?: number; reason?: string };
+      if (result.started) {
+        toast.success(`Auto-mapping started — ${result.queued} anime queued, one per minute`);
+      } else if (result.reason === 'nothing-to-map') {
+        toast.info('Nothing to map — every anime already has a mapping');
+      } else if (result.reason === 'already-running') {
+        toast.info('Auto-mapping is already running');
+      } else if (result.reason === 'sonarr-unavailable') {
+        toast.error('Sonarr is unavailable');
+      } else {
+        toast.error('Failed to start auto-mapping');
+      }
+      void loadAutoMapStatus();
+    } finally {
+      setRunningAutoMap(false);
+    }
+  }
+
+  async function handleStopAutoMap() {
+    setStopping(true);
+    try {
+      const res = await fetch('/api/anime/automap/stop', { method: 'POST' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error || 'Failed to stop auto-mapping');
+        return;
+      }
+      const data = (await res.json()) as { stopping: boolean };
+      toast.success(data.stopping ? 'Auto-mapping stopped' : 'Auto-mapping already finished');
+      void loadAutoMapStatus();
+    } finally {
+      setStopping(false);
+    }
+  }
 
   useEffect(() => {
     if (!settings || ttlDraft !== null) return;
@@ -169,74 +226,6 @@ export default function AnimeMappingsPage() {
     }
   }
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/settings/anime-mappings');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as AdminAnimeMappingsResponse;
-      setMappings(data.mappings);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load mappings');
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const counts = useMemo(() => {
-    const all = mappings ?? [];
-    const byState = { AUTO_MATCH: 0, MANUAL_MATCH: 0, AUTO_UNMATCHED: 0, MANUAL_NONE: 0 };
-    for (const row of all) byState[row.state] += 1;
-    return { total: all.length, ...byState };
-  }, [mappings]);
-
-  const filtered = useMemo(() => {
-    const all = mappings ?? [];
-    const query = search.trim().toLowerCase();
-    return all.filter((row) => {
-      if (filter !== 'ALL' && row.state !== filter) return false;
-      if (query && !row.seriesTitle.toLowerCase().includes(query)) return false;
-      return true;
-    });
-  }, [mappings, filter, search]);
-
-  async function handleResetOne(row: AdminAnimeMappingRow) {
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/settings/anime-mappings/${row.sonarrSeriesId}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error || 'Failed to reset mapping');
-        return;
-      }
-      toast.success(`Reset ${row.seriesTitle}`);
-      await load();
-    } finally {
-      setBusy(false);
-      setConfirmTarget(null);
-    }
-  }
-
-  async function handleResetAll() {
-    setBusy(true);
-    try {
-      const res = await fetch('/api/settings/anime-mappings', { method: 'DELETE' });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error || 'Failed to reset mappings');
-        return;
-      }
-      const data = (await res.json()) as { deleted: number };
-      toast.success(`Reset ${data.deleted} mapping${data.deleted === 1 ? '' : 's'}`);
-      await load();
-    } finally {
-      setBusy(false);
-      setConfirmAll(false);
-    }
-  }
-
   return (
     <div className="animate-content-in pb-12">
       <div className="px-1 pt-1 pb-2">
@@ -252,133 +241,129 @@ export default function AnimeMappingsPage() {
       <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Anime mappings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          AniList links for Sonarr anime series. Reset a row to forget it — the series
-          re-auto-matches (seasons included) the next time it&apos;s viewed.
+          Auto-map Sonarr anime to AniList, tune the AniList cache, and manage individual links.
         </p>
       </div>
 
-      {error && (
-        <GroupedSection>
-          <div className="px-4 py-3 text-sm text-red-400">{error}</div>
-        </GroupedSection>
-      )}
-
-      {mappings === null && !error ? (
-        <GroupedSection>
-          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
-            Loading mappings…
+      <GroupedSection>
+        <Link
+          href="/settings/anime-mappings/mappingList"
+          className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+        >
+          <div className="min-w-0">
+            <span className="text-sm font-medium">Mapping list</span>
+            <p className="text-[11px] text-muted-foreground">View &amp; reset individual AniList links</p>
           </div>
-        </GroupedSection>
-      ) : mappings !== null ? (
-        <>
-          <div className="px-4 mb-3 space-y-2">
-            <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-1">
-              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Filter by series title"
-                className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-              />
-            </div>
-            <div className="flex gap-1.5 overflow-x-auto">
-              {FILTERS.map((item) => {
-                const count =
-                  item.value === 'ALL' ? counts.total : counts[item.value as SeriesAniListMappingState];
-                return (
-                  <button
-                    key={item.value}
-                    onClick={() => setFilter(item.value)}
-                    className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
-                      filter === item.value
-                        ? 'border-primary/50 bg-primary/15 text-primary'
-                        : 'border-border/40 bg-muted/20 text-muted-foreground'
-                    }`}
-                  >
-                    {item.label} · {count}
-                  </button>
-                );
-              })}
-            </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+        </Link>
+      </GroupedSection>
+
+      <GroupedSection
+        title="Auto-mapping"
+        footer="Each night, anime in Sonarr that were never mapped get auto-linked to AniList — one per minute to stay under AniList's rate limit. Already auto-mapped and manually-set series are left alone. Turning this off skips future nightly runs; use Stop to halt one in progress."
+      >
+        <div className="grouped-row">
+          <span className="text-sm">Nightly auto-map</span>
+          <Switch
+            checked={settings?.animeAutoMapEnabled ?? true}
+            onCheckedChange={(next) => void updateSettings({ animeAutoMapEnabled: next })}
+            disabled={!settings}
+          />
+        </div>
+        {(settings?.animeAutoMapEnabled ?? true) && (
+          <div className="grouped-row">
+            <span className="text-sm">Run at</span>
+            <Select
+              value={String(settings?.animeAutoMapHour ?? 0)}
+              onValueChange={(v) => void updateSettings({ animeAutoMapHour: Number.parseInt(v, 10) })}
+              disabled={!settings}
+            >
+              <SelectTrigger className="h-8 w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <SelectItem key={i} value={String(i)}>{hourLabel(i)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-
-          {filtered.length === 0 ? (
-            <GroupedSection>
-              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                {counts.total === 0
-                  ? 'No mappings yet — they appear as anime series pages are viewed.'
-                  : 'No mappings match the current filter.'}
+        )}
+        <div className="grouped-row">
+          <span className="text-sm">Mapped</span>
+          <div className="text-right">
+            <span className="text-sm text-muted-foreground">
+              {autoMapStatus ? `${autoMapStatus.mapped ?? '—'} / ${autoMapStatus.total ?? '—'}` : '—'}
+            </span>
+            {autoMapStatus && ((autoMapStatus.neverMapped ?? 0) > 0 || (autoMapStatus.unmatched ?? 0) > 0) && (
+              <p className="text-[11px] text-muted-foreground">
+                {[
+                  (autoMapStatus.neverMapped ?? 0) > 0 ? `${autoMapStatus.neverMapped} never mapped` : null,
+                  (autoMapStatus.unmatched ?? 0) > 0 ? `${autoMapStatus.unmatched} unmatched` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+            )}
+          </div>
+        </div>
+        {autoMapStatus?.lastRunAt && (
+          <div className="grouped-row">
+            <span className="text-sm">Last run</span>
+            <span className="text-sm text-muted-foreground">{relativeTime(autoMapStatus.lastRunAt)}</span>
+          </div>
+        )}
+        {autoMapStatus?.running ? (
+          <div className="px-4 py-3 space-y-2">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                <span className="truncate">
+                  {autoMapStatus.run?.currentTitle ? `Mapping ${autoMapStatus.run.currentTitle}` : 'Mapping…'}
+                </span>
+              </span>
+              <span className="shrink-0 text-muted-foreground">
+                {autoMapStatus.run
+                  ? `${autoMapStatus.run.queueTotal - autoMapStatus.run.processed} remaining${
+                      autoMapStatus.run.failed > 0 ? ` · ${autoMapStatus.run.failed} failed` : ''
+                    }`
+                  : ''}
+              </span>
+            </div>
+            {autoMapStatus.run && autoMapStatus.run.queueTotal > 0 && (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.round((autoMapStatus.run.processed / autoMapStatus.run.queueTotal) * 100)}%`,
+                  }}
+                />
               </div>
-            </GroupedSection>
-          ) : (
-            <GroupedSection title={`${filtered.length} of ${counts.total}`}>
-              {filtered.map((row) => {
-                const autoCount = row.entries.filter((entry) => entry.source === 'auto').length;
-                return (
-                  <div key={row.sonarrSeriesId} className="grouped-row gap-2">
-                    <button
-                      onClick={() => router.push(`/series/${row.sonarrSeriesId}`)}
-                      className="flex-1 min-w-0 py-2 text-left"
-                    >
-                      <div className="flex items-baseline gap-2 min-w-0">
-                        <span className="text-sm font-medium truncate">{row.seriesTitle}</span>
-                        {row.seriesYear != null && (
-                          <span className="text-xs text-muted-foreground shrink-0">{row.seriesYear}</span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <Badge className={`${STATE_META[row.state].className} text-[10px] px-1.5 py-0`}>
-                          {STATE_META[row.state].label}
-                        </Badge>
-                        {row.entries.length > 0 && (
-                          <span className="text-[11px] text-muted-foreground">
-                            {row.entries.length} linked
-                            {autoCount > 0 ? ` · ${autoCount} auto` : ''}
-                          </span>
-                        )}
-                        {row.confidence != null && (
-                          <span className="text-[11px] text-muted-foreground">conf {row.confidence}</span>
-                        )}
-                        <span className="text-[11px] text-muted-foreground">{relativeTime(row.resolvedAt)}</span>
-                      </div>
-                      {row.entries.length > 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground truncate">
-                          {row.entries.map(entryLabel).join(' · ')}
-                        </p>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setConfirmTarget(row)}
-                      disabled={busy}
-                      aria-label={`Reset mapping for ${row.seriesTitle}`}
-                      className="self-center min-w-[36px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-60"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
-            </GroupedSection>
-          )}
-
-          {counts.total > 0 && (
-            <GroupedSection footer="Resets forget auto and manual links alike. Each series re-auto-matches with season auto-linking on its next view.">
-              <div className="px-4 py-3">
-                <Button
-                  variant="outline"
-                  className="w-full h-9 text-destructive hover:text-destructive"
-                  onClick={() => setConfirmAll(true)}
-                  disabled={busy}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Reset all mappings
-                </Button>
-              </div>
-            </GroupedSection>
-          )}
-        </>
-      ) : null}
+            )}
+            <Button
+              variant="outline"
+              className="h-9 w-full text-destructive hover:text-destructive"
+              onClick={handleStopAutoMap}
+              disabled={stopping}
+            >
+              {stopping ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Square className="mr-2 h-4 w-4" />}
+              Stop
+            </Button>
+          </div>
+        ) : (
+          <div className="px-4 py-3">
+            <Button
+              variant="outline"
+              className="h-9 w-full"
+              onClick={handleRunAutoMapNow}
+              disabled={runningAutoMap || !(settings?.animeAutoMapEnabled ?? true)}
+            >
+              {runningAutoMap ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Run now
+            </Button>
+          </div>
+        )}
+      </GroupedSection>
 
       <GroupedSection
         title="AniList cache"
@@ -450,30 +435,6 @@ export default function AnimeMappingsPage() {
         destructive
         busy={clearingCache}
         onConfirm={handleClearAnilistCache}
-      />
-
-      <ConfirmDialog
-        open={confirmTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setConfirmTarget(null);
-        }}
-        title={confirmTarget ? `Reset ${confirmTarget.seriesTitle}?` : 'Reset mapping?'}
-        description="All AniList links for this series are forgotten — including manual ones. It re-auto-matches the next time someone views it."
-        confirmLabel="Reset"
-        destructive
-        busy={busy}
-        onConfirm={() => (confirmTarget ? handleResetOne(confirmTarget) : Promise.resolve())}
-      />
-
-      <ConfirmDialog
-        open={confirmAll}
-        onOpenChange={setConfirmAll}
-        title={`Reset all ${counts.total} mappings?`}
-        description="Every AniList link is forgotten — auto and manual alike. Each anime series re-auto-matches with season auto-linking the next time it's viewed."
-        confirmLabel="Reset all"
-        destructive
-        busy={busy}
-        onConfirm={handleResetAll}
       />
     </div>
   );

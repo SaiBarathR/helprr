@@ -30,6 +30,8 @@ export function buildDefaultAppSettings(): Prisma.AppSettingsCreateInput {
     activityDigestMode: 'off',
     activityDigestHour: 8,
     activityDigestDayOfWeek: 1,
+    animeAutoMapEnabled: true,
+    animeAutoMapHour: 0,
   };
 }
 

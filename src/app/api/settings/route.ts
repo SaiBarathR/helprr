@@ -103,6 +103,7 @@ async function putHandler(request: NextRequest) {
       logFailedResponseBodies,
       watchProviderRegion,
       activityDigestMode, activityDigestHour, activityDigestDayOfWeek,
+      animeAutoMapEnabled, animeAutoMapHour,
       anilistSectionsTtlMin, anilistBrowseTtlMin, anilistDetailTtlMin, anilistAiringTtlMin,
     } = body;
 
@@ -234,6 +235,13 @@ async function putHandler(request: NextRequest) {
       if ('error' in parsed) return parsed.error;
       data.activityDigestDayOfWeek = parsed.value;
     }
+    if (animeAutoMapEnabled !== undefined)
+      data.animeAutoMapEnabled = Boolean(animeAutoMapEnabled);
+    if (animeAutoMapHour !== undefined) {
+      const parsed = parseIntegerSetting(animeAutoMapHour, 'Anime auto-map hour', 0, 23);
+      if ('error' in parsed) return parsed.error;
+      data.animeAutoMapHour = parsed.value;
+    }
     // AniList cache TTLs, in minutes (max 30 days).
     if (anilistSectionsTtlMin !== undefined) {
       const parsed = parseIntegerSetting(anilistSectionsTtlMin, 'AniList sections cache TTL', 1, 43_200);
@@ -282,6 +290,8 @@ async function putHandler(request: NextRequest) {
         activityDigestMode: (data.activityDigestMode as string | undefined) ?? 'off',
         activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
         activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
+        animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
+        animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
         anilistSectionsTtlMin: (data.anilistSectionsTtlMin as number | undefined) ?? 5,
         anilistBrowseTtlMin: (data.anilistBrowseTtlMin as number | undefined) ?? 10,
         anilistDetailTtlMin: (data.anilistDetailTtlMin as number | undefined) ?? 1440,

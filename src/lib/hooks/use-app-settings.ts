@@ -26,6 +26,8 @@ export interface AppSettingsState {
   activityDigestMode: 'off' | 'daily' | 'weekly';
   activityDigestHour: number;
   activityDigestDayOfWeek: number;
+  animeAutoMapEnabled: boolean;
+  animeAutoMapHour: number;
   anilistSectionsTtlMin: number;
   anilistBrowseTtlMin: number;
   anilistDetailTtlMin: number;
@@ -110,6 +112,8 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     activityDigestMode: pickEnum(raw.activityDigestMode, ACTIVITY_DIGEST_MODES, 'off'),
     activityDigestHour: numberOr(raw.activityDigestHour, 8),
     activityDigestDayOfWeek: numberOr(raw.activityDigestDayOfWeek, 1),
+    animeAutoMapEnabled: raw.animeAutoMapEnabled !== false,
+    animeAutoMapHour: numberOr(raw.animeAutoMapHour, 0),
     anilistSectionsTtlMin: numberOr(raw.anilistSectionsTtlMin, 5),
     anilistBrowseTtlMin: numberOr(raw.anilistBrowseTtlMin, 10),
     anilistDetailTtlMin: numberOr(raw.anilistDetailTtlMin, 1440),
