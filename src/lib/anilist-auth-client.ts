@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import { rateLimitWait } from '@/lib/anilist-client';
+import { noteAniListRateHeaders, noteAniListRateLimited, rateLimitWait } from '@/lib/anilist-client';
 import {
   AniListReauthRequiredError,
   ANILIST_GRAPHQL_URL,
@@ -34,9 +34,15 @@ async function performRequest<T>(
         },
       }
     );
+    // Authenticated traffic shares the anonymous client's adaptive limiter/cooldown.
+    noteAniListRateHeaders(response.headers);
     return { status: response.status, data: response.data };
   } catch (error) {
     if (error instanceof AxiosError && error.response) {
+      noteAniListRateHeaders(error.response.headers);
+      if (error.response.status === 429) {
+        throw noteAniListRateLimited(error.response.headers);
+      }
       return { status: error.response.status, data: error.response.data as GqlResponse<T> | undefined };
     }
     throw error;
@@ -74,6 +80,10 @@ export async function gqlRequestAuthenticated<T>(
 function processResult<T>(result: { status: number; data: GqlResponse<T> | undefined }): T {
   if (!result.data) {
     throw new Error(`AniList returned no body (status ${result.status})`);
+  }
+  // AniList sometimes signals 429 in the GraphQL body on an HTTP 200.
+  if (result.data.errors?.some((error) => error.status === 429)) {
+    throw noteAniListRateLimited({});
   }
   if (result.status >= 400) {
     const message = result.data.errors?.map((error) => error.message).join('; ');

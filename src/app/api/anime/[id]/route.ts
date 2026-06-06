@@ -4,6 +4,7 @@ import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { getAnimeDetail, getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { normalizeAniListDetail, isMovieFormat } from '@/lib/anilist-helpers';
 import { withApiLogging } from '@/lib/api-logger';
+import { anilistRateLimitResponse } from '@/lib/anilist-http';
 import {
   buildLibraryLookups,
   matchMovieInLibrary,
@@ -89,6 +90,8 @@ async function getHandler(
       library,
     });
   } catch (error) {
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     const message = error instanceof Error ? error.message : 'Failed to load anime detail';
     console.error('[Anime Detail API]', message);
     return NextResponse.json({ error: message }, { status: 500 });

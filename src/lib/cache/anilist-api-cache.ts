@@ -2,7 +2,6 @@ import { getRedisClient } from '@/lib/redis';
 import { buildAnilistDataKey, sha256Hex, stableStringify } from '@/lib/cache/keys';
 import {
   getCacheGeneration,
-  getCacheImagesEnabled,
   releaseCacheLock,
   tryAcquireCacheLock,
 } from '@/lib/cache/state';
@@ -72,12 +71,10 @@ async function writeEntry<T>(key: string, entry: AnilistCacheEntry<T>, nowMs: nu
   }
 }
 
+// NOTE: deliberately NOT gated on the "Cache images" toggle — bypassing the
+// JSON cache multiplies upstream AniList calls and trips its rate limit.
+// Manual control lives in Settings → Anime mappings → Clear AniList cache.
 export async function getAnilistJsonWithCache<T>(options: AnilistCachedRequestOptions<T>): Promise<T> {
-  const enabled = await getCacheImagesEnabled();
-  if (!enabled) {
-    return options.fetcher();
-  }
-
   const generation = await getCacheGeneration();
   const cacheSeed = stableStringify({
     endpoint: options.endpoint,

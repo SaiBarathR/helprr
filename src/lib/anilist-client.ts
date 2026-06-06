@@ -21,22 +21,86 @@ import type {
 import { getAnilistJsonWithCache, type AnilistCachePolicy } from '@/lib/cache/anilist-api-cache';
 import { getAnilistTtlSettings } from '@/lib/cache/state';
 import { getCurrentSeason } from '@/lib/anilist-helpers';
+import { getHeader, parseRetryAfter } from '@/lib/http-rate-limit';
 
 const ANILIST_ENDPOINT = 'https://graphql.anilist.co';
 const ANILIST_TIMEOUT_MS = 10_000;
 
-// Rate limiting: 90 req/min
+/** Thrown when AniList rate limits us (or we predict it would) — routes map this to HTTP 429. */
+export class AniListRateLimitError extends Error {
+  retryAfterSeconds: number;
+  retryAt: string | null;
+
+  constructor(retryAfterSeconds: number, retryAt: string | null = null) {
+    super(`AniList is rate limited — try again in ~${retryAfterSeconds}s`);
+    this.name = 'AniListRateLimitError';
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.retryAt = retryAt;
+  }
+}
+
+// Rate limiting: nominally 90 req/min, but AniList currently runs degraded at
+// 30/min — so the local sliding window adapts to the X-RateLimit-Limit header
+// (limit − 3 buffer). A real 429 (or predicted exhaustion via
+// X-RateLimit-Remaining) opens a fail-fast cooldown; cached endpoints then
+// serve stale data instead of hammering upstream.
 const RATE_LIMIT_WINDOW_MS = 60_000;
-const RATE_LIMIT_MAX = 85; // leave a small buffer
+const RATE_LIMIT_MAX = 85; // leave a small buffer under the nominal 90/min
 const requestTimestamps: number[] = [];
+let serverRateLimit = 0; // last X-RateLimit-Limit (0 = unknown)
+let serverRateRemaining = -1; // last X-RateLimit-Remaining (-1 = unknown)
+let cooldownUntilMs = 0;
+
+function effectiveRateLimitMax(): number {
+  return serverRateLimit > 0 ? Math.min(RATE_LIMIT_MAX, Math.max(1, serverRateLimit - 3)) : RATE_LIMIT_MAX;
+}
+
+function cooldownError(): AniListRateLimitError {
+  const seconds = Math.max(1, Math.ceil((cooldownUntilMs - Date.now()) / 1000));
+  return new AniListRateLimitError(seconds, new Date(cooldownUntilMs).toISOString());
+}
+
+/** Open (or extend) the fail-fast cooldown from a 429's headers; logs once per onset. */
+export function noteAniListRateLimited(headers: unknown): AniListRateLimitError {
+  const parsed = parseRetryAfter(headers);
+  const retryAfterSeconds = parsed.retryAfterSeconds ?? 60;
+  const target = Date.now() + retryAfterSeconds * 1000;
+  if (target > cooldownUntilMs) {
+    const wasActive = cooldownUntilMs > Date.now();
+    cooldownUntilMs = target;
+    if (!wasActive) {
+      console.warn(`[anilist] rate limited; cooling down ${retryAfterSeconds}s (until ${new Date(target).toISOString()})`);
+    }
+  }
+  return cooldownError();
+}
+
+/** Track X-RateLimit-* response headers so the local limiter adapts (e.g. degraded 30/min mode). */
+export function noteAniListRateHeaders(headers: unknown): void {
+  const limit = Number(getHeader(headers, 'x-ratelimit-limit'));
+  if (Number.isFinite(limit) && limit > 0) serverRateLimit = limit;
+  const remaining = Number(getHeader(headers, 'x-ratelimit-remaining'));
+  if (Number.isFinite(remaining) && remaining >= 0) serverRateRemaining = remaining;
+}
 
 export async function rateLimitWait(): Promise<void> {
+  if (cooldownUntilMs > Date.now()) {
+    throw cooldownError();
+  }
+  // Predicted exhaustion: the server says (almost) nothing remains in this
+  // window. Open a soft cooldown instead of earning the 429 penalty. The
+  // signal is consumed so recovery isn't blocked by a stale header value.
+  if (serverRateRemaining >= 0 && serverRateRemaining <= 1) {
+    serverRateRemaining = -1;
+    throw noteAniListRateLimited({});
+  }
+
   const now = Date.now();
   // Remove timestamps older than the window
   while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
     requestTimestamps.shift();
   }
-  if (requestTimestamps.length >= RATE_LIMIT_MAX) {
+  if (requestTimestamps.length >= effectiveRateLimitMax()) {
     const oldest = requestTimestamps[0];
     const waitMs = oldest + RATE_LIMIT_WINDOW_MS - now + 100;
     if (waitMs > 0) {
@@ -227,7 +291,7 @@ const MANGA_DETAIL_FRAGMENT = `
 
 interface GqlResponse<T> {
   data: T;
-  errors?: Array<{ message: string }>;
+  errors?: Array<{ message: string; status?: number }>;
 }
 
 interface AiringMediaData {
@@ -254,19 +318,36 @@ interface MangaMediaData {
 async function gqlRequest<T>(query: string, variables: Record<string, unknown>): Promise<T> {
   await rateLimitWait();
 
-  const response = await axios.post<GqlResponse<T>>(
-    ANILIST_ENDPOINT,
-    { query, variables },
-    {
-      timeout: ANILIST_TIMEOUT_MS,
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+  let response;
+  try {
+    response = await axios.post<GqlResponse<T>>(
+      ANILIST_ENDPOINT,
+      { query, variables },
+      {
+        timeout: ANILIST_TIMEOUT_MS,
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      }
+    );
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      noteAniListRateHeaders(error.response.headers);
+      if (error.response.status === 429) {
+        throw noteAniListRateLimited(error.response.headers);
+      }
     }
-  );
+    throw error;
+  }
+
+  noteAniListRateHeaders(response.headers);
 
   if (response.data.errors?.length) {
+    // AniList sometimes signals 429 in the GraphQL body on an HTTP 200.
+    if (response.data.errors.some((error) => error.status === 429)) {
+      throw noteAniListRateLimited(response.headers);
+    }
     const messages = response.data.errors.map((error) => error.message).join('; ');
     throw new Error(`AniList API error: ${messages}`);
   }

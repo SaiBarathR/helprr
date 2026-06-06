@@ -9,6 +9,7 @@ import {
 } from '@/lib/anilist-mutations';
 import { getAnilistJsonWithCache } from '@/lib/cache/anilist-api-cache';
 import { withApiLogging } from '@/lib/api-logger';
+import { anilistRateLimitResponse } from '@/lib/anilist-http';
 
 const VALID_TYPES: AniListMediaType[] = ['ANIME', 'MANGA'];
 const VALID_STATUSES: AniListMediaListStatus[] = [
@@ -60,6 +61,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         { status: 401 }
       );
     }
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     console.error('AniList library fetch failed', error);
     return NextResponse.json(
       { error: 'Failed to fetch AniList library' },

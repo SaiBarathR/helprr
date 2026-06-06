@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { AniListReauthRequiredError, loadAniListConnection } from '@/lib/anilist-oauth';
 import { withApiLogging } from '@/lib/api-logger';
+import { anilistRateLimitResponse } from '@/lib/anilist-http';
 import {
   deleteMediaListEntry,
   fetchUserMediaListEntry,
@@ -80,6 +81,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ entry });
   } catch (error) {
     if (error instanceof AniListReauthRequiredError) return reauthResponse();
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     console.error('AniList fetch list entry failed', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch entry' },
@@ -161,6 +164,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ entry });
   } catch (error) {
     if (error instanceof AniListReauthRequiredError) return reauthResponse();
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     console.error('AniList saveMediaListEntry failed', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to save entry' },
@@ -185,6 +190,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof AniListReauthRequiredError) return reauthResponse();
+    const rateLimited = anilistRateLimitResponse(error);
+    if (rateLimited) return rateLimited;
     console.error('AniList deleteMediaListEntry failed', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to delete entry' },
