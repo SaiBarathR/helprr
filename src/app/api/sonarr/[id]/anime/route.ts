@@ -6,6 +6,7 @@ import {
   addManualEntry,
   clearManualSeriesAniListMapping,
   getSeriesAniListResponse,
+  getSeriesEntryDetail,
   removeManualEntry,
   setPrimaryEntry,
 } from '@/lib/anilist-series-mapping';
@@ -47,8 +48,11 @@ function errorStatus(message: string): number {
     : 500;
 }
 
+// Default scope is 'primary' (lazy page load — one detail). `?detail=<id>`
+// fetches a single linked entry on tab select; `?full=1` fetches everything
+// (drawer hydration).
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
@@ -57,7 +61,20 @@ async function getHandler(
   try {
     const { id } = await params;
     const series = await getAnimeSeries(id);
-    const response = await getSeriesAniListResponse(series);
+    const searchParams = new URL(request.url).searchParams;
+
+    const detailRaw = searchParams.get('detail');
+    if (detailRaw != null && detailRaw !== '') {
+      const anilistMediaId = Number(detailRaw);
+      if (!Number.isFinite(anilistMediaId) || anilistMediaId <= 0) {
+        return NextResponse.json({ error: 'Invalid AniList media ID' }, { status: 400 });
+      }
+      const response = await getSeriesEntryDetail(series, anilistMediaId);
+      return NextResponse.json(response);
+    }
+
+    const scope = searchParams.get('full') === '1' ? 'all' : 'primary';
+    const response = await getSeriesAniListResponse(series, { scope });
     return NextResponse.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load AniList anime details';

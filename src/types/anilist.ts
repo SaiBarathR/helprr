@@ -323,8 +323,18 @@ export interface SeriesAniListMapping {
 
 export interface SeriesAniListResponse {
   mapping: SeriesAniListMapping;
-  /** One detail per linked entry, ordered (index 0 = primary). Empty when unmatched. */
+  /**
+   * Linked entry details, ordered (index 0 = primary). Empty when unmatched.
+   * The page-load GET returns only the primary (lazy per-tab loading);
+   * `?full=1` and all mutation responses return every entry.
+   */
   details: AniListDetailResponse[];
+}
+
+/** Lazy per-tab fetch (`GET …/anime?detail=<id>`). `detail: null` = the entry is unknown or was pruned — refetch the full response to resync. */
+export interface SeriesAniListEntryDetailResponse {
+  mapping: SeriesAniListMapping;
+  detail: AniListDetailResponse | null;
 }
 
 /** A Sonarr series currently mapped to a given AniList media (reverse lookup). */

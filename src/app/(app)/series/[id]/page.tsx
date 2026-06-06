@@ -33,7 +33,12 @@ import {
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag, DiscoverTvFullDetail, DiscoverSeasonDetailResponse } from '@/types';
-import type { SeriesAniListResponse } from '@/types/anilist';
+import type {
+  AniListDetailResponse,
+  SeriesAniListEntryDetailResponse,
+  SeriesAniListResponse,
+} from '@/types/anilist';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   getSeriesDetailSnapshot,
   patchSeasonAcrossSnapshots,
@@ -140,6 +145,8 @@ export default function SeriesDetailPage() {
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
+  // The on-screen AniList entry — read by the background refresh interval.
+  const activeAnimeEntryIdRef = useRef<number | null>(null);
   currentSeriesIdRef.current = seriesId;
   const [series, setSeries] = useState<SonarrSeries | null>(() => initialSnapshot?.series ?? null);
   const [episodes, setEpisodes] = useState<SonarrEpisode[]>(() => initialSnapshot?.episodes ?? []);
@@ -158,6 +165,13 @@ export default function SeriesDetailPage() {
   const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
   const [animeData, setAnimeData] = useState<SeriesAniListResponse | null>(() => initialSnapshot?.animeData ?? null);
   const [animeLoading, setAnimeLoading] = useState(false);
+  // Per-tab AniList details, fetched lazily on tab select (keyed by anilistMediaId).
+  const [animeDetailsById, setAnimeDetailsById] = useState<Map<number, AniListDetailResponse>>(
+    () => initialSnapshot?.animeDetailsById ?? new Map()
+  );
+  const [activeDetailLoading, setActiveDetailLoading] = useState(false);
+  // Full detail set hydrated when the remap drawer opens (suggestions need every entry's relations).
+  const [drawerDetails, setDrawerDetails] = useState<AniListDetailResponse[] | null>(null);
   const [animeOverviewExpanded, setAnimeOverviewExpanded] = useState(false);
   const [showAniListRemap, setShowAniListRemap] = useState(false);
   const [activeAnimeTab, setActiveAnimeTab] = useState(0);
@@ -216,6 +230,7 @@ export default function SeriesDetailPage() {
     rootFolders?: RootFolder[];
     tags?: Tag[];
     animeData?: SeriesAniListResponse | null;
+    animeDetailsById?: Map<number, AniListDetailResponse>;
     tmdbData?: DiscoverTvFullDetail | null;
     credits?: SeriesCredits;
     seasonEpisodes?: Map<number, DiscoverSeasonDetailResponse>;
@@ -228,11 +243,12 @@ export default function SeriesDetailPage() {
       rootFolders: next.rootFolders ?? rootFolders,
       tags: next.tags ?? tags,
       animeData: next.animeData ?? animeData,
+      animeDetailsById: next.animeDetailsById ?? animeDetailsById,
       tmdbData: next.tmdbData ?? tmdbData,
       credits: next.credits ?? credits,
       seasonEpisodes: next.seasonEpisodes ?? seasonEpisodes,
     });
-  }, [animeData, credits, episodes, qualityProfiles, rootFolders, seasonEpisodes, series, seriesId, tags, tmdbData]);
+  }, [animeData, animeDetailsById, credits, episodes, qualityProfiles, rootFolders, seasonEpisodes, series, seriesId, tags, tmdbData]);
 
   const loadData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId)) {
@@ -268,6 +284,7 @@ export default function SeriesDetailPage() {
         rootFolders: nextRootFolders,
         tags: nextTags,
         animeData: existingSnapshot?.animeData ?? null,
+        animeDetailsById: existingSnapshot?.animeDetailsById,
         tmdbData: existingSnapshot?.tmdbData ?? null,
         credits: existingSnapshot?.credits,
         seasonEpisodes: existingSnapshot?.seasonEpisodes,
@@ -385,7 +402,7 @@ export default function SeriesDetailPage() {
   // Anime with no AniList match (auto-unmatched or manually unmapped) fall back to
   // TMDB series-level enrichment like normal shows. Episode-level TMDB data stays
   // disabled for anime regardless — episode orders rarely line up with TMDB.
-  const animeTmdbFallback = series?.seriesType === 'anime' && animeData !== null && animeData.details.length === 0;
+  const animeTmdbFallback = series?.seriesType === 'anime' && animeData !== null && animeData.mapping.entries.length === 0;
 
   useEffect(() => {
     if (!Number.isFinite(seriesId) || !series?.id || (series.seriesType === 'anime' && !animeTmdbFallback)) {
@@ -409,6 +426,7 @@ export default function SeriesDetailPage() {
           rootFolders: cached?.rootFolders ?? [],
           tags: cached?.tags ?? [],
           animeData: cached?.animeData ?? null,
+          animeDetailsById: cached?.animeDetailsById,
           tmdbData: cached?.tmdbData ?? null,
           credits: data,
           seasonEpisodes: cached?.seasonEpisodes,
@@ -445,6 +463,7 @@ export default function SeriesDetailPage() {
           rootFolders: cached?.rootFolders ?? [],
           tags: cached?.tags ?? [],
           animeData: cached?.animeData ?? null,
+          animeDetailsById: cached?.animeDetailsById,
           tmdbData: data,
           credits: cached?.credits,
           seasonEpisodes: cached?.seasonEpisodes,
@@ -460,20 +479,27 @@ export default function SeriesDetailPage() {
   useEffect(() => {
     if (!series?.id || series.seriesType !== 'anime') {
       setAnimeData(null);
+      setAnimeDetailsById(new Map());
+      setDrawerDetails(null);
       setAnimeLoading(false);
       return;
     }
 
     const controller = new AbortController();
     const cached = getSeriesDetailSnapshot(seriesId);
+    setDrawerDetails(null);
     if (cached?.animeData) {
       setAnimeData(cached.animeData);
+      setAnimeDetailsById(cached.animeDetailsById ?? new Map());
       setAnimeLoading(false);
     } else {
       setAnimeData(null);
+      setAnimeDetailsById(new Map());
       setAnimeLoading(true);
     }
 
+    // Lazy page load: the default GET returns the mapping + primary detail only;
+    // other seasons fetch when their tab is selected.
     fetch(`/api/sonarr/${series.id}/anime`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
@@ -486,6 +512,9 @@ export default function SeriesDetailPage() {
         if (!controller.signal.aborted) {
           setAnimeData(data);
           const current = getSeriesDetailSnapshot(seriesId);
+          const nextDetailsById = new Map(current?.animeDetailsById ?? []);
+          for (const detail of data.details) nextDetailsById.set(detail.id, detail);
+          setAnimeDetailsById(nextDetailsById);
           setSeriesDetailSnapshot(seriesId, {
             series: current?.series ?? null,
             episodes: current?.episodes ?? [],
@@ -493,6 +522,7 @@ export default function SeriesDetailPage() {
             rootFolders: current?.rootFolders ?? [],
             tags: current?.tags ?? [],
             animeData: data,
+            animeDetailsById: nextDetailsById,
             tmdbData: current?.tmdbData ?? null,
             credits: current?.credits,
             seasonEpisodes: current?.seasonEpisodes,
@@ -520,26 +550,61 @@ export default function SeriesDetailPage() {
 
     let cancelled = false;
 
+    // Refresh only the on-screen tab's detail (fresh airing countdown) — one
+    // cached AniList lookup instead of refetching every linked season.
     const refreshAnimeData = async () => {
+      const entryId = activeAnimeEntryIdRef.current;
+      if (entryId == null) return;
       try {
-        const response = await fetch(`/api/sonarr/${series.id}/anime`);
+        const response = await fetch(`/api/sonarr/${series.id}/anime?detail=${entryId}`);
         if (!response.ok) return;
-        const data: SeriesAniListResponse = await response.json();
-        if (!cancelled) {
-          setAnimeData(data);
+        const data: SeriesAniListEntryDetailResponse = await response.json();
+        if (cancelled) return;
+
+        if (data.detail) {
           const cached = getSeriesDetailSnapshot(seriesId);
+          const nextDetailsById = new Map(cached?.animeDetailsById ?? []).set(entryId, data.detail);
+          setAnimeData((prev) => (prev ? { ...prev, mapping: data.mapping } : prev));
+          setAnimeDetailsById(nextDetailsById);
           setSeriesDetailSnapshot(seriesId, {
             series: cached?.series ?? null,
             episodes: cached?.episodes ?? [],
             qualityProfiles: cached?.qualityProfiles ?? [],
             rootFolders: cached?.rootFolders ?? [],
             tags: cached?.tags ?? [],
-            animeData: data,
+            animeData: cached?.animeData ? { ...cached.animeData, mapping: data.mapping } : null,
+            animeDetailsById: nextDetailsById,
             tmdbData: cached?.tmdbData ?? null,
             credits: cached?.credits,
             seasonEpisodes: cached?.seasonEpisodes,
           });
+          return;
         }
+
+        // The on-screen entry was pruned server-side — resync mapping + primary.
+        const full = await fetch(`/api/sonarr/${series.id}/anime`);
+        if (!full.ok) return;
+        const fullData: SeriesAniListResponse = await full.json();
+        if (cancelled) return;
+        setActiveAnimeTab(0);
+        setAnimeData(fullData);
+        const current = getSeriesDetailSnapshot(seriesId);
+        const nextDetailsById = new Map(current?.animeDetailsById ?? []);
+        nextDetailsById.delete(entryId);
+        for (const detail of fullData.details) nextDetailsById.set(detail.id, detail);
+        setAnimeDetailsById(nextDetailsById);
+        setSeriesDetailSnapshot(seriesId, {
+          series: current?.series ?? null,
+          episodes: current?.episodes ?? [],
+          qualityProfiles: current?.qualityProfiles ?? [],
+          rootFolders: current?.rootFolders ?? [],
+          tags: current?.tags ?? [],
+          animeData: fullData,
+          animeDetailsById: nextDetailsById,
+          tmdbData: current?.tmdbData ?? null,
+          credits: current?.credits,
+          seasonEpisodes: current?.seasonEpisodes,
+        });
       } catch {
         // Keep the current detail on background refresh failures.
       }
@@ -568,8 +633,9 @@ export default function SeriesDetailPage() {
   useEffect(() => {
     setAnimeNowMs(Date.now());
 
-    const list = animeData?.details ?? [];
-    const activeDetail = list[Math.min(activeAnimeTab, Math.max(0, list.length - 1))] ?? null;
+    const entries = animeData?.mapping.entries ?? [];
+    const entryId = entries[Math.min(activeAnimeTab, Math.max(0, entries.length - 1))]?.anilistMediaId;
+    const activeDetail = entryId != null ? animeDetailsById.get(entryId) ?? null : null;
     if (!activeDetail?.nextAiringEpisode) return;
 
     const tick = window.setInterval(() => {
@@ -579,7 +645,99 @@ export default function SeriesDetailPage() {
     return () => {
       window.clearInterval(tick);
     };
-  }, [animeData, activeAnimeTab]);
+  }, [animeData, activeAnimeTab, animeDetailsById]);
+
+  // The remap drawer needs every linked entry's detail (covers + relation
+  // suggestions) — hydrate the full set once per open. Hot in Redis, so cheap.
+  useEffect(() => {
+    if (!showAniListRemap || !series?.id || series.seriesType !== 'anime') return;
+
+    const controller = new AbortController();
+    const activeSeriesId = seriesId;
+    fetch(`/api/sonarr/${series.id}/anime?full=1`, { signal: controller.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListResponse>) : null))
+      .then((data) => {
+        if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
+        setDrawerDetails(data.details);
+        setAnimeData(data);
+        const cached = getSeriesDetailSnapshot(activeSeriesId);
+        const nextDetailsById = new Map(cached?.animeDetailsById ?? []);
+        for (const detail of data.details) nextDetailsById.set(detail.id, detail);
+        setAnimeDetailsById(nextDetailsById);
+        setSeriesDetailSnapshot(activeSeriesId, {
+          series: cached?.series ?? null,
+          episodes: cached?.episodes ?? [],
+          qualityProfiles: cached?.qualityProfiles ?? [],
+          rootFolders: cached?.rootFolders ?? [],
+          tags: cached?.tags ?? [],
+          animeData: data,
+          animeDetailsById: nextDetailsById,
+          tmdbData: cached?.tmdbData ?? null,
+          credits: cached?.credits,
+          seasonEpisodes: cached?.seasonEpisodes,
+        });
+      })
+      .catch(() => {
+        // Drawer falls back to whichever details are already loaded.
+      });
+
+    return () => controller.abort();
+  }, [showAniListRemap, series?.id, series?.seriesType, seriesId]);
+
+  // Lazy per-tab detail fetch. The page-load GET only returns the primary;
+  // other seasons load (and validate) here on first select.
+  function selectAnimeTab(index: number) {
+    setActiveAnimeTab(index);
+    const entryId = (animeData?.mapping.entries ?? [])[index]?.anilistMediaId;
+    if (entryId == null || animeDetailsById.has(entryId) || !series?.id) return;
+
+    const activeSeriesId = seriesId;
+    setActiveDetailLoading(true);
+    fetch(`/api/sonarr/${series.id}/anime?detail=${entryId}`)
+      .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListEntryDetailResponse>) : null))
+      .then((data) => {
+        if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
+        if (data.detail) {
+          const nextAnime = animeData ? { ...animeData, mapping: data.mapping } : animeData;
+          const cached = getSeriesDetailSnapshot(activeSeriesId);
+          const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById).set(entryId, data.detail);
+          setAnimeData(nextAnime);
+          setAnimeDetailsById(nextDetailsById);
+          persistSeriesSnapshot({ animeData: nextAnime, animeDetailsById: nextDetailsById });
+        } else {
+          // The entry no longer exists server-side (pruned) — resync everything.
+          void resyncAnimeMapping();
+        }
+      })
+      .catch(() => {
+        toast.error('Failed to load AniList season details');
+      })
+      .finally(() => {
+        if (activeSeriesId === currentSeriesIdRef.current) setActiveDetailLoading(false);
+      });
+  }
+
+  // Full refetch when the client's view of the mapping went stale.
+  async function resyncAnimeMapping() {
+    if (!series?.id) return;
+    const activeSeriesId = seriesId;
+    try {
+      const res = await fetch(`/api/sonarr/${series.id}/anime?full=1`);
+      if (!res.ok) return;
+      const data: SeriesAniListResponse = await res.json();
+      if (activeSeriesId !== currentSeriesIdRef.current) return;
+      setActiveAnimeTab(0);
+      setAnimeData(data);
+      const cached = getSeriesDetailSnapshot(activeSeriesId);
+      const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById);
+      for (const detail of data.details) nextDetailsById.set(detail.id, detail);
+      setAnimeDetailsById(nextDetailsById);
+      setDrawerDetails(data.details);
+      persistSeriesSnapshot({ animeData: data, animeDetailsById: nextDetailsById });
+    } catch {
+      // Best-effort resync.
+    }
+  }
 
   function toggleSeasonExpand(seasonNumber: number) {
     setExpandedSeasons((prev) => {
@@ -655,11 +813,17 @@ export default function SeriesDetailPage() {
     setAnimeData(next);
     setAnimeOverviewExpanded(false);
     setActiveAnimeTab(0);
-    if (next.details.length > 0) {
+    // Mutation responses carry the full detail set — refresh the lazy map and
+    // the drawer's hydrated copy in one go.
+    const cached = getSeriesDetailSnapshot(seriesId);
+    const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById);
+    for (const detail of next.details) nextDetailsById.set(detail.id, detail);
+    setAnimeDetailsById(nextDetailsById);
+    setDrawerDetails(next.details);
+    if (next.mapping.entries.length > 0) {
       // A match now exists — drop the TMDB fallback data (state + snapshot).
       setTmdbData(null);
       setCredits({ cast: [], crew: [] });
-      const cached = getSeriesDetailSnapshot(seriesId);
       setSeriesDetailSnapshot(seriesId, {
         series: cached?.series ?? series,
         episodes: cached?.episodes ?? episodes,
@@ -667,10 +831,13 @@ export default function SeriesDetailPage() {
         rootFolders: cached?.rootFolders ?? rootFolders,
         tags: cached?.tags ?? tags,
         animeData: next,
+        animeDetailsById: nextDetailsById,
         tmdbData: null,
         credits: { cast: [], crew: [] },
         seasonEpisodes: cached?.seasonEpisodes,
       });
+    } else {
+      persistSeriesSnapshot({ animeData: next, animeDetailsById: nextDetailsById });
     }
     toast.success(
       next.mapping.state === 'MANUAL_NONE'
@@ -873,10 +1040,18 @@ export default function SeriesDetailPage() {
     ? format(new Date(series.nextAiring), "MMM d, yyyy 'at' h:mm a")
     : null;
   const isAnimeSeries = series.seriesType === 'anime';
-  const animeDetails = animeData?.details ?? [];
-  const activeAnimeIdx = animeDetails.length ? Math.min(activeAnimeTab, animeDetails.length - 1) : 0;
-  const animeDetail = animeDetails[activeAnimeIdx] ?? null;
   const animeMapping = animeData?.mapping ?? null;
+  const animeEntries = animeMapping?.entries ?? [];
+  const activeAnimeIdx = animeEntries.length ? Math.min(activeAnimeTab, animeEntries.length - 1) : 0;
+  const activeAnimeEntryId = animeEntries[activeAnimeIdx]?.anilistMediaId ?? null;
+  const animeDetail = activeAnimeEntryId != null ? animeDetailsById.get(activeAnimeEntryId) ?? null : null;
+  activeAnimeEntryIdRef.current = activeAnimeEntryId;
+  // Drawer gets the hydrated full set; before hydration, whatever is loaded
+  // (primary first) keeps suggestions/covers usable.
+  const animeDetails = drawerDetails
+    ?? animeEntries
+      .map((entry) => animeDetailsById.get(entry.anilistMediaId))
+      .filter((detail): detail is AniListDetailResponse => Boolean(detail));
   const nextAiringSeconds = animeDetail?.nextAiringEpisode
     ? Math.max(0, animeDetail.nextAiringEpisode.airingAt - Math.floor(animeNowMs / 1000))
     : null;
@@ -1193,15 +1368,17 @@ export default function SeriesDetailPage() {
 
       <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-2 md:p-6">
         {/* Hero: Backdrop or flat poster layout */}
-        {isAnimeSeries && animeDetails.length > 1 && (
+        {isAnimeSeries && animeEntries.length > 1 && (
           <div className="flex gap-1.5 overflow-x-auto pt-1 pb-3 -mx-2 px-2 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {animeDetails.map((detail, index) => {
-              const label = detail.seasonYear ? `${detail.title} · ${detail.seasonYear}` : detail.title;
+            {animeEntries.map((entry, index) => {
+              const detail = animeDetailsById.get(entry.anilistMediaId);
+              const title = detail?.title ?? entry.titleSnapshot ?? `AniList #${entry.anilistMediaId}`;
+              const label = detail?.seasonYear ? `${title} · ${detail.seasonYear}` : title;
               const active = index === activeAnimeIdx;
               return (
                 <button
-                  key={detail.id}
-                  onClick={() => setActiveAnimeTab(index)}
+                  key={entry.anilistMediaId}
+                  onClick={() => selectAnimeTab(index)}
                   className={`shrink-0 max-w-[180px] truncate rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                     active
                       ? 'bg-[var(--hpr-amber)]/20 text-[var(--hpr-amber)]'
@@ -1238,6 +1415,27 @@ export default function SeriesDetailPage() {
             nextAiringSeconds={formatCountdown(nextAiringSeconds ?? 0)}
             nextAiringEpisode={animeDetail.nextAiringEpisode}
           />
+        ) : isAnimeSeries && animeEntries.length > 0 ? (
+          // Active tab's detail is loading (lazy per-tab fetch) — hero-height placeholder.
+          <div className="-mx-2 md:-mx-6">
+            <div className="relative flex h-[220px] w-full items-center justify-center bg-muted/20">
+              {activeDetailLoading || animeLoading ? (
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              ) : (
+                <button
+                  onClick={() => selectAnimeTab(activeAnimeIdx)}
+                  className="rounded-full bg-background/55 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-md hover:bg-background/70"
+                >
+                  Couldn&apos;t load this season — tap to retry
+                </button>
+              )}
+            </div>
+            <div className="mt-4 space-y-2 px-2 md:px-6">
+              <Skeleton className="h-5 w-2/3" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-1/3" />
+            </div>
+          </div>
         ) : tmdbData?.backdropPath ? (
           <div className='-mx-2 md:-mx-6'>
             <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 ">
@@ -1627,7 +1825,7 @@ export default function SeriesDetailPage() {
                 <span className="text-sm text-muted-foreground">AniList</span>
                 <span className="flex items-center gap-2 text-sm text-right">
                   {formatAniListMappingState(animeMapping?.state)}
-                  {animeDetails.length > 1 ? ` · ${animeDetails.length} seasons` : ''}
+                  {animeEntries.length > 1 ? ` · ${animeEntries.length} seasons` : ''}
                   {animeMapping?.state === 'MANUAL_MATCH' ? (
                     <Badge className="bg-green-600/90 text-foreground text-[10px] px-1.5 py-0">Manual</Badge>
                   ) : animeMapping?.state === 'AUTO_MATCH' ? (
