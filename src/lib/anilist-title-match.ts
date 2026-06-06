@@ -21,20 +21,27 @@ const WORD_ORDINAL_VALUES: Record<string, number> = {
   tenth: 10,
 };
 
+// Roman-numeral seasons are only trusted as a TRAILING token of 2+ characters —
+// bare "v"/"x" and mid-title numerals collide with names ("SPY x FAMILY",
+// "Hunter x Hunter"), so those never count as markers.
+const TERMINAL_ROMAN = 'ii|iii|iv|vi|vii|viii|ix';
+const TERMINAL_ROMAN_REGEX = new RegExp(`\\s(?:${TERMINAL_ROMAN})$`);
+
 const ROMAN_NUMERAL_VALUES: Record<string, number> = {
   ii: 2,
   iii: 3,
   iv: 4,
-  v: 5,
   vi: 6,
   vii: 7,
   viii: 8,
   ix: 9,
-  x: 10,
 };
 
 /** "Final Season" parses into a high season band so it sorts after numbered seasons. */
 const FINAL_SEASON_BAND = 99;
+
+/** Words that mark recap/side content in a season subtitle — never a real season. */
+const SIDE_CONTENT_WORDS = /\b(?:special|specials|recap|recaps|ova|oad|pv|cm)\b/;
 
 export function normalizeTitle(value: string | null | undefined): string {
   if (!value) return '';
@@ -60,24 +67,40 @@ export function normalizeBaseTitle(value: string | null | undefined): string {
     .replace(/\b(?:\d+)(?:st|nd|rd|th)\s+season\b/g, '')
     .replace(new RegExp(`\\b(?:${WORD_ORDINALS})\\s+season\\b`, 'g'), '')
     .replace(/\b(?:the\s+)?final\s+season\b/g, '')
-    .replace(/\b(?:ii|iii|iv|v|vi|vii|viii|ix|x)\b/g, '')
     .trim()
-    .replace(/\s+/g, ' ');
+    .replace(/\s+/g, ' ')
+    // After the other strips so "Lupin III Part 6" reduces to a terminal "iii".
+    .replace(TERMINAL_ROMAN_REGEX, '')
+    .trim();
 }
 
-const SEASON_MARKER_PATTERNS: RegExp[] = [
-  /\b(?:season|part|cour)\s+\d+\b/,
+// Markers containing the word "season" — the high-confidence subset used by
+// the prefix-subtitle sibling clause (part/cour/roman alone are too loose there).
+const SEASON_WORD_MARKER_PATTERNS: RegExp[] = [
+  /\bseason\s+\d+\b/,
   /\b\d+(?:st|nd|rd|th)\s+season\b/,
   new RegExp(`\\b(?:${WORD_ORDINALS})\\s+season\\b`),
   /\b(?:the\s+)?final\s+season\b/,
-  /\b(?:ii|iii|iv|v|vi|vii|viii|ix|x)\b/,
 ];
 
-/** True when the title carries an explicit season marker ("… Season 2", "2nd Season", "Part 3", "Final Season", roman numerals). */
+const SEASON_MARKER_PATTERNS: RegExp[] = [
+  ...SEASON_WORD_MARKER_PATTERNS,
+  /\b(?:part|cour)\s+\d+\b/,
+  TERMINAL_ROMAN_REGEX,
+];
+
+/** True when the title carries an explicit season marker ("… Season 2", "2nd Season", "Part 3", "Final Season", terminal roman numerals). */
 export function hasSeasonMarker(value: string | null | undefined): boolean {
   const normalized = normalizeTitle(value);
   if (!normalized) return false;
   return SEASON_MARKER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+/** True only for season-WORD markers ("Season 2", "2nd Season", "Final Season") — not part/cour/roman. */
+export function hasSeasonWordMarker(value: string | null | undefined): boolean {
+  const normalized = normalizeTitle(value);
+  if (!normalized) return false;
+  return SEASON_WORD_MARKER_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 /**
@@ -105,7 +128,7 @@ export function seasonSortKey(value: string | null | undefined): number {
   }
 
   if (season === null) {
-    const roman = normalized.match(/\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/);
+    const roman = normalized.match(new RegExp(`\\s(${TERMINAL_ROMAN})$`));
     if (roman) season = ROMAN_NUMERAL_VALUES[roman[1]] ?? null;
   }
 
@@ -139,7 +162,7 @@ export function seasonTabLabel(title: string | null | undefined, primaryTitle?: 
   const word = normalized.match(new RegExp(`\\b(${WORD_ORDINALS})\\s+season\\b`));
   if (word) return `Season ${WORD_ORDINAL_VALUES[word[1]]}${partSuffix}`;
 
-  const roman = normalized.match(/\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/);
+  const roman = normalized.match(new RegExp(`\\s(${TERMINAL_ROMAN})$`));
   if (roman) return `Season ${ROMAN_NUMERAL_VALUES[roman[1]]}${partSuffix}`;
 
   if (partMatch) return `${partMatch[1] === 'cour' ? 'Cour' : 'Part'} ${partMatch[2]}`;
@@ -176,7 +199,25 @@ export function isSeasonSibling(primary: SeasonSiblingInput, candidate: SeasonSi
     const base = normalizeBaseTitle(title);
     return Boolean(base) && primaryBases.has(base);
   });
-  if (!baseMatches) return false;
+  if (!baseMatches) {
+    // Subtitle-after-marker seasons keep the arc name in their base
+    // ("JJK Season 3: The Culling Game Part 1" → base "jujutsu kaisen the
+    // culling game"). Accept base-prefix matches, but only with an explicit
+    // season-WORD marker — part/cour/roman alone would pull in side stories —
+    // and never when the subtitle itself is side content ("… The Final Season
+    // Specials" → remainder "specials").
+    const prefixMatches = candidate.titles.some((title) => {
+      const base = normalizeBaseTitle(title);
+      if (!base) return false;
+      for (const primaryBase of primaryBases) {
+        if (base.startsWith(`${primaryBase} `) && !SIDE_CONTENT_WORDS.test(base.slice(primaryBase.length))) {
+          return true;
+        }
+      }
+      return false;
+    });
+    return prefixMatches && candidate.titles.some((title) => hasSeasonWordMarker(title));
+  }
 
   if (candidate.titles.some((title) => hasSeasonMarker(title))) return true;
 
