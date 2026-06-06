@@ -26,6 +26,10 @@ export interface AppSettingsState {
   activityDigestMode: 'off' | 'daily' | 'weekly';
   activityDigestHour: number;
   activityDigestDayOfWeek: number;
+  anilistSectionsTtlMin: number;
+  anilistBrowseTtlMin: number;
+  anilistDetailTtlMin: number;
+  anilistAiringTtlMin: number;
 }
 
 export type AppSettingsPatch = Partial<Omit<AppSettingsState, 'envTimeZone'>>;
@@ -106,6 +110,10 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
     activityDigestMode: pickEnum(raw.activityDigestMode, ACTIVITY_DIGEST_MODES, 'off'),
     activityDigestHour: numberOr(raw.activityDigestHour, 8),
     activityDigestDayOfWeek: numberOr(raw.activityDigestDayOfWeek, 1),
+    anilistSectionsTtlMin: numberOr(raw.anilistSectionsTtlMin, 5),
+    anilistBrowseTtlMin: numberOr(raw.anilistBrowseTtlMin, 10),
+    anilistDetailTtlMin: numberOr(raw.anilistDetailTtlMin, 1440),
+    anilistAiringTtlMin: numberOr(raw.anilistAiringTtlMin, 10),
   };
 }
 

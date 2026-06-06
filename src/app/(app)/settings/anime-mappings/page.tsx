@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { Input } from '@/components/ui/input';
+import { useAppSettings } from '@/lib/hooks/use-app-settings';
+import { formatBytes } from '@/lib/format';
 import type {
   AdminAnimeMappingRow,
   AdminAnimeMappingsResponse,
@@ -54,6 +56,20 @@ function entryLabel(entry: AdminAnimeMappingRow['entries'][number]): string {
   return entry.isPrimary ? `★ ${title}` : title;
 }
 
+const TTL_FIELDS = [
+  { key: 'anilistSectionsTtlMin', label: 'Sections TTL', hint: 'Home / trending rails' },
+  { key: 'anilistBrowseTtlMin', label: 'Search & browse TTL', hint: 'Search results, mapping candidates' },
+  { key: 'anilistDetailTtlMin', label: 'Detail TTL', hint: 'Anime / staff / character details' },
+  { key: 'anilistAiringTtlMin', label: 'Airing TTL', hint: 'Next-episode countdowns, schedule' },
+] as const;
+
+type TtlKey = (typeof TTL_FIELDS)[number]['key'];
+
+interface AnilistCacheUsage {
+  anilistEntries: number;
+  anilistApiBytes: number;
+}
+
 export default function AnimeMappingsPage() {
   const router = useRouter();
   const [mappings, setMappings] = useState<AdminAnimeMappingRow[] | null>(null);
@@ -63,6 +79,83 @@ export default function AnimeMappingsPage() {
   const [search, setSearch] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<AdminAnimeMappingRow | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
+
+  // AniList cache section
+  const { settings, update: updateSettings } = useAppSettings();
+  const [cacheUsage, setCacheUsage] = useState<AnilistCacheUsage | null>(null);
+  const [ttlDraft, setTtlDraft] = useState<Record<TtlKey, string> | null>(null);
+  const [savingTtls, setSavingTtls] = useState(false);
+  const [confirmClearCache, setConfirmClearCache] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+
+  const loadCacheUsage = useCallback(async () => {
+    try {
+      const res = await fetch('/api/settings/cache');
+      if (!res.ok) return;
+      const data = (await res.json()) as { usage?: AnilistCacheUsage };
+      if (data.usage) {
+        setCacheUsage({
+          anilistEntries: data.usage.anilistEntries,
+          anilistApiBytes: data.usage.anilistApiBytes,
+        });
+      }
+    } catch {
+      // Stats stay as an em dash.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCacheUsage();
+  }, [loadCacheUsage]);
+
+  useEffect(() => {
+    if (!settings || ttlDraft !== null) return;
+    setTtlDraft({
+      anilistSectionsTtlMin: String(settings.anilistSectionsTtlMin),
+      anilistBrowseTtlMin: String(settings.anilistBrowseTtlMin),
+      anilistDetailTtlMin: String(settings.anilistDetailTtlMin),
+      anilistAiringTtlMin: String(settings.anilistAiringTtlMin),
+    });
+  }, [settings, ttlDraft]);
+
+  async function handleSaveTtls() {
+    if (!ttlDraft) return;
+    const patch: Partial<Record<TtlKey, number>> = {};
+    for (const field of TTL_FIELDS) {
+      const parsed = Number.parseInt(ttlDraft[field.key], 10);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 43_200) {
+        toast.error(`${field.label} must be between 1 and 43200 minutes`);
+        return;
+      }
+      patch[field.key] = parsed;
+    }
+    setSavingTtls(true);
+    try {
+      await updateSettings(patch);
+    } finally {
+      setSavingTtls(false);
+    }
+  }
+
+  async function handleClearAnilistCache() {
+    setClearingCache(true);
+    try {
+      const res = await fetch('/api/settings/cache?provider=anilist', { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(data.error || 'Failed to clear AniList cache');
+        return;
+      }
+      const data = (await res.json()) as { deletedEntries: number; deletedBytes: number };
+      toast.success(
+        `Cleared ${data.deletedEntries.toLocaleString()} cached response${data.deletedEntries === 1 ? '' : 's'} (${formatBytes(data.deletedBytes)})`
+      );
+      await loadCacheUsage();
+    } finally {
+      setClearingCache(false);
+      setConfirmClearCache(false);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -274,6 +367,73 @@ export default function AnimeMappingsPage() {
           )}
         </>
       ) : null}
+
+      <GroupedSection
+        title="AniList cache"
+        footer="TTLs apply to new fetches; stale-serve windows scale automatically. Clearing removes only AniList API responses — images and TMDB stay."
+      >
+        <div className="grouped-row">
+          <span className="text-sm">Cached responses</span>
+          <span className="text-sm text-muted-foreground">
+            {cacheUsage
+              ? `${cacheUsage.anilistEntries.toLocaleString()} · ${formatBytes(cacheUsage.anilistApiBytes)}`
+              : '—'}
+          </span>
+        </div>
+        {TTL_FIELDS.map((field) => (
+          <div key={field.key} className="grouped-row gap-3">
+            <div className="min-w-0">
+              <span className="text-sm">{field.label}</span>
+              <p className="text-[11px] text-muted-foreground truncate">{field.hint}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Input
+                type="number"
+                min={1}
+                max={43200}
+                value={ttlDraft?.[field.key] ?? ''}
+                onChange={(event) =>
+                  setTtlDraft((prev) => (prev ? { ...prev, [field.key]: event.target.value } : prev))
+                }
+                disabled={ttlDraft === null}
+                className="h-8 w-24 text-right"
+              />
+              <span className="text-xs text-muted-foreground">min</span>
+            </div>
+          </div>
+        ))}
+        <div className="flex gap-2 px-4 py-3">
+          <Button
+            variant="outline"
+            className="h-9 flex-1"
+            onClick={handleSaveTtls}
+            disabled={savingTtls || ttlDraft === null}
+          >
+            {savingTtls ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Save TTLs
+          </Button>
+          <Button
+            variant="outline"
+            className="h-9 flex-1 text-destructive hover:text-destructive"
+            onClick={() => setConfirmClearCache(true)}
+            disabled={clearingCache}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Clear AniList cache
+          </Button>
+        </div>
+      </GroupedSection>
+
+      <ConfirmDialog
+        open={confirmClearCache}
+        onOpenChange={setConfirmClearCache}
+        title="Clear the AniList cache?"
+        description="All cached AniList API responses are deleted and refetch on demand. Images and TMDB caches are not touched."
+        confirmLabel="Clear"
+        destructive
+        busy={clearingCache}
+        onConfirm={handleClearAnilistCache}
+      />
 
       <ConfirmDialog
         open={confirmTarget !== null}
