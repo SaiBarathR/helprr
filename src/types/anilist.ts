@@ -339,6 +339,32 @@ export interface AnimeSonarrMappingsResponse {
   mappings: AnimeSonarrMappingItem[];
 }
 
+/** Admin settings view: one linked entry, rendered from snapshots (no AniList calls). */
+export interface AdminAnimeMappingEntry {
+  anilistMediaId: number;
+  isPrimary: boolean;
+  order: number;
+  source: 'auto' | 'manual';
+  titleSnapshot: string | null;
+}
+
+/** Admin settings view: one series' mapping row. */
+export interface AdminAnimeMappingRow {
+  sonarrSeriesId: number;
+  seriesTitle: string;
+  seriesYear: number | null;
+  state: SeriesAniListMappingState;
+  matchMethod: string | null;
+  confidence: number | null;
+  resolvedAt: string;
+  entries: AdminAnimeMappingEntry[];
+}
+
+export interface AdminAnimeMappingsResponse {
+  mappings: AdminAnimeMappingRow[];
+  total: number;
+}
+
 export interface AniListDetailResponse {
   id: number;
   title: string;
