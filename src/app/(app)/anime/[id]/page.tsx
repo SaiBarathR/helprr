@@ -96,12 +96,21 @@ export default function AnimeDetailPage() {
   const [sonarrMappings, setSonarrMappings] = useState<AnimeSonarrMappingItem[] | null>(null);
 
   const detailFormat = state.detail?.format ?? null;
+  // When the library lookup already identified the Sonarr series, pass it as a
+  // hint so the reverse lookup can lazily resolve the mapping — otherwise an
+  // anime whose series page was never opened reads "Not mapped" despite being
+  // in the library ("Open in TV" working).
+  const librarySeriesId =
+    state.detail?.library?.exists && state.detail.library.type === 'series'
+      ? state.detail.library.id ?? null
+      : null;
   useEffect(() => {
     setSonarrMappings(null);
     if (!isAdmin || !detailFormat || isMovieFormat(detailFormat)) return;
 
     const controller = new AbortController();
-    fetch(`/api/anime/${id}/sonarr`, { signal: controller.signal })
+    const hint = librarySeriesId != null ? `?sonarrSeriesId=${librarySeriesId}` : '';
+    fetch(`/api/anime/${id}/sonarr${hint}`, { signal: controller.signal })
       .then((r) => (r.ok ? (r.json() as Promise<AnimeSonarrMappingsResponse>) : null))
       .then((data) => {
         if (data) setSonarrMappings(data.mappings);
@@ -111,7 +120,7 @@ export default function AnimeDetailPage() {
       });
 
     return () => controller.abort();
-  }, [id, isAdmin, detailFormat]);
+  }, [id, isAdmin, detailFormat, librarySeriesId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -780,6 +789,7 @@ export default function AnimeDetailPage() {
           onOpenChange={setShowSonarrMap}
           anilistMediaId={detail.id}
           animeTitle={detail.title}
+          sonarrSeriesHint={librarySeriesId}
           onMappingsChanged={setSonarrMappings}
         />
       )}

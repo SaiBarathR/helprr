@@ -24,6 +24,8 @@ interface SonarrMapDrawerProps {
   onOpenChange: (open: boolean) => void;
   anilistMediaId: number;
   animeTitle: string;
+  /** Library-matched Sonarr series id — lets the reverse lookup lazily resolve a never-viewed series' mapping. */
+  sonarrSeriesHint?: number | null;
   /** Fired whenever this anime's Sonarr mappings change (and on open-load) so the page row stays in sync. */
   onMappingsChanged?: (mappings: AnimeSonarrMappingItem[]) => void;
 }
@@ -33,6 +35,7 @@ export function SonarrMapDrawer({
   onOpenChange,
   anilistMediaId,
   animeTitle,
+  sonarrSeriesHint,
   onMappingsChanged,
 }: SonarrMapDrawerProps) {
   const [query, setQuery] = useState('');
@@ -51,10 +54,11 @@ export function SonarrMapDrawer({
     setError(null);
     setLoading(true);
 
+    const hint = sonarrSeriesHint != null ? `?sonarrSeriesId=${sonarrSeriesHint}` : '';
     Promise.all([
       fetch('/api/sonarr', { signal: controller.signal })
         .then((r) => (r.ok ? r.json() as Promise<SonarrSeriesListItem[]> : Promise.reject(new Error('Failed to load Sonarr series')))),
-      fetch(`/api/anime/${anilistMediaId}/sonarr`, { signal: controller.signal })
+      fetch(`/api/anime/${anilistMediaId}/sonarr${hint}`, { signal: controller.signal })
         .then((r) => (r.ok ? r.json() as Promise<AnimeSonarrMappingsResponse> : Promise.reject(new Error('Failed to load current mappings')))),
     ])
       .then(([series, mappingsData]) => {
@@ -77,7 +81,7 @@ export function SonarrMapDrawer({
     return () => controller.abort();
     // onMappingsChanged is a state setter from the page — stable by contract.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, anilistMediaId]);
+  }, [open, anilistMediaId, sonarrSeriesHint]);
 
   const mappedIds = useMemo(
     () => new Set(mappings.map((m) => m.sonarrSeriesId)),
