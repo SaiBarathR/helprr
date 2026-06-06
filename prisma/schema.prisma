@@ -330,6 +330,8 @@ model AniListSeriesMappingEntry {
   anilistMediaId Int
   isPrimary      Boolean              @default(false) // exactly one true per mapping
   order          Int                  @default(0) // tab order on the series detail page
+  source         String               @default("manual") // 'auto' | 'manual' — who created the link
+  titleSnapshot  String? // AniList preferred title at link time (admin list renders without API calls)
   createdAt      DateTime             @default(now())
 
   @@unique([mappingId, anilistMediaId])
