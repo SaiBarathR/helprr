@@ -92,9 +92,23 @@ function snapshotFields(series: SonarrSeries) {
   };
 }
 
+/**
+ * Display order for linked entries: primary first, then season order parsed
+ * from title snapshots, then the persisted order. Sorting at presentation time
+ * (instead of trusting the DB `order`) fixes rows persisted before the season
+ * sort existed without requiring a reset.
+ */
+function presentationSortEntries(entries: PrismaEntry[]): PrismaEntry[] {
+  return [...entries].sort((a, b) => {
+    if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+    const keyDiff = seasonSortKey(a.titleSnapshot) - seasonSortKey(b.titleSnapshot);
+    if (keyDiff !== 0 && !Number.isNaN(keyDiff)) return keyDiff;
+    return a.order - b.order;
+  });
+}
+
 function mappingFromRecord(record: MappingWithEntries): SeriesAniListMapping {
-  const entries = [...record.entries]
-    .sort((a, b) => a.order - b.order)
+  const entries = presentationSortEntries(record.entries)
     .map((entry) => ({
       anilistMediaId: entry.anilistMediaId,
       isPrimary: entry.isPrimary,
@@ -546,7 +560,8 @@ export async function getSeriesAniListResponse(
   opts: { scope?: 'all' | 'primary' } = {}
 ): Promise<SeriesAniListResponse> {
   const record = await getCurrentMappingRecord(series);
-  const orderedEntries = [...record.entries].sort((a, b) => a.order - b.order);
+  // Same order as mappingFromRecord so details[i] aligns with mapping.entries[i].
+  const orderedEntries = presentationSortEntries(record.entries);
 
   if (orderedEntries.length === 0) {
     return { mapping: mappingFromRecord(record), details: [] };
@@ -649,9 +664,7 @@ export async function getSeriesEntryDetail(
 
   // Dead/invalid on AniList — prune; promote a new primary or reset when empty.
   await prisma.aniListSeriesMappingEntry.delete({ where: { id: entry.id } });
-  const remaining = record.entries
-    .filter((item) => item.id !== entry.id)
-    .sort((a, b) => a.order - b.order);
+  const remaining = presentationSortEntries(record.entries.filter((item) => item.id !== entry.id));
   if (remaining.length === 0) {
     const reset = await persistResolution(series, {
       state: 'AUTO_UNMATCHED',
