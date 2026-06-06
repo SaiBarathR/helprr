@@ -303,6 +303,10 @@ export interface SeriesAniListEntry {
   anilistMediaId: number;
   isPrimary: boolean;
   order: number;
+  /** 'auto' when the system linked it (auto-match / season discovery); 'manual' when a user picked it. */
+  source: 'auto' | 'manual';
+  /** AniList preferred title at link time — display fallback without an API call. */
+  titleSnapshot: string | null;
 }
 
 export interface SeriesAniListMapping {

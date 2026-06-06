@@ -11,9 +11,17 @@ import {
   isMovieFormat,
   normalizeAniListDetail,
 } from '@/lib/anilist-helpers';
+import {
+  isSeasonSibling,
+  normalizeBaseTitle,
+  normalizeTitle,
+  seasonSortKey,
+} from '@/lib/anilist-title-match';
 import type { SonarrSeries } from '@/types';
 import type {
   AniListMedia,
+  AniListRelationEdge,
+  AniListTitle,
   SeriesAniListCandidate,
   SeriesAniListMapping,
   SeriesAniListMappingState,
@@ -24,6 +32,13 @@ const AUTO_UNMATCHED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SEARCH_PAGE_SIZE = 10;
 const ACCEPTABLE_SERIES_FORMATS = new Set(['TV', 'TV_SHORT', 'OVA', 'ONA', 'SPECIAL']);
 const REJECTED_SERIES_FORMATS = new Set(['MANGA', 'NOVEL', 'ONE_SHOT']);
+// Formats season auto-linking may add without user review. OVA/SPECIAL are
+// excluded on purpose — recap specials share the base title (e.g. "Attack On
+// Titan: The Final Season Specials") and would link as bogus seasons; they
+// stay one tap away in the drawer's suggestions instead.
+const AUTO_LINK_FORMATS = new Set(['TV', 'TV_SHORT', 'ONA']);
+const MAX_AUTO_LINKED_SEASONS = 10;
+const SEASON_DISCOVERY_PAGE_SIZE = 12;
 
 interface SeriesSnapshot {
   title: string;
@@ -40,27 +55,6 @@ interface ScoredCandidate {
 
 function isRejectedSeriesFormat(format: AniListMedia['format']): boolean {
   return Boolean(format && (isMovieFormat(format) || REJECTED_SERIES_FORMATS.has(format)));
-}
-
-function normalizeTitle(value: string | null | undefined): string {
-  if (!value) return '';
-
-  return value
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9\u3000-\u9fff\uff00-\uffef]+/g, ' ')
-    .trim()
-    .replace(/\s+/g, ' ');
-}
-
-function normalizeBaseTitle(value: string | null | undefined): string {
-  return normalizeTitle(value)
-    .replace(/\b(?:season|part|cour)\s+\d+\b/g, '')
-    .replace(/\b(?:\d+)(?:st|nd|rd|th)\s+season\b/g, '')
-    .replace(/\b(?:ii|iii|iv|v|vi|vii|viii|ix|x)\b/g, '')
-    .trim()
-    .replace(/\s+/g, ' ');
 }
 
 function createSnapshot(series: SonarrSeries): SeriesSnapshot {
@@ -100,6 +94,8 @@ function mappingFromRecord(record: MappingWithEntries): SeriesAniListMapping {
       anilistMediaId: entry.anilistMediaId,
       isPrimary: entry.isPrimary,
       order: entry.order,
+      source: entry.source === 'auto' ? ('auto' as const) : ('manual' as const),
+      titleSnapshot: entry.titleSnapshot,
     }));
   const primary = entries.find((entry) => entry.isPrimary) ?? entries[0] ?? null;
 
@@ -198,11 +194,27 @@ async function loadRecord(seriesId: number): Promise<MappingWithEntries | null> 
   });
 }
 
+/** One AniList entry to persist on a mapping: who linked it and its title at link time. */
+interface EntryDescriptor {
+  anilistMediaId: number;
+  source: 'auto' | 'manual';
+  titleSnapshot: string | null;
+}
+
+function dedupeEntryDescriptors(entries: EntryDescriptor[]): EntryDescriptor[] {
+  const seen = new Set<number>();
+  return entries.filter((entry) => {
+    if (seen.has(entry.anilistMediaId)) return false;
+    seen.add(entry.anilistMediaId);
+    return true;
+  });
+}
+
 /**
- * Upsert the per-series resolution row and (when `entryIds` is provided) replace
+ * Upsert the per-series resolution row and (when `entries` is provided) replace
  * its linked AniList entries with the given ordered list — index 0 becomes the
- * primary. Pass `entryIds: []` to clear all entries (unmatched / cleared states).
- * Omit `entryIds` to leave existing entries untouched.
+ * primary. Pass `entries: []` to clear all entries (unmatched / cleared states).
+ * Omit `entries` to leave existing entries untouched.
  */
 async function persistResolution(
   series: SonarrSeries,
@@ -210,7 +222,7 @@ async function persistResolution(
     state: SeriesAniListMappingState;
     matchMethod?: string | null;
     confidence?: number | null;
-    entryIds?: number[];
+    entries?: EntryDescriptor[];
   }
 ): Promise<MappingWithEntries> {
   const base = {
@@ -227,15 +239,18 @@ async function persistResolution(
     create: { sonarrSeriesId: series.id, ...base },
   });
 
-  if (values.entryIds !== undefined) {
+  if (values.entries !== undefined) {
+    const entries = dedupeEntryDescriptors(values.entries);
     await prisma.aniListSeriesMappingEntry.deleteMany({ where: { mappingId: record.id } });
-    if (values.entryIds.length > 0) {
+    if (entries.length > 0) {
       await prisma.aniListSeriesMappingEntry.createMany({
-        data: values.entryIds.map((anilistMediaId, index) => ({
+        data: entries.map((entry, index) => ({
           mappingId: record.id,
-          anilistMediaId,
+          anilistMediaId: entry.anilistMediaId,
           isPrimary: index === 0,
           order: index,
+          source: entry.source,
+          titleSnapshot: entry.titleSnapshot,
         })),
       });
     }
@@ -249,6 +264,100 @@ async function collectCandidates(query: string): Promise<AniListMedia[]> {
   if (!trimmed) return [];
   const result = await searchAnime(trimmed, 1, SEARCH_PAGE_SIZE);
   return result.media;
+}
+
+/** Minimal shape season discovery needs from a candidate, regardless of source. */
+interface SeasonCandidate {
+  id: number;
+  title: AniListTitle;
+  format: AniListMedia['format'];
+  seasonYear: number | null;
+}
+
+function titleVariants(title: AniListTitle): Array<string | null> {
+  return [title.english, title.romaji, title.native];
+}
+
+function candidateSeasonSortKey(title: AniListTitle): number {
+  const keys = titleVariants(title)
+    .map(seasonSortKey)
+    .filter((key) => Number.isFinite(key));
+  return keys.length > 0 ? Math.min(...keys) : Infinity;
+}
+
+/**
+ * Find AniList entries that look like other seasons of `primary` — exact base
+ * title plus an explicit season marker (see anilist-title-match.ts). Candidates
+ * come from the caller's search pool and/or the primary's relation edges; when
+ * no pool is given (manual paths) one base-title search fills the gap. Never
+ * walks the relation graph. Best-effort: returns [] on search failure.
+ */
+async function discoverSeasonSiblings(
+  primary: AniListMedia,
+  opts: { pool?: AniListMedia[]; relations?: AniListRelationEdge[] }
+): Promise<EntryDescriptor[]> {
+  const primaryInput = {
+    titles: titleVariants(primary.title),
+    year: primary.seasonYear ?? primary.startDate?.year ?? null,
+  };
+
+  const candidates = new Map<number, SeasonCandidate>();
+  const add = (item: SeasonCandidate): void => {
+    if (item.id !== primary.id && !candidates.has(item.id)) candidates.set(item.id, item);
+  };
+
+  for (const media of opts.pool ?? []) {
+    add({
+      id: media.id,
+      title: media.title,
+      format: media.format,
+      seasonYear: media.seasonYear ?? media.startDate?.year ?? null,
+    });
+  }
+  for (const edge of opts.relations ?? []) {
+    if (edge.node.type && edge.node.type !== 'ANIME') continue;
+    add({ id: edge.node.id, title: edge.node.title, format: edge.node.format, seasonYear: edge.node.seasonYear });
+  }
+
+  if (!opts.pool) {
+    const base = normalizeBaseTitle(getPreferredTitle(primary.title));
+    if (base) {
+      try {
+        const result = await searchAnime(base, 1, SEASON_DISCOVERY_PAGE_SIZE);
+        for (const media of result.media) {
+          add({
+            id: media.id,
+            title: media.title,
+            format: media.format,
+            seasonYear: media.seasonYear ?? media.startDate?.year ?? null,
+          });
+        }
+      } catch {
+        // Discovery is best-effort; linking the primary must not fail on a search error.
+      }
+    }
+  }
+
+  return Array.from(candidates.values())
+    .filter(
+      (candidate) =>
+        candidate.format !== null
+        && AUTO_LINK_FORMATS.has(candidate.format)
+        && isSeasonSibling(primaryInput, { titles: titleVariants(candidate.title), year: candidate.seasonYear })
+    )
+    .sort((a, b) => {
+      const keyDiff = candidateSeasonSortKey(a.title) - candidateSeasonSortKey(b.title);
+      if (keyDiff !== 0 && !Number.isNaN(keyDiff)) return keyDiff;
+      const yearDiff = (a.seasonYear ?? Infinity) - (b.seasonYear ?? Infinity);
+      if (yearDiff !== 0 && !Number.isNaN(yearDiff)) return yearDiff;
+      return a.id - b.id;
+    })
+    .slice(0, MAX_AUTO_LINKED_SEASONS)
+    .map((candidate) => ({
+      anilistMediaId: candidate.id,
+      source: 'auto' as const,
+      titleSnapshot: getPreferredTitle(candidate.title),
+    }));
 }
 
 async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntries> {
@@ -284,15 +393,28 @@ async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntr
       state: 'AUTO_UNMATCHED',
       matchMethod: best?.method ?? null,
       confidence: best ? Math.max(0, best.score) : null,
-      entryIds: [],
+      entries: [],
     });
   }
+
+  // Auto-link the accepted primary's season siblings from the candidate pool
+  // we already searched — zero extra AniList calls on the auto path.
+  const siblings = await discoverSeasonSiblings(best!.candidate, {
+    pool: Array.from(allCandidates.values()),
+  });
 
   return persistResolution(series, {
     state: 'AUTO_MATCH',
     matchMethod: best!.method ?? 'search_match',
     confidence: Math.max(0, best!.score),
-    entryIds: [best!.candidate.id],
+    entries: [
+      {
+        anilistMediaId: best!.candidate.id,
+        source: 'auto',
+        titleSnapshot: getPreferredTitle(best!.candidate.title),
+      },
+      ...siblings,
+    ],
   });
 }
 
@@ -304,7 +426,9 @@ async function getCurrentMappingRecord(series: SonarrSeries): Promise<MappingWit
     return existing;
   }
 
-  if (existing?.state === 'AUTO_MATCH' && snapshotMatches(existing, snapshot)) {
+  // A zero-entry AUTO_MATCH row is a degenerate state (e.g. left behind by a
+  // schema migration) — fall through to re-resolution instead of returning it.
+  if (existing?.state === 'AUTO_MATCH' && existing.entries.length > 0 && snapshotMatches(existing, snapshot)) {
     return existing;
   }
 
@@ -382,7 +506,7 @@ export async function getSeriesAniListResponse(series: SonarrSeries): Promise<Se
       state: 'AUTO_UNMATCHED',
       matchMethod: 'mapped_non_series_rejected',
       confidence: null,
-      entryIds: [],
+      entries: [],
     });
     return { mapping: mappingFromRecord(reset), details: [] };
   }
@@ -419,7 +543,11 @@ export async function searchSeriesAniListCandidates(
     });
 }
 
-/** Add (or keep) an AniList entry on a series as a manual link. The first entry becomes primary. */
+/**
+ * Add (or keep) an AniList entry on a series as a manual link. The first entry
+ * becomes primary and pulls in its season siblings automatically, so the user
+ * curates down (remove a wrong one) instead of hand-adding every season.
+ */
 export async function addManualEntry(
   series: SonarrSeries,
   anilistMediaId: number
@@ -448,14 +576,36 @@ export async function addManualEntry(
   });
   if (!existing.some((entry) => entry.anilistMediaId === anilistMediaId)) {
     const maxOrder = existing.reduce((max, entry) => Math.max(max, entry.order), -1);
-    await prisma.aniListSeriesMappingEntry.create({
-      data: {
-        mappingId: record.id,
-        anilistMediaId,
-        isPrimary: existing.length === 0,
-        order: maxOrder + 1,
-      },
-    });
+    const isFirst = existing.length === 0;
+    const siblings = isFirst
+      ? await discoverSeasonSiblings(detail, { relations: detail.relations?.edges ?? [] })
+      : [];
+    await prisma.$transaction([
+      prisma.aniListSeriesMappingEntry.create({
+        data: {
+          mappingId: record.id,
+          anilistMediaId,
+          isPrimary: isFirst,
+          order: maxOrder + 1,
+          source: 'manual',
+          titleSnapshot: getPreferredTitle(detail.title),
+        },
+      }),
+      ...(siblings.length > 0
+        ? [
+            prisma.aniListSeriesMappingEntry.createMany({
+              data: siblings.map((sibling, index) => ({
+                mappingId: record.id,
+                anilistMediaId: sibling.anilistMediaId,
+                isPrimary: false,
+                order: maxOrder + 2 + index,
+                source: sibling.source,
+                titleSnapshot: sibling.titleSnapshot,
+              })),
+            }),
+          ]
+        : []),
+    ]);
   }
 
   return getSeriesAniListResponse(series);
@@ -478,18 +628,32 @@ export async function removeManualEntry(
         where: { id: record.id },
         data: { state: 'MANUAL_NONE', matchMethod: 'manual_clear', confidence: null, resolvedAt: new Date() },
       });
-    } else if (target.isPrimary) {
-      await prisma.aniListSeriesMappingEntry.update({
-        where: { id: remaining[0].id },
-        data: { isPrimary: true },
-      });
+    } else {
+      if (target.isPrimary) {
+        await prisma.aniListSeriesMappingEntry.update({
+          where: { id: remaining[0].id },
+          data: { isPrimary: true },
+        });
+      }
+      // Removing an entry is curation — pin the mapping as MANUAL_MATCH so a
+      // later snapshot-triggered auto re-resolve can't re-add the removed one.
+      if (record.state !== 'MANUAL_MATCH') {
+        await prisma.aniListSeriesMapping.update({
+          where: { id: record.id },
+          data: { state: 'MANUAL_MATCH', matchMethod: 'manual', confidence: null, resolvedAt: new Date() },
+        });
+      }
     }
   }
 
   return getSeriesAniListResponse(series);
 }
 
-/** Make a linked entry the primary, moving it to the front of the tab order. */
+/**
+ * Make a linked entry the primary, moving it to the front of the tab order.
+ * The new primary's missing season siblings are auto-appended (never removed),
+ * and the mapping is pinned as MANUAL_MATCH — choosing a primary is curation.
+ */
 export async function setPrimaryEntry(
   series: SonarrSeries,
   anilistMediaId: number
@@ -497,18 +661,51 @@ export async function setPrimaryEntry(
   const record = await loadRecord(series.id);
   const target = record?.entries.find((entry) => entry.anilistMediaId === anilistMediaId);
   if (record && target) {
+    // Discover up front (reads only) so reorder + append land in one transaction.
+    let siblings: EntryDescriptor[] = [];
+    try {
+      const detail = await getAnimeDetail(anilistMediaId);
+      siblings = await discoverSeasonSiblings(detail, { relations: detail.relations?.edges ?? [] });
+    } catch {
+      // Best-effort: changing the primary must not fail on discovery errors.
+    }
+    const linkedIds = new Set(record.entries.map((entry) => entry.anilistMediaId));
+    const additions = siblings.filter((sibling) => !linkedIds.has(sibling.anilistMediaId));
+
     const reordered = [
       target,
       ...record.entries.filter((entry) => entry.id !== target.id).sort((a, b) => a.order - b.order),
     ];
-    await prisma.$transaction(
-      reordered.map((entry, index) =>
+    await prisma.$transaction([
+      ...reordered.map((entry, index) =>
         prisma.aniListSeriesMappingEntry.update({
           where: { id: entry.id },
           data: { isPrimary: index === 0, order: index },
         })
-      )
-    );
+      ),
+      ...(additions.length > 0
+        ? [
+            prisma.aniListSeriesMappingEntry.createMany({
+              data: additions.map((sibling, index) => ({
+                mappingId: record.id,
+                anilistMediaId: sibling.anilistMediaId,
+                isPrimary: false,
+                order: reordered.length + index,
+                source: sibling.source,
+                titleSnapshot: sibling.titleSnapshot,
+              })),
+            }),
+          ]
+        : []),
+      ...(record.state !== 'MANUAL_MATCH'
+        ? [
+            prisma.aniListSeriesMapping.update({
+              where: { id: record.id },
+              data: { state: 'MANUAL_MATCH', matchMethod: 'manual', confidence: null, resolvedAt: new Date() },
+            }),
+          ]
+        : []),
+    ]);
   }
 
   return getSeriesAniListResponse(series);
@@ -519,7 +716,7 @@ export async function clearManualSeriesAniListMapping(series: SonarrSeries): Pro
     state: 'MANUAL_NONE',
     matchMethod: 'manual_clear',
     confidence: null,
-    entryIds: [],
+    entries: [],
   });
   return getSeriesAniListResponse(series);
 }
