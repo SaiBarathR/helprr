@@ -10,7 +10,7 @@ import type {
   SonarrSeries,
   Tag,
 } from '@/types';
-import type { SeriesAniListResponse } from '@/types/anilist';
+import type { AniListDetailResponse, SeriesAniListResponse } from '@/types/anilist';
 
 export interface SeriesDetailSnapshot {
   series: SonarrSeries | null;
@@ -19,6 +19,8 @@ export interface SeriesDetailSnapshot {
   rootFolders: RootFolder[];
   tags: Tag[];
   animeData?: SeriesAniListResponse | null;
+  /** Lazily-fetched AniList details keyed by anilistMediaId (per-tab loading). */
+  animeDetailsById?: Map<number, AniListDetailResponse>;
   tmdbData?: DiscoverTvFullDetail | null;
   credits?: {
     cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];

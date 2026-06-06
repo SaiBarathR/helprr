@@ -19,10 +19,12 @@ import {
 } from '@/lib/anilist-title-match';
 import type { SonarrSeries } from '@/types';
 import type {
+  AniListDetailResponse,
   AniListMedia,
   AniListRelationEdge,
   AniListTitle,
   SeriesAniListCandidate,
+  SeriesAniListEntryDetailResponse,
   SeriesAniListMapping,
   SeriesAniListMappingState,
   SeriesAniListResponse,
@@ -523,7 +525,26 @@ async function normalizeSeriesDetailWithFreshAiring(anilistMediaId: number) {
   };
 }
 
-export async function getSeriesAniListResponse(series: SonarrSeries): Promise<SeriesAniListResponse> {
+/** Fetch + format-validate one entry's detail. Null = dead/invalid on AniList. */
+async function validateEntryDetail(entry: PrismaEntry): Promise<AniListDetailResponse | null> {
+  try {
+    const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(entry.anilistMediaId);
+    return isRejectedSeriesFormat(detail.format) ? null : normalized;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the mapping and fetch linked entry details. `scope: 'all'` (default —
+ * used by all mutation responses) fetches every entry. `scope: 'primary'` (the
+ * page-load GET) fetches/validates only the first entry, promoting past dead
+ * ones; the rest load lazily when their tab is selected.
+ */
+export async function getSeriesAniListResponse(
+  series: SonarrSeries,
+  opts: { scope?: 'all' | 'primary' } = {}
+): Promise<SeriesAniListResponse> {
   const record = await getCurrentMappingRecord(series);
   const orderedEntries = [...record.entries].sort((a, b) => a.order - b.order);
 
@@ -531,15 +552,43 @@ export async function getSeriesAniListResponse(series: SonarrSeries): Promise<Se
     return { mapping: mappingFromRecord(record), details: [] };
   }
 
-  const fetched = await Promise.all(
-    orderedEntries.map(async (entry) => {
-      try {
-        const { detail, normalized } = await normalizeSeriesDetailWithFreshAiring(entry.anilistMediaId);
-        return { entry, normalized: isRejectedSeriesFormat(detail.format) ? null : normalized };
-      } catch {
-        return { entry, normalized: null };
+  if ((opts.scope ?? 'all') === 'primary') {
+    const remaining = [...orderedEntries];
+    const droppedIds: string[] = [];
+    let primaryDetail: AniListDetailResponse | null = null;
+    while (remaining.length > 0 && primaryDetail === null) {
+      primaryDetail = await validateEntryDetail(remaining[0]);
+      if (primaryDetail === null) {
+        droppedIds.push(remaining[0].id);
+        remaining.shift();
       }
-    })
+    }
+
+    if (primaryDetail === null) {
+      const reset = await persistResolution(series, {
+        state: 'AUTO_UNMATCHED',
+        matchMethod: 'mapped_non_series_rejected',
+        confidence: null,
+        entries: [],
+      });
+      return { mapping: mappingFromRecord(reset), details: [] };
+    }
+
+    if (droppedIds.length > 0) {
+      await prisma.aniListSeriesMappingEntry.deleteMany({ where: { id: { in: droppedIds } } });
+      await prisma.aniListSeriesMappingEntry.update({
+        where: { id: remaining[0].id },
+        data: { isPrimary: true },
+      });
+      const refreshed = (await loadRecord(series.id))!;
+      return { mapping: mappingFromRecord(refreshed), details: [primaryDetail] };
+    }
+
+    return { mapping: mappingFromRecord(record), details: [primaryDetail] };
+  }
+
+  const fetched = await Promise.all(
+    orderedEntries.map(async (entry) => ({ entry, normalized: await validateEntryDetail(entry) }))
   );
 
   const valid = fetched.filter((item) => item.normalized !== null);
@@ -571,6 +620,55 @@ export async function getSeriesAniListResponse(series: SonarrSeries): Promise<Se
   }
 
   return { mapping: mappingFromRecord(record), details: valid.map((item) => item.normalized!) };
+}
+
+/**
+ * Lazy per-tab fetch: one linked entry's detail. `detail: null` means the id
+ * isn't (or is no longer) part of the mapping — dead entries are pruned here,
+ * and the client refetches the full response to resync.
+ */
+export async function getSeriesEntryDetail(
+  series: SonarrSeries,
+  anilistMediaId: number
+): Promise<SeriesAniListEntryDetailResponse> {
+  const record = await loadRecord(series.id);
+  if (!record) {
+    const resolved = await getCurrentMappingRecord(series);
+    return { mapping: mappingFromRecord(resolved), detail: null };
+  }
+
+  const entry = record.entries.find((item) => item.anilistMediaId === anilistMediaId);
+  if (!entry) {
+    return { mapping: mappingFromRecord(record), detail: null };
+  }
+
+  const detail = await validateEntryDetail(entry);
+  if (detail) {
+    return { mapping: mappingFromRecord(record), detail };
+  }
+
+  // Dead/invalid on AniList — prune; promote a new primary or reset when empty.
+  await prisma.aniListSeriesMappingEntry.delete({ where: { id: entry.id } });
+  const remaining = record.entries
+    .filter((item) => item.id !== entry.id)
+    .sort((a, b) => a.order - b.order);
+  if (remaining.length === 0) {
+    const reset = await persistResolution(series, {
+      state: 'AUTO_UNMATCHED',
+      matchMethod: 'mapped_non_series_rejected',
+      confidence: null,
+      entries: [],
+    });
+    return { mapping: mappingFromRecord(reset), detail: null };
+  }
+  if (entry.isPrimary) {
+    await prisma.aniListSeriesMappingEntry.update({
+      where: { id: remaining[0].id },
+      data: { isPrimary: true },
+    });
+  }
+  const refreshed = (await loadRecord(series.id))!;
+  return { mapping: mappingFromRecord(refreshed), detail: null };
 }
 
 export async function searchSeriesAniListCandidates(
