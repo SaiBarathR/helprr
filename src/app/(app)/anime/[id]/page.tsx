@@ -25,6 +25,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useMe } from '@/components/permission-provider';
 import { formatAniListRankingLabel, formatFuzzyDate, isMovieFormat } from '@/lib/anilist-helpers';
+import type { AnimeSonarrMappingItem, AnimeSonarrMappingsResponse } from '@/types/anilist';
 import {
   getAnimeDetailSnapshot,
   setAnimeDetailSnapshot,
@@ -91,6 +92,26 @@ export default function AnimeDetailPage() {
   // AniList↔Sonarr mappings are global admin state, so the map action is admin-only.
   const isAdmin = useMe()?.role === 'admin';
   const [showSonarrMap, setShowSonarrMap] = useState(false);
+  // Reverse lookup so the row shows the current mapping without opening the drawer.
+  const [sonarrMappings, setSonarrMappings] = useState<AnimeSonarrMappingItem[] | null>(null);
+
+  const detailFormat = state.detail?.format ?? null;
+  useEffect(() => {
+    setSonarrMappings(null);
+    if (!isAdmin || !detailFormat || isMovieFormat(detailFormat)) return;
+
+    const controller = new AbortController();
+    fetch(`/api/anime/${id}/sonarr`, { signal: controller.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<AnimeSonarrMappingsResponse>) : null))
+      .then((data) => {
+        if (data) setSonarrMappings(data.mappings);
+      })
+      .catch(() => {
+        // The row falls back to the bare action label.
+      });
+
+    return () => controller.abort();
+  }, [id, isAdmin, detailFormat]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -508,9 +529,22 @@ export default function AnimeDetailPage() {
             className="flex justify-between items-center w-full py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
           >
             <span className="text-sm text-muted-foreground">Sonarr</span>
-            <span className="flex items-center gap-2 text-sm">
-              Map to Sonarr series
-              <Pencil className="h-3 w-3 text-muted-foreground" />
+            <span className="flex items-center gap-2 text-sm text-right">
+              {sonarrMappings === null
+                ? 'Map to Sonarr series'
+                : sonarrMappings.length === 0
+                  ? 'Not mapped'
+                  : `Mapped · ${sonarrMappings[0].seriesTitle}${
+                      sonarrMappings.length > 1 ? ` +${sonarrMappings.length - 1}` : ''
+                    }`}
+              {sonarrMappings && sonarrMappings.length > 0 && (
+                sonarrMappings[0].state === 'MANUAL_MATCH' ? (
+                  <Badge className="bg-green-600/90 text-foreground text-[10px] px-1.5 py-0">Manual</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">Auto</Badge>
+                )
+              )}
+              <Pencil className="h-3 w-3 text-muted-foreground shrink-0" />
             </span>
           </button>
         )}
@@ -746,6 +780,7 @@ export default function AnimeDetailPage() {
           onOpenChange={setShowSonarrMap}
           anilistMediaId={detail.id}
           animeTitle={detail.title}
+          onMappingsChanged={setSonarrMappings}
         />
       )}
     </div>

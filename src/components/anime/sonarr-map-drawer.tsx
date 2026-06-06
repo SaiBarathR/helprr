@@ -24,6 +24,8 @@ interface SonarrMapDrawerProps {
   onOpenChange: (open: boolean) => void;
   anilistMediaId: number;
   animeTitle: string;
+  /** Fired whenever this anime's Sonarr mappings change (and on open-load) so the page row stays in sync. */
+  onMappingsChanged?: (mappings: AnimeSonarrMappingItem[]) => void;
 }
 
 export function SonarrMapDrawer({
@@ -31,6 +33,7 @@ export function SonarrMapDrawer({
   onOpenChange,
   anilistMediaId,
   animeTitle,
+  onMappingsChanged,
 }: SonarrMapDrawerProps) {
   const [query, setQuery] = useState('');
   const [seriesList, setSeriesList] = useState<SonarrSeriesListItem[]>([]);
@@ -57,6 +60,7 @@ export function SonarrMapDrawer({
       .then(([series, mappingsData]) => {
         setSeriesList(series.filter((item) => item.seriesType === 'anime'));
         setMappings(mappingsData.mappings);
+        onMappingsChanged?.(mappingsData.mappings);
       })
       .catch((fetchError: unknown) => {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
@@ -71,6 +75,8 @@ export function SonarrMapDrawer({
       });
 
     return () => controller.abort();
+    // onMappingsChanged is a state setter from the page — stable by contract.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, anilistMediaId]);
 
   const mappedIds = useMemo(
@@ -83,19 +89,17 @@ export function SonarrMapDrawer({
     const items = trimmedQuery
       ? seriesList.filter((item) => item.title.toLowerCase().includes(trimmedQuery))
       : seriesList;
-    return [...items].sort((a, b) => {
-      const aMapped = mappedIds.has(a.id) ? 0 : 1;
-      const bMapped = mappedIds.has(b.id) ? 0 : 1;
-      if (aMapped !== bMapped) return aMapped - bMapped;
-      return a.sortTitle.localeCompare(b.sortTitle);
-    });
-  }, [seriesList, trimmedQuery, mappedIds]);
+    return [...items].sort((a, b) => a.sortTitle.localeCompare(b.sortTitle));
+  }, [seriesList, trimmedQuery]);
+  // Mapped series render in their own labeled section so the current state is obvious.
+  const mappedItems = useMemo(() => filtered.filter((item) => mappedIds.has(item.id)), [filtered, mappedIds]);
+  const unmappedItems = useMemo(() => filtered.filter((item) => !mappedIds.has(item.id)), [filtered, mappedIds]);
 
-  async function handleSelect(seriesId: number) {
-    setSavingId(seriesId);
+  async function handleSelect(item: SonarrSeriesListItem) {
+    setSavingId(item.id);
     setError(null);
     try {
-      const res = await fetch(`/api/sonarr/${seriesId}/anime`, {
+      const res = await fetch(`/api/sonarr/${item.id}/anime`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ anilistMediaId }),
@@ -105,6 +109,12 @@ export function SonarrMapDrawer({
         throw new Error(data.error || 'Failed to save AniList mapping');
       }
 
+      const next: AnimeSonarrMappingItem[] = [
+        ...mappings.filter((m) => m.sonarrSeriesId !== item.id),
+        { sonarrSeriesId: item.id, state: 'MANUAL_MATCH', seriesTitle: item.title, seriesYear: item.year ?? null },
+      ];
+      setMappings(next);
+      onMappingsChanged?.(next);
       toast.success('AniList mapping updated');
       onOpenChange(false);
     } catch (saveError) {
@@ -126,7 +136,9 @@ export function SonarrMapDrawer({
         throw new Error(data.error || 'Failed to clear AniList mapping');
       }
 
-      setMappings((prev) => prev.filter((m) => m.sonarrSeriesId !== seriesId));
+      const next = mappings.filter((m) => m.sonarrSeriesId !== seriesId);
+      setMappings(next);
+      onMappingsChanged?.(next);
       toast.success('AniList mapping cleared');
     } catch (clearError) {
       setError(clearError instanceof Error ? clearError.message : 'Failed to clear AniList mapping');
@@ -174,18 +186,28 @@ export function SonarrMapDrawer({
                 </div>
               ))
             ) : filtered.length > 0 ? (
-              filtered.map((item) => {
+              <>
+                {mappedItems.length > 0 && (
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mapped</p>
+                )}
+                {[...mappedItems, ...unmappedItems].map((item, index) => {
                 const posterSrc = getImageUrl(item.images, 'poster', 'sonarr');
                 const isMapped = mappedIds.has(item.id);
                 const mapping = mappings.find((m) => m.sonarrSeriesId === item.id);
+                const sectionBreak = mappedItems.length > 0 && index === mappedItems.length;
 
                 return (
+                  <div key={item.id}>
+                  {sectionBreak && (
+                    <p className="pt-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      All anime series
+                    </p>
+                  )}
                   <div
-                    key={item.id}
                     className="flex w-full gap-3 rounded-lg border border-border/30 bg-muted/10 p-3 text-left"
                   >
                     <button
-                      onClick={() => handleSelect(item.id)}
+                      onClick={() => handleSelect(item)}
                       disabled={savingId !== null || clearingId !== null}
                       className="flex min-w-0 flex-1 gap-3 text-left active:opacity-70 disabled:opacity-60"
                     >
@@ -242,8 +264,10 @@ export function SonarrMapDrawer({
                       </button>
                     )}
                   </div>
+                  </div>
                 );
-              })
+              })}
+              </>
             ) : (
               <div className="rounded-lg border border-border/30 bg-muted/10 px-3 py-8 text-center text-sm text-muted-foreground">
                 No anime series found in Sonarr.
