@@ -39,6 +39,9 @@ const REJECTED_SERIES_FORMATS = new Set(['MANGA', 'NOVEL', 'ONE_SHOT']);
 const AUTO_LINK_FORMATS = new Set(['TV', 'TV_SHORT', 'ONA']);
 const MAX_AUTO_LINKED_SEASONS = 10;
 const SEASON_DISCOVERY_PAGE_SIZE = 12;
+// Relation-enrichment depth: pass 1 inspects the primary + pass-0 siblings,
+// later passes only newly-discovered ones. 3 covers S1→…→Final Season Part 2.
+const MAX_ENRICHMENT_PASSES = 3;
 
 interface SeriesSnapshot {
   title: string;
@@ -285,66 +288,109 @@ function candidateSeasonSortKey(title: AniListTitle): number {
   return keys.length > 0 ? Math.min(...keys) : Infinity;
 }
 
+function mediaToSeasonCandidate(media: AniListMedia): SeasonCandidate {
+  return {
+    id: media.id,
+    title: media.title,
+    format: media.format,
+    seasonYear: media.seasonYear ?? media.startDate?.year ?? null,
+  };
+}
+
+function relationEdgeToSeasonCandidate(edge: AniListRelationEdge): SeasonCandidate | null {
+  if (edge.node.type && edge.node.type !== 'ANIME') return null;
+  return { id: edge.node.id, title: edge.node.title, format: edge.node.format, seasonYear: edge.node.seasonYear };
+}
+
 /**
  * Find AniList entries that look like other seasons of `primary` — exact base
- * title plus an explicit season marker (see anilist-title-match.ts). Candidates
- * come from the caller's search pool and/or the primary's relation edges; when
- * no pool is given (manual paths) one base-title search fills the gap. Never
- * walks the relation graph. Best-effort: returns [] on search failure.
+ * title plus an explicit season marker (see anilist-title-match.ts). Pass 0
+ * screens the caller's search pool and/or the primary's relation edges (plus
+ * one base-title search when no pool is given). Then a bounded enrichment walk
+ * inspects the accepted siblings' own relations to catch seasons fuzzy search
+ * misses (e.g. AoT "Final Season Part 2" only appears as FS's SEQUEL edge).
+ * The sibling filter keeps the walk inside the franchise; each detail fetch is
+ * Redis-cached 24h and gets fetched for the page right after anyway.
+ * Best-effort throughout: fetch failures skip that candidate, never throw.
  */
-async function discoverSeasonSiblings(
+async function resolveSeasonSiblingDescriptors(
   primary: AniListMedia,
-  opts: { pool?: AniListMedia[]; relations?: AniListRelationEdge[] }
+  opts: { pool?: AniListMedia[]; seedRelations?: AniListRelationEdge[]; excludeIds?: Set<number> }
 ): Promise<EntryDescriptor[]> {
   const primaryInput = {
     titles: titleVariants(primary.title),
     year: primary.seasonYear ?? primary.startDate?.year ?? null,
   };
 
-  const candidates = new Map<number, SeasonCandidate>();
-  const add = (item: SeasonCandidate): void => {
-    if (item.id !== primary.id && !candidates.has(item.id)) candidates.set(item.id, item);
+  const accepted = new Map<number, SeasonCandidate>();
+  const addAccepted = (candidate: SeasonCandidate): boolean => {
+    if (
+      candidate.id === primary.id
+      || accepted.has(candidate.id)
+      || opts.excludeIds?.has(candidate.id)
+      || candidate.format === null
+      || !AUTO_LINK_FORMATS.has(candidate.format)
+      || !isSeasonSibling(primaryInput, { titles: titleVariants(candidate.title), year: candidate.seasonYear })
+    ) {
+      return false;
+    }
+    accepted.set(candidate.id, candidate);
+    return true;
   };
 
-  for (const media of opts.pool ?? []) {
-    add({
-      id: media.id,
-      title: media.title,
-      format: media.format,
-      seasonYear: media.seasonYear ?? media.startDate?.year ?? null,
-    });
+  // Pass 0 — pool (auto path), the primary's own relations (manual paths), and
+  // one base-title search when no pool was provided.
+  for (const media of opts.pool ?? []) addAccepted(mediaToSeasonCandidate(media));
+  for (const edge of opts.seedRelations ?? []) {
+    const candidate = relationEdgeToSeasonCandidate(edge);
+    if (candidate) addAccepted(candidate);
   }
-  for (const edge of opts.relations ?? []) {
-    if (edge.node.type && edge.node.type !== 'ANIME') continue;
-    add({ id: edge.node.id, title: edge.node.title, format: edge.node.format, seasonYear: edge.node.seasonYear });
-  }
-
   if (!opts.pool) {
     const base = normalizeBaseTitle(getPreferredTitle(primary.title));
     if (base) {
       try {
         const result = await searchAnime(base, 1, SEASON_DISCOVERY_PAGE_SIZE);
-        for (const media of result.media) {
-          add({
-            id: media.id,
-            title: media.title,
-            format: media.format,
-            seasonYear: media.seasonYear ?? media.startDate?.year ?? null,
-          });
-        }
+        for (const media of result.media) addAccepted(mediaToSeasonCandidate(media));
       } catch {
         // Discovery is best-effort; linking the primary must not fail on a search error.
       }
     }
   }
 
-  return Array.from(candidates.values())
-    .filter(
-      (candidate) =>
-        candidate.format !== null
-        && AUTO_LINK_FORMATS.has(candidate.format)
-        && isSeasonSibling(primaryInput, { titles: titleVariants(candidate.title), year: candidate.seasonYear })
-    )
+  // Enrichment walk over accepted siblings' relations (and the primary's, when
+  // they weren't the seed). Cycles can't loop (`inspected`) and the walk can't
+  // leave the base title (only accepted siblings join the frontier).
+  const inspected = new Set<number>();
+  if (opts.seedRelations) inspected.add(primary.id);
+  let frontier = [primary.id, ...accepted.keys()].filter((id) => !inspected.has(id));
+  for (
+    let pass = 0;
+    pass < MAX_ENRICHMENT_PASSES && frontier.length > 0 && accepted.size < MAX_AUTO_LINKED_SEASONS;
+    pass += 1
+  ) {
+    const details = await Promise.all(
+      frontier.map(async (id) => {
+        inspected.add(id);
+        try {
+          return await getAnimeDetail(id);
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const discovered: number[] = [];
+    for (const detail of details) {
+      for (const edge of detail?.relations?.edges ?? []) {
+        if (accepted.size >= MAX_AUTO_LINKED_SEASONS) break;
+        const candidate = relationEdgeToSeasonCandidate(edge);
+        if (candidate && addAccepted(candidate)) discovered.push(candidate.id);
+      }
+    }
+    frontier = discovered;
+  }
+
+  return Array.from(accepted.values())
     .sort((a, b) => {
       const keyDiff = candidateSeasonSortKey(a.title) - candidateSeasonSortKey(b.title);
       if (keyDiff !== 0 && !Number.isNaN(keyDiff)) return keyDiff;
@@ -397,9 +443,9 @@ async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntr
     });
   }
 
-  // Auto-link the accepted primary's season siblings from the candidate pool
-  // we already searched — zero extra AniList calls on the auto path.
-  const siblings = await discoverSeasonSiblings(best!.candidate, {
+  // Auto-link the accepted primary's season siblings: pass 0 screens the
+  // candidate pool we already searched; the relation walk catches the rest.
+  const siblings = await resolveSeasonSiblingDescriptors(best!.candidate, {
     pool: Array.from(allCandidates.values()),
   });
 
@@ -578,7 +624,7 @@ export async function addManualEntry(
     const maxOrder = existing.reduce((max, entry) => Math.max(max, entry.order), -1);
     const isFirst = existing.length === 0;
     const siblings = isFirst
-      ? await discoverSeasonSiblings(detail, { relations: detail.relations?.edges ?? [] })
+      ? await resolveSeasonSiblingDescriptors(detail, { seedRelations: detail.relations?.edges ?? [] })
       : [];
     await prisma.$transaction([
       prisma.aniListSeriesMappingEntry.create({
@@ -661,42 +707,66 @@ export async function setPrimaryEntry(
   const record = await loadRecord(series.id);
   const target = record?.entries.find((entry) => entry.anilistMediaId === anilistMediaId);
   if (record && target) {
+    const linkedIds = new Set(record.entries.map((entry) => entry.anilistMediaId));
     // Discover up front (reads only) so reorder + append land in one transaction.
-    let siblings: EntryDescriptor[] = [];
+    let additions: EntryDescriptor[] = [];
     try {
       const detail = await getAnimeDetail(anilistMediaId);
-      siblings = await discoverSeasonSiblings(detail, { relations: detail.relations?.edges ?? [] });
+      additions = (
+        await resolveSeasonSiblingDescriptors(detail, {
+          seedRelations: detail.relations?.edges ?? [],
+          excludeIds: linkedIds,
+        })
+      ).filter((sibling) => !linkedIds.has(sibling.anilistMediaId));
     } catch {
       // Best-effort: changing the primary must not fail on discovery errors.
     }
-    const linkedIds = new Set(record.entries.map((entry) => entry.anilistMediaId));
-    const additions = siblings.filter((sibling) => !linkedIds.has(sibling.anilistMediaId));
 
-    const reordered = [
-      target,
-      ...record.entries.filter((entry) => entry.id !== target.id).sort((a, b) => a.order - b.order),
-    ];
-    await prisma.$transaction([
-      ...reordered.map((entry, index) =>
-        prisma.aniListSeriesMappingEntry.update({
-          where: { id: entry.id },
-          data: { isPrimary: index === 0, order: index },
+    // Primary pinned first; existing tail and discovered additions merge into
+    // season order (Season 1 … Season 3 Part 2 … Final Season Part 2).
+    type TailItem =
+      | { kind: 'existing'; key: number; tiebreak: number; entry: PrismaEntry }
+      | { kind: 'new'; key: number; tiebreak: number; descriptor: EntryDescriptor };
+    const tail: TailItem[] = [
+      ...record.entries
+        .filter((entry) => entry.id !== target.id)
+        .map((entry): TailItem => ({ kind: 'existing', key: seasonSortKey(entry.titleSnapshot), tiebreak: entry.order, entry })),
+      ...additions.map(
+        (descriptor, index): TailItem => ({
+          kind: 'new',
+          key: seasonSortKey(descriptor.titleSnapshot),
+          tiebreak: Number.MAX_SAFE_INTEGER - additions.length + index,
+          descriptor,
         })
       ),
-      ...(additions.length > 0
-        ? [
-            prisma.aniListSeriesMappingEntry.createMany({
-              data: additions.map((sibling, index) => ({
+    ].sort((a, b) => {
+      const keyDiff = a.key - b.key;
+      if (keyDiff !== 0 && !Number.isNaN(keyDiff)) return keyDiff;
+      return a.tiebreak - b.tiebreak;
+    });
+
+    await prisma.$transaction([
+      prisma.aniListSeriesMappingEntry.update({
+        where: { id: target.id },
+        data: { isPrimary: true, order: 0 },
+      }),
+      ...tail.map((item, index) =>
+        item.kind === 'existing'
+          ? prisma.aniListSeriesMappingEntry.update({
+              where: { id: item.entry.id },
+              data: { isPrimary: false, order: index + 1 },
+            })
+          : prisma.aniListSeriesMappingEntry.create({
+              data: {
                 mappingId: record.id,
-                anilistMediaId: sibling.anilistMediaId,
+                anilistMediaId: item.descriptor.anilistMediaId,
                 isPrimary: false,
-                order: reordered.length + index,
-                source: sibling.source,
-                titleSnapshot: sibling.titleSnapshot,
-              })),
-            }),
-          ]
-        : []),
+                order: index + 1,
+                source: item.descriptor.source,
+                titleSnapshot: item.descriptor.titleSnapshot,
+              },
+            })
+      ),
       ...(record.state !== 'MANUAL_MATCH'
         ? [
             prisma.aniListSeriesMapping.update({
