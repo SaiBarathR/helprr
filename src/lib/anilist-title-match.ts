@@ -118,6 +118,40 @@ export function seasonSortKey(value: string | null | undefined): number {
   return season * 100 + part;
 }
 
+/**
+ * Compact tab label for a season entry: "Season 2", "Season 3 Part 2",
+ * "Final Season Part 2", "Cour 2"… The bare franchise root (no marker, title
+ * equals the primary's base) reads "Season 1". Returns null when no short
+ * label can be derived — callers fall back to the full title.
+ */
+export function seasonTabLabel(title: string | null | undefined, primaryTitle?: string | null): string | null {
+  const normalized = normalizeTitle(title);
+  if (!normalized) return null;
+
+  const partMatch = normalized.match(/\b(part|cour)\s+(\d+)\b/);
+  const partSuffix = partMatch ? ` Part ${partMatch[2]}` : '';
+
+  if (/\b(?:the\s+)?final\s+season\b/.test(normalized)) return `Final Season${partSuffix}`;
+
+  const arabic = normalized.match(/\bseason\s+(\d+)\b/) ?? normalized.match(/\b(\d+)(?:st|nd|rd|th)\s+season\b/);
+  if (arabic) return `Season ${Number.parseInt(arabic[1], 10)}${partSuffix}`;
+
+  const word = normalized.match(new RegExp(`\\b(${WORD_ORDINALS})\\s+season\\b`));
+  if (word) return `Season ${WORD_ORDINAL_VALUES[word[1]]}${partSuffix}`;
+
+  const roman = normalized.match(/\b(ii|iii|iv|v|vi|vii|viii|ix|x)\b/);
+  if (roman) return `Season ${ROMAN_NUMERAL_VALUES[roman[1]]}${partSuffix}`;
+
+  if (partMatch) return `${partMatch[1] === 'cour' ? 'Cour' : 'Part'} ${partMatch[2]}`;
+
+  // Bare root: same title as the primary's base, no marker → it's season 1.
+  if (primaryTitle != null) {
+    const base = normalizeBaseTitle(primaryTitle);
+    if (base && normalized === base) return 'Season 1';
+  }
+  return null;
+}
+
 export interface SeasonSiblingInput {
   /** Title variants (english / romaji / native); null entries are skipped. */
   titles: Array<string | null | undefined>;

@@ -28,7 +28,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight,
-  Trophy, TrendingUp, FileEdit, Sparkles,
+  Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
@@ -61,6 +61,7 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { formatBytes } from '@/lib/format';
 import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
+import { seasonTabLabel } from '@/lib/anilist-title-match';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
@@ -1046,6 +1047,11 @@ export default function SeriesDetailPage() {
   const activeAnimeEntryId = animeEntries[activeAnimeIdx]?.anilistMediaId ?? null;
   const animeDetail = activeAnimeEntryId != null ? animeDetailsById.get(activeAnimeEntryId) ?? null : null;
   activeAnimeEntryIdRef.current = activeAnimeEntryId;
+  // Base reference for short tab labels ("Season 2" instead of the full name).
+  const primaryEntry = animeEntries[0];
+  const animePrimaryTitle = primaryEntry
+    ? animeDetailsById.get(primaryEntry.anilistMediaId)?.title ?? primaryEntry.titleSnapshot
+    : null;
   // Drawer gets the hydrated full set; before hydration, whatever is loaded
   // (primary first) keeps suggestions/covers usable.
   const animeDetails = drawerDetails
@@ -1368,17 +1374,18 @@ export default function SeriesDetailPage() {
 
       <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-2 md:p-6">
         {/* Hero: Backdrop or flat poster layout */}
-        {isAnimeSeries && animeEntries.length > 1 && (
-          <div className="flex gap-1.5 overflow-x-auto pt-1 pb-3 -mx-2 px-2 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {animeEntries.map((entry, index) => {
+        {isAnimeSeries && animeData !== null && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-3 -mx-2 px-2 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {animeEntries.length > 1 && animeEntries.map((entry, index) => {
               const detail = animeDetailsById.get(entry.anilistMediaId);
-              const title = detail?.title ?? entry.titleSnapshot ?? `AniList #${entry.anilistMediaId}`;
-              const label = detail?.seasonYear ? `${title} · ${detail.seasonYear}` : title;
+              const fullTitle = detail?.title ?? entry.titleSnapshot ?? `AniList #${entry.anilistMediaId}`;
+              const label = seasonTabLabel(fullTitle, animePrimaryTitle) ?? fullTitle;
               const active = index === activeAnimeIdx;
               return (
                 <button
                   key={entry.anilistMediaId}
                   onClick={() => selectAnimeTab(index)}
+                  title={detail?.seasonYear ? `${fullTitle} · ${detail.seasonYear}` : fullTitle}
                   className={`shrink-0 max-w-[180px] truncate rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                     active
                       ? 'bg-[var(--hpr-amber)]/20 text-[var(--hpr-amber)]'
@@ -1389,6 +1396,27 @@ export default function SeriesDetailPage() {
                 </button>
               );
             })}
+            {/* Always-visible mapping trigger: amber call-to-action when unmatched. */}
+            <button
+              onClick={() => setShowAniListRemap(true)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                animeEntries.length === 0
+                  ? 'bg-[var(--hpr-amber)]/20 text-[var(--hpr-amber)] active:bg-[var(--hpr-amber)]/30'
+                  : 'bg-muted/30 text-muted-foreground active:bg-muted/50'
+              }`}
+            >
+              {animeEntries.length === 0 ? (
+                <>
+                  <TriangleAlert className="h-3.5 w-3.5" />
+                  Map to AniList
+                </>
+              ) : (
+                <>
+                  <Pencil className="h-3 w-3" />
+                  AniList
+                </>
+              )}
+            </button>
           </div>
         )}
         {isAnimeSeries && animeDetail ? (
