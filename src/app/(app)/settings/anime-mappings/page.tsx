@@ -70,6 +70,18 @@ interface AnilistCacheUsage {
   anilistApiBytes: number;
 }
 
+/** Humanize a minutes value so "1440" reads as a day. Null below an hour. */
+function formatMinutesHint(raw: string | undefined): string | null {
+  const minutes = Number.parseInt(raw ?? '', 10);
+  if (!Number.isInteger(minutes) || minutes < 60) return null;
+  if (minutes % 1440 === 0) {
+    const days = minutes / 1440;
+    return `= ${days} day${days === 1 ? '' : 's'}`;
+  }
+  if (minutes % 60 === 0) return `= ${minutes / 60} h`;
+  return `≈ ${(minutes / 60).toFixed(1)} h`;
+}
+
 export default function AnimeMappingsPage() {
   const router = useRouter();
   const [mappings, setMappings] = useState<AdminAnimeMappingRow[] | null>(null);
@@ -380,28 +392,33 @@ export default function AnimeMappingsPage() {
               : '—'}
           </span>
         </div>
-        {TTL_FIELDS.map((field) => (
-          <div key={field.key} className="grouped-row gap-3">
-            <div className="min-w-0">
-              <span className="text-sm">{field.label}</span>
-              <p className="text-[11px] text-muted-foreground truncate">{field.hint}</p>
+        {TTL_FIELDS.map((field) => {
+          const hint = formatMinutesHint(ttlDraft?.[field.key]);
+          return (
+            <div key={field.key} className="grouped-row gap-3">
+              <div className="min-w-0">
+                <span className="text-sm">{field.label}</span>
+                <p className="text-[11px] text-muted-foreground truncate">{field.hint}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Input
+                  type="number"
+                  min={1}
+                  max={43200}
+                  value={ttlDraft?.[field.key] ?? ''}
+                  onChange={(event) =>
+                    setTtlDraft((prev) => (prev ? { ...prev, [field.key]: event.target.value } : prev))
+                  }
+                  disabled={ttlDraft === null}
+                  className="h-8 w-24 text-right"
+                />
+                <span className="whitespace-nowrap text-xs text-muted-foreground">
+                  min{hint ? ` (${hint})` : ''}
+                </span>
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Input
-                type="number"
-                min={1}
-                max={43200}
-                value={ttlDraft?.[field.key] ?? ''}
-                onChange={(event) =>
-                  setTtlDraft((prev) => (prev ? { ...prev, [field.key]: event.target.value } : prev))
-                }
-                disabled={ttlDraft === null}
-                className="h-8 w-24 text-right"
-              />
-              <span className="text-xs text-muted-foreground">min</span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
         <div className="flex gap-2 px-4 py-3">
           <Button
             variant="outline"
