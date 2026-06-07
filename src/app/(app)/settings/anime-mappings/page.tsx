@@ -152,6 +152,8 @@ export default function AnimeMappingsPage() {
       } else if (result.reason === 'sonarr-unavailable') {
         toast.error('Sonarr is unavailable');
       } else {
+        // Includes 'disabled', which only scheduled runs can hit — a manual
+        // Run now is allowed even with the nightly toggle off.
         toast.error('Failed to start auto-mapping');
       }
       void loadAutoMapStatus();
@@ -247,7 +249,7 @@ export default function AnimeMappingsPage() {
 
       <GroupedSection>
         <Link
-          href="/settings/anime-mappings/mappingList"
+          href="/settings/anime-mappings/mapping-list"
           className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
         >
           <div className="min-w-0">
@@ -356,7 +358,7 @@ export default function AnimeMappingsPage() {
               variant="outline"
               className="h-9 w-full"
               onClick={handleRunAutoMapNow}
-              disabled={runningAutoMap || !(settings?.animeAutoMapEnabled ?? true)}
+              disabled={runningAutoMap}
             >
               {runningAutoMap ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Run now

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
-import { requireAuth, requireAdmin } from '@/lib/auth';
+import { requireAuth, requireAdmin, requireCapability } from '@/lib/auth';
 import { getSonarrClient } from '@/lib/service-helpers';
 import {
   addManualEntry,
@@ -58,6 +58,8 @@ async function getHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('series.view');
+  if (capError) return capError;
 
   try {
     const { id } = await params;

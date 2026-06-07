@@ -395,7 +395,10 @@ export class PollingService {
     let queue: SonarrSeries[];
     try {
       const settings = await getOrCreateAppSettings();
-      if (!settings.animeAutoMapEnabled) {
+      // The toggle governs the nightly schedule only — a manual Run-now is
+      // always allowed. (checkAnimeAutoMap already gates scheduled starts;
+      // this is defense-in-depth.)
+      if (!settings.animeAutoMapEnabled && reason === 'scheduled') {
         this.animeMapRun = null;
         return { started: false, reason: 'disabled' };
       }

@@ -11,6 +11,7 @@ import {
 } from '@/lib/anilist-client';
 import {
   extractTmdbId,
+  ACCEPTABLE_SERIES_FORMATS,
   extractTvdbId,
   getPreferredTitle,
   isMovieFormat,
@@ -37,7 +38,6 @@ import type {
 
 const AUTO_UNMATCHED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SEARCH_PAGE_SIZE = 10;
-const ACCEPTABLE_SERIES_FORMATS = new Set(['TV', 'TV_SHORT', 'OVA', 'ONA', 'SPECIAL']);
 const REJECTED_SERIES_FORMATS = new Set(['MANGA', 'NOVEL', 'ONE_SHOT']);
 // Formats season auto-linking may add without user review. OVA/SPECIAL are
 // excluded on purpose — recap specials share the base title (e.g. "Attack On
@@ -257,30 +257,39 @@ async function persistResolution(
     resolvedAt: new Date(),
   };
 
-  const record = await prisma.aniListSeriesMapping.upsert({
-    where: { sonarrSeriesId: series.id },
-    update: base,
-    create: { sonarrSeriesId: series.id, ...base },
-  });
+  // One transaction so concurrent resolvers (series-page GET, anime reverse
+  // lookup, the nightly auto-map loop) never observe a mapping whose entries
+  // are mid-replacement.
+  return prisma.$transaction(async (tx) => {
+    const record = await tx.aniListSeriesMapping.upsert({
+      where: { sonarrSeriesId: series.id },
+      update: base,
+      create: { sonarrSeriesId: series.id, ...base },
+    });
 
-  if (values.entries !== undefined) {
-    const entries = dedupeEntryDescriptors(values.entries);
-    await prisma.aniListSeriesMappingEntry.deleteMany({ where: { mappingId: record.id } });
-    if (entries.length > 0) {
-      await prisma.aniListSeriesMappingEntry.createMany({
-        data: entries.map((entry, index) => ({
-          mappingId: record.id,
-          anilistMediaId: entry.anilistMediaId,
-          isPrimary: index === 0,
-          order: index,
-          source: entry.source,
-          titleSnapshot: entry.titleSnapshot,
-        })),
-      });
+    if (values.entries !== undefined) {
+      const entries = dedupeEntryDescriptors(values.entries);
+      await tx.aniListSeriesMappingEntry.deleteMany({ where: { mappingId: record.id } });
+      if (entries.length > 0) {
+        await tx.aniListSeriesMappingEntry.createMany({
+          data: entries.map((entry, index) => ({
+            mappingId: record.id,
+            anilistMediaId: entry.anilistMediaId,
+            isPrimary: index === 0,
+            order: index,
+            source: entry.source,
+            titleSnapshot: entry.titleSnapshot,
+          })),
+        });
+      }
     }
-  }
 
-  return (await loadRecord(series.id))!;
+    // Same shape as loadRecord, read inside the transaction.
+    return (await tx.aniListSeriesMapping.findUnique({
+      where: { sonarrSeriesId: series.id },
+      include: { entries: { orderBy: { order: 'asc' } } },
+    }))!;
+  });
 }
 
 async function collectCandidates(query: string): Promise<AniListMedia[]> {
@@ -600,8 +609,10 @@ export async function getSeriesAniListResponse(
     }
 
     if (primaryDetail === null) {
+      // A manual mapping stays manual (MANUAL_NONE) so the user's curation
+      // lock survives — auto re-resolve must not replace what they pinned.
       const reset = await persistResolution(series, {
-        state: 'AUTO_UNMATCHED',
+        state: record.state === 'MANUAL_MATCH' ? 'MANUAL_NONE' : 'AUTO_UNMATCHED',
         matchMethod: 'mapped_non_series_rejected',
         confidence: null,
         entries: [],
@@ -634,11 +645,12 @@ export async function getSeriesAniListResponse(
   const valid = fetched.filter((item) => item.normalized !== null);
   const droppedIds = fetched.filter((item) => item.normalized === null).map((item) => item.entry.id);
 
-  // Every linked entry is gone/invalid on AniList → reset to auto-unmatched so the
-  // series falls back to TMDB enrichment (mirrors the prior single-entry behavior).
+  // Every linked entry is gone/invalid on AniList → reset so the series falls
+  // back to TMDB enrichment. A manual mapping resets to MANUAL_NONE (keeps the
+  // curation lock); an auto one to AUTO_UNMATCHED (re-resolve may retry).
   if (valid.length === 0) {
     const reset = await persistResolution(series, {
-      state: 'AUTO_UNMATCHED',
+      state: record.state === 'MANUAL_MATCH' ? 'MANUAL_NONE' : 'AUTO_UNMATCHED',
       matchMethod: 'mapped_non_series_rejected',
       confidence: null,
       entries: [],
@@ -691,8 +703,9 @@ export async function getSeriesEntryDetail(
   await prisma.aniListSeriesMappingEntry.delete({ where: { id: entry.id } });
   const remaining = presentationSortEntries(record.entries.filter((item) => item.id !== entry.id));
   if (remaining.length === 0) {
+    // Manual mappings reset to MANUAL_NONE so the curation lock survives.
     const reset = await persistResolution(series, {
-      state: 'AUTO_UNMATCHED',
+      state: record.state === 'MANUAL_MATCH' ? 'MANUAL_NONE' : 'AUTO_UNMATCHED',
       matchMethod: 'mapped_non_series_rejected',
       confidence: null,
       entries: [],
