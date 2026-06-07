@@ -471,9 +471,8 @@ export class PollingService {
         }
 
         let done = false;
-        let attemptStartedMs = Date.now();
+        const attemptStartedMs = Date.now();
         while (!done && !run.stop) {
-          attemptStartedMs = Date.now();
           try {
             await ensureSeriesAniListMapping(series);
             run.processed += 1;

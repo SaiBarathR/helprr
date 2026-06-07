@@ -235,8 +235,16 @@ async function putHandler(request: NextRequest) {
       if ('error' in parsed) return parsed.error;
       data.activityDigestDayOfWeek = parsed.value;
     }
-    if (animeAutoMapEnabled !== undefined)
-      data.animeAutoMapEnabled = Boolean(animeAutoMapEnabled);
+    if (animeAutoMapEnabled !== undefined) {
+      // Strict check — Boolean('false') would silently enable the nightly job.
+      if (typeof animeAutoMapEnabled !== 'boolean') {
+        return NextResponse.json(
+          { error: 'Anime auto-map enabled must be a boolean' },
+          { status: 400 }
+        );
+      }
+      data.animeAutoMapEnabled = animeAutoMapEnabled;
+    }
     if (animeAutoMapHour !== undefined) {
       const parsed = parseIntegerSetting(animeAutoMapHour, 'Anime auto-map hour', 0, 23);
       if ('error' in parsed) return parsed.error;
