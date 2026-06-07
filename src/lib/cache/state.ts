@@ -99,8 +99,11 @@ export async function getAnilistTtlSettings(): Promise<AnilistTtlSettings> {
     cachedAnilistTtlsAt = now;
     return next;
   } catch {
-    // Fail-open with defaults so AniList features keep working.
-    return cachedAnilistTtls ?? DEFAULT_ANILIST_TTLS;
+    // Fail-open with defaults so AniList features keep working. Stamp the memo
+    // window too, so a DB outage is retried once per window — not on every read.
+    cachedAnilistTtls = cachedAnilistTtls ?? DEFAULT_ANILIST_TTLS;
+    cachedAnilistTtlsAt = now;
+    return cachedAnilistTtls;
   }
 }
 

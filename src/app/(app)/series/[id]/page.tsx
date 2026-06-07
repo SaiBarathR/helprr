@@ -704,10 +704,13 @@ export default function SeriesDetailPage() {
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
         if (data.detail) {
-          const nextAnime = animeData ? { ...animeData, mapping: data.mapping } : animeData;
           const cached = getSeriesDetailSnapshot(activeSeriesId);
+          // Merge into the snapshot's copy (not the render-time closure) so a
+          // remap that landed while this fetch was in flight isn't clobbered.
+          const baseAnime = cached?.animeData ?? animeData;
+          const nextAnime = baseAnime ? { ...baseAnime, mapping: data.mapping } : baseAnime;
           const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById).set(entryId, data.detail);
-          setAnimeData(nextAnime);
+          setAnimeData((prev) => (prev ? { ...prev, mapping: data.mapping } : prev));
           setAnimeDetailsById(nextDetailsById);
           persistSeriesSnapshot({ animeData: nextAnime, animeDetailsById: nextDetailsById });
         } else {

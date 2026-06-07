@@ -46,8 +46,10 @@ const REJECTED_SERIES_FORMATS = new Set(['MANGA', 'NOVEL', 'ONE_SHOT']);
 const AUTO_LINK_FORMATS = new Set(['TV', 'TV_SHORT', 'ONA']);
 const MAX_AUTO_LINKED_SEASONS = 10;
 const SEASON_DISCOVERY_PAGE_SIZE = 12;
-// Relation-enrichment depth: pass 1 inspects the primary + pass-0 siblings,
-// later passes only newly-discovered ones. 3 covers S1→…→Final Season Part 2.
+// Relation-enrichment depth: the first pass inspects the primary (or, on
+// manual links, consumes its pre-fetched relations via seedRelations) + pass-0
+// siblings; later passes only newly-discovered ones. 3 covers
+// S1→…→Final Season Part 2.
 const MAX_ENRICHMENT_PASSES = 3;
 
 interface SeriesSnapshot {
@@ -621,11 +623,14 @@ export async function getSeriesAniListResponse(
     }
 
     if (droppedIds.length > 0) {
-      await prisma.aniListSeriesMappingEntry.deleteMany({ where: { id: { in: droppedIds } } });
-      await prisma.aniListSeriesMappingEntry.update({
-        where: { id: remaining[0].id },
-        data: { isPrimary: true },
-      });
+      // Atomic prune + promote — readers never see a primary-less mapping.
+      await prisma.$transaction([
+        prisma.aniListSeriesMappingEntry.deleteMany({ where: { id: { in: droppedIds } } }),
+        prisma.aniListSeriesMappingEntry.update({
+          where: { id: remaining[0].id },
+          data: { isPrimary: true },
+        }),
+      ]);
       const refreshed = (await loadRecord(series.id))!;
       return { mapping: mappingFromRecord(refreshed), details: [primaryDetail] };
     }
@@ -658,15 +663,20 @@ export async function getSeriesAniListResponse(
     return { mapping: mappingFromRecord(reset), details: [] };
   }
 
-  // Prune invalid secondaries; promote a fresh primary if the old one was dropped.
+  // Prune invalid secondaries; promote a fresh primary if the old one was
+  // dropped — atomically, so readers never see a primary-less mapping.
   if (droppedIds.length > 0) {
-    await prisma.aniListSeriesMappingEntry.deleteMany({ where: { id: { in: droppedIds } } });
-    if (!valid.some((item) => item.entry.isPrimary)) {
-      await prisma.aniListSeriesMappingEntry.update({
-        where: { id: valid[0].entry.id },
-        data: { isPrimary: true },
-      });
-    }
+    await prisma.$transaction([
+      prisma.aniListSeriesMappingEntry.deleteMany({ where: { id: { in: droppedIds } } }),
+      ...(!valid.some((item) => item.entry.isPrimary)
+        ? [
+            prisma.aniListSeriesMappingEntry.update({
+              where: { id: valid[0].entry.id },
+              data: { isPrimary: true },
+            }),
+          ]
+        : []),
+    ]);
     const refreshed = (await loadRecord(series.id))!;
     return { mapping: mappingFromRecord(refreshed), details: valid.map((item) => item.normalized!) };
   }
@@ -700,10 +710,10 @@ export async function getSeriesEntryDetail(
   }
 
   // Dead/invalid on AniList — prune; promote a new primary or reset when empty.
-  await prisma.aniListSeriesMappingEntry.delete({ where: { id: entry.id } });
   const remaining = presentationSortEntries(record.entries.filter((item) => item.id !== entry.id));
   if (remaining.length === 0) {
     // Manual mappings reset to MANUAL_NONE so the curation lock survives.
+    // persistResolution's transaction clears the dead entry along with the rest.
     const reset = await persistResolution(series, {
       state: record.state === 'MANUAL_MATCH' ? 'MANUAL_NONE' : 'AUTO_UNMATCHED',
       matchMethod: 'mapped_non_series_rejected',
@@ -712,12 +722,18 @@ export async function getSeriesEntryDetail(
     });
     return { mapping: mappingFromRecord(reset), detail: null };
   }
-  if (entry.isPrimary) {
-    await prisma.aniListSeriesMappingEntry.update({
-      where: { id: remaining[0].id },
-      data: { isPrimary: true },
-    });
-  }
+  // Atomic prune + promote — readers never see a primary-less mapping.
+  await prisma.$transaction([
+    prisma.aniListSeriesMappingEntry.delete({ where: { id: entry.id } }),
+    ...(entry.isPrimary
+      ? [
+          prisma.aniListSeriesMappingEntry.update({
+            where: { id: remaining[0].id },
+            data: { isPrimary: true },
+          }),
+        ]
+      : []),
+  ]);
   const refreshed = (await loadRecord(series.id))!;
   return { mapping: mappingFromRecord(refreshed), detail: null };
 }
@@ -765,43 +781,56 @@ export async function addManualEntry(
     create: { sonarrSeriesId: series.id, ...base },
   });
 
-  const existing = await prisma.aniListSeriesMappingEntry.findMany({
+  // Sibling discovery hits AniList — keep it outside the transaction, keyed
+  // off a pre-read (siblings only matter when this becomes the first entry).
+  const preExisting = await prisma.aniListSeriesMappingEntry.count({
     where: { mappingId: record.id },
-    orderBy: { order: 'asc' },
   });
-  if (!existing.some((entry) => entry.anilistMediaId === anilistMediaId)) {
+  const siblings = preExisting === 0
+    ? await resolveSeasonSiblingDescriptors(detail, { seedRelations: detail.relations?.edges ?? [] })
+    : [];
+
+  // Re-read inside the transaction: the pre-read spans AniList calls, so two
+  // concurrent adds could both observe an empty mapping. Recomputing isFirst
+  // here (and demoting any primary a racer committed meanwhile) keeps the
+  // "exactly one primary" invariant.
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.aniListSeriesMappingEntry.findMany({
+      where: { mappingId: record.id },
+      orderBy: { order: 'asc' },
+    });
+    if (existing.some((entry) => entry.anilistMediaId === anilistMediaId)) return;
     const maxOrder = existing.reduce((max, entry) => Math.max(max, entry.order), -1);
     const isFirst = existing.length === 0;
-    const siblings = isFirst
-      ? await resolveSeasonSiblingDescriptors(detail, { seedRelations: detail.relations?.edges ?? [] })
-      : [];
-    await prisma.$transaction([
-      prisma.aniListSeriesMappingEntry.create({
-        data: {
+    if (isFirst) {
+      await tx.aniListSeriesMappingEntry.updateMany({
+        where: { mappingId: record.id, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+    await tx.aniListSeriesMappingEntry.create({
+      data: {
+        mappingId: record.id,
+        anilistMediaId,
+        isPrimary: isFirst,
+        order: maxOrder + 1,
+        source: 'manual',
+        titleSnapshot: getPreferredTitle(detail.title),
+      },
+    });
+    if (isFirst && siblings.length > 0) {
+      await tx.aniListSeriesMappingEntry.createMany({
+        data: siblings.map((sibling, index) => ({
           mappingId: record.id,
-          anilistMediaId,
-          isPrimary: isFirst,
-          order: maxOrder + 1,
-          source: 'manual',
-          titleSnapshot: getPreferredTitle(detail.title),
-        },
-      }),
-      ...(siblings.length > 0
-        ? [
-            prisma.aniListSeriesMappingEntry.createMany({
-              data: siblings.map((sibling, index) => ({
-                mappingId: record.id,
-                anilistMediaId: sibling.anilistMediaId,
-                isPrimary: false,
-                order: maxOrder + 2 + index,
-                source: sibling.source,
-                titleSnapshot: sibling.titleSnapshot,
-              })),
-            }),
-          ]
-        : []),
-    ]);
-  }
+          anilistMediaId: sibling.anilistMediaId,
+          isPrimary: false,
+          order: maxOrder + 2 + index,
+          source: sibling.source,
+          titleSnapshot: sibling.titleSnapshot,
+        })),
+      });
+    }
+  });
 
   return getSeriesAniListResponse(series);
 }
@@ -814,31 +843,41 @@ export async function removeManualEntry(
   const record = await loadRecord(series.id);
   const target = record?.entries.find((entry) => entry.anilistMediaId === anilistMediaId);
   if (record && target) {
-    await prisma.aniListSeriesMappingEntry.delete({ where: { id: target.id } });
     const remaining = record.entries
       .filter((entry) => entry.id !== target.id)
       .sort((a, b) => a.order - b.order);
-    if (remaining.length === 0) {
-      await prisma.aniListSeriesMapping.update({
-        where: { id: record.id },
-        data: { state: 'MANUAL_NONE', matchMethod: 'manual_clear', confidence: null, resolvedAt: new Date() },
-      });
-    } else {
-      if (target.isPrimary) {
-        await prisma.aniListSeriesMappingEntry.update({
-          where: { id: remaining[0].id },
-          data: { isPrimary: true },
-        });
-      }
-      // Removing an entry is curation — pin the mapping as MANUAL_MATCH so a
-      // later snapshot-triggered auto re-resolve can't re-add the removed one.
-      if (record.state !== 'MANUAL_MATCH') {
-        await prisma.aniListSeriesMapping.update({
-          where: { id: record.id },
-          data: { state: 'MANUAL_MATCH', matchMethod: 'manual', confidence: null, resolvedAt: new Date() },
-        });
-      }
-    }
+    // One transaction so the delete and its follow-ups (promote / state pin)
+    // land together — readers never see a primary-less mapping.
+    await prisma.$transaction([
+      prisma.aniListSeriesMappingEntry.delete({ where: { id: target.id } }),
+      ...(remaining.length === 0
+        ? [
+            prisma.aniListSeriesMapping.update({
+              where: { id: record.id },
+              data: { state: 'MANUAL_NONE', matchMethod: 'manual_clear', confidence: null, resolvedAt: new Date() },
+            }),
+          ]
+        : [
+            ...(target.isPrimary
+              ? [
+                  prisma.aniListSeriesMappingEntry.update({
+                    where: { id: remaining[0].id },
+                    data: { isPrimary: true },
+                  }),
+                ]
+              : []),
+            // Removing an entry is curation — pin the mapping as MANUAL_MATCH so a
+            // later snapshot-triggered auto re-resolve can't re-add the removed one.
+            ...(record.state !== 'MANUAL_MATCH'
+              ? [
+                  prisma.aniListSeriesMapping.update({
+                    where: { id: record.id },
+                    data: { state: 'MANUAL_MATCH', matchMethod: 'manual', confidence: null, resolvedAt: new Date() },
+                  }),
+                ]
+              : []),
+          ]),
+    ]);
   }
 
   return getSeriesAniListResponse(series);
