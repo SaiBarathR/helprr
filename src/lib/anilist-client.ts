@@ -49,6 +49,7 @@ const RATE_LIMIT_MAX = 85; // leave a small buffer under the nominal 90/min
 const requestTimestamps: number[] = [];
 let serverRateLimit = 0; // last X-RateLimit-Limit (0 = unknown)
 let serverRateRemaining = -1; // last X-RateLimit-Remaining (-1 = unknown)
+let serverRateResetMs = 0; // last X-RateLimit-Reset as epoch ms (0 = unknown)
 let cooldownUntilMs = 0;
 
 function effectiveRateLimitMax(): number {
@@ -60,10 +61,21 @@ function cooldownError(): AniListRateLimitError {
   return new AniListRateLimitError(seconds, new Date(cooldownUntilMs).toISOString());
 }
 
+/**
+ * Seconds until the last advertised X-RateLimit-Reset, when it's a plausible
+ * near-future moment — used when a rate-limit signal arrives without its own
+ * headers (predicted exhaustion, GraphQL body 429). Null otherwise.
+ */
+function secondsUntilServerReset(): number | null {
+  if (serverRateResetMs <= 0) return null;
+  const seconds = Math.ceil((serverRateResetMs - Date.now()) / 1000);
+  return seconds > 0 && seconds <= 600 ? seconds : null;
+}
+
 /** Open (or extend) the fail-fast cooldown from a 429's headers; logs once per onset. */
 export function noteAniListRateLimited(headers: unknown): AniListRateLimitError {
   const parsed = parseRetryAfter(headers);
-  const retryAfterSeconds = parsed.retryAfterSeconds ?? 60;
+  const retryAfterSeconds = parsed.retryAfterSeconds ?? secondsUntilServerReset() ?? 60;
   const target = Date.now() + retryAfterSeconds * 1000;
   if (target > cooldownUntilMs) {
     const wasActive = cooldownUntilMs > Date.now();
@@ -81,6 +93,8 @@ export function noteAniListRateHeaders(headers: unknown): void {
   if (Number.isFinite(limit) && limit > 0) serverRateLimit = limit;
   const remaining = Number(getHeader(headers, 'x-ratelimit-remaining'));
   if (Number.isFinite(remaining) && remaining >= 0) serverRateRemaining = remaining;
+  const reset = Number(getHeader(headers, 'x-ratelimit-reset'));
+  if (Number.isFinite(reset) && reset > 0) serverRateResetMs = reset * 1000;
 }
 
 export async function rateLimitWait(): Promise<void> {

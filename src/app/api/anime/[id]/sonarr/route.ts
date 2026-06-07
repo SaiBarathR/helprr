@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { ensureSeriesAniListMapping } from '@/lib/anilist-series-mapping';
@@ -36,6 +36,8 @@ async function getHandler(
 ): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('anime.view');
+  if (capError) return capError;
 
   try {
     const { id: idStr } = await params;

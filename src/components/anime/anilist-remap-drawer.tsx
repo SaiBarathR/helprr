@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { ACCEPTABLE_SERIES_FORMATS } from '@/lib/anilist-helpers';
 import { isSeasonSibling, normalizeBaseTitle } from '@/lib/anilist-title-match';
 import type {
   AniListDetailResponse,
@@ -39,10 +40,6 @@ interface CandidateResponse {
   query: string;
   items: SeriesAniListCandidate[];
 }
-
-// Mirror of ACCEPTABLE_SERIES_FORMATS in anilist-series-mapping.ts — only these
-// AniList formats are valid series links, so we don't suggest movies/manga.
-const ACCEPTABLE_FORMATS = new Set(['TV', 'TV_SHORT', 'OVA', 'ONA', 'SPECIAL']);
 
 // One suggestion row, whether it came from a linked entry's AniList relations
 // (has relationType) or from the primary's base-title search (no relationType).
@@ -141,7 +138,7 @@ export function AniListRemapDrawer({
     for (const detail of details) {
       for (const relation of detail.relations) {
         if (relation.type !== 'ANIME') continue;
-        if (relation.format && !ACCEPTABLE_FORMATS.has(relation.format)) continue;
+        if (relation.format && !ACCEPTABLE_SERIES_FORMATS.has(relation.format)) continue;
         if (linkedIds.has(relation.id)) continue;
         if (!map.has(relation.id)) {
           map.set(relation.id, {

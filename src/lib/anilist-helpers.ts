@@ -11,6 +11,12 @@ import type {
   AniListRanking,
 } from '@/types/anilist';
 
+/**
+ * AniList formats that are valid links for a Sonarr series (no movies/manga).
+ * Shared single source for the server-side auto-matcher and the remap drawer.
+ */
+export const ACCEPTABLE_SERIES_FORMATS = new Set(['TV', 'TV_SHORT', 'OVA', 'ONA', 'SPECIAL']);
+
 export function getPreferredTitle(title: { romaji: string | null; english: string | null; native: string | null }): string {
   return title.english || title.romaji || title.native || 'Unknown';
 }

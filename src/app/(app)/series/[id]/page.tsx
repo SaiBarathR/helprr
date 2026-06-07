@@ -65,7 +65,7 @@ import { seasonTabLabel } from '@/lib/anilist-title-match';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe } from '@/components/permission-provider';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -191,6 +191,9 @@ export default function SeriesDetailPage() {
   const canChangePath = useCan('series.changePath');
   const canDeleteSeries = useCan('series.delete');
   const canEditSeries = canEditMonitoring || canEditTags || canChangePath;
+  // AniList mapping mutations are admin-only server-side — hide their triggers
+  // from members so they don't open a drawer whose saves would 403.
+  const isAdmin = useMe()?.role === 'admin';
 
   const MONITOR_OPTIONS = [
     { value: 'all', label: 'All Episodes' },
@@ -765,6 +768,7 @@ export default function SeriesDetailPage() {
                   rootFolders: cached?.rootFolders ?? rootFolders,
                   tags: cached?.tags ?? tags,
                   animeData: cached?.animeData ?? animeData,
+                  animeDetailsById: cached?.animeDetailsById ?? animeDetailsById,
                   tmdbData: cached?.tmdbData ?? tmdbData,
                   credits: cached?.credits ?? credits,
                   seasonEpisodes: nextSeasonEpisodes,
@@ -1294,7 +1298,7 @@ export default function SeriesDetailPage() {
                     </Link>
                   </DropdownMenuItem>
                 )}
-                {isAnimeSeries && (
+                {isAnimeSeries && isAdmin && (
                   <DropdownMenuItem onClick={() => setShowAniListRemap(true)}>
                     <Search className="h-4 w-4" />
                     Remap AniList
@@ -1593,8 +1597,9 @@ export default function SeriesDetailPage() {
             />}
 
             {/* AniList mapping management — above the trailer for discoverability.
-                Amber call-to-action when no match is linked yet. */}
-            {!animeLoading && animeData !== null && (
+                Amber call-to-action when no match is linked yet. Admin-only:
+                the drawer's mutations 403 for members. */}
+            {isAdmin && !animeLoading && animeData !== null && (
               animeEntries.length > 0 ? (
                 <button
                   onClick={() => setShowAniListRemap(true)}
@@ -1860,7 +1865,7 @@ export default function SeriesDetailPage() {
                 ))}
               </>
             )}
-            {isAnimeSeries && (
+            {isAnimeSeries && isAdmin && (
               <button
                 onClick={() => setShowAniListRemap(true)}
                 className="flex justify-between items-center w-full py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
