@@ -15,7 +15,6 @@ import {
 import { toast } from 'sonner';
 import Image from 'next/image';
 import Link from 'next/link';
-import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -328,41 +327,6 @@ export default function WatchlistPage() {
 
   return (
     <div className="animate-content-in pb-12">
-      <PageHeader
-        title="Watchlist"
-        showBack={false}
-        rightContent={
-          canEdit ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-                  aria-label="Watchlist actions"
-                >
-                  <MoreHorizontal className="h-5 w-5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => setManageOpen(true)}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Manage tags
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setClearAllOpen(true)}
-                  disabled={totalCount === 0}
-                  className="text-destructive focus:text-destructive"
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Clear watchlist
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : undefined
-        }
-      />
-
       <div className="px-2 md:px-6 mt-2 space-y-3">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -531,6 +495,35 @@ export default function WatchlistPage() {
               ? `${totalCount} item${totalCount === 1 ? '' : 's'}`
               : `${filteredCount} of ${totalCount}`}
           </div>
+
+          {canEdit && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-primary hover:bg-accent active:bg-accent/80 transition-colors"
+                  aria-label="Watchlist actions"
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={() => setManageOpen(true)}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Manage tags
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setClearAllOpen(true)}
+                  disabled={totalCount === 0}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Clear watchlist
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
 
         {visibleTags.length > 0 && (
