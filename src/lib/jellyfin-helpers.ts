@@ -164,6 +164,17 @@ export function timeAgo(dateStr: string): string {
   return `${weeks}w ago`;
 }
 
+/** Absolute date+time for detail views, e.g. "Jun 8, 2026, 3:22 PM". */
+export function formatDateTime(dateStr: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(
+      new Date(dateStr),
+    );
+  } catch {
+    return dateStr;
+  }
+}
+
 export function taskRunDuration(start: string, end: string): string {
   const ms = new Date(end).getTime() - new Date(start).getTime();
   if (ms < 1000) return '<1s';

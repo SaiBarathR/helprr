@@ -57,6 +57,8 @@ import type {
   JellyfinSystemInfo,
   JellyfinLibrary,
   JellyfinItemCounts,
+  JellyfinDevice,
+  JellyfinActivityEntry,
   JellyfinUser,
   JellyfinScheduledTask,
   PlaybackUserActivity,
@@ -69,6 +71,9 @@ import { ticksToMinutes, formatDurationSeconds, formatTriggerSchedule, timeAgo, 
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
+import { DeviceItem, DevicesSeeAllDrawer } from '@/components/jellyfin/device-item';
+import { ActivityItem, ActivitySeeAllDrawer } from '@/components/jellyfin/activity-item';
+import { ViewModeToggle } from '@/components/widgets/bento-primitives';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useCan } from '@/components/permission-provider';
@@ -266,6 +271,10 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   const [counts, setCounts] = useState<JellyfinItemCounts | null>(null);
   const [recentlyAdded, setRecentlyAdded] = useState<JellyfinItem[]>([]);
   const [tasks, setTasks] = useState<JellyfinScheduledTask[]>([]);
+  const [devices, setDevices] = useState<JellyfinDevice[]>([]);
+  const [selfDeviceId, setSelfDeviceId] = useState('');
+  const [activity, setActivity] = useState<JellyfinActivityEntry[]>([]);
+  const [alerts, setAlerts] = useState<JellyfinActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
   const [serverAction, setServerAction] = useState<string | null>(null);
@@ -290,15 +299,34 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
     // Server administration data is control-gated; skip the fetches for members.
     if (canControl) {
-      const [sysRes, taskRes] = await Promise.allSettled([
+      const [sysRes, taskRes, devRes, actRes, alertRes] = await Promise.allSettled([
         fetch('/api/jellyfin/system'),
         fetch('/api/jellyfin/tasks'),
+        fetch('/api/jellyfin/devices'),
+        fetch('/api/jellyfin/activity?hasUserId=true&limit=20'),
+        fetch('/api/jellyfin/activity?hasUserId=false&limit=20'),
       ]);
       if (sysRes.status === 'fulfilled' && sysRes.value.ok) setSystem((await sysRes.value.json()).system);
       if (taskRes.status === 'fulfilled' && taskRes.value.ok) setTasks((await taskRes.value.json()).tasks || []);
+      if (devRes.status === 'fulfilled' && devRes.value.ok) {
+        const d = await devRes.value.json();
+        setDevices(d.devices || []);
+        setSelfDeviceId(d.selfDeviceId || '');
+      }
+      if (actRes.status === 'fulfilled' && actRes.value.ok) setActivity((await actRes.value.json()).entries || []);
+      if (alertRes.status === 'fulfilled' && alertRes.value.ok) setAlerts((await alertRes.value.json()).entries || []);
     }
     setLoading(false);
   }, [canControl]);
+
+  const refreshDevices = useCallback(async () => {
+    const res = await fetch('/api/jellyfin/devices');
+    if (res.ok) {
+      const d = await res.json();
+      setDevices(d.devices || []);
+      setSelfDeviceId(d.selfDeviceId || '');
+    }
+  }, []);
 
   const refreshTasks = useCallback(async () => {
     const res = await fetch('/api/jellyfin/tasks');
@@ -444,6 +472,17 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         </div>
       )}
 
+      {canControl && devices.length > 0 && (
+        <DevicesSection devices={devices} selfDeviceId={selfDeviceId} onRefresh={refreshDevices} />
+      )}
+
+      {canControl && activity.length > 0 && (
+        <ActivityFeed title="Activity" entries={activity} />
+      )}
+
+      {canControl && alerts.length > 0 && (
+        <ActivityFeed title="Alerts" entries={alerts} alert />
+      )}
 
       {resumeItems.length > 0 && (
         <div>
@@ -537,6 +576,152 @@ function LibraryCard({ library }: { library: JellyfinLibrary }) {
         <p className="text-sm font-medium truncate">{library.Name}</p>
         <p className="text-xs text-muted-foreground">{library.CollectionType || 'Mixed'}{library.ChildCount != null && ` \u00B7 ${library.ChildCount} items`}</p>
       </div>
+    </div>
+  );
+}
+
+// Inline items shown in a section before the rest move behind "See all".
+const SECTION_INLINE_MAX = 8;
+
+function SeeAllButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+      onClick={onClick}
+    >
+      See all <ChevronRight className="h-3 w-3" />
+    </Button>
+  );
+}
+
+function DevicesSection({
+  devices,
+  selfDeviceId,
+  onRefresh,
+}: {
+  devices: JellyfinDevice[];
+  selfDeviceId: string;
+  onRefresh: () => Promise<void>;
+}) {
+  const [view, setView] = useState<'carousel' | 'list'>('carousel');
+  const [seeAll, setSeeAll] = useState(false);
+  // `pending` is a device to delete, or the string 'all' for Delete All.
+  const [pending, setPending] = useState<JellyfinDevice | 'all' | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const runDelete = useCallback(async () => {
+    if (!pending) return;
+    setBusy(true);
+    try {
+      const url = pending === 'all'
+        ? '/api/jellyfin/devices'
+        : `/api/jellyfin/devices?id=${encodeURIComponent(pending.Id)}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        toast.error(body?.error || 'Failed to delete device');
+        return;
+      }
+      await onRefresh();
+      setPending(null);
+    } catch {
+      toast.error('Failed to delete device');
+    } finally {
+      setBusy(false);
+    }
+  }, [pending, onRefresh]);
+
+  const deletable = devices.filter((d) => d.Id !== selfDeviceId);
+  const inline = devices.slice(0, SECTION_INLINE_MAX);
+
+  return (
+    <div>
+      <SectionHeader
+        title="Devices"
+        badge={<span className="text-xs text-muted-foreground tabular-nums">{devices.length}</span>}
+        trailing={
+          <div className="flex items-center gap-2">
+            <ViewModeToggle value={view} onChange={setView} />
+            <SeeAllButton onClick={() => setSeeAll(true)} />
+          </div>
+        }
+      />
+      {view === 'carousel' ? (
+        <Carousel>
+          {inline.map((device) => (
+            <DeviceItem key={device.Id} device={device} variant="card" isSelf={device.Id === selfDeviceId} onDelete={setPending} />
+          ))}
+        </Carousel>
+      ) : (
+        <div className="space-y-2">
+          {inline.map((device) => (
+            <DeviceItem key={device.Id} device={device} variant="row" isSelf={device.Id === selfDeviceId} onDelete={setPending} />
+          ))}
+        </div>
+      )}
+
+      <DevicesSeeAllDrawer
+        open={seeAll}
+        onOpenChange={setSeeAll}
+        devices={devices}
+        selfDeviceId={selfDeviceId}
+        onDelete={setPending}
+        onDeleteAll={() => setPending('all')}
+      />
+
+      <ConfirmDialog
+        open={pending !== null}
+        onOpenChange={(open) => { if (!open && !busy) setPending(null); }}
+        title={pending === 'all' ? 'Delete all devices' : 'Delete device'}
+        description={
+          pending === 'all'
+            ? `Delete all ${deletable.length} device(s)? This signs them out of Jellyfin. Helprr's own device is kept.`
+            : pending
+              ? `Delete "${pending.CustomName || pending.Name}"? This signs it out of Jellyfin.`
+              : undefined
+        }
+        confirmLabel={pending === 'all' ? 'Delete all' : 'Delete'}
+        destructive
+        busy={busy}
+        onConfirm={runDelete}
+      />
+    </div>
+  );
+}
+
+function ActivityFeed({ title, entries, alert = false }: { title: string; entries: JellyfinActivityEntry[]; alert?: boolean }) {
+  const [view, setView] = useState<'carousel' | 'list'>('carousel');
+  const [seeAll, setSeeAll] = useState(false);
+  const inline = entries.slice(0, SECTION_INLINE_MAX);
+
+  return (
+    <div>
+      <SectionHeader
+        title={title}
+        trailing={
+          <div className="flex items-center gap-2">
+            <ViewModeToggle value={view} onChange={setView} />
+            <SeeAllButton onClick={() => setSeeAll(true)} />
+          </div>
+        }
+      />
+      {view === 'carousel' ? (
+        <Carousel>
+          {inline.map((entry) => (
+            <ActivityItem key={entry.Id} entry={entry} variant="card" alert={alert} />
+          ))}
+        </Carousel>
+      ) : (
+        <div className="rounded-xl bg-card divide-y divide-border/50">
+          {inline.map((entry) => (
+            <ActivityItem key={entry.Id} entry={entry} variant="row" alert={alert} />
+          ))}
+        </div>
+      )}
+
+      <ActivitySeeAllDrawer open={seeAll} onOpenChange={setSeeAll} title={title} entries={entries} alert={alert} />
     </div>
   );
 }

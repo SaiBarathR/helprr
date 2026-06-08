@@ -9,6 +9,8 @@ import type {
   JellyfinItemCounts,
   JellyfinSearchResult,
   JellyfinActivityResponse,
+  JellyfinDevice,
+  JellyfinDevicesResponse,
   JellyfinUser,
   JellyfinScheduledTask,
   JellyfinAuthKey,
@@ -20,7 +22,7 @@ import type {
 const CLIENT_NAME = 'Helprr';
 const CLIENT_VERSION = '1.0.0';
 const DEVICE_NAME = 'Helprr Server';
-const DEVICE_ID = 'helprr-server';
+export const DEVICE_ID = 'helprr-server';
 
 export class JellyfinClient {
   private client: AxiosInstance;
@@ -224,12 +226,23 @@ export class JellyfinClient {
     });
   }
 
-  async getActivityLog(params: { startIndex?: number; limit?: number; minDate?: string } = {}): Promise<JellyfinActivityResponse> {
+  async getActivityLog(params: { startIndex?: number; limit?: number; minDate?: string; hasUserId?: boolean } = {}): Promise<JellyfinActivityResponse> {
     return this.get<JellyfinActivityResponse>('/System/ActivityLog/Entries', {
       StartIndex: params.startIndex ?? 0,
       Limit: params.limit ?? 50,
       ...(params.minDate && { MinDate: params.minDate }),
+      ...(params.hasUserId !== undefined && { hasUserId: params.hasUserId }),
     });
+  }
+
+  /** Registered devices (admin endpoint). Returns the full device registry. */
+  async getDevices(): Promise<JellyfinDevice[]> {
+    const data = await this.get<JellyfinDevicesResponse>('/Devices');
+    return Array.isArray(data.Items) ? data.Items : [];
+  }
+
+  async deleteDevice(deviceId: string): Promise<void> {
+    await this.client.delete('/Devices', { params: { id: deviceId } });
   }
 
   // --- Native API: Users & Tasks ---

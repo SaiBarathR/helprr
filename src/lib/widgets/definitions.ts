@@ -45,6 +45,9 @@ import { JellyfinHourlyActivityWidget } from '@/components/widgets/jellyfin-hour
 // Jellyfin overview widgets
 import { JellyfinServerWidget } from '@/components/widgets/jellyfin-server-widget';
 import { JellyfinScheduledTasksWidget } from '@/components/widgets/jellyfin-scheduled-tasks-widget';
+import { JellyfinDevicesWidget } from '@/components/widgets/jellyfin-devices-widget';
+import { JellyfinActivityWidget } from '@/components/widgets/jellyfin-activity-widget';
+import { JellyfinAlertsWidget } from '@/components/widgets/jellyfin-alerts-widget';
 
 // Seerr widgets
 import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
@@ -520,6 +523,48 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     component: JellyfinScheduledTasksWidget,
     requiredServices: ['JELLYFIN'],
   },
+  {
+    id: 'jellyfin-devices',
+    name: 'Jellyfin Devices',
+    description: 'Registered Jellyfin devices with last-active times',
+    icon: 'MonitorSmartphone',
+    category: 'streaming',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 60,
+    desktopLayout: 'carousel',
+    mobileLayout: 'list',
+    component: JellyfinDevicesWidget,
+    requiredServices: ['JELLYFIN'],
+  },
+  {
+    id: 'jellyfin-activity',
+    name: 'Jellyfin Activity',
+    description: 'Recent server activity — sign-ins, sessions, and connections',
+    icon: 'Activity',
+    category: 'streaming',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 30,
+    desktopLayout: 'carousel',
+    mobileLayout: 'list',
+    component: JellyfinActivityWidget,
+    requiredServices: ['JELLYFIN'],
+  },
+  {
+    id: 'jellyfin-alerts',
+    name: 'Jellyfin Alerts',
+    description: 'Failed logins and error-severity server events',
+    icon: 'ShieldAlert',
+    category: 'streaming',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 30,
+    desktopLayout: 'carousel',
+    mobileLayout: 'list',
+    component: JellyfinAlertsWidget,
+    requiredServices: ['JELLYFIN'],
+  },
 
   // ── Seerr (requests) ──
   {
@@ -601,6 +646,9 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability>> = {
   'now-streaming': 'jellyfin.sessions',
   'jellyfin-server': 'jellyfin.control',
   'jellyfin-scheduled-tasks': 'jellyfin.control',
+  'jellyfin-devices': 'jellyfin.control',
+  'jellyfin-activity': 'jellyfin.control',
+  'jellyfin-alerts': 'jellyfin.control',
   'jellyfin-user-activity': 'jellyfin.stats',
   'jellyfin-play-history': 'jellyfin.stats',
   'jellyfin-playback-methods': 'jellyfin.stats',
