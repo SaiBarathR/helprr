@@ -28,13 +28,19 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const capError = await requireCapability('jellyfin.control');
   if (capError) return capError;
 
+  // Distinguish an absent `id` param (→ Delete All) from a present-but-empty one
+  // (→ reject). Falling through on `?id=` would silently wipe every device.
+  const hasId = request.nextUrl.searchParams.has('id');
   const id = request.nextUrl.searchParams.get('id');
 
   try {
     const client = await getJellyfinClient();
 
     // Single device delete
-    if (id) {
+    if (hasId) {
+      if (!id) {
+        return NextResponse.json({ error: 'Device id cannot be empty' }, { status: 400 });
+      }
       // Never delete Helprr's own device — that would revoke our API session.
       if (id === DEVICE_ID) {
         return NextResponse.json(
