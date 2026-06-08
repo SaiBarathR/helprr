@@ -17,8 +17,10 @@ import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { HPR, SectionHeader, mix, FONT_MONO } from './bento-primitives';
+import { SectionHeader } from './bento-primitives';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -75,22 +77,25 @@ async function fetchRequestsPage(
   return (await res.json()) as ListResponse;
 }
 
-function requestStatusLabel(status: number): { label: string; color: string } {
-  if (status === SEERR_REQUEST_STATUS.PENDING_APPROVAL) return { label: 'Pending', color: HPR.amber };
-  if (status === SEERR_REQUEST_STATUS.APPROVED) return { label: 'Approved', color: HPR.blue };
-  if (status === SEERR_REQUEST_STATUS.DECLINED) return { label: 'Declined', color: HPR.rose };
-  if (status === SEERR_REQUEST_STATUS.FAILED) return { label: 'Failed', color: HPR.rose };
-  if (status === SEERR_REQUEST_STATUS.COMPLETED) return { label: 'Completed', color: HPR.green };
-  return { label: `#${status}`, color: HPR.fgMute };
+// Status → label + Tailwind color-pair (matches the amber/blue/rose/emerald
+// tokens used elsewhere in the app, e.g. the requests tab badge and
+// PendingApprovalSection).
+function requestStatusBadge(status: number): { label: string; className: string } {
+  if (status === SEERR_REQUEST_STATUS.PENDING_APPROVAL) return { label: 'Pending', className: 'bg-amber-500/15 text-amber-500' };
+  if (status === SEERR_REQUEST_STATUS.APPROVED) return { label: 'Approved', className: 'bg-blue-500/15 text-blue-400' };
+  if (status === SEERR_REQUEST_STATUS.DECLINED) return { label: 'Declined', className: 'bg-rose-500/15 text-rose-400' };
+  if (status === SEERR_REQUEST_STATUS.FAILED) return { label: 'Failed', className: 'bg-rose-500/15 text-rose-400' };
+  if (status === SEERR_REQUEST_STATUS.COMPLETED) return { label: 'Completed', className: 'bg-emerald-500/15 text-emerald-400' };
+  return { label: `#${status}`, className: 'bg-muted text-muted-foreground' };
 }
 
-function mediaStatusLabel(status: number | undefined): { label: string; color: string } | null {
+function mediaStatusBadge(status: number | undefined): { label: string; className: string } | null {
   if (!status) return null;
-  if (status === SEERR_MEDIA_STATUS.AVAILABLE) return { label: 'Available', color: HPR.green };
-  if (status === SEERR_MEDIA_STATUS.PARTIALLY_AVAILABLE) return { label: 'Partial', color: HPR.green };
-  if (status === SEERR_MEDIA_STATUS.PROCESSING) return { label: 'Processing', color: HPR.cyan };
-  if (status === SEERR_MEDIA_STATUS.PENDING) return { label: 'Queued', color: HPR.fgMute };
-  if (status === SEERR_MEDIA_STATUS.DELETED) return { label: 'Deleted', color: HPR.fgSubtle };
+  if (status === SEERR_MEDIA_STATUS.AVAILABLE) return { label: 'Available', className: 'bg-emerald-500/15 text-emerald-400' };
+  if (status === SEERR_MEDIA_STATUS.PARTIALLY_AVAILABLE) return { label: 'Partial', className: 'bg-emerald-500/15 text-emerald-400' };
+  if (status === SEERR_MEDIA_STATUS.PROCESSING) return { label: 'Processing', className: 'bg-cyan-500/15 text-cyan-400' };
+  if (status === SEERR_MEDIA_STATUS.PENDING) return { label: 'Queued', className: 'bg-muted text-muted-foreground' };
+  if (status === SEERR_MEDIA_STATUS.DELETED) return { label: 'Deleted', className: 'bg-muted text-muted-foreground/70' };
   return null;
 }
 
@@ -314,40 +319,66 @@ export function RequestsListWidget({
   // returns null when there are none. Approving here refreshes the Seerr list.
   const pendingNode = <PendingApprovalSection onChanged={refresh} />;
 
+  // Shell: fills the bento cell height in widget mode (inner list scrolls);
+  // grows with content in unbounded mode (the page itself scrolls).
+  const shellClass = cn('flex min-h-0 flex-col', !unbounded && 'h-full');
+
   if (loading && items.length === 0) {
     return (
-      <div ref={ref} style={shellStyle}>
+      <div ref={ref} className={shellClass}>
         {header}
         {pendingNode}
-        <div style={emptyShellStyle}>
-          <span style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</span>
-        </div>
+        {unbounded ? (
+          <div className="flex flex-col gap-2 sm:gap-2.5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3">
+                <Skeleton className="h-14 w-10 rounded-md" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-3 w-1/2" />
+                  <Skeleton className="h-2.5 w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-muted-foreground">
+            Loading…
+          </div>
+        )}
       </div>
     );
   }
 
   if (error && items.length === 0) {
     return (
-      <div ref={ref} style={shellStyle}>
+      <div ref={ref} className={shellClass}>
         {header}
         {pendingNode}
-        <div style={emptyShellStyle}>
-          <span style={{ fontSize: 11, color: HPR.rose }}>{error}</span>
-        </div>
+        {unbounded ? (
+          <div className="flex flex-col items-center gap-2 py-10 text-center text-sm text-rose-400">{error}</div>
+        ) : (
+          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-rose-400">{error}</div>
+        )}
       </div>
     );
   }
 
   if (items.length === 0) {
+    const emptyLabel = filter !== 'all' ? `No ${filter} requests` : 'No requests';
     return (
-      <div ref={ref} style={shellStyle}>
+      <div ref={ref} className={shellClass}>
         {header}
         {pendingNode}
-        <div style={emptyShellStyle}>
-          <span style={{ fontSize: 11, color: HPR.fgSubtle }}>
-            No {filter !== 'all' ? filter : ''} requests
-          </span>
-        </div>
+        {unbounded ? (
+          <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+            <Inbox className="h-6 w-6 opacity-50" />
+            <p className="text-sm">{emptyLabel}</p>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-muted-foreground">
+            {emptyLabel}
+          </div>
+        )}
       </div>
     );
   }
@@ -355,23 +386,19 @@ export function RequestsListWidget({
   const visibleItems = unbounded ? items : items.slice(0, maxItems);
 
   return (
-    <div ref={ref} style={shellStyle}>
+    <div ref={ref} className={shellClass}>
       {header}
       {pendingNode}
       <div
-        className="no-scrollbar scroll-fade-y"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-        }}
+        className={cn(
+          unbounded
+            ? 'flex flex-col gap-2 sm:gap-2.5'
+            : 'no-scrollbar scroll-fade-y flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto'
+        )}
       >
         {visibleItems.map((req) => {
-          const reqBadge = requestStatusLabel(Number(req.status));
-          const mediaBadge = mediaStatusLabel(Number(req.media?.status ?? 0));
+          const reqBadge = requestStatusBadge(Number(req.status));
+          const mediaBadge = mediaStatusBadge(Number(req.media?.status ?? 0));
           const title = req.enriched.title ?? `TMDB ${req.media?.tmdbId ?? req.id}`;
           const year = req.enriched.year;
           const poster = req.enriched.posterUrl;
@@ -397,98 +424,55 @@ export function RequestsListWidget({
           return (
             <div
               key={req.id}
-              style={{
-                display: 'flex',
-                gap: 8,
-                padding: 8,
-                background: HPR.ink,
-                border: `1px solid ${HPR.hairline}`,
-                borderRadius: 6,
-                opacity: isBusy ? 0.5 : 1,
-                transition: 'opacity 0.15s ease',
-              }}
+              className={cn(
+                'flex border transition-opacity',
+                unbounded
+                  ? 'items-center gap-3 rounded-xl border-border/60 bg-card p-2.5 hover:bg-accent/40 sm:p-3'
+                  : 'gap-2 rounded-lg border-[color:var(--hpr-hairline)] bg-[color:var(--hpr-ink)] p-2',
+                isBusy && 'pointer-events-none opacity-50'
+              )}
             >
               <div
-                style={{
-                  width: 36,
-                  height: 48,
-                  borderRadius: 4,
-                  background: mix(HPR.fg, 4),
-                  flexShrink: 0,
-                  overflow: 'hidden',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: HPR.fgMute,
-                }}
+                className={cn(
+                  'relative shrink-0 overflow-hidden rounded-md bg-muted',
+                  unbounded ? 'h-14 w-10 sm:h-16 sm:w-11' : 'h-12 w-9'
+                )}
               >
                 {poster ? (
                   <Image
                     src={poster}
                     alt=""
-                    width={36}
-                    height={48}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    fill
+                    sizes="44px"
+                    className="object-cover"
                     unoptimized
                   />
                 ) : (
-                  <Icon size={16} />
+                  <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                    <Icon className="h-4 w-4" />
+                  </div>
                 )}
               </div>
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'space-between' }}>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: HPR.fg,
-                      fontWeight: 500,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={cn('truncate font-medium text-foreground', unbounded ? 'text-sm' : 'text-xs')}>
                     {title}
-                    {year ? <span style={{ color: HPR.fgSubtle, fontWeight: 400 }}> · {year}</span> : null}
+                    {year ? <span className="font-normal text-muted-foreground"> · {year}</span> : null}
                   </span>
-                  <span
-                    style={{
-                      fontFamily: FONT_MONO,
-                      fontSize: 9,
-                      color: HPR.fgSubtle,
-                      flexShrink: 0,
-                    }}
-                  >
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                     {formatDistanceToNowSafe(req.createdAt)}
                   </span>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: HPR.fgMute }}>
-                  <span
-                    style={{
-                      padding: '1px 6px',
-                      borderRadius: 4,
-                      background: mix(reqBadge.color, 14),
-                      color: reqBadge.color,
-                      fontWeight: 500,
-                    }}
-                  >
+                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <span className={cn('rounded px-1.5 py-0.5 font-medium', reqBadge.className)}>
                     {reqBadge.label}
                   </span>
                   {mediaBadge ? (
-                    <span
-                      style={{
-                        padding: '1px 6px',
-                        borderRadius: 4,
-                        background: mix(mediaBadge.color, 14),
-                        color: mediaBadge.color,
-                        fontWeight: 500,
-                      }}
-                    >
+                    <span className={cn('rounded px-1.5 py-0.5 font-medium', mediaBadge.className)}>
                       {mediaBadge.label}
                     </span>
                   ) : null}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {requesterLabel(req)}
-                  </span>
+                  <span className="truncate">{requesterLabel(req)}</span>
                 </div>
               </div>
               {editMode ? null : (
@@ -498,17 +482,9 @@ export function RequestsListWidget({
                       type="button"
                       aria-label="Request actions"
                       disabled={isBusy}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: HPR.fgMute,
-                        cursor: isBusy ? 'wait' : 'pointer',
-                        padding: 4,
-                        display: 'flex',
-                        alignItems: 'center',
-                      }}
+                      className="flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-wait disabled:opacity-50"
                     >
-                      <MoreHorizontal size={16} />
+                      <MoreHorizontal className="h-4 w-4" />
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -532,7 +508,7 @@ export function RequestsListWidget({
                           rel="noopener noreferrer"
                         >
                           <MonitorPlay size={14} /> Open in Jellyfin
-                          <ExternalLink size={11} style={{ marginLeft: 'auto', opacity: 0.6 }} />
+                          <ExternalLink size={11} className="ml-auto opacity-60" />
                         </a>
                       </DropdownMenuItem>
                     ) : null}
@@ -544,7 +520,7 @@ export function RequestsListWidget({
                           rel="noopener noreferrer"
                         >
                           <Inbox size={14} /> Open in Seerr
-                          <ExternalLink size={11} style={{ marginLeft: 'auto', opacity: 0.6 }} />
+                          <ExternalLink size={11} className="ml-auto opacity-60" />
                         </a>
                       </DropdownMenuItem>
                     ) : null}
@@ -571,12 +547,12 @@ export function RequestsListWidget({
                     ) : null}
                     {hasActionAboveDelete && canManageRequests ? <DropdownMenuSeparator /> : null}
                     {canManageRequests ? (
-                    <DropdownMenuItem
-                      onClick={() => void runAction(req.id, 'delete')}
-                      style={{ color: 'var(--destructive)' }}
-                    >
-                      <Trash2 size={14} /> Delete
-                    </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => void runAction(req.id, 'delete')}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 size={14} /> Delete
+                      </DropdownMenuItem>
                     ) : null}
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -588,20 +564,11 @@ export function RequestsListWidget({
         {unbounded && hasMore ? (
           <div
             ref={sentinelRef}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 6,
-              padding: '12px 0 4px',
-              color: HPR.fgSubtle,
-              fontSize: 11,
-              fontFamily: FONT_MONO,
-            }}
+            className="flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground"
           >
             {loadingMore ? (
               <>
-                <Loader2 size={12} className="animate-spin" /> Loading more…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading more…
               </>
             ) : (
               <span>Scroll for more · {items.length}/{totalResults}</span>
@@ -610,15 +577,7 @@ export function RequestsListWidget({
         ) : null}
 
         {unbounded && !hasMore && totalResults > 0 ? (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '8px 0 4px',
-              color: HPR.fgSubtle,
-              fontSize: 10,
-              fontFamily: FONT_MONO,
-            }}
-          >
+          <div className="py-2 text-center text-[11px] text-muted-foreground/70">
             All {totalResults} requests loaded
           </div>
         ) : null}
@@ -649,21 +608,3 @@ export function RequestsListWidget({
     </div>
   );
 }
-
-const shellStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  height: '100%',
-  minHeight: 0,
-} as const;
-
-// Empty/loading/error states fill the remaining height with overflow:hidden so
-// the widget cell never rubber-bands on iOS when there's nothing to scroll.
-const emptyShellStyle = {
-  flex: 1,
-  minHeight: 0,
-  overflow: 'hidden',
-  display: 'flex',
-  alignItems: 'flex-start',
-  padding: '6px 0',
-} as const;

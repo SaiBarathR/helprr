@@ -68,7 +68,7 @@ export default function RequestsPage() {
   const pendingBadge = useMemo(() => counts?.pending ?? 0, [counts]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col animate-content-in">
+    <div className="animate-content-in">
       <div
         className="sticky z-30 -mx-2 flex items-center gap-1.5 bg-background/95 px-2 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6"
         style={{ top: 'var(--header-height, 0px)' }}
@@ -151,10 +151,7 @@ export default function RequestsPage() {
         </div>
       </div>
 
-      <div
-        key={`${tab}-${refreshTick}`}
-        className="flex-1 min-h-0 pt-2"
-      >
+      <div key={`${tab}-${refreshTick}`} className="pt-2">
         {tab === 'requests' ? (
           <RequestsListWidget
             refreshInterval={30_000}
@@ -163,7 +160,7 @@ export default function RequestsPage() {
             unbounded
           />
         ) : (
-          <RequestsUsersWidget refreshInterval={60_000} hideHeader />
+          <RequestsUsersWidget refreshInterval={60_000} hideHeader unbounded />
         )}
       </div>
     </div>
