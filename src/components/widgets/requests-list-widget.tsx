@@ -329,7 +329,7 @@ export function RequestsListWidget({
         {header}
         {pendingNode}
         {unbounded ? (
-          <div className="flex flex-col gap-2 sm:gap-2.5">
+          <div className="flex flex-col gap-2 sm:gap-2.5" role="status" aria-busy="true" aria-label="Loading requests">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3">
                 <Skeleton className="h-14 w-10 rounded-md" />
@@ -445,6 +445,7 @@ export function RequestsListWidget({
                     fill
                     sizes="44px"
                     className="object-cover"
+                    // Tiny TMDB-CDN thumbnail — skip Next's optimizer (matches PendingApprovalSection).
                     unoptimized
                   />
                 ) : (
@@ -548,8 +549,8 @@ export function RequestsListWidget({
                     {hasActionAboveDelete && canManageRequests ? <DropdownMenuSeparator /> : null}
                     {canManageRequests ? (
                       <DropdownMenuItem
+                        variant="destructive"
                         onClick={() => void runAction(req.id, 'delete')}
-                        className="text-destructive focus:text-destructive"
                       >
                         <Trash2 size={14} /> Delete
                       </DropdownMenuItem>

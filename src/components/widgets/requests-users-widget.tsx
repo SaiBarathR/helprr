@@ -79,7 +79,7 @@ export function RequestsUsersWidget({
       <div ref={ref} className={shellClass}>
         {header}
         {unbounded ? (
-          <div className={GRID_CLASS}>
+          <div className={GRID_CLASS} role="status" aria-busy="true" aria-label="Loading users">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3">
                 <Skeleton className="h-9 w-9 rounded-full" />
