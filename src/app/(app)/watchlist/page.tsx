@@ -327,7 +327,10 @@ export default function WatchlistPage() {
 
   return (
     <div className="animate-content-in pb-12">
-      <div className="px-2 md:px-6 mt-2 space-y-3">
+      <div
+        className="sticky z-30 -mx-2 space-y-2 bg-background/95 px-2 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6"
+        style={{ top: 'var(--header-height, 0px)' }}
+      >
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -525,7 +528,9 @@ export default function WatchlistPage() {
             </DropdownMenu>
           )}
         </div>
+      </div>
 
+      <div className="px-2 md:px-6 mt-3 space-y-3">
         {visibleTags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             <button
