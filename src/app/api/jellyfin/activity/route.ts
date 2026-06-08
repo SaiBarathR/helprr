@@ -11,8 +11,11 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (capError) return capError;
 
   const sp = request.nextUrl.searchParams;
-  const limit = Number(sp.get('limit')) || 20;
-  const startIndex = Number(sp.get('startIndex')) || 0;
+  // Clamp pagination: NaN/missing → defaults, non-negative, and cap the limit so
+  // a crafted query can't trigger an unbounded upstream fetch.
+  const MAX_LIMIT = 100;
+  const limit = Math.min(MAX_LIMIT, Math.max(1, Number(sp.get('limit')) || 20));
+  const startIndex = Math.max(0, Number(sp.get('startIndex')) || 0);
   const hasUserIdParam = sp.get('hasUserId');
   const hasUserId =
     hasUserIdParam === 'true' ? true : hasUserIdParam === 'false' ? false : undefined;
