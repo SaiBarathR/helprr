@@ -197,10 +197,6 @@ export default function LibraryGapsPage() {
 
   return (
     <div className="animate-content-in">
-      <div className="mb-4 px-0.5">
-        <h1 className="text-lg font-semibold">Library Gaps</h1>
-      </div>
-
       {allComplete ? (
         <div className="py-16 text-center text-muted-foreground">
           <CheckCircle2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
