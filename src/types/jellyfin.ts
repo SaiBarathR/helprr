@@ -165,6 +165,22 @@ export interface JellyfinActivityResponse {
   TotalRecordCount: number;
 }
 
+export interface JellyfinDevice {
+  Id: string; // device DB id (used for DELETE /Devices?id=)
+  Name: string;
+  CustomName?: string;
+  AppName?: string;
+  AppVersion?: string;
+  LastUserName?: string;
+  LastUserId?: string;
+  DateLastActivity?: string;
+}
+
+export interface JellyfinDevicesResponse {
+  Items: JellyfinDevice[];
+  TotalRecordCount: number;
+}
+
 // Native Jellyfin API types
 export interface JellyfinUser {
   Id: string;
