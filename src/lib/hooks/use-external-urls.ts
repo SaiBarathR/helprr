@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 type ExternalUrls = Record<string, string>;
+type ExternalUrlRow = { id: string; type: string; externalUrl: string | null };
 
 let cached: ExternalUrls | null = null;
 let pending: Promise<ExternalUrls> | null = null;
@@ -17,12 +18,18 @@ function isEmptyMap(value: ExternalUrls | null): boolean {
 function fetchExternalUrls(): Promise<ExternalUrls> {
   if (!pending) {
     pending = fetch('/api/services/external-urls')
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data: ExternalUrls) => {
-        if (data && typeof data === 'object') {
-          cached = data;
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: ExternalUrlRow[]) => {
+        // The endpoint returns one row per connection (default instance first per
+        // type). Collapse to a type→url map, keeping the default instance's URL.
+        const map: ExternalUrls = {};
+        if (Array.isArray(rows)) {
+          for (const row of rows) {
+            if (row.externalUrl && !map[row.type]) map[row.type] = row.externalUrl;
+          }
         }
-        return data;
+        cached = map;
+        return map;
       })
       .catch(() => ({}))
       .finally(() => {

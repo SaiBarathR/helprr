@@ -10,17 +10,11 @@ async function getHandler(): Promise<NextResponse> {
   try {
     const connections = await prisma.serviceConnection.findMany({
       where: { externalUrl: { not: null } },
-      select: { type: true, externalUrl: true },
+      orderBy: [{ isDefault: 'desc' }, { label: 'asc' }],
+      select: { id: true, type: true, externalUrl: true },
     });
 
-    const result: Record<string, string> = {};
-    for (const conn of connections) {
-      if (conn.externalUrl) {
-        result[conn.type] = conn.externalUrl;
-      }
-    }
-
-    return NextResponse.json(result);
+    return NextResponse.json(connections); // [{ id, type, externalUrl }], default instance first per type
   } catch (error) {
     console.error('Failed to fetch external URLs:', error);
     return NextResponse.json({ error: 'Failed to fetch external URLs' }, { status: 500 });
