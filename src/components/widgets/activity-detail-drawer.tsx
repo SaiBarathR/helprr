@@ -161,7 +161,7 @@ export function ActivityDetailDrawer({ record, onClose }: Props) {
   const indexerFlags = record?.data?.indexerFlags;
 
   return (
-    <Drawer open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Drawer open={open} onOpenChange={(o) => { if (!o) onClose(); }} direction="bottom">
       <DrawerContent>
         <DrawerHeader className="pb-2">
           <div className="flex items-center gap-2">
@@ -186,7 +186,7 @@ export function ActivityDetailDrawer({ record, onClose }: Props) {
           </div>
         </DrawerHeader>
 
-        <div className="max-h-[70vh] overflow-y-auto px-4 pb-6 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 space-y-4">
           {/* Media block */}
           {record && media && (
             <div className="flex gap-3">

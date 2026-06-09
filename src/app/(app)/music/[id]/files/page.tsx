@@ -246,7 +246,7 @@ export default function ArtistFilesPage() {
             </DrawerDescription>
           </DrawerHeader>
           {selectedFile && (
-            <div className="px-4 pb-4 space-y-4 overflow-y-auto max-h-[60vh]">
+            <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
               <DetailRows rows={fileRows(selectedFile)} />
               {canDelete && (
                 <Button variant="destructive" className="w-full" onClick={handleDelete} disabled={deleting}>

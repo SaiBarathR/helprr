@@ -1249,7 +1249,7 @@ export default function TorrentsPage() {
               {detailHash ? torrentNameByHash.get(detailHash) || 'Torrent Details' : 'Torrent Details'}
             </DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-6 max-h-[70vh] overflow-y-auto space-y-4">
+          <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto space-y-4">
             {detailLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1521,7 +1521,7 @@ export default function TorrentsPage() {
           <DrawerHeader>
             <DrawerTitle>qBittorrent Settings</DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-6 max-h-[70vh] overflow-y-auto space-y-4">
+          <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto space-y-4">
             {globalLimitsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -1593,7 +1593,7 @@ export default function TorrentsPage() {
           <DrawerHeader>
             <DrawerTitle>Set Category</DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-6 max-h-[60vh] overflow-y-auto">
+          <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto">
             {categoriesLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

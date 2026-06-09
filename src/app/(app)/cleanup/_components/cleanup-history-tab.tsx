@@ -336,7 +336,7 @@ export function CleanupHistoryTab() {
           <DrawerHeader>
             <DrawerTitle>Filter history</DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-2 space-y-5 overflow-y-auto max-h-[70vh]">
+          <div className="px-4 pb-2 space-y-5 overflow-y-auto flex-1 min-h-0">
             <FilterChipGroup
               label="Cleaner"
               options={CLEANER_OPTIONS}
@@ -638,7 +638,7 @@ function HistoryDetailDrawer({
             </DrawerDescription>
           )}
         </DrawerHeader>
-        <div className="px-4 pb-2 space-y-4 overflow-y-auto max-h-[70vh]">
+        <div className="px-4 pb-2 space-y-4 overflow-y-auto flex-1 min-h-0">
           {row && (
             <>
               <div className="flex flex-wrap gap-1.5">

@@ -312,7 +312,7 @@ export default function MovieFilesPage() {
               {movieFile?.relativePath || movie.title}
             </DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-4 space-y-4 overflow-y-auto max-h-[60vh]">
+          <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
             {informationRows.length > 0 && (
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Information</h3>
@@ -362,7 +362,7 @@ export default function MovieFilesPage() {
             </DrawerDescription>
           </DrawerHeader>
           {selectedHistoryItem && (
-            <div className="px-4 pb-4 space-y-0 overflow-y-auto max-h-[60vh]">
+            <div className="px-4 pb-4 space-y-0 overflow-y-auto flex-1 min-h-0">
               <div className="rounded-lg border overflow-hidden divide-y">
                 <div className="px-4 py-2.5">
                   <span className="text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>

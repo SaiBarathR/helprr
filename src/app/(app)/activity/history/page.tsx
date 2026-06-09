@@ -388,7 +388,7 @@ export default function HistoryPage() {
               </div>
 
               {drawerMode === 'basic' ? (
-                <div className="px-4 space-y-4 pb-6 overflow-y-auto">
+                <div className="px-4 space-y-4 pb-6 overflow-y-auto flex-1 min-h-0">
                   {/* Tags row */}
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge variant="outline" className="text-[10px]">
@@ -513,7 +513,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
               ) : (
-                <div className="px-4 pb-6 overflow-y-auto">
+                <div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
                   <div className="space-y-2">
                     {Object.entries(selectedItem).map(([key, value]) => (
                       <RecursiveField key={key} name={key} value={value} depth={0} ancestors={[]} />

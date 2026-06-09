@@ -678,7 +678,7 @@ export default function NotificationsPage() {
           <DrawerHeader>
             <DrawerTitle>Filter notifications</DrawerTitle>
           </DrawerHeader>
-          <div className="px-4 pb-2 space-y-5 overflow-y-auto max-h-[70vh]">
+          <div className="px-4 pb-2 space-y-5 overflow-y-auto flex-1 min-h-0">
             {/* Event types */}
             <div className="space-y-3">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Event types</p>
