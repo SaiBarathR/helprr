@@ -91,7 +91,7 @@ function isDefinitiveRefreshAuthFailure(error: unknown): boolean {
 }
 
 export async function loadAniListConnection(): Promise<AniListConnectionRow | null> {
-  const row = await prisma.serviceConnection.findUnique({ where: { type: 'ANILIST' } });
+  const row = await prisma.serviceConnection.findFirst({ where: { type: 'ANILIST' } });
   if (!row) return null;
 
   const clientId = row.externalUrl?.trim();
@@ -185,7 +185,7 @@ export async function persistTokenResponse(token: TokenResponse): Promise<void> 
     ? new Date(Date.now() + token.expires_in * 1000)
     : null;
 
-  await prisma.serviceConnection.update({
+  await prisma.serviceConnection.updateMany({
     where: { type: 'ANILIST' },
     data: {
       accessToken: encryptToken(token.access_token),
@@ -196,9 +196,9 @@ export async function persistTokenResponse(token: TokenResponse): Promise<void> 
 }
 
 export async function clearAniListTokens(): Promise<void> {
-  const exists = await prisma.serviceConnection.findUnique({ where: { type: 'ANILIST' } });
+  const exists = await prisma.serviceConnection.findFirst({ where: { type: 'ANILIST' } });
   if (!exists) return;
-  await prisma.serviceConnection.update({
+  await prisma.serviceConnection.updateMany({
     where: { type: 'ANILIST' },
     data: {
       accessToken: null,
@@ -269,7 +269,7 @@ async function refreshAniListToken(conn: AniListConnectionRow & { refreshToken: 
 }
 
 export async function setAniListConnectionMetadata(meta: ConnectionMetadata & { username?: string | null }): Promise<void> {
-  const existing = await prisma.serviceConnection.findUnique({ where: { type: 'ANILIST' } });
+  const existing = await prisma.serviceConnection.findFirst({ where: { type: 'ANILIST' } });
   if (!existing) return;
   const prev = parseMetadata(existing.metadata);
   const next: ConnectionMetadata = { ...prev };
@@ -278,7 +278,7 @@ export async function setAniListConnectionMetadata(meta: ConnectionMetadata & { 
   if (meta.siteUrl !== undefined) next.siteUrl = meta.siteUrl ?? undefined;
   if (meta.scoreFormat !== undefined) next.scoreFormat = meta.scoreFormat ?? undefined;
 
-  await prisma.serviceConnection.update({
+  await prisma.serviceConnection.updateMany({
     where: { type: 'ANILIST' },
     data: {
       ...(meta.username !== undefined ? { username: meta.username } : {}),

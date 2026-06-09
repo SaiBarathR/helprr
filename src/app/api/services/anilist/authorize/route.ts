@@ -62,20 +62,27 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const trimmedClientId = clientId.trim();
   const resolvedSecret = await resolveApiKeyForService('ANILIST', clientSecret.trim());
 
-  await prisma.serviceConnection.upsert({
-    where: { type: 'ANILIST' },
-    update: {
-      url: ANILIST_GRAPHQL_URL,
-      apiKey: resolvedSecret,
-      externalUrl: trimmedClientId,
-    },
-    create: {
-      type: 'ANILIST',
-      url: ANILIST_GRAPHQL_URL,
-      apiKey: resolvedSecret,
-      externalUrl: trimmedClientId,
-    },
-  });
+  const existingAniList = await prisma.serviceConnection.findFirst({ where: { type: 'ANILIST' } });
+  if (existingAniList) {
+    await prisma.serviceConnection.update({
+      where: { id: existingAniList.id },
+      data: {
+        url: ANILIST_GRAPHQL_URL,
+        apiKey: resolvedSecret,
+        externalUrl: trimmedClientId,
+      },
+    });
+  } else {
+    await prisma.serviceConnection.create({
+      data: {
+        type: 'ANILIST',
+        label: 'AniList',
+        url: ANILIST_GRAPHQL_URL,
+        apiKey: resolvedSecret,
+        externalUrl: trimmedClientId,
+      },
+    });
+  }
 
   const origin = trustedOrigin(request);
   if (!origin) {
