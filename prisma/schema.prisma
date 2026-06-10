@@ -323,7 +323,8 @@ model PendingRequest {
 
 model AniListSeriesMapping {
   id                   String   @id @default(cuid())
-  sonarrSeriesId       Int      @unique
+  sonarrInstanceId     String
+  sonarrSeriesId       Int
   state                String
   matchMethod          String?
   confidence           Int?
@@ -337,6 +338,10 @@ model AniListSeriesMapping {
   // 1 Sonarr series → N AniList entries (season-split anime). Matched states have
   // ≥1 entry; AUTO_UNMATCHED / MANUAL_NONE have none.
   entries              AniListSeriesMappingEntry[]
+
+  // A series id is only unique within a Sonarr instance once multi-instance exists.
+  @@unique([sonarrInstanceId, sonarrSeriesId])
+  @@index([sonarrInstanceId])
 }
 
 model AniListSeriesMappingEntry {

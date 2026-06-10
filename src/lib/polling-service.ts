@@ -398,7 +398,7 @@ export class PollingService {
     };
     this.animeMapRun = run;
 
-    let queue: SonarrSeries[];
+    let queue: Array<{ instanceId: string; series: SonarrSeries }>;
     try {
       const settings = await getOrCreateAppSettings();
       // The toggle governs the nightly schedule only — a manual Run-now is
@@ -409,14 +409,20 @@ export class PollingService {
         return { started: false, reason: 'disabled' };
       }
 
-      const client = await getSonarrClient();
-      const anime = (await client.getSeries()).filter((s) => s.seriesType === 'anime');
-      const rows = await prisma.aniListSeriesMapping.findMany({
-        where: { sonarrSeriesId: { in: anime.map((s) => s.id) } },
-        select: { sonarrSeriesId: true },
-      });
-      const mappedIds = new Set(rows.map((row) => row.sonarrSeriesId));
-      queue = anime.filter((s) => !mappedIds.has(s.id));
+      // Fan out per Sonarr instance: each series id is only "already mapped" within
+      // its own instance, so scope the lookup by sonarrInstanceId and queue per instance.
+      queue = [];
+      for (const { connection, client } of await getSonarrClients()) {
+        const anime = (await client.getSeries()).filter((s) => s.seriesType === 'anime');
+        const rows = await prisma.aniListSeriesMapping.findMany({
+          where: { sonarrInstanceId: connection.id, sonarrSeriesId: { in: anime.map((s) => s.id) } },
+          select: { sonarrSeriesId: true },
+        });
+        const mappedIds = new Set(rows.map((row) => row.sonarrSeriesId));
+        for (const s of anime) {
+          if (!mappedIds.has(s.id)) queue.push({ instanceId: connection.id, series: s });
+        }
+      }
     } catch (error) {
       // Sonarr/DB unavailable — release the claim WITHOUT stamping, so being
       // down at the scheduled hour doesn't consume the day; a later poll retries.
@@ -452,19 +458,19 @@ export class PollingService {
    * can override) — and a run that crosses midnight stamps the day it
    * finishes, intentionally consuming that day's slot.
    */
-  private async runAnimeAutoMapLoop(queue: SonarrSeries[]): Promise<void> {
+  private async runAnimeAutoMapLoop(queue: Array<{ instanceId: string; series: SonarrSeries }>): Promise<void> {
     const run = this.animeMapRun;
     if (!run) return;
     try {
       for (let i = 0; i < queue.length; i++) {
         if (run.stop) break;
-        const series = queue[i];
+        const { instanceId, series } = queue[i];
         run.currentTitle = series.title;
 
         // A row may have appeared since the queue was built (manual map, page
         // visit, doubled dev loop) — never re-touch an existing mapping.
         const existing = await prisma.aniListSeriesMapping.findUnique({
-          where: { sonarrSeriesId: series.id },
+          where: { sonarrInstanceId_sonarrSeriesId: { sonarrInstanceId: instanceId, sonarrSeriesId: series.id } },
           select: { id: true },
         });
         if (existing) {
@@ -480,7 +486,7 @@ export class PollingService {
         const attemptStartedMs = Date.now();
         while (!done && !run.stop) {
           try {
-            await ensureSeriesAniListMapping(series);
+            await ensureSeriesAniListMapping(series, instanceId);
             run.processed += 1;
             done = true;
             logger.debug('Anime auto-map resolved one series', {
