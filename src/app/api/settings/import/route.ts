@@ -13,6 +13,8 @@ import { configureApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { EVENT_TYPES } from '@/lib/notification-events';
 import { isServiceType } from '@/lib/service-connection-secrets';
+import { isArrType, ensureDefaultForType } from '@/lib/arr-instances';
+import { findServiceByType } from '@/lib/settings/service-config';
 import {
   MAX_IMPORT_BYTES,
   type ExportedAppSettings,
@@ -211,7 +213,20 @@ async function applyServiceConnectionInTxn(
     ? conn.username
     : conn.type === 'QBITTORRENT' ? 'admin' : null;
 
-  const existing = await tx.serviceConnection.findUnique({ where: { type: conn.type } });
+  // Multi-instance: arr connections are identified by (type, label); other types
+  // are the single connection of their type. Labels from older export files may be
+  // missing — arr types require one, single-instance types fall back to the name.
+  const isArr = isArrType(conn.type);
+  const rawLabel = typeof conn.label === 'string' ? conn.label.trim() : '';
+  const label = isArr ? rawLabel : (rawLabel || findServiceByType(conn.type)?.label || conn.type);
+  if (isArr && !label) {
+    skipped.push(`Skipped ${conn.type}: multi-instance connection missing a name`);
+    return null;
+  }
+
+  const existing = isArr
+    ? await tx.serviceConnection.findFirst({ where: { type: conn.type, label } })
+    : await tx.serviceConnection.findFirst({ where: { type: conn.type } });
   const apiKey = typeof conn.apiKey === 'string' && conn.apiKey.length > 0
     ? conn.apiKey
     : existing?.apiKey ?? null;
@@ -228,19 +243,24 @@ async function applyServiceConnectionInTxn(
     ? conn.refreshToken
     : existing?.refreshToken ?? null;
 
-  await tx.serviceConnection.upsert({
-    where: { type: conn.type },
-    update: {
-      url, apiKey, username, externalUrl,
-      ...(accessToken !== null && { accessToken }),
-      ...(refreshToken !== null && { refreshToken }),
-    },
-    create: {
-      type: conn.type, url, apiKey, username, externalUrl,
-      ...(accessToken !== null && { accessToken }),
-      ...(refreshToken !== null && { refreshToken }),
-    },
-  });
+  if (existing) {
+    await tx.serviceConnection.update({
+      where: { id: existing.id },
+      data: {
+        url, apiKey, username, label, externalUrl,
+        ...(accessToken !== null && { accessToken }),
+        ...(refreshToken !== null && { refreshToken }),
+      },
+    });
+  } else {
+    await tx.serviceConnection.create({
+      data: {
+        type: conn.type, label, isDefault: conn.isDefault === true, url, apiKey, username, externalUrl,
+        ...(accessToken !== null && { accessToken }),
+        ...(refreshToken !== null && { refreshToken }),
+      },
+    });
+  }
   return conn.type;
 }
 
@@ -1038,6 +1058,18 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       await invalidateLayoutCache();
     } catch (err) {
       console.warn('Failed to invalidate dashboard layout cache after import', err);
+    }
+  }
+
+  // Ensure exactly one default per imported type (export isDefault flags were
+  // applied on create; this promotes the oldest if none/many ended up flagged).
+  if (appliedServices.length > 0) {
+    for (const type of new Set(appliedServices)) {
+      try {
+        await ensureDefaultForType(type);
+      } catch (err) {
+        console.warn('Failed to ensure default instance after import', err);
+      }
     }
   }
 

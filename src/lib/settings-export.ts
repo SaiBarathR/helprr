@@ -88,6 +88,8 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
 
 export interface ExportedServiceConnection {
   type: ServiceType;
+  label: string;
+  isDefault: boolean;
   url: string;
   externalUrl: string | null;
   username: string | null;
