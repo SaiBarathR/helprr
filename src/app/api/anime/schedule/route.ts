@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeAiringSchedule } from '@/lib/anilist-client';
 import { getPreferredTitle, isMovieFormat } from '@/lib/anilist-helpers';
 import {
   buildLibraryLookups,
   matchMovieInLibrary,
   matchSeriesInLibrary,
+  type Tagged,
 } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import type {
@@ -19,24 +20,7 @@ const MAX_WINDOW_SECONDS = 14 * 24 * 60 * 60; // 2 weeks safety cap
 const INT32_MAX = 2_147_483_647; // AniList GraphQL Int is 32-bit signed
 
 async function getLibraries() {
-  const [movies, series] = await Promise.all([
-    (async () => {
-      try {
-        const client = await getRadarrClient();
-        return await client.getMovies();
-      } catch {
-        return [] as RadarrMovie[];
-      }
-    })(),
-    (async () => {
-      try {
-        const client = await getSonarrClient();
-        return await client.getSeries();
-      } catch {
-        return [] as SonarrSeries[];
-      }
-    })(),
-  ]);
+  const { movies, series } = await loadTaggedLibrary();
   return { movies, series };
 }
 
@@ -80,8 +64,8 @@ function dedupe(entries: AniListScheduleEntry[]): AniListScheduleEntry[] {
 
 function annotate(
   entries: AniListScheduleEntry[],
-  movies: RadarrMovie[],
-  series: SonarrSeries[]
+  movies: Tagged<RadarrMovie>[],
+  series: Tagged<SonarrSeries>[]
 ): (AniListScheduleEntry & { library?: DiscoverLibraryStatus })[] {
   if (!movies.length && !series.length) return entries;
 

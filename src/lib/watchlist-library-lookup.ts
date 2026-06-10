@@ -1,4 +1,4 @@
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getRadarrClients, getSonarrClients } from '@/lib/service-helpers';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 
@@ -43,27 +43,22 @@ export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHref
   let radarrFailed = false;
   let sonarrFailed = false;
 
+  // Union across every instance of each type (an item is "in library" if it lives
+  // in ≥1 instance). One unreachable instance marks the type failed so we don't
+  // cache a partial result, but reachable instances still contribute.
   const [movies, series] = await Promise.all([
     needRadarr
       ? (async () => {
-          try {
-            const c = await getRadarrClient();
-            return await c.getMovies();
-          } catch {
-            radarrFailed = true;
-            return [] as RadarrMovie[];
-          }
+          const results = await Promise.allSettled((await getRadarrClients()).map(({ client }) => client.getMovies()));
+          if (results.some((r) => r.status === 'rejected')) radarrFailed = true;
+          return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])) as RadarrMovie[];
         })()
       : Promise.resolve([] as RadarrMovie[]),
     needSonarr
       ? (async () => {
-          try {
-            const c = await getSonarrClient();
-            return await c.getSeries();
-          } catch {
-            sonarrFailed = true;
-            return [] as SonarrSeries[];
-          }
+          const results = await Promise.allSettled((await getSonarrClients()).map(({ client }) => client.getSeries()));
+          if (results.some((r) => r.status === 'rejected')) sonarrFailed = true;
+          return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])) as SonarrSeries[];
         })()
       : Promise.resolve([] as SonarrSeries[]),
   ]);

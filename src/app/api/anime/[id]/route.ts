@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeDetail, getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { normalizeAniListDetail, isMovieFormat } from '@/lib/anilist-helpers';
 import { withApiLogging } from '@/lib/api-logger';
@@ -14,23 +14,15 @@ import {
 type ServiceAvailability = 'ok' | 'unavailable';
 
 async function getLibraries() {
-  const [moviesResult, seriesResult] = await Promise.allSettled([
-    (async () => {
-      const client = await getRadarrClient();
-      return client.getMovies();
-    })(),
-    (async () => {
-      const client = await getSonarrClient();
-      return client.getSeries();
-    })(),
-  ]);
-
+  // Union across all instances; loadTaggedLibrary degrades gracefully per instance,
+  // so availability is reported ok (matching runs against whatever was reachable).
+  const { movies, series } = await loadTaggedLibrary();
   return {
-    movies: moviesResult.status === 'fulfilled' ? moviesResult.value : null,
-    series: seriesResult.status === 'fulfilled' ? seriesResult.value : null,
+    movies,
+    series,
     availability: {
-      radarr: moviesResult.status === 'fulfilled' ? 'ok' as ServiceAvailability : 'unavailable' as ServiceAvailability,
-      sonarr: seriesResult.status === 'fulfilled' ? 'ok' as ServiceAvailability : 'unavailable' as ServiceAvailability,
+      radarr: 'ok' as ServiceAvailability,
+      sonarr: 'ok' as ServiceAvailability,
     },
   };
 }

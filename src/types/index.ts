@@ -990,6 +990,9 @@ export interface DiscoverLibraryStatus {
   id?: number;
   titleSlug?: string;
   tmdbId?: number;
+  /** Every connected instance that holds this title (multi-instance). The top-level
+   * id/titleSlug mirror the first/highest-priority instance for back-compat. */
+  instances?: Array<{ instanceId: string; instanceLabel: string; id: number; titleSlug?: string }>;
 }
 
 export interface DiscoverItem {

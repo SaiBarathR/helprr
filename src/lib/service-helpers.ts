@@ -1,4 +1,6 @@
 import type { ServiceConnection, User } from '@prisma/client';
+import type { Tagged } from '@/lib/discover';
+import type { RadarrMovie, SonarrSeries } from '@/types';
 import { prisma } from '@/lib/db';
 import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import { SonarrClient } from '@/lib/sonarr-client';
@@ -189,4 +191,36 @@ export async function getTMDBClient(): Promise<TmdbClient> {
   }
 
   return new TmdbClient(connection.url, connection.apiKey);
+}
+
+/**
+ * Load the full library across every Radarr + Sonarr instance, tagging each item
+ * with its instance. Per-instance failures are swallowed (one unreachable instance
+ * must not blank the whole library). The single fan-out used by all library-matching
+ * consumers (discover, anime, watchlist, recommendations, random, library-gaps).
+ */
+export async function loadTaggedLibrary(): Promise<{ movies: Tagged<RadarrMovie>[]; series: Tagged<SonarrSeries>[] }> {
+  const movies = (
+    await Promise.all(
+      (await getRadarrClients()).map(async ({ connection, client }) => {
+        try {
+          return (await client.getMovies()).map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
+        } catch {
+          return [] as Tagged<RadarrMovie>[];
+        }
+      })
+    )
+  ).flat();
+  const series = (
+    await Promise.all(
+      (await getSonarrClients()).map(async ({ connection, client }) => {
+        try {
+          return (await client.getSeries()).map((s) => ({ ...s, instanceId: connection.id, instanceLabel: connection.label }));
+        } catch {
+          return [] as Tagged<SonarrSeries>[];
+        }
+      })
+    )
+  ).flat();
+  return { movies, series };
 }
