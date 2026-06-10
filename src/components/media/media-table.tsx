@@ -17,6 +17,7 @@ export interface MediaTableRow {
   title: string;
   year: number;
   href: string;
+  instanceLabel?: string;
   monitored?: boolean;
   hasFile?: boolean;
   status?: string;
@@ -117,6 +118,9 @@ export function MediaTable({
                       }`}
                     />
                     <span className="truncate">{row.title}</span>
+                    {row.instanceLabel && (
+                      <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
+                    )}
                   </Link>
                 </td>
                 {show('year') && <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{row.year}</td>}

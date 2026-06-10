@@ -60,6 +60,8 @@ export interface MediaOverviewItemProps {
   genres?: string[];
   hasFile?: boolean;
   status?: string;
+  /** Instance label shown only when >1 instance of the type is connected. */
+  instanceLabel?: string;
   onNavigate?: () => void;
 }
 
@@ -86,6 +88,7 @@ export function MediaOverviewItem({
   albumCount,
   trackProgress,
   genres,
+  instanceLabel,
   onNavigate,
 }: MediaOverviewItemProps) {
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
@@ -131,6 +134,9 @@ export function MediaOverviewItem({
           )}
           <h3 className="text-sm font-medium truncate">{title}</h3>
           {show('year') && <span className="text-xs text-muted-foreground shrink-0">({year})</span>}
+          {instanceLabel && (
+            <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{instanceLabel}</span>
+          )}
         </div>
 
         {/* Badges row */}

@@ -203,6 +203,8 @@ export default function MoviesPage() {
     setMoviesSortDirection: setSortDir,
     moviesFilter: filter,
     setMoviesFilter: setFilter,
+    moviesInstanceFilter: instanceFilter,
+    setMoviesInstanceFilter: setInstanceFilter,
     moviesVisibleFields: visibleFieldsByMode,
     setMoviesVisibleFields: setVisibleFieldsForMode,
     moviesSearch: search,
@@ -361,6 +363,25 @@ export default function MoviesPage() {
   );
   const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.label])), [tags]);
 
+  // Connected instances derived from the (already instance-tagged) list.
+  const instances = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const movie of movies) if (movie.instanceId) m.set(movie.instanceId, movie.instanceLabel ?? movie.instanceId);
+    return [...m].map(([id, label]) => ({ id, label }));
+  }, [movies]);
+  const multiInstance = instances.length > 1;
+  const hrefForMovie = useCallback(
+    (movie: RadarrMovieListItem) => (movie.instanceId ? `/movies/${movie.id}?instance=${movie.instanceId}` : `/movies/${movie.id}`),
+    []
+  );
+
+  // Drop a stale instance filter if that instance is no longer connected.
+  useEffect(() => {
+    if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
+      setInstanceFilter('all');
+    }
+  }, [instances, instanceFilter, setInstanceFilter]);
+
   const filtered = useMemo(() => {
     let list = movies;
 
@@ -380,6 +401,10 @@ export default function MoviesPage() {
         if (f === 'announced') return m.status === 'announced';
         return true;
       }));
+    }
+
+    if (instanceFilter !== 'all') {
+      list = list.filter((movie) => movie.instanceId === instanceFilter);
     }
 
     list = [...list].sort((a, b) => {
@@ -463,7 +488,7 @@ export default function MoviesPage() {
     });
 
     return list;
-  }, [movies, search, sort, sortDir, filter, qualityProfileMap, tagMap]);
+  }, [movies, search, sort, sortDir, filter, instanceFilter, qualityProfileMap, tagMap]);
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
@@ -517,7 +542,8 @@ export default function MoviesPage() {
       id: movie.id,
       title: movie.title,
       year: movie.year,
-      href: `/movies/${movie.id}`,
+      href: hrefForMovie(movie),
+      instanceLabel: multiInstance ? movie.instanceLabel : undefined,
       monitored: movie.monitored,
       hasFile: movie.hasFile,
       status: movie.status,
@@ -530,7 +556,7 @@ export default function MoviesPage() {
       certification: movie.certification,
       genres: movie.genres,
     }))
-  ), [filtered, qualityProfileMap]);
+  ), [filtered, qualityProfileMap, multiInstance, hrefForMovie]);
 
   const tableVirtualizer = useWindowVirtualizer({
     count: tableRows.length,
@@ -600,6 +626,29 @@ export default function MoviesPage() {
                   {opt.label}
                 </DropdownMenuCheckboxItem>
               ))}
+              {multiInstance && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Instance</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={instanceFilter === 'all'}
+                    onCheckedChange={() => setInstanceFilter('all')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    All instances
+                  </DropdownMenuCheckboxItem>
+                  {instances.map((inst) => (
+                    <DropdownMenuCheckboxItem
+                      key={inst.id}
+                      checked={instanceFilter === inst.id}
+                      onCheckedChange={() => setInstanceFilter(inst.id)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {inst.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -720,16 +769,17 @@ export default function MoviesPage() {
               <div className={posterGridClass}>
                 {visibleMovies.map((movie) => (
                   <MediaCard
-                    key={movie.id}
+                    key={`${movie.instanceId ?? ''}:${movie.id}`}
                     title={movie.title}
                     year={movie.year}
                     images={movie.images}
                     hasFile={movie.hasFile}
                     monitored={movie.monitored}
                     type="movie"
-                    href={`/movies/${movie.id}`}
+                    href={hrefForMovie(movie)}
                     visibleFields={visibleFields}
                     rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
+                    instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
                   />
                 ))}
@@ -756,11 +806,11 @@ export default function MoviesPage() {
               {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
               {visibleMovies.map((movie) => (
                 <MediaOverviewItem
-                  key={movie.id}
+                  key={`${movie.instanceId ?? ''}:${movie.id}`}
                   title={movie.title}
                   year={movie.year}
                   images={movie.images}
-                  href={`/movies/${movie.id}`}
+                  href={hrefForMovie(movie)}
                   type="movie"
                   monitored={movie.monitored}
                   hasFile={movie.hasFile}
@@ -775,6 +825,7 @@ export default function MoviesPage() {
                   sizeOnDisk={movie.sizeOnDisk}
                   runtime={movie.runtime}
                   genres={movie.genres}
+                  instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                   onNavigate={handleNavigateToDetail}
                 />
               ))}
@@ -824,11 +875,11 @@ export default function MoviesPage() {
             {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
             {visibleMovies.map((movie) => (
               <MediaOverviewItem
-                key={movie.id}
+                key={`${movie.instanceId ?? ''}:${movie.id}`}
                 title={movie.title}
                 year={movie.year}
                 images={movie.images}
-                href={`/movies/${movie.id}`}
+                href={hrefForMovie(movie)}
                 type="movie"
                 monitored={movie.monitored}
                 hasFile={movie.hasFile}
@@ -843,6 +894,7 @@ export default function MoviesPage() {
                 sizeOnDisk={movie.sizeOnDisk}
                 runtime={movie.runtime}
                 genres={movie.genres}
+                instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                 onNavigate={handleNavigateToDetail}
               />
             ))}

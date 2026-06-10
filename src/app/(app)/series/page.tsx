@@ -153,6 +153,8 @@ export default function SeriesPage() {
     setSeriesSortDirection: setSortDir,
     seriesFilter: filter,
     setSeriesFilter: setFilter,
+    seriesInstanceFilter: instanceFilter,
+    setSeriesInstanceFilter: setInstanceFilter,
     seriesVisibleFields: visibleFieldsByMode,
     setSeriesVisibleFields: setVisibleFieldsForMode,
     seriesSearch: search,
@@ -302,6 +304,26 @@ export default function SeriesPage() {
   );
   const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.label])), [tags]);
 
+  // Connected instances derived from the (already instance-tagged) list. The
+  // badge/filter only appear when more than one instance of the type exists.
+  const instances = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of series) if (s.instanceId) m.set(s.instanceId, s.instanceLabel ?? s.instanceId);
+    return [...m].map(([id, label]) => ({ id, label }));
+  }, [series]);
+  const multiInstance = instances.length > 1;
+  const hrefForSeries = useCallback(
+    (s: SonarrSeriesListItem) => (s.instanceId ? `/series/${s.id}?instance=${s.instanceId}` : `/series/${s.id}`),
+    []
+  );
+
+  // Drop a stale instance filter if that instance is no longer connected.
+  useEffect(() => {
+    if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
+      setInstanceFilter('all');
+    }
+  }, [instances, instanceFilter, setInstanceFilter]);
+
   const filtered = useMemo(() => {
     let list = series;
 
@@ -320,6 +342,10 @@ export default function SeriesPage() {
         if (f === 'upcoming') return s.status === 'upcoming';
         return true;
       }));
+    }
+
+    if (instanceFilter !== 'all') {
+      list = list.filter((s) => s.instanceId === instanceFilter);
     }
 
     list = [...list].sort((a, b) => {
@@ -391,7 +417,7 @@ export default function SeriesPage() {
     });
 
     return list;
-  }, [series, search, sort, sortDir, filter, qualityProfileMap, tagMap]);
+  }, [series, search, sort, sortDir, filter, instanceFilter, qualityProfileMap, tagMap]);
 
   const isDesktop = viewportWidth >= 768;
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
@@ -444,7 +470,8 @@ export default function SeriesPage() {
     id: s.id,
     title: s.title,
     year: s.year,
-    href: `/series/${s.id}`,
+    href: hrefForSeries(s),
+    instanceLabel: multiInstance ? s.instanceLabel : undefined,
     monitored: s.monitored,
     status: s.status,
     images: s.images,
@@ -525,6 +552,29 @@ export default function SeriesPage() {
                   {opt.label}
                 </DropdownMenuCheckboxItem>
               ))}
+              {multiInstance && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Instance</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={instanceFilter === 'all'}
+                    onCheckedChange={() => setInstanceFilter('all')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    All instances
+                  </DropdownMenuCheckboxItem>
+                  {instances.map((inst) => (
+                    <DropdownMenuCheckboxItem
+                      key={inst.id}
+                      checked={instanceFilter === inst.id}
+                      onCheckedChange={() => setInstanceFilter(inst.id)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {inst.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -645,16 +695,17 @@ export default function SeriesPage() {
               <div className={posterGridClass}>
                 {visibleSeries.map((s) => (
                   <MediaCard
-                    key={s.id}
+                    key={`${s.instanceId ?? ''}:${s.id}`}
                     title={s.title}
                     year={s.year}
                     images={s.images}
                     status={s.status}
                     monitored={s.monitored}
                     type="series"
-                    href={`/series/${s.id}`}
+                    href={hrefForSeries(s)}
                     visibleFields={visibleFields}
                     rating={s.ratings?.value}
+                    instanceLabel={multiInstance ? s.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
                   />
                 ))}
@@ -681,11 +732,11 @@ export default function SeriesPage() {
               {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
               {visibleSeries.map((s) => (
                 <MediaOverviewItem
-                  key={s.id}
+                  key={`${s.instanceId ?? ''}:${s.id}`}
                   title={s.title}
                   year={s.year}
                   images={s.images}
-                  href={`/series/${s.id}`}
+                  href={hrefForSeries(s)}
                   type="series"
                   monitored={s.monitored}
                   status={s.status}
@@ -699,6 +750,7 @@ export default function SeriesPage() {
                   runtime={s.runtime}
                   episodeProgress={`${s.statistics.episodeCount}/${s.statistics.totalEpisodeCount}`}
                   genres={s.genres}
+                  instanceLabel={multiInstance ? s.instanceLabel : undefined}
                   onNavigate={handleNavigateToDetail}
                 />
               ))}
@@ -748,11 +800,11 @@ export default function SeriesPage() {
             {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
             {visibleSeries.map((s) => (
               <MediaOverviewItem
-                key={s.id}
+                key={`${s.instanceId ?? ''}:${s.id}`}
                 title={s.title}
                 year={s.year}
                 images={s.images}
-                href={`/series/${s.id}`}
+                href={hrefForSeries(s)}
                 type="series"
                 monitored={s.monitored}
                 status={s.status}
@@ -766,6 +818,7 @@ export default function SeriesPage() {
                 runtime={s.runtime}
                 episodeProgress={`${s.statistics.episodeCount}/${s.statistics.totalEpisodeCount}`}
                 genres={s.genres}
+                instanceLabel={multiInstance ? s.instanceLabel : undefined}
                 onNavigate={handleNavigateToDetail}
               />
             ))}
