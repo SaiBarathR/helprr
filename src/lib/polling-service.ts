@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { getSonarrClient, getRadarrClient, getLidarrClient, getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
 import { getDefaultConnection } from '@/lib/arr-instances';
 import { SEERR_MEDIA_STATUS, SEERR_REQUEST_STATUS } from '@/types/seerr';
 import { getCachedSeerrMediaDetail, formatSeerrMediaLabel } from '@/lib/seerr-helpers';
@@ -1564,11 +1564,11 @@ export class PollingService {
     // timestamp so any reschedule — even same-day — produces a fresh key and
     // a fresh notification. Body-string fallback preserves dedupe for rows
     // created before the migration added dedupeKey.
-    const alreadyNotified = async (dedupeKey: string, body: string): Promise<boolean> => {
+    const alreadyNotified = async (dedupeKeys: string[], body: string): Promise<boolean> => {
       const hit = await prisma.notificationHistory.findFirst({
         where: {
           eventType: 'upcomingPremiere',
-          OR: [{ dedupeKey }, { dedupeKey: null, body }],
+          OR: [...dedupeKeys.map((dedupeKey) => ({ dedupeKey })), { dedupeKey: null, body }],
         },
         select: { id: true },
       });
@@ -1583,11 +1583,12 @@ export class PollingService {
       );
     };
 
-    // Sonarr calendar --------------------------------------------------------
+    // Sonarr calendar (every instance) ---------------------------------------
+    for (const { connection, client } of await getSonarrClients()) {
     try {
-      const client = await getSonarrClient();
       const calendar = await client.getCalendar(start, end);
       logger.debug('Sonarr upcoming calendar polled', {
+        instanceId: connection.id,
         calendarCount: calendar.length,
         start,
         end,
@@ -1623,9 +1624,10 @@ export class PollingService {
         const baseBody = `${ep.series.title} S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
         const body = finaleLabel ? `${baseBody} (${finaleLabel})` : baseBody;
         const notificationTitle = ep.finaleType === 'series' ? 'Series Finale Airing Soon' : 'Upcoming Episode';
-        const dedupeKey = `sonarr-ep-${ep.id}-${airTimeMs}`;
+        const dedupeKey = `sonarr-${connection.id}-ep-${ep.id}-${airTimeMs}`;
+        const legacyKey = `sonarr-ep-${ep.id}-${airTimeMs}`;
 
-        if (await alreadyNotified(dedupeKey, body)) {
+        if (await alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) {
           logger.debug('Skipping duplicate Sonarr upcoming notification', {
             seriesId: ep.seriesId,
             episodeId: ep.id,
@@ -1641,6 +1643,8 @@ export class PollingService {
           dedupeKey,
           metadata: {
             source: 'sonarr',
+            instanceId: connection.id,
+            instanceLabel: connection.label,
             seriesId: ep.seriesId,
             seasonNumber: ep.seasonNumber,
             episodeId: ep.id,
@@ -1659,12 +1663,14 @@ export class PollingService {
     } catch (error) {
       logger.warn('Sonarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
+    }
 
-    // Radarr calendar --------------------------------------------------------
+    // Radarr calendar (every instance) ---------------------------------------
+    for (const { connection, client } of await getRadarrClients()) {
     try {
-      const client = await getRadarrClient();
       const calendar = await client.getCalendar(start, end);
       logger.debug('Radarr upcoming calendar polled', {
+        instanceId: connection.id,
         calendarCount: calendar.length,
         start,
         end,
@@ -1702,9 +1708,10 @@ export class PollingService {
           }
 
           const body = `${movie.title} (${movie.year}) — ${releaseTypeLabels[releaseType]}`;
-          const dedupeKey = `radarr-${movie.id}-${releaseType}-${releaseMs}`;
+          const dedupeKey = `radarr-${connection.id}-${movie.id}-${releaseType}-${releaseMs}`;
+          const legacyKey = `radarr-${movie.id}-${releaseType}-${releaseMs}`;
 
-          if (await alreadyNotified(dedupeKey, body)) {
+          if (await alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) {
             logger.debug('Skipping duplicate Radarr upcoming notification', {
               movieId: movie.id,
               releaseType,
@@ -1720,6 +1727,8 @@ export class PollingService {
             dedupeKey,
             metadata: {
               source: 'radarr',
+              instanceId: connection.id,
+              instanceLabel: connection.label,
               movieId: movie.id,
               releaseType,
               redirect: `/movies/${movie.id}`,
@@ -1737,12 +1746,14 @@ export class PollingService {
     } catch (error) {
       logger.warn('Radarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
+    }
 
-    // Lidarr calendar --------------------------------------------------------
+    // Lidarr calendar (every instance) ---------------------------------------
+    for (const { connection, client } of await getLidarrClients()) {
     try {
-      const client = await getLidarrClient();
       const calendar = await client.getCalendar(start, end);
       logger.debug('Lidarr upcoming calendar polled', {
+        instanceId: connection.id,
         calendarCount: calendar.length,
         start,
         end,
@@ -1757,8 +1768,9 @@ export class PollingService {
 
         const artistName = album.artist?.artistName ?? '';
         const body = `${artistName ? `${artistName} — ` : ''}${album.title}`;
-        const dedupeKey = `lidarr-${album.id}-${releaseMs}`;
-        if (await alreadyNotified(dedupeKey, body)) continue;
+        const dedupeKey = `lidarr-${connection.id}-${album.id}-${releaseMs}`;
+        const legacyKey = `lidarr-${album.id}-${releaseMs}`;
+        if (await alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) continue;
 
         await this.notifyAndLog({
           eventType: 'upcomingPremiere',
@@ -1767,6 +1779,8 @@ export class PollingService {
           dedupeKey,
           metadata: {
             source: 'lidarr',
+            instanceId: connection.id,
+            instanceLabel: connection.label,
             artistId: album.artistId,
             albumId: album.id,
             redirect: `/music/album/${album.id}`,
@@ -1781,6 +1795,7 @@ export class PollingService {
       }
     } catch (error) {
       logger.warn('Lidarr upcoming calendar poll failed', error, { scope: 'polling' });
+    }
     }
   }
 
