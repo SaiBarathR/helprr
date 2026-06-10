@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getRadarrClients, getSonarrClients } from '@/lib/service-helpers';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 
 type RandomType = 'movie' | 'series' | 'any';
@@ -79,8 +79,9 @@ async function fetchMoviePool(): Promise<RadarrMovie[]> {
     return moviePoolCache.value;
   }
   try {
-    const client = await getRadarrClient();
-    const all = await client.getMovies();
+    const all = (await Promise.all((await getRadarrClients()).map(async ({ client }) => {
+      try { return await client.getMovies(); } catch { return []; }
+    }))).flat();
     const filtered = all.filter((m) => m.hasFile === true);
     moviePoolCache = { at: now, value: filtered };
     return filtered;
@@ -95,8 +96,9 @@ async function fetchSeriesPool(): Promise<SonarrSeries[]> {
     return seriesPoolCache.value;
   }
   try {
-    const client = await getSonarrClient();
-    const all = await client.getSeries();
+    const all = (await Promise.all((await getSonarrClients()).map(async ({ client }) => {
+      try { return await client.getSeries(); } catch { return []; }
+    }))).flat();
     const filtered = all.filter((s) => (s.statistics?.episodeFileCount ?? 0) > 0);
     seriesPoolCache = { at: now, value: filtered };
     return filtered;
