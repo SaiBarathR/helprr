@@ -339,7 +339,7 @@ model AniListSeriesMapping {
   // ≥1 entry; AUTO_UNMATCHED / MANUAL_NONE have none.
   entries              AniListSeriesMappingEntry[]
 
-  // A series id is only unique within a Sonarr instance once multi-instance exists.
+  // A series id is only unique within a Sonarr instance, so scope by instance.
   @@unique([sonarrInstanceId, sonarrSeriesId])
   @@index([sonarrInstanceId])
 }

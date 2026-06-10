@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Select,
@@ -20,9 +20,20 @@ import { invalidateListData } from '@/lib/media-list-cache';
 import { clearMovieDetailSnapshot } from '@/lib/movie-route-cache';
 import type { RadarrMovie, QualityProfile, RootFolder, Tag } from '@/types';
 
+// Append the viewing instance to a Radarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function MovieEditPage() {
   const { id } = useParams();
   const router = useRouter();
+  const instance = useSearchParams().get('instance') ?? undefined;
 
   const [movie, setMovie] = useState<RadarrMovie | null>(null);
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
@@ -39,10 +50,10 @@ export default function MovieEditPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/radarr/${id}`).then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/radarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/radarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/radarr/tags').then((r) => (r.ok ? r.json() : [])),
+      radarrFetch(instance, `/api/radarr/${id}`).then((r) => (r.ok ? r.json() : null)),
+      radarrFetch(instance, '/api/radarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
+      radarrFetch(instance, '/api/radarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
+      radarrFetch(instance, '/api/radarr/tags').then((r) => (r.ok ? r.json() : [])),
     ])
       .then(([m, qp, rf, t]) => {
         setMovie(m);
@@ -61,7 +72,7 @@ export default function MovieEditPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, instance]);
 
   function toggleTag(tagId: number) {
     setSelectedTags((prev) =>
@@ -89,7 +100,7 @@ export default function MovieEditPage() {
         updatedMovie.path = `${rootFolder}/${movieFolder}`;
       }
 
-      const res = await fetch(`/api/radarr/${movie.id}`, {
+      const res = await radarrFetch(instance, `/api/radarr/${movie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedMovie),
@@ -97,7 +108,7 @@ export default function MovieEditPage() {
 
       if (res.ok) {
         invalidateListData('movies');
-        clearMovieDetailSnapshot(movie.id);
+        clearMovieDetailSnapshot(movie.id, instance);
         toast.success('Movie updated');
         router.back();
       } else {

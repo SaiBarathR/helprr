@@ -347,15 +347,19 @@ export async function confirmImportedViaHistory(
   let anyReachable = false;
   let anyConfigured = false;
 
-  // Imported if ANY instance of either type confirms it.
-  for (const client of [...arrs.sonarr, ...arrs.radarr]) {
+  // Imported if ANY instance of either type confirms it. Tag each client with
+  // its source up front so we don't have to recover it from the client object.
+  const tagged: Array<{ source: ImportConfirmationSource; client: SonarrClient | RadarrClient }> = [
+    ...arrs.sonarr.map((client) => ({ source: 'sonarr' as const, client })),
+    ...arrs.radarr.map((client) => ({ source: 'radarr' as const, client })),
+  ];
+  for (const { source, client } of tagged) {
     anyConfigured = true;
     try {
       const res = await client.getHistory(1, 50, 'date', 'descending', { downloadId });
       anyReachable = true;
       const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
       if (hit) {
-        const source = arrs.sonarr.includes(client as SonarrClient) ? 'sonarr' : 'radarr';
         return { status: 'imported', source, eventType: hit.eventType };
       }
     } catch {

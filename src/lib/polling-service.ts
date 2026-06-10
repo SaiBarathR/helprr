@@ -149,26 +149,32 @@ function getMediaHrefFromIds(args: {
   movieId?: unknown;
   albumId?: unknown;
   artistId?: unknown;
+  instanceId?: unknown;
 }): string | null {
+  // Keep the deep-link on the instance the event came from; detail pages read
+  // ?instance and fall back to the default when it's absent.
+  const instance = typeof args.instanceId === 'string' && args.instanceId ? args.instanceId : null;
+  const withInstance = (href: string) => (instance ? `${href}?instance=${instance}` : href);
+
   const movieId = toNumber(args.movieId);
-  if (movieId) return `/movies/${movieId}`;
+  if (movieId) return withInstance(`/movies/${movieId}`);
 
   const albumId = toNumber(args.albumId);
-  if (albumId) return `/music/album/${albumId}`;
+  if (albumId) return withInstance(`/music/album/${albumId}`);
   const artistId = toNumber(args.artistId);
-  if (artistId) return `/music/${artistId}`;
+  if (artistId) return withInstance(`/music/${artistId}`);
 
   const seriesId = toNumber(args.seriesId);
   const seasonNumber = toNumber(args.seasonNumber);
   const episodeId = toNumber(args.episodeId);
   if (seriesId && seasonNumber && episodeId) {
-    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}`;
+    return withInstance(`/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}`);
   }
   if (seriesId && seasonNumber) {
-    return `/series/${seriesId}/season/${seasonNumber}`;
+    return withInstance(`/series/${seriesId}/season/${seasonNumber}`);
   }
   if (seriesId) {
-    return `/series/${seriesId}`;
+    return withInstance(`/series/${seriesId}`);
   }
   return null;
 }
@@ -1584,7 +1590,8 @@ export class PollingService {
     };
 
     // Sonarr calendar (every instance) ---------------------------------------
-    for (const { connection, client } of await getSonarrClients()) {
+    const sonarrClients = await getSonarrClients();
+    for (const { connection, client } of sonarrClients) {
     try {
       const calendar = await client.getCalendar(start, end);
       logger.debug('Sonarr upcoming calendar polled', {
@@ -1638,7 +1645,7 @@ export class PollingService {
 
         await this.notifyAndLog({
           eventType: 'upcomingPremiere',
-          title: notificationTitle,
+          title: this.instanceTitle(notificationTitle, connection.label, sonarrClients.length),
           body,
           dedupeKey,
           metadata: {
@@ -1649,9 +1656,9 @@ export class PollingService {
             seasonNumber: ep.seasonNumber,
             episodeId: ep.id,
             ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
-            redirect: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`,
+            redirect: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}?instance=${connection.id}`,
           },
-          url: `/series/${ep.seriesId}`,
+          url: `/series/${ep.seriesId}?instance=${connection.id}`,
         }, {
           service: 'sonarr',
           reason: 'upcoming-premiere',
@@ -1666,7 +1673,8 @@ export class PollingService {
     }
 
     // Radarr calendar (every instance) ---------------------------------------
-    for (const { connection, client } of await getRadarrClients()) {
+    const radarrClients = await getRadarrClients();
+    for (const { connection, client } of radarrClients) {
     try {
       const calendar = await client.getCalendar(start, end);
       logger.debug('Radarr upcoming calendar polled', {
@@ -1722,7 +1730,7 @@ export class PollingService {
 
           await this.notifyAndLog({
             eventType: 'upcomingPremiere',
-            title: 'Upcoming Movie',
+            title: this.instanceTitle('Upcoming Movie', connection.label, radarrClients.length),
             body,
             dedupeKey,
             metadata: {
@@ -1731,9 +1739,9 @@ export class PollingService {
               instanceLabel: connection.label,
               movieId: movie.id,
               releaseType,
-              redirect: `/movies/${movie.id}`,
+              redirect: `/movies/${movie.id}?instance=${connection.id}`,
             },
-            url: `/movies/${movie.id}`,
+            url: `/movies/${movie.id}?instance=${connection.id}`,
           }, {
             service: 'radarr',
             reason: 'upcoming-premiere',
@@ -1749,7 +1757,8 @@ export class PollingService {
     }
 
     // Lidarr calendar (every instance) ---------------------------------------
-    for (const { connection, client } of await getLidarrClients()) {
+    const lidarrClients = await getLidarrClients();
+    for (const { connection, client } of lidarrClients) {
     try {
       const calendar = await client.getCalendar(start, end);
       logger.debug('Lidarr upcoming calendar polled', {
@@ -1774,7 +1783,7 @@ export class PollingService {
 
         await this.notifyAndLog({
           eventType: 'upcomingPremiere',
-          title: 'Upcoming Album',
+          title: this.instanceTitle('Upcoming Album', connection.label, lidarrClients.length),
           body,
           dedupeKey,
           metadata: {
@@ -1783,9 +1792,9 @@ export class PollingService {
             instanceLabel: connection.label,
             artistId: album.artistId,
             albumId: album.id,
-            redirect: `/music/album/${album.id}`,
+            redirect: `/music/album/${album.id}?instance=${connection.id}`,
           },
-          url: `/music/album/${album.id}`,
+          url: `/music/album/${album.id}?instance=${connection.id}`,
         }, {
           service: 'lidarr',
           reason: 'upcoming-premiere',

@@ -435,7 +435,7 @@ interface UIState {
   setActivityTab: (tab: ActivityTabPreference) => void;
   activitySortBy: ActivitySortPreference;
   setActivitySortBy: (sortBy: ActivitySortPreference) => void;
-  // Empty array = all instances. Multi-select set of sources (sonarr/radarr/lidarr).
+  // Empty array = all sources. Multi-select set of sources (sonarr/radarr/lidarr).
   activityFilterBy: string[];
   setActivityFilterBy: (filterBy: string[]) => void;
   // 'all' or a specific ServiceConnection id (instanceId). Only surfaced when a

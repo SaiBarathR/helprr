@@ -108,7 +108,7 @@ export default function ArtistDetailPage() {
   const { id } = useParams();
   const artistId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const initialSnapshot = Number.isFinite(artistId) ? getArtistDetailSnapshot(artistId) : null;
+  const initialSnapshot = Number.isFinite(artistId) ? getArtistDetailSnapshot(artistId, instance) : null;
   const detailViewKey: DetailViewKey = `artist:${artistId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const scrollReadyRef = useRef(false);
@@ -178,7 +178,7 @@ export default function ArtistDetailPage() {
         qualityProfiles: nextQp,
         metadataProfiles: nextMp,
         tags: nextTags,
-      });
+      }, instance);
     } catch {
       if (requestId !== loadRequestRef.current) return;
       if (!hasCachedData) {
@@ -188,10 +188,10 @@ export default function ArtistDetailPage() {
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [artistId]);
+  }, [artistId, instance]);
 
   useEffect(() => {
-    const cached = Number.isFinite(artistId) ? getArtistDetailSnapshot(artistId) : null;
+    const cached = Number.isFinite(artistId) ? getArtistDetailSnapshot(artistId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
 
@@ -207,7 +207,7 @@ export default function ArtistDetailPage() {
     }
 
     void loadData(Boolean(cached));
-  }, [loadData, artistId]);
+  }, [loadData, artistId, instance]);
 
   useEffect(() => {
     if (loading || !artist || hasRestoredScrollRef.current) return;
@@ -264,8 +264,8 @@ export default function ArtistDetailPage() {
       qualityProfiles,
       metadataProfiles,
       tags,
-    });
-  }, [albums, artistId, metadataProfiles, qualityProfiles, tags]);
+    }, instance);
+  }, [albums, artistId, instance, metadataProfiles, qualityProfiles, tags]);
 
   async function handleSearch() {
     if (!artist) return;
@@ -294,7 +294,7 @@ export default function ArtistDetailPage() {
       if (!res.ok) throw new Error('Refresh failed');
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
-      const status = command.id ? await pollCommand('lidarr', command.id) : 'completed';
+      const status = command.id ? await pollCommand('lidarr', command.id, instance) : 'completed';
       invalidateListData('music');
       await loadData(true);
       if (status === 'completed') toast.success('Refresh complete');
@@ -338,7 +338,7 @@ export default function ArtistDetailPage() {
         const nextAlbums = albums.map((a) => (a.id === album.id ? { ...a, monitored: nextMonitored } : a));
         setAlbums(nextAlbums);
         if (Number.isFinite(artistId) && artist) {
-          setArtistDetailSnapshot(artistId, { artist, albums: nextAlbums, qualityProfiles, metadataProfiles, tags });
+          setArtistDetailSnapshot(artistId, { artist, albums: nextAlbums, qualityProfiles, metadataProfiles, tags }, instance);
         }
       } else {
         toast.error('Failed to update album');
@@ -354,7 +354,7 @@ export default function ArtistDetailPage() {
       const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (res.ok) {
         invalidateListData('music');
-        clearArtistDetailSnapshot(artist.id);
+        clearArtistDetailSnapshot(artist.id, instance);
         toast.success('Artist deleted');
         router.push('/music');
       } else {
@@ -495,7 +495,7 @@ export default function ArtistDetailPage() {
                   </DropdownMenuItem>
                 )}
                 {canEditArtist && (
-                  <DropdownMenuItem onClick={() => router.push(`/music/${artist.id}/edit`)}>
+                  <DropdownMenuItem onClick={() => router.push(`/music/${artist.id}/edit${instance ? `?instance=${instance}` : ''}`)}>
                     <Pencil className="h-4 w-4" />
                     Edit
                   </DropdownMenuItem>
@@ -629,7 +629,7 @@ export default function ArtistDetailPage() {
             Search Monitored Albums
           </Button>
         )}
-        <Button onClick={() => router.push(`/music/${artist.id}/files`)} className="w-full rounded-full h-10" variant="secondary">
+        <Button onClick={() => router.push(`/music/${artist.id}/files${instance ? `?instance=${instance}` : ''}`)} className="w-full rounded-full h-10" variant="secondary">
           <FileText className="h-4 w-4 mr-2" />
           Files &amp; information
         </Button>
@@ -687,7 +687,7 @@ export default function ArtistDetailPage() {
                     const progress = aStats ? `${aStats.trackFileCount}/${aStats.totalTrackCount}` : '';
                     return (
                       <div key={album.id} className="flex gap-3 rounded-xl bg-card p-2.5 hover:bg-muted/30 transition-colors">
-                        <Link href={`/music/album/${album.id}`} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
+                        <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
                           {cover ? (
                             <Image src={cover} alt={album.title} fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
                           ) : (
@@ -695,7 +695,7 @@ export default function ArtistDetailPage() {
                           )}
                           {album.monitored === false && <div className="absolute inset-0 bg-background/40" />}
                         </Link>
-                        <Link href={`/music/album/${album.id}`} className="flex-1 min-w-0">
+                        <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{album.title}</p>
                           <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                             {year && <span className="text-xs text-muted-foreground">{year}</span>}

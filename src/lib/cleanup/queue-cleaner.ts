@@ -235,7 +235,12 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
 
       if (matchesIgnoredPatterns(t, domains, cfg.ignoredDownloads)) continue;
 
-      const linked = (correlation.byHash.get(hashLc) ?? [])[0] ?? null;
+      // Cross-seed / dual-grab: a hash can sit in multiple instances' queues.
+      // Sonarr wins as the representative for display + the failed-import check
+      // (preserves the pre-multi-instance precedence); `linkedAll` (set below)
+      // drives the actual removal across every instance.
+      const links = correlation.byHash.get(hashLc) ?? [];
+      const linked = links.find((l) => l.source === 'sonarr') ?? links[0] ?? null;
 
       // 1) Downloading Metadata (qBit-only, global)
       if (cfg.downloadingMetadataMaxStrikes >= 3 && t.state === 'metaDL') {

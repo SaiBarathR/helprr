@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
@@ -15,9 +15,20 @@ import { invalidateListData } from '@/lib/media-list-cache';
 import { clearSeriesDetailSnapshot } from '@/lib/series-route-cache';
 import type { SonarrSeries, QualityProfile, RootFolder, Tag } from '@/types';
 
+// Append the viewing instance to a Sonarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function SeriesEditPage() {
   const { id } = useParams();
   const router = useRouter();
+  const instance = useSearchParams().get('instance') ?? undefined;
 
   const [series, setSeries] = useState<SonarrSeries | null>(null);
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
@@ -36,10 +47,10 @@ export default function SeriesEditPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/sonarr/${id}`).then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/sonarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/sonarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/sonarr/tags').then((r) => (r.ok ? r.json() : [])),
+      sonarrFetch(instance, `/api/sonarr/${id}`).then((r) => (r.ok ? r.json() : null)),
+      sonarrFetch(instance, '/api/sonarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
+      sonarrFetch(instance, '/api/sonarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
+      sonarrFetch(instance, '/api/sonarr/tags').then((r) => (r.ok ? r.json() : [])),
     ])
       .then(([s, qp, rf, t]) => {
         setSeries(s);
@@ -89,14 +100,14 @@ export default function SeriesEditPage() {
       const moveFiles = rootFolderTouched;
       const url = `/api/sonarr/${series.id}${moveFiles ? '?moveFiles=true' : ''}`;
 
-      const res = await fetch(url, {
+      const res = await sonarrFetch(instance, url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
       });
       if (res.ok) {
         invalidateListData('series');
-        clearSeriesDetailSnapshot(series.id);
+        clearSeriesDetailSnapshot(series.id, instance);
         toast.success('Series updated');
         router.back();
       } else {

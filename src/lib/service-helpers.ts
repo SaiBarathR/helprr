@@ -56,7 +56,8 @@ export async function getLidarrClients(): Promise<Array<{ connection: ServiceCon
 }
 
 /**
- * Create a QBittorrentClient using the stored QBITTORRENT service connection.
+ * Create a QBittorrentClient from the QBITTORRENT service connection. qBittorrent
+ * is single-instance, so findFirst returns the one configured connection.
  *
  * @returns A QBittorrentClient configured with the connection's URL, API key, and username (username defaults to `'admin'` if not set).
  * @throws Error if no QBITTORRENT service connection is configured.
@@ -84,7 +85,8 @@ export async function getQBittorrentClient(): Promise<QBittorrentClient> {
 }
 
 /**
- * Creates a Prowlarr client from the configured PROWLARR service connection.
+ * Creates a Prowlarr client from the PROWLARR service connection. Prowlarr is
+ * single-instance, so findFirst returns the one configured connection.
  *
  * @returns A configured ProwlarrClient instance
  * @throws Error if no PROWLARR connection is found in the database

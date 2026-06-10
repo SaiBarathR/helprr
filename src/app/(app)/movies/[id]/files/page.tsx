@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ExternalLink } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -107,9 +107,20 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
   );
 }
 
+// Append the viewing instance to a Radarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function MovieFilesPage() {
   const { id } = useParams<{ id: string }>();
   const movieId = Number(id);
+  const instance = useSearchParams().get('instance') ?? undefined;
   const [movie, setMovie] = useState<RadarrMovie | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,8 +132,8 @@ export default function MovieFilesPage() {
     let cancelled = false;
 
     void Promise.allSettled([
-      fetch(`/api/radarr/${movieId}`).then((r) => (r.ok ? r.json() : null)),
-      fetch(`/api/radarr/history/movie?movieId=${movieId}`).then((r) => (r.ok ? r.json() : [])),
+      radarrFetch(instance, `/api/radarr/${movieId}`).then((r) => (r.ok ? r.json() : null)),
+      radarrFetch(instance, `/api/radarr/history/movie?movieId=${movieId}`).then((r) => (r.ok ? r.json() : [])),
     ])
       .then(([movieResult, historyResult]) => {
         if (cancelled) return;
@@ -130,12 +141,12 @@ export default function MovieFilesPage() {
           const nextMovie = movieResult.value as RadarrMovie | null;
           setMovie(nextMovie);
           if (Number.isFinite(movieId)) {
-            const cached = getMovieDetailSnapshot(movieId);
+            const cached = getMovieDetailSnapshot(movieId, instance);
             setMovieDetailSnapshot(movieId, {
               movie: nextMovie,
               qualityProfiles: cached?.qualityProfiles ?? [],
               tags: cached?.tags ?? [],
-            });
+            }, instance);
           }
         }
         if (historyResult.status === 'fulfilled') {
@@ -151,7 +162,7 @@ export default function MovieFilesPage() {
     return () => {
       cancelled = true;
     };
-  }, [movieId]);
+  }, [instance, movieId]);
 
   if (loading) {
     return <><PageHeader title="Files & information" /><PageSpinner /></>;

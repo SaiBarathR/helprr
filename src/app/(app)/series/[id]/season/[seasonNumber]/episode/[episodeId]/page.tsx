@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerClose,
@@ -55,6 +55,16 @@ function formatRuntime(value?: string | number): string | null {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+// Append the viewing instance to a Sonarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
 }
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
@@ -160,6 +170,7 @@ export default function EpisodeDetailPage() {
   const seriesId = Number(id);
   const seasonNumber = Number(seasonNumberParam);
   const episodeId = Number(episodeIdParam);
+  const instance = useSearchParams().get('instance') ?? undefined;
 
   const [series, setSeries] = useState<SonarrSeries | null>(null);
   const [episode, setEpisode] = useState<EpisodeWithFile | null>(null);
@@ -188,8 +199,8 @@ export default function EpisodeDetailPage() {
 
     try {
       const [seriesRes, episodesRes] = await Promise.all([
-        fetch(`/api/sonarr/${seriesId}`),
-        fetch(`/api/sonarr/${seriesId}/episodes?includeEpisodeFile=true`),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}`),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}/episodes?includeEpisodeFile=true`),
       ]);
 
       const nextSeries: SonarrSeries | null = seriesRes.ok ? await seriesRes.json() : null;
@@ -198,14 +209,14 @@ export default function EpisodeDetailPage() {
 
       setSeries(nextSeries);
       setEpisode(nextEpisode);
-      const cached = getEpisodeDetailSnapshot(seriesId, episodeId);
+      const cached = getEpisodeDetailSnapshot(seriesId, episodeId, instance);
       setEpisodeDetailSnapshot(seriesId, episodeId, {
         series: nextSeries,
         episode: nextEpisode,
         history: cached?.history ?? [],
-      });
+      }, instance);
       if (nextEpisode) {
-        patchEpisodeAcrossSnapshots(seriesId, episodeId, () => nextEpisode);
+        patchEpisodeAcrossSnapshots(seriesId, episodeId, () => nextEpisode, instance);
       }
     } catch {
       if (!hasCachedData) {
@@ -227,12 +238,12 @@ export default function EpisodeDetailPage() {
         const data = await res.json();
         const records = data.records || [];
         setHistory(records);
-        const cached = getEpisodeDetailSnapshot(seriesId, episodeId);
+        const cached = getEpisodeDetailSnapshot(seriesId, episodeId, instance);
         setEpisodeDetailSnapshot(seriesId, episodeId, {
           series: cached?.series ?? null,
           episode: cached?.episode ?? null,
           history: records,
-        });
+        }, instance);
       }
     } catch {
       // Silently fail - history is non-critical
@@ -244,7 +255,7 @@ export default function EpisodeDetailPage() {
   useEffect(() => {
     const cached = (
       Number.isFinite(seriesId) && Number.isFinite(episodeId)
-    ) ? getEpisodeDetailSnapshot(seriesId, episodeId) : null;
+    ) ? getEpisodeDetailSnapshot(seriesId, episodeId, instance) : null;
 
     if (cached) {
       setSeries(cached.series);
@@ -290,7 +301,7 @@ export default function EpisodeDetailPage() {
   async function handleAutomaticSearch() {
     setActionLoading('search');
     try {
-      await fetch('/api/sonarr/command', {
+      await sonarrFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [episodeId] }),
@@ -308,7 +319,7 @@ export default function EpisodeDetailPage() {
     setActionLoading('monitor');
     try {
       const nextMonitored = !episode.monitored;
-      const res = await fetch('/api/sonarr/episode/monitor', {
+      const res = await sonarrFetch(instance, '/api/sonarr/episode/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ episodeIds: [episodeId], monitored: nextMonitored }),
@@ -320,8 +331,8 @@ export default function EpisodeDetailPage() {
           series,
           episode: nextEpisode,
           history,
-        });
-        patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({ ...current, monitored: nextMonitored }));
+        }, instance);
+        patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({ ...current, monitored: nextMonitored }), instance);
         toast.success(episode.monitored ? 'Episode unmonitored' : 'Episode monitored');
       }
     } catch {
@@ -335,7 +346,7 @@ export default function EpisodeDetailPage() {
     if (!series || !episode || !episode.episodeFileId) return;
     setDeleting(true);
     try {
-      const deleteRes = await fetch(`/api/sonarr/episodefile/${episode.episodeFileId}`, {
+      const deleteRes = await sonarrFetch(instance, `/api/sonarr/episodefile/${episode.episodeFileId}`, {
         method: 'DELETE',
       });
       if (!deleteRes.ok) {
@@ -364,12 +375,12 @@ export default function EpisodeDetailPage() {
         series,
         episode: nextEpisode,
         history,
-      });
+      }, instance);
       patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({
         ...current,
         hasFile: false,
         episodeFileId: 0,
-      }));
+      }), instance);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete file';
       toast.error(message);
@@ -395,13 +406,13 @@ export default function EpisodeDetailPage() {
       <PageHeader
         subtitle={
           <span className="flex items-center gap-1 truncate">
-            <Link href={`/series/${seriesId}`} className="hover:underline truncate">{series.title}</Link>
+            <Link href={`/series/${seriesId}${instance ? `?instance=${instance}` : ''}`} className="hover:underline truncate">{series.title}</Link>
             <span className="text-muted-foreground/40 shrink-0">/</span>
-            <Link href={`/series/${seriesId}/season/${seasonNumber}`} className="hover:underline shrink-0">S{String(seasonNumber).padStart(2, '0')}</Link>
+            <Link href={`/series/${seriesId}/season/${seasonNumber}${instance ? `?instance=${instance}` : ''}`} className="hover:underline shrink-0">S{String(seasonNumber).padStart(2, '0')}</Link>
           </span>
         }
         title={episode.title || 'TBA'}
-        onBack={() => router.push(`/series/${seriesId}/season/${seasonNumber}`)}
+        onBack={() => router.push(`/series/${seriesId}/season/${seasonNumber}${instance ? `?instance=${instance}` : ''}`)}
         rightContent={
           <div className="flex items-center gap-1">
             {refreshing && !loading && (
