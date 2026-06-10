@@ -5,8 +5,8 @@ import type { SonarrClient } from '@/lib/sonarr-client';
 import type { RadarrClient } from '@/lib/radarr-client';
 import {
   getQBittorrentClient,
-  getSonarrClient,
-  getRadarrClient,
+  getSonarrClients,
+  getRadarrClients,
 } from '@/lib/service-helpers';
 import { notifyEvent } from '@/lib/notification-service';
 import {
@@ -146,19 +146,9 @@ export async function loadSeedingRules(): Promise<SeedingRuleShape[]> {
   }));
 }
 
-async function loadArrClients(): Promise<{ sonarr: SonarrClient | null; radarr: RadarrClient | null }> {
-  let sonarr: SonarrClient | null = null;
-  let radarr: RadarrClient | null = null;
-  try {
-    sonarr = await getSonarrClient();
-  } catch {
-    // not configured — fine
-  }
-  try {
-    radarr = await getRadarrClient();
-  } catch {
-    // not configured — fine
-  }
+async function loadArrClients(): Promise<{ sonarr: SonarrClient[]; radarr: RadarrClient[] }> {
+  const sonarr = (await getSonarrClients()).map((x) => x.client);
+  const radarr = (await getRadarrClients()).map((x) => x.client);
   return { sonarr, radarr };
 }
 
