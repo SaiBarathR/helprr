@@ -462,7 +462,7 @@ function QueueTab({
     onCountChange(sorted.length);
   }, [sorted.length, onCountChange]);
 
-  async function handleRemove(id: number, source: string) {
+  async function handleRemove(id: number, source: string, instanceId?: string) {
     setRemoving(true);
     // The removed item leaves the queue (total -1) and, if it was in a
     // failed/import-blocked state, the attention count too.
@@ -470,7 +470,8 @@ function QueueTab({
       ? classifyQueueIssue(selectedItem.trackedDownloadState, selectedItem.trackedDownloadStatus) !== null
       : false;
     try {
-      const res = await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false`, { method: 'DELETE' });
+      const instanceQs = instanceId ? `&instanceId=${instanceId}` : '';
+      const res = await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false${instanceQs}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to remove');
@@ -641,7 +642,7 @@ function QueueTab({
                     <Button
                       variant="outline"
                       className="w-full border-destructive text-destructive hover:bg-destructive/10"
-                      onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr')}
+                      onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr', selectedItem.instanceId)}
                       disabled={removing}
                     >
                       {removing ? (
@@ -760,6 +761,7 @@ function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
     });
     if (item.seriesId) params.set('seriesId', String(item.seriesId));
     if (item.movieId) params.set('movieId', String(item.movieId));
+    if (item.instanceId) params.set('instanceId', item.instanceId);
     router.push(`/activity/import?${params}`);
   }
 

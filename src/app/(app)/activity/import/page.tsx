@@ -48,6 +48,7 @@ function ManualImportContent() {
   const source = (searchParams.get('source') || 'sonarr') as 'sonarr' | 'radarr';
   const seriesId = searchParams.get('seriesId');
   const movieId = searchParams.get('movieId');
+  const instanceId = searchParams.get('instanceId') || '';
   const itemTitle = searchParams.get('title') || 'Manual Import';
 
   const isSonarr = source === 'sonarr';
@@ -79,13 +80,15 @@ function ManualImportContent() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ downloadId, source });
+      if (instanceId) params.set('instanceId', instanceId);
+      const episodesQs = instanceId ? `?instanceId=${instanceId}` : '';
       const fetches: Promise<unknown>[] = [
         fetch(`/api/activity/manualimport?${params}`).then((r) => r.ok ? r.json() : []),
       ];
 
       if (isSonarr && seriesId) {
         fetches.push(
-          fetch(`/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : [])
+          fetch(`/api/sonarr/${seriesId}/episodes${episodesQs}`).then((r) => r.ok ? r.json() : [])
         );
       }
 
@@ -228,7 +231,7 @@ function ManualImportContent() {
       const res = await fetch('/api/activity/manualimport', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, files: payload }),
+        body: JSON.stringify({ source, instanceId: instanceId || undefined, files: payload }),
       });
 
       if (res.ok) {
