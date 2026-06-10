@@ -58,8 +58,13 @@ async function getHandler(request: NextRequest) {
 
     const tagged = (await Promise.all(
       instances.map(async ({ connection, client }) => {
-        const movies = await client.getMovies();
-        return movies.map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
+        try {
+          const movies = await client.getMovies();
+          return movies.map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
+        } catch {
+          // One unreachable/misconfigured instance must not blank the whole library.
+          return [];
+        }
       })
     )).flat();
 
