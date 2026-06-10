@@ -14,13 +14,13 @@ import type { SonarrSeries } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import { anilistRateLimitResponse } from '@/lib/anilist-http';
 
-async function getAnimeSeries(id: string) {
+async function getAnimeSeries(id: string, instanceId?: string) {
   const seriesId = Number(id);
   if (!Number.isFinite(seriesId) || seriesId <= 0) {
     throw new Error('Invalid series ID');
   }
 
-  const client = await getSonarrClient();
+  const client = await getSonarrClient(instanceId);
   let series: SonarrSeries;
   try {
     series = await client.getSeriesById(seriesId);
@@ -63,7 +63,8 @@ async function getHandler(
 
   try {
     const { id } = await params;
-    const series = await getAnimeSeries(id);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const series = await getAnimeSeries(id, instanceId);
     const searchParams = new URL(request.url).searchParams;
 
     const detailRaw = searchParams.get('detail');
@@ -106,7 +107,8 @@ async function postHandler(
     }
 
     const { id } = await params;
-    const series = await getAnimeSeries(id);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const series = await getAnimeSeries(id, instanceId);
     const response = await addManualEntry(series, anilistMediaId);
     return NextResponse.json(response);
   } catch (error) {
@@ -135,7 +137,8 @@ async function patchHandler(
     }
 
     const { id } = await params;
-    const series = await getAnimeSeries(id);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const series = await getAnimeSeries(id, instanceId);
     const response = await setPrimaryEntry(series, primaryId);
     return NextResponse.json(response);
   } catch (error) {
@@ -158,7 +161,8 @@ async function deleteHandler(
 
   try {
     const { id } = await params;
-    const series = await getAnimeSeries(id);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const series = await getAnimeSeries(id, instanceId);
     const raw = new URL(request.url).searchParams.get('anilistMediaId');
 
     if (raw != null && raw !== '') {

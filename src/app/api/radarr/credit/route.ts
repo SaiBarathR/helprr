@@ -18,7 +18,8 @@ async function getHandler(request: NextRequest) {
   }
 
   try {
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     const credits = await client.getCredits(movieId);
     return NextResponse.json(credits);
   } catch (error) {

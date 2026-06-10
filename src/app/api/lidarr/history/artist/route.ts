@@ -24,7 +24,8 @@ async function getHandler(request: NextRequest) {
       }
       albumId = parsed;
     }
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const history = await client.getArtistHistory(artistId, albumId);
     return NextResponse.json(history);
   } catch (error) {

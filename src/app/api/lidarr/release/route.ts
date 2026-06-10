@@ -38,7 +38,8 @@ async function getHandler(request: NextRequest) {
       params.artistId = parsed;
     }
 
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const releases = await client.getReleases(params);
     return NextResponse.json(releases);
   } catch (error) {
@@ -47,7 +48,7 @@ async function getHandler(request: NextRequest) {
   }
 }
 
-async function postHandler(request: Request) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const capError = await requireCapability('activity.manage');
@@ -65,7 +66,8 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'indexerId must be a positive integer' }, { status: 400 });
     }
 
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     await client.grabRelease(guid, parsedIndexerId, downloadClientId);
     return NextResponse.json({ success: true });
   } catch (error) {

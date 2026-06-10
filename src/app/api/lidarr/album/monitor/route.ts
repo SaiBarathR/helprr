@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function putHandler(request: Request) {
+async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const capError = await requireCapability('music.editMonitoring');
@@ -29,7 +29,8 @@ async function putHandler(request: Request) {
       validIds.push(n);
     }
 
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     await client.setAlbumsMonitored(validIds, monitored);
     return NextResponse.json({ success: true });
   } catch (error) {

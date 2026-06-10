@@ -4,7 +4,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ albumId: string }> }
 ) {
   const authError = await requireAuth();
@@ -18,7 +18,8 @@ async function getHandler(
     if (!Number.isInteger(id) || id <= 0) {
       return NextResponse.json({ error: 'Invalid album id' }, { status: 400 });
     }
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const album = await client.getAlbumById(id);
     return NextResponse.json(album);
   } catch (error) {
@@ -50,7 +51,8 @@ async function putHandler(
     if ('id' in body && Number((body as { id?: unknown }).id) !== pathId) {
       return NextResponse.json({ error: 'Path id and body id must match' }, { status: 400 });
     }
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const result = await client.updateAlbum(body);
     return NextResponse.json(result);
   } catch (error) {

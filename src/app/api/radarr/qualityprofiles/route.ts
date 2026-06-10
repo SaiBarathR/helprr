@@ -1,14 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function getHandler() {
+async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
 
   try {
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     const profiles = await client.getQualityProfiles();
     return NextResponse.json(profiles);
   } catch (error) {

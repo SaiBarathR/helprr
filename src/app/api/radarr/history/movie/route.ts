@@ -16,7 +16,8 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'movieId is required' }, { status: 400 });
     }
 
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     const history = await client.getMovieHistory(movieId);
     return NextResponse.json(history);
   } catch (error) {

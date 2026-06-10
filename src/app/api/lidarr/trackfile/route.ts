@@ -34,7 +34,8 @@ async function getHandler(request: NextRequest) {
       params.artistId = Number(artistIdParam);
     }
 
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const files = await client.getTrackFiles(params);
     return NextResponse.json(files);
   } catch (error) {

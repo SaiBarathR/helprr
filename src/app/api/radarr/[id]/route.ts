@@ -13,7 +13,7 @@ function parsePositiveId(id: string): { value: number } | { error: NextResponse 
 }
 
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -23,7 +23,8 @@ async function getHandler(
     const { id } = await params;
     const parsed = parsePositiveId(id);
     if ('error' in parsed) return parsed.error;
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     const movie = await client.getMovieById(parsed.value);
     return NextResponse.json(movie);
   } catch (error) {
@@ -55,7 +56,8 @@ async function putHandler(
       );
     }
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
 
     // Admins edit freely; only members are diffed against the live movie and 403'd
     // for changing monitoring / tags / root folder without the matching capability.
@@ -96,7 +98,8 @@ async function deleteHandler(
     if ('error' in parsed) return parsed.error;
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     await client.deleteMovie(parsed.value, deleteFiles);
     return NextResponse.json({ success: true });
   } catch (error) {

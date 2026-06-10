@@ -5,7 +5,7 @@ import { diffSeriesEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
@@ -13,7 +13,8 @@ async function getHandler(
 
   try {
     const { id } = await params;
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     const series = await client.getSeriesById(Number(id));
     return NextResponse.json(series);
   } catch (error) {
@@ -43,7 +44,8 @@ async function putHandler(
       return NextResponse.json({ error: 'Path id and body id must match' }, { status: 400 });
     }
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
 
     // Admins edit freely; only members are diffed against the live series and 403'd
     // for changing monitoring / tags / root folder without the matching capability.
@@ -82,7 +84,8 @@ async function deleteHandler(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     await client.deleteSeries(Number(id), deleteFiles);
     return NextResponse.json({ success: true });
   } catch (error) {

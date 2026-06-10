@@ -12,7 +12,8 @@ async function getHandler(request: NextRequest) {
     if (!Number.isFinite(seriesId) || seriesId <= 0) {
       return NextResponse.json({ error: 'seriesId is required' }, { status: 400 });
     }
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     const preview = await client.getRenamePreview(seriesId);
     return NextResponse.json(preview);
   } catch (error) {

@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function postHandler(request: Request) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const capError = await requireCapability('activity.manage');
@@ -11,7 +11,8 @@ async function postHandler(request: Request) {
 
   try {
     const body = await request.json();
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
 
     let result;
     switch (body.name) {

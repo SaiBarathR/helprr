@@ -22,7 +22,8 @@ async function getHandler(request: NextRequest) {
       }
       albumId = parsed;
     }
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const preview = await client.getRenamePreview(artistId, albumId);
     return NextResponse.json(preview);
   } catch (error) {
