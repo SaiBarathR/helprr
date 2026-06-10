@@ -199,10 +199,13 @@ export default function SeriesPage() {
         fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
       ]);
 
+      // A misconfigured instance can answer 200 with a non-array body (e.g. an
+      // arr web-UI page when its URL/key is wrong); never let that white-screen
+      // the library — fall back to empty for any non-array.
       const next: SeriesPageCacheData = {
-        series: s,
-        qualityProfiles: q,
-        tags: t,
+        series: Array.isArray(s) ? s : [],
+        qualityProfiles: Array.isArray(q) ? q : [],
+        tags: Array.isArray(t) ? t : [],
       };
 
       setSeries(next.series);

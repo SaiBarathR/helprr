@@ -250,10 +250,12 @@ export default function MoviesPage() {
         fetch('/api/radarr/tags').then((r) => r.ok ? r.json() : []),
       ]);
 
+      // A misconfigured instance can answer 200 with a non-array body; never let
+      // that white-screen the library — fall back to empty for any non-array.
       const next: MoviesPageCacheData = {
-        movies: m,
-        qualityProfiles: q,
-        tags: t,
+        movies: Array.isArray(m) ? m : [],
+        qualityProfiles: Array.isArray(q) ? q : [],
+        tags: Array.isArray(t) ? t : [],
       };
 
       setMovies(next.movies);

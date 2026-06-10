@@ -236,10 +236,12 @@ export default function MusicPage() {
         fetch('/api/lidarr/metadataprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load metadata profiles'); return r.json(); }),
       ]);
 
+      // A misconfigured instance can answer 200 with a non-array body; never let
+      // that white-screen the library — fall back to empty for any non-array.
       const next: MusicPageCacheData = {
-        artists: a,
-        qualityProfiles: q,
-        metadataProfiles: mp,
+        artists: Array.isArray(a) ? a : [],
+        qualityProfiles: Array.isArray(q) ? q : [],
+        metadataProfiles: Array.isArray(mp) ? mp : [],
       };
 
       setArtists(next.artists);
