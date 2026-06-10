@@ -55,9 +55,10 @@ export function InstanceFilter({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5">
-          <Layers className="h-3.5 w-3.5" />
-          <span className="max-w-[10rem] truncate">{current}</span>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2 sm:px-3" title={current}>
+          <Layers className="h-3.5 w-3.5 shrink-0" />
+          {/* Icon-only on mobile to avoid horizontal overflow; label shows from sm up. */}
+          <span className="hidden sm:inline max-w-[10rem] truncate">{current}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align}>

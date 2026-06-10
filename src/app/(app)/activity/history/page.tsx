@@ -175,15 +175,11 @@ export default function HistoryPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/services');
+        const res = await fetch('/api/instances');
         if (!res.ok) return;
-        const conns = (await res.json()) as Array<{ id: string; label: string; type: string }>;
+        const conns = (await res.json()) as Array<{ id: string; label: string }>;
         if (cancelled || !Array.isArray(conns)) return;
-        setInstanceOptions(
-          conns
-            .filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')
-            .map((c) => ({ id: c.id, label: c.label }))
-        );
+        setInstanceOptions(conns.map((c) => ({ id: c.id, label: c.label })));
       } catch {
         // ignore — the filter just won't render
       }

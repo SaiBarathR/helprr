@@ -18,6 +18,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -32,7 +34,7 @@ import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
-import { InstanceFilter, type InstanceOption } from '@/components/instance-filter';
+import { type InstanceOption } from '@/components/instance-filter';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 
@@ -192,15 +194,11 @@ export default function ActivityPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/services');
+        const res = await fetch('/api/instances');
         if (!res.ok) return;
-        const conns = (await res.json()) as Array<{ id: string; label: string; type: string }>;
+        const conns = (await res.json()) as Array<{ id: string; label: string }>;
         if (cancelled || !Array.isArray(conns)) return;
-        setInstanceOptions(
-          conns
-            .filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')
-            .map((c) => ({ id: c.id, label: c.label }))
-        );
+        setInstanceOptions(conns.map((c) => ({ id: c.id, label: c.label })));
       } catch {
         // ignore — filter just won't render
       }
@@ -310,11 +308,32 @@ export default function ActivityPage() {
                     {opt.label}
                   </DropdownMenuCheckboxItem>
                 ))}
+                {/* Instance sub-filter, folded into this same dropdown to save mobile width. */}
+                {instanceOptions.length > 1 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Instance</DropdownMenuLabel>
+                    <DropdownMenuCheckboxItem
+                      checked={instanceFilter === 'all'}
+                      onCheckedChange={() => setInstanceFilter('all')}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      All instances
+                    </DropdownMenuCheckboxItem>
+                    {instanceOptions.map((inst) => (
+                      <DropdownMenuCheckboxItem
+                        key={inst.id}
+                        checked={instanceFilter === inst.id}
+                        onCheckedChange={() => setInstanceFilter(inst.id)}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        {inst.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {/* Instance filter (only when >1 instance) */}
-            <InstanceFilter instances={instanceOptions} value={instanceFilter} onChange={setInstanceFilter} align="start" />
 
             {/* Sort */}
             {availableSortOptions.length > 0 && (
