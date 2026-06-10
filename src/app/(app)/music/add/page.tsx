@@ -69,7 +69,7 @@ function AddArtistPageContent() {
 
   // Load Lidarr instances; default to the marked default (picker only shows when >1).
   useEffect(() => {
-    fetch('/api/services')
+    fetch('/api/instances')
       .then((r) => (r.ok ? r.json() : []))
       .then((all: Array<{ id: string; type: string; label: string; isDefault: boolean }>) => {
         const list = (Array.isArray(all) ? all : [])
