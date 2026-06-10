@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -104,9 +104,21 @@ function formatRatingVotes(votes: number): string {
   return String(votes);
 }
 
+// Append the viewing instance to a Radarr API path so the detail page reads/mutates
+// the correct instance. No-op when instance is undefined (single-instance-identical).
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+
+function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function MovieDetailPage() {
   const { id } = useParams();
   const movieId = Number(id);
+  const instance = useSearchParams().get('instance') ?? undefined;
   const initialSnapshot = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
   const detailViewKey: DetailViewKey = `movie:${movieId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
@@ -183,7 +195,7 @@ export default function MovieDetailPage() {
 
     try {
       const [movieResult, nextQualityProfiles, nextTags] = await Promise.all([
-        fetch(`/api/radarr/${movieId}`).then(async (response): Promise<{ movie: RadarrMovie | null; notFound: boolean }> => {
+        radarrFetch(instance, `/api/radarr/${movieId}`).then(async (response): Promise<{ movie: RadarrMovie | null; notFound: boolean }> => {
           if (response.ok) {
             return { movie: await response.json() as RadarrMovie, notFound: false };
           }
@@ -203,8 +215,8 @@ export default function MovieDetailPage() {
 
           throw new Error(message || `Failed to fetch movie (${response.status})`);
         }),
-        fetch('/api/radarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? await r.json() as QualityProfile[] : [])),
-        fetch('/api/radarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? await r.json() as Tag[] : [])),
+        radarrFetch(instance, '/api/radarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? await r.json() as QualityProfile[] : [])),
+        radarrFetch(instance, '/api/radarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? await r.json() as Tag[] : [])),
       ]);
 
       const nextMovie = movieResult.movie;
@@ -225,7 +237,7 @@ export default function MovieDetailPage() {
       }
 
       // Fetch credits in background (non-blocking)
-      void fetch(`/api/radarr/credit?movieId=${movieId}`)
+      void radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`)
         .then(async (r) => (r.ok ? (await r.json()) as RadarrCredit[] : []))
         .then((nextCredits) => {
           if (creditsRequestId !== creditsRequestIdRef.current) return;
@@ -424,7 +436,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('search');
     try {
-      await fetch('/api/radarr/command', {
+      await radarrFetch(instance, '/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'MoviesSearch', movieIds: [movie.id] }),
@@ -438,7 +450,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('refresh');
     try {
-      const res = await fetch('/api/radarr/command', {
+      const res = await radarrFetch(instance, '/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshMovie', movieId: movie.id }),
@@ -460,7 +472,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('monitor');
     try {
-      const res = await fetch(`/api/radarr/${movie.id}`, {
+      const res = await radarrFetch(instance, `/api/radarr/${movie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...movie, monitored: !movie.monitored }),
@@ -480,7 +492,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setDeleting(true);
     try {
-      await fetch(`/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
+      await radarrFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
       invalidateListData('movies');
       clearMovieDetailSnapshot(movie.id);
       toast.success('Movie deleted');

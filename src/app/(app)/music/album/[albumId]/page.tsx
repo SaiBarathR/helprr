@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -58,9 +58,21 @@ function formatDuration(ms?: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// Append the viewing instance to a Lidarr API path so the detail page reads/mutates
+// the correct instance. No-op when instance is undefined (single-instance-identical).
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+
+function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function AlbumDetailPage() {
   const { albumId: albumIdParam } = useParams();
   const albumId = Number(albumIdParam);
+  const instance = useSearchParams().get('instance') ?? undefined;
   const initialSnapshot = Number.isFinite(albumId) ? getAlbumDetailSnapshot(albumId) : null;
   const detailViewKey: DetailViewKey = `album:${albumId}`;
   const scrollReadyRef = useRef(false);
@@ -93,9 +105,9 @@ export default function AlbumDetailPage() {
     const requestId = ++loadRequestRef.current;
     try {
       const [albumResult, nextTracks, nextFiles] = await Promise.all([
-        fetch(`/api/lidarr/album/${albumId}`).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
-        fetch(`/api/lidarr/album/${albumId}/tracks`).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
-        fetch(`/api/lidarr/trackfile?albumId=${albumId}`).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
+        lidarrFetch(instance, `/api/lidarr/album/${albumId}`).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
+        lidarrFetch(instance, `/api/lidarr/album/${albumId}/tracks`).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
+        lidarrFetch(instance, `/api/lidarr/trackfile?albumId=${albumId}`).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
       ]);
 
       if (requestId !== loadRequestRef.current) return;
@@ -174,7 +186,7 @@ export default function AlbumDetailPage() {
     if (!album) return;
     setActionLoading('search');
     try {
-      const res = await fetch('/api/lidarr/command', {
+      const res = await lidarrFetch(instance, '/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'AlbumSearch', albumIds: [album.id] }),
@@ -190,7 +202,7 @@ export default function AlbumDetailPage() {
     setActionLoading('monitor');
     const next = !album.monitored;
     try {
-      const res = await fetch('/api/lidarr/album/monitor', {
+      const res = await lidarrFetch(instance, '/api/lidarr/album/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ albumIds: [album.id], monitored: next }),
@@ -214,7 +226,7 @@ export default function AlbumDetailPage() {
         anyReleaseOk: false,
         releases: album.releases.map((r) => ({ ...r, monitored: r.id === releaseId })),
       };
-      const res = await fetch(`/api/lidarr/album/${album.id}`, {
+      const res = await lidarrFetch(instance, `/api/lidarr/album/${album.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),

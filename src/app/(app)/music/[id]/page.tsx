@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -93,9 +93,21 @@ function albumYear(album: LidarrAlbum): number | null {
   return Number.isFinite(y) ? y : null;
 }
 
+// Append the viewing instance to a Lidarr API path so the detail page reads/mutates
+// the correct instance. No-op when instance is undefined (single-instance-identical).
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+
+function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function ArtistDetailPage() {
   const { id } = useParams();
   const artistId = Number(id);
+  const instance = useSearchParams().get('instance') ?? undefined;
   const initialSnapshot = Number.isFinite(artistId) ? getArtistDetailSnapshot(artistId) : null;
   const detailViewKey: DetailViewKey = `artist:${artistId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
@@ -147,11 +159,11 @@ export default function ArtistDetailPage() {
     const requestId = ++loadRequestRef.current;
     try {
       const [artistResult, nextAlbums, nextQp, nextMp, nextTags] = await Promise.all([
-        fetch(`/api/lidarr/${artistId}`).then(async (r): Promise<LidarrArtist | null> => (r.ok ? (await r.json() as LidarrArtist) : null)),
-        fetch(`/api/lidarr/${artistId}/albums`).then(async (r): Promise<LidarrAlbum[]> => (r.ok ? (await r.json() as LidarrAlbum[]) : [])),
-        fetch('/api/lidarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? (await r.json() as QualityProfile[]) : [])),
-        fetch('/api/lidarr/metadataprofiles').then(async (r): Promise<LidarrMetadataProfile[]> => (r.ok ? (await r.json() as LidarrMetadataProfile[]) : [])),
-        fetch('/api/lidarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? (await r.json() as Tag[]) : [])),
+        lidarrFetch(instance, `/api/lidarr/${artistId}`).then(async (r): Promise<LidarrArtist | null> => (r.ok ? (await r.json() as LidarrArtist) : null)),
+        lidarrFetch(instance, `/api/lidarr/${artistId}/albums`).then(async (r): Promise<LidarrAlbum[]> => (r.ok ? (await r.json() as LidarrAlbum[]) : [])),
+        lidarrFetch(instance, '/api/lidarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? (await r.json() as QualityProfile[]) : [])),
+        lidarrFetch(instance, '/api/lidarr/metadataprofiles').then(async (r): Promise<LidarrMetadataProfile[]> => (r.ok ? (await r.json() as LidarrMetadataProfile[]) : [])),
+        lidarrFetch(instance, '/api/lidarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? (await r.json() as Tag[]) : [])),
       ]);
 
       if (requestId !== loadRequestRef.current) return;
@@ -259,7 +271,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('search');
     try {
-      const res = await fetch('/api/lidarr/command', {
+      const res = await lidarrFetch(instance, '/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'ArtistSearch', artistId: artist.id }),
@@ -274,7 +286,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('refresh');
     try {
-      const res = await fetch('/api/lidarr/command', {
+      const res = await lidarrFetch(instance, '/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshArtist', artistId: artist.id }),
@@ -296,7 +308,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('monitor');
     try {
-      const res = await fetch(`/api/lidarr/${artist.id}`, {
+      const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...artist, monitored: !artist.monitored }),
@@ -317,7 +329,7 @@ export default function ArtistDetailPage() {
     setAlbumMonitorPending(album.id);
     const nextMonitored = !album.monitored;
     try {
-      const res = await fetch('/api/lidarr/album/monitor', {
+      const res = await lidarrFetch(instance, '/api/lidarr/album/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ albumIds: [album.id], monitored: nextMonitored }),
@@ -339,7 +351,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
+      const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (res.ok) {
         invalidateListData('music');
         clearArtistDetailSnapshot(artist.id);

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -136,10 +136,22 @@ function waitForElementScrollY(
   });
 }
 
+// Append the viewing instance to a Sonarr API path so the detail page reads/mutates
+// the correct instance. No-op (and thus single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+
+function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function SeriesDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const seriesId = Number(id);
+  const instance = useSearchParams().get('instance') ?? undefined;
   const initialSnapshot = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId) : null;
   const detailViewKey: DetailViewKey = `series:${seriesId}`;
   const currentSeriesIdRef = useRef(seriesId);
@@ -267,11 +279,11 @@ export default function SeriesDetailPage() {
 
     try {
       const [nextSeries, nextEpisodes, nextQualityProfiles, nextRootFolders, nextTags] = await Promise.all([
-        fetch(`/api/sonarr/${seriesId}`).then((r) => r.ok ? r.json() : null),
-        fetch(`/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}`).then((r) => r.ok ? r.json() : null),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, '/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, '/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, '/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
       ]);
 
       if (activeSeriesId !== currentSeriesIdRef.current) return;
@@ -420,7 +432,7 @@ export default function SeriesDetailPage() {
       setCredits({ cast: [], crew: [] });
     }
     const controller = new AbortController();
-    fetch(`/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
+    sonarrFetch(instance, `/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
       .then((r) => r.ok ? r.json() : { cast: [], crew: [] })
       .then((data: SeriesCredits) => {
         setCredits(data);
@@ -506,7 +518,7 @@ export default function SeriesDetailPage() {
 
     // Lazy page load: the default GET returns the mapping + primary detail only;
     // other seasons fetch when their tab is selected.
-    fetch(`/api/sonarr/${series.id}/anime`, { signal: controller.signal })
+    sonarrFetch(instance, `/api/sonarr/${series.id}/anime`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
@@ -562,7 +574,7 @@ export default function SeriesDetailPage() {
       const entryId = activeAnimeEntryIdRef.current;
       if (entryId == null) return;
       try {
-        const response = await fetch(`/api/sonarr/${series.id}/anime?detail=${entryId}`);
+        const response = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`);
         if (!response.ok) return;
         const data: SeriesAniListEntryDetailResponse = await response.json();
         if (cancelled) return;
@@ -588,7 +600,7 @@ export default function SeriesDetailPage() {
         }
 
         // The on-screen entry was pruned server-side — resync mapping + primary.
-        const full = await fetch(`/api/sonarr/${series.id}/anime`);
+        const full = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime`);
         if (!full.ok) return;
         const fullData: SeriesAniListResponse = await full.json();
         if (cancelled) return;
@@ -660,7 +672,7 @@ export default function SeriesDetailPage() {
 
     const controller = new AbortController();
     const activeSeriesId = seriesId;
-    fetch(`/api/sonarr/${series.id}/anime?full=1`, { signal: controller.signal })
+    sonarrFetch(instance, `/api/sonarr/${series.id}/anime?full=1`, { signal: controller.signal })
       .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListResponse>) : null))
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
@@ -699,7 +711,7 @@ export default function SeriesDetailPage() {
 
     const activeSeriesId = seriesId;
     setActiveDetailLoading(true);
-    fetch(`/api/sonarr/${series.id}/anime?detail=${entryId}`)
+    sonarrFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`)
       .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListEntryDetailResponse>) : null))
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
@@ -731,7 +743,7 @@ export default function SeriesDetailPage() {
     if (!series?.id) return;
     const activeSeriesId = seriesId;
     try {
-      const res = await fetch(`/api/sonarr/${series.id}/anime?full=1`);
+      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime?full=1`);
       if (!res.ok) return;
       const data: SeriesAniListResponse = await res.json();
       if (activeSeriesId !== currentSeriesIdRef.current) return;
@@ -862,7 +874,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('search');
     try {
-      await fetch('/api/sonarr/command', {
+      await sonarrFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'SeriesSearch', seriesId: series.id }),
@@ -876,7 +888,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('monitor');
     try {
-      const res = await fetch(`/api/sonarr/${series.id}`, {
+      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...series, monitored: !series.monitored }),
@@ -904,7 +916,7 @@ export default function SeriesDetailPage() {
           s.seasonNumber === seasonNumber ? { ...s, monitored } : s
         ),
       };
-      const res = await fetch(`/api/sonarr/${series.id}`, {
+      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
@@ -927,7 +939,7 @@ export default function SeriesDetailPage() {
     if (!series || !monitorOption) return;
     setActionLoading('applyMonitor');
     try {
-      await fetch('/api/sonarr/command', {
+      await sonarrFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -963,7 +975,7 @@ export default function SeriesDetailPage() {
         }),
         addOptions: { monitor: monitorOption },
       };
-      const updateRes = await fetch(`/api/sonarr/${series.id}`, {
+      const updateRes = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(monitorUpdate),
@@ -989,7 +1001,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('refresh');
     try {
-      const res = await fetch('/api/sonarr/command', {
+      const res = await sonarrFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: series.id }),
@@ -1011,7 +1023,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setDeleting(true);
     try {
-      await fetch(`/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
+      await sonarrFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
       invalidateListData('series');
       clearSeriesDetailSnapshot(series.id);
       toast.success('Series deleted');
