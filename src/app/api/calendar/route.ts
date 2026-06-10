@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
@@ -7,9 +7,6 @@ import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import type {
   CalendarEvent,
   MovieReleaseType,
-  SonarrCalendarEntry,
-  RadarrCalendarEntry,
-  LidarrCalendarEntry,
 } from '@/types';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -96,107 +93,104 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     const events: CalendarEvent[] = [];
-
-    // Fetch from Sonarr, Radarr and Lidarr in parallel
-    const [sonarrResult, radarrResult, lidarrResult] = await Promise.allSettled([
-      (async () => {
-        try {
-          const sonarr = await getSonarrClient();
-          return await sonarr.getCalendar(start!, end!);
-        } catch {
-          return [] as SonarrCalendarEntry[];
-        }
-      })(),
-      (async () => {
-        try {
-          const radarr = await getRadarrClient();
-          return await radarr.getCalendar(start!, end!);
-        } catch {
-          return [] as RadarrCalendarEntry[];
-        }
-      })(),
-      (async () => {
-        try {
-          const lidarr = await getLidarrClient();
-          return await lidarr.getCalendar(start!, end!);
-        } catch {
-          return [] as LidarrCalendarEntry[];
-        }
-      })(),
-    ]);
-
     const startMs = new Date(start!).getTime();
     const endMs = new Date(end!).getTime();
 
-    // Transform Sonarr episodes
-    if (sonarrResult.status === 'fulfilled') {
-      for (const ep of sonarrResult.value) {
-        events.push({
-          id: `sonarr-${ep.id}`,
-          type: 'episode',
-          title: ep.series.title,
-          subtitle: `S${ep.seasonNumber.toString().padStart(2, '0')}E${ep.episodeNumber.toString().padStart(2, '0')} - ${ep.title}`,
-          date: ep.airDateUtc,
-          hasFile: ep.hasFile,
-          monitored: ep.monitored,
-          seriesId: ep.seriesId,
-          images: ep.series.images,
-          ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
-        });
-      }
-    }
+    // Fetch from every instance of Sonarr, Radarr and Lidarr in parallel, tagging
+    // each event with its instance so detail links resolve to the right one.
+    const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
+      getSonarrClients().catch(() => []),
+      getRadarrClients().catch(() => []),
+      getLidarrClients().catch(() => []),
+    ]);
 
-    // Transform Radarr movies — fan out one event per release type in window
-    if (radarrResult.status === 'fulfilled') {
-      for (const m of radarrResult.value) {
-        const releases: Array<[MovieReleaseType, string | undefined]> = [
-          ['cinema', m.inCinemas],
-          ['physical', m.physicalRelease],
-          ['digital', m.digitalRelease],
-        ];
-        for (const [releaseType, dateStr] of releases) {
-          if (!dateStr) continue;
-          const ms = new Date(dateStr).getTime();
-          if (!Number.isFinite(ms)) continue;
-          if (ms < startMs || ms > endMs) continue;
-          events.push({
-            id: `radarr-${m.id}-${releaseType}`,
-            type: 'movie',
-            title: m.title,
-            subtitle: `${m.year} - ${m.studio}`,
-            date: dateStr,
-            hasFile: m.hasFile,
-            monitored: m.monitored,
-            movieId: m.id,
-            images: m.images,
-            releaseType,
-          });
+    await Promise.all([
+      ...sonarrClients.map(async ({ connection, client }) => {
+        try {
+          const entries = await client.getCalendar(start!, end!);
+          for (const ep of entries) {
+            events.push({
+              id: `sonarr-${connection.id}-${ep.id}`,
+              type: 'episode',
+              title: ep.series.title,
+              subtitle: `S${ep.seasonNumber.toString().padStart(2, '0')}E${ep.episodeNumber.toString().padStart(2, '0')} - ${ep.title}`,
+              date: ep.airDateUtc,
+              hasFile: ep.hasFile,
+              monitored: ep.monitored,
+              seriesId: ep.seriesId,
+              images: ep.series.images,
+              instanceId: connection.id,
+              instanceLabel: connection.label,
+              ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
+            });
+          }
+        } catch {
+          // Skip unreachable instance.
         }
-      }
-    }
-
-    // Transform Lidarr album releases
-    if (lidarrResult.status === 'fulfilled') {
-      for (const album of lidarrResult.value) {
-        if (!album.releaseDate) continue;
-        const ms = new Date(album.releaseDate).getTime();
-        if (!Number.isFinite(ms) || ms < startMs || ms > endMs) continue;
-        const stats = album.statistics;
-        const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
-        events.push({
-          id: `lidarr-${album.id}`,
-          type: 'album',
-          title: album.artist?.artistName ?? album.title,
-          subtitle: album.title,
-          date: album.releaseDate,
-          hasFile: complete,
-          monitored: album.monitored,
-          artistId: album.artistId,
-          albumId: album.id,
-          images: album.images,
-        });
-      }
-    }
+      }),
+      ...radarrClients.map(async ({ connection, client }) => {
+        try {
+          const entries = await client.getCalendar(start!, end!);
+          for (const m of entries) {
+            const releases: Array<[MovieReleaseType, string | undefined]> = [
+              ['cinema', m.inCinemas],
+              ['physical', m.physicalRelease],
+              ['digital', m.digitalRelease],
+            ];
+            for (const [releaseType, dateStr] of releases) {
+              if (!dateStr) continue;
+              const ms = new Date(dateStr).getTime();
+              if (!Number.isFinite(ms)) continue;
+              if (ms < startMs || ms > endMs) continue;
+              events.push({
+                id: `radarr-${connection.id}-${m.id}-${releaseType}`,
+                type: 'movie',
+                title: m.title,
+                subtitle: `${m.year} - ${m.studio}`,
+                date: dateStr,
+                hasFile: m.hasFile,
+                monitored: m.monitored,
+                movieId: m.id,
+                images: m.images,
+                releaseType,
+                instanceId: connection.id,
+                instanceLabel: connection.label,
+              });
+            }
+          }
+        } catch {
+          // Skip unreachable instance.
+        }
+      }),
+      ...lidarrClients.map(async ({ connection, client }) => {
+        try {
+          const entries = await client.getCalendar(start!, end!);
+          for (const album of entries) {
+            if (!album.releaseDate) continue;
+            const ms = new Date(album.releaseDate).getTime();
+            if (!Number.isFinite(ms) || ms < startMs || ms > endMs) continue;
+            const stats = album.statistics;
+            const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
+            events.push({
+              id: `lidarr-${connection.id}-${album.id}`,
+              type: 'album',
+              title: album.artist?.artistName ?? album.title,
+              subtitle: album.title,
+              date: album.releaseDate,
+              hasFile: complete,
+              monitored: album.monitored,
+              artistId: album.artistId,
+              albumId: album.id,
+              images: album.images,
+              instanceId: connection.id,
+              instanceLabel: connection.label,
+            });
+          }
+        } catch {
+          // Skip unreachable instance.
+        }
+      }),
+    ]);
 
     // Sort by date ascending
     events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());

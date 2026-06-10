@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
+import type { SonarrClient } from '@/lib/sonarr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import type { HistoryItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
@@ -136,83 +137,78 @@ async function getHandler(request: NextRequest) {
     const source = searchParams.get('source');
     const sourceFilter = source === 'sonarr' || source === 'radarr' || source === 'lidarr' ? source : undefined;
 
-    // Fetch large batches from both services so we can merge and re-sort
+    // Fetch large batches from every instance of both services so we can merge and re-sort
     const fetchSize = 500;
 
-    const [sonarrResult, radarrResult, lidarrResult] = await Promise.allSettled([
-      (async () => {
-        if (sourceFilter === 'radarr' || sourceFilter === 'lidarr') return null;
-        // Skip Sonarr fetch if filtering by movieId only
-        if (movieId && !episodeId && !seriesId) return null;
-        try {
-          const sonarr = await getSonarrClient();
-          return await sonarr.getHistory(1, fetchSize, sortKey, sortDirection, {
-            episodeId,
-            seriesId,
-            eventType: resolveUpstreamEventType('sonarr', eventTypeFilter),
-          });
-        } catch {
-          return null;
-        }
-      })(),
-      (async () => {
-        if (sourceFilter === 'sonarr' || sourceFilter === 'lidarr') return null;
-        // Skip Radarr fetch if filtering by episodeId/seriesId only
-        if ((episodeId || seriesId) && !movieId) return null;
-        try {
-          const radarr = await getRadarrClient();
-          return await radarr.getHistory(1, fetchSize, sortKey, sortDirection, {
-            movieId,
-            eventType: resolveUpstreamEventType('radarr', eventTypeFilter),
-          });
-        } catch {
-          return null;
-        }
-      })(),
-      (async () => {
-        if (sourceFilter === 'sonarr' || sourceFilter === 'radarr') return null;
-        // Lidarr has no movie/series/episode ids; skip when narrowing to those.
-        if (episodeId || seriesId || movieId) return null;
-        // Numeric upstream codes are service-specific; can't map to Lidarr.
-        if (eventTypeFilter.kind === 'numeric') return null;
-        try {
-          const lidarr = await getLidarrClient();
-          return await lidarr.getHistory(1, fetchSize, sortKey, sortDirection);
-        } catch {
-          return null;
-        }
-      })(),
-    ]);
+    const sonarrRecords =
+      sourceFilter === 'radarr' || sourceFilter === 'lidarr' || (movieId && !episodeId && !seriesId)
+        ? []
+        : (
+            await Promise.all(
+              (await getSonarrClients().catch(() => [])).map(async ({ connection, client }) => {
+                try {
+                  const res = await client.getHistory(1, fetchSize, sortKey, sortDirection, {
+                    episodeId,
+                    seriesId,
+                    eventType: resolveUpstreamEventType('sonarr', eventTypeFilter),
+                  });
+                  return res.records.map((record: HistoryItem) => ({
+                    ...record,
+                    source: 'sonarr' as const,
+                    instanceId: connection.id,
+                    instanceLabel: connection.label,
+                  }));
+                } catch {
+                  return [];
+                }
+              })
+            )
+          ).flat();
 
-    const sonarrData =
-      sonarrResult.status === 'fulfilled' && sonarrResult.value
-        ? sonarrResult.value
-        : { records: [], totalRecords: 0 };
+    const radarrRecords =
+      sourceFilter === 'sonarr' || sourceFilter === 'lidarr' || ((episodeId || seriesId) && !movieId)
+        ? []
+        : (
+            await Promise.all(
+              (await getRadarrClients().catch(() => [])).map(async ({ connection, client }) => {
+                try {
+                  const res = await client.getHistory(1, fetchSize, sortKey, sortDirection, {
+                    movieId,
+                    eventType: resolveUpstreamEventType('radarr', eventTypeFilter),
+                  });
+                  return res.records.map((record: HistoryItem) => ({
+                    ...record,
+                    source: 'radarr' as const,
+                    instanceId: connection.id,
+                    instanceLabel: connection.label,
+                  }));
+                } catch {
+                  return [];
+                }
+              })
+            )
+          ).flat();
 
-    const radarrData =
-      radarrResult.status === 'fulfilled' && radarrResult.value
-        ? radarrResult.value
-        : { records: [], totalRecords: 0 };
-
-    const sonarrRecords = sonarrData.records.map((record: HistoryItem) => ({
-      ...record,
-      source: 'sonarr' as const,
-    }));
-
-    const radarrRecords = radarrData.records.map((record: HistoryItem) => ({
-      ...record,
-      source: 'radarr' as const,
-    }));
-
-    const lidarrData =
-      lidarrResult.status === 'fulfilled' && lidarrResult.value
-        ? lidarrResult.value
-        : { records: [], totalRecords: 0 };
-
-    let lidarrRecords = lidarrData.records.map((record: HistoryItem) => ({
-      ...record,
-      source: 'lidarr' as const,
-    }));
+    let lidarrRecords =
+      sourceFilter === 'sonarr' || sourceFilter === 'radarr' || episodeId || seriesId || movieId || eventTypeFilter.kind === 'numeric'
+        ? []
+        : (
+            await Promise.all(
+              (await getLidarrClients().catch(() => [])).map(async ({ connection, client }) => {
+                try {
+                  const res = await client.getHistory(1, fetchSize, sortKey, sortDirection);
+                  return res.records.map((record: HistoryItem) => ({
+                    ...record,
+                    source: 'lidarr' as const,
+                    instanceId: connection.id,
+                    instanceLabel: connection.label,
+                  }));
+                } catch {
+                  return [];
+                }
+              })
+            )
+          ).flat();
 
     // Canonical filters are applied upstream for Sonarr/Radarr (numeric codes) but
     // must be applied locally for Lidarr (string event types). Raw filters fall
@@ -246,34 +242,43 @@ async function getHandler(request: NextRequest) {
     const startIndex = (page - 1) * pageSize;
     let paginatedRecords = mergedRecords.slice(startIndex, startIndex + pageSize);
 
-    // Enrich Sonarr rows with episode data by matching episode IDs in one batched call.
-    const sonarrEpisodeIds = Array.from(
-      new Set(
-        paginatedRecords
-          .filter(
-            (record): record is (HistoryItem & { source: 'sonarr'; episodeId: number }) =>
-              record.source === 'sonarr'
-              && typeof record.episodeId === 'number'
-              && Number.isFinite(record.episodeId)
-          )
-          .map((record) => record.episodeId)
-      )
+    // Enrich Sonarr rows with episode data, grouped by the originating instance
+    // (episode ids are per-instance, so each batch must hit its own Sonarr).
+    const sonarrRows = paginatedRecords.filter(
+      (record): record is (HistoryItem & { source: 'sonarr'; episodeId: number; instanceId: string; instanceLabel: string }) =>
+        record.source === 'sonarr'
+        && typeof record.episodeId === 'number'
+        && Number.isFinite(record.episodeId)
     );
 
-    if (sonarrEpisodeIds.length > 0) {
-      try {
-        const sonarr = await getSonarrClient();
-        const episodes = await sonarr.getEpisodesByIds(sonarrEpisodeIds);
-        const episodeById = new Map(episodes.map((episode) => [episode.id, episode]));
-        paginatedRecords = paginatedRecords.map((record) => {
-          if (record.source !== 'sonarr' || typeof record.episodeId !== 'number') return record;
-          const episode = episodeById.get(record.episodeId);
-          if (!episode) return record;
-          return { ...record, episode };
-        });
-      } catch {
-        // Keep history usable even if enrichment fails.
+    if (sonarrRows.length > 0) {
+      const idsByInstance = new Map<string, Set<number>>();
+      for (const record of sonarrRows) {
+        const key = record.instanceId ?? '';
+        const set = idsByInstance.get(key) ?? new Set<number>();
+        set.add(record.episodeId);
+        idsByInstance.set(key, set);
       }
+
+      const episodeByKey = new Map<string, Awaited<ReturnType<SonarrClient['getEpisodesByIds']>>[number]>();
+      await Promise.all(
+        [...idsByInstance.entries()].map(async ([instanceKey, ids]) => {
+          try {
+            const sonarr = await getSonarrClient(instanceKey || undefined);
+            const episodes = await sonarr.getEpisodesByIds([...ids]);
+            for (const episode of episodes) episodeByKey.set(`${instanceKey}:${episode.id}`, episode);
+          } catch {
+            // Keep history usable even if enrichment fails.
+          }
+        })
+      );
+
+      paginatedRecords = paginatedRecords.map((record) => {
+        if (record.source !== 'sonarr' || typeof record.episodeId !== 'number') return record;
+        const episode = episodeByKey.get(`${record.instanceId ?? ''}:${record.episodeId}`);
+        if (!episode) return record;
+        return { ...record, episode };
+      });
     }
 
     return NextResponse.json({
