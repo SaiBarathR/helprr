@@ -136,6 +136,11 @@ async function getHandler(request: NextRequest) {
     const movieId = searchParams.get('movieId') ? parseInt(searchParams.get('movieId')!, 10) : undefined;
     const source = searchParams.get('source');
     const sourceFilter = source === 'sonarr' || source === 'radarr' || source === 'lidarr' ? source : undefined;
+    // Optional per-instance scope: an instanceId belongs to exactly one type, so the
+    // other services' client lists filter down to empty and contribute no records.
+    const instanceId = searchParams.get('instanceId') ?? undefined;
+    const scopeToInstance = <T extends { connection: { id: string } }>(list: T[]): T[] =>
+      instanceId ? list.filter((x) => x.connection.id === instanceId) : list;
 
     // Fetch large batches from every instance of both services so we can merge and re-sort
     const fetchSize = 500;
@@ -145,7 +150,7 @@ async function getHandler(request: NextRequest) {
         ? []
         : (
             await Promise.all(
-              (await getSonarrClients().catch(() => [])).map(async ({ connection, client }) => {
+              scopeToInstance(await getSonarrClients().catch(() => [])).map(async ({ connection, client }) => {
                 try {
                   const res = await client.getHistory(1, fetchSize, sortKey, sortDirection, {
                     episodeId,
@@ -170,7 +175,7 @@ async function getHandler(request: NextRequest) {
         ? []
         : (
             await Promise.all(
-              (await getRadarrClients().catch(() => [])).map(async ({ connection, client }) => {
+              scopeToInstance(await getRadarrClients().catch(() => [])).map(async ({ connection, client }) => {
                 try {
                   const res = await client.getHistory(1, fetchSize, sortKey, sortDirection, {
                     movieId,
@@ -194,7 +199,7 @@ async function getHandler(request: NextRequest) {
         ? []
         : (
             await Promise.all(
-              (await getLidarrClients().catch(() => [])).map(async ({ connection, client }) => {
+              scopeToInstance(await getLidarrClients().catch(() => [])).map(async ({ connection, client }) => {
                 try {
                   const res = await client.getHistory(1, fetchSize, sortKey, sortDirection);
                   return res.records.map((record: HistoryItem) => ({

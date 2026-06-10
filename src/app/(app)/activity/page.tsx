@@ -32,6 +32,7 @@ import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
+import { InstanceFilter, type InstanceOption } from '@/components/instance-filter';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 
@@ -177,11 +178,42 @@ export default function ActivityPage() {
   const setSortBy = useUIStore((s) => s.setActivitySortBy);
   const filterBy = useUIStore((s) => s.activityFilterBy);
   const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
+  const instanceFilter = useUIStore((s) => s.activityInstanceFilter);
+  const setInstanceFilter = useUIStore((s) => s.setActivityInstanceFilter);
   const urlTab = searchParams.get('tab');
   const searchParamsKey = searchParams.toString();
   const tab = urlTab && isTabKey(urlTab) ? urlTab : activityTab;
   const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
+
+  // Load arr instances for the per-instance filter (shown only when >1 instance).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/services');
+        if (!res.ok) return;
+        const conns = (await res.json()) as Array<{ id: string; label: string; type: string }>;
+        if (cancelled || !Array.isArray(conns)) return;
+        setInstanceOptions(
+          conns
+            .filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')
+            .map((c) => ({ id: c.id, label: c.label }))
+        );
+      } catch {
+        // ignore — filter just won't render
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Drop a stale instance selection if that instance no longer exists.
+  useEffect(() => {
+    if (instanceFilter !== 'all' && instanceOptions.length > 0 && !instanceOptions.some((i) => i.id === instanceFilter)) {
+      setInstanceFilter('all');
+    }
+  }, [instanceOptions, instanceFilter, setInstanceFilter]);
   const initRef = useRef(false);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
@@ -281,6 +313,9 @@ export default function ActivityPage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* Instance filter (only when >1 instance) */}
+            <InstanceFilter instances={instanceOptions} value={instanceFilter} onChange={setInstanceFilter} align="start" />
+
             {/* Sort */}
             {availableSortOptions.length > 0 && (
               <DropdownMenu>
@@ -365,12 +400,13 @@ export default function ActivityPage() {
           <QueueTab
             sortBy={sortBy}
             filterBy={filterBy}
+            instanceFilter={instanceFilter}
             onCountChange={setQueueCount}
           />
         )}
-        {tab === 'failed' && <FailedImportsTab filterBy={filterBy} />}
-        {tab === 'missing' && <WantedTab type="missing" filterBy={filterBy} />}
-        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={filterBy} />}
+        {tab === 'failed' && <FailedImportsTab filterBy={filterBy} instanceFilter={instanceFilter} />}
+        {tab === 'missing' && <WantedTab type="missing" filterBy={filterBy} instanceFilter={instanceFilter} />}
+        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={filterBy} instanceFilter={instanceFilter} />}
       </div>
     </div>
   );
@@ -391,10 +427,12 @@ export default function ActivityPage() {
 function QueueTab({
   sortBy,
   filterBy,
+  instanceFilter,
   onCountChange,
 }: {
   sortBy: SortKey;
   filterBy: string[];
+  instanceFilter: string;
   onCountChange: (count: number) => void;
 }) {
   const canManageActivity = useCan('activity.manage');
@@ -435,9 +473,10 @@ function QueueTab({
   }, [fetchQueue, refreshIntervalMs]);
 
   // Apply filter
-  const filtered = filterBy.length === 0
-    ? queue
-    : queue.filter((item) => item.source !== undefined && filterBy.includes(item.source));
+  const filtered = queue.filter((item) =>
+    (filterBy.length === 0 || (item.source !== undefined && filterBy.includes(item.source)))
+    && (instanceFilter === 'all' || item.instanceId === instanceFilter)
+  );
 
   // Apply sort
   const sorted = [...filtered].sort((a, b) => {
@@ -714,7 +753,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
  * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
  */
 
-function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
+function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
@@ -741,10 +780,13 @@ function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
         if (filterBy.length > 0) {
           failed = failed.filter((r: QueueItem & { source?: string }) => r.source !== undefined && filterBy.includes(r.source));
         }
+        if (instanceFilter !== 'all') {
+          failed = failed.filter((r: QueueItem) => r.instanceId === instanceFilter);
+        }
         setQueue(failed);
       }
     } catch { } finally { setLoading(false); }
-  }, [filterBy]);
+  }, [filterBy, instanceFilter]);
 
   useEffect(() => { fetchFailed(); }, [filterBy, fetchFailed]);
 
@@ -814,6 +856,8 @@ function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
 interface WantedRecord {
   id: number;
   source: 'sonarr' | 'radarr' | 'lidarr';
+  instanceId?: string;
+  instanceLabel?: string;
   mediaType: 'episode' | 'movie' | 'album';
   title?: string;
   seriesId?: number;
@@ -839,7 +883,7 @@ interface WantedRecord {
  * @param filterBy - Selected sources for results (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources, otherwise results are limited to the selected sources.
  * @returns The tab content element that lists records, shows loading and empty states, provides a per-record search action, and supports "Load more" pagination.
  */
-function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: string[] }) {
+function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
   const [records, setRecords] = useState<WantedRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -857,9 +901,12 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
       const res = await fetch(`/api/activity/wanted?${params}`);
       if (res.ok) {
         const data = await res.json();
-        const incoming: WantedRecord[] = filterBy.length > 1
+        let incoming: WantedRecord[] = filterBy.length > 1
           ? (data.records || []).filter((r: WantedRecord) => filterBy.includes(r.source))
           : (data.records || []);
+        if (instanceFilter !== 'all') {
+          incoming = incoming.filter((r: WantedRecord) => r.instanceId === instanceFilter);
+        }
         if (p === 1) setRecords(incoming);
         else setRecords((prev) => [...prev, ...incoming]);
         // totalRecords counts raw (unfiltered) records, so gate "Load more" on
@@ -868,7 +915,7 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
         setHasMore(p * PAGE_SIZE < (data.totalRecords || 0));
       }
     } catch { } finally { setLoading(false); }
-  }, [filterBy, type]);
+  }, [filterBy, type, instanceFilter]);
 
   useEffect(() => { setPage(1); fetchWanted(1); }, [fetchWanted]);
 

@@ -210,7 +210,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 27;
+export const STORE_VERSION = 28;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -342,6 +342,10 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     state.moviesInstanceFilter = 'all';
     state.musicInstanceFilter = 'all';
   }
+  if (version < 28) {
+    state.calendarInstanceFilter = 'all';
+    state.activityInstanceFilter = 'all';
+  }
   return state;
 }
 
@@ -434,6 +438,10 @@ interface UIState {
   // Empty array = all instances. Multi-select set of sources (sonarr/radarr/lidarr).
   activityFilterBy: string[];
   setActivityFilterBy: (filterBy: string[]) => void;
+  // 'all' or a specific ServiceConnection id (instanceId). Only surfaced when a
+  // type has >1 instance.
+  activityInstanceFilter: string;
+  setActivityInstanceFilter: (id: string) => void;
   // Requests page (Seerr)
   requestsTab: RequestsTabPreference;
   setRequestsTab: (tab: RequestsTabPreference) => void;
@@ -455,6 +463,8 @@ interface UIState {
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie' | 'album') => void;
   calendarMonitoredOnly: boolean;
   setCalendarMonitoredOnly: (v: boolean) => void;
+  calendarInstanceFilter: string;
+  setCalendarInstanceFilter: (id: string) => void;
   // Navigation preferences
   navPosition: 'top' | 'bottom';
   setNavPosition: (position: 'top' | 'bottom') => void;
@@ -539,12 +549,14 @@ const PERSISTED_KEYS = [
   'activityTab',
   'activitySortBy',
   'activityFilterBy',
+  'activityInstanceFilter',
   'requestsTab',
   'requestsFilter',
   'notificationsFilters',
   'cleanupHistoryFilters',
   'calendarTypeFilter',
   'calendarMonitoredOnly',
+  'calendarInstanceFilter',
   'navPosition',
   'navOrder',
   'disabledNavItems',
@@ -695,6 +707,8 @@ export const useUIStore = create<UIState>()(
       setActivitySortBy: (sortBy) => set({ activitySortBy: sortBy }),
       activityFilterBy: [],
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
+      activityInstanceFilter: 'all',
+      setActivityInstanceFilter: (id) => set({ activityInstanceFilter: id }),
       // Requests
       requestsTab: 'requests',
       setRequestsTab: (tab) => set({ requestsTab: tab }),
@@ -734,6 +748,8 @@ export const useUIStore = create<UIState>()(
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
       calendarMonitoredOnly: false,
       setCalendarMonitoredOnly: (v) => set({ calendarMonitoredOnly: v }),
+      calendarInstanceFilter: 'all',
+      setCalendarInstanceFilter: (id) => set({ calendarInstanceFilter: id }),
       // Navigation
       navPosition: 'top',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),
