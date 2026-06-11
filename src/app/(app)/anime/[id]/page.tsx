@@ -105,12 +105,20 @@ export default function AnimeDetailPage() {
     state.detail?.library?.exists && state.detail.library.type === 'series'
       ? state.detail.library.id ?? null
       : null;
+  // The instance that holds that series — a series id is only unique within an
+  // instance, so the hint must name it or the server resolves the wrong one.
+  const libraryInstanceId =
+    state.detail?.library?.exists && state.detail.library.type === 'series'
+      ? state.detail.library.instanceId ?? null
+      : null;
   useEffect(() => {
     setSonarrMappings(null);
     if (!isAdmin || !detailFormat || isMovieFormat(detailFormat)) return;
 
     const controller = new AbortController();
-    const hint = librarySeriesId != null ? `?sonarrSeriesId=${librarySeriesId}` : '';
+    const hint = librarySeriesId != null
+      ? `?sonarrSeriesId=${librarySeriesId}${libraryInstanceId ? `&sonarrInstanceId=${libraryInstanceId}` : ''}`
+      : '';
     fetch(`/api/anime/${id}/sonarr${hint}`, { signal: controller.signal })
       .then((r) => (r.ok ? (r.json() as Promise<AnimeSonarrMappingsResponse>) : null))
       .then((data) => {
@@ -121,7 +129,7 @@ export default function AnimeDetailPage() {
       });
 
     return () => controller.abort();
-  }, [id, isAdmin, detailFormat, librarySeriesId]);
+  }, [id, isAdmin, detailFormat, librarySeriesId, libraryInstanceId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -793,6 +801,7 @@ export default function AnimeDetailPage() {
           anilistMediaId={detail.id}
           animeTitle={detail.title}
           sonarrSeriesHint={librarySeriesId}
+          sonarrInstanceHint={libraryInstanceId}
           onMappingsChanged={setSonarrMappings}
         />
       )}

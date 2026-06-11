@@ -62,19 +62,22 @@ async function getHandler(
     const hintId = hintRaw != null && hintRaw !== '' ? Number(hintRaw) : null;
     const hintInstanceRaw = new URL(request.url).searchParams.get('sonarrInstanceId');
     const hintInstanceId = hintInstanceRaw && hintInstanceRaw.trim() ? hintInstanceRaw.trim() : undefined;
-    if (
-      hintId != null
-      && Number.isFinite(hintId)
-      && hintId > 0
-      && !mappings.some((mapping) => mapping.sonarrSeriesId === hintId)
-    ) {
+    if (hintId != null && Number.isFinite(hintId) && hintId > 0) {
       try {
         const connection = await resolveConnection('SONARR', hintInstanceId);
-        const client = new SonarrClient(connection.url, connection.apiKey);
-        const series = await client.getSeriesById(hintId);
-        if (series && series.seriesType === 'anime') {
-          await ensureSeriesAniListMapping(series, connection.id);
-          mappings = await loadMappings(id);
+        // A series id is only unique within an instance, so only skip the lazy
+        // resolve when THIS instance already has the mapping — a same-numbered
+        // series in another instance must not suppress it.
+        const alreadyMapped = mappings.some(
+          (mapping) => mapping.sonarrInstanceId === connection.id && mapping.sonarrSeriesId === hintId
+        );
+        if (!alreadyMapped) {
+          const client = new SonarrClient(connection.url, connection.apiKey);
+          const series = await client.getSeriesById(hintId);
+          if (series && series.seriesType === 'anime') {
+            await ensureSeriesAniListMapping(series, connection.id);
+            mappings = await loadMappings(id);
+          }
         }
       } catch {
         // Leave the unhinted result — the row just keeps its current state.

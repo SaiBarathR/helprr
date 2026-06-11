@@ -19,6 +19,11 @@ import { isProtectedApiImageSrc } from '@/lib/image';
 import type { SonarrSeriesListItem } from '@/types';
 import type { AnimeSonarrMappingItem, AnimeSonarrMappingsResponse } from '@/types/anilist';
 
+// A Sonarr series id is only unique within an instance, so identify mapped
+// state by instance+id — the drawer mixes series from every instance, so a
+// same-numbered series in another instance must not collide.
+const keyFor = (instanceId: string | null | undefined, seriesId: number) => `${instanceId ?? ''}:${seriesId}`;
+
 interface SonarrMapDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,6 +31,8 @@ interface SonarrMapDrawerProps {
   animeTitle: string;
   /** Library-matched Sonarr series id — lets the reverse lookup lazily resolve a never-viewed series' mapping. */
   sonarrSeriesHint?: number | null;
+  /** Instance that holds the hinted series, so the lazy resolve targets the right Sonarr instance. */
+  sonarrInstanceHint?: string | null;
   /** Fired whenever this anime's Sonarr mappings change (and on open-load) so the page row stays in sync. */
   onMappingsChanged?: (mappings: AnimeSonarrMappingItem[]) => void;
 }
@@ -36,14 +43,15 @@ export function SonarrMapDrawer({
   anilistMediaId,
   animeTitle,
   sonarrSeriesHint,
+  sonarrInstanceHint,
   onMappingsChanged,
 }: SonarrMapDrawerProps) {
   const [query, setQuery] = useState('');
   const [seriesList, setSeriesList] = useState<SonarrSeriesListItem[]>([]);
   const [mappings, setMappings] = useState<AnimeSonarrMappingItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [savingId, setSavingId] = useState<number | null>(null);
-  const [clearingId, setClearingId] = useState<number | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [clearingId, setClearingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -54,7 +62,9 @@ export function SonarrMapDrawer({
     setError(null);
     setLoading(true);
 
-    const hint = sonarrSeriesHint != null ? `?sonarrSeriesId=${sonarrSeriesHint}` : '';
+    const hint = sonarrSeriesHint != null
+      ? `?sonarrSeriesId=${sonarrSeriesHint}${sonarrInstanceHint ? `&sonarrInstanceId=${sonarrInstanceHint}` : ''}`
+      : '';
     Promise.all([
       fetch('/api/sonarr', { signal: controller.signal })
         .then((r) => (r.ok ? r.json() as Promise<SonarrSeriesListItem[]> : Promise.reject(new Error('Failed to load Sonarr series')))),
@@ -81,10 +91,10 @@ export function SonarrMapDrawer({
     return () => controller.abort();
     // onMappingsChanged is a state setter from the page — stable by contract.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, anilistMediaId, sonarrSeriesHint]);
+  }, [open, anilistMediaId, sonarrSeriesHint, sonarrInstanceHint]);
 
-  const mappedIds = useMemo(
-    () => new Set(mappings.map((m) => m.sonarrSeriesId)),
+  const mappedKeys = useMemo(
+    () => new Set(mappings.map((m) => keyFor(m.sonarrInstanceId, m.sonarrSeriesId))),
     [mappings]
   );
 
@@ -96,11 +106,11 @@ export function SonarrMapDrawer({
     return [...items].sort((a, b) => a.sortTitle.localeCompare(b.sortTitle));
   }, [seriesList, trimmedQuery]);
   // Mapped series render in their own labeled section so the current state is obvious.
-  const mappedItems = useMemo(() => filtered.filter((item) => mappedIds.has(item.id)), [filtered, mappedIds]);
-  const unmappedItems = useMemo(() => filtered.filter((item) => !mappedIds.has(item.id)), [filtered, mappedIds]);
+  const mappedItems = useMemo(() => filtered.filter((item) => mappedKeys.has(keyFor(item.instanceId, item.id))), [filtered, mappedKeys]);
+  const unmappedItems = useMemo(() => filtered.filter((item) => !mappedKeys.has(keyFor(item.instanceId, item.id))), [filtered, mappedKeys]);
 
   async function handleSelect(item: SonarrSeriesListItem) {
-    setSavingId(item.id);
+    setSavingId(keyFor(item.instanceId, item.id));
     setError(null);
     try {
       const res = await fetch(`/api/sonarr/${item.id}/anime${item.instanceId ? `?instanceId=${item.instanceId}` : ''}`, {
@@ -114,7 +124,7 @@ export function SonarrMapDrawer({
       }
 
       const next: AnimeSonarrMappingItem[] = [
-        ...mappings.filter((m) => m.sonarrSeriesId !== item.id),
+        ...mappings.filter((m) => keyFor(m.sonarrInstanceId, m.sonarrSeriesId) !== keyFor(item.instanceId, item.id)),
         { sonarrInstanceId: item.instanceId ?? '', sonarrSeriesId: item.id, state: 'MANUAL_MATCH', seriesTitle: item.title, seriesYear: item.year ?? null },
       ];
       setMappings(next);
@@ -128,11 +138,12 @@ export function SonarrMapDrawer({
     }
   }
 
-  async function handleClear(seriesId: number) {
-    setClearingId(seriesId);
+  async function handleClear(item: SonarrSeriesListItem) {
+    setClearingId(keyFor(item.instanceId, item.id));
     setError(null);
     try {
-      const res = await fetch(`/api/sonarr/${seriesId}/anime?anilistMediaId=${anilistMediaId}`, {
+      const instanceParam = item.instanceId ? `&instanceId=${item.instanceId}` : '';
+      const res = await fetch(`/api/sonarr/${item.id}/anime?anilistMediaId=${anilistMediaId}${instanceParam}`, {
         method: 'DELETE',
       });
       const data = await res.json().catch(() => ({}));
@@ -140,7 +151,7 @@ export function SonarrMapDrawer({
         throw new Error(data.error || 'Failed to clear AniList mapping');
       }
 
-      const next = mappings.filter((m) => m.sonarrSeriesId !== seriesId);
+      const next = mappings.filter((m) => keyFor(m.sonarrInstanceId, m.sonarrSeriesId) !== keyFor(item.instanceId, item.id));
       setMappings(next);
       onMappingsChanged?.(next);
       toast.success('AniList mapping cleared');
@@ -196,12 +207,13 @@ export function SonarrMapDrawer({
                 )}
                 {[...mappedItems, ...unmappedItems].map((item, index) => {
                 const posterSrc = getImageUrl(item.images, 'poster', 'sonarr');
-                const isMapped = mappedIds.has(item.id);
-                const mapping = mappings.find((m) => m.sonarrSeriesId === item.id);
+                const itemKey = keyFor(item.instanceId, item.id);
+                const isMapped = mappedKeys.has(itemKey);
+                const mapping = mappings.find((m) => keyFor(m.sonarrInstanceId, m.sonarrSeriesId) === itemKey);
                 const sectionBreak = mappedItems.length > 0 && index === mappedItems.length;
 
                 return (
-                  <div key={item.id}>
+                  <div key={itemKey}>
                   {sectionBreak && (
                     <p className="pt-2 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       All anime series
@@ -237,7 +249,7 @@ export function SonarrMapDrawer({
                             <p className="text-sm font-medium line-clamp-2">{item.title}</p>
                             <p className="text-xs text-muted-foreground truncate">{item.year || ''}</p>
                           </div>
-                          {savingId === item.id ? (
+                          {savingId === itemKey ? (
                             <Loader2 className="h-4 w-4 animate-spin shrink-0" />
                           ) : isMapped ? (
                             <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
@@ -255,12 +267,12 @@ export function SonarrMapDrawer({
                     </button>
                     {isMapped && (
                       <button
-                        onClick={() => handleClear(item.id)}
+                        onClick={() => handleClear(item)}
                         disabled={savingId !== null || clearingId !== null}
                         aria-label={`Unmap ${item.title}`}
                         className="self-center min-w-[36px] min-h-[44px] flex items-center justify-center text-muted-foreground disabled:opacity-60"
                       >
-                        {clearingId === item.id ? (
+                        {clearingId === itemKey ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <XCircle className="h-4 w-4" />
