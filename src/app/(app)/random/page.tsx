@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Clock, Dices, Film, Loader2, RefreshCw, Star, Tv } from 'lucide-react';
-import { PageHeader } from '@/components/layout/page-header';
+import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
@@ -82,16 +81,15 @@ export default function RandomWatchPage() {
                 key={t}
                 type="button"
                 onClick={() => setType(t)}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${
-                  active
-                    ? 'border border-primary/40 bg-primary/20 text-primary'
-                    : 'bg-accent/40 text-muted-foreground'
-                }`}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${active
+                  ? 'border border-primary/40 bg-primary/20 text-primary'
+                  : 'bg-accent/40 text-muted-foreground'
+                  }`}
               >
                 {t === 'movie' && <Film className="h-3.5 w-3.5" />}
                 {t === 'series' && <Tv className="h-3.5 w-3.5" />}
                 {t === 'any' && <Dices className="h-3.5 w-3.5" />}
-                {label}
+                {t === 'any' ? label : null}
               </button>
             );
           })}
@@ -112,7 +110,6 @@ export default function RandomWatchPage() {
               ) : (
                 <RefreshCw className="mr-1.5 h-4 w-4" />
               )}
-              Pick another
             </Button>
           </div>
         </div>
@@ -147,6 +144,14 @@ export default function RandomWatchPage() {
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
                   <div className="absolute inset-0 bg-gradient-to-r from-background/50 to-transparent" />
+                  <div className="absolute top-1.5 right-1.5 md:top-5 md:right-6 hero-meta-fade flex flex-col items-end gap-2">
+                    <Link
+                      className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-lg text-foreground px-3 py-1.5 text-[14px] font-medium hover:bg-background/70 transition-colors"
+                      href={pick.href}>
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Open in {pick.mediaType === 'movie' ? 'Movies' : 'Series'}
+                    </Link>
+                  </div>
                 </>
               ) : (
                 <div className="absolute inset-0 bg-gradient-to-br from-card via-background to-card" />

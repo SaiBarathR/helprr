@@ -242,9 +242,6 @@ export default function AnimeMappingsPage() {
 
       <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Anime mappings</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Auto-map Sonarr anime to AniList, tune the AniList cache, and manage individual links.
-        </p>
       </div>
 
       <GroupedSection>
@@ -326,9 +323,8 @@ export default function AnimeMappingsPage() {
               </span>
               <span className="shrink-0 text-muted-foreground">
                 {autoMapStatus.run
-                  ? `${autoMapStatus.run.queueTotal - autoMapStatus.run.processed} remaining${
-                      autoMapStatus.run.failed > 0 ? ` · ${autoMapStatus.run.failed} failed` : ''
-                    }`
+                  ? `${autoMapStatus.run.queueTotal - autoMapStatus.run.processed} remaining${autoMapStatus.run.failed > 0 ? ` · ${autoMapStatus.run.failed} failed` : ''
+                  }`
                   : ''}
               </span>
             </div>

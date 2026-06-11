@@ -151,14 +151,6 @@ export default function AnimeMappingListPage() {
         </Link>
       </div>
 
-      <div className="px-4 mb-4">
-        <h1 className="text-2xl font-semibold">Mapping list</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          AniList links for each Sonarr anime series. Reset a row to forget it — the series
-          re-auto-matches (seasons included) the next time it&apos;s viewed.
-        </p>
-      </div>
-
       {error && (
         <GroupedSection>
           <div className="px-4 py-3 text-sm text-red-400">{error}</div>
@@ -166,7 +158,7 @@ export default function AnimeMappingListPage() {
       )}
 
       {mappings === null && !error ? (
-        <GroupedSection>
+        <GroupedSection >
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
             Loading mappings…
@@ -175,16 +167,27 @@ export default function AnimeMappingListPage() {
       ) : mappings !== null ? (
         <>
           <div className="px-4 mb-3 space-y-2">
-            <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-1">
-              <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="flex items-center gap-2">
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Filter by series title"
-                className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+              // className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
               />
+              {counts.total > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 h-9 text-destructive hover:text-destructive"
+                  onClick={() => setConfirmAll(true)}
+                  disabled={busy}
+                >
+                  <Trash2 className="h-4 w-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Reset all</span>
+                </Button>
+              )}
             </div>
-            <div className="flex gap-1.5 overflow-x-auto">
+            <div className="flex gap-1.5 flex-wrap">
               {FILTERS.map((item) => {
                 const count =
                   item.value === 'ALL' ? counts.total : counts[item.value as SeriesAniListMappingState];
@@ -192,11 +195,10 @@ export default function AnimeMappingListPage() {
                   <button
                     key={item.value}
                     onClick={() => setFilter(item.value)}
-                    className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${
-                      filter === item.value
-                        ? 'border-primary/50 bg-primary/15 text-primary'
-                        : 'border-border/40 bg-muted/20 text-muted-foreground'
-                    }`}
+                    className={`shrink-0 rounded-full border px-3 py-1 text-xs transition-colors ${filter === item.value
+                      ? 'border-primary/50 bg-primary/15 text-primary'
+                      : 'border-border/40 bg-muted/20 text-muted-foreground'
+                      }`}
                   >
                     {item.label} · {count}
                   </button>
@@ -266,22 +268,6 @@ export default function AnimeMappingListPage() {
                   </div>
                 );
               })}
-            </GroupedSection>
-          )}
-
-          {counts.total > 0 && (
-            <GroupedSection footer="Resets forget auto and manual links alike. Each series re-auto-matches with season auto-linking on its next view.">
-              <div className="px-4 py-3">
-                <Button
-                  variant="outline"
-                  className="w-full h-9 text-destructive hover:text-destructive"
-                  onClick={() => setConfirmAll(true)}
-                  disabled={busy}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Reset all mappings
-                </Button>
-              </div>
             </GroupedSection>
           )}
         </>
