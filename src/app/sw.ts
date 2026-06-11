@@ -160,10 +160,13 @@ const runtimeCaching: RuntimeCaching[] =
       ];
 
 const serwist = new Serwist({
-  // Append the static offline shell so PrecacheFallbackPlugin (wired via
-  // `fallbacks` below) can serve it when a never-visited route is opened offline.
-  // Bump the revision string when public/offline.html changes.
-  precacheEntries: [...(self.__SW_MANIFEST ?? []), { url: '/offline.html', revision: 'v1' }],
+  // `@serwist/next` auto-globs everything under public/ (incl. offline.html) into
+  // __SW_MANIFEST with a file-hash revision, so the offline shell is already
+  // precached and available to PrecacheFallbackPlugin (wired via `fallbacks` below).
+  // Don't append it manually — a second /offline.html entry with a different
+  // revision makes Serwist throw add-to-cache-list-conflicting-entries, the SW
+  // never installs, and push notifications break.
+  precacheEntries: self.__SW_MANIFEST ?? [],
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
