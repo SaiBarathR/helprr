@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
@@ -32,6 +32,9 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Last server-confirmed filter values per event, so a failed save reverts only
+  // the edited field locally (no full reload, which would race in-progress edits).
+  const savedFiltersRef = useRef<Map<string, { tagFilter: string | null; qualityFilter: string | null }>>(new Map());
   const me = useMe();
 
   const loadPreferences = useCallback(async () => {
@@ -43,6 +46,9 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
       if (!res.ok) return;
       const prefs = (await res.json()) as Preference[];
       setPreferences(prefs);
+      savedFiltersRef.current = new Map(
+        prefs.map((p) => [p.eventType, { tagFilter: p.tagFilter, qualityFilter: p.qualityFilter }]),
+      );
       if (prefs.length > 0) setSubscriptionId(prefs[0].subscriptionId);
     } catch (err) {
       console.error('loadPreferences failed:', err);
@@ -57,6 +63,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
 
   async function togglePreference(eventType: string, enabled: boolean) {
     if (!subscriptionId) return;
+    const current = preferences.find((p) => p.eventType === eventType);
     setPreferences((prev) =>
       prev.map((p) => (p.eventType === eventType ? { ...p, enabled } : p)),
     );
@@ -64,9 +71,21 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
       const res = await fetch('/api/notifications/preferences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subscriptionId, eventType, enabled }),
+        // Include the stored filters — the upsert nulls any field we omit, so
+        // toggling enabled would otherwise wipe this event's tag/quality filter.
+        body: JSON.stringify({
+          subscriptionId,
+          eventType,
+          enabled,
+          tagFilter: current?.tagFilter ?? null,
+          qualityFilter: current?.qualityFilter ?? null,
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      savedFiltersRef.current.set(eventType, {
+        tagFilter: current?.tagFilter ?? null,
+        qualityFilter: current?.qualityFilter ?? null,
+      });
     } catch {
       toast.error('Failed to update preference');
       setPreferences((prev) =>
@@ -98,11 +117,19 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      savedFiltersRef.current.set(eventType, { tagFilter: pref.tagFilter, qualityFilter: pref.qualityFilter });
     } catch {
       toast.error('Failed to save filter');
-      // The inputs updated optimistically on change; re-sync from the server so
-      // the unsaved value doesn't linger after a failed save.
-      void loadPreferences();
+      // Revert only this event's filter fields to the last saved values — a full
+      // reload would race any edit in flight on another field.
+      const saved = savedFiltersRef.current.get(eventType) ?? { tagFilter: null, qualityFilter: null };
+      setPreferences((prev) =>
+        prev.map((p) =>
+          p.eventType === eventType
+            ? { ...p, tagFilter: saved.tagFilter, qualityFilter: saved.qualityFilter }
+            : p,
+        ),
+      );
     }
   }
 
