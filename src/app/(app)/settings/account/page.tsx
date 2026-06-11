@@ -18,7 +18,19 @@ export default function AccountSettingsPage() {
       if (res.ok) {
         // Best-effort: drop this device's cached shell + read data so the next
         // sign-in starts clean. Fire-and-forget; don't block the redirect.
-        navigator.serviceWorker?.controller?.postMessage({ type: 'helprr-clear-user-caches' });
+        const clearMsg = { type: 'helprr-clear-user-caches' };
+        if (navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage(clearMsg);
+        } else {
+          // No controlling worker yet (e.g. after a hard reload / first load) —
+          // reach any registered worker directly so the caches still get cleared.
+          void navigator.serviceWorker
+            ?.getRegistrations()
+            .then((regs) => {
+              for (const reg of regs) (reg.active ?? reg.installing)?.postMessage(clearMsg);
+            })
+            .catch(() => {});
+        }
         router.push('/login');
       } else {
         toast.error('Failed to sign out');

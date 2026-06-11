@@ -309,7 +309,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
 
         <section className="grouped-section">
           <div className="grouped-section-title flex items-center justify-between">
-            <span>Active strikes ({strikes.length})</span>
+            <span>Active strikes ({strikeTotal})</span>
             {strikes.length > 0 && (
               <Button
                 size="sm"

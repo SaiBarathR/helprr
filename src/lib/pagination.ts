@@ -22,6 +22,10 @@ export function parseInt32(
   return Math.min(Math.max(n, min), max);
 }
 
+// Hard cap on the row offset a single request may ask for, so a hand-crafted
+// `?page=` / `?skip=` can't force a pathological deep-offset scan.
+const MAX_SKIP = 100_000;
+
 export interface PageParams {
   page: number;
   pageSize: number;
@@ -39,8 +43,9 @@ export function parsePageParams(
 ): PageParams {
   const defaultSize = opts?.defaultSize ?? 30;
   const maxSize = opts?.maxSize ?? 100;
-  const page = parseInt32(sp.get('page'), { min: 1 }) ?? 1;
   const pageSize = parseInt32(sp.get('pageSize'), { min: 1, max: maxSize }) ?? defaultSize;
+  const maxPage = Math.max(1, Math.floor(MAX_SKIP / pageSize));
+  const page = parseInt32(sp.get('page'), { min: 1, max: maxPage }) ?? 1;
   return { page, pageSize, skip: (page - 1) * pageSize, take: pageSize };
 }
 
@@ -54,7 +59,7 @@ export function parseSkipTake(
   const defaultTake = opts?.defaultTake ?? 50;
   const maxTake = opts?.maxTake ?? 100;
   const take = parseInt32(sp.get('take'), { min: 1, max: maxTake }) ?? defaultTake;
-  const skip = parseInt32(sp.get('skip'), { min: 0 }) ?? 0;
+  const skip = parseInt32(sp.get('skip'), { min: 0, max: MAX_SKIP }) ?? 0;
   return { skip, take };
 }
 
