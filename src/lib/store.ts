@@ -210,7 +210,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 28;
+export const STORE_VERSION = 29;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -346,6 +346,10 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     state.calendarInstanceFilter = 'all';
     state.activityInstanceFilter = 'all';
   }
+  if (version < 29) {
+    state.insightsDateFrom = null;
+    state.insightsDateTo = null;
+  }
   return state;
 }
 
@@ -458,6 +462,10 @@ interface UIState {
   cleanupHistoryFilters: CleanupHistoryFiltersState;
   setCleanupHistoryFilters: (filters: Partial<CleanupHistoryFiltersState>) => void;
   resetCleanupHistoryFilters: () => void;
+  // Insights page date range (ISO date strings, e.g. "2026-05-12"); null → default last-30-days at render
+  insightsDateFrom: string | null;
+  insightsDateTo: string | null;
+  setInsightsDateRange: (from: string | null, to: string | null) => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie' | 'album';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie' | 'album') => void;
@@ -554,6 +562,8 @@ const PERSISTED_KEYS = [
   'requestsFilter',
   'notificationsFilters',
   'cleanupHistoryFilters',
+  'insightsDateFrom',
+  'insightsDateTo',
   'calendarTypeFilter',
   'calendarMonitoredOnly',
   'calendarInstanceFilter',
@@ -743,6 +753,10 @@ export const useUIStore = create<UIState>()(
         })),
       resetCleanupHistoryFilters: () =>
         set({ cleanupHistoryFilters: cloneCleanupHistoryFilters(DEFAULT_CLEANUP_HISTORY_FILTERS) }),
+      // Insights date range
+      insightsDateFrom: null,
+      insightsDateTo: null,
+      setInsightsDateRange: (from, to) => set({ insightsDateFrom: from, insightsDateTo: to }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),

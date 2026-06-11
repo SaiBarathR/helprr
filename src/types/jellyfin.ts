@@ -30,6 +30,41 @@ export interface JellyfinLibrary {
   ChildCount?: number;
 }
 
+// Shape from GET /Library/VirtualFolders (admin endpoint). We only model the
+// fields the Insights libraries section needs.
+export interface JellyfinVirtualFolder {
+  Name: string;
+  Locations: string[];
+  CollectionType?: string;
+  ItemId: string;
+  PrimaryImageItemId?: string;
+  RefreshStatus?: string;
+  LibraryOptions?: { Enabled?: boolean };
+}
+
+export interface JellyfinLibraryMetric {
+  label: string;
+  value: number;
+}
+
+export interface JellyfinLibrarySummary {
+  id: string;
+  name: string;
+  /** CollectionType: movies | tvshows | music | boxsets | homevideos | … */
+  type: string;
+  paths: string[];
+  enabled: boolean;
+  /** Recursive count of leaf media files — the cross-library comparable "size". */
+  itemCount: number;
+  /** Type-specific breakdown for display (e.g. Series + Episodes). */
+  metrics: JellyfinLibraryMetric[];
+}
+
+export interface JellyfinLibrariesResponse {
+  libraries: JellyfinLibrarySummary[];
+  totalItems: number;
+}
+
 export interface JellyfinUserData {
   PlaybackPositionTicks: number;
   PlayCount: number;
