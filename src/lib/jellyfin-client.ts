@@ -3,6 +3,7 @@ import { getAppTimeZone, getLocalDateKey, getTimeZoneOffsetMinutes } from '@/lib
 import type {
   JellyfinSystemInfo,
   JellyfinLibrary,
+  JellyfinVirtualFolder,
   JellyfinItem,
   JellyfinItemsResponse,
   JellyfinSession,
@@ -172,6 +173,11 @@ export class JellyfinClient {
   async getLibraries(): Promise<JellyfinLibrary[]> {
     const data = await this.get<{ Items: JellyfinLibrary[] }>(`/Users/${this.requireUserId()}/Views`);
     return data.Items;
+  }
+
+  /** Admin endpoint: every configured library with its on-disk paths + options. */
+  async getVirtualFolders(): Promise<JellyfinVirtualFolder[]> {
+    return this.get<JellyfinVirtualFolder[]>('/Library/VirtualFolders');
   }
 
   async getItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {

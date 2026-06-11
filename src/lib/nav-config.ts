@@ -18,6 +18,7 @@ import {
   Dices,
   Inbox,
   LibraryBig,
+  ChartLine,
   type LucideIcon,
 } from 'lucide-react';
 import type { Capability } from '@/lib/capabilities';
@@ -39,6 +40,7 @@ export type NavItemId =
   | 'cleanup'
   | 'prowlarr'
   | 'jellyfin'
+  | 'insights'
   | 'activity'
   | 'notifications'
   | 'logs'
@@ -75,6 +77,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup', requiredCapability: 'cleanup.view' },
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', requiredCapability: 'prowlarr.view' },
   { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', requiredCapability: 'jellyfin.view' },
+  { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', requiredCapability: 'insights.view' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view', badgeArea: 'activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
   { id: 'logs', href: '/logs', icon: ScrollText, label: 'Logs', shortLabel: 'Logs', requiredCapability: 'logs.view' },

@@ -58,6 +58,13 @@ export const CAPABILITY_GROUPS = [
     ],
   },
   {
+    id: 'insights',
+    title: 'Insights',
+    items: [
+      { cap: 'insights.view', label: 'View insights & analytics' },
+    ],
+  },
+  {
     id: 'requests',
     title: 'Requests',
     items: [
