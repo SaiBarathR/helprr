@@ -27,6 +27,11 @@ export const metadata: Metadata = {
     title: 'Helprr',
   },
   icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icons/icon-192.png', type: 'image/png', sizes: '192x192' },
+      { url: '/icons/icon-512.png', type: 'image/png', sizes: '512x512' },
+    ],
     apple: '/icons/icon-192.png',
   },
 };
