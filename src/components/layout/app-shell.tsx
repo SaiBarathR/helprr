@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { BottomNav } from '@/components/layout/bottom-nav';
+import { PushReenableBanner } from '@/components/notifications/push-reenable-banner';
 import { useUIStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
         style={isBottom ? { paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0.5rem))' } : undefined}
       >
+        <PushReenableBanner />
         {children}
       </main>
       {isBottom && <BottomNav />}

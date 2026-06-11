@@ -194,6 +194,7 @@ model PollingState {
   lastQueueIds        Json              @default("[]")
   lastHistoryDate     DateTime?
   lastHealthHash      String?
+  lastReachable       Boolean?          // null = not yet probed; used for service up/down transition alerts
   updatedAt           DateTime          @updatedAt
 }
 
@@ -290,6 +291,9 @@ model UserSettings {
   activityDigestMode     String?
   defaultDesktopLayoutId String?
   defaultMobileLayoutId  String?
+  quietHoursEnabled      Boolean  @default(false) // when true, suppress non-critical pushes during the window
+  quietHoursStart        Int?                      // 0-23 local hour (in this user's timeZone) the window opens
+  quietHoursEnd          Int?                      // 0-23 local hour the window closes; start > end = crosses midnight
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }

@@ -273,8 +273,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       eventType: 'requestCreated',
       title: 'New request to approve',
       body: `${auth.user.displayName} requested ${title ?? (mediaType === 'tv' ? 'a series' : 'a movie')}`,
-      url: '/requests',
-      metadata: { source: 'helprr-pending', id: pending.id, tmdbId, mediaType, redirect: '/requests' },
+      // Deep-link to the pending item so a notification tap (the iOS path, where
+      // action buttons aren't shown) opens the approve sheet directly.
+      url: `/requests?focus=${pending.id}`,
+      metadata: { source: 'helprr-pending', id: pending.id, tmdbId, mediaType, redirect: `/requests?focus=${pending.id}` },
       userIds: adminIds.length ? adminIds : undefined,
     }).catch((err) => logger.warn('Pending-request notify failed', { err }, { scope: 'api/seerr/requests' }));
 

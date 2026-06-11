@@ -159,7 +159,14 @@ async function updateAppBadge(): Promise<void> {
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 
-  let data: { body?: string; tag?: string; url?: string; title?: string };
+  let data: {
+    body?: string;
+    tag?: string;
+    url?: string;
+    title?: string;
+    actions?: { action: string; title: string }[];
+    data?: Record<string, unknown>;
+  };
   try {
     data = event.data.json();
   } catch (error) {
@@ -171,7 +178,11 @@ self.addEventListener('push', (event) => {
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: data.tag || 'helprr-notification',
-    data: { url: data.url || '/notifications' },
+    // Action buttons (Approve/Decline, Retry) render on Android/desktop Chrome.
+    // iOS Web Push ignores `actions`, so iPhone users fall back to tapping the
+    // notification body, which deep-links straight to the relevant action view.
+    data: { url: data.url || '/notifications', ...(data.data ?? {}) },
+    ...(data.actions ? { actions: data.actions } : {}),
   };
 
   event.waitUntil(
@@ -182,23 +193,93 @@ self.addEventListener('push', (event) => {
   );
 });
 
+async function confirm(body: string, tag: string): Promise<void> {
+  await self.registration.showNotification('Helprr', {
+    body,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag,
+  });
+}
+
+// Acts on a pending Seerr request straight from the notification (no app open).
+// Same-origin fetch carries the helprr-session cookie automatically.
+async function handleRequestAction(action: string, pendingId: string): Promise<void> {
+  try {
+    const res = action === 'approve'
+      ? await fetch(`/api/seerr/pending-requests/${pendingId}/approve`, { method: 'POST', credentials: 'include' })
+      : await fetch(`/api/seerr/pending-requests/${pendingId}`, { method: 'DELETE', credentials: 'include' });
+    await confirm(
+      res.ok
+        ? action === 'approve' ? 'Request approved' : 'Request declined'
+        : 'Could not complete — open the app',
+      `request-action-${pendingId}`,
+    );
+  } catch {
+    await confirm('Could not complete — open the app', `request-action-${pendingId}`);
+  }
+}
+
+// Re-searches a failed download (Sonarr episode / Radarr movie) from the
+// notification. instanceId scopes the search to the right multi-instance server.
+async function handleRetryAction(data: Record<string, unknown>): Promise<void> {
+  try {
+    const source = data.source;
+    const qs = data.instanceId ? `?instanceId=${encodeURIComponent(String(data.instanceId))}` : '';
+    let ok = false;
+    if (source === 'sonarr' && data.episodeId != null) {
+      const res = await fetch(`/api/sonarr/command${qs}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [data.episodeId] }),
+      });
+      ok = res.ok;
+    } else if (source === 'radarr' && data.movieId != null) {
+      const res = await fetch(`/api/radarr/command${qs}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'MoviesSearch', movieIds: [data.movieId] }),
+      });
+      ok = res.ok;
+    }
+    await confirm(ok ? 'Retry triggered — searching again' : 'Could not retry — open the app', 'retry-action');
+  } catch {
+    await confirm('Could not retry — open the app', 'retry-action');
+  }
+}
+
+function focusOrOpen(url: string): Promise<unknown> {
+  return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    for (const client of clients) {
+      if (client.url.includes(self.location.origin) && 'focus' in client) {
+        client.focus();
+        (client as WindowClient).navigate(url);
+        return;
+      }
+    }
+    return self.clients.openWindow(url);
+  });
+}
+
 // Notification click handler
 self.addEventListener('notificationclick', (event) => {
+  const data = (event.notification.data ?? {}) as Record<string, unknown>;
+  const action = event.action;
   event.notification.close();
-  const url = event.notification.data?.url || '/dashboard';
 
-  event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      for (const client of clients) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.focus();
-          (client as WindowClient).navigate(url);
-          return;
-        }
-      }
-      return self.clients.openWindow(url);
-    })
-  );
+  if ((action === 'approve' || action === 'decline') && typeof data.pendingId === 'string') {
+    event.waitUntil(handleRequestAction(action, data.pendingId));
+    return;
+  }
+  if (action === 'retry') {
+    event.waitUntil(handleRetryAction(data));
+    return;
+  }
+
+  const url = typeof data.url === 'string' ? data.url : '/dashboard';
+  event.waitUntil(focusOrOpen(url));
 });
 
 self.addEventListener('error', (event) => {

@@ -61,7 +61,10 @@ self.addEventListener('push', (event) => {
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: data.tag || 'helprr-notification',
-    data: { url: data.url || '/notifications' },
+    // Action buttons render on Android/desktop; iOS ignores them and falls back
+    // to tapping the body (which deep-links to the relevant action view).
+    data: { url: data.url || '/notifications', ...(data.data || {}) },
+    ...(data.actions ? { actions: data.actions } : {}),
   };
   event.waitUntil(
     Promise.all([
@@ -71,9 +74,74 @@ self.addEventListener('push', (event) => {
   );
 });
 
+async function confirm(body, tag) {
+  await self.registration.showNotification('Helprr', {
+    body,
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag,
+  });
+}
+
+async function handleRequestAction(action, pendingId) {
+  try {
+    const res = action === 'approve'
+      ? await fetch(`/api/seerr/pending-requests/${pendingId}/approve`, { method: 'POST', credentials: 'include' })
+      : await fetch(`/api/seerr/pending-requests/${pendingId}`, { method: 'DELETE', credentials: 'include' });
+    await confirm(
+      res.ok
+        ? action === 'approve' ? 'Request approved' : 'Request declined'
+        : 'Could not complete — open the app',
+      `request-action-${pendingId}`,
+    );
+  } catch {
+    await confirm('Could not complete — open the app', `request-action-${pendingId}`);
+  }
+}
+
+async function handleRetryAction(data) {
+  try {
+    const source = data.source;
+    const qs = data.instanceId ? `?instanceId=${encodeURIComponent(String(data.instanceId))}` : '';
+    let ok = false;
+    if (source === 'sonarr' && data.episodeId != null) {
+      const res = await fetch(`/api/sonarr/command${qs}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [data.episodeId] }),
+      });
+      ok = res.ok;
+    } else if (source === 'radarr' && data.movieId != null) {
+      const res = await fetch(`/api/radarr/command${qs}`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'MoviesSearch', movieIds: [data.movieId] }),
+      });
+      ok = res.ok;
+    }
+    await confirm(ok ? 'Retry triggered — searching again' : 'Could not retry — open the app', 'retry-action');
+  } catch {
+    await confirm('Could not retry — open the app', 'retry-action');
+  }
+}
+
 self.addEventListener('notificationclick', (event) => {
+  const data = event.notification.data || {};
+  const action = event.action;
   event.notification.close();
-  const url = event.notification.data?.url || '/dashboard';
+
+  if ((action === 'approve' || action === 'decline') && typeof data.pendingId === 'string') {
+    event.waitUntil(handleRequestAction(action, data.pendingId));
+    return;
+  }
+  if (action === 'retry') {
+    event.waitUntil(handleRetryAction(data));
+    return;
+  }
+
+  const url = data.url || '/dashboard';
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {

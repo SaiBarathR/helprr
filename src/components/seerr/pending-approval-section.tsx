@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Check, X, Loader2, Film, Tv, Clock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -36,6 +37,10 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
   const [rows, setRows] = useState<PendingRow[] | null>(null);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
+  const [focusHandled, setFocusHandled] = useState(false);
+  // Deep-link target from a `requestCreated` notification tap (?focus=<pendingId>)
+  // — auto-opens the approve sheet for that row once.
+  const focusId = useSearchParams().get('focus');
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +59,13 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (focusHandled || !focusId || !rows) return;
+    const row = rows.find((r) => r.id === focusId);
+    if (row && canApprove) setModalRow(row);
+    setFocusHandled(true); // one-shot, even if the row is gone or not approvable
+  }, [focusId, rows, canApprove, focusHandled]);
 
   async function remove(id: string) {
     setBusy((p) => new Set(p).add(id));
