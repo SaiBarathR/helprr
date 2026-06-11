@@ -103,6 +103,10 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
       setStats(statsRes);
       setStrikes(strikesRes.records);
       setStrikeTotal(strikesRes.total);
+      // Strikes may have been resolved since the last poll — if the current page
+      // is now past the end, clamp back so the list doesn't render blank.
+      const maxStrikePage = Math.max(1, Math.ceil(strikesRes.total / STRIKES_PAGE_SIZE));
+      if (strikePage > maxStrikePage) setStrikePage(maxStrikePage);
       setStatus({
         queue: {
           enabled: Boolean(queueCfg?.enabled),
@@ -470,12 +474,8 @@ function StatusRow({
 
 function NextRunLine({ scheduler }: { scheduler: SchedulerLite | undefined }) {
   const [now, setNow] = useState<number>(() => Date.now());
-  const lastTickRef = useRef<number>(now);
   // 1s countdown tick — paused while the tab is hidden, resumes on return.
-  useVisibleInterval(() => {
-    lastTickRef.current = Date.now();
-    setNow(lastTickRef.current);
-  }, 1000);
+  useVisibleInterval(() => setNow(Date.now()), 1000);
 
   if (!scheduler) {
     return <div className="text-xs text-muted-foreground/70 mt-0.5">Next run: —</div>;

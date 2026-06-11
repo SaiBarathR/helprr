@@ -45,20 +45,22 @@ interface CleanupStatusData {
 }
 
 async function fetchCleanupStatus(): Promise<CleanupStatusData> {
+  // Per-request fallbacks: a single endpoint failing (network error or non-2xx)
+  // degrades just its own section instead of blanking the whole widget.
   const [schedRes, strikesRes, statsRes] = await Promise.all([
-    fetch('/api/cleanup/scheduler-status'),
+    fetch('/api/cleanup/scheduler-status').catch(() => null),
     // Compact preview: top 5 strikes; the header count comes from the response total.
-    fetch('/api/cleanup/strikes?limit=5'),
-    fetch('/api/cleanup/stats'),
+    fetch('/api/cleanup/strikes?limit=5').catch(() => null),
+    fetch('/api/cleanup/stats').catch(() => null),
   ]);
-  const strikesJson = strikesRes.ok
+  const strikesJson = strikesRes?.ok
     ? ((await strikesRes.json()) as { records?: StrikeRow[]; total?: number })
     : { records: [], total: 0 };
   return {
-    scheduler: schedRes.ok ? await schedRes.json() : null,
+    scheduler: schedRes?.ok ? await schedRes.json() : null,
     strikes: strikesJson.records ?? [],
     strikeTotal: strikesJson.total ?? 0,
-    stats: statsRes.ok ? await statsRes.json() : null,
+    stats: statsRes?.ok ? await statsRes.json() : null,
   };
 }
 
