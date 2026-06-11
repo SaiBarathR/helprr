@@ -100,7 +100,7 @@ function ManualImportContent() {
     } finally {
       setLoading(false);
     }
-  }, [downloadId, source, isSonarr, seriesId]);
+  }, [downloadId, source, isSonarr, seriesId, instanceId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -143,17 +143,18 @@ function ManualImportContent() {
     if (!seriesId) return;
     setRefreshingEpisodes(true);
     try {
-      const commandRes = await fetch('/api/sonarr/command', {
+      const qs = instanceId ? `?instanceId=${instanceId}` : '';
+      const commandRes = await fetch(`/api/sonarr/command${qs}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: Number(seriesId) }),
       });
       if (!commandRes.ok) throw new Error('Refresh failed');
       const command = await commandRes.json() as { id?: number };
-      const status = command.id ? await pollCommand('sonarr', command.id) : 'completed';
+      const status = command.id ? await pollCommand('sonarr', command.id, instanceId || undefined) : 'completed';
       if (status === 'timeout') { toast.warning('Refresh still running'); return; }
       if (status !== 'completed') { toast.error('Failed to refresh episodes'); return; }
-      const res = await fetch(`/api/sonarr/${seriesId}/episodes`);
+      const res = await fetch(`/api/sonarr/${seriesId}/episodes${qs}`);
       if (res.ok) {
         const episodes = await res.json();
         setAllEpisodes(episodes);
