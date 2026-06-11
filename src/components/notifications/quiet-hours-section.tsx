@@ -11,18 +11,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { hourLabel } from '@/lib/format';
 
 interface QuietHours {
   quietHoursEnabled: boolean;
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
-}
-
-function hourLabel(h: number): string {
-  if (h === 0) return '12:00 AM';
-  if (h < 12) return `${h}:00 AM`;
-  if (h === 12) return '12:00 PM';
-  return `${h - 12}:00 PM`;
 }
 
 const TRIGGER_CLASS =

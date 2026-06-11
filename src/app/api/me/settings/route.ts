@@ -32,7 +32,14 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
-  const body = await request.json().catch(() => ({}));
+  let body: Record<string, unknown>;
+  try {
+    const parsed = await request.json();
+    if (!parsed || typeof parsed !== 'object') throw new Error('not an object');
+    body = parsed as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
   const data: {
     quietHoursEnabled?: boolean;
     quietHoursStart?: number | null;

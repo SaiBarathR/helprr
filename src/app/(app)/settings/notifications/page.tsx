@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { hourLabel } from '@/lib/format';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { EventTypePrefs } from '@/components/notifications/event-type-prefs';
@@ -60,13 +61,6 @@ const HISTORY_RETENTION_OPTIONS = [
   { value: '180', label: '180 days' },
   { value: '365', label: '1 year' },
 ];
-
-function hourLabel(h: number): string {
-  if (h === 0) return '12:00 AM';
-  if (h < 12) return `${h}:00 AM`;
-  if (h === 12) return '12:00 PM';
-  return `${h - 12}:00 PM`;
-}
 
 export default function NotificationsSettingsPage() {
   const { settings, loading, update } = useAppSettings();
