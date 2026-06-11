@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
 import { formatDistanceToNowShort } from '@/lib/format';
 import { formatDelta } from '@/lib/cleanup/format-delta';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -39,18 +40,24 @@ interface StrikeRow {
 interface CleanupStatusData {
   scheduler: { queue: SchedulerLeg; download: SchedulerLeg } | null;
   strikes: StrikeRow[];
+  strikeTotal: number;
   stats: CleanupStats | null;
 }
 
 async function fetchCleanupStatus(): Promise<CleanupStatusData> {
   const [schedRes, strikesRes, statsRes] = await Promise.all([
     fetch('/api/cleanup/scheduler-status'),
-    fetch('/api/cleanup/strikes'),
+    // Compact preview: top 5 strikes; the header count comes from the response total.
+    fetch('/api/cleanup/strikes?limit=5'),
     fetch('/api/cleanup/stats'),
   ]);
+  const strikesJson = strikesRes.ok
+    ? ((await strikesRes.json()) as { records?: StrikeRow[]; total?: number })
+    : { records: [], total: 0 };
   return {
     scheduler: schedRes.ok ? await schedRes.json() : null,
-    strikes: strikesRes.ok ? await strikesRes.json() : [],
+    strikes: strikesJson.records ?? [],
+    strikeTotal: strikesJson.total ?? 0,
     stats: statsRes.ok ? await statsRes.json() : null,
   };
 }
@@ -63,14 +70,13 @@ export function CleanupStatusWidget({ refreshInterval, editMode = false }: Widge
     cacheKey: 'cleanup-status',
   });
   const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (editMode) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [editMode]);
+  // 1s countdown tick — pauses when the tab is backgrounded (no point re-rendering
+  // a hidden widget every second), resumes on return.
+  useVisibleInterval(() => setNow(Date.now()), 1000, { enabled: !editMode });
 
   const stats = data?.stats;
   const strikes = data?.strikes ?? [];
+  const strikeTotal = data?.strikeTotal ?? 0;
   const queue = data?.scheduler?.queue;
   const download = data?.scheduler?.download;
   const dryRun = queue?.autoRunMode === 'dryRun' || download?.autoRunMode === 'dryRun';
@@ -106,7 +112,7 @@ export function CleanupStatusWidget({ refreshInterval, editMode = false }: Widge
       </div>
 
       <div style={{ fontSize: 10, color: HPR.fgSubtle, marginTop: 4, marginBottom: 6, fontFamily: FONT_MONO, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-        Active strikes ({strikes.length})
+        Active strikes ({strikeTotal})
       </div>
       {strikes.length === 0 ? (
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '4px 0' }}>

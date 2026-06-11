@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/components/permission-provider';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
+import { useInfiniteScroll } from '@/lib/hooks/use-infinite-scroll';
 
 interface PendingRow {
   id: string;
@@ -34,7 +35,6 @@ interface PendingRow {
  */
 export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }) {
   const canApprove = useCan('requests.approve');
-  const [rows, setRows] = useState<PendingRow[] | null>(null);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
   const [focusHandled, setFocusHandled] = useState(false);
@@ -42,30 +42,30 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
   // — auto-opens the approve sheet for that row once.
   const focusId = useSearchParams().get('focus');
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/seerr/pending-requests');
-      if (!res.ok) {
-        setRows([]);
-        return;
-      }
-      const data = (await res.json()) as { results: PendingRow[] };
-      setRows(data.results ?? []);
-    } catch {
-      setRows([]);
-    }
+  const fetchPage = useCallback(async (skip: number, take: number) => {
+    const res = await fetch(`/api/seerr/pending-requests?skip=${skip}&take=${take}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = (await res.json()) as { results: PendingRow[]; pageInfo?: { results?: number } };
+    return { results: data.results ?? [], total: data.pageInfo?.results ?? 0 };
   }, []);
+  const getId = useCallback((r: PendingRow) => r.id, []);
+  const { items: rows, total, loading, loadingMore, hasMore, loadMore, reload, removeItem } =
+    useInfiniteScroll<PendingRow>({ fetchPage, getId, take: 20 });
 
+  // Walk pages until the deep-linked row surfaces (it may be beyond page 1),
+  // then open the approve sheet. One-shot — gives up once pages are exhausted.
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (focusHandled || !focusId || !rows) return;
+    if (focusHandled || !focusId || loading) return;
     const row = rows.find((r) => r.id === focusId);
-    if (row && canApprove) setModalRow(row);
-    setFocusHandled(true); // one-shot, even if the row is gone or not approvable
-  }, [focusId, rows, canApprove, focusHandled]);
+    if (row) {
+      if (canApprove) setModalRow(row);
+      setFocusHandled(true);
+    } else if (hasMore && !loadingMore) {
+      loadMore();
+    } else if (!hasMore) {
+      setFocusHandled(true);
+    }
+  }, [focusId, rows, canApprove, focusHandled, loading, loadingMore, hasMore, loadMore]);
 
   async function remove(id: string) {
     setBusy((p) => new Set(p).add(id));
@@ -76,7 +76,7 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
         return;
       }
       toast.success(canApprove ? 'Declined' : 'Cancelled');
-      await load();
+      removeItem(id);
       onChanged?.();
     } finally {
       setBusy((p) => {
@@ -87,7 +87,7 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
     }
   }
 
-  if (!rows || rows.length === 0) return null;
+  if (rows.length === 0) return null;
 
   return (
     <div className="mb-4 space-y-2">
@@ -167,6 +167,18 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
         );
       })}
 
+      {hasMore && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          disabled={loadingMore}
+          onClick={() => loadMore()}
+        >
+          {loadingMore ? <Loader2 className="h-4 w-4 animate-spin" /> : `Load more (${rows.length} of ${total})`}
+        </Button>
+      )}
+
       {modalRow && (
         <SeerrRequestModal
           open
@@ -185,7 +197,7 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
           initialRequestedById={modalRow.seerrUserId ? Number(modalRow.seerrUserId) : null}
           onDone={() => {
             setModalRow(null);
-            void load();
+            reload();
             onChanged?.();
           }}
         />

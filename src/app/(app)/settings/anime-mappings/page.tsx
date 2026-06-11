@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
+import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
 import { formatBytes } from '@/lib/format';
 
 function relativeTime(iso: string): string {
@@ -125,12 +126,9 @@ export default function AnimeMappingsPage() {
   }, [loadCacheUsage, loadAutoMapStatus]);
 
   // While a drain is in progress, poll status so progress climbs and the UI
-  // flips back to "Run now" once it finishes or is stopped.
-  useEffect(() => {
-    if (!autoMapStatus?.running) return;
-    const id = window.setInterval(() => void loadAutoMapStatus(), 5000);
-    return () => window.clearInterval(id);
-  }, [autoMapStatus?.running, loadAutoMapStatus]);
+  // flips back to "Run now" once it finishes or is stopped. Pauses when the tab
+  // is hidden and catches up on return.
+  useVisibleInterval(loadAutoMapStatus, 5000, { enabled: Boolean(autoMapStatus?.running) });
 
   async function handleRunAutoMapNow() {
     setRunningAutoMap(true);

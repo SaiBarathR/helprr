@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2, Search, Trash2 } from 'lucide-react';
@@ -103,6 +104,31 @@ export default function AnimeMappingListPage() {
     () => new Set((mappings ?? []).map((row) => row.sonarrInstanceId)).size > 1,
     [mappings]
   );
+
+  // Virtualize the row list (bounded by Sonarr library size, but can be a few
+  // thousand) so we never mount thousands of DOM nodes. Filtering/search/counts
+  // stay client-side over the full set — only rendering is windowed. Dynamic-height
+  // pattern (measureElement) mirrors the logs page.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const handleListRef = useCallback((node: HTMLDivElement | null) => {
+    listRef.current = node;
+    if (node) setScrollMargin(node.getBoundingClientRect().top + window.scrollY);
+  }, []);
+  useEffect(() => {
+    const onResize = () => {
+      if (listRef.current) setScrollMargin(listRef.current.getBoundingClientRect().top + window.scrollY);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const rowVirtualizer = useWindowVirtualizer({
+    count: filtered.length,
+    estimateSize: () => 84,
+    enabled: filtered.length > 0,
+    overscan: 8,
+    scrollMargin,
+  });
 
   async function handleResetOne(row: AdminAnimeMappingRow) {
     setBusy(true);
@@ -216,59 +242,79 @@ export default function AnimeMappingListPage() {
               </div>
             </GroupedSection>
           ) : (
-            <GroupedSection title={`${filtered.length} of ${counts.total}`}>
-              {filtered.map((row) => {
-                const autoCount = row.entries.filter((entry) => entry.source === 'auto').length;
-                return (
-                  <div key={`${row.sonarrInstanceId}:${row.sonarrSeriesId}`} className="grouped-row gap-2">
-                    <button
-                      onClick={() => router.push(`/series/${row.sonarrSeriesId}?instance=${row.sonarrInstanceId}`)}
-                      className="flex-1 min-w-0 py-2 text-left"
+            <div className="grouped-section mb-6">
+              <div className="grouped-section-title">{`${filtered.length} of ${counts.total}`}</div>
+              <div
+                ref={handleListRef}
+                className="grouped-section-content relative w-full"
+                style={{ height: rowVirtualizer.getTotalSize() }}
+              >
+                {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                  const row = filtered[virtualItem.index];
+                  const autoCount = row.entries.filter((entry) => entry.source === 'auto').length;
+                  return (
+                    <div
+                      key={`${row.sonarrInstanceId}:${row.sonarrSeriesId}`}
+                      ref={rowVirtualizer.measureElement}
+                      data-index={virtualItem.index}
+                      className="grouped-row gap-2"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${virtualItem.start - rowVirtualizer.options.scrollMargin}px)`,
+                      }}
                     >
-                      <div className="flex items-baseline gap-2 min-w-0">
-                        <span className="text-sm font-medium truncate">{row.seriesTitle}</span>
-                        {row.seriesYear != null && (
-                          <span className="text-xs text-muted-foreground shrink-0">{row.seriesYear}</span>
-                        )}
-                        {multiInstance && (
-                          <span className="text-[10px] text-muted-foreground shrink-0 rounded bg-muted px-1.5 py-0.5">
-                            {row.sonarrInstanceLabel}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <Badge className={`${STATE_META[row.state].className} text-[10px] px-1.5 py-0`}>
-                          {STATE_META[row.state].label}
-                        </Badge>
+                      <button
+                        onClick={() => router.push(`/series/${row.sonarrSeriesId}?instance=${row.sonarrInstanceId}`)}
+                        className="flex-1 min-w-0 py-2 text-left"
+                      >
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="text-sm font-medium truncate">{row.seriesTitle}</span>
+                          {row.seriesYear != null && (
+                            <span className="text-xs text-muted-foreground shrink-0">{row.seriesYear}</span>
+                          )}
+                          {multiInstance && (
+                            <span className="text-[10px] text-muted-foreground shrink-0 rounded bg-muted px-1.5 py-0.5">
+                              {row.sonarrInstanceLabel}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Badge className={`${STATE_META[row.state].className} text-[10px] px-1.5 py-0`}>
+                            {STATE_META[row.state].label}
+                          </Badge>
+                          {row.entries.length > 0 && (
+                            <span className="text-[11px] text-muted-foreground">
+                              {row.entries.length} linked
+                              {autoCount > 0 ? ` · ${autoCount} auto` : ''}
+                            </span>
+                          )}
+                          {row.confidence != null && (
+                            <span className="text-[11px] text-muted-foreground">conf {row.confidence}</span>
+                          )}
+                          <span className="text-[11px] text-muted-foreground">{relativeTime(row.resolvedAt)}</span>
+                        </div>
                         {row.entries.length > 0 && (
-                          <span className="text-[11px] text-muted-foreground">
-                            {row.entries.length} linked
-                            {autoCount > 0 ? ` · ${autoCount} auto` : ''}
-                          </span>
+                          <p className="mt-1 text-xs text-muted-foreground truncate">
+                            {row.entries.map(entryLabel).join(' · ')}
+                          </p>
                         )}
-                        {row.confidence != null && (
-                          <span className="text-[11px] text-muted-foreground">conf {row.confidence}</span>
-                        )}
-                        <span className="text-[11px] text-muted-foreground">{relativeTime(row.resolvedAt)}</span>
-                      </div>
-                      {row.entries.length > 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground truncate">
-                          {row.entries.map(entryLabel).join(' · ')}
-                        </p>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setConfirmTarget(row)}
-                      disabled={busy}
-                      aria-label={`Reset mapping for ${row.seriesTitle}`}
-                      className="self-center min-w-[36px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-60"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
-            </GroupedSection>
+                      </button>
+                      <button
+                        onClick={() => setConfirmTarget(row)}
+                        disabled={busy}
+                        aria-label={`Reset mapping for ${row.seriesTitle}`}
+                        className="self-center min-w-[36px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-60"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </>
       ) : null}

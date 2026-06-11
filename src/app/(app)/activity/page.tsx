@@ -32,6 +32,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
 import { type InstanceOption } from '@/components/instance-filter';
@@ -486,11 +487,8 @@ function QueueTab({
     loadRefreshInterval();
   }, []);
 
-  useEffect(() => {
-    fetchQueue();
-    const i = setInterval(fetchQueue, refreshIntervalMs);
-    return () => clearInterval(i);
-  }, [fetchQueue, refreshIntervalMs]);
+  // Poll only while visible (pauses when backgrounded; refetches on return).
+  useVisibleInterval(fetchQueue, refreshIntervalMs);
 
   // Apply filter
   const filtered = queue.filter((item) =>

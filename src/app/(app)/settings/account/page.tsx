@@ -16,6 +16,9 @@ export default function AccountSettingsPage() {
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (res.ok) {
+        // Best-effort: drop this device's cached shell + read data so the next
+        // sign-in starts clean. Fire-and-forget; don't block the redirect.
+        navigator.serviceWorker?.controller?.postMessage({ type: 'helprr-clear-user-caches' });
         router.push('/login');
       } else {
         toast.error('Failed to sign out');

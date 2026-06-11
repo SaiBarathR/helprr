@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
 import {
   Drawer,
   DrawerContent,
@@ -688,12 +689,9 @@ export default function TorrentsPage() {
     loadRefreshInterval();
   }, []);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void fetchSummary();
-    }, refreshIntervalMs);
-    return () => clearInterval(interval);
-  }, [fetchSummary, refreshIntervalMs]);
+  // Poll only while the tab is visible (pauses when backgrounded; refetches on
+  // return). fetchSummary keeps its own in-flight dedup.
+  useVisibleInterval(fetchSummary, refreshIntervalMs, { enabled: hasHydrated });
 
   // Re-fetch immediately when the active filter signature changes, because the
   // server-side filter only kicks in for single-select — switching needs a
