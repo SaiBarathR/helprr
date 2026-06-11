@@ -24,6 +24,7 @@ async function getHandler(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const downloadId = searchParams.get('downloadId');
     const source = searchParams.get('source') as 'sonarr' | 'radarr';
+    const instanceId = searchParams.get('instanceId') ?? undefined;
 
     if (!downloadId) {
       return NextResponse.json(
@@ -40,11 +41,11 @@ async function getHandler(request: NextRequest) {
     }
 
     if (source === 'sonarr') {
-      const sonarr = await getSonarrClient();
+      const sonarr = await getSonarrClient(instanceId);
       const result = await sonarr.getManualImport(downloadId);
       return NextResponse.json(result);
     } else {
-      const radarr = await getRadarrClient();
+      const radarr = await getRadarrClient(instanceId);
       const result = await radarr.getManualImport(downloadId);
       return NextResponse.json(result);
     }
@@ -66,6 +67,8 @@ async function postHandler(request: NextRequest) {
   try {
     const body = await request.json();
     const { source, files } = body;
+    const instanceId = new URL(request.url).searchParams.get('instanceId')
+      ?? (typeof body.instanceId === 'string' ? body.instanceId : undefined);
 
     if (!source || !['sonarr', 'radarr'].includes(source)) {
       return NextResponse.json(
@@ -82,11 +85,11 @@ async function postHandler(request: NextRequest) {
     }
 
     if (source === 'sonarr') {
-      const sonarr = await getSonarrClient();
+      const sonarr = await getSonarrClient(instanceId);
       const result = await sonarr.submitManualImport(files);
       return NextResponse.json(result);
     } else {
-      const radarr = await getRadarrClient();
+      const radarr = await getRadarrClient(instanceId);
       const result = await radarr.submitManualImport(files);
       return NextResponse.json(result);
     }

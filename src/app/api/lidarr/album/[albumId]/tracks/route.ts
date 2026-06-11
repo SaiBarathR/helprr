@@ -12,7 +12,7 @@ function parsePositiveId(id: string): { value: number } | { error: NextResponse 
 }
 
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ albumId: string }> }
 ) {
   const authError = await requireAuth();
@@ -22,7 +22,8 @@ async function getHandler(
     const { albumId } = await params;
     const parsed = parsePositiveId(albumId);
     if ('error' in parsed) return parsed.error;
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const tracks = await client.getTracks(parsed.value);
     return NextResponse.json(tracks);
   } catch (error) {

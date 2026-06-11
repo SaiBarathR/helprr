@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { normalizeTmdbItem, annotateDiscoverItems, tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
-import type { DiscoverCollectionDetail, DiscoverItem, RadarrMovie, SonarrSeries } from '@/types';
+import type { DiscoverCollectionDetail, DiscoverItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(
@@ -22,24 +22,9 @@ async function getHandler(
 
     const tmdb = await getTMDBClient();
 
-    const [collection, movies, series] = await Promise.all([
+    const [collection, { movies, series }] = await Promise.all([
       tmdb.collectionDetails(id),
-      (async () => {
-        try {
-          const client = await getRadarrClient();
-          return await client.getMovies();
-        } catch {
-          return [] as RadarrMovie[];
-        }
-      })(),
-      (async () => {
-        try {
-          const client = await getSonarrClient();
-          return await client.getSeries();
-        } catch {
-          return [] as SonarrSeries[];
-        }
-      })(),
+      loadTaggedLibrary(),
     ]);
 
     const parts: DiscoverItem[] = (collection.parts || [])

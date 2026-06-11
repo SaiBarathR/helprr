@@ -23,7 +23,8 @@ async function getHandler(
       return NextResponse.json({ error: 'Invalid series ID' }, { status: 400 });
     }
 
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     let series: SonarrSeries;
     try {
       series = await client.getSeriesById(seriesId);

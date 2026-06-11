@@ -13,7 +13,7 @@ function parsePositiveId(id: string): { value: number } | { error: NextResponse 
 }
 
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
@@ -25,7 +25,8 @@ async function getHandler(
     const { id } = await params;
     const parsed = parsePositiveId(id);
     if ('error' in parsed) return parsed.error;
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const artist = await client.getArtistById(parsed.value);
     return NextResponse.json(artist);
   } catch (error) {
@@ -54,7 +55,8 @@ async function putHandler(
       return NextResponse.json({ error: 'Path id and body id must match' }, { status: 400 });
     }
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
 
     // Admins edit freely; members are diffed against the live artist and 403'd for
     // changing monitoring / tags / root folder without the matching capability.
@@ -93,7 +95,8 @@ async function deleteHandler(
     if ('error' in parsed) return parsed.error;
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     await client.deleteArtist(parsed.value, deleteFiles);
     return NextResponse.json({ success: true });
   } catch (error) {

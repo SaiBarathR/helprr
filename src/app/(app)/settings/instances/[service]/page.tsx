@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { ChevronLeft, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -78,6 +78,12 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const isQbt = type === 'QBITTORRENT';
   const isJellyfin = type === 'JELLYFIN';
 
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const instanceParam = searchParams.get('instance'); // null | "new" | "<id>"
+  const isMultiInstance = config.supportsMultiInstance === true;
+  const editingId = isMultiInstance && instanceParam && instanceParam !== 'new' ? instanceParam : null;
+
   const [url, setUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [username, setUsername] = useState('');
@@ -89,6 +95,9 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingExternalUrl, setSavingExternalUrl] = useState(false);
+  const [editingConnId, setEditingConnId] = useState<string | null>(null);
+  const [label, setLabel] = useState('');
+  const [isDefault, setIsDefault] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,15 +109,25 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           return;
         }
         const data = (await res.json()) as Array<{
+          id?: string;
           type?: string;
+          label?: string;
+          isDefault?: boolean;
           url?: string;
           apiKey?: string;
           username?: string | null;
           externalUrl?: string | null;
         }>;
-        const existing = data.find((c) => c.type === type);
+        const existing = isMultiInstance
+          ? (editingId ? data.find((c) => c.id === editingId) : undefined)
+          : data.find((c) => c.type === type);
         if (existing) {
           if (!cancelled) {
+            setEditingConnId(existing.id ?? null);
+            if (isMultiInstance) {
+              setLabel(existing.label ?? '');
+              setIsDefault(existing.isDefault ?? false);
+            }
             setUrl(existing.url ?? '');
             setApiKey(existing.apiKey ?? '');
             setUsername(existing.username ?? '');
@@ -147,7 +166,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     return () => {
       cancelled = true;
     };
-  }, [type, isJellyfin]);
+  }, [type, isJellyfin, isMultiInstance, editingId]);
 
   async function handleTest() {
     const trimmedUrl = url.trim();
@@ -230,7 +249,16 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     }
     setSaving(true);
     try {
-      const body: Record<string, string> = { type, url: trimmedUrl, apiKey: trimmedKey };
+      const body: Record<string, string | boolean> = { type, url: trimmedUrl, apiKey: trimmedKey };
+      if (isMultiInstance) {
+        if (!label.trim()) {
+          toast.error('Please name this instance');
+          setSaving(false);
+          return;
+        }
+        body.label = label.trim();
+        if (editingConnId) body.id = editingConnId;
+      }
       if (isQbt) body.username = trimmedUser || 'admin';
       else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
 
@@ -241,9 +269,15 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       });
 
       if (res.ok) {
+        const wasNew = !editingConnId;
+        const saved = await res.json().catch(() => null);
+        if (saved?.id) setEditingConnId(saved.id);
         setConfigured(true);
         invalidateExternalUrls();
         toast.success('Connection saved');
+        if (isMultiInstance && wasNew) {
+          router.push('/settings/instances');
+        }
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to save connection');
@@ -256,12 +290,16 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   }
 
   async function handleSaveExternalUrl() {
+    if (!editingConnId) {
+      toast.error('Save the connection first');
+      return;
+    }
     setSavingExternalUrl(true);
     try {
       const res = await fetch('/api/services/external-url', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, externalUrl: externalUrl.trim() }),
+        body: JSON.stringify({ id: editingConnId, externalUrl: externalUrl.trim() }),
       });
       if (res.ok) {
         invalidateExternalUrls();
@@ -274,6 +312,33 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       toast.error('Failed to save external URL');
     } finally {
       setSavingExternalUrl(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!editingConnId) return;
+    const res = await fetch(`/api/services/${editingConnId}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast.success('Instance removed');
+      invalidateExternalUrls();
+      router.push('/settings/instances');
+    } else {
+      toast.error('Failed to remove instance');
+    }
+  }
+
+  async function handleMakeDefault() {
+    if (!editingConnId) return;
+    const res = await fetch(`/api/services/${editingConnId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isDefault: true }),
+    });
+    if (res.ok) {
+      toast.success('Set as default');
+      setIsDefault(true);
+    } else {
+      toast.error('Failed to set default');
     }
   }
 
@@ -307,6 +372,18 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
         title="Connection"
         footer="Synced across devices · Validate with Test before saving"
       >
+        {isMultiInstance && (
+          <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Name</Label>
+            <Input
+              placeholder="e.g. 4K, Anime, Main"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              className="h-10"
+            />
+          </div>
+        )}
+
         <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
           <Label className="text-xs text-muted-foreground">URL</Label>
           <Input
@@ -438,6 +515,31 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           </Button>
         </div>
       </GroupedSection>
+
+      {isMultiInstance && editingConnId && (
+        <GroupedSection title="Instance">
+          <div className="px-4 py-3 flex gap-2">
+            {!isDefault && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-9"
+                onClick={handleMakeDefault}
+              >
+                Set as default
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 h-9 text-red-500 hover:text-red-500"
+              onClick={handleDelete}
+            >
+              Delete instance
+            </Button>
+          </div>
+        </GroupedSection>
+      )}
 
       {config.supportsExternalUrl && configured && (
         <GroupedSection

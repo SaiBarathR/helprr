@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function postHandler(request: Request) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   // Commands (search / refresh / rename / manual import) are activity-management
@@ -13,7 +13,8 @@ async function postHandler(request: Request) {
 
   try {
     const body = await request.json();
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
 
     let result;
     switch (body.name) {

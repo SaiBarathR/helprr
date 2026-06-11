@@ -63,14 +63,32 @@ function AddArtistPageContent() {
   const [searchOnAdd, setSearchOnAdd] = useState(true);
   const [adding, setAdding] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
+  const [instances, setInstances] = useState<{ id: string; label: string; isDefault: boolean }[]>([]);
+  const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
   const searchAbortRef = useRef<AbortController | null>(null);
 
+  // Load Lidarr instances; default to the marked default (picker only shows when >1).
   useEffect(() => {
+    fetch('/api/instances')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all: Array<{ id: string; type: string; label: string; isDefault: boolean }>) => {
+        const list = (Array.isArray(all) ? all : [])
+          .filter((c) => c.type === 'LIDARR')
+          .map((c) => ({ id: c.id, label: c.label, isDefault: c.isDefault }));
+        setInstances(list);
+        setInstanceId((prev) => prev ?? list.find((i) => i.isDefault)?.id ?? list[0]?.id);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Profiles / root folders / tags are per-instance; re-fetch when the instance changes.
+  useEffect(() => {
+    const qs = instanceId ? `?instanceId=${instanceId}` : '';
     Promise.all([
-      fetch('/api/lidarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-      fetch('/api/lidarr/metadataprofiles').then((r) => r.ok ? r.json() : []),
-      fetch('/api/lidarr/rootfolders').then((r) => r.ok ? r.json() : []),
-      fetch('/api/lidarr/tags').then((r) => r.ok ? r.json() : []),
+      fetch(`/api/lidarr/qualityprofiles${qs}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/lidarr/metadataprofiles${qs}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/lidarr/rootfolders${qs}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/lidarr/tags${qs}`).then((r) => r.ok ? r.json() : []),
     ]).then(([p, mp, r, t]) => {
       setProfiles(p);
       setMetadataProfiles(mp);
@@ -80,7 +98,7 @@ function AddArtistPageContent() {
       if (mp.length > 0) setMetadataProfileId(String(mp[0].id));
       if (r.length > 0) setRootFolder(r[0].path);
     });
-  }, []);
+  }, [instanceId]);
 
   useEffect(() => () => searchAbortRef.current?.abort(), []);
 
@@ -129,7 +147,7 @@ function AddArtistPageContent() {
     if (!selected || !profileId || !metadataProfileId || !rootFolder) return;
     if (selected.library?.exists) {
       if (selected.library.id) {
-        router.push(`/music/${selected.library.id}`);
+        router.push(`/music/${selected.library.id}${instanceId ? `?instance=${instanceId}` : ''}`);
         return;
       }
       toast.error('Artist is already in library, but detail link is unavailable');
@@ -142,6 +160,7 @@ function AddArtistPageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          instanceId,
           artistName: selected.artistName,
           foreignArtistId: selected.foreignArtistId,
           qualityProfileId: Number(profileId),
@@ -157,7 +176,7 @@ function AddArtistPageContent() {
       if (res.ok) {
         const artist = await res.json();
         toast.success(`${selected.artistName} added`);
-        router.push(`/music/${artist.id}`);
+        router.push(`/music/${artist.id}${instanceId ? `?instance=${instanceId}` : ''}`);
       } else {
         const err = await res.json();
         toast.error(err.error || 'Failed to add artist');
@@ -254,6 +273,21 @@ function AddArtistPageContent() {
               <div className="grouped-section">
                 <div className="grouped-section-title">Options</div>
                 <div className="grouped-section-content">
+                  {instances.length > 1 && (
+                    <div className="grouped-row">
+                      <Label className="text-sm shrink-0">Instance</Label>
+                      <Select value={instanceId ?? ''} onValueChange={setInstanceId}>
+                        <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                          <SelectValue>{instances.find((i) => i.id === instanceId)?.label ?? 'Select'}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {instances.map((i) => (
+                            <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Quality Profile</Label>
                     <Select value={profileId} onValueChange={setProfileId}>
@@ -363,7 +397,7 @@ function AddArtistPageContent() {
                 <Button
                   className="flex-1 h-11"
                   onClick={() => {
-                    if (selected.library?.id) router.push(`/music/${selected.library.id}`);
+                    if (selected.library?.id) router.push(`/music/${selected.library.id}${instanceId ? `?instance=${instanceId}` : ''}`);
                     else toast.error('Artist is already in library, but detail link is unavailable');
                   }}
                 >

@@ -8,7 +8,7 @@ import { withApiLogging } from '@/lib/api-logger';
 const EMPTY = { cast: [], crew: [] };
 
 async function getHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
@@ -21,7 +21,8 @@ async function getHandler(
       return NextResponse.json({ error: 'Invalid series ID' }, { status: 400 });
     }
 
-    const sonarr = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const sonarr = await getSonarrClient(instanceId);
     const series = await sonarr.getSeriesById(seriesId);
     const tmdbId = series?.tmdbId;
     if (!tmdbId) {

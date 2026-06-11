@@ -189,6 +189,8 @@ export default function MusicPage() {
     setMusicSortDirection: setSortDir,
     musicFilter: filter,
     setMusicFilter: setFilter,
+    musicInstanceFilter: instanceFilter,
+    setMusicInstanceFilter: setInstanceFilter,
     musicVisibleFields: visibleFieldsByMode,
     setMusicVisibleFields: setVisibleFieldsForMode,
     musicSearch: search,
@@ -234,10 +236,12 @@ export default function MusicPage() {
         fetch('/api/lidarr/metadataprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load metadata profiles'); return r.json(); }),
       ]);
 
+      // A misconfigured instance can answer 200 with a non-array body; never let
+      // that white-screen the library — fall back to empty for any non-array.
       const next: MusicPageCacheData = {
-        artists: a,
-        qualityProfiles: q,
-        metadataProfiles: mp,
+        artists: Array.isArray(a) ? a : [],
+        qualityProfiles: Array.isArray(q) ? q : [],
+        metadataProfiles: Array.isArray(mp) ? mp : [],
       };
 
       setArtists(next.artists);
@@ -350,6 +354,25 @@ export default function MusicPage() {
     [metadataProfiles]
   );
 
+  // Connected instances derived from the (already instance-tagged) list.
+  const instances = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const artist of artists) if (artist.instanceId) map.set(artist.instanceId, artist.instanceLabel ?? artist.instanceId);
+    return [...map].map(([id, label]) => ({ id, label }));
+  }, [artists]);
+  const multiInstance = instances.length > 1;
+  const hrefForArtist = useCallback(
+    (artist: LidarrArtistListItem) => (artist.instanceId ? `/music/${artist.id}?instance=${artist.instanceId}` : `/music/${artist.id}`),
+    []
+  );
+
+  // Drop a stale instance filter if that instance is no longer connected.
+  useEffect(() => {
+    if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
+      setInstanceFilter('all');
+    }
+  }, [instances, instanceFilter, setInstanceFilter]);
+
   const filtered = useMemo(() => {
     let list = artists;
 
@@ -369,6 +392,10 @@ export default function MusicPage() {
         if (f === 'ended') return a.status === 'ended' || a.ended;
         return true;
       }));
+    }
+
+    if (instanceFilter !== 'all') {
+      list = list.filter((artist) => artist.instanceId === instanceFilter);
     }
 
     list = [...list].sort((a, b) => {
@@ -416,7 +443,7 @@ export default function MusicPage() {
     });
 
     return list;
-  }, [artists, search, sort, sortDir, filter, qualityProfileMap]);
+  }, [artists, search, sort, sortDir, filter, instanceFilter, qualityProfileMap]);
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
@@ -470,7 +497,8 @@ export default function MusicPage() {
       id: artist.id,
       title: artist.artistName,
       year: 0,
-      href: `/music/${artist.id}`,
+      href: hrefForArtist(artist),
+      instanceLabel: multiInstance ? artist.instanceLabel : undefined,
       monitored: artist.monitored,
       hasFile: !!artist.statistics && artist.statistics.totalTrackCount > 0
         && artist.statistics.trackFileCount >= artist.statistics.totalTrackCount,
@@ -483,7 +511,7 @@ export default function MusicPage() {
       albumCount: artist.statistics?.albumCount,
       trackProgress: trackProgressLabel(artist),
     }))
-  ), [filtered, qualityProfileMap]);
+  ), [filtered, qualityProfileMap, multiInstance, hrefForArtist]);
 
   const tableVirtualizer = useWindowVirtualizer({
     count: tableRows.length,
@@ -519,11 +547,11 @@ export default function MusicPage() {
   function renderOverviewItem(artist: LidarrArtistListItem, fields: string[]) {
     return (
       <MediaOverviewItem
-        key={artist.id}
+        key={`${artist.instanceId ?? ''}:${artist.id}`}
         title={artist.artistName}
         year={0}
         images={artist.images}
-        href={`/music/${artist.id}`}
+        href={hrefForArtist(artist)}
         type="artist"
         monitored={artist.monitored}
         status={artist.status}
@@ -538,6 +566,7 @@ export default function MusicPage() {
         rating={artist.ratings?.value}
         sizeOnDisk={artist.statistics?.sizeOnDisk}
         genres={artist.genres}
+        instanceLabel={multiInstance ? artist.instanceLabel : undefined}
         onNavigate={handleNavigateToDetail}
       />
     );
@@ -580,6 +609,29 @@ export default function MusicPage() {
                   {opt.label}
                 </DropdownMenuCheckboxItem>
               ))}
+              {multiInstance && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Instance</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={instanceFilter === 'all'}
+                    onCheckedChange={() => setInstanceFilter('all')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    All instances
+                  </DropdownMenuCheckboxItem>
+                  {instances.map((inst) => (
+                    <DropdownMenuCheckboxItem
+                      key={inst.id}
+                      checked={instanceFilter === inst.id}
+                      onCheckedChange={() => setInstanceFilter(inst.id)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {inst.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -700,7 +752,7 @@ export default function MusicPage() {
               <div className={posterGridClass}>
                 {visibleArtists.map((artist) => (
                   <MediaCard
-                    key={artist.id}
+                    key={`${artist.instanceId ?? ''}:${artist.id}`}
                     title={artist.artistName}
                     year={0}
                     images={artist.images}
@@ -708,9 +760,10 @@ export default function MusicPage() {
                       && artist.statistics.trackFileCount >= artist.statistics.totalTrackCount}
                     monitored={artist.monitored}
                     type="artist"
-                    href={`/music/${artist.id}`}
+                    href={hrefForArtist(artist)}
                     visibleFields={visibleFields}
                     rating={artist.ratings?.value}
+                    instanceLabel={multiInstance ? artist.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
                   />
                 ))}

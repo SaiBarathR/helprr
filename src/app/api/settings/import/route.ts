@@ -13,6 +13,8 @@ import { configureApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { EVENT_TYPES } from '@/lib/notification-events';
 import { isServiceType } from '@/lib/service-connection-secrets';
+import { isArrType, ensureDefaultForType } from '@/lib/arr-instances';
+import { findServiceByType } from '@/lib/settings/service-config';
 import {
   MAX_IMPORT_BYTES,
   type ExportedAppSettings,
@@ -211,7 +213,22 @@ async function applyServiceConnectionInTxn(
     ? conn.username
     : conn.type === 'QBITTORRENT' ? 'admin' : null;
 
-  const existing = await tx.serviceConnection.findUnique({ where: { type: conn.type } });
+  // Multi-instance: arr connections are identified by (type, label); other types
+  // are the single connection of their type. Older (pre-multi-instance) exports
+  // carry no label — arr connections fall back to the type name (the same value
+  // manual-fixups backfills existing rows to), so a legacy single-instance backup
+  // restores onto (and idempotently updates) the migrated connection instead of
+  // being skipped or duplicated. Single-instance types match by type alone, so
+  // their label is cosmetic.
+  const isArr = isArrType(conn.type);
+  const rawLabel = typeof conn.label === 'string' ? conn.label.trim() : '';
+  const label = isArr
+    ? (rawLabel || conn.type)
+    : (rawLabel || findServiceByType(conn.type)?.label || conn.type);
+
+  const existing = isArr
+    ? await tx.serviceConnection.findFirst({ where: { type: conn.type, label } })
+    : await tx.serviceConnection.findFirst({ where: { type: conn.type } });
   const apiKey = typeof conn.apiKey === 'string' && conn.apiKey.length > 0
     ? conn.apiKey
     : existing?.apiKey ?? null;
@@ -228,19 +245,34 @@ async function applyServiceConnectionInTxn(
     ? conn.refreshToken
     : existing?.refreshToken ?? null;
 
-  await tx.serviceConnection.upsert({
-    where: { type: conn.type },
-    update: {
-      url, apiKey, username, externalUrl,
-      ...(accessToken !== null && { accessToken }),
-      ...(refreshToken !== null && { refreshToken }),
-    },
-    create: {
-      type: conn.type, url, apiKey, username, externalUrl,
-      ...(accessToken !== null && { accessToken }),
-      ...(refreshToken !== null && { refreshToken }),
-    },
-  });
+  if (existing) {
+    await tx.serviceConnection.update({
+      where: { id: existing.id },
+      data: {
+        url, apiKey, username, label, externalUrl,
+        ...(accessToken !== null && { accessToken }),
+        ...(refreshToken !== null && { refreshToken }),
+      },
+    });
+  } else {
+    // A label-less arr export (a pre-multi-instance backup) restored into a DB that
+    // already has instances of this type can't be matched to a specific instance, so
+    // it lands as a new one labeled by type. Warn so the operator can spot a possible
+    // duplicate of an existing instance instead of it being created silently.
+    if (isArr && rawLabel === '') {
+      const sameTypeCount = await tx.serviceConnection.count({ where: { type: conn.type } });
+      if (sameTypeCount > 0) {
+        skipped.push(`Imported ${conn.type} as a new instance "${label}" (backup predates instance labels) — verify it isn't a duplicate of an existing ${conn.type} instance.`);
+      }
+    }
+    await tx.serviceConnection.create({
+      data: {
+        type: conn.type, label, isDefault: conn.isDefault === true, url, apiKey, username, externalUrl,
+        ...(accessToken !== null && { accessToken }),
+        ...(refreshToken !== null && { refreshToken }),
+      },
+    });
+  }
   return conn.type;
 }
 
@@ -1038,6 +1070,18 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       await invalidateLayoutCache();
     } catch (err) {
       console.warn('Failed to invalidate dashboard layout cache after import', err);
+    }
+  }
+
+  // Ensure exactly one default per imported type (export isDefault flags were
+  // applied on create; this promotes the oldest if none/many ended up flagged).
+  if (appliedServices.length > 0) {
+    for (const type of new Set(appliedServices)) {
+      try {
+        await ensureDefaultForType(type);
+      } catch (err) {
+        console.warn('Failed to ensure default instance after import', err);
+      }
     }
   }
 

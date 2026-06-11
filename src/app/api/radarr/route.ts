@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRadarrClient } from '@/lib/service-helpers';
+import { getRadarrClient, getRadarrClients } from '@/lib/service-helpers';
+import { resolveConnection } from '@/lib/arr-instances';
+import { RadarrClient } from '@/lib/radarr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
@@ -45,15 +47,34 @@ async function getHandler(request: NextRequest) {
 
   try {
     const full = request.nextUrl.searchParams.get('full') === 'true';
-    const client = await getRadarrClient();
-    const movies = await client.getMovies();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+
+    const instances = instanceId
+      ? await (async () => {
+          const conn = await resolveConnection('RADARR', instanceId);
+          return [{ connection: conn, client: new RadarrClient(conn.url, conn.apiKey) }];
+        })()
+      : await getRadarrClients();
+
+    const tagged = (await Promise.all(
+      instances.map(async ({ connection, client }) => {
+        try {
+          const movies = await client.getMovies();
+          return movies.map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
+        } catch {
+          // One unreachable/misconfigured instance must not blank the whole library.
+          return [];
+        }
+      })
+    )).flat();
+
     logApiDuration('/api/radarr', startedAt, {
       method: 'GET',
       full,
-      movieCount: movies.length,
+      movieCount: tagged.length,
     });
-    if (full) return NextResponse.json(movies);
-    return NextResponse.json(movies.map(toListItem));
+    if (full) return NextResponse.json(tagged);
+    return NextResponse.json(tagged.map((m) => ({ ...toListItem(m), instanceId: m.instanceId, instanceLabel: m.instanceLabel })));
   } catch (error) {
     logApiDuration('/api/radarr', startedAt, { method: 'GET', failed: true });
     const message = error instanceof Error ? error.message : 'Failed to fetch movies';
@@ -70,7 +91,8 @@ async function postHandler(request: Request) {
 
   try {
     const body = await request.json();
-    const client = await getRadarrClient();
+    const instanceId = typeof body.instanceId === 'string' ? body.instanceId : undefined;
+    const client = await getRadarrClient(instanceId);
     const result = await client.addMovie(body);
     logApiDuration('/api/radarr', startedAt, { method: 'POST' });
     return NextResponse.json(result);

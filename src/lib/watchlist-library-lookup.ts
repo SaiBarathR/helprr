@@ -1,11 +1,18 @@
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getRadarrClients, getSonarrClients } from '@/lib/service-helpers';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 
+/** The arr id of a library match plus the instance it lives in, so hrefs can
+ * deep-link to the correct instance. */
+interface LibraryRef {
+  id: number;
+  instanceId: string;
+}
+
 export interface LibraryHrefLookups {
-  radarrByTmdbId: Map<number, number>;
-  sonarrByTvdbId: Map<number, number>;
-  sonarrByTmdbId: Map<number, number>;
+  radarrByTmdbId: Map<number, LibraryRef>;
+  sonarrByTvdbId: Map<number, LibraryRef>;
+  sonarrByTmdbId: Map<number, LibraryRef>;
 }
 
 export interface LookupNeeds {
@@ -16,8 +23,9 @@ export interface LookupNeeds {
 
 const LOOKUPS_TTL_MS = 5 * 60 * 1000;
 
-// Module-scope cache. Helprr is single-instance today; if that ever changes,
-// move this behind Redis (the dashboard layout cache is the existing pattern).
+// Module-scope cache, unioned across all instances of each type. Lives
+// per-process; if Helprr ever runs multiple replicas, move this behind Redis
+// (the dashboard layout cache is the existing pattern).
 // Keyed by which datasets the caller asked for so a request for
 // {tmdbMovie:true} doesn't get served a cached value that was populated with
 // only Radarr data (empty Sonarr maps) — and vice versa.
@@ -43,41 +51,46 @@ export async function getLibraryLookups(needs: LookupNeeds): Promise<LibraryHref
   let radarrFailed = false;
   let sonarrFailed = false;
 
+  // Union across every instance of each type (an item is "in library" if it lives
+  // in ≥1 instance). One unreachable instance marks the type failed so we don't
+  // cache a partial result, but reachable instances still contribute.
   const [movies, series] = await Promise.all([
     needRadarr
       ? (async () => {
-          try {
-            const c = await getRadarrClient();
-            return await c.getMovies();
-          } catch {
-            radarrFailed = true;
-            return [] as RadarrMovie[];
-          }
+          const results = await Promise.allSettled(
+            (await getRadarrClients()).map(async ({ connection, client }) =>
+              (await client.getMovies()).map((m) => ({ ...m, instanceId: connection.id }))
+            )
+          );
+          if (results.some((r) => r.status === 'rejected')) radarrFailed = true;
+          return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
         })()
-      : Promise.resolve([] as RadarrMovie[]),
+      : Promise.resolve([] as (RadarrMovie & { instanceId: string })[]),
     needSonarr
       ? (async () => {
-          try {
-            const c = await getSonarrClient();
-            return await c.getSeries();
-          } catch {
-            sonarrFailed = true;
-            return [] as SonarrSeries[];
-          }
+          const results = await Promise.allSettled(
+            (await getSonarrClients()).map(async ({ connection, client }) =>
+              (await client.getSeries()).map((s) => ({ ...s, instanceId: connection.id }))
+            )
+          );
+          if (results.some((r) => r.status === 'rejected')) sonarrFailed = true;
+          return results.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
         })()
-      : Promise.resolve([] as SonarrSeries[]),
+      : Promise.resolve([] as (SonarrSeries & { instanceId: string })[]),
   ]);
 
-  const radarrByTmdbId = new Map<number, number>();
+  // getRadarrClients/getSonarrClients return the default instance first, so the
+  // `!has` guard keeps the default instance's id when an item lives in several.
+  const radarrByTmdbId = new Map<number, LibraryRef>();
   for (const m of movies) {
-    if (m.tmdbId) radarrByTmdbId.set(m.tmdbId, m.id);
+    if (m.tmdbId && !radarrByTmdbId.has(m.tmdbId)) radarrByTmdbId.set(m.tmdbId, { id: m.id, instanceId: m.instanceId });
   }
-  const sonarrByTvdbId = new Map<number, number>();
-  const sonarrByTmdbId = new Map<number, number>();
+  const sonarrByTvdbId = new Map<number, LibraryRef>();
+  const sonarrByTmdbId = new Map<number, LibraryRef>();
   for (const s of series) {
-    if (s.tvdbId) sonarrByTvdbId.set(s.tvdbId, s.id);
+    if (s.tvdbId && !sonarrByTvdbId.has(s.tvdbId)) sonarrByTvdbId.set(s.tvdbId, { id: s.id, instanceId: s.instanceId });
     const tmdbId = (s as SonarrSeries & { tmdbId?: number }).tmdbId;
-    if (tmdbId) sonarrByTmdbId.set(tmdbId, s.id);
+    if (tmdbId && !sonarrByTmdbId.has(tmdbId)) sonarrByTmdbId.set(tmdbId, { id: s.id, instanceId: s.instanceId });
   }
 
   const value: LibraryHrefLookups = { radarrByTmdbId, sonarrByTvdbId, sonarrByTmdbId };
@@ -97,16 +110,16 @@ export function resolveHrefFromLookups(
     const externalNum = Number.parseInt(externalId, 10);
     if (Number.isFinite(externalNum)) {
       if (source === 'TMDB' && mediaType === 'movie') {
-        const id = lookups.radarrByTmdbId.get(externalNum);
-        if (id) return `/movies/${id}`;
+        const ref = lookups.radarrByTmdbId.get(externalNum);
+        if (ref) return `/movies/${ref.id}?instance=${ref.instanceId}`;
       }
       if (source === 'TVDB' && mediaType === 'series') {
-        const id = lookups.sonarrByTvdbId.get(externalNum);
-        if (id) return `/series/${id}`;
+        const ref = lookups.sonarrByTvdbId.get(externalNum);
+        if (ref) return `/series/${ref.id}?instance=${ref.instanceId}`;
       }
       if (source === 'TMDB' && mediaType === 'series') {
-        const id = lookups.sonarrByTmdbId.get(externalNum);
-        if (id) return `/series/${id}`;
+        const ref = lookups.sonarrByTmdbId.get(externalNum);
+        if (ref) return `/series/${ref.id}?instance=${ref.instanceId}`;
       }
     }
   }

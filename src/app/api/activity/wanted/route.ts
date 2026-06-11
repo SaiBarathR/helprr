@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -54,119 +54,109 @@ async function getWantedSlice<T>(
   }
 }
 
+type WantedRecord = { id?: number; artistId?: number };
+
+type WantedBucket = {
+  source: WantedSource;
+  instanceId: string;
+  instanceLabel: string;
+  fetchPage: WantedFetcher<WantedRecord>;
+  tag: (record: WantedRecord) => Record<string, unknown>;
+};
+
+// One bucket per connected instance, ordered sonarr → radarr → lidarr, each with
+// its own page fetcher + record tagger. Pagination treats the buckets as one
+// concatenated list (generalizing the old per-type offset math to N instances).
+// sourceFilter still gates a whole type.
+async function buildWantedBuckets(type: WantedType, sourceFilter?: WantedSource): Promise<WantedBucket[]> {
+  const want = (s: WantedSource) => !sourceFilter || sourceFilter === s;
+  const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
+    want('sonarr') ? getSonarrClients().catch(() => []) : Promise.resolve([]),
+    want('radarr') ? getRadarrClients().catch(() => []) : Promise.resolve([]),
+    want('lidarr') ? getLidarrClients().catch(() => []) : Promise.resolve([]),
+  ]);
+
+  const makeFetch = (client: WantedCapableClient<WantedRecord>): WantedFetcher<WantedRecord> =>
+    (page, pageSize) =>
+      type === 'cutoff' ? client.getCutoffUnmet(page, pageSize) : client.getWantedMissing(page, pageSize);
+
+  const buckets: WantedBucket[] = [];
+  for (const { connection, client } of sonarrClients) {
+    buckets.push({
+      source: 'sonarr',
+      instanceId: connection.id,
+      instanceLabel: connection.label,
+      fetchPage: makeFetch(client),
+      tag: (record) => ({ ...record, source: 'sonarr' as const, mediaType: 'episode' as const, instanceId: connection.id, instanceLabel: connection.label }),
+    });
+  }
+  for (const { connection, client } of radarrClients) {
+    buckets.push({
+      source: 'radarr',
+      instanceId: connection.id,
+      instanceLabel: connection.label,
+      fetchPage: makeFetch(client),
+      tag: (record) => ({ ...record, source: 'radarr' as const, mediaType: 'movie' as const, instanceId: connection.id, instanceLabel: connection.label }),
+    });
+  }
+  for (const { connection, client } of lidarrClients) {
+    buckets.push({
+      source: 'lidarr',
+      instanceId: connection.id,
+      instanceLabel: connection.label,
+      fetchPage: makeFetch(client),
+      tag: (record) => ({ ...record, source: 'lidarr' as const, mediaType: 'album' as const, albumId: record.id, artistId: record.artistId, instanceId: connection.id, instanceLabel: connection.label }),
+    });
+  }
+  return buckets;
+}
+
 async function fetchWantedPage(type: WantedType, page: number, pageSize: number, sourceFilter?: WantedSource) {
   const safePage = Number.isFinite(page) && page > 0 ? page : 1;
   const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20;
   const startIndex = (safePage - 1) * safePageSize;
   const endIndex = startIndex + safePageSize;
 
-  const [sonarrClient, radarrClient, lidarrClient] = await Promise.all([
-    sourceFilter && sourceFilter !== 'sonarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
-    sourceFilter && sourceFilter !== 'radarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
-    sourceFilter && sourceFilter !== 'lidarr' ? Promise.resolve(null) : getLidarrClient().catch(() => null),
-  ]);
+  const buckets = await buildWantedBuckets(type, sourceFilter);
+  const totals = await Promise.all(buckets.map((bucket) => getWantedTotal(bucket.fetchPage)));
 
-  const sonarrFetchPage = sonarrClient
-    ? (nextPage: number, nextPageSize: number) =>
-        type === 'cutoff'
-          ? sonarrClient.getCutoffUnmet(nextPage, nextPageSize)
-          : sonarrClient.getWantedMissing(nextPage, nextPageSize)
-    : null;
+  // Carve the global [startIndex, endIndex) window across the concatenated buckets.
+  let cumulative = 0;
+  const specs = buckets.map((bucket, index) => {
+    const total = totals[index];
+    const sliceStart = Math.max(0, Math.min(startIndex - cumulative, total));
+    const sliceEnd = Math.max(0, Math.min(endIndex - cumulative, total));
+    cumulative += total;
+    return { bucket, sliceStart, sliceEnd };
+  });
 
-  const radarrFetchPage = radarrClient
-    ? (nextPage: number, nextPageSize: number) =>
-        type === 'cutoff'
-          ? radarrClient.getCutoffUnmet(nextPage, nextPageSize)
-          : radarrClient.getWantedMissing(nextPage, nextPageSize)
-    : null;
-
-  const lidarrFetchPage = lidarrClient
-    ? (nextPage: number, nextPageSize: number) =>
-        type === 'cutoff'
-          ? lidarrClient.getCutoffUnmet(nextPage, nextPageSize)
-          : lidarrClient.getWantedMissing(nextPage, nextPageSize)
-    : null;
-
-  const [sonarrTotal, radarrTotal, lidarrTotal] = await Promise.all([
-    sonarrFetchPage ? getWantedTotal(sonarrFetchPage) : Promise.resolve(0),
-    radarrFetchPage ? getWantedTotal(radarrFetchPage) : Promise.resolve(0),
-    lidarrFetchPage ? getWantedTotal(lidarrFetchPage) : Promise.resolve(0),
-  ]);
-
-  const sonarrStart = Math.min(startIndex, sonarrTotal);
-  const sonarrEnd = Math.min(endIndex, sonarrTotal);
-  const radarrStart = Math.max(0, startIndex - sonarrTotal);
-  const radarrEnd = Math.max(0, Math.min(endIndex - sonarrTotal, radarrTotal));
-  const lidarrStart = Math.max(0, startIndex - sonarrTotal - radarrTotal);
-  const lidarrEnd = Math.max(0, Math.min(endIndex - sonarrTotal - radarrTotal, lidarrTotal));
-
-  const [sonarrRecords, radarrRecords, lidarrRecords] = await Promise.all([
-    sonarrFetchPage ? getWantedSlice(sonarrFetchPage, sonarrStart, sonarrEnd, safePageSize) : Promise.resolve([]),
-    radarrFetchPage ? getWantedSlice(radarrFetchPage, radarrStart, radarrEnd, safePageSize) : Promise.resolve([]),
-    lidarrFetchPage ? getWantedSlice(lidarrFetchPage, lidarrStart, lidarrEnd, safePageSize) : Promise.resolve([]),
-  ]);
+  const slices = await Promise.all(
+    specs.map(({ bucket, sliceStart, sliceEnd }) =>
+      getWantedSlice(bucket.fetchPage, sliceStart, sliceEnd, safePageSize).then((records) => records.map(bucket.tag))
+    )
+  );
 
   return {
     page: safePage,
     pageSize: safePageSize,
-    totalRecords: sonarrTotal + radarrTotal + lidarrTotal,
-    records: [
-      ...sonarrRecords.map((record) => ({
-        ...record,
-        source: 'sonarr' as const,
-        mediaType: 'episode' as const,
-      })),
-      ...radarrRecords.map((record) => ({
-        ...record,
-        source: 'radarr' as const,
-        mediaType: 'movie' as const,
-      })),
-      ...lidarrRecords.map((record) => ({
-        ...record,
-        source: 'lidarr' as const,
-        mediaType: 'album' as const,
-        albumId: record.id,
-        artistId: record.artistId,
-      })),
-    ],
+    totalRecords: totals.reduce((sum, n) => sum + n, 0),
+    records: slices.flat(),
   };
 }
 
 async function fetchWantedCounts(sourceFilter?: WantedSource) {
-  const [sonarrClient, radarrClient, lidarrClient] = await Promise.all([
-    sourceFilter && sourceFilter !== 'sonarr' ? Promise.resolve(null) : getSonarrClient().catch(() => null),
-    sourceFilter && sourceFilter !== 'radarr' ? Promise.resolve(null) : getRadarrClient().catch(() => null),
-    sourceFilter && sourceFilter !== 'lidarr' ? Promise.resolve(null) : getLidarrClient().catch(() => null),
-  ]);
-
-  const getFetcher = <T,>(client: WantedCapableClient<T> | null, type: WantedType): WantedFetcher<T> | null => {
-    if (!client) return null;
-    return (page, pageSize) =>
-      type === 'cutoff'
-        ? client.getCutoffUnmet(page, pageSize)
-        : client.getWantedMissing(page, pageSize);
+  const totalFor = async (type: WantedType) => {
+    const buckets = await buildWantedBuckets(type, sourceFilter);
+    const totals = await Promise.all(buckets.map((bucket) => getWantedTotal(bucket.fetchPage)));
+    return totals.reduce((sum, n) => sum + n, 0);
   };
 
-  const totalFor = (type: WantedType) => {
-    const sonarrFetcher = getFetcher(sonarrClient, type);
-    const radarrFetcher = getFetcher(radarrClient, type);
-    const lidarrFetcher = getFetcher(lidarrClient, type);
-    return Promise.all([
-      sonarrFetcher ? getWantedTotal(sonarrFetcher) : Promise.resolve(0),
-      radarrFetcher ? getWantedTotal(radarrFetcher) : Promise.resolve(0),
-      lidarrFetcher ? getWantedTotal(lidarrFetcher) : Promise.resolve(0),
-    ]).then((totals) => totals.reduce((sum, n) => sum + n, 0));
-  };
-
-  const [missingResult, cutoffResult] = await Promise.all([
+  const [missingTotal, cutoffTotal] = await Promise.all([
     totalFor('missing'),
     totalFor('cutoff'),
   ]);
 
-  return {
-    missingTotal: missingResult,
-    cutoffTotal: cutoffResult,
-  };
+  return { missingTotal, cutoffTotal };
 }
 
 /**

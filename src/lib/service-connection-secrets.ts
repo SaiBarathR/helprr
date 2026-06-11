@@ -18,15 +18,18 @@ export function isServiceType(value: string): value is ServiceType {
 
 export async function resolveApiKeyForService(
   type: ServiceType,
-  providedApiKey: string
+  providedApiKey: string,
+  instanceId?: string
 ): Promise<string> {
-  const existing = await prisma.serviceConnection.findUnique({ where: { type } });
+  const existing = instanceId
+    ? await prisma.serviceConnection.findUnique({ where: { id: instanceId } })
+    : (await prisma.serviceConnection.findFirst({ where: { type, isDefault: true } }))
+      ?? (await prisma.serviceConnection.findFirst({ where: { type } }));
   if (!existing) return providedApiKey;
 
-  // If UI sends a masked API key from the connections API, keep the stored secret.
+  // If the UI sends back a masked API key, keep the stored secret.
   if (providedApiKey === maskApiKey(existing.apiKey)) {
     return existing.apiKey;
   }
-
   return providedApiKey;
 }

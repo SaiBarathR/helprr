@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { getSonarrClient } from '@/lib/service-helpers';
+import { resolveConnection } from '@/lib/arr-instances';
+import { SonarrClient } from '@/lib/sonarr-client';
 import { ensureSeriesAniListMapping } from '@/lib/anilist-series-mapping';
 import { withApiLogging } from '@/lib/api-logger';
 import type { AnimeSonarrMappingItem, AnimeSonarrMappingsResponse, SeriesAniListMappingState } from '@/types/anilist';
@@ -15,12 +16,15 @@ async function loadMappings(anilistMediaId: number): Promise<AnimeSonarrMappingI
     orderBy: { mapping: { resolvedAt: 'desc' } },
   });
 
-  const seen = new Set<number>();
+  // The same series id can exist in two Sonarr instances, so dedupe by instance+id.
+  const seen = new Set<string>();
   const mappings: AnimeSonarrMappingItem[] = [];
   for (const entry of entries) {
-    if (seen.has(entry.mapping.sonarrSeriesId)) continue;
-    seen.add(entry.mapping.sonarrSeriesId);
+    const key = `${entry.mapping.sonarrInstanceId}:${entry.mapping.sonarrSeriesId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     mappings.push({
+      sonarrInstanceId: entry.mapping.sonarrInstanceId,
       sonarrSeriesId: entry.mapping.sonarrSeriesId,
       state: entry.mapping.state as SeriesAniListMappingState,
       seriesTitle: entry.mapping.seriesTitleSnapshot,
@@ -56,6 +60,8 @@ async function getHandler(
     // AniList rate limit must not break the read.
     const hintRaw = new URL(request.url).searchParams.get('sonarrSeriesId');
     const hintId = hintRaw != null && hintRaw !== '' ? Number(hintRaw) : null;
+    const hintInstanceRaw = new URL(request.url).searchParams.get('sonarrInstanceId');
+    const hintInstanceId = hintInstanceRaw && hintInstanceRaw.trim() ? hintInstanceRaw.trim() : undefined;
     if (
       hintId != null
       && Number.isFinite(hintId)
@@ -63,10 +69,11 @@ async function getHandler(
       && !mappings.some((mapping) => mapping.sonarrSeriesId === hintId)
     ) {
       try {
-        const client = await getSonarrClient();
+        const connection = await resolveConnection('SONARR', hintInstanceId);
+        const client = new SonarrClient(connection.url, connection.apiKey);
         const series = await client.getSeriesById(hintId);
         if (series && series.seriesType === 'anime') {
-          await ensureSeriesAniListMapping(series);
+          await ensureSeriesAniListMapping(series, connection.id);
           mappings = await loadMappings(id);
         }
       } catch {

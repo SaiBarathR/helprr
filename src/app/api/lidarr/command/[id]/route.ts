@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(
-  _request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
@@ -18,7 +18,8 @@ async function getHandler(
     if (!Number.isInteger(commandId) || commandId <= 0) {
       return NextResponse.json({ error: 'Invalid command id' }, { status: 400 });
     }
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const result = await client.getCommand(commandId);
     return NextResponse.json(result);
   } catch (error) {

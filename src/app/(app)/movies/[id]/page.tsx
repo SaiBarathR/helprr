@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -60,7 +60,7 @@ import {
   waitForScrollY,
   type DetailViewKey,
 } from '@/lib/detail-view-state';
-import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import Link from 'next/link';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
@@ -104,10 +104,22 @@ function formatRatingVotes(votes: number): string {
   return String(votes);
 }
 
+// Append the viewing instance to a Radarr API path so the detail page reads/mutates
+// the correct instance. No-op when instance is undefined (single-instance-identical).
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+
+function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function MovieDetailPage() {
   const { id } = useParams();
   const movieId = Number(id);
-  const initialSnapshot = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
+  const instance = useSearchParams().get('instance') ?? undefined;
+  const initialSnapshot = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId, instance) : null;
   const detailViewKey: DetailViewKey = `movie:${movieId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const scrollReadyRef = useRef(false);
@@ -123,6 +135,7 @@ export default function MovieDetailPage() {
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const externalUrls = useExternalUrls();
+  const radarrExternalUrl = useExternalUrlResolver()('RADARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
 
@@ -164,8 +177,8 @@ export default function MovieDetailPage() {
       tags: next.tags ?? tags,
       tmdbData: next.tmdbData ?? tmdbData,
       credits: next.credits ?? credits,
-    });
-  }, [credits, movie, movieId, qualityProfiles, tags, tmdbData]);
+    }, instance);
+  }, [credits, instance, movie, movieId, qualityProfiles, tags, tmdbData]);
 
   const loadData = useCallback(async (hasCachedData: boolean) => {
     if (!hasCachedData) setCredits([]);
@@ -183,7 +196,7 @@ export default function MovieDetailPage() {
 
     try {
       const [movieResult, nextQualityProfiles, nextTags] = await Promise.all([
-        fetch(`/api/radarr/${movieId}`).then(async (response): Promise<{ movie: RadarrMovie | null; notFound: boolean }> => {
+        radarrFetch(instance, `/api/radarr/${movieId}`).then(async (response): Promise<{ movie: RadarrMovie | null; notFound: boolean }> => {
           if (response.ok) {
             return { movie: await response.json() as RadarrMovie, notFound: false };
           }
@@ -203,12 +216,12 @@ export default function MovieDetailPage() {
 
           throw new Error(message || `Failed to fetch movie (${response.status})`);
         }),
-        fetch('/api/radarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? await r.json() as QualityProfile[] : [])),
-        fetch('/api/radarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? await r.json() as Tag[] : [])),
+        radarrFetch(instance, '/api/radarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? await r.json() as QualityProfile[] : [])),
+        radarrFetch(instance, '/api/radarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? await r.json() as Tag[] : [])),
       ]);
 
       const nextMovie = movieResult.movie;
-      const existingSnapshot = getMovieDetailSnapshot(movieId);
+      const existingSnapshot = getMovieDetailSnapshot(movieId, instance);
       setMovie(nextMovie);
       setQualityProfiles(nextQualityProfiles);
       setTags(nextTags);
@@ -218,14 +231,14 @@ export default function MovieDetailPage() {
         tags: nextTags,
         tmdbData: existingSnapshot?.tmdbData ?? null,
         credits: existingSnapshot?.credits ?? [],
-      });
+      }, instance);
 
       if (movieResult.notFound) {
         return;
       }
 
       // Fetch credits in background (non-blocking)
-      void fetch(`/api/radarr/credit?movieId=${movieId}`)
+      void radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`)
         .then(async (r) => (r.ok ? (await r.json()) as RadarrCredit[] : []))
         .then((nextCredits) => {
           if (creditsRequestId !== creditsRequestIdRef.current) return;
@@ -234,9 +247,9 @@ export default function MovieDetailPage() {
             movie: nextMovie,
             qualityProfiles: nextQualityProfiles,
             tags: nextTags,
-            tmdbData: getMovieDetailSnapshot(movieId)?.tmdbData ?? null,
+            tmdbData: getMovieDetailSnapshot(movieId, instance)?.tmdbData ?? null,
             credits: nextCredits,
-          });
+          }, instance);
         })
         .catch(() => {
           if (creditsRequestId !== creditsRequestIdRef.current) return;
@@ -251,10 +264,10 @@ export default function MovieDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [movieId]);
+  }, [instance, movieId]);
 
   useEffect(() => {
-    const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
+    const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
 
@@ -270,7 +283,7 @@ export default function MovieDetailPage() {
     }
 
     void loadData(Boolean(cached));
-  }, [loadData, movieId]);
+  }, [instance, loadData, movieId]);
 
   useEffect(() => {
     if (loading || !movie || hasRestoredScrollRef.current) return;
@@ -339,7 +352,7 @@ export default function MovieDetailPage() {
   useEffect(() => {
     if (!movie?.tmdbId) {
       setTmdbData(null);
-      const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId) : null;
+      const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId, instance) : null;
       if (cached) {
         setMovieDetailSnapshot(movieId, {
           movie: cached.movie,
@@ -347,7 +360,7 @@ export default function MovieDetailPage() {
           tags: cached.tags,
           tmdbData: null,
           credits: cached.credits ?? [],
-        });
+        }, instance);
       }
       return;
     }
@@ -356,21 +369,21 @@ export default function MovieDetailPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data: DiscoverMovieFullDetail | null) => {
         setTmdbData(data);
-        const cached = getMovieDetailSnapshot(movieId);
+        const cached = getMovieDetailSnapshot(movieId, instance);
         setMovieDetailSnapshot(movieId, {
           movie: cached?.movie ?? null,
           qualityProfiles: cached?.qualityProfiles ?? [],
           tags: cached?.tags ?? [],
           tmdbData: data,
           credits: cached?.credits ?? [],
-        });
+        }, instance);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         setTmdbData((prev) => prev ?? null);
       });
     return () => controller.abort();
-  }, [movie?.tmdbId, movieId]);
+  }, [instance, movie?.tmdbId, movieId]);
 
   async function handleOpenInJellyfin() {
     if (!movie || !externalUrls.JELLYFIN) return;
@@ -424,7 +437,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('search');
     try {
-      await fetch('/api/radarr/command', {
+      await radarrFetch(instance, '/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'MoviesSearch', movieIds: [movie.id] }),
@@ -438,7 +451,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('refresh');
     try {
-      const res = await fetch('/api/radarr/command', {
+      const res = await radarrFetch(instance, '/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshMovie', movieId: movie.id }),
@@ -446,7 +459,7 @@ export default function MovieDetailPage() {
       if (!res.ok) throw new Error('Refresh failed');
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
-      const status = command.id ? await pollCommand('radarr', command.id) : 'completed';
+      const status = command.id ? await pollCommand('radarr', command.id, instance) : 'completed';
       invalidateListData('movies');
       await loadData(true);
       if (status === 'completed') toast.success('Refresh complete');
@@ -460,7 +473,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('monitor');
     try {
-      const res = await fetch(`/api/radarr/${movie.id}`, {
+      const res = await radarrFetch(instance, `/api/radarr/${movie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...movie, monitored: !movie.monitored }),
@@ -480,9 +493,9 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setDeleting(true);
     try {
-      await fetch(`/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
+      await radarrFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
       invalidateListData('movies');
-      clearMovieDetailSnapshot(movie.id);
+      clearMovieDetailSnapshot(movie.id, instance);
       toast.success('Movie deleted');
       router.push('/movies');
     } catch { toast.error('Delete failed'); }
@@ -643,9 +656,9 @@ export default function MovieDetailPage() {
                     Open in IMDb
                   </DropdownMenuItem>
                 )}
-                {externalUrls.RADARR && movie.tmdbId && (
+                {radarrExternalUrl && movie.tmdbId && (
                   <DropdownMenuItem asChild>
-                    <a href={`${externalUrls.RADARR}/movie/${movie.tmdbId}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`${radarrExternalUrl}/movie/${movie.tmdbId}`} target="_blank" rel="noopener noreferrer">
                       <Film className="h-4 w-4" />
                       Open in Radarr
                     </a>
@@ -663,7 +676,7 @@ export default function MovieDetailPage() {
                 </DropdownMenuItem>
                 {canEditMovie && (
                   <DropdownMenuItem
-                    onClick={() => router.push(`/movies/${movie.id}/edit`)}
+                    onClick={() => router.push(`/movies/${movie.id}/edit${instance ? `?instance=${instance}` : ''}`)}
                   >
                     <Pencil className="h-4 w-4" />
                     Edit
@@ -893,7 +906,7 @@ export default function MovieDetailPage() {
         )}
 
         {/* Cast & Crew */}
-        {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} />}
+        {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />}
 
         {/* Pill buttons */}
         <div className="flex gap-3">
@@ -925,7 +938,7 @@ export default function MovieDetailPage() {
         </div>
         <div>
           <Button
-            onClick={() => router.push(`/movies/${movie.id}/files`)}
+            onClick={() => router.push(`/movies/${movie.id}/files${instance ? `?instance=${instance}` : ''}`)}
             className="w-full rounded-full h-10"
             variant="secondary"
           >
@@ -1102,7 +1115,7 @@ export default function MovieDetailPage() {
   );
 }
 
-function MovieCreditsSection({ credits, movieId }: { credits: RadarrCredit[]; movieId: number }) {
+function MovieCreditsSection({ credits, movieId, instance }: { credits: RadarrCredit[]; movieId: number; instance?: string }) {
   const { cast, crew } = useMemo(() => {
     const castItems = credits
       .filter((c) => c.type === 'cast')
@@ -1141,7 +1154,7 @@ function MovieCreditsSection({ credits, movieId }: { credits: RadarrCredit[]; mo
       {cast.length > 0 && (
         <VirtualizedPersonRail
           title="Cast"
-          viewAllHref={`/movies/${movieId}/credits?type=cast`}
+          viewAllHref={`/movies/${movieId}/credits?type=cast${instance ? `&instance=${instance}` : ''}`}
           items={cast}
           cacheService="radarr"
         />
@@ -1149,7 +1162,7 @@ function MovieCreditsSection({ credits, movieId }: { credits: RadarrCredit[]; mo
       {crew.length > 0 && (
         <VirtualizedPersonRail
           title="Crew"
-          viewAllHref={`/movies/${movieId}/credits?type=crew`}
+          viewAllHref={`/movies/${movieId}/credits?type=crew${instance ? `&instance=${instance}` : ''}`}
           items={crew}
           cacheService="radarr"
         />

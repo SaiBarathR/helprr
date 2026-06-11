@@ -210,7 +210,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 26;
+export const STORE_VERSION = 28;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -337,6 +337,15 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
       ? (prev && prev !== 'all' ? [prev] : [])
       : Array.isArray(prev) ? prev : [];
   }
+  if (version < 27) {
+    state.seriesInstanceFilter = 'all';
+    state.moviesInstanceFilter = 'all';
+    state.musicInstanceFilter = 'all';
+  }
+  if (version < 28) {
+    state.calendarInstanceFilter = 'all';
+    state.activityInstanceFilter = 'all';
+  }
   return state;
 }
 
@@ -362,6 +371,8 @@ interface UIState {
   setMoviesSortDirection: (dir: 'asc' | 'desc') => void;
   moviesFilter: string[];
   setMoviesFilter: (filter: string[]) => void;
+  moviesInstanceFilter: string;
+  setMoviesInstanceFilter: (id: string) => void;
   moviesVisibleFields: VisibleFieldsByMode;
   setMoviesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Series preferences
@@ -377,6 +388,8 @@ interface UIState {
   setSeriesSortDirection: (dir: 'asc' | 'desc') => void;
   seriesFilter: string[];
   setSeriesFilter: (filter: string[]) => void;
+  seriesInstanceFilter: string;
+  setSeriesInstanceFilter: (id: string) => void;
   seriesVisibleFields: VisibleFieldsByMode;
   setSeriesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Music preferences (artist-centric)
@@ -392,6 +405,8 @@ interface UIState {
   setMusicSortDirection: (dir: 'asc' | 'desc') => void;
   musicFilter: string[];
   setMusicFilter: (filter: string[]) => void;
+  musicInstanceFilter: string;
+  setMusicInstanceFilter: (id: string) => void;
   musicVisibleFields: VisibleFieldsByMode;
   setMusicVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Discover preferences
@@ -420,9 +435,13 @@ interface UIState {
   setActivityTab: (tab: ActivityTabPreference) => void;
   activitySortBy: ActivitySortPreference;
   setActivitySortBy: (sortBy: ActivitySortPreference) => void;
-  // Empty array = all instances. Multi-select set of sources (sonarr/radarr/lidarr).
+  // Empty array = all sources. Multi-select set of sources (sonarr/radarr/lidarr).
   activityFilterBy: string[];
   setActivityFilterBy: (filterBy: string[]) => void;
+  // 'all' or a specific ServiceConnection id (instanceId). Only surfaced when a
+  // type has >1 instance.
+  activityInstanceFilter: string;
+  setActivityInstanceFilter: (id: string) => void;
   // Requests page (Seerr)
   requestsTab: RequestsTabPreference;
   setRequestsTab: (tab: RequestsTabPreference) => void;
@@ -444,6 +463,8 @@ interface UIState {
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie' | 'album') => void;
   calendarMonitoredOnly: boolean;
   setCalendarMonitoredOnly: (v: boolean) => void;
+  calendarInstanceFilter: string;
+  setCalendarInstanceFilter: (id: string) => void;
   // Navigation preferences
   navPosition: 'top' | 'bottom';
   setNavPosition: (position: 'top' | 'bottom') => void;
@@ -498,6 +519,7 @@ const PERSISTED_KEYS = [
   'moviesSearch',
   'moviesSortDirection',
   'moviesFilter',
+  'moviesInstanceFilter',
   'moviesVisibleFields',
   'seriesView',
   'seriesPosterSize',
@@ -505,6 +527,7 @@ const PERSISTED_KEYS = [
   'seriesSearch',
   'seriesSortDirection',
   'seriesFilter',
+  'seriesInstanceFilter',
   'seriesVisibleFields',
   'musicView',
   'musicPosterSize',
@@ -512,6 +535,7 @@ const PERSISTED_KEYS = [
   'musicSearch',
   'musicSortDirection',
   'musicFilter',
+  'musicInstanceFilter',
   'musicVisibleFields',
   'discoverContentType',
   'discoverSort',
@@ -525,12 +549,14 @@ const PERSISTED_KEYS = [
   'activityTab',
   'activitySortBy',
   'activityFilterBy',
+  'activityInstanceFilter',
   'requestsTab',
   'requestsFilter',
   'notificationsFilters',
   'cleanupHistoryFilters',
   'calendarTypeFilter',
   'calendarMonitoredOnly',
+  'calendarInstanceFilter',
   'navPosition',
   'navOrder',
   'disabledNavItems',
@@ -609,6 +635,8 @@ export const useUIStore = create<UIState>()(
       setMoviesSortDirection: (dir) => set({ moviesSortDirection: dir }),
       moviesFilter: [],
       setMoviesFilter: (filter) => set({ moviesFilter: filter }),
+      moviesInstanceFilter: 'all',
+      setMoviesInstanceFilter: (id) => set({ moviesInstanceFilter: id }),
       moviesVisibleFields: { ...DEFAULT_MOVIES_FIELDS },
       setMoviesVisibleFields: (mode, fields) => set((state) => ({
         moviesVisibleFields: { ...state.moviesVisibleFields, [mode]: fields },
@@ -626,6 +654,8 @@ export const useUIStore = create<UIState>()(
       setSeriesSortDirection: (dir) => set({ seriesSortDirection: dir }),
       seriesFilter: [],
       setSeriesFilter: (filter) => set({ seriesFilter: filter }),
+      seriesInstanceFilter: 'all',
+      setSeriesInstanceFilter: (id) => set({ seriesInstanceFilter: id }),
       seriesVisibleFields: { ...DEFAULT_SERIES_FIELDS },
       setSeriesVisibleFields: (mode, fields) => set((state) => ({
         seriesVisibleFields: { ...state.seriesVisibleFields, [mode]: fields },
@@ -643,6 +673,8 @@ export const useUIStore = create<UIState>()(
       setMusicSortDirection: (dir) => set({ musicSortDirection: dir }),
       musicFilter: [],
       setMusicFilter: (filter) => set({ musicFilter: filter }),
+      musicInstanceFilter: 'all',
+      setMusicInstanceFilter: (id) => set({ musicInstanceFilter: id }),
       musicVisibleFields: { ...DEFAULT_MUSIC_FIELDS },
       setMusicVisibleFields: (mode, fields) => set((state) => ({
         musicVisibleFields: { ...state.musicVisibleFields, [mode]: fields },
@@ -675,6 +707,8 @@ export const useUIStore = create<UIState>()(
       setActivitySortBy: (sortBy) => set({ activitySortBy: sortBy }),
       activityFilterBy: [],
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
+      activityInstanceFilter: 'all',
+      setActivityInstanceFilter: (id) => set({ activityInstanceFilter: id }),
       // Requests
       requestsTab: 'requests',
       setRequestsTab: (tab) => set({ requestsTab: tab }),
@@ -714,6 +748,8 @@ export const useUIStore = create<UIState>()(
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
       calendarMonitoredOnly: false,
       setCalendarMonitoredOnly: (v) => set({ calendarMonitoredOnly: v }),
+      calendarInstanceFilter: 'all',
+      setCalendarInstanceFilter: (id) => set({ calendarInstanceFilter: id }),
       // Navigation
       navPosition: 'top',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getSonarrClients } from '@/lib/service-helpers';
+import { resolveConnection } from '@/lib/arr-instances';
+import { SonarrClient } from '@/lib/sonarr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import type { SonarrSeries, SonarrSeriesListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
@@ -46,14 +48,33 @@ async function getHandler(request: NextRequest) {
 
   try {
     const full = request.nextUrl.searchParams.get('full') === 'true';
-    const client = await getSonarrClient();
-    const series = await client.getSeries();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+
+    const instances = instanceId
+      ? await (async () => {
+          const conn = await resolveConnection('SONARR', instanceId);
+          return [{ connection: conn, client: new SonarrClient(conn.url, conn.apiKey) }];
+        })()
+      : await getSonarrClients();
+
+    const tagged = (await Promise.all(
+      instances.map(async ({ connection, client }) => {
+        try {
+          const series = await client.getSeries();
+          return series.map((s) => ({ ...s, instanceId: connection.id, instanceLabel: connection.label }));
+        } catch {
+          // One unreachable/misconfigured instance must not blank the whole library.
+          return [];
+        }
+      })
+    )).flat();
+
     if (full) {
-      logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: series.length });
-      return NextResponse.json(series);
+      logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: tagged.length });
+      return NextResponse.json(tagged);
     }
-    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: series.length });
-    return NextResponse.json(series.map(toListItem));
+    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: tagged.length });
+    return NextResponse.json(tagged.map((s) => ({ ...toListItem(s), instanceId: s.instanceId, instanceLabel: s.instanceLabel })));
   } catch (error) {
     logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true });
     console.error('Failed to fetch series:', error);
@@ -69,7 +90,8 @@ async function postHandler(request: Request) {
 
   try {
     const body = await request.json();
-    const client = await getSonarrClient();
+    const instanceId = typeof body.instanceId === 'string' ? body.instanceId : undefined;
+    const client = await getSonarrClient(instanceId);
     const result = await client.addSeries(body);
     return NextResponse.json(result);
   } catch (error) {

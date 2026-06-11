@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Loader2, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -20,6 +20,16 @@ import { toast } from 'sonner';
 import type { LidarrArtist, LidarrAlbum, LidarrTrackFile, HistoryItem } from '@/types';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
+
+// Append the viewing instance to a Lidarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
 
@@ -69,6 +79,7 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
 export default function ArtistFilesPage() {
   const { id } = useParams<{ id: string }>();
   const artistId = Number(id);
+  const instance = useSearchParams().get('instance') ?? undefined;
   const [artist, setArtist] = useState<LidarrArtist | null>(null);
   const [albums, setAlbums] = useState<LidarrAlbum[]>([]);
   const [files, setFiles] = useState<LidarrTrackFile[]>([]);
@@ -82,10 +93,10 @@ export default function ArtistFilesPage() {
   useEffect(() => {
     let cancelled = false;
     void Promise.allSettled([
-      fetch(`/api/lidarr/${artistId}`).then((r) => (r.ok ? r.json() : null)),
-      fetch(`/api/lidarr/${artistId}/albums`).then((r) => (r.ok ? r.json() : [])),
-      fetch(`/api/lidarr/trackfile?artistId=${artistId}`).then((r) => (r.ok ? r.json() : [])),
-      fetch(`/api/lidarr/history/artist?artistId=${artistId}`).then((r) => (r.ok ? r.json() : [])),
+      lidarrFetch(instance, `/api/lidarr/${artistId}`).then((r) => (r.ok ? r.json() : null)),
+      lidarrFetch(instance, `/api/lidarr/${artistId}/albums`).then((r) => (r.ok ? r.json() : [])),
+      lidarrFetch(instance, `/api/lidarr/trackfile?artistId=${artistId}`).then((r) => (r.ok ? r.json() : [])),
+      lidarrFetch(instance, `/api/lidarr/history/artist?artistId=${artistId}`).then((r) => (r.ok ? r.json() : [])),
     ])
       .then(([a, alb, f, h]) => {
         if (cancelled) return;
@@ -98,7 +109,7 @@ export default function ArtistFilesPage() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [artistId]);
+  }, [artistId, instance]);
 
   const albumTitleById = useMemo(
     () => new Map(albums.map((a) => [a.id, a.title])),
@@ -123,7 +134,7 @@ export default function ArtistFilesPage() {
     if (!selectedFile) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/lidarr/trackfile/${selectedFile.id}`, { method: 'DELETE' });
+      const res = await lidarrFetch(instance, `/api/lidarr/trackfile/${selectedFile.id}`, { method: 'DELETE' });
       if (res.ok) {
         setFiles((prev) => prev.filter((f) => f.id !== selectedFile.id));
         toast.success('File deleted');

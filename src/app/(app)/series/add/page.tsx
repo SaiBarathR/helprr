@@ -47,17 +47,35 @@ function AddSeriesPageContent() {
   const [seasonFolder, setSeasonFolder] = useState(true);
   const [adding, setAdding] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
+  const [instances, setInstances] = useState<{ id: string; label: string; isDefault: boolean }[]>([]);
+  const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
   const lastAutoSearchParamsRef = useRef<{ term: string; tvdbId: string | null; tmdbId: string | null }>({
     term: '',
     tvdbId: null,
     tmdbId: null,
   });
 
+  // Load Sonarr instances; default to the marked default (picker only shows when >1).
   useEffect(() => {
+    fetch('/api/instances')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all: Array<{ id: string; type: string; label: string; isDefault: boolean }>) => {
+        const list = (Array.isArray(all) ? all : [])
+          .filter((c) => c.type === 'SONARR')
+          .map((c) => ({ id: c.id, label: c.label, isDefault: c.isDefault }));
+        setInstances(list);
+        setInstanceId((prev) => prev ?? list.find((i) => i.isDefault)?.id ?? list[0]?.id);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Profiles / root folders / tags are per-instance; re-fetch when the instance changes.
+  useEffect(() => {
+    const qs = instanceId ? `?instanceId=${instanceId}` : '';
     Promise.all([
-      fetch('/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-      fetch('/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
-      fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
+      fetch(`/api/sonarr/qualityprofiles${qs}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/sonarr/rootfolders${qs}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/sonarr/tags${qs}`).then((r) => r.ok ? r.json() : []),
     ]).then(([p, r, t]) => {
       setProfiles(p);
       setRootFolders(r);
@@ -65,7 +83,7 @@ function AddSeriesPageContent() {
       if (p.length > 0) setProfileId(String(p[0].id));
       if (r.length > 0) setRootFolder(r[0].path);
     });
-  }, []);
+  }, [instanceId]);
 
   const runSearch = useCallback(async (searchTerm: string, targetTvdbId?: number, targetTmdbId?: number) => {
     if (!searchTerm.trim()) return;
@@ -103,7 +121,7 @@ function AddSeriesPageContent() {
     if (!selected || !profileId || !rootFolder) return;
     if (selected.library?.exists) {
       if (selected.library.id) {
-        router.push(`/series/${selected.library.id}`);
+        router.push(`/series/${selected.library.id}${instanceId ? `?instance=${instanceId}` : ''}`);
         return;
       }
       toast.error('Series is already in library, but detail link is unavailable');
@@ -116,6 +134,7 @@ function AddSeriesPageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          instanceId,
           title: selected.title,
           tvdbId: selected.tvdbId,
           qualityProfileId: Number(profileId),
@@ -138,7 +157,7 @@ function AddSeriesPageContent() {
       if (res.ok) {
         const s = await res.json();
         toast.success(`${selected.title} added`);
-        router.push(`/series/${s.id}`);
+        router.push(`/series/${s.id}${instanceId ? `?instance=${instanceId}` : ''}`);
       } else {
         const err = await res.json();
         toast.error(err.error || 'Failed to add series');
@@ -315,6 +334,21 @@ function AddSeriesPageContent() {
               <div className="grouped-section">
                 <div className="grouped-section-title">Options</div>
                 <div className="grouped-section-content">
+                  {instances.length > 1 && (
+                    <div className="grouped-row">
+                      <Label className="text-sm shrink-0">Instance</Label>
+                      <Select value={instanceId ?? ''} onValueChange={setInstanceId}>
+                        <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                          <SelectValue>{instances.find((i) => i.id === instanceId)?.label ?? 'Select'}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {instances.map((i) => (
+                            <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Quality Profile</Label>
                     <Select value={profileId} onValueChange={setProfileId}>
@@ -420,7 +454,7 @@ function AddSeriesPageContent() {
                 <Button
                   className="flex-1 h-11"
                   onClick={() => {
-                    if (selected.library?.id) router.push(`/series/${selected.library.id}`);
+                    if (selected.library?.id) router.push(`/series/${selected.library.id}${instanceId ? `?instance=${instanceId}` : ''}`);
                     else toast.error('Series is already in library, but detail link is unavailable');
                   }}
                 >

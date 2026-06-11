@@ -13,6 +13,7 @@ type FilterType = 'any' | 'movie' | 'series';
 interface RandomPick {
   mediaType: 'movie' | 'series';
   id: number;
+  instanceId: string | null;
   title: string;
   year: number | null;
   overview: string | null;

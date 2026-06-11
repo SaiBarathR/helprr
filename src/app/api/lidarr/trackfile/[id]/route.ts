@@ -4,7 +4,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function deleteHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = await requireAuth();
@@ -19,7 +19,8 @@ async function deleteHandler(
       return NextResponse.json({ error: 'Invalid track file id' }, { status: 400 });
     }
 
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     await client.deleteTrackFile(trackFileId);
     return NextResponse.json({ success: true });
   } catch (error) {

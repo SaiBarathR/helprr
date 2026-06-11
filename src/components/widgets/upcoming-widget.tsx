@@ -184,7 +184,7 @@ export function UpcomingWidget({
             ) : (
               <Link
                 key={ev.id}
-                href={ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}
+                href={`${ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}${ev.instanceId ? `?instance=${ev.instanceId}` : ''}`}
                 style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
               >
                 <UpcomingRow ev={ev} />
@@ -286,7 +286,7 @@ export function UpcomingWidget({
           ) : (
             <Link
               key={ev.id}
-              href={ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}
+              href={`${ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}${ev.instanceId ? `?instance=${ev.instanceId}` : ''}`}
               style={{
                 width: CAROUSEL_CARD_WIDTH,
                 flexShrink: 0,

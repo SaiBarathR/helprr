@@ -37,6 +37,7 @@ interface HistoryRecord {
   date: string;
   sourceTitle?: string;
   source?: 'sonarr' | 'radarr';
+  instanceId?: string;
   mediaType?: 'episode' | 'movie';
   seriesId?: number;
   movieId?: number;
@@ -172,14 +173,15 @@ function getTitle(r: HistoryRecord): string {
 }
 
 function getHref(r: HistoryRecord): string | null {
+  const q = r.instanceId ? `?instance=${r.instanceId}` : '';
   if (r.source === 'radarr' && (r.movieId || r.movie?.id)) {
-    return `/movies/${r.movieId || r.movie?.id}`;
+    return `/movies/${r.movieId || r.movie?.id}${q}`;
   }
   if (r.source === 'sonarr') {
     const sid = r.seriesId || r.series?.id;
     const ep = r.episode;
-    if (sid && ep) return `/series/${sid}/season/${ep.seasonNumber}/episode/${ep.id}`;
-    if (sid) return `/series/${sid}`;
+    if (sid && ep) return `/series/${sid}/season/${ep.seasonNumber}/episode/${ep.id}${q}`;
+    if (sid) return `/series/${sid}${q}`;
   }
   return null;
 }

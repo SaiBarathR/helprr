@@ -12,7 +12,8 @@ async function getHandler(request: NextRequest) {
     if (!Number.isFinite(movieId) || movieId <= 0) {
       return NextResponse.json({ error: 'movieId is required' }, { status: 400 });
     }
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     const preview = await client.getRenamePreview(movieId);
     return NextResponse.json(preview);
   } catch (error) {

@@ -1,30 +1,47 @@
 import { useEffect, useState } from 'react';
 
-type ExternalUrls = Record<string, string>;
+type ExternalUrlRow = { id: string; type: string; externalUrl: string | null };
 
-let cached: ExternalUrls | null = null;
-let pending: Promise<ExternalUrls> | null = null;
+interface ExternalUrlMaps {
+  byType: Record<string, string>; // default-instance external URL per type
+  byInstance: Record<string, string>; // connection id → external URL
+}
+
+const EMPTY: ExternalUrlMaps = { byType: {}, byInstance: {} };
+
+let cached: ExternalUrlMaps | null = null;
+let pending: Promise<ExternalUrlMaps> | null = null;
 
 export function invalidateExternalUrls(): void {
   cached = null;
   pending = null;
 }
 
-function isEmptyMap(value: ExternalUrls | null): boolean {
-  return !value || Object.keys(value).length === 0;
+function isEmpty(value: ExternalUrlMaps | null): boolean {
+  return !value || Object.keys(value.byType).length === 0;
 }
 
-function fetchExternalUrls(): Promise<ExternalUrls> {
+function fetchExternalUrls(): Promise<ExternalUrlMaps> {
   if (!pending) {
     pending = fetch('/api/services/external-urls')
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data: ExternalUrls) => {
-        if (data && typeof data === 'object') {
-          cached = data;
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: ExternalUrlRow[]) => {
+        // The endpoint returns one row per connection (default instance first per
+        // type). byType keeps the default instance's URL (back-compat); byInstance
+        // keys every connection so a non-default item can deep-link to its own arr.
+        const byType: Record<string, string> = {};
+        const byInstance: Record<string, string> = {};
+        if (Array.isArray(rows)) {
+          for (const row of rows) {
+            if (!row.externalUrl) continue;
+            if (!byType[row.type]) byType[row.type] = row.externalUrl;
+            byInstance[row.id] = row.externalUrl;
+          }
         }
-        return data;
+        cached = { byType, byInstance };
+        return cached;
       })
-      .catch(() => ({}))
+      .catch(() => EMPTY)
       .finally(() => {
         pending = null;
       });
@@ -32,13 +49,29 @@ function fetchExternalUrls(): Promise<ExternalUrls> {
   return pending;
 }
 
-export function useExternalUrls(): ExternalUrls {
-  const [urls, setUrls] = useState<ExternalUrls>(() => cached ?? {});
+function useExternalUrlMaps(): ExternalUrlMaps {
+  const [maps, setMaps] = useState<ExternalUrlMaps>(() => cached ?? EMPTY);
 
   useEffect(() => {
-    if (!isEmptyMap(cached)) return;
-    void fetchExternalUrls().then(setUrls);
+    if (!isEmpty(cached)) return;
+    void fetchExternalUrls().then(setMaps);
   }, []);
 
-  return urls;
+  return maps;
+}
+
+/** Type → default-instance external URL. Back-compat shape; correct for
+ * single-instance types (Jellyfin, Prowlarr) and as a fallback for arr links. */
+export function useExternalUrls(): Record<string, string> {
+  return useExternalUrlMaps().byType;
+}
+
+/**
+ * Resolver that prefers a specific instance's external URL and falls back to the
+ * type's default-instance URL. Use for Sonarr/Radarr/Lidarr deep links on
+ * instance-aware pages so "Open in {arr}" opens the correct server.
+ */
+export function useExternalUrlResolver(): (type: string, instanceId?: string) => string | undefined {
+  const maps = useExternalUrlMaps();
+  return (type, instanceId) => (instanceId ? maps.byInstance[instanceId] : undefined) ?? maps.byType[type];
 }

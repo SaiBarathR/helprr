@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Select,
@@ -20,9 +20,20 @@ import { invalidateListData } from '@/lib/media-list-cache';
 import { clearArtistDetailSnapshot } from '@/lib/music-route-cache';
 import type { LidarrArtist, QualityProfile, LidarrMetadataProfile, RootFolder, Tag } from '@/types';
 
+// Append the viewing instance to a Lidarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function ArtistEditPage() {
   const { id } = useParams();
   const router = useRouter();
+  const instance = useSearchParams().get('instance') ?? undefined;
 
   const [artist, setArtist] = useState<LidarrArtist | null>(null);
   const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
@@ -40,11 +51,11 @@ export default function ArtistEditPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/lidarr/${id}`).then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/lidarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/lidarr/metadataprofiles').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/lidarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/lidarr/tags').then((r) => (r.ok ? r.json() : [])),
+      lidarrFetch(instance, `/api/lidarr/${id}`).then((r) => (r.ok ? r.json() : null)),
+      lidarrFetch(instance, '/api/lidarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
+      lidarrFetch(instance, '/api/lidarr/metadataprofiles').then((r) => (r.ok ? r.json() : [])),
+      lidarrFetch(instance, '/api/lidarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
+      lidarrFetch(instance, '/api/lidarr/tags').then((r) => (r.ok ? r.json() : [])),
     ])
       .then(([a, qp, mp, rf, t]) => {
         setArtist(a);
@@ -62,7 +73,7 @@ export default function ArtistEditPage() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, instance]);
 
   function toggleTag(tagId: number) {
     setSelectedTags((prev) =>
@@ -87,7 +98,7 @@ export default function ArtistEditPage() {
         updated.path = `${rootFolder}/${artistFolder}`;
       }
 
-      const res = await fetch(`/api/lidarr/${artist.id}`, {
+      const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -95,7 +106,7 @@ export default function ArtistEditPage() {
 
       if (res.ok) {
         invalidateListData('music');
-        clearArtistDetailSnapshot(artist.id);
+        clearArtistDetailSnapshot(artist.id, instance);
         toast.success('Artist updated');
         router.back();
       } else {

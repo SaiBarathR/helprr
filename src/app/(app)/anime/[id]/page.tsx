@@ -22,7 +22,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ExternalLink, Tv, Film, Loader2, Clock, Trophy, TrendingUp, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { useMe } from '@/components/permission-provider';
 import { formatAniListRankingLabel, formatFuzzyDate, isMovieFormat } from '@/lib/anilist-helpers';
 import type { AnimeSonarrMappingItem, AnimeSonarrMappingsResponse } from '@/types/anilist';
@@ -87,6 +87,7 @@ export default function AnimeDetailPage() {
   }));
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const externalUrls = useExternalUrls();
+  const resolveExternalUrl = useExternalUrlResolver();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   // AniList↔Sonarr mappings are global admin state, so the map action is admin-only.
@@ -427,11 +428,13 @@ export default function AnimeDetailPage() {
 
   const libraryLinks: { label: string; url: string; icon: 'sonarr' | 'radarr' }[] = [];
   if (detail.library?.exists) {
-    if (detail.library.type === 'series' && externalUrls.SONARR && detail.library.titleSlug) {
-      libraryLinks.push({ label: 'Open in Sonarr', url: `${externalUrls.SONARR}/series/${detail.library.titleSlug}`, icon: 'sonarr' });
+    const sonarrUrl = resolveExternalUrl('SONARR', detail.library.instanceId);
+    const radarrUrl = resolveExternalUrl('RADARR', detail.library.instanceId);
+    if (detail.library.type === 'series' && sonarrUrl && detail.library.titleSlug) {
+      libraryLinks.push({ label: 'Open in Sonarr', url: `${sonarrUrl}/series/${detail.library.titleSlug}`, icon: 'sonarr' });
     }
-    if (detail.library.type === 'movie' && externalUrls.RADARR && detail.library.tmdbId) {
-      libraryLinks.push({ label: 'Open in Radarr', url: `${externalUrls.RADARR}/movie/${detail.library.tmdbId}`, icon: 'radarr' });
+    if (detail.library.type === 'movie' && radarrUrl && detail.library.tmdbId) {
+      libraryLinks.push({ label: 'Open in Radarr', url: `${radarrUrl}/movie/${detail.library.tmdbId}`, icon: 'radarr' });
     }
   }
 

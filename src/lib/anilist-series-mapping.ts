@@ -213,9 +213,9 @@ function shouldAcceptCandidate(best: ScoredCandidate | null, secondBest: ScoredC
   return best.score - secondBest.score >= 15;
 }
 
-async function loadRecord(seriesId: number): Promise<MappingWithEntries | null> {
+async function loadRecord(sonarrInstanceId: string, seriesId: number): Promise<MappingWithEntries | null> {
   return prisma.aniListSeriesMapping.findUnique({
-    where: { sonarrSeriesId: seriesId },
+    where: { sonarrInstanceId_sonarrSeriesId: { sonarrInstanceId, sonarrSeriesId: seriesId } },
     include: { entries: { orderBy: { order: 'asc' } } },
   });
 }
@@ -243,6 +243,7 @@ function dedupeEntryDescriptors(entries: EntryDescriptor[]): EntryDescriptor[] {
  * Omit `entries` to leave existing entries untouched.
  */
 async function persistResolution(
+  sonarrInstanceId: string,
   series: SonarrSeries,
   values: {
     state: SeriesAniListMappingState;
@@ -264,9 +265,9 @@ async function persistResolution(
   // are mid-replacement.
   return prisma.$transaction(async (tx) => {
     const record = await tx.aniListSeriesMapping.upsert({
-      where: { sonarrSeriesId: series.id },
+      where: { sonarrInstanceId_sonarrSeriesId: { sonarrInstanceId, sonarrSeriesId: series.id } },
       update: base,
-      create: { sonarrSeriesId: series.id, ...base },
+      create: { sonarrInstanceId, sonarrSeriesId: series.id, ...base },
     });
 
     if (values.entries !== undefined) {
@@ -288,7 +289,7 @@ async function persistResolution(
 
     // Same shape as loadRecord, read inside the transaction.
     return (await tx.aniListSeriesMapping.findUnique({
-      where: { sonarrSeriesId: series.id },
+      where: { sonarrInstanceId_sonarrSeriesId: { sonarrInstanceId, sonarrSeriesId: series.id } },
       include: { entries: { orderBy: { order: 'asc' } } },
     }))!;
   });
@@ -438,7 +439,7 @@ async function resolveSeasonSiblingDescriptors(
     }));
 }
 
-async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntries> {
+async function autoResolveMapping(sonarrInstanceId: string, series: SonarrSeries): Promise<MappingWithEntries> {
   const queries = Array.from(
     new Set(
       [
@@ -467,7 +468,7 @@ async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntr
   const secondBest = scored[1] ?? null;
 
   if (!shouldAcceptCandidate(best, secondBest)) {
-    return persistResolution(series, {
+    return persistResolution(sonarrInstanceId, series, {
       state: 'AUTO_UNMATCHED',
       matchMethod: best?.method ?? null,
       confidence: best ? Math.max(0, best.score) : null,
@@ -481,7 +482,7 @@ async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntr
     pool: Array.from(allCandidates.values()),
   });
 
-  return persistResolution(series, {
+  return persistResolution(sonarrInstanceId, series, {
     state: 'AUTO_MATCH',
     matchMethod: best!.method ?? 'search_match',
     confidence: Math.max(0, best!.score),
@@ -496,9 +497,9 @@ async function autoResolveMapping(series: SonarrSeries): Promise<MappingWithEntr
   });
 }
 
-async function getCurrentMappingRecord(series: SonarrSeries): Promise<MappingWithEntries> {
+async function getCurrentMappingRecord(sonarrInstanceId: string, series: SonarrSeries): Promise<MappingWithEntries> {
   const snapshot = createSnapshot(series);
-  const existing = await loadRecord(series.id);
+  const existing = await loadRecord(sonarrInstanceId, series.id);
 
   if (existing?.state === 'MANUAL_MATCH' || existing?.state === 'MANUAL_NONE') {
     return existing;
@@ -518,7 +519,7 @@ async function getCurrentMappingRecord(series: SonarrSeries): Promise<MappingWit
     return existing;
   }
 
-  return autoResolveMapping(series);
+  return autoResolveMapping(sonarrInstanceId, series);
 }
 
 function mapCandidate(series: SonarrSeries, candidate: AniListMedia): SeriesAniListCandidate {
@@ -576,8 +577,8 @@ async function validateEntryDetail(
  * triggers. Used by the anime-page reverse lookup so an anime that's in the
  * Sonarr library shows as mapped even before its series page was ever opened.
  */
-export async function ensureSeriesAniListMapping(series: SonarrSeries): Promise<void> {
-  await getCurrentMappingRecord(series);
+export async function ensureSeriesAniListMapping(series: SonarrSeries, sonarrInstanceId: string): Promise<void> {
+  await getCurrentMappingRecord(sonarrInstanceId, series);
 }
 
 /**
@@ -588,9 +589,10 @@ export async function ensureSeriesAniListMapping(series: SonarrSeries): Promise<
  */
 export async function getSeriesAniListResponse(
   series: SonarrSeries,
+  sonarrInstanceId: string,
   opts: { scope?: 'all' | 'primary' } = {}
 ): Promise<SeriesAniListResponse> {
-  const record = await getCurrentMappingRecord(series);
+  const record = await getCurrentMappingRecord(sonarrInstanceId, series);
   // Same order as mappingFromRecord so details[i] aligns with mapping.entries[i].
   const orderedEntries = presentationSortEntries(record.entries);
 
@@ -613,7 +615,7 @@ export async function getSeriesAniListResponse(
     if (primaryDetail === null) {
       // A manual mapping stays manual (MANUAL_NONE) so the user's curation
       // lock survives — auto re-resolve must not replace what they pinned.
-      const reset = await persistResolution(series, {
+      const reset = await persistResolution(sonarrInstanceId, series, {
         state: record.state === 'MANUAL_MATCH' ? 'MANUAL_NONE' : 'AUTO_UNMATCHED',
         matchMethod: 'mapped_non_series_rejected',
         confidence: null,
@@ -631,7 +633,7 @@ export async function getSeriesAniListResponse(
           data: { isPrimary: true },
         }),
       ]);
-      const refreshed = (await loadRecord(series.id))!;
+      const refreshed = (await loadRecord(sonarrInstanceId, series.id))!;
       return { mapping: mappingFromRecord(refreshed), details: [primaryDetail] };
     }
 
@@ -654,7 +656,7 @@ export async function getSeriesAniListResponse(
   // back to TMDB enrichment. A manual mapping resets to MANUAL_NONE (keeps the
   // curation lock); an auto one to AUTO_UNMATCHED (re-resolve may retry).
   if (valid.length === 0) {
-    const reset = await persistResolution(series, {
+    const reset = await persistResolution(sonarrInstanceId, series, {
       state: record.state === 'MANUAL_MATCH' ? 'MANUAL_NONE' : 'AUTO_UNMATCHED',
       matchMethod: 'mapped_non_series_rejected',
       confidence: null,
@@ -677,7 +679,7 @@ export async function getSeriesAniListResponse(
           ]
         : []),
     ]);
-    const refreshed = (await loadRecord(series.id))!;
+    const refreshed = (await loadRecord(sonarrInstanceId, series.id))!;
     return { mapping: mappingFromRecord(refreshed), details: valid.map((item) => item.normalized!) };
   }
 
@@ -691,11 +693,12 @@ export async function getSeriesAniListResponse(
  */
 export async function getSeriesEntryDetail(
   series: SonarrSeries,
+  sonarrInstanceId: string,
   anilistMediaId: number
 ): Promise<SeriesAniListEntryDetailResponse> {
-  const record = await loadRecord(series.id);
+  const record = await loadRecord(sonarrInstanceId, series.id);
   if (!record) {
-    const resolved = await getCurrentMappingRecord(series);
+    const resolved = await getCurrentMappingRecord(sonarrInstanceId, series);
     return { mapping: mappingFromRecord(resolved), detail: null };
   }
 
@@ -714,7 +717,7 @@ export async function getSeriesEntryDetail(
   if (remaining.length === 0) {
     // Manual mappings reset to MANUAL_NONE so the curation lock survives.
     // persistResolution's transaction clears the dead entry along with the rest.
-    const reset = await persistResolution(series, {
+    const reset = await persistResolution(sonarrInstanceId, series, {
       state: record.state === 'MANUAL_MATCH' ? 'MANUAL_NONE' : 'AUTO_UNMATCHED',
       matchMethod: 'mapped_non_series_rejected',
       confidence: null,
@@ -734,7 +737,7 @@ export async function getSeriesEntryDetail(
         ]
       : []),
   ]);
-  const refreshed = (await loadRecord(series.id))!;
+  const refreshed = (await loadRecord(sonarrInstanceId, series.id))!;
   return { mapping: mappingFromRecord(refreshed), detail: null };
 }
 
@@ -761,6 +764,7 @@ export async function searchSeriesAniListCandidates(
  */
 export async function addManualEntry(
   series: SonarrSeries,
+  sonarrInstanceId: string,
   anilistMediaId: number
 ): Promise<SeriesAniListResponse> {
   const { detail } = await normalizeSeriesDetail(anilistMediaId);
@@ -776,9 +780,9 @@ export async function addManualEntry(
     resolvedAt: new Date(),
   };
   const record = await prisma.aniListSeriesMapping.upsert({
-    where: { sonarrSeriesId: series.id },
+    where: { sonarrInstanceId_sonarrSeriesId: { sonarrInstanceId, sonarrSeriesId: series.id } },
     update: base,
-    create: { sonarrSeriesId: series.id, ...base },
+    create: { sonarrInstanceId, sonarrSeriesId: series.id, ...base },
   });
 
   // Sibling discovery hits AniList — keep it outside the transaction, keyed
@@ -832,15 +836,16 @@ export async function addManualEntry(
     }
   });
 
-  return getSeriesAniListResponse(series);
+  return getSeriesAniListResponse(series, sonarrInstanceId);
 }
 
 /** Remove one linked AniList entry. Promotes a new primary, or clears the mapping if it was the last. */
 export async function removeManualEntry(
   series: SonarrSeries,
+  sonarrInstanceId: string,
   anilistMediaId: number
 ): Promise<SeriesAniListResponse> {
-  const record = await loadRecord(series.id);
+  const record = await loadRecord(sonarrInstanceId, series.id);
   const target = record?.entries.find((entry) => entry.anilistMediaId === anilistMediaId);
   if (record && target) {
     const remaining = record.entries
@@ -880,7 +885,7 @@ export async function removeManualEntry(
     ]);
   }
 
-  return getSeriesAniListResponse(series);
+  return getSeriesAniListResponse(series, sonarrInstanceId);
 }
 
 /**
@@ -890,9 +895,10 @@ export async function removeManualEntry(
  */
 export async function setPrimaryEntry(
   series: SonarrSeries,
+  sonarrInstanceId: string,
   anilistMediaId: number
 ): Promise<SeriesAniListResponse> {
-  const record = await loadRecord(series.id);
+  const record = await loadRecord(sonarrInstanceId, series.id);
   const target = record?.entries.find((entry) => entry.anilistMediaId === anilistMediaId);
   if (record && target) {
     const linkedIds = new Set(record.entries.map((entry) => entry.anilistMediaId));
@@ -966,15 +972,15 @@ export async function setPrimaryEntry(
     ]);
   }
 
-  return getSeriesAniListResponse(series);
+  return getSeriesAniListResponse(series, sonarrInstanceId);
 }
 
-export async function clearManualSeriesAniListMapping(series: SonarrSeries): Promise<SeriesAniListResponse> {
-  await persistResolution(series, {
+export async function clearManualSeriesAniListMapping(series: SonarrSeries, sonarrInstanceId: string): Promise<SeriesAniListResponse> {
+  await persistResolution(sonarrInstanceId, series, {
     state: 'MANUAL_NONE',
     matchMethod: 'manual_clear',
     confidence: null,
     entries: [],
   });
-  return getSeriesAniListResponse(series);
+  return getSeriesAniListResponse(series, sonarrInstanceId);
 }

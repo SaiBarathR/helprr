@@ -29,7 +29,8 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
 
   if (library?.exists && library.id) {
     const targetService = library.type === 'movie' ? 'Movies' : 'TV';
-    const href = library.type === 'movie' ? `/movies/${library.id}` : `/series/${library.id}`;
+    const q = library.instanceId ? `?instance=${library.instanceId}` : '';
+    const href = library.type === 'movie' ? `/movies/${library.id}${q}` : `/series/${library.id}${q}`;
 
     return (
       <Link

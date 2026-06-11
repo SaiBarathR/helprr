@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeHome } from '@/lib/anilist-client';
 import { normalizeAniListItem, isMovieFormat } from '@/lib/anilist-helpers';
-import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary } from '@/lib/discover';
+import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, type Tagged } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import type { AniListMediaSeason, AniListListItem, AniListMedia } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
@@ -18,31 +18,14 @@ const HOME_PER_PAGE_MAX = 50;
 const HOME_PER_PAGE_DEFAULT = 10;
 
 async function getLibraries() {
-  const [movies, series] = await Promise.all([
-    (async () => {
-      try {
-        const client = await getRadarrClient();
-        return await client.getMovies();
-      } catch {
-        return [] as RadarrMovie[];
-      }
-    })(),
-    (async () => {
-      try {
-        const client = await getSonarrClient();
-        return await client.getSeries();
-      } catch {
-        return [] as SonarrSeries[];
-      }
-    })(),
-  ]);
+  const { movies, series } = await loadTaggedLibrary();
   return { movies, series };
 }
 
 function annotateAnimeItems(
   items: AniListListItem[],
-  movies: RadarrMovie[],
-  series: SonarrSeries[]
+  movies: Tagged<RadarrMovie>[],
+  series: Tagged<SonarrSeries>[]
 ): (AniListListItem & { library?: DiscoverLibraryStatus })[] {
   if (!movies.length && !series.length) return items;
 

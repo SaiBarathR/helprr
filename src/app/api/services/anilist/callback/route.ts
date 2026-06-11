@@ -101,7 +101,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error('AniList token exchange failed', error);
     // Clear any tokens that may exist from a previous attempt
-    await prisma.serviceConnection.update({
+    await prisma.serviceConnection.updateMany({
       where: { type: 'ANILIST' },
       data: { accessToken: null, refreshToken: null, tokenExpiresAt: null, metadata: {}, username: null },
     }).catch(() => undefined);

@@ -14,7 +14,8 @@ async function getHandler(request: NextRequest) {
     if (!term) {
       return NextResponse.json({ error: 'Missing search term' }, { status: 400 });
     }
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     const results = await client.lookupSeries(term);
     const annotatedResults: SonarrLookupResult[] = results.map((show) => ({
       ...show,

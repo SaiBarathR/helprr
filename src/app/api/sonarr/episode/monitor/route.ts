@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function putHandler(request: Request) {
+async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const capError = await requireCapability('series.editMonitoring');
@@ -20,7 +20,8 @@ async function putHandler(request: Request) {
       );
     }
 
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     // setEpisodeMonitored accepts a single ID; iterate for multiple
     const results = [];
     for (const id of episodeIds) {

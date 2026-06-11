@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getQBittorrentClient, getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getQBittorrentClient, getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { torrentTags } from '@/lib/cleanup/helpers';
 
 async function getHandler() {
@@ -33,18 +33,36 @@ async function getHandler() {
     /* qBit not configured */
   }
 
+  // Union tags across every instance, deduped by label (tag ids are per-instance
+  // and not comparable; users pick tags by name and matching runs per-instance).
   try {
-    const c = await getSonarrClient();
-    const tags = await c.getTags();
-    result.sonarrTags = tags.map((t) => ({ id: t.id, label: t.label }));
+    const seen = new Set<string>();
+    for (const { client } of await getSonarrClients()) {
+      try {
+        for (const t of await client.getTags()) {
+          if (!seen.has(t.label)) {
+            seen.add(t.label);
+            result.sonarrTags.push({ id: t.id, label: t.label });
+          }
+        }
+      } catch { /* instance unreachable */ }
+    }
   } catch {
     /* Sonarr not configured */
   }
 
   try {
-    const c = await getRadarrClient();
-    const tags = await c.getTags();
-    result.radarrTags = tags.map((t) => ({ id: t.id, label: t.label }));
+    const seen = new Set<string>();
+    for (const { client } of await getRadarrClients()) {
+      try {
+        for (const t of await client.getTags()) {
+          if (!seen.has(t.label)) {
+            seen.add(t.label);
+            result.radarrTags.push({ id: t.id, label: t.label });
+          }
+        }
+      } catch { /* instance unreachable */ }
+    }
   } catch {
     /* Radarr not configured */
   }

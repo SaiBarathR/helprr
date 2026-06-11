@@ -29,8 +29,9 @@ interface SnapshotInput {
 }
 
 const MAX_ENTRIES = 100;
-const artistDetailCache = new Map<number, ArtistDetailSnapshot>();
-const albumDetailCache = new Map<number, AlbumDetailSnapshot>();
+const DEFAULT_INSTANCE = 'default';
+const artistDetailCache = new Map<string, ArtistDetailSnapshot>();
+const albumDetailCache = new Map<string, AlbumDetailSnapshot>();
 
 function setWithLimit<K, V>(cache: Map<K, V>, key: K, value: V) {
   cache.set(key, value);
@@ -41,6 +42,11 @@ function setWithLimit<K, V>(cache: Map<K, V>, key: K, value: V) {
   }
 }
 
+// Keyed by instance so the same artist/album id in two Lidarr instances never collides.
+function cacheKey(instanceId: string, id: number) {
+  return `${instanceId}:${id}`;
+}
+
 function withFetchedAt<T extends SnapshotInput>(snapshot: T): T & { fetchedAt: number } {
   return {
     ...snapshot,
@@ -48,32 +54,34 @@ function withFetchedAt<T extends SnapshotInput>(snapshot: T): T & { fetchedAt: n
   };
 }
 
-export function getArtistDetailSnapshot(artistId: number): ArtistDetailSnapshot | null {
-  return artistDetailCache.get(artistId) ?? null;
+export function getArtistDetailSnapshot(artistId: number, instanceId: string = DEFAULT_INSTANCE): ArtistDetailSnapshot | null {
+  return artistDetailCache.get(cacheKey(instanceId, artistId)) ?? null;
 }
 
 export function setArtistDetailSnapshot(
   artistId: number,
-  snapshot: Omit<ArtistDetailSnapshot, 'fetchedAt'> & SnapshotInput
+  snapshot: Omit<ArtistDetailSnapshot, 'fetchedAt'> & SnapshotInput,
+  instanceId: string = DEFAULT_INSTANCE
 ) {
-  setWithLimit(artistDetailCache, artistId, withFetchedAt(snapshot));
+  setWithLimit(artistDetailCache, cacheKey(instanceId, artistId), withFetchedAt(snapshot));
 }
 
-export function getAlbumDetailSnapshot(albumId: number): AlbumDetailSnapshot | null {
-  return albumDetailCache.get(albumId) ?? null;
+export function getAlbumDetailSnapshot(albumId: number, instanceId: string = DEFAULT_INSTANCE): AlbumDetailSnapshot | null {
+  return albumDetailCache.get(cacheKey(instanceId, albumId)) ?? null;
 }
 
 export function setAlbumDetailSnapshot(
   albumId: number,
-  snapshot: Omit<AlbumDetailSnapshot, 'fetchedAt'> & SnapshotInput
+  snapshot: Omit<AlbumDetailSnapshot, 'fetchedAt'> & SnapshotInput,
+  instanceId: string = DEFAULT_INSTANCE
 ) {
-  setWithLimit(albumDetailCache, albumId, withFetchedAt(snapshot));
+  setWithLimit(albumDetailCache, cacheKey(instanceId, albumId), withFetchedAt(snapshot));
 }
 
-export function clearArtistDetailSnapshot(artistId: number) {
-  artistDetailCache.delete(artistId);
+export function clearArtistDetailSnapshot(artistId: number, instanceId: string = DEFAULT_INSTANCE) {
+  artistDetailCache.delete(cacheKey(instanceId, artistId));
 }
 
-export function clearAlbumDetailSnapshot(albumId: number) {
-  albumDetailCache.delete(albumId);
+export function clearAlbumDetailSnapshot(albumId: number, instanceId: string = DEFAULT_INSTANCE) {
+  albumDetailCache.delete(cacheKey(instanceId, albumId));
 }

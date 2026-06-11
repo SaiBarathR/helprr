@@ -1,15 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getRadarrClients, getSonarrClients } from '@/lib/service-helpers';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 
 type RandomType = 'movie' | 'series' | 'any';
 const VALID_TYPES: ReadonlySet<RandomType> = new Set(['movie', 'series', 'any']);
 
+type TaggedMovie = RadarrMovie & { instanceId: string };
+type TaggedSeries = SonarrSeries & { instanceId: string };
+
 interface RandomPick {
   mediaType: 'movie' | 'series';
   id: number;
+  instanceId: string | null;
   title: string;
   year: number | null;
   overview: string | null;
@@ -33,10 +37,11 @@ function ratingOf(movie: RadarrMovie): number | null {
   return r.tmdb?.value ?? r.imdb?.value ?? r.metacritic?.value ?? r.trakt?.value ?? null;
 }
 
-function pickMovie(m: RadarrMovie): RandomPick {
+function pickMovie(m: TaggedMovie): RandomPick {
   return {
     mediaType: 'movie',
     id: m.id,
+    instanceId: m.instanceId,
     title: m.title,
     year: m.year ?? null,
     overview: m.overview ?? null,
@@ -44,16 +49,17 @@ function pickMovie(m: RadarrMovie): RandomPick {
     backdropUrl: imageOf(m.images, 'fanart') ?? imageOf(m.images, 'banner'),
     runtime: m.runtime ?? null,
     genres: m.genres ?? [],
-    href: `/movies/${m.id}`,
+    href: `/movies/${m.id}?instance=${m.instanceId}`,
     rating: ratingOf(m),
   };
 }
 
-function pickSeries(s: SonarrSeries): RandomPick {
+function pickSeries(s: TaggedSeries): RandomPick {
   const rating = s.ratings?.value ?? null;
   return {
     mediaType: 'series',
     id: s.id,
+    instanceId: s.instanceId,
     title: s.title,
     year: s.year ?? null,
     overview: s.overview ?? null,
@@ -61,26 +67,28 @@ function pickSeries(s: SonarrSeries): RandomPick {
     backdropUrl: imageOf(s.images, 'fanart') ?? imageOf(s.images, 'banner'),
     runtime: s.runtime ?? null,
     genres: s.genres ?? [],
-    href: `/series/${s.id}`,
+    href: `/series/${s.id}?instance=${s.instanceId}`,
     rating: rating ?? null,
   };
 }
 
-// Module-scope pool cache. Helprr is single-instance today; the cache lives
-// per-process. If that ever changes (multi-replica deploy), move this behind
-// Redis or accept the per-process cost.
+// Module-scope pool cache, unioned across all Radarr/Sonarr instances and tagged
+// with the originating instance so a pick links back to the right one. Lives
+// per-process; if Helprr ever runs multiple replicas, move this behind Redis or
+// accept the per-process cost.
 const POOL_TTL_MS = 5 * 60 * 1000;
-let moviePoolCache: { at: number; value: RadarrMovie[] } | null = null;
-let seriesPoolCache: { at: number; value: SonarrSeries[] } | null = null;
+let moviePoolCache: { at: number; value: TaggedMovie[] } | null = null;
+let seriesPoolCache: { at: number; value: TaggedSeries[] } | null = null;
 
-async function fetchMoviePool(): Promise<RadarrMovie[]> {
+async function fetchMoviePool(): Promise<TaggedMovie[]> {
   const now = Date.now();
   if (moviePoolCache && now - moviePoolCache.at < POOL_TTL_MS) {
     return moviePoolCache.value;
   }
   try {
-    const client = await getRadarrClient();
-    const all = await client.getMovies();
+    const all = (await Promise.all((await getRadarrClients()).map(async ({ connection, client }) => {
+      try { return (await client.getMovies()).map((m) => ({ ...m, instanceId: connection.id })); } catch { return [] as TaggedMovie[]; }
+    }))).flat();
     const filtered = all.filter((m) => m.hasFile === true);
     moviePoolCache = { at: now, value: filtered };
     return filtered;
@@ -89,14 +97,15 @@ async function fetchMoviePool(): Promise<RadarrMovie[]> {
   }
 }
 
-async function fetchSeriesPool(): Promise<SonarrSeries[]> {
+async function fetchSeriesPool(): Promise<TaggedSeries[]> {
   const now = Date.now();
   if (seriesPoolCache && now - seriesPoolCache.at < POOL_TTL_MS) {
     return seriesPoolCache.value;
   }
   try {
-    const client = await getSonarrClient();
-    const all = await client.getSeries();
+    const all = (await Promise.all((await getSonarrClients()).map(async ({ connection, client }) => {
+      try { return (await client.getSeries()).map((s) => ({ ...s, instanceId: connection.id })); } catch { return [] as TaggedSeries[]; }
+    }))).flat();
     const filtered = all.filter((s) => (s.statistics?.episodeFileCount ?? 0) > 0);
     seriesPoolCache = { at: now, value: filtered };
     return filtered;
@@ -116,8 +125,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const type: RandomType = VALID_TYPES.has(raw as RandomType) ? (raw as RandomType) : 'any';
 
   const [movies, series] = await Promise.all([
-    type === 'series' ? Promise.resolve([] as RadarrMovie[]) : fetchMoviePool(),
-    type === 'movie' ? Promise.resolve([] as SonarrSeries[]) : fetchSeriesPool(),
+    type === 'series' ? Promise.resolve([] as TaggedMovie[]) : fetchMoviePool(),
+    type === 'movie' ? Promise.resolve([] as TaggedSeries[]) : fetchSeriesPool(),
   ]);
 
   const pool: RandomPick[] = [...movies.map(pickMovie), ...series.map(pickSeries)];

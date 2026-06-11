@@ -47,7 +47,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const backoff = await enforceUsernameBackoff(username);
   if (backoff) return backoff;
 
-  const connection = await prisma.serviceConnection.findUnique({
+  const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'JELLYFIN' },
     select: { url: true },
   });

@@ -97,10 +97,17 @@ export default function AnimeMappingListPage() {
     });
   }, [mappings, filter, search]);
 
+  // Show the instance label only when mappings span more than one Sonarr instance,
+  // so the same series id on two instances is distinguishable.
+  const multiInstance = useMemo(
+    () => new Set((mappings ?? []).map((row) => row.sonarrInstanceId)).size > 1,
+    [mappings]
+  );
+
   async function handleResetOne(row: AdminAnimeMappingRow) {
     setBusy(true);
     try {
-      const res = await fetch(`/api/settings/anime-mappings/${row.sonarrSeriesId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/settings/anime-mappings/${row.sonarrSeriesId}?instanceId=${row.sonarrInstanceId}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         toast.error(data.error || 'Failed to reset mapping');
@@ -211,15 +218,20 @@ export default function AnimeMappingListPage() {
               {filtered.map((row) => {
                 const autoCount = row.entries.filter((entry) => entry.source === 'auto').length;
                 return (
-                  <div key={row.sonarrSeriesId} className="grouped-row gap-2">
+                  <div key={`${row.sonarrInstanceId}:${row.sonarrSeriesId}`} className="grouped-row gap-2">
                     <button
-                      onClick={() => router.push(`/series/${row.sonarrSeriesId}`)}
+                      onClick={() => router.push(`/series/${row.sonarrSeriesId}?instance=${row.sonarrInstanceId}`)}
                       className="flex-1 min-w-0 py-2 text-left"
                     >
                       <div className="flex items-baseline gap-2 min-w-0">
                         <span className="text-sm font-medium truncate">{row.seriesTitle}</span>
                         {row.seriesYear != null && (
                           <span className="text-xs text-muted-foreground shrink-0">{row.seriesYear}</span>
+                        )}
+                        {multiInstance && (
+                          <span className="text-[10px] text-muted-foreground shrink-0 rounded bg-muted px-1.5 py-0.5">
+                            {row.sonarrInstanceLabel}
+                          </span>
                         )}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">

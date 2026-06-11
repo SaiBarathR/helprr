@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { listConnections } from '@/lib/arr-instances';
 import type { AdminAnimeMappingsResponse, SeriesAniListMappingState } from '@/types/anilist';
 
 // List every AniList ↔ Sonarr mapping for the admin settings view. Titles come
@@ -10,13 +11,21 @@ async function getHandler(): Promise<NextResponse> {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const records = await prisma.aniListSeriesMapping.findMany({
-    include: { entries: { orderBy: { order: 'asc' } } },
-    orderBy: { resolvedAt: 'desc' },
-  });
+  const [records, sonarrConns] = await Promise.all([
+    prisma.aniListSeriesMapping.findMany({
+      include: { entries: { orderBy: { order: 'asc' } } },
+      orderBy: { resolvedAt: 'desc' },
+    }),
+    listConnections('SONARR'),
+  ]);
+  // Resolve instance labels so the same series id mapped on two Sonarr instances
+  // is distinguishable (a series id is only unique within an instance).
+  const labelById = new Map(sonarrConns.map((c) => [c.id, c.label]));
 
   const response: AdminAnimeMappingsResponse = {
     mappings: records.map((record) => ({
+      sonarrInstanceId: record.sonarrInstanceId,
+      sonarrInstanceLabel: labelById.get(record.sonarrInstanceId) ?? 'Unknown instance',
       sonarrSeriesId: record.sonarrSeriesId,
       seriesTitle: record.seriesTitleSnapshot,
       seriesYear: record.seriesYearSnapshot,

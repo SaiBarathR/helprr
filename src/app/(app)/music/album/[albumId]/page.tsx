@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -44,7 +44,7 @@ import {
   waitForScrollY,
   type DetailViewKey,
 } from '@/lib/detail-view-state';
-import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
 
@@ -58,10 +58,22 @@ function formatDuration(ms?: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+// Append the viewing instance to a Lidarr API path so the detail page reads/mutates
+// the correct instance. No-op when instance is undefined (single-instance-identical).
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+
+function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function AlbumDetailPage() {
   const { albumId: albumIdParam } = useParams();
   const albumId = Number(albumIdParam);
-  const initialSnapshot = Number.isFinite(albumId) ? getAlbumDetailSnapshot(albumId) : null;
+  const instance = useSearchParams().get('instance') ?? undefined;
+  const initialSnapshot = Number.isFinite(albumId) ? getAlbumDetailSnapshot(albumId, instance) : null;
   const detailViewKey: DetailViewKey = `album:${albumId}`;
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
@@ -78,7 +90,7 @@ export default function AlbumDetailPage() {
   const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
   const [showReleases, setShowReleases] = useState(false);
   const [selectingRelease, setSelectingRelease] = useState<number | null>(null);
-  const externalUrls = useExternalUrls();
+  const lidarrExternalUrl = useExternalUrlResolver()('LIDARR', instance);
 
   const canEditMonitoring = useCan('music.editMonitoring');
   const canManageActivity = useCan('activity.manage');
@@ -93,16 +105,16 @@ export default function AlbumDetailPage() {
     const requestId = ++loadRequestRef.current;
     try {
       const [albumResult, nextTracks, nextFiles] = await Promise.all([
-        fetch(`/api/lidarr/album/${albumId}`).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
-        fetch(`/api/lidarr/album/${albumId}/tracks`).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
-        fetch(`/api/lidarr/trackfile?albumId=${albumId}`).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
+        lidarrFetch(instance, `/api/lidarr/album/${albumId}`).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
+        lidarrFetch(instance, `/api/lidarr/album/${albumId}/tracks`).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
+        lidarrFetch(instance, `/api/lidarr/trackfile?albumId=${albumId}`).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
       ]);
 
       if (requestId !== loadRequestRef.current) return;
       setAlbum(albumResult);
       setTracks(nextTracks);
       setTrackFiles(nextFiles);
-      setAlbumDetailSnapshot(albumId, { album: albumResult, tracks: nextTracks, trackFiles: nextFiles });
+      setAlbumDetailSnapshot(albumId, { album: albumResult, tracks: nextTracks, trackFiles: nextFiles }, instance);
     } catch {
       if (requestId !== loadRequestRef.current) return;
       if (!hasCachedData) {
@@ -113,10 +125,10 @@ export default function AlbumDetailPage() {
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [albumId]);
+  }, [albumId, instance]);
 
   useEffect(() => {
-    const cached = Number.isFinite(albumId) ? getAlbumDetailSnapshot(albumId) : null;
+    const cached = Number.isFinite(albumId) ? getAlbumDetailSnapshot(albumId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
     if (cached) {
@@ -128,7 +140,7 @@ export default function AlbumDetailPage() {
       setLoading(true);
     }
     void loadData(Boolean(cached));
-  }, [loadData, albumId]);
+  }, [loadData, albumId, instance]);
 
   useEffect(() => {
     if (loading || !album || hasRestoredScrollRef.current) return;
@@ -174,7 +186,7 @@ export default function AlbumDetailPage() {
     if (!album) return;
     setActionLoading('search');
     try {
-      const res = await fetch('/api/lidarr/command', {
+      const res = await lidarrFetch(instance, '/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'AlbumSearch', albumIds: [album.id] }),
@@ -190,7 +202,7 @@ export default function AlbumDetailPage() {
     setActionLoading('monitor');
     const next = !album.monitored;
     try {
-      const res = await fetch('/api/lidarr/album/monitor', {
+      const res = await lidarrFetch(instance, '/api/lidarr/album/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ albumIds: [album.id], monitored: next }),
@@ -198,7 +210,7 @@ export default function AlbumDetailPage() {
       if (res.ok) {
         const updated = { ...album, monitored: next };
         setAlbum(updated);
-        if (Number.isFinite(albumId)) setAlbumDetailSnapshot(albumId, { album: updated, tracks, trackFiles });
+        if (Number.isFinite(albumId)) setAlbumDetailSnapshot(albumId, { album: updated, tracks, trackFiles }, instance);
         toast.success(next ? 'Now monitored' : 'Unmonitored');
       } else { toast.error('Failed to update'); }
     } catch { toast.error('Failed to update'); }
@@ -214,7 +226,7 @@ export default function AlbumDetailPage() {
         anyReleaseOk: false,
         releases: album.releases.map((r) => ({ ...r, monitored: r.id === releaseId })),
       };
-      const res = await fetch(`/api/lidarr/album/${album.id}`, {
+      const res = await lidarrFetch(instance, `/api/lidarr/album/${album.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -321,9 +333,9 @@ export default function AlbumDetailPage() {
                     Interactive Search
                   </DropdownMenuItem>
                 )}
-                {externalUrls.LIDARR && album.foreignAlbumId && (
+                {lidarrExternalUrl && album.foreignAlbumId && (
                   <DropdownMenuItem asChild>
-                    <a href={`${externalUrls.LIDARR}/album/${album.foreignAlbumId}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`${lidarrExternalUrl}/album/${album.foreignAlbumId}`} target="_blank" rel="noopener noreferrer">
                       <Disc3 className="h-4 w-4" />
                       Open in Lidarr
                     </a>
@@ -363,7 +375,7 @@ export default function AlbumDetailPage() {
             </Badge>
             <h1 className="text-xl font-bold leading-tight line-clamp-2">{album.title}</h1>
             {artistName && (
-              <Link href={`/music/${album.artistId}`} className="text-sm text-primary mt-0.5 inline-block hover:underline">
+              <Link href={`/music/${album.artistId}${instance ? `?instance=${instance}` : ''}`} className="text-sm text-primary mt-0.5 inline-block hover:underline">
                 {artistName}
               </Link>
             )}

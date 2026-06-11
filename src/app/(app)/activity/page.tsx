@@ -18,6 +18,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -32,6 +34,7 @@ import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
+import { type InstanceOption } from '@/components/instance-filter';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 
@@ -80,29 +83,30 @@ function getQueueCustomFormats(item: QueueItem): string | undefined {
 }
 
 function getQueueMediaHref(item: QueueItem & { source?: string }): string | null {
+  const q = item.instanceId ? `?instance=${item.instanceId}` : '';
   const seriesId = item.seriesId ?? item.series?.id;
   const seasonNumber = item.seasonNumber ?? item.episode?.seasonNumber;
   const episodeId = item.episodeId ?? item.episode?.id;
   if (seriesId && seasonNumber && episodeId) {
-    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}`;
+    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}${q}`;
   }
   if (seriesId && seasonNumber) {
-    return `/series/${seriesId}/season/${seasonNumber}`;
+    return `/series/${seriesId}/season/${seasonNumber}${q}`;
   }
   if (seriesId) {
-    return `/series/${seriesId}`;
+    return `/series/${seriesId}${q}`;
   }
   const movieId = item.movieId ?? item.movie?.id;
   if (movieId) {
-    return `/movies/${movieId}`;
+    return `/movies/${movieId}${q}`;
   }
   const albumId = item.albumId ?? item.album?.id;
   if (albumId) {
-    return `/music/album/${albumId}`;
+    return `/music/album/${albumId}${q}`;
   }
   const artistId = item.artistId ?? item.artist?.id;
   if (artistId) {
-    return `/music/${artistId}`;
+    return `/music/${artistId}${q}`;
   }
   return null;
 }
@@ -177,11 +181,38 @@ export default function ActivityPage() {
   const setSortBy = useUIStore((s) => s.setActivitySortBy);
   const filterBy = useUIStore((s) => s.activityFilterBy);
   const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
+  const instanceFilter = useUIStore((s) => s.activityInstanceFilter);
+  const setInstanceFilter = useUIStore((s) => s.setActivityInstanceFilter);
   const urlTab = searchParams.get('tab');
   const searchParamsKey = searchParams.toString();
   const tab = urlTab && isTabKey(urlTab) ? urlTab : activityTab;
   const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
+
+  // Load arr instances for the per-instance filter (shown only when >1 instance).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/instances');
+        if (!res.ok) return;
+        const conns = (await res.json()) as Array<{ id: string; label: string }>;
+        if (cancelled || !Array.isArray(conns)) return;
+        setInstanceOptions(conns.map((c) => ({ id: c.id, label: c.label })));
+      } catch {
+        // ignore — filter just won't render
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Drop a stale instance selection if that instance no longer exists.
+  useEffect(() => {
+    if (instanceFilter !== 'all' && instanceOptions.length > 0 && !instanceOptions.some((i) => i.id === instanceFilter)) {
+      setInstanceFilter('all');
+    }
+  }, [instanceOptions, instanceFilter, setInstanceFilter]);
   const initRef = useRef(false);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
@@ -278,6 +309,30 @@ export default function ActivityPage() {
                     {opt.label}
                   </DropdownMenuCheckboxItem>
                 ))}
+                {/* Instance sub-filter, folded into this same dropdown to save mobile width. */}
+                {instanceOptions.length > 1 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Instance</DropdownMenuLabel>
+                    <DropdownMenuCheckboxItem
+                      checked={instanceFilter === 'all'}
+                      onCheckedChange={() => setInstanceFilter('all')}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      All instances
+                    </DropdownMenuCheckboxItem>
+                    {instanceOptions.map((inst) => (
+                      <DropdownMenuCheckboxItem
+                        key={inst.id}
+                        checked={instanceFilter === inst.id}
+                        onCheckedChange={() => setInstanceFilter(inst.id)}
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        {inst.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -365,12 +420,13 @@ export default function ActivityPage() {
           <QueueTab
             sortBy={sortBy}
             filterBy={filterBy}
+            instanceFilter={instanceFilter}
             onCountChange={setQueueCount}
           />
         )}
-        {tab === 'failed' && <FailedImportsTab filterBy={filterBy} />}
-        {tab === 'missing' && <WantedTab type="missing" filterBy={filterBy} />}
-        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={filterBy} />}
+        {tab === 'failed' && <FailedImportsTab filterBy={filterBy} instanceFilter={instanceFilter} />}
+        {tab === 'missing' && <WantedTab type="missing" filterBy={filterBy} instanceFilter={instanceFilter} />}
+        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={filterBy} instanceFilter={instanceFilter} />}
       </div>
     </div>
   );
@@ -391,10 +447,12 @@ export default function ActivityPage() {
 function QueueTab({
   sortBy,
   filterBy,
+  instanceFilter,
   onCountChange,
 }: {
   sortBy: SortKey;
   filterBy: string[];
+  instanceFilter: string;
   onCountChange: (count: number) => void;
 }) {
   const canManageActivity = useCan('activity.manage');
@@ -435,9 +493,10 @@ function QueueTab({
   }, [fetchQueue, refreshIntervalMs]);
 
   // Apply filter
-  const filtered = filterBy.length === 0
-    ? queue
-    : queue.filter((item) => item.source !== undefined && filterBy.includes(item.source));
+  const filtered = queue.filter((item) =>
+    (filterBy.length === 0 || (item.source !== undefined && filterBy.includes(item.source)))
+    && (instanceFilter === 'all' || item.instanceId === instanceFilter)
+  );
 
   // Apply sort
   const sorted = [...filtered].sort((a, b) => {
@@ -462,7 +521,7 @@ function QueueTab({
     onCountChange(sorted.length);
   }, [sorted.length, onCountChange]);
 
-  async function handleRemove(id: number, source: string) {
+  async function handleRemove(id: number, source: string, instanceId?: string) {
     setRemoving(true);
     // The removed item leaves the queue (total -1) and, if it was in a
     // failed/import-blocked state, the attention count too.
@@ -470,7 +529,8 @@ function QueueTab({
       ? classifyQueueIssue(selectedItem.trackedDownloadState, selectedItem.trackedDownloadStatus) !== null
       : false;
     try {
-      const res = await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false`, { method: 'DELETE' });
+      const instanceQs = instanceId ? `&instanceId=${instanceId}` : '';
+      const res = await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false${instanceQs}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to remove');
@@ -641,7 +701,7 @@ function QueueTab({
                     <Button
                       variant="outline"
                       className="w-full border-destructive text-destructive hover:bg-destructive/10"
-                      onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr')}
+                      onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr', selectedItem.instanceId)}
                       disabled={removing}
                     >
                       {removing ? (
@@ -713,7 +773,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
  * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
  */
 
-function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
+function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
   const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
@@ -740,10 +800,13 @@ function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
         if (filterBy.length > 0) {
           failed = failed.filter((r: QueueItem & { source?: string }) => r.source !== undefined && filterBy.includes(r.source));
         }
+        if (instanceFilter !== 'all') {
+          failed = failed.filter((r: QueueItem) => r.instanceId === instanceFilter);
+        }
         setQueue(failed);
       }
     } catch { } finally { setLoading(false); }
-  }, [filterBy]);
+  }, [filterBy, instanceFilter]);
 
   useEffect(() => { fetchFailed(); }, [filterBy, fetchFailed]);
 
@@ -760,6 +823,7 @@ function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
     });
     if (item.seriesId) params.set('seriesId', String(item.seriesId));
     if (item.movieId) params.set('movieId', String(item.movieId));
+    if (item.instanceId) params.set('instanceId', item.instanceId);
     router.push(`/activity/import?${params}`);
   }
 
@@ -812,6 +876,8 @@ function FailedImportsTab({ filterBy }: { filterBy: string[] }) {
 interface WantedRecord {
   id: number;
   source: 'sonarr' | 'radarr' | 'lidarr';
+  instanceId?: string;
+  instanceLabel?: string;
   mediaType: 'episode' | 'movie' | 'album';
   title?: string;
   seriesId?: number;
@@ -837,7 +903,7 @@ interface WantedRecord {
  * @param filterBy - Selected sources for results (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources, otherwise results are limited to the selected sources.
  * @returns The tab content element that lists records, shows loading and empty states, provides a per-record search action, and supports "Load more" pagination.
  */
-function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: string[] }) {
+function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
   const [records, setRecords] = useState<WantedRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -855,9 +921,12 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
       const res = await fetch(`/api/activity/wanted?${params}`);
       if (res.ok) {
         const data = await res.json();
-        const incoming: WantedRecord[] = filterBy.length > 1
+        let incoming: WantedRecord[] = filterBy.length > 1
           ? (data.records || []).filter((r: WantedRecord) => filterBy.includes(r.source))
           : (data.records || []);
+        if (instanceFilter !== 'all') {
+          incoming = incoming.filter((r: WantedRecord) => r.instanceId === instanceFilter);
+        }
         if (p === 1) setRecords(incoming);
         else setRecords((prev) => [...prev, ...incoming]);
         // totalRecords counts raw (unfiltered) records, so gate "Load more" on
@@ -866,29 +935,31 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
         setHasMore(p * PAGE_SIZE < (data.totalRecords || 0));
       }
     } catch { } finally { setLoading(false); }
-  }, [filterBy, type]);
+  }, [filterBy, type, instanceFilter]);
 
   useEffect(() => { setPage(1); fetchWanted(1); }, [fetchWanted]);
 
   async function handleSearch(record: WantedRecord) {
     const key = `${record.source}-${record.id}`;
     setSearching(key);
+    // Route the search command to the instance the wanted item lives on.
+    const qs = record.instanceId ? `?instanceId=${record.instanceId}` : '';
     try {
       let res: Response;
       if (record.source === 'sonarr') {
-        res = await fetch('/api/sonarr/command', {
+        res = await fetch(`/api/sonarr/command${qs}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [record.id] }),
         });
       } else if (record.source === 'lidarr') {
-        res = await fetch('/api/lidarr/command', {
+        res = await fetch(`/api/lidarr/command${qs}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'AlbumSearch', albumIds: [record.id] }),
         });
       } else {
-        res = await fetch('/api/radarr/command', {
+        res = await fetch(`/api/radarr/command${qs}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: 'MoviesSearch', movieIds: [record.id] }),
@@ -938,14 +1009,15 @@ function WantedTab({ type, filterBy }: { type: 'missing' | 'cutoff'; filterBy: s
 
         const hasSeriesId = Number.isFinite(record.seriesId);
         const hasSeasonNumber = Number.isFinite(record.seasonNumber);
+        const q = record.instanceId ? `?instance=${record.instanceId}` : '';
         const href = isAlbum
-          ? `/music/album/${record.id}`
+          ? `/music/album/${record.id}${q}`
           : isEpisode && hasSeriesId && hasSeasonNumber
-            ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}`
+            ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}${q}`
             : isEpisode && hasSeriesId
-              ? `/series/${record.seriesId}`
+              ? `/series/${record.seriesId}${q}`
               : !isEpisode
-                ? `/movies/${record.id}`
+                ? `/movies/${record.id}${q}`
                 : null;
 
         return (

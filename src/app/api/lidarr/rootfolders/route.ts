@@ -1,10 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireUser } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 
-async function getHandler() {
+async function getHandler(request: NextRequest) {
   // Root folders expose filesystem paths; gate behind the add/edit-path
   // capabilities that actually consume them (add page, edit page).
   const auth = await requireUser();
@@ -14,7 +14,8 @@ async function getHandler() {
   }
 
   try {
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const folders = await client.getRootFolders();
     return NextResponse.json(folders);
   } catch (error) {
