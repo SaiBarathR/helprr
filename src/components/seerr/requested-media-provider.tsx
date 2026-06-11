@@ -34,7 +34,7 @@ export function RequestedMediaProvider({ children }: { children: React.ReactNode
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch('/api/seerr/pending-requests');
+        const res = await fetch('/api/seerr/pending-requests?fields=keys');
         if (!res.ok) return;
         const data = (await res.json()) as { results?: Array<{ mediaType: MediaType; tmdbId: number }> };
         if (cancelled) return;

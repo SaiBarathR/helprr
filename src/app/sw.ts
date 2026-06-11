@@ -1,7 +1,14 @@
 /// <reference lib="webworker" />
 
 import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from 'serwist';
-import { CacheFirst, ExpirationPlugin, NetworkOnly, Serwist, StaleWhileRevalidate } from 'serwist';
+import {
+  CacheableResponsePlugin,
+  CacheFirst,
+  ExpirationPlugin,
+  NetworkOnly,
+  Serwist,
+  StaleWhileRevalidate,
+} from 'serwist';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -10,6 +17,15 @@ declare global {
 }
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
+
+// Read-only library/dashboard GET routes that are safe to serve briefly stale so
+// the installed PWA cold-opens (and works offline) with the last-synced data.
+// Allowlist, not denylist: anything not matched here stays NetworkOnly, so a
+// future mutation-ish or auth-sensitive GET can't silently become cacheable.
+// `/api/me`, `/api/badges`, status polls, and auth/session routes are
+// deliberately excluded (per-user / must-be-fresh).
+const READONLY_API_SWR =
+  /^\/api\/(?:sonarr|radarr|lidarr|calendar|qbittorrent|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:queue|history|wanted))(?:\/.*)?$/;
 
 const runtimeCaching: RuntimeCaching[] =
   process.env.NODE_ENV !== 'production'
@@ -21,21 +37,59 @@ const runtimeCaching: RuntimeCaching[] =
       ]
     : [
         {
+          // Read-only library/dashboard reads → instant + offline last-known-good.
+          // CacheableResponsePlugin([200]) means 401/403/3xx are never written, so
+          // a revoked session can't read another user's stale data here.
+          matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && READONLY_API_SWR.test(pathname),
+          method: 'GET',
+          handler: new StaleWhileRevalidate({
+            cacheName: 'api-readonly',
+            plugins: [
+              new CacheableResponsePlugin({ statuses: [200] }),
+              new ExpirationPlugin({
+                maxEntries: 128,
+                maxAgeSeconds: 5 * 60,
+                maxAgeFrom: 'last-used',
+              }),
+            ],
+          }),
+        },
+        {
+          // Everything else under /api stays network-only (mutations are POST/DELETE
+          // and excluded by method anyway; this is the catch-all for non-allowlisted reads).
           matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && pathname.startsWith('/api/'),
           method: 'GET',
           handler: new NetworkOnly(),
         },
         {
+          // RSC (page-data) fetches MUST stay network-only: the payload shape depends
+          // on the Next-Router-State-Tree header, so URL-keyed caching would serve a
+          // wrong-shaped subtree and corrupt React reconciliation. Instant intra-app
+          // nav comes from prefetch + loading.tsx skeletons instead.
           matcher: ({ request, sameOrigin, url: { pathname } }) =>
             sameOrigin && !pathname.startsWith('/api/') && request.headers.get('RSC') === '1',
           method: 'GET',
           handler: new NetworkOnly(),
         },
         {
+          // HTML document navigations → SWR so the installed PWA cold-opens the
+          // last-seen shell instantly (and offline). The data inside is fetched
+          // separately and every API/RSC call independently re-auths, so a revoked
+          // session at worst sees a stale shell for one navigation.
           matcher: ({ request, sameOrigin, url: { pathname } }) =>
             sameOrigin && !pathname.startsWith('/api/') && request.mode === 'navigate',
           method: 'GET',
-          handler: new NetworkOnly(),
+          handler: new StaleWhileRevalidate({
+            cacheName: 'pages',
+            plugins: [
+              new CacheableResponsePlugin({ statuses: [200] }),
+              new ExpirationPlugin({
+                maxEntries: 64,
+                maxAgeSeconds: 24 * 60 * 60,
+                maxAgeFrom: 'last-used',
+              }),
+            ],
+          }),
         },
         {
           matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && pathname.startsWith('/_next/static/'),
@@ -106,11 +160,25 @@ const runtimeCaching: RuntimeCaching[] =
       ];
 
 const serwist = new Serwist({
-  precacheEntries: self.__SW_MANIFEST,
+  // Append the static offline shell so PrecacheFallbackPlugin (wired via
+  // `fallbacks` below) can serve it when a never-visited route is opened offline.
+  // Bump the revision string when public/offline.html changes.
+  precacheEntries: [...(self.__SW_MANIFEST ?? []), { url: '/offline.html', revision: 'v1' }],
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching,
+  // Offline fallback for document navigations with no cached entry (e.g. a route
+  // never visited before going offline). Only navigations match, so API/asset
+  // handlers are unaffected.
+  fallbacks: {
+    entries: [
+      {
+        url: '/offline.html',
+        matcher: ({ request }) => request.mode === 'navigate',
+      },
+    ],
+  },
 });
 
 function logToClients(level: 'debug' | 'info' | 'warn' | 'error', message: string, metadata?: unknown) {
@@ -300,6 +368,20 @@ self.addEventListener('error', (event) => {
 
 self.addEventListener('unhandledrejection', (event) => {
   logToClients('error', 'Service worker unhandled rejection', { reason: String(event.reason) });
+});
+
+// Clear user-scoped caches on logout so the next person to sign in on this
+// installed PWA never sees the previous user's cached shell or read data. Asset
+// caches (static/image/font) are user-agnostic and intentionally kept.
+const USER_SCOPED_CACHES = ['pages', 'api-readonly'];
+self.addEventListener('message', (event) => {
+  if ((event.data as { type?: string } | undefined)?.type === 'helprr-clear-user-caches') {
+    event.waitUntil(
+      Promise.all(USER_SCOPED_CACHES.map((name) => caches.delete(name)))
+        .then(() => logToClients('info', 'Cleared user-scoped caches on logout'))
+        .catch((error) => logToClients('error', 'Cache clear failed', { error: String(error) }))
+    );
+  }
 });
 
 serwist.addEventListeners();

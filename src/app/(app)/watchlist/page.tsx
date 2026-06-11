@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowUpDown,
   Bookmark,
@@ -140,6 +141,18 @@ function debounce<T extends (...args: never[]) => void>(fn: T, ms: number) {
   };
 }
 
+// Column count must mirror the grid's Tailwind breakpoints exactly
+// (grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6) so the virtualizer's
+// row math lines up with how the grid actually wraps cards.
+function getColumns(width: number): number {
+  if (width >= 1024) return 6; // lg
+  if (width >= 768) return 5; // md
+  if (width >= 640) return 4; // sm
+  return 3;
+}
+
+const GRID_GAP = 12; // gap-3
+
 export default function WatchlistPage() {
   const canEdit = useCan('watchlist.edit');
   const [items, setItems] = useState<WatchlistItem[] | null>(null);
@@ -155,6 +168,12 @@ export default function WatchlistPage() {
   const [clearingAll, setClearingAll] = useState(false);
   const [view, setView] = useState<ViewState>(DEFAULT_VIEW);
   const [viewLoaded, setViewLoaded] = useState(false);
+
+  // Grid virtualization geometry (window-scrolled, same pattern as movies/series).
+  const [viewportWidth, setViewportWidth] = useState(1280);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [contentOffsetTop, setContentOffsetTop] = useState(0);
+  const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setView(loadView());
@@ -315,6 +334,49 @@ export default function WatchlistPage() {
     };
     return [...list].sort(cmp);
   }, [items, view]);
+
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    onResize();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Track the grid's width + page offset so the window virtualizer positions
+  // rows correctly. Re-measures when the content above it (tags, filtered set)
+  // changes the grid's top.
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+    const measure = () => {
+      const rect = container.getBoundingClientRect();
+      setContainerWidth(rect.width);
+      setContentOffsetTop(rect.top + window.scrollY);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [filtered, tags]);
+
+  const columns = getColumns(viewportWidth);
+  const rowHeight = useMemo(() => {
+    if (containerWidth <= 0) return 240;
+    const cardWidth = Math.max(1, (containerWidth - GRID_GAP * (columns - 1)) / columns);
+    return cardWidth * 1.5 + GRID_GAP; // aspect-[2/3] poster + row gap
+  }, [containerWidth, columns]);
+  const rowCount = filtered ? Math.ceil(filtered.length / columns) : 0;
+  const gridVirtualizer = useWindowVirtualizer({
+    count: rowCount,
+    estimateSize: () => rowHeight,
+    enabled: filtered !== null && filtered.length > 0,
+    overscan: 3,
+    scrollMargin: contentOffsetTop,
+  });
 
   const visibleTags = tags.filter((t) => t.count > 0);
   const totalCount = items?.length ?? 0;
@@ -600,11 +662,29 @@ export default function WatchlistPage() {
             </div>
           )
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-            {filtered.map((item) => (
-              <WatchlistCard key={item.id} item={item} onRemove={() => setRemoveTarget(item)} />
-            ))}
-          </div>
+          (() => {
+            const virtualRows = gridVirtualizer.getVirtualItems();
+            const firstRow = virtualRows[0];
+            const lastRow = virtualRows[virtualRows.length - 1];
+            const startIndex = (firstRow?.index ?? 0) * columns;
+            const endIndex = Math.min(filtered.length, ((lastRow?.index ?? 0) + 1) * columns);
+            const visible = filtered.slice(startIndex, endIndex);
+            const topSpacer = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
+            const bottomSpacer = lastRow
+              ? Math.max(0, gridVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
+              : 0;
+            return (
+              <div ref={contentRef}>
+                {topSpacer > 0 && <div style={{ height: topSpacer }} />}
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                  {visible.map((item) => (
+                    <WatchlistCard key={item.id} item={item} onRemove={() => setRemoveTarget(item)} />
+                  ))}
+                </div>
+                {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}
+              </div>
+            );
+          })()
         )}
       </div>
 

@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger';
 import { tmdbImageUrl } from '@/lib/discover';
 import { getLibraryLookups } from '@/lib/watchlist-library-lookup';
 import { getCachedSeerrMediaDetail } from '@/lib/seerr-helpers';
+import { parseInt32 } from '@/lib/pagination';
 import type {
   EnrichedSeerrRequest,
   SeerrRequestFilter,
@@ -33,18 +34,6 @@ function parseFilter(value: string | null): SeerrRequestFilter | undefined {
 }
 
 const MAX_PAGE_SIZE = 1000;
-
-function parseInt32(
-  value: string | null,
-  opts?: { min?: number; max?: number }
-): number | undefined {
-  if (!value) return undefined;
-  const n = Math.trunc(Number.parseInt(value, 10));
-  if (!Number.isFinite(n)) return undefined;
-  const min = opts?.min ?? 0;
-  const max = opts?.max ?? Number.MAX_SAFE_INTEGER;
-  return Math.min(Math.max(n, min), max);
-}
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('requests.view');

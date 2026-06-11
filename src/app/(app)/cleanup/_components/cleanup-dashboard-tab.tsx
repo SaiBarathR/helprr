@@ -11,6 +11,10 @@ import { RunPreviewDialog, QueueDryRunDecision, DownloadDryRunDecision, RunPrevi
 import type { AutoRunMode } from '@/lib/cleanup/types';
 import { formatDelta } from '@/lib/cleanup/format-delta';
 import { jsonOk } from '@/lib/http';
+import { PageControls } from '@/components/ui/page-controls';
+import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
+
+const STRIKES_PAGE_SIZE = 30;
 
 interface Stats {
   removedToday: number;
@@ -62,6 +66,8 @@ interface SchedulerStatusResponse {
 export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queue' | 'download' | 'history') => void }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [strikes, setStrikes] = useState<StrikeRow[]>([]);
+  const [strikeTotal, setStrikeTotal] = useState(0);
+  const [strikePage, setStrikePage] = useState(1);
   const [status, setStatus] = useState<DashboardStatus | null>(null);
   const [scheduler, setScheduler] = useState<SchedulerStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,12 +94,15 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     try {
       const [statsRes, strikesRes, queueCfg, downloadCfg] = await Promise.all([
         fetch('/api/cleanup/stats').then(jsonOk<Stats>),
-        fetch('/api/cleanup/strikes').then(jsonOk<StrikeRow[]>),
+        fetch(`/api/cleanup/strikes?page=${strikePage}&pageSize=${STRIKES_PAGE_SIZE}`).then(
+          jsonOk<{ records: StrikeRow[]; total: number }>
+        ),
         fetch('/api/cleanup/queue/config').then(jsonOk<Record<string, unknown>>),
         fetch('/api/cleanup/download/config').then(jsonOk<Record<string, unknown>>),
       ]);
       setStats(statsRes);
-      setStrikes(strikesRes);
+      setStrikes(strikesRes.records);
+      setStrikeTotal(strikesRes.total);
       setStatus({
         queue: {
           enabled: Boolean(queueCfg?.enabled),
@@ -111,7 +120,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [strikePage]);
 
   const refreshScheduler = useCallback(async () => {
     try {
@@ -122,13 +131,22 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     }
   }, []);
 
+  // Poll only while visible (pauses when the tab/PWA is backgrounded; refetches on
+  // return). Each hook runs once on mount, then on its own cadence.
+  useVisibleInterval(refresh, 15000);
+  useVisibleInterval(refreshScheduler, 5000);
+
+  // Refetch immediately on strike-page change — the polling hook only re-runs on its
+  // own cadence, not when the callback closes over a new page.
+  const didMountRef = useRef(false);
   useEffect(() => {
-    refresh();
-    refreshScheduler();
-    const id = setInterval(refresh, 15000);
-    const sid = setInterval(refreshScheduler, 5000);
-    return () => { clearInterval(id); clearInterval(sid); };
-  }, [refresh, refreshScheduler]);
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
+    void refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strikePage]);
 
   const startQueueDryRun = async () => {
     setQueuePreview({ open: true, loading: true, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
@@ -334,6 +352,17 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
               ))
             )}
           </div>
+          {strikeTotal > STRIKES_PAGE_SIZE && (
+            <div className="mt-2">
+              <PageControls
+                page={strikePage}
+                total={strikeTotal}
+                pageSize={STRIKES_PAGE_SIZE}
+                onPage={setStrikePage}
+                loading={loading}
+              />
+            </div>
+          )}
         </section>
 
         <div className="text-xs text-muted-foreground flex items-start gap-2 px-1">
@@ -442,13 +471,11 @@ function StatusRow({
 function NextRunLine({ scheduler }: { scheduler: SchedulerLite | undefined }) {
   const [now, setNow] = useState<number>(() => Date.now());
   const lastTickRef = useRef<number>(now);
-  useEffect(() => {
-    const id = setInterval(() => {
-      lastTickRef.current = Date.now();
-      setNow(lastTickRef.current);
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
+  // 1s countdown tick — paused while the tab is hidden, resumes on return.
+  useVisibleInterval(() => {
+    lastTickRef.current = Date.now();
+    setNow(lastTickRef.current);
+  }, 1000);
 
   if (!scheduler) {
     return <div className="text-xs text-muted-foreground/70 mt-0.5">Next run: —</div>;
