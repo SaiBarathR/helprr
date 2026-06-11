@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { setImageCacheGeneration, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
 import { getCachedLibraryGaps, setCachedLibraryGaps } from '@/lib/cache/library-gaps-cache';
-import type { SonarrClient } from '@/lib/sonarr-client';
-import type { RadarrClient } from '@/lib/radarr-client';
 import type {
   MediaImage,
   SonarrSeries,
@@ -14,6 +12,12 @@ import type {
   LibraryGapSection,
   LibraryGapsResponse,
 } from '@/types';
+
+// Tagged client pairs as returned by the multi-instance getters. connection.id is
+// the instance id we thread into every href + search target so a gap card opens
+// (and its Search button commands) the instance the gap actually lives on.
+type SonarrInstance = Awaited<ReturnType<typeof getSonarrClients>>[number];
+type RadarrInstance = Awaited<ReturnType<typeof getRadarrClients>>[number];
 
 const MAX_ITEMS_PER_SECTION = 50;
 
@@ -48,11 +52,13 @@ function toSection(
 }
 
 /**
- * Classify Sonarr seasons into "fully-missing aired season" and "announced/upcoming newest season".
- * The two are mutually exclusive by construction: missing = aired-but-0-files; upcoming = not-yet-aired.
- * Anime are ordinary Sonarr series, so they're covered with no special-casing.
+ * Classify one Sonarr instance's seasons into "fully-missing aired season" and
+ * "announced/upcoming newest season". The two are mutually exclusive by construction:
+ * missing = aired-but-0-files; upcoming = not-yet-aired. Anime are ordinary Sonarr
+ * series, so they're covered with no special-casing. Keys/hrefs/search are namespaced
+ * by instanceId so the same series id on two instances never collides.
  */
-function classifySeasons(series: SonarrSeries[] | null) {
+function classifySeasons(series: SonarrSeries[] | null, instanceId: string) {
   const missing: LibraryGapItem[] = [];
   const upcoming: LibraryGapItem[] = [];
   const missingKeys = new Set<string>();
@@ -69,15 +75,15 @@ function classifySeasons(series: SonarrSeries[] | null) {
       const stats = season.statistics;
       if (!stats) continue;
       if (season.monitored && stats.episodeCount > 0 && stats.episodeFileCount === 0) {
-        missingKeys.add(`${show.id}:${season.seasonNumber}`);
+        missingKeys.add(`${instanceId}:${show.id}:${season.seasonNumber}`);
         missing.push({
-          key: `season-${show.id}-${season.seasonNumber}`,
+          key: `season-${instanceId}-${show.id}-${season.seasonNumber}`,
           title: show.title,
           subtitle: `Season ${season.seasonNumber} · ${stats.episodeCount} ep${stats.episodeCount === 1 ? '' : 's'}`,
           year: show.year,
           poster,
-          href: `/series/${show.id}/season/${season.seasonNumber}`,
-          search: { kind: 'season', sonarrSeriesId: show.id, seasonNumber: season.seasonNumber },
+          href: `/series/${show.id}/season/${season.seasonNumber}?instance=${instanceId}`,
+          search: { kind: 'season', sonarrSeriesId: show.id, seasonNumber: season.seasonNumber, instanceId },
         });
       }
     }
@@ -94,13 +100,13 @@ function classifySeasons(series: SonarrSeries[] | null) {
         stats.totalEpisodeCount > 0
       ) {
         upcoming.push({
-          key: `upcoming-${show.id}-${newest.seasonNumber}`,
+          key: `upcoming-${instanceId}-${show.id}-${newest.seasonNumber}`,
           title: show.title,
           subtitle: `Season ${newest.seasonNumber}`,
           date: show.nextAiring,
           year: show.year,
           poster,
-          href: `/series/${show.id}`,
+          href: `/series/${show.id}?instance=${instanceId}`,
           search: { kind: 'none' }, // nothing aired yet → nothing to search
         });
       }
@@ -110,36 +116,56 @@ function classifySeasons(series: SonarrSeries[] | null) {
   return { missing, upcoming, missingKeys };
 }
 
-async function buildCollectionGaps(radarr: RadarrClient | null): Promise<LibraryGapSection> {
-  if (!radarr) return emptySection('collectionGaps', false); // Radarr not connected
+async function buildCollectionGaps(radarrInstances: RadarrInstance[]): Promise<LibraryGapSection> {
+  if (radarrInstances.length === 0) return emptySection('collectionGaps', false); // Radarr not connected
 
-  const [collections, movies] = await Promise.all([
-    radarr.getCollections().catch(() => null),
-    radarr.getMovies().catch(() => null),
-  ]);
+  // Pull collections + movies from every instance. "In library" is the union of all
+  // reachable instances' movies, so a film owned in any instance isn't a gap. One bad
+  // instance just contributes nothing rather than blanking the whole section.
+  const perInstance = await Promise.all(
+    radarrInstances.map(async ({ client }) => {
+      const [collections, movies] = await Promise.all([
+        client.getCollections().catch(() => null),
+        client.getMovies().catch(() => null),
+      ]);
+      return { collections, movies };
+    })
+  );
 
-  if (!collections || !movies) return emptySection('collectionGaps', false, true); // configured but fetch failed
+  // Every configured instance failed both fetches → surface an error state.
+  if (perInstance.every((p) => p.collections === null && p.movies === null)) {
+    return emptySection('collectionGaps', false, true);
+  }
 
-  const librarySet = new Set(movies.map((m) => m.tmdbId));
+  const librarySet = new Set<number>();
+  for (const p of perInstance) {
+    if (p.movies) for (const m of p.movies) if (m.tmdbId) librarySet.add(m.tmdbId);
+  }
+
   const seen = new Set<number>();
   const items: LibraryGapItem[] = [];
 
-  for (const collection of collections) {
-    if (!collection.monitored) continue; // only surface gaps from collections you actually track
-    for (const part of collection.movies ?? []) {
-      if (!part.tmdbId || librarySet.has(part.tmdbId) || seen.has(part.tmdbId)) continue;
-      seen.add(part.tmdbId);
-      items.push({
-        key: `collgap-${part.tmdbId}`,
-        title: part.title,
-        subtitle: collection.title,
-        year: part.year,
-        poster: resolvePoster(part.images, 'radarr'),
-        href: `/discover/movie/${part.tmdbId}`,
-        search: { kind: 'none' }, // not in Radarr → add via Discover
-        collectionTitle: collection.title,
-        tmdbId: part.tmdbId,
-      });
+  for (const p of perInstance) {
+    // Need this instance's own movie list to trust its gaps — without it we can't tell
+    // which of its collection films are already owned, which would surface false gaps.
+    if (!p.collections || !p.movies) continue;
+    for (const collection of p.collections) {
+      if (!collection.monitored) continue; // only surface gaps from collections you actually track
+      for (const part of collection.movies ?? []) {
+        if (!part.tmdbId || librarySet.has(part.tmdbId) || seen.has(part.tmdbId)) continue;
+        seen.add(part.tmdbId);
+        items.push({
+          key: `collgap-${part.tmdbId}`,
+          title: part.title,
+          subtitle: collection.title,
+          year: part.year,
+          poster: resolvePoster(part.images, 'radarr'),
+          href: `/discover/movie/${part.tmdbId}`, // TMDB detail (add via Discover) — instance-agnostic
+          search: { kind: 'none' }, // not in Radarr → add via Discover
+          collectionTitle: collection.title,
+          tmdbId: part.tmdbId,
+        });
+      }
     }
   }
 
@@ -148,58 +174,79 @@ async function buildCollectionGaps(radarr: RadarrClient | null): Promise<Library
 
 /**
  * Overdue = monitored items past air/release date with no file (Sonarr episodes + Radarr movies),
- * sourced from the same wanted/missing endpoints Activity uses. Episodes belonging to a fully-missing
- * season are deduped out (they're already represented as a single Missing Seasons row).
+ * fanned out over every Sonarr/Radarr instance and sourced from the same wanted/missing endpoints
+ * Activity uses. Episodes belonging to a fully-missing season are deduped out (they're already
+ * represented as a single Missing Seasons row), with the dedup key namespaced by instance.
  */
 async function buildOverdue(
-  sonarr: SonarrClient | null,
-  radarr: RadarrClient | null,
+  sonarrInstances: SonarrInstance[],
+  radarrInstances: RadarrInstance[],
   missingSeasonKeys: Set<string>
 ): Promise<LibraryGapSection> {
-  if (sonarr === null && radarr === null) return emptySection('overdue', false); // neither connected
+  if (sonarrInstances.length === 0 && radarrInstances.length === 0) return emptySection('overdue', false); // neither connected
 
-  const [sonarrMissing, radarrMissing] = await Promise.all([
-    sonarr ? sonarr.getWantedMissing(1, MAX_ITEMS_PER_SECTION).catch(() => null) : Promise.resolve(null),
-    radarr ? radarr.getWantedMissing(1, MAX_ITEMS_PER_SECTION).catch(() => null) : Promise.resolve(null),
+  const [sonarrResults, radarrResults] = await Promise.all([
+    Promise.all(
+      sonarrInstances.map(async ({ connection, client }) => ({
+        instanceId: connection.id,
+        missing: await client.getWantedMissing(1, MAX_ITEMS_PER_SECTION).catch(() => null),
+      }))
+    ),
+    Promise.all(
+      radarrInstances.map(async ({ connection, client }) => ({
+        instanceId: connection.id,
+        missing: await client.getWantedMissing(1, MAX_ITEMS_PER_SECTION).catch(() => null),
+      }))
+    ),
   ]);
 
-  // Available when at least one configured service returned data; if every configured
-  // service failed, surface an error state rather than "not connected".
-  const available =
-    (sonarr !== null && sonarrMissing !== null) || (radarr !== null && radarrMissing !== null);
-  if (!available) return emptySection('overdue', false, true);
+  // Available when at least one configured instance returned data; if every configured
+  // instance failed, surface an error state rather than "not connected".
+  const anyReturned =
+    sonarrResults.some((r) => r.missing !== null) || radarrResults.some((r) => r.missing !== null);
+  if (!anyReturned) return emptySection('overdue', false, true);
 
   const sonarrItems: LibraryGapItem[] = [];
   const radarrItems: LibraryGapItem[] = [];
   let dedupedCount = 0; // Sonarr episodes folded into a Missing Seasons row
+  let sonarrTotal = 0;
+  let radarrTotal = 0;
 
-  for (const ep of sonarrMissing?.records ?? []) {
-    if (missingSeasonKeys.has(`${ep.seriesId}:${ep.seasonNumber}`)) {
-      dedupedCount++;
-      continue;
+  for (const { instanceId, missing } of sonarrResults) {
+    if (!missing) continue;
+    sonarrTotal += missing.totalRecords ?? 0;
+    for (const ep of missing.records ?? []) {
+      if (missingSeasonKeys.has(`${instanceId}:${ep.seriesId}:${ep.seasonNumber}`)) {
+        dedupedCount++;
+        continue;
+      }
+      sonarrItems.push({
+        key: `overdue-ep-${instanceId}-${ep.id}`,
+        title: `${ep.series?.title ?? 'Unknown'} — S${pad(ep.seasonNumber)}E${pad(ep.episodeNumber)}`,
+        subtitle: ep.title || undefined,
+        date: ep.airDateUtc,
+        poster: resolvePoster(ep.series?.images, 'sonarr'),
+        href: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}?instance=${instanceId}`,
+        search: { kind: 'episode', episodeId: ep.id, instanceId },
+      });
     }
-    sonarrItems.push({
-      key: `overdue-ep-${ep.id}`,
-      title: `${ep.series?.title ?? 'Unknown'} — S${pad(ep.seasonNumber)}E${pad(ep.episodeNumber)}`,
-      subtitle: ep.title || undefined,
-      date: ep.airDateUtc,
-      poster: resolvePoster(ep.series?.images, 'sonarr'),
-      href: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`,
-      search: { kind: 'episode', episodeId: ep.id },
-    });
   }
 
-  for (const movie of radarrMissing?.records ?? []) {
-    radarrItems.push({
-      key: `overdue-movie-${movie.id}`,
-      title: movie.title,
-      subtitle: movie.year ? String(movie.year) : undefined,
-      date: movie.digitalRelease || movie.physicalRelease || movie.inCinemas || movie.added,
-      year: movie.year,
-      poster: resolvePoster(movie.images, 'radarr'),
-      href: `/movies/${movie.id}`,
-      search: { kind: 'movie', radarrMovieId: movie.id },
-    });
+  for (const { instanceId, missing } of radarrResults) {
+    if (!missing) continue;
+    radarrTotal += missing.totalRecords ?? 0;
+    for (const movie of missing.records ?? []) {
+      radarrItems.push({
+        key: `overdue-movie-${instanceId}-${movie.id}`,
+        title: movie.title,
+        subtitle: movie.year ? String(movie.year) : undefined,
+        date: movie.digitalRelease || movie.physicalRelease || movie.inCinemas || movie.added,
+        year: movie.year,
+        poster: resolvePoster(movie.images, 'radarr'),
+        href: `/movies/${movie.id}?instance=${instanceId}`,
+        search: { kind: 'movie', radarrMovieId: movie.id, instanceId },
+      });
+    }
   }
 
   // Interleave the two sources so both survive the MAX_ITEMS_PER_SECTION slice in toSection;
@@ -210,11 +257,9 @@ async function buildOverdue(
     if (i < radarrItems.length) items.push(radarrItems[i]);
   }
 
-  // True backlog from upstream totals (across all pages), minus the page-1 episodes folded
-  // into Missing Seasons. May slightly overcount if a deduped season has further missing
-  // episodes beyond page 1, but never undercounts the rows actually shown.
-  const sonarrTotal = sonarrMissing?.totalRecords ?? 0;
-  const radarrTotal = radarrMissing?.totalRecords ?? 0;
+  // True backlog from upstream totals (across all pages and instances), minus the page-1
+  // episodes folded into Missing Seasons. May slightly overcount if a deduped season has
+  // further missing episodes beyond page 1, but never undercounts the rows actually shown.
   const count = Math.max(0, sonarrTotal - dedupedCount) + radarrTotal;
 
   return toSection('overdue', items, true, { count });
@@ -237,20 +282,40 @@ async function getHandler(): Promise<NextResponse> {
   if (cached) return NextResponse.json(cached);
 
   try {
-    const [sonarr, radarr] = await Promise.all([
-      getSonarrClient().catch(() => null),
-      getRadarrClient().catch(() => null),
+    const [sonarrInstances, radarrInstances] = await Promise.all([
+      getSonarrClients().catch(() => [] as SonarrInstance[]),
+      getRadarrClients().catch(() => [] as RadarrInstance[]),
     ]);
 
-    // null client ⇒ Sonarr not configured; non-null client whose fetch fails ⇒ transient error.
-    const series = sonarr ? await sonarr.getSeries().catch(() => null) : null;
-    const sonarrAvailable = sonarr !== null && series !== null;
-    const sonarrError = sonarr !== null && series === null;
-    const { missing, upcoming, missingKeys } = classifySeasons(series);
+    // Missing-seasons + upcoming, unioned across every Sonarr instance. Per-instance
+    // try/catch so one unreachable instance doesn't blank the whole section.
+    const missing: LibraryGapItem[] = [];
+    const upcoming: LibraryGapItem[] = [];
+    const missingKeys = new Set<string>();
+    let sonarrAnyOk = false;
+
+    const sonarrSeries = await Promise.all(
+      sonarrInstances.map(async ({ connection, client }) => ({
+        instanceId: connection.id,
+        series: await client.getSeries().catch(() => null),
+      }))
+    );
+    for (const { instanceId, series } of sonarrSeries) {
+      if (series === null) continue; // this instance failed; others still contribute
+      sonarrAnyOk = true;
+      const r = classifySeasons(series, instanceId);
+      missing.push(...r.missing);
+      upcoming.push(...r.upcoming);
+      for (const k of r.missingKeys) missingKeys.add(k);
+    }
+    // Available when ≥1 Sonarr instance returned data; error only when every configured
+    // instance failed (so a partial result still shows the reachable instances' gaps).
+    const sonarrAvailable = sonarrInstances.length > 0 && sonarrAnyOk;
+    const sonarrError = sonarrInstances.length > 0 && !sonarrAnyOk;
 
     const [collectionGaps, overdue] = await Promise.all([
-      buildCollectionGaps(radarr),
-      buildOverdue(sonarr, radarr, missingKeys),
+      buildCollectionGaps(radarrInstances),
+      buildOverdue(sonarrInstances, radarrInstances, missingKeys),
     ]);
 
     const response: LibraryGapsResponse = {

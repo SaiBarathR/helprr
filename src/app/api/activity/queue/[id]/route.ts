@@ -16,6 +16,7 @@ async function deleteHandler(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const source = searchParams.get('source') as 'sonarr' | 'radarr' | 'lidarr';
+    const instanceId = searchParams.get('instanceId') ?? undefined;
     const removeFromClient = searchParams.get('removeFromClient') === 'true';
     const blocklist = searchParams.get('blocklist') === 'true';
 
@@ -35,13 +36,13 @@ async function deleteHandler(
     }
 
     if (source === 'sonarr') {
-      const sonarr = await getSonarrClient();
+      const sonarr = await getSonarrClient(instanceId);
       await sonarr.deleteQueueItem(queueId, { removeFromClient, blocklist });
     } else if (source === 'lidarr') {
-      const lidarr = await getLidarrClient();
+      const lidarr = await getLidarrClient(instanceId);
       await lidarr.deleteQueueItem(queueId, { removeFromClient, blocklist });
     } else {
-      const radarr = await getRadarrClient();
+      const radarr = await getRadarrClient(instanceId);
       await radarr.deleteQueueItem(queueId, { removeFromClient, blocklist });
     }
 

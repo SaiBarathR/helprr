@@ -46,6 +46,11 @@ export interface SonarrSeries {
   };
 }
 
+export interface InstanceTag {
+  instanceId: string;
+  instanceLabel: string;
+}
+
 export type SonarrSeriesListItem = Pick<
   SonarrSeries,
   | 'id'
@@ -69,7 +74,7 @@ export type SonarrSeriesListItem = Pick<
   | 'previousAiring'
   | 'statistics'
   | 'seriesType'
->;
+> & Partial<InstanceTag>;
 
 export interface SonarrSeason {
   seasonNumber: number;
@@ -274,7 +279,7 @@ export type RadarrMovieListItem = Pick<
   | 'popularity'
   | 'studio'
   | 'certification'
->;
+> & Partial<InstanceTag>;
 
 export type RadarrCalendarEntry = RadarrMovie;
 
@@ -368,7 +373,7 @@ export type LidarrArtistListItem = Pick<
   | 'tags'
   | 'nextAlbum'
   | 'lastAlbum'
->;
+> & Partial<InstanceTag>;
 
 export interface LidarrRelease {
   id: number;
@@ -541,6 +546,8 @@ export interface QueueCustomFormat {
 
 export interface QueueItem {
   id: number;
+  instanceId?: string;
+  instanceLabel?: string;
   downloadId: string;
   title: string;
   status: string;
@@ -593,6 +600,8 @@ export interface QueueResponse {
 
 export interface HistoryItem {
   id: number;
+  instanceId?: string;
+  instanceLabel?: string;
   sourceTitle: string;
   quality: { quality: { name: string } };
   qualityCutoffNotMet: boolean;
@@ -759,6 +768,8 @@ export type EpisodeFinaleType = 'series' | 'season' | 'midseason';
 
 export interface CalendarEvent {
   id: string;
+  instanceId?: string;
+  instanceLabel?: string;
   type: 'episode' | 'movie' | 'album';
   title: string;
   subtitle: string;
@@ -841,9 +852,9 @@ export interface RadarrCollection {
 
 // Library Gaps page
 export type LibraryGapSearchTarget =
-  | { kind: 'episode'; episodeId: number }
-  | { kind: 'season'; sonarrSeriesId: number; seasonNumber: number }
-  | { kind: 'movie'; radarrMovieId: number }
+  | { kind: 'episode'; episodeId: number; instanceId: string }
+  | { kind: 'season'; sonarrSeriesId: number; seasonNumber: number; instanceId: string }
+  | { kind: 'movie'; radarrMovieId: number; instanceId: string }
   | { kind: 'none' };
 
 export interface LibraryGapItem {
@@ -979,6 +990,11 @@ export interface DiscoverLibraryStatus {
   id?: number;
   titleSlug?: string;
   tmdbId?: number;
+  /** The instance that holds the top-level id/titleSlug, for deep-linking. */
+  instanceId?: string;
+  /** Every connected instance that holds this title (multi-instance). The top-level
+   * id/titleSlug/instanceId mirror the first/highest-priority instance for back-compat. */
+  instances?: Array<{ instanceId: string; instanceLabel: string; id: number; titleSlug?: string }>;
 }
 
 export interface DiscoverItem {

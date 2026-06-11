@@ -14,7 +14,8 @@ async function getHandler(request: NextRequest) {
     if (!term) {
       return NextResponse.json({ error: 'Missing search term' }, { status: 400 });
     }
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     const results = await client.lookupMovie(term);
     const annotatedResults: RadarrLookupResult[] = results.map((movie) => ({
       ...movie,

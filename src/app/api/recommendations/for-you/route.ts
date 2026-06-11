@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getRadarrClient, getSonarrClient, getTMDBClient } from '@/lib/service-helpers';
+import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
 import { prisma } from '@/lib/db';
 import {
   buildForYou,
@@ -58,15 +58,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     : DEFAULT_LIMIT;
 
   // Pull library + watchlist in parallel; allow each to fail soft.
-  const [seriesResult, moviesResult, watchlistResult] = await Promise.allSettled([
-    (async () => {
-      const client = await getSonarrClient();
-      return client.getSeries();
-    })(),
-    (async () => {
-      const client = await getRadarrClient();
-      return client.getMovies();
-    })(),
+  const [libraryResult, watchlistResult] = await Promise.allSettled([
+    loadTaggedLibrary(),
     prisma.watchlistItem.findMany({
       // Per-user: only the caller's own watchlist excludes/seeds their recommendations.
       where: { userId: auth.user.id, source: 'TMDB' },
@@ -74,8 +67,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     }),
   ]);
 
-  const series = seriesResult.status === 'fulfilled' ? seriesResult.value : [];
-  const movies = moviesResult.status === 'fulfilled' ? moviesResult.value : [];
+  const series = libraryResult.status === 'fulfilled' ? libraryResult.value.series : [];
+  const movies = libraryResult.status === 'fulfilled' ? libraryResult.value.movies : [];
   const watchlistRows = watchlistResult.status === 'fulfilled' ? watchlistResult.value : [];
 
   const seeds = [...buildSonarrSeeds(series), ...buildRadarrSeeds(movies)];

@@ -14,7 +14,8 @@ async function getHandler(request: NextRequest) {
     const kind = searchParams.get('kind'); // 'cutoff' | 'missing' (default)
     const page = Number(searchParams.get('page') || '1');
     const pageSize = Number(searchParams.get('pageSize') || '20');
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
     const data = kind === 'cutoff'
       ? await client.getCutoffUnmet(page, pageSize)
       : await client.getWantedMissing(page, pageSize);

@@ -46,15 +46,33 @@ function AddMoviePageContent() {
   const [minAvailability, setMinAvailability] = useState('released');
   const [adding, setAdding] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
+  const [instances, setInstances] = useState<{ id: string; label: string; isDefault: boolean }[]>([]);
+  const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
   const lastPrefillTermRef = useRef<string | null>(null);
   const lastPrefillTmdbIdRef = useRef<number | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
 
+  // Load Radarr instances; default to the marked default (picker only shows when >1).
   useEffect(() => {
+    fetch('/api/instances')
+      .then((r) => (r.ok ? r.json() : []))
+      .then((all: Array<{ id: string; type: string; label: string; isDefault: boolean }>) => {
+        const list = (Array.isArray(all) ? all : [])
+          .filter((c) => c.type === 'RADARR')
+          .map((c) => ({ id: c.id, label: c.label, isDefault: c.isDefault }));
+        setInstances(list);
+        setInstanceId((prev) => prev ?? list.find((i) => i.isDefault)?.id ?? list[0]?.id);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Profiles / root folders / tags are per-instance; re-fetch when the instance changes.
+  useEffect(() => {
+    const qs = instanceId ? `?instanceId=${instanceId}` : '';
     Promise.all([
-      fetch('/api/radarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-      fetch('/api/radarr/rootfolders').then((r) => r.ok ? r.json() : []),
-      fetch('/api/radarr/tags').then((r) => r.ok ? r.json() : []),
+      fetch(`/api/radarr/qualityprofiles${qs}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/radarr/rootfolders${qs}`).then((r) => r.ok ? r.json() : []),
+      fetch(`/api/radarr/tags${qs}`).then((r) => r.ok ? r.json() : []),
     ]).then(([p, r, t]) => {
       setProfiles(p);
       setRootFolders(r);
@@ -62,7 +80,7 @@ function AddMoviePageContent() {
       if (p.length > 0) setProfileId(String(p[0].id));
       if (r.length > 0) setRootFolder(r[0].path);
     });
-  }, []);
+  }, [instanceId]);
 
   useEffect(() => {
     return () => {
@@ -129,7 +147,7 @@ function AddMoviePageContent() {
     if (!selected || !profileId || !rootFolder) return;
     if (selected.library?.exists) {
       if (selected.library.id) {
-        router.push(`/movies/${selected.library.id}`);
+        router.push(`/movies/${selected.library.id}${instanceId ? `?instance=${instanceId}` : ''}`);
         return;
       }
       toast.error('Movie is already in library, but detail link is unavailable');
@@ -142,6 +160,7 @@ function AddMoviePageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          instanceId,
           title: selected.title,
           tmdbId: selected.tmdbId,
           qualityProfileId: Number(profileId),
@@ -158,7 +177,7 @@ function AddMoviePageContent() {
       if (res.ok) {
         const movie = await res.json();
         toast.success(`${selected.title} added`);
-        router.push(`/movies/${movie.id}`);
+        router.push(`/movies/${movie.id}${instanceId ? `?instance=${instanceId}` : ''}`);
       } else {
         const err = await res.json();
         toast.error(err.error || 'Failed to add movie');
@@ -318,6 +337,21 @@ function AddMoviePageContent() {
               <div className="grouped-section">
                 <div className="grouped-section-title">Options</div>
                 <div className="grouped-section-content">
+                  {instances.length > 1 && (
+                    <div className="grouped-row">
+                      <Label className="text-sm shrink-0">Instance</Label>
+                      <Select value={instanceId ?? ''} onValueChange={setInstanceId}>
+                        <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                          <SelectValue>{instances.find((i) => i.id === instanceId)?.label ?? 'Select'}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {instances.map((i) => (
+                            <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Quality Profile</Label>
                     <Select value={profileId} onValueChange={setProfileId}>
@@ -418,7 +452,7 @@ function AddMoviePageContent() {
                 <Button
                   className="flex-1 h-11"
                   onClick={() => {
-                    if (selected.library?.id) router.push(`/movies/${selected.library.id}`);
+                    if (selected.library?.id) router.push(`/movies/${selected.library.id}${instanceId ? `?instance=${instanceId}` : ''}`);
                     else toast.error('Movie is already in library, but detail link is unavailable');
                   }}
                 >

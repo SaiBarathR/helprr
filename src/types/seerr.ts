@@ -192,6 +192,6 @@ export interface EnrichedSeerrRequest extends SeerrRequest {
     title: string | null;
     year: number | null;
     posterUrl: string | null;
-    helprr: { type: 'movie' | 'series'; id: number } | null;
+    helprr: { type: 'movie' | 'series'; id: number; instanceId: string } | null;
   };
 }

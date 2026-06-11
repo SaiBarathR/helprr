@@ -18,7 +18,8 @@ async function getHandler(request: NextRequest) {
     if (type !== null && type !== 'album' && type !== 'artist') {
       return NextResponse.json({ error: 'Unsupported type' }, { status: 400 });
     }
-    const client = await getLidarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getLidarrClient(instanceId);
 
     if (type === 'album') {
       const results = await client.lookupAlbum(term);

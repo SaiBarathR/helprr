@@ -18,7 +18,12 @@ async function deleteHandler(
     return NextResponse.json({ error: 'Invalid series ID' }, { status: 400 });
   }
 
-  const result = await prisma.aniListSeriesMapping.deleteMany({ where: { sonarrSeriesId } });
+  // A series id is only unique within a Sonarr instance, so scope the reset to the
+  // requested instance when given; without it, fall back to all instances (legacy).
+  const instanceId = _request.nextUrl.searchParams.get('instanceId') ?? undefined;
+  const result = await prisma.aniListSeriesMapping.deleteMany({
+    where: instanceId ? { sonarrSeriesId, sonarrInstanceId: instanceId } : { sonarrSeriesId },
+  });
   return NextResponse.json({ deleted: result.count });
 }
 

@@ -27,7 +27,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     const releases = await client.getReleases(movieIdNum);
     return NextResponse.json(releases);
   } catch (error) {
@@ -44,7 +45,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
  * @param request - The incoming HTTP request whose JSON body contains `{ guid, indexerId, downloadClientId? }`
  * @returns A JSON response: `{ success: true }` on success; otherwise `{ error: string }` with status `400` for missing/invalid input or `500` for internal failures.
  */
-async function postHandler(request: Request) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const capError = await requireCapability('activity.manage');
@@ -58,7 +59,8 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'guid and indexerId are required' }, { status: 400 });
     }
 
-    const client = await getRadarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getRadarrClient(instanceId);
     await client.grabRelease(guid, indexerId, downloadClientId);
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -339,6 +339,7 @@ export interface SeriesAniListEntryDetailResponse {
 
 /** A Sonarr series currently mapped to a given AniList media (reverse lookup). */
 export interface AnimeSonarrMappingItem {
+  sonarrInstanceId: string;
   sonarrSeriesId: number;
   state: SeriesAniListMappingState;
   seriesTitle: string;
@@ -360,6 +361,8 @@ export interface AdminAnimeMappingEntry {
 
 /** Admin settings view: one series' mapping row. */
 export interface AdminAnimeMappingRow {
+  sonarrInstanceId: string;
+  sonarrInstanceLabel: string;
   sonarrSeriesId: number;
   seriesTitle: string;
   seriesYear: number | null;

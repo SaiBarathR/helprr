@@ -35,13 +35,16 @@ import {
 } from '@/components/calendar/release-badges';
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
+import { InstanceFilter, deriveInstances } from '@/components/instance-filter';
 import type { CalendarEvent } from '@/types';
 
-/** Detail-page link for a calendar event, by media type. */
+/** Detail-page link for a calendar event, by media type. Carries the owning
+ * instance so a non-default-instance item opens the correct instance. */
 function eventHref(event: CalendarEvent): string {
-  if (event.type === 'episode') return `/series/${event.seriesId}`;
-  if (event.type === 'album') return `/music/album/${event.albumId}`;
-  return `/movies/${event.movieId}`;
+  const q = event.instanceId ? `?instance=${event.instanceId}` : '';
+  if (event.type === 'episode') return `/series/${event.seriesId}${q}`;
+  if (event.type === 'album') return `/music/album/${event.albumId}${q}`;
+  return `/movies/${event.movieId}${q}`;
 }
 
 /**
@@ -525,6 +528,8 @@ export default function CalendarPage() {
     setCalendarTypeFilter: setTypeFilter,
     calendarMonitoredOnly: monitoredOnly,
     setCalendarMonitoredOnly: setMonitoredOnly,
+    calendarInstanceFilter: instanceFilter,
+    setCalendarInstanceFilter: setInstanceFilter,
   } = useUIStore();
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -612,11 +617,23 @@ export default function CalendarPage() {
     type: typeFilter !== 'all' ? typeFilter : undefined,
   });
 
-  // Apply monitored filter client-side
+  // Instances present in the loaded events (drives the instance-filter dropdown).
+  const instances = useMemo(() => deriveInstances(events), [events]);
+
+  // Drop a stale instance selection if that instance is no longer present.
+  useEffect(() => {
+    if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
+      setInstanceFilter('all');
+    }
+  }, [instances, instanceFilter, setInstanceFilter]);
+
+  // Apply monitored + instance filters client-side.
   const filteredEvents = useMemo(() => {
-    if (!monitoredOnly) return events;
-    return events.filter((e) => e.monitored);
-  }, [events, monitoredOnly]);
+    let list = events;
+    if (monitoredOnly) list = list.filter((e) => e.monitored);
+    if (instanceFilter !== 'all') list = list.filter((e) => e.instanceId === instanceFilter);
+    return list;
+  }, [events, monitoredOnly, instanceFilter]);
 
   const agendaTargetDateKey = useMemo(() => {
     if (filteredEvents.length === 0) return undefined;
@@ -733,12 +750,15 @@ export default function CalendarPage() {
             views={availableViews}
             onChange={(v) => setCalendarView(v)}
           />
-          <CompactFilters
-            typeFilter={typeFilter}
-            setTypeFilter={setTypeFilter}
-            monitoredOnly={monitoredOnly}
-            setMonitoredOnly={setMonitoredOnly}
-          />
+          <div className="flex items-center gap-2">
+            <InstanceFilter instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
+            <CompactFilters
+              typeFilter={typeFilter}
+              setTypeFilter={setTypeFilter}
+              monitoredOnly={monitoredOnly}
+              setMonitoredOnly={setMonitoredOnly}
+            />
+          </div>
         </div>
 
         {/* Navigation row: arrows, today, period label, filters */}
@@ -774,6 +794,7 @@ export default function CalendarPage() {
               views={availableViews}
               onChange={(v) => setCalendarView(v)}
             />
+            <InstanceFilter instances={instances} value={instanceFilter} onChange={setInstanceFilter} />
             <CompactFilters
               typeFilter={typeFilter}
               setTypeFilter={setTypeFilter}

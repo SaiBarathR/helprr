@@ -60,7 +60,9 @@ model User {
 
 model ServiceConnection {
   id             String      @id @default(cuid())
-  type           ServiceType @unique
+  type           ServiceType
+  label          String // user-facing instance name ("HD", "4K", "Anime"); for single-instance types defaults to the service name
+  isDefault      Boolean     @default(false) // exactly one true per type, enforced in arr-instances.ts
   url            String
   apiKey         String
   username       String?
@@ -71,6 +73,10 @@ model ServiceConnection {
   metadata       Json?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  pollingState   PollingState?
+
+  @@unique([type, label])
+  @@index([type])
 }
 
 model Session {
@@ -182,12 +188,13 @@ model NotificationHistory {
 }
 
 model PollingState {
-  id              String   @id @default(cuid())
-  serviceType     ServiceType @unique
-  lastQueueIds    Json     @default("[]")
-  lastHistoryDate DateTime?
-  lastHealthHash  String?
-  updatedAt       DateTime @updatedAt
+  id                  String            @id @default(cuid())
+  serviceConnectionId String            @unique
+  connection          ServiceConnection @relation(fields: [serviceConnectionId], references: [id], onDelete: Cascade)
+  lastQueueIds        Json              @default("[]")
+  lastHistoryDate     DateTime?
+  lastHealthHash      String?
+  updatedAt           DateTime          @updatedAt
 }
 
 model AppSettings {
@@ -316,7 +323,8 @@ model PendingRequest {
 
 model AniListSeriesMapping {
   id                   String   @id @default(cuid())
-  sonarrSeriesId       Int      @unique
+  sonarrInstanceId     String
+  sonarrSeriesId       Int
   state                String
   matchMethod          String?
   confidence           Int?
@@ -330,6 +338,10 @@ model AniListSeriesMapping {
   // 1 Sonarr series → N AniList entries (season-split anime). Matched states have
   // ≥1 entry; AUTO_UNMATCHED / MANUAL_NONE have none.
   entries              AniListSeriesMappingEntry[]
+
+  // A series id is only unique within a Sonarr instance, so scope by instance.
+  @@unique([sonarrInstanceId, sonarrSeriesId])
+  @@index([sonarrInstanceId])
 }
 
 model AniListSeriesMappingEntry {

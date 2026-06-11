@@ -109,6 +109,8 @@ export interface DownloadCleanerConfigShape {
 
 export interface LinkedArr {
   source: 'sonarr' | 'radarr';
+  instanceId: string;
+  instanceLabel: string;
   queueItem: QueueItem;
   contentId: number | null; // seriesId or movieId
   title: string;
@@ -132,6 +134,9 @@ export interface QueueDecision {
   ruleName: string | null;
   reason: string;
   linked: LinkedArr | null;
+  // Every instance whose queue holds this hash (cross-seed / HD+4K both grabbed it).
+  // Removal acts on all of them; `linked` stays the representative for display.
+  linkedAll?: LinkedArr[];
   options: {
     changeCategory: boolean;
     deletePrivate: boolean;

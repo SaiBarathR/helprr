@@ -90,21 +90,23 @@ function getMediaHrefFromIds(args: {
   seasonNumber?: unknown;
   episodeId?: unknown;
   movieId?: unknown;
+  instanceId?: unknown;
 }): string | null {
+  const q = typeof args.instanceId === 'string' && args.instanceId ? `?instance=${args.instanceId}` : '';
   const movieId = toNumber(args.movieId);
-  if (movieId) return `/movies/${movieId}`;
+  if (movieId) return `/movies/${movieId}${q}`;
 
   const seriesId = toNumber(args.seriesId);
   const seasonNumber = toNumber(args.seasonNumber);
   const episodeId = toNumber(args.episodeId);
   if (seriesId && seasonNumber && episodeId) {
-    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}`;
+    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}${q}`;
   }
   if (seriesId && seasonNumber) {
-    return `/series/${seriesId}/season/${seasonNumber}`;
+    return `/series/${seriesId}/season/${seasonNumber}${q}`;
   }
   if (seriesId) {
-    return `/series/${seriesId}`;
+    return `/series/${seriesId}${q}`;
   }
   return null;
 }
@@ -246,6 +248,7 @@ export default function NotificationsPage() {
         seriesId: cachedQueueItem.seriesId,
         seasonNumber: cachedQueueItem.seasonNumber ?? cachedQueueItem.episode?.seasonNumber,
         episodeId: cachedQueueItem.episodeId ?? cachedQueueItem.episode?.id,
+        instanceId: cachedQueueItem.instanceId,
       });
     }
     if (queueCacheLoadedRef.current) return null;
@@ -268,6 +271,7 @@ export default function NotificationsPage() {
         seriesId: queueItem.seriesId,
         seasonNumber: queueItem.seasonNumber ?? queueItem.episode?.seasonNumber,
         episodeId: queueItem.episodeId ?? queueItem.episode?.id,
+        instanceId: queueItem.instanceId,
       });
     } catch {
       return null;
@@ -283,6 +287,7 @@ export default function NotificationsPage() {
         seriesId: cachedHistoryItem.seriesId,
         seasonNumber: cachedHistoryItem.episode?.seasonNumber,
         episodeId: cachedHistoryItem.episodeId ?? cachedHistoryItem.episode?.id,
+        instanceId: cachedHistoryItem.instanceId,
       });
     }
     if (historyCacheLoadedBySourceRef.current.has(source)) return null;
@@ -309,6 +314,7 @@ export default function NotificationsPage() {
         seriesId: historyItem.seriesId,
         seasonNumber: historyItem.episode?.seasonNumber,
         episodeId: historyItem.episodeId ?? historyItem.episode?.id,
+        instanceId: historyItem.instanceId,
       });
     } catch {
       return null;

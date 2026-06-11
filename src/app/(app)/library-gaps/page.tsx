@@ -48,11 +48,11 @@ function GapCard({ item }: { item: LibraryGapItem }) {
     try {
       const s = item.search;
       if (s.kind === 'episode') {
-        await postCommand('/api/sonarr/command', { name: 'EpisodeSearch', episodeIds: [s.episodeId] });
+        await postCommand(`/api/sonarr/command?instanceId=${s.instanceId}`, { name: 'EpisodeSearch', episodeIds: [s.episodeId] });
       } else if (s.kind === 'season') {
-        await postCommand('/api/sonarr/command', { name: 'SeasonSearch', seriesId: s.sonarrSeriesId, seasonNumber: s.seasonNumber });
+        await postCommand(`/api/sonarr/command?instanceId=${s.instanceId}`, { name: 'SeasonSearch', seriesId: s.sonarrSeriesId, seasonNumber: s.seasonNumber });
       } else if (s.kind === 'movie') {
-        await postCommand('/api/radarr/command', { name: 'MoviesSearch', movieIds: [s.radarrMovieId] });
+        await postCommand(`/api/radarr/command?instanceId=${s.instanceId}`, { name: 'MoviesSearch', movieIds: [s.radarrMovieId] });
       }
       toast.success('Search started');
     } catch {

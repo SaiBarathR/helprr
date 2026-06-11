@@ -7,6 +7,9 @@ import type {
 } from '@/types';
 import type { TmdbListItem } from '@/lib/tmdb-client';
 
+/** A library item tagged with the instance it came from. */
+export type Tagged<T> = T & { instanceId: string; instanceLabel: string };
+
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
 export function tmdbImageUrl(path: string | null | undefined, size: 'w300' | 'w500' | 'w780' | 'w1280' | 'original' = 'w500'): string | null {
@@ -74,18 +77,20 @@ export function normalizeTmdbItem(
   };
 }
 
+// Every map value is an array because the same id/title can exist in multiple
+// instances (e.g. an HD + a 4K Radarr both holding the same movie).
 interface LibraryLookups {
-  movieByTmdbId: Map<number, RadarrMovie>;
-  movieByImdbId: Map<string, RadarrMovie>;
-  movieByTitleYear: Map<string, RadarrMovie>;
-  seriesByTvdbId: Map<number, SonarrSeries>;
-  seriesByImdbId: Map<string, SonarrSeries>;
-  seriesByTmdbId: Map<number, SonarrSeries>;
-  seriesByTitleYear: Map<string, SonarrSeries>;
-  seriesByBaseTitle: Map<string, SonarrSeries[]>;
+  movieByTmdbId: Map<number, Tagged<RadarrMovie>[]>;
+  movieByImdbId: Map<string, Tagged<RadarrMovie>[]>;
+  movieByTitleYear: Map<string, Tagged<RadarrMovie>[]>;
+  seriesByTvdbId: Map<number, Tagged<SonarrSeries>[]>;
+  seriesByImdbId: Map<string, Tagged<SonarrSeries>[]>;
+  seriesByTmdbId: Map<number, Tagged<SonarrSeries>[]>;
+  seriesByTitleYear: Map<string, Tagged<SonarrSeries>[]>;
+  seriesByBaseTitle: Map<string, Tagged<SonarrSeries>[]>;
 }
 
-function selectBestSeriesMatch(candidates: SonarrSeries[], year: number | null): SonarrSeries | null {
+function selectBestSeriesMatch(candidates: Tagged<SonarrSeries>[], year: number | null): Tagged<SonarrSeries> | null {
   if (!candidates.length) return null;
   if (year == null) return candidates[0];
 
@@ -103,32 +108,38 @@ function selectBestSeriesMatch(candidates: SonarrSeries[], year: number | null):
   return best;
 }
 
-export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[]): LibraryLookups {
-  const movieByTmdbId = new Map<number, RadarrMovie>();
-  const movieByImdbId = new Map<string, RadarrMovie>();
-  const movieByTitleYear = new Map<string, RadarrMovie>();
-  const seriesByTvdbId = new Map<number, SonarrSeries>();
-  const seriesByImdbId = new Map<string, SonarrSeries>();
-  const seriesByTmdbId = new Map<number, SonarrSeries>();
-  const seriesByTitleYear = new Map<string, SonarrSeries>();
-  const seriesByBaseTitle = new Map<string, SonarrSeries[]>();
+export function buildLibraryLookups(
+  movies: Tagged<RadarrMovie>[],
+  series: Tagged<SonarrSeries>[]
+): LibraryLookups {
+  const movieByTmdbId = new Map<number, Tagged<RadarrMovie>[]>();
+  const movieByImdbId = new Map<string, Tagged<RadarrMovie>[]>();
+  const movieByTitleYear = new Map<string, Tagged<RadarrMovie>[]>();
+  const seriesByTvdbId = new Map<number, Tagged<SonarrSeries>[]>();
+  const seriesByImdbId = new Map<string, Tagged<SonarrSeries>[]>();
+  const seriesByTmdbId = new Map<number, Tagged<SonarrSeries>[]>();
+  const seriesByTitleYear = new Map<string, Tagged<SonarrSeries>[]>();
+  const seriesByBaseTitle = new Map<string, Tagged<SonarrSeries>[]>();
+
+  const push = <K, V>(m: Map<K, V[]>, k: K, v: V) => {
+    const a = m.get(k) ?? [];
+    a.push(v);
+    m.set(k, a);
+  };
 
   for (const movie of movies) {
-    movieByTmdbId.set(movie.tmdbId, movie);
-    if (movie.imdbId) movieByImdbId.set(movie.imdbId.toLowerCase(), movie);
-    movieByTitleYear.set(normalizeTitleKey(movie.title, movie.year ?? null), movie);
+    push(movieByTmdbId, movie.tmdbId, movie);
+    if (movie.imdbId) push(movieByImdbId, movie.imdbId.toLowerCase(), movie);
+    push(movieByTitleYear, normalizeTitleKey(movie.title, movie.year ?? null), movie);
   }
 
   for (const show of series) {
-    if (show.tvdbId) seriesByTvdbId.set(show.tvdbId, show);
-    if (show.imdbId) seriesByImdbId.set(show.imdbId.toLowerCase(), show);
+    if (show.tvdbId) push(seriesByTvdbId, show.tvdbId, show);
+    if (show.imdbId) push(seriesByImdbId, show.imdbId.toLowerCase(), show);
     const tmdbId = (show as SonarrSeries & { tmdbId?: number }).tmdbId;
-    if (tmdbId) seriesByTmdbId.set(tmdbId, show);
-    seriesByTitleYear.set(normalizeTitleKey(show.title, show.year ?? null), show);
-    const baseTitleKey = normalizeBaseTitle(show.title);
-    const existing = seriesByBaseTitle.get(baseTitleKey) ?? [];
-    existing.push(show);
-    seriesByBaseTitle.set(baseTitleKey, existing);
+    if (tmdbId) push(seriesByTmdbId, tmdbId, show);
+    push(seriesByTitleYear, normalizeTitleKey(show.title, show.year ?? null), show);
+    push(seriesByBaseTitle, normalizeBaseTitle(show.title), show);
   }
 
   return {
@@ -143,25 +154,43 @@ export function buildLibraryLookups(movies: RadarrMovie[], series: SonarrSeries[
   };
 }
 
+// Collapse matches (highest-priority first) into a status: dedupe by instance,
+// surface the first as the back-compat top-level + list every holding instance.
+function toLibraryStatus(
+  type: 'movie' | 'series',
+  matches: Array<Tagged<RadarrMovie> | Tagged<SonarrSeries>>
+): DiscoverLibraryStatus {
+  if (matches.length === 0) return { exists: false };
+  const seen = new Set<string>();
+  const unique = matches.filter((m) => (seen.has(m.instanceId) ? false : (seen.add(m.instanceId), true)));
+  const first = unique[0];
+  return {
+    exists: true,
+    type,
+    id: first.id,
+    titleSlug: first.titleSlug,
+    tmdbId: (first as { tmdbId?: number }).tmdbId,
+    instanceId: first.instanceId,
+    instances: unique.map((m) => ({
+      instanceId: m.instanceId,
+      instanceLabel: m.instanceLabel,
+      id: m.id,
+      titleSlug: m.titleSlug,
+    })),
+  };
+}
+
 export function matchMovieInLibrary(
   lookups: LibraryLookups,
   item: { tmdbId?: number; imdbId?: string | null; title: string; year: number | null }
 ): DiscoverLibraryStatus {
-  if (item.tmdbId && lookups.movieByTmdbId.has(item.tmdbId)) {
-    const found = lookups.movieByTmdbId.get(item.tmdbId)!;
-    return { exists: true, type: 'movie', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId };
-  }
-
-  if (item.imdbId) {
-    const byImdb = lookups.movieByImdbId.get(item.imdbId.toLowerCase());
-    if (byImdb) return { exists: true, type: 'movie', id: byImdb.id, titleSlug: byImdb.titleSlug, tmdbId: byImdb.tmdbId };
-  }
-
-  const key = normalizeTitleKey(item.title, item.year);
-  const byTitle = lookups.movieByTitleYear.get(key);
-  if (byTitle) return { exists: true, type: 'movie', id: byTitle.id, titleSlug: byTitle.titleSlug, tmdbId: byTitle.tmdbId };
-
-  return { exists: false };
+  // Gather across keys in priority order (tmdb → imdb → title/year); toLibraryStatus
+  // dedupes by instance so the top-level mirrors the highest-priority match.
+  const matches: Tagged<RadarrMovie>[] = [];
+  if (item.tmdbId) matches.push(...(lookups.movieByTmdbId.get(item.tmdbId) ?? []));
+  if (item.imdbId) matches.push(...(lookups.movieByImdbId.get(item.imdbId.toLowerCase()) ?? []));
+  matches.push(...(lookups.movieByTitleYear.get(normalizeTitleKey(item.title, item.year)) ?? []));
+  return toLibraryStatus('movie', matches);
 }
 
 export function matchSeriesInLibrary(
@@ -176,28 +205,17 @@ export function matchSeriesInLibrary(
     year: number | null;
   }
 ): DiscoverLibraryStatus {
-  if (item.tvdbId && lookups.seriesByTvdbId.has(item.tvdbId)) {
-    const found = lookups.seriesByTvdbId.get(item.tvdbId)!;
-    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId ?? undefined };
-  }
+  // Exact-id / exact-title keys: gather across all instances (priority order).
+  const exact: Tagged<SonarrSeries>[] = [];
+  if (item.tvdbId) exact.push(...(lookups.seriesByTvdbId.get(item.tvdbId) ?? []));
+  if (item.imdbId) exact.push(...(lookups.seriesByImdbId.get(item.imdbId.toLowerCase()) ?? []));
+  if (item.tmdbId) exact.push(...(lookups.seriesByTmdbId.get(item.tmdbId) ?? []));
+  exact.push(...(lookups.seriesByTitleYear.get(normalizeTitleKey(item.title, item.year)) ?? []));
+  if (exact.length > 0) return toLibraryStatus('series', exact);
 
-  if (item.imdbId && lookups.seriesByImdbId.has(item.imdbId.toLowerCase())) {
-    const found = lookups.seriesByImdbId.get(item.imdbId.toLowerCase())!;
-    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId ?? undefined };
-  }
-
-  if (item.tmdbId && lookups.seriesByTmdbId.has(item.tmdbId)) {
-    const found = lookups.seriesByTmdbId.get(item.tmdbId)!;
-    return { exists: true, type: 'series', id: found.id, titleSlug: found.titleSlug, tmdbId: found.tmdbId ?? undefined };
-  }
-
-  const key = normalizeTitleKey(item.title, item.year);
-  const byTitle = lookups.seriesByTitleYear.get(key);
-  if (byTitle) return { exists: true, type: 'series', id: byTitle.id, titleSlug: byTitle.titleSlug, tmdbId: byTitle.tmdbId ?? undefined };
-
-  const baseTitleKey = normalizeBaseTitle(item.title);
-  const byBaseTitle = selectBestSeriesMatch(lookups.seriesByBaseTitle.get(baseTitleKey) ?? [], item.year);
-  if (byBaseTitle) return { exists: true, type: 'series', id: byBaseTitle.id, titleSlug: byBaseTitle.titleSlug, tmdbId: byBaseTitle.tmdbId ?? undefined };
+  // Fuzzy fallbacks (best-by-year, single result): base title then substring.
+  const byBaseTitle = selectBestSeriesMatch(lookups.seriesByBaseTitle.get(normalizeBaseTitle(item.title)) ?? [], item.year);
+  if (byBaseTitle) return toLibraryStatus('series', [byBaseTitle]);
 
   // Substring contains: IMDb/Sonarr may have one entry (e.g. "Jujutsu Kaisen")
   // while AniList has separate per-season entries (e.g. "Jujutsu Kaisen Season 2").
@@ -207,7 +225,7 @@ export function matchSeriesInLibrary(
     .map((t) => t.toLowerCase().replace(/[^a-z0-9\u3000-\u9fff\uff00-\uffef]+/g, ' ').trim());
 
   if (anilistTitles.length > 0) {
-    const candidates: SonarrSeries[] = [];
+    const candidates: Tagged<SonarrSeries>[] = [];
     for (const [sonarrBaseTitle, seriesList] of lookups.seriesByBaseTitle) {
       for (const aniTitle of anilistTitles) {
         if (aniTitle.includes(sonarrBaseTitle)) {
@@ -217,7 +235,7 @@ export function matchSeriesInLibrary(
       }
     }
     const bySubstring = selectBestSeriesMatch(candidates, item.year);
-    if (bySubstring) return { exists: true, type: 'series', id: bySubstring.id, titleSlug: bySubstring.titleSlug, tmdbId: bySubstring.tmdbId ?? undefined };
+    if (bySubstring) return toLibraryStatus('series', [bySubstring]);
   }
 
   return { exists: false };
@@ -225,8 +243,8 @@ export function matchSeriesInLibrary(
 
 export function annotateDiscoverItems(
   items: DiscoverItem[],
-  movies: RadarrMovie[],
-  series: SonarrSeries[]
+  movies: Tagged<RadarrMovie>[],
+  series: Tagged<SonarrSeries>[]
 ): DiscoverItem[] {
   if (!movies.length && !series.length) return items;
 

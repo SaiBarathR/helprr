@@ -33,7 +33,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const maxWidth = Number.isFinite(maxWidthParsed) ? Math.min(Math.max(maxWidthParsed, 1), 2000) : 300;
     const quality = Number.isFinite(qualityParsed) ? Math.min(Math.max(qualityParsed, 1), 100) : 90;
 
-    const connection = await prisma.serviceConnection.findUnique({
+    const connection = await prisma.serviceConnection.findFirst({
       where: { type: 'JELLYFIN' },
     });
 

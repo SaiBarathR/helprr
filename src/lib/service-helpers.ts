@@ -1,4 +1,6 @@
 import type { ServiceConnection, User } from '@prisma/client';
+import type { Tagged } from '@/lib/discover';
+import type { RadarrMovie, SonarrSeries } from '@/types';
 import { prisma } from '@/lib/db';
 import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import { SonarrClient } from '@/lib/sonarr-client';
@@ -9,6 +11,7 @@ import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
+import { resolveConnection, listConnections } from '@/lib/arr-instances';
 
 let cachedQBittorrentClient: QBittorrentClient | null = null;
 let cachedQBittorrentConfigKey: string | null = null;
@@ -21,68 +24,46 @@ function buildJellyfinConnectionFingerprint(connection: ServiceConnection): stri
   }));
 }
 
-/**
- * Create a SonarrClient configured from the stored SONARR service connection.
- *
- * @returns A SonarrClient configured with the stored connection's URL and API key.
- * @throws Error if no SONARR service connection is configured.
- */
-export async function getSonarrClient(): Promise<SonarrClient> {
-  const connection = await prisma.serviceConnection.findUnique({
-    where: { type: 'SONARR' },
-  });
-
-  if (!connection) {
-    throw new Error(
-      'Sonarr is not configured. Please add a Sonarr connection in Settings.'
-    );
-  }
-
+export async function getSonarrClient(instanceId?: string): Promise<SonarrClient> {
+  const connection = await resolveConnection('SONARR', instanceId);
   return new SonarrClient(connection.url, connection.apiKey);
 }
 
-export async function getRadarrClient(): Promise<RadarrClient> {
-  const connection = await prisma.serviceConnection.findUnique({
-    where: { type: 'RADARR' },
-  });
-
-  if (!connection) {
-    throw new Error(
-      'Radarr is not configured. Please add a Radarr connection in Settings.'
-    );
-  }
-
+export async function getRadarrClient(instanceId?: string): Promise<RadarrClient> {
+  const connection = await resolveConnection('RADARR', instanceId);
   return new RadarrClient(connection.url, connection.apiKey);
 }
 
-/**
- * Create a LidarrClient configured from the stored LIDARR service connection.
- *
- * @returns A LidarrClient configured with the stored connection's URL and API key.
- * @throws Error if no LIDARR service connection is configured.
- */
-export async function getLidarrClient(): Promise<LidarrClient> {
-  const connection = await prisma.serviceConnection.findUnique({
-    where: { type: 'LIDARR' },
-  });
-
-  if (!connection) {
-    throw new Error(
-      'Lidarr is not configured. Please add a Lidarr connection in Settings.'
-    );
-  }
-
+export async function getLidarrClient(instanceId?: string): Promise<LidarrClient> {
+  const connection = await resolveConnection('LIDARR', instanceId);
   return new LidarrClient(connection.url, connection.apiKey);
 }
 
+/** All Sonarr instances paired with a ready client (for fan-out: polling, aggregation, cleanup). */
+export async function getSonarrClients(): Promise<Array<{ connection: ServiceConnection; client: SonarrClient }>> {
+  const conns = await listConnections('SONARR');
+  return conns.map((connection) => ({ connection, client: new SonarrClient(connection.url, connection.apiKey) }));
+}
+
+export async function getRadarrClients(): Promise<Array<{ connection: ServiceConnection; client: RadarrClient }>> {
+  const conns = await listConnections('RADARR');
+  return conns.map((connection) => ({ connection, client: new RadarrClient(connection.url, connection.apiKey) }));
+}
+
+export async function getLidarrClients(): Promise<Array<{ connection: ServiceConnection; client: LidarrClient }>> {
+  const conns = await listConnections('LIDARR');
+  return conns.map((connection) => ({ connection, client: new LidarrClient(connection.url, connection.apiKey) }));
+}
+
 /**
- * Create a QBittorrentClient using the stored QBITTORRENT service connection.
+ * Create a QBittorrentClient from the QBITTORRENT service connection. qBittorrent
+ * is single-instance, so findFirst returns the one configured connection.
  *
  * @returns A QBittorrentClient configured with the connection's URL, API key, and username (username defaults to `'admin'` if not set).
  * @throws Error if no QBITTORRENT service connection is configured.
  */
 export async function getQBittorrentClient(): Promise<QBittorrentClient> {
-  const connection = await prisma.serviceConnection.findUnique({
+  const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'QBITTORRENT' },
   });
 
@@ -104,13 +85,14 @@ export async function getQBittorrentClient(): Promise<QBittorrentClient> {
 }
 
 /**
- * Creates a Prowlarr client from the configured PROWLARR service connection.
+ * Creates a Prowlarr client from the PROWLARR service connection. Prowlarr is
+ * single-instance, so findFirst returns the one configured connection.
  *
  * @returns A configured ProwlarrClient instance
  * @throws Error if no PROWLARR connection is found in the database
  */
 export async function getProwlarrClient(): Promise<ProwlarrClient> {
-  const connection = await prisma.serviceConnection.findUnique({
+  const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'PROWLARR' },
   });
 
@@ -133,7 +115,7 @@ export async function getJellyfinClientContext(): Promise<{
   connection: ServiceConnection;
   connectionFingerprint: string;
 }> {
-  const connection = await prisma.serviceConnection.findUnique({
+  const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'JELLYFIN' },
   });
 
@@ -175,7 +157,7 @@ export class JellyfinNotLinkedError extends Error {
 export async function getJellyfinClientForUser(
   user: Pick<User, 'role' | 'jellyfinUserId'>
 ): Promise<JellyfinClient> {
-  const connection = await prisma.serviceConnection.findUnique({ where: { type: 'JELLYFIN' } });
+  const connection = await prisma.serviceConnection.findFirst({ where: { type: 'JELLYFIN' } });
   if (!connection) {
     throw new Error('Jellyfin is not configured. Please add a Jellyfin connection in Settings.');
   }
@@ -190,7 +172,7 @@ export async function getJellyfinClientForUser(
 }
 
 export async function getSeerrClient(): Promise<SeerrClient> {
-  const connection = await prisma.serviceConnection.findUnique({
+  const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'SEERR' },
   });
 
@@ -202,7 +184,7 @@ export async function getSeerrClient(): Promise<SeerrClient> {
 }
 
 export async function getTMDBClient(): Promise<TmdbClient> {
-  const connection = await prisma.serviceConnection.findUnique({
+  const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'TMDB' },
   });
 
@@ -211,4 +193,36 @@ export async function getTMDBClient(): Promise<TmdbClient> {
   }
 
   return new TmdbClient(connection.url, connection.apiKey);
+}
+
+/**
+ * Load the full library across every Radarr + Sonarr instance, tagging each item
+ * with its instance. Per-instance failures are swallowed (one unreachable instance
+ * must not blank the whole library). The single fan-out used by all library-matching
+ * consumers (discover, anime, watchlist, recommendations, random, library-gaps).
+ */
+export async function loadTaggedLibrary(): Promise<{ movies: Tagged<RadarrMovie>[]; series: Tagged<SonarrSeries>[] }> {
+  const movies = (
+    await Promise.all(
+      (await getRadarrClients()).map(async ({ connection, client }) => {
+        try {
+          return (await client.getMovies()).map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
+        } catch {
+          return [] as Tagged<RadarrMovie>[];
+        }
+      })
+    )
+  ).flat();
+  const series = (
+    await Promise.all(
+      (await getSonarrClients()).map(async ({ connection, client }) => {
+        try {
+          return (await client.getSeries()).map((s) => ({ ...s, instanceId: connection.id, instanceLabel: connection.label }));
+        } catch {
+          return [] as Tagged<SonarrSeries>[];
+        }
+      })
+    )
+  ).flat();
+  return { movies, series };
 }

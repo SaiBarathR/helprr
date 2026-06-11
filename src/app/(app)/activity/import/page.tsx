@@ -48,6 +48,7 @@ function ManualImportContent() {
   const source = (searchParams.get('source') || 'sonarr') as 'sonarr' | 'radarr';
   const seriesId = searchParams.get('seriesId');
   const movieId = searchParams.get('movieId');
+  const instanceId = searchParams.get('instanceId') || '';
   const itemTitle = searchParams.get('title') || 'Manual Import';
 
   const isSonarr = source === 'sonarr';
@@ -79,13 +80,15 @@ function ManualImportContent() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ downloadId, source });
+      if (instanceId) params.set('instanceId', instanceId);
+      const episodesQs = instanceId ? `?instanceId=${instanceId}` : '';
       const fetches: Promise<unknown>[] = [
         fetch(`/api/activity/manualimport?${params}`).then((r) => r.ok ? r.json() : []),
       ];
 
       if (isSonarr && seriesId) {
         fetches.push(
-          fetch(`/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : [])
+          fetch(`/api/sonarr/${seriesId}/episodes${episodesQs}`).then((r) => r.ok ? r.json() : [])
         );
       }
 
@@ -97,7 +100,7 @@ function ManualImportContent() {
     } finally {
       setLoading(false);
     }
-  }, [downloadId, source, isSonarr, seriesId]);
+  }, [downloadId, source, isSonarr, seriesId, instanceId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -140,17 +143,18 @@ function ManualImportContent() {
     if (!seriesId) return;
     setRefreshingEpisodes(true);
     try {
-      const commandRes = await fetch('/api/sonarr/command', {
+      const qs = instanceId ? `?instanceId=${instanceId}` : '';
+      const commandRes = await fetch(`/api/sonarr/command${qs}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: Number(seriesId) }),
       });
       if (!commandRes.ok) throw new Error('Refresh failed');
       const command = await commandRes.json() as { id?: number };
-      const status = command.id ? await pollCommand('sonarr', command.id) : 'completed';
+      const status = command.id ? await pollCommand('sonarr', command.id, instanceId || undefined) : 'completed';
       if (status === 'timeout') { toast.warning('Refresh still running'); return; }
       if (status !== 'completed') { toast.error('Failed to refresh episodes'); return; }
-      const res = await fetch(`/api/sonarr/${seriesId}/episodes`);
+      const res = await fetch(`/api/sonarr/${seriesId}/episodes${qs}`);
       if (res.ok) {
         const episodes = await res.json();
         setAllEpisodes(episodes);
@@ -228,7 +232,7 @@ function ManualImportContent() {
       const res = await fetch('/api/activity/manualimport', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, files: payload }),
+        body: JSON.stringify({ source, instanceId: instanceId || undefined, files: payload }),
       });
 
       if (res.ok) {

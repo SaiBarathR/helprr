@@ -103,7 +103,7 @@ export function SonarrMapDrawer({
     setSavingId(item.id);
     setError(null);
     try {
-      const res = await fetch(`/api/sonarr/${item.id}/anime`, {
+      const res = await fetch(`/api/sonarr/${item.id}/anime${item.instanceId ? `?instanceId=${item.instanceId}` : ''}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ anilistMediaId }),
@@ -115,7 +115,7 @@ export function SonarrMapDrawer({
 
       const next: AnimeSonarrMappingItem[] = [
         ...mappings.filter((m) => m.sonarrSeriesId !== item.id),
-        { sonarrSeriesId: item.id, state: 'MANUAL_MATCH', seriesTitle: item.title, seriesYear: item.year ?? null },
+        { sonarrInstanceId: item.instanceId ?? '', sonarrSeriesId: item.id, state: 'MANUAL_MATCH', seriesTitle: item.title, seriesYear: item.year ?? null },
       ];
       setMappings(next);
       onMappingsChanged?.(next);

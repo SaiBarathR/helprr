@@ -106,6 +106,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       });
       const exported: ExportedServiceConnection[] = connections.map((c) => ({
         type: c.type,
+        label: c.label,
+        isDefault: c.isDefault,
         url: c.url,
         externalUrl: c.externalUrl ?? null,
         username: c.username ?? null,

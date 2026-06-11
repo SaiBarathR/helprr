@@ -19,7 +19,8 @@ async function getHandler(request: NextRequest) {
       return NextResponse.json({ error: 'episodeId or seriesId is required' }, { status: 400 });
     }
 
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     const params: { episodeId?: number; seriesId?: number; seasonNumber?: number } = {};
     if (episodeId) {
       params.episodeId = Number(episodeId);
@@ -49,7 +50,7 @@ async function getHandler(request: NextRequest) {
  *   - `downloadClientId` (optional): the download client ID to route the grab through
  * @returns A NextResponse with `{ success: true }` on success, or `{ error: string }` on failure. Responses use status 400 for missing required fields and 500 for server errors.
  */
-async function postHandler(request: Request) {
+async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
   const capError = await requireCapability('activity.manage');
@@ -63,7 +64,8 @@ async function postHandler(request: Request) {
       return NextResponse.json({ error: 'guid and indexerId are required' }, { status: 400 });
     }
 
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     await client.grabRelease(guid, indexerId, downloadClientId);
     return NextResponse.json({ success: true });
   } catch (error) {

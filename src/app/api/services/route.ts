@@ -4,6 +4,8 @@ import { JellyfinClient } from '@/lib/jellyfin-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
+import { ensureDefaultForType, isArrType } from '@/lib/arr-instances';
+import { findServiceByType } from '@/lib/settings/service-config';
 
 function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
   return {
@@ -139,7 +141,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         ? (normalizedUsername || null)
         : null;
 
-    const apiKeyToStore = await resolveApiKeyForService(type, apiKey);
+    const idValue = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : undefined;
+    const apiKeyToStore = await resolveApiKeyForService(type, apiKey, idValue);
 
     if (type === 'JELLYFIN') {
       const client = new JellyfinClient(url, apiKeyToStore);
@@ -187,22 +190,48 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       ? rawExternalUrl.trim().replace(/\/+$/, '')
       : undefined;
 
-    const connection = await prisma.serviceConnection.upsert({
-      where: { type },
-      update: {
-        url,
-        apiKey: apiKeyToStore,
-        username,
-        ...(externalUrl !== undefined && { externalUrl }),
-      },
-      create: {
-        type,
-        url,
-        apiKey: apiKeyToStore,
-        username,
-        ...(externalUrl !== undefined && { externalUrl }),
-      },
-    });
+    // Resolve the target row:
+    //  - id present        → edit that exact instance
+    //  - arr type, no id    → CREATE a new instance (multi-instance)
+    //  - non-arr, no id     → upsert the single instance of that type
+    const existing = idValue
+      ? await prisma.serviceConnection.findUnique({ where: { id: idValue } })
+      : isArrType(type)
+        ? null
+        : await prisma.serviceConnection.findFirst({ where: { type } });
+
+    if (idValue && (!existing || existing.type !== type)) {
+      return NextResponse.json({ error: 'Instance not found' }, { status: 404 });
+    }
+
+    // Label: arr instances require a user-supplied name; single-instance types
+    // default to the service's display label.
+    const rawLabel = typeof body.label === 'string' ? body.label.trim() : '';
+    const label = isArrType(type)
+      ? (rawLabel || existing?.label || '')
+      : (existing?.label || rawLabel || findServiceByType(type)?.label || type);
+    if (isArrType(type) && !label) {
+      return NextResponse.json({ error: 'A name is required for this instance' }, { status: 400 });
+    }
+
+    let connection;
+    try {
+      connection = existing
+        ? await prisma.serviceConnection.update({
+            where: { id: existing.id },
+            data: { url, apiKey: apiKeyToStore, username, label, ...(externalUrl !== undefined && { externalUrl }) },
+          })
+        : await prisma.serviceConnection.create({
+            data: { type, label, url, apiKey: apiKeyToStore, username, ...(externalUrl !== undefined && { externalUrl }) },
+          });
+    } catch (err) {
+      if ((err as { code?: string }).code === 'P2002') {
+        return NextResponse.json({ error: `An instance named "${label}" already exists for this service` }, { status: 409 });
+      }
+      throw err;
+    }
+
+    await ensureDefaultForType(type);
 
     return NextResponse.json({
       ...connection,

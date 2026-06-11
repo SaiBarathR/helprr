@@ -18,6 +18,8 @@ interface MediaCardProps {
   href: string;
   visibleFields?: string[];
   rating?: number;
+  /** Instance label shown only when >1 instance of the type is connected. */
+  instanceLabel?: string;
   onNavigate?: () => void;
   cornerAction?: ReactNode;
 }
@@ -42,6 +44,7 @@ export function MediaCard({
   href,
   visibleFields,
   rating,
+  instanceLabel,
   onNavigate,
   cornerAction,
 }: MediaCardProps) {
@@ -70,7 +73,14 @@ export function MediaCard({
           <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-2">
             <p className="text-xs font-semibold text-foreground truncate leading-tight">{title}</p>
-            {show('year') && <p className="text-[10px] text-foreground/70">{year}</p>}
+            {(show('year') || instanceLabel) && (
+              <p className="text-[10px] text-foreground/70 truncate">
+                {show('year') && year}
+                {instanceLabel && (
+                  <span className="text-[var(--hpr-amber)] font-medium">{show('year') ? ' · ' : ''}{instanceLabel}</span>
+                )}
+              </p>
+            )}
           </div>
           {/* Rating badge - top right */}
           {show('rating') && rating !== undefined && rating > 0 && (

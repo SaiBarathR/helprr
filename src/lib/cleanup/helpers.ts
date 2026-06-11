@@ -204,35 +204,43 @@ export async function batchFetchTrackerDomains(
 }
 
 export interface CorrelationIndex {
-  byHash: Map<string, LinkedArr>;
+  // A hash can appear in multiple instances (cross-seed, or an HD + a 4K instance
+  // both grabbing the same release), so each maps to a list of links.
+  byHash: Map<string, LinkedArr[]>;
   sonarrPresent: boolean;
   radarrPresent: boolean;
 }
 
 export function buildCorrelationIndex(
-  sonarrQueue: QueueItem[] | null,
-  radarrQueue: QueueItem[] | null,
+  sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>,
+  radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>,
 ): CorrelationIndex {
-  const byHash = new Map<string, LinkedArr>();
-  if (sonarrQueue) {
-    for (const item of sonarrQueue) {
-      const key = (item.downloadId || '').toLowerCase();
-      if (!key) continue;
-      byHash.set(key, {
+  const byHash = new Map<string, LinkedArr[]>();
+  const add = (link: LinkedArr) => {
+    const key = (link.queueItem.downloadId || '').toLowerCase();
+    if (!key) return;
+    const arr = byHash.get(key) ?? [];
+    arr.push(link);
+    byHash.set(key, arr);
+  };
+  for (const inst of sonarr) {
+    for (const item of inst.queue) {
+      add({
         source: 'sonarr',
+        instanceId: inst.instanceId,
+        instanceLabel: inst.instanceLabel,
         queueItem: { ...item, source: 'sonarr' },
         contentId: item.seriesId ?? null,
         title: item.series?.title ?? item.title ?? '',
       });
     }
   }
-  if (radarrQueue) {
-    for (const item of radarrQueue) {
-      const key = (item.downloadId || '').toLowerCase();
-      if (!key) continue;
-      if (byHash.has(key)) continue; // Sonarr wins on cross-seed
-      byHash.set(key, {
+  for (const inst of radarr) {
+    for (const item of inst.queue) {
+      add({
         source: 'radarr',
+        instanceId: inst.instanceId,
+        instanceLabel: inst.instanceLabel,
         queueItem: { ...item, source: 'radarr' },
         contentId: item.movieId ?? null,
         title: item.movie?.title ?? item.title ?? '',
@@ -241,8 +249,8 @@ export function buildCorrelationIndex(
   }
   return {
     byHash,
-    sonarrPresent: !!sonarrQueue,
-    radarrPresent: !!radarrQueue,
+    sonarrPresent: sonarr.length > 0,
+    radarrPresent: radarr.length > 0,
   };
 }
 
@@ -333,32 +341,29 @@ export type ImportConfirmation =
  */
 export async function confirmImportedViaHistory(
   hash: string,
-  arrs: { sonarr: SonarrClient | null; radarr: RadarrClient | null },
+  arrs: { sonarr: SonarrClient[]; radarr: RadarrClient[] },
 ): Promise<ImportConfirmation> {
   const downloadId = hash.toUpperCase();
   let anyReachable = false;
   let anyConfigured = false;
 
-  if (arrs.sonarr) {
+  // Imported if ANY instance of either type confirms it. Tag each client with
+  // its source up front so we don't have to recover it from the client object.
+  const tagged: Array<{ source: ImportConfirmationSource; client: SonarrClient | RadarrClient }> = [
+    ...arrs.sonarr.map((client) => ({ source: 'sonarr' as const, client })),
+    ...arrs.radarr.map((client) => ({ source: 'radarr' as const, client })),
+  ];
+  for (const { source, client } of tagged) {
     anyConfigured = true;
     try {
-      const res = await arrs.sonarr.getHistory(1, 50, 'date', 'descending', { downloadId });
+      const res = await client.getHistory(1, 50, 'date', 'descending', { downloadId });
       anyReachable = true;
       const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
-      if (hit) return { status: 'imported', source: 'sonarr', eventType: hit.eventType };
+      if (hit) {
+        return { status: 'imported', source, eventType: hit.eventType };
+      }
     } catch {
-      // sonarr threw; treat as unreachable for this arr
-    }
-  }
-  if (arrs.radarr) {
-    anyConfigured = true;
-    try {
-      const res = await arrs.radarr.getHistory(1, 50, 'date', 'descending', { downloadId });
-      anyReachable = true;
-      const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
-      if (hit) return { status: 'imported', source: 'radarr', eventType: hit.eventType };
-    } catch {
-      // swallow
+      // unreachable for this instance
     }
   }
   if (!anyConfigured || !anyReachable) return { status: 'unreachable' };

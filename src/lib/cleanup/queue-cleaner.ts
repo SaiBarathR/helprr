@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import type { QBittorrentTorrent, QueueItem } from '@/types';
-import { getQBittorrentClient, getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getQBittorrentClient, getSonarrClient, getRadarrClient, getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { notifyEvent } from '@/lib/notification-service';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import {
@@ -147,28 +147,37 @@ export async function loadSlowRules(): Promise<SlowRuleShape[]> {
 }
 
 async function loadArrQueues(): Promise<{
-  sonarrQueue: QueueItem[] | null;
-  radarrQueue: QueueItem[] | null;
+  sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
+  radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
 }> {
-  let sonarrQueue: QueueItem[] | null = null;
-  let radarrQueue: QueueItem[] | null = null;
-  try {
-    const c = await getSonarrClient();
-    // Hard cap: queues larger than 1000 will be truncated. Pagination not currently wired.
-    const r = await c.getQueue(1, 1000);
-    sonarrQueue = (r.records || []).map((i) => ({ ...i, source: 'sonarr' as const }));
-  } catch (err) {
-    if (!isMissingConfigError(err)) logger.warn('Sonarr queue fetch failed', { err: String(err) }, { scope: LOG });
+  const sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
+  const radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
+  // Hard cap: queues larger than 1000 will be truncated. Pagination not currently wired.
+  for (const { connection, client } of await getSonarrClients()) {
+    try {
+      const r = await client.getQueue(1, 1000);
+      sonarr.push({
+        instanceId: connection.id,
+        instanceLabel: connection.label,
+        queue: (r.records || []).map((i) => ({ ...i, source: 'sonarr' as const })),
+      });
+    } catch (err) {
+      if (!isMissingConfigError(err)) logger.warn('Sonarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
+    }
   }
-  try {
-    const c = await getRadarrClient();
-    // Hard cap: queues larger than 1000 will be truncated. Pagination not currently wired.
-    const r = await c.getQueue(1, 1000);
-    radarrQueue = (r.records || []).map((i) => ({ ...i, source: 'radarr' as const }));
-  } catch (err) {
-    if (!isMissingConfigError(err)) logger.warn('Radarr queue fetch failed', { err: String(err) }, { scope: LOG });
+  for (const { connection, client } of await getRadarrClients()) {
+    try {
+      const r = await client.getQueue(1, 1000);
+      radarr.push({
+        instanceId: connection.id,
+        instanceLabel: connection.label,
+        queue: (r.records || []).map((i) => ({ ...i, source: 'radarr' as const })),
+      });
+    } catch (err) {
+      if (!isMissingConfigError(err)) logger.warn('Radarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
+    }
   }
-  return { sonarrQueue, radarrQueue };
+  return { sonarr, radarr };
 }
 
 function isMissingConfigError(err: unknown): boolean {
@@ -203,7 +212,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     return emptyResult(opts);
   }
 
-  const [{ sonarrQueue, radarrQueue }, stallRules, slowRules, prevStrikes] = await Promise.all([
+  const [{ sonarr: sonarrInstances, radarr: radarrInstances }, stallRules, slowRules, prevStrikes] = await Promise.all([
     loadArrQueues(),
     loadStallRules(),
     loadSlowRules(),
@@ -211,7 +220,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   ]);
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
-  const correlation = buildCorrelationIndex(sonarrQueue, radarrQueue);
+  const correlation = buildCorrelationIndex(sonarrInstances, radarrInstances);
   const inClientHashes = new Set(torrents.map((t) => t.hash.toLowerCase()));
 
   const journal = new StrikeJournal();
@@ -226,7 +235,12 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
 
       if (matchesIgnoredPatterns(t, domains, cfg.ignoredDownloads)) continue;
 
-      const linked = correlation.byHash.get(hashLc) ?? null;
+      // Cross-seed / dual-grab: a hash can sit in multiple instances' queues.
+      // Sonarr wins as the representative for display + the failed-import check
+      // (preserves the pre-multi-instance precedence); `linkedAll` (set below)
+      // drives the actual removal across every instance.
+      const links = correlation.byHash.get(hashLc) ?? [];
+      const linked = links.find((l) => l.source === 'sonarr') ?? links[0] ?? null;
 
       // 1) Downloading Metadata (qBit-only, global)
       if (cfg.downloadingMetadataMaxStrikes >= 3 && t.state === 'metaDL') {
@@ -412,6 +426,12 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     } catch (err) {
       logger.warn('Cycle: torrent eval failed', { hash: t.hash, err: String(err) }, { scope: LOG });
     }
+  }
+
+  // Attach every instance whose queue holds each torrent's hash so removal can act
+  // on all of them (cross-seed / HD+4K). `linked` stays the representative for display.
+  for (const d of decisions) {
+    d.linkedAll = correlation.byHash.get(d.torrent.hash.toLowerCase()) ?? (d.linked ? [d.linked] : []);
   }
 
   // Track outcomes for end-of-cycle summary notification.
@@ -757,28 +777,26 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
 
   // ─── Phase 1: attempt the destructive action ────────────────────────────
   try {
-    if (d.options.changeCategory && d.linked?.queueItem) {
-      // changeCategory mode: NEVER fall back to delete. If this fails, the
-      // user explicitly chose "change category instead of delete" and would
-      // not want a silent deletion if the arr is unreachable.
-      if (d.linked.source === 'sonarr') {
-        const c = await getSonarrClient();
-        await c.deleteQueueItem(d.linked.queueItem.id, { removeFromClient: false, blocklist: false, changeCategory: true });
-      } else {
-        const c = await getRadarrClient();
-        await c.deleteQueueItem(d.linked.queueItem.id, { removeFromClient: false, blocklist: false, changeCategory: true });
+    const links = d.linkedAll ?? (d.linked ? [d.linked] : []);
+    if (d.options.changeCategory && links.length > 0) {
+      // changeCategory mode: NEVER fall back to delete. Apply to every linked
+      // instance. The user explicitly chose "change category instead of delete"
+      // and would not want a silent deletion if an arr is unreachable.
+      for (const link of links) {
+        const c = link.source === 'sonarr' ? await getSonarrClient(link.instanceId) : await getRadarrClient(link.instanceId);
+        await c.deleteQueueItem(link.queueItem.id, { removeFromClient: false, blocklist: false, changeCategory: true });
       }
       action = 'categoryChanged';
-    } else if (d.linked?.queueItem) {
-      // Linked to arr: prefer arr's deleteQueueItem so the blocklist flag and
-      // arr-side cleanup run as a unit with the qBit delete.
+    } else if (links.length > 0) {
+      // Linked to arr: each instance removes its own queue ref; the qBit torrent
+      // is removed once (the first call that deletes from the client).
       const blocklist = d.options.reSearch;
-      if (d.linked.source === 'sonarr') {
-        const c = await getSonarrClient();
-        await c.deleteQueueItem(d.linked.queueItem.id, { removeFromClient: shouldDeleteFromClient, blocklist });
-      } else {
-        const c = await getRadarrClient();
-        await c.deleteQueueItem(d.linked.queueItem.id, { removeFromClient: shouldDeleteFromClient, blocklist });
+      let removedFromClientOnce = false;
+      for (const link of links) {
+        const removeFromClient = shouldDeleteFromClient && !removedFromClientOnce;
+        const c = link.source === 'sonarr' ? await getSonarrClient(link.instanceId) : await getRadarrClient(link.instanceId);
+        await c.deleteQueueItem(link.queueItem.id, { removeFromClient, blocklist });
+        if (removeFromClient) removedFromClientOnce = true;
       }
       action = shouldDeleteFromClient ? 'removedFromClient' : 'removedFromQueue';
       filesDeleted = shouldDeleteFromClient;
@@ -838,11 +856,11 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
   if (action !== 'categoryChanged' && d.options.reSearch && d.linked?.contentId) {
     try {
       if (d.linked.source === 'sonarr') {
-        const c = await getSonarrClient();
+        const c = await getSonarrClient(d.linked.instanceId);
         await c.searchSeries(d.linked.contentId);
         reSearched = true;
       } else if (d.linked.source === 'radarr') {
-        const c = await getRadarrClient();
+        const c = await getRadarrClient(d.linked.instanceId);
         await c.searchMovie([d.linked.contentId]);
         reSearched = true;
       }

@@ -22,6 +22,7 @@ import { Filter, Loader2, ExternalLink, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';
+import { InstanceFilter, type InstanceOption } from '@/components/instance-filter';
 
 // --- Event type config ---
 
@@ -42,17 +43,7 @@ const EVENT_FILTERS: EventFilterOption[] = [
   { key: 'ignored', label: 'Ignored' },
 ];
 
-// --- Instance filter ---
-
-type InstanceFilter = 'all' | 'sonarr' | 'radarr' | 'lidarr';
 type DrawerMode = 'basic' | 'detailed';
-
-const INSTANCE_OPTIONS: { key: InstanceFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'sonarr', label: 'Sonarr' },
-  { key: 'radarr', label: 'Radarr' },
-  { key: 'lidarr', label: 'Lidarr' },
-];
 
 // --- Event styling ---
 
@@ -133,7 +124,8 @@ export default function HistoryPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [eventFilter, setEventFilter] = useState<EventFilterKey>('all');
-  const [instanceFilter, setInstanceFilter] = useState<InstanceFilter>('all');
+  const [instanceFilter, setInstanceFilter] = useState<string>('all');
+  const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [selectedItem, setSelectedItem] = useState<(HistoryItem & { source?: string }) | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('basic');
 
@@ -152,7 +144,7 @@ export default function HistoryPage() {
     try {
       const params = new URLSearchParams({ page: String(p), pageSize: '20' });
       if (eventFilter !== 'all') params.set('eventType', eventFilter);
-      if (instanceFilter !== 'all') params.set('source', instanceFilter);
+      if (instanceFilter !== 'all') params.set('instanceId', instanceFilter);
       const res = await fetch(`/api/activity/history?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -177,6 +169,31 @@ export default function HistoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventFilter, instanceFilter]);
 
+  // Load arr instances for the per-instance filter, independent of the (possibly
+  // filtered) history so the options never collapse to the current selection.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/instances');
+        if (!res.ok) return;
+        const conns = (await res.json()) as Array<{ id: string; label: string }>;
+        if (cancelled || !Array.isArray(conns)) return;
+        setInstanceOptions(conns.map((c) => ({ id: c.id, label: c.label })));
+      } catch {
+        // ignore — the filter just won't render
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Drop a stale instance selection if that instance no longer exists.
+  useEffect(() => {
+    if (instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
+      setInstanceFilter('all');
+    }
+  }, [instanceOptions, instanceFilter]);
+
   /**
    * Advance to the next history page and append the newly fetched records to the existing list.
    */
@@ -193,45 +210,29 @@ export default function HistoryPage() {
       <PageHeader
         title="History"
         rightContent={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <Filter className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {EVENT_FILTERS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.key}
-                  onClick={() => setEventFilter(opt.key)}
-                  className={eventFilter === opt.key ? 'bg-accent' : ''}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-2">
+            <InstanceFilter instances={instanceOptions} value={instanceFilter} onChange={setInstanceFilter} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Filter className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {EVENT_FILTERS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.key}
+                    onClick={() => setEventFilter(opt.key)}
+                    className={eventFilter === opt.key ? 'bg-accent' : ''}
+                  >
+                    {opt.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         }
       />
-
-      {/* Instance segmented control */}
-      <div className="pb-3 pt-2">
-        <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-          {INSTANCE_OPTIONS.map((opt) => (
-            <button
-              key={opt.key}
-              onClick={() => setInstanceFilter(opt.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                instanceFilter === opt.key
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
 
       {/* Active filter indicator */}
       {eventFilter !== 'all' && (
@@ -410,10 +411,11 @@ export default function HistoryPage() {
                   {selectedItem.series && (() => {
                     const ep = selectedItem.episode;
                     const seriesId = selectedItem.seriesId || selectedItem.series.id;
+                    const q = selectedItem.instanceId ? `?instance=${selectedItem.instanceId}` : '';
                     const href = seriesId && ep
-                      ? `/series/${seriesId}/season/${ep.seasonNumber}/episode/${ep.id}`
+                      ? `/series/${seriesId}/season/${ep.seasonNumber}/episode/${ep.id}${q}`
                       : seriesId
-                        ? `/series/${seriesId}`
+                        ? `/series/${seriesId}${q}`
                         : null;
                     const content = (
                       <>
@@ -439,7 +441,8 @@ export default function HistoryPage() {
                   })()}
                   {selectedItem.movie && (() => {
                     const movieId = selectedItem.movieId || selectedItem.movie.id;
-                    const href = movieId ? `/movies/${movieId}` : null;
+                    const q = selectedItem.instanceId ? `?instance=${selectedItem.instanceId}` : '';
+                    const href = movieId ? `/movies/${movieId}${q}` : null;
                     const content = (
                       <>
                         <div className="flex-1 min-w-0">
@@ -459,7 +462,8 @@ export default function HistoryPage() {
                   })()}
                   {selectedItem.album && (() => {
                     const albumId = selectedItem.albumId || selectedItem.album.id;
-                    const href = albumId ? `/music/album/${albumId}` : null;
+                    const q = selectedItem.instanceId ? `?instance=${selectedItem.instanceId}` : '';
+                    const href = albumId ? `/music/album/${albumId}${q}` : null;
                     const content = (
                       <>
                         <div className="flex-1 min-w-0">

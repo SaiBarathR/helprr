@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -54,7 +54,7 @@ import {
   type DetailViewKey,
 } from '@/lib/detail-view-state';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
@@ -136,11 +136,23 @@ function waitForElementScrollY(
   });
 }
 
+// Append the viewing instance to a Sonarr API path so the detail page reads/mutates
+// the correct instance. No-op (and thus single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+
+function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function SeriesDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const seriesId = Number(id);
-  const initialSnapshot = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId) : null;
+  const instance = useSearchParams().get('instance') ?? undefined;
+  const initialSnapshot = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId, instance) : null;
   const detailViewKey: DetailViewKey = `series:${seriesId}`;
   const currentSeriesIdRef = useRef(seriesId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
@@ -161,6 +173,7 @@ export default function SeriesDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const externalUrls = useExternalUrls();
+  const sonarrExternalUrl = useExternalUrlResolver()('SONARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [credits, setCredits] = useState<SeriesCredits>(() => initialSnapshot?.credits ?? { cast: [], crew: [] });
   const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
@@ -253,8 +266,8 @@ export default function SeriesDetailPage() {
       tmdbData: next.tmdbData ?? tmdbData,
       credits: next.credits ?? credits,
       seasonEpisodes: next.seasonEpisodes ?? seasonEpisodes,
-    });
-  }, [animeData, animeDetailsById, credits, episodes, qualityProfiles, rootFolders, seasonEpisodes, series, seriesId, tags, tmdbData]);
+    }, instance);
+  }, [animeData, animeDetailsById, credits, episodes, instance, qualityProfiles, rootFolders, seasonEpisodes, series, seriesId, tags, tmdbData]);
 
   const loadData = useCallback(async (hasCachedData: boolean) => {
     if (!Number.isFinite(seriesId)) {
@@ -267,16 +280,16 @@ export default function SeriesDetailPage() {
 
     try {
       const [nextSeries, nextEpisodes, nextQualityProfiles, nextRootFolders, nextTags] = await Promise.all([
-        fetch(`/api/sonarr/${seriesId}`).then((r) => r.ok ? r.json() : null),
-        fetch(`/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}`).then((r) => r.ok ? r.json() : null),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, '/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, '/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
+        sonarrFetch(instance, '/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
       ]);
 
       if (activeSeriesId !== currentSeriesIdRef.current) return;
 
-      const existingSnapshot = getSeriesDetailSnapshot(seriesId);
+      const existingSnapshot = getSeriesDetailSnapshot(seriesId, instance);
       setSeries(nextSeries);
       setEpisodes(nextEpisodes);
       setQualityProfiles(nextQualityProfiles);
@@ -294,7 +307,7 @@ export default function SeriesDetailPage() {
         tmdbData: existingSnapshot?.tmdbData ?? null,
         credits: existingSnapshot?.credits,
         seasonEpisodes: existingSnapshot?.seasonEpisodes,
-      });
+      }, instance);
     } catch {
       if (activeSeriesId !== currentSeriesIdRef.current) return;
 
@@ -311,10 +324,10 @@ export default function SeriesDetailPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [seriesId]);
+  }, [seriesId, instance]);
 
   useEffect(() => {
-    const cached = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId) : null;
+    const cached = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
 
@@ -336,7 +349,7 @@ export default function SeriesDetailPage() {
     }
 
     void loadData(Boolean(cached));
-  }, [loadData, seriesId]);
+  }, [loadData, seriesId, instance]);
 
   useEffect(() => {
     if (loading || !series || hasRestoredScrollRef.current) return;
@@ -400,10 +413,10 @@ export default function SeriesDetailPage() {
 
   useEffect(() => {
     setExpandedSeasons(new Set());
-    if (!getSeriesDetailSnapshot(seriesId)?.seasonEpisodes) {
+    if (!getSeriesDetailSnapshot(seriesId, instance)?.seasonEpisodes) {
       setSeasonEpisodes(new Map());
     }
-  }, [seriesId]);
+  }, [seriesId, instance]);
 
   // Anime with no AniList match (auto-unmatched or manually unmapped) fall back to
   // TMDB series-level enrichment like normal shows. Episode-level TMDB data stays
@@ -416,15 +429,15 @@ export default function SeriesDetailPage() {
       return;
     }
 
-    if (!getSeriesDetailSnapshot(seriesId)?.credits) {
+    if (!getSeriesDetailSnapshot(seriesId, instance)?.credits) {
       setCredits({ cast: [], crew: [] });
     }
     const controller = new AbortController();
-    fetch(`/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
+    sonarrFetch(instance, `/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
       .then((r) => r.ok ? r.json() : { cast: [], crew: [] })
       .then((data: SeriesCredits) => {
         setCredits(data);
-        const cached = getSeriesDetailSnapshot(seriesId);
+        const cached = getSeriesDetailSnapshot(seriesId, instance);
         setSeriesDetailSnapshot(seriesId, {
           series: cached?.series ?? null,
           episodes: cached?.episodes ?? [],
@@ -436,7 +449,7 @@ export default function SeriesDetailPage() {
           tmdbData: cached?.tmdbData ?? null,
           credits: data,
           seasonEpisodes: cached?.seasonEpisodes,
-        });
+        }, instance);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -445,7 +458,7 @@ export default function SeriesDetailPage() {
     return () => {
       controller.abort();
     };
-  }, [animeTmdbFallback, series?.id, series?.seriesType, seriesId]);
+  }, [animeTmdbFallback, series?.id, series?.seriesType, seriesId, instance]);
 
   // Background-fetch TMDB enrichment data
   useEffect(() => {
@@ -454,14 +467,14 @@ export default function SeriesDetailPage() {
       return;
     }
     const controller = new AbortController();
-    if (!getSeriesDetailSnapshot(seriesId)?.tmdbData) {
+    if (!getSeriesDetailSnapshot(seriesId, instance)?.tmdbData) {
       setTmdbData(null);
     }
     fetch(`/api/discover/tv/${series.tmdbId}`, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: DiscoverTvFullDetail | null) => {
         setTmdbData(data);
-        const cached = getSeriesDetailSnapshot(seriesId);
+        const cached = getSeriesDetailSnapshot(seriesId, instance);
         setSeriesDetailSnapshot(seriesId, {
           series: cached?.series ?? null,
           episodes: cached?.episodes ?? [],
@@ -473,14 +486,14 @@ export default function SeriesDetailPage() {
           tmdbData: data,
           credits: cached?.credits,
           seasonEpisodes: cached?.seasonEpisodes,
-        });
+        }, instance);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
         setTmdbData((prev) => prev ?? null);
       });
     return () => controller.abort();
-  }, [animeTmdbFallback, series?.seriesType, series?.tmdbId, seriesId]);
+  }, [animeTmdbFallback, series?.seriesType, series?.tmdbId, seriesId, instance]);
 
   useEffect(() => {
     if (!series?.id || series.seriesType !== 'anime') {
@@ -492,7 +505,7 @@ export default function SeriesDetailPage() {
     }
 
     const controller = new AbortController();
-    const cached = getSeriesDetailSnapshot(seriesId);
+    const cached = getSeriesDetailSnapshot(seriesId, instance);
     setDrawerDetails(null);
     if (cached?.animeData) {
       setAnimeData(cached.animeData);
@@ -506,7 +519,7 @@ export default function SeriesDetailPage() {
 
     // Lazy page load: the default GET returns the mapping + primary detail only;
     // other seasons fetch when their tab is selected.
-    fetch(`/api/sonarr/${series.id}/anime`, { signal: controller.signal })
+    sonarrFetch(instance, `/api/sonarr/${series.id}/anime`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
@@ -517,7 +530,7 @@ export default function SeriesDetailPage() {
       .then((data: SeriesAniListResponse) => {
         if (!controller.signal.aborted) {
           setAnimeData(data);
-          const current = getSeriesDetailSnapshot(seriesId);
+          const current = getSeriesDetailSnapshot(seriesId, instance);
           const nextDetailsById = new Map(current?.animeDetailsById ?? []);
           for (const detail of data.details) nextDetailsById.set(detail.id, detail);
           setAnimeDetailsById(nextDetailsById);
@@ -532,7 +545,7 @@ export default function SeriesDetailPage() {
             tmdbData: current?.tmdbData ?? null,
             credits: current?.credits,
             seasonEpisodes: current?.seasonEpisodes,
-          });
+          }, instance);
         }
       })
       .catch((error: unknown) => {
@@ -549,7 +562,7 @@ export default function SeriesDetailPage() {
       });
 
     return () => controller.abort();
-  }, [series?.id, series?.seriesType, seriesId]);
+  }, [series?.id, series?.seriesType, seriesId, instance]);
 
   useEffect(() => {
     if (series?.seriesType !== 'anime' || !series?.id) return;
@@ -562,13 +575,13 @@ export default function SeriesDetailPage() {
       const entryId = activeAnimeEntryIdRef.current;
       if (entryId == null) return;
       try {
-        const response = await fetch(`/api/sonarr/${series.id}/anime?detail=${entryId}`);
+        const response = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`);
         if (!response.ok) return;
         const data: SeriesAniListEntryDetailResponse = await response.json();
         if (cancelled) return;
 
         if (data.detail) {
-          const cached = getSeriesDetailSnapshot(seriesId);
+          const cached = getSeriesDetailSnapshot(seriesId, instance);
           const nextDetailsById = new Map(cached?.animeDetailsById ?? []).set(entryId, data.detail);
           setAnimeData((prev) => (prev ? { ...prev, mapping: data.mapping } : prev));
           setAnimeDetailsById(nextDetailsById);
@@ -583,18 +596,18 @@ export default function SeriesDetailPage() {
             tmdbData: cached?.tmdbData ?? null,
             credits: cached?.credits,
             seasonEpisodes: cached?.seasonEpisodes,
-          });
+          }, instance);
           return;
         }
 
         // The on-screen entry was pruned server-side — resync mapping + primary.
-        const full = await fetch(`/api/sonarr/${series.id}/anime`);
+        const full = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime`);
         if (!full.ok) return;
         const fullData: SeriesAniListResponse = await full.json();
         if (cancelled) return;
         setActiveAnimeTab(0);
         setAnimeData(fullData);
-        const current = getSeriesDetailSnapshot(seriesId);
+        const current = getSeriesDetailSnapshot(seriesId, instance);
         const nextDetailsById = new Map(current?.animeDetailsById ?? []);
         nextDetailsById.delete(entryId);
         for (const detail of fullData.details) nextDetailsById.set(detail.id, detail);
@@ -610,7 +623,7 @@ export default function SeriesDetailPage() {
           tmdbData: current?.tmdbData ?? null,
           credits: current?.credits,
           seasonEpisodes: current?.seasonEpisodes,
-        });
+        }, instance);
       } catch {
         // Keep the current detail on background refresh failures.
       }
@@ -634,7 +647,7 @@ export default function SeriesDetailPage() {
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [series?.id, series?.seriesType, seriesId]);
+  }, [series?.id, series?.seriesType, seriesId, instance]);
 
   useEffect(() => {
     setAnimeNowMs(Date.now());
@@ -660,13 +673,13 @@ export default function SeriesDetailPage() {
 
     const controller = new AbortController();
     const activeSeriesId = seriesId;
-    fetch(`/api/sonarr/${series.id}/anime?full=1`, { signal: controller.signal })
+    sonarrFetch(instance, `/api/sonarr/${series.id}/anime?full=1`, { signal: controller.signal })
       .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListResponse>) : null))
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
         setDrawerDetails(data.details);
         setAnimeData(data);
-        const cached = getSeriesDetailSnapshot(activeSeriesId);
+        const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
         const nextDetailsById = new Map(cached?.animeDetailsById ?? []);
         for (const detail of data.details) nextDetailsById.set(detail.id, detail);
         setAnimeDetailsById(nextDetailsById);
@@ -681,14 +694,14 @@ export default function SeriesDetailPage() {
           tmdbData: cached?.tmdbData ?? null,
           credits: cached?.credits,
           seasonEpisodes: cached?.seasonEpisodes,
-        });
+        }, instance);
       })
       .catch(() => {
         // Drawer falls back to whichever details are already loaded.
       });
 
     return () => controller.abort();
-  }, [showAniListRemap, series?.id, series?.seriesType, seriesId]);
+  }, [showAniListRemap, series?.id, series?.seriesType, seriesId, instance]);
 
   // Lazy per-tab detail fetch. The page-load GET only returns the primary;
   // other seasons load (and validate) here on first select.
@@ -699,12 +712,12 @@ export default function SeriesDetailPage() {
 
     const activeSeriesId = seriesId;
     setActiveDetailLoading(true);
-    fetch(`/api/sonarr/${series.id}/anime?detail=${entryId}`)
+    sonarrFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`)
       .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListEntryDetailResponse>) : null))
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
         if (data.detail) {
-          const cached = getSeriesDetailSnapshot(activeSeriesId);
+          const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
           // Merge into the snapshot's copy (not the render-time closure) so a
           // remap that landed while this fetch was in flight isn't clobbered.
           const baseAnime = cached?.animeData ?? animeData;
@@ -731,13 +744,13 @@ export default function SeriesDetailPage() {
     if (!series?.id) return;
     const activeSeriesId = seriesId;
     try {
-      const res = await fetch(`/api/sonarr/${series.id}/anime?full=1`);
+      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime?full=1`);
       if (!res.ok) return;
       const data: SeriesAniListResponse = await res.json();
       if (activeSeriesId !== currentSeriesIdRef.current) return;
       setActiveAnimeTab(0);
       setAnimeData(data);
-      const cached = getSeriesDetailSnapshot(activeSeriesId);
+      const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
       const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById);
       for (const detail of data.details) nextDetailsById.set(detail.id, detail);
       setAnimeDetailsById(nextDetailsById);
@@ -761,7 +774,7 @@ export default function SeriesDetailPage() {
             .then((r) => (r.ok ? r.json() : null))
             .then((data: DiscoverSeasonDetailResponse | null) => {
               if (data && activeSeriesId === currentSeriesIdRef.current) {
-                const cached = getSeriesDetailSnapshot(activeSeriesId);
+                const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
                 const nextSeasonEpisodes = new Map(cached?.seasonEpisodes ?? seasonEpisodes).set(seasonNumber, data);
                 setSeasonEpisodes(nextSeasonEpisodes);
                 setSeriesDetailSnapshot(activeSeriesId, {
@@ -775,7 +788,7 @@ export default function SeriesDetailPage() {
                   tmdbData: cached?.tmdbData ?? tmdbData,
                   credits: cached?.credits ?? credits,
                   seasonEpisodes: nextSeasonEpisodes,
-                });
+                }, instance);
               }
             })
             .catch(() => { });
@@ -825,7 +838,7 @@ export default function SeriesDetailPage() {
     setActiveAnimeTab(0);
     // Mutation responses carry the full detail set — refresh the lazy map and
     // the drawer's hydrated copy in one go.
-    const cached = getSeriesDetailSnapshot(seriesId);
+    const cached = getSeriesDetailSnapshot(seriesId, instance);
     const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById);
     for (const detail of next.details) nextDetailsById.set(detail.id, detail);
     setAnimeDetailsById(nextDetailsById);
@@ -845,7 +858,7 @@ export default function SeriesDetailPage() {
         tmdbData: null,
         credits: { cast: [], crew: [] },
         seasonEpisodes: cached?.seasonEpisodes,
-      });
+      }, instance);
     } else {
       persistSeriesSnapshot({ animeData: next, animeDetailsById: nextDetailsById });
     }
@@ -862,7 +875,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('search');
     try {
-      await fetch('/api/sonarr/command', {
+      await sonarrFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'SeriesSearch', seriesId: series.id }),
@@ -876,7 +889,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('monitor');
     try {
-      const res = await fetch(`/api/sonarr/${series.id}`, {
+      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...series, monitored: !series.monitored }),
@@ -886,7 +899,7 @@ export default function SeriesDetailPage() {
         setSeries(updated);
         persistSeriesSnapshot({ series: updated });
         for (const season of updated.seasons) {
-          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season);
+          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season, instance);
         }
         invalidateListData('series');
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
@@ -904,7 +917,7 @@ export default function SeriesDetailPage() {
           s.seasonNumber === seasonNumber ? { ...s, monitored } : s
         ),
       };
-      const res = await fetch(`/api/sonarr/${series.id}`, {
+      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
@@ -915,7 +928,7 @@ export default function SeriesDetailPage() {
         persistSeriesSnapshot({ series: updated });
         const updatedSeason = updated.seasons.find((s) => s.seasonNumber === seasonNumber);
         if (updatedSeason) {
-          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason);
+          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason, instance);
         }
         invalidateListData('series');
         toast.success(`Season ${seasonNumber} ${monitored ? 'monitored' : 'unmonitored'}`);
@@ -927,7 +940,7 @@ export default function SeriesDetailPage() {
     if (!series || !monitorOption) return;
     setActionLoading('applyMonitor');
     try {
-      await fetch('/api/sonarr/command', {
+      await sonarrFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -963,7 +976,7 @@ export default function SeriesDetailPage() {
         }),
         addOptions: { monitor: monitorOption },
       };
-      const updateRes = await fetch(`/api/sonarr/${series.id}`, {
+      const updateRes = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(monitorUpdate),
@@ -973,7 +986,7 @@ export default function SeriesDetailPage() {
         setSeries(updated);
         persistSeriesSnapshot({ series: updated });
         for (const season of updated.seasons) {
-          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season);
+          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season, instance);
         }
         invalidateListData('series');
         toast.success(`Monitor set to: ${MONITOR_OPTIONS.find((o) => o.value === monitorOption)?.label}`);
@@ -989,7 +1002,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('refresh');
     try {
-      const res = await fetch('/api/sonarr/command', {
+      const res = await sonarrFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: series.id }),
@@ -997,7 +1010,7 @@ export default function SeriesDetailPage() {
       if (!res.ok) throw new Error('Refresh failed');
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
-      const status = command.id ? await pollCommand('sonarr', command.id) : 'completed';
+      const status = command.id ? await pollCommand('sonarr', command.id, instance) : 'completed';
       invalidateListData('series');
       await loadData(true);
       if (status === 'completed') toast.success('Refresh complete');
@@ -1011,9 +1024,9 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setDeleting(true);
     try {
-      await fetch(`/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
+      await sonarrFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
       invalidateListData('series');
-      clearSeriesDetailSnapshot(series.id);
+      clearSeriesDetailSnapshot(series.id, instance);
       toast.success('Series deleted');
       router.push('/series');
     } catch { toast.error('Delete failed'); }
@@ -1332,9 +1345,9 @@ export default function SeriesDetailPage() {
                     </a>
                   </DropdownMenuItem>
                 )}
-                {externalUrls.SONARR && series.titleSlug && (
+                {sonarrExternalUrl && series.titleSlug && (
                   <DropdownMenuItem asChild>
-                    <a href={`${externalUrls.SONARR}/series/${series.titleSlug}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`${sonarrExternalUrl}/series/${series.titleSlug}`} target="_blank" rel="noopener noreferrer">
                       <Tv className="h-4 w-4" />
                       Open in Sonarr
                     </a>
@@ -1358,7 +1371,7 @@ export default function SeriesDetailPage() {
                   </DropdownMenuItem>
                 )}
                 {canEditSeries && (
-                  <DropdownMenuItem onClick={() => router.push(`/series/${id}/edit`)}>
+                  <DropdownMenuItem onClick={() => router.push(`/series/${id}/edit${instance ? `?instance=${instance}` : ''}`)}>
                     <Pencil className="h-4 w-4" />
                     Edit
                   </DropdownMenuItem>
@@ -1728,7 +1741,7 @@ export default function SeriesDetailPage() {
                         />
                       </div>
                     )}
-                    <Link href={`/series/${id}/season/${sn}`} className="flex-1 min-w-0 flex items-center gap-2">
+                    <Link href={`/series/${id}/season/${sn}${instance ? `?instance=${instance}` : ''}`} className="flex-1 min-w-0 flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
@@ -1776,7 +1789,7 @@ export default function SeriesDetailPage() {
                         epData.episodes.map((ep) => {
                           const sonarrEp = seasonEps.find((e) => e.episodeNumber === ep.episodeNumber);
                           const episodeHref = sonarrEp
-                            ? `/series/${id}/season/${sn}/episode/${sonarrEp.id}`
+                            ? `/series/${id}/season/${sn}/episode/${sonarrEp.id}${instance ? `?instance=${instance}` : ''}`
                             : null;
 
                           const content = (
@@ -2131,7 +2144,7 @@ export default function SeriesDetailPage() {
                   title="Cast"
                   titleTextClassName="text-lg font-bold"
                   headerClassName="px-2 mb-2"
-                  viewAllHref={`/series/${seriesId}/credits?type=cast`}
+                  viewAllHref={`/series/${seriesId}/credits?type=cast${instance ? `&instance=${instance}` : ''}`}
                   items={credits.cast.map((person) => ({
                     id: person.id,
                     name: person.name,
@@ -2149,7 +2162,7 @@ export default function SeriesDetailPage() {
                   title="Crew"
                   titleTextClassName="text-lg font-bold"
                   headerClassName="px-2 mb-2"
-                  viewAllHref={`/series/${seriesId}/credits?type=crew`}
+                  viewAllHref={`/series/${seriesId}/credits?type=crew${instance ? `&instance=${instance}` : ''}`}
                   items={credits.crew.map((person) => ({
                     id: person.id,
                     name: person.name,

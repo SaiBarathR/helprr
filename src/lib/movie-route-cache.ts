@@ -14,7 +14,8 @@ interface SnapshotInput {
 }
 
 const MAX_ENTRIES = 100;
-const movieDetailCache = new Map<number, MovieDetailSnapshot>();
+const DEFAULT_INSTANCE = 'default';
+const movieDetailCache = new Map<string, MovieDetailSnapshot>();
 
 function setWithLimit<K, V>(cache: Map<K, V>, key: K, value: V) {
   cache.set(key, value);
@@ -25,6 +26,11 @@ function setWithLimit<K, V>(cache: Map<K, V>, key: K, value: V) {
   }
 }
 
+// Keyed by instance so the same movie id in two Radarr instances never collides.
+function cacheKey(instanceId: string, movieId: number) {
+  return `${instanceId}:${movieId}`;
+}
+
 function withFetchedAt<T extends SnapshotInput>(snapshot: T): T & { fetchedAt: number } {
   return {
     ...snapshot,
@@ -32,17 +38,18 @@ function withFetchedAt<T extends SnapshotInput>(snapshot: T): T & { fetchedAt: n
   };
 }
 
-export function getMovieDetailSnapshot(movieId: number): MovieDetailSnapshot | null {
-  return movieDetailCache.get(movieId) ?? null;
+export function getMovieDetailSnapshot(movieId: number, instanceId: string = DEFAULT_INSTANCE): MovieDetailSnapshot | null {
+  return movieDetailCache.get(cacheKey(instanceId, movieId)) ?? null;
 }
 
 export function setMovieDetailSnapshot(
   movieId: number,
-  snapshot: Omit<MovieDetailSnapshot, 'fetchedAt'> & SnapshotInput
+  snapshot: Omit<MovieDetailSnapshot, 'fetchedAt'> & SnapshotInput,
+  instanceId: string = DEFAULT_INSTANCE
 ) {
-  setWithLimit(movieDetailCache, movieId, withFetchedAt(snapshot));
+  setWithLimit(movieDetailCache, cacheKey(instanceId, movieId), withFetchedAt(snapshot));
 }
 
-export function clearMovieDetailSnapshot(movieId: number) {
-  movieDetailCache.delete(movieId);
+export function clearMovieDetailSnapshot(movieId: number, instanceId: string = DEFAULT_INSTANCE) {
+  movieDetailCache.delete(cacheKey(instanceId, movieId));
 }

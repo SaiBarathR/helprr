@@ -39,8 +39,15 @@ export default function SettingsIndexPage() {
         const res = await fetch('/api/services');
         if (!res.ok) return;
         const data = (await res.json()) as Array<{ type?: string }>;
+        // Count distinct service TYPES that have at least one connection — a type
+        // with several instances (e.g. two Sonarr) still counts once, so the total
+        // can't exceed SERVICE_TYPES.length.
         const configured = Array.isArray(data)
-          ? data.filter((c) => typeof c?.type === 'string' && (SERVICE_TYPES as readonly string[]).includes(c.type)).length
+          ? new Set(
+              data
+                .filter((c) => typeof c?.type === 'string' && (SERVICE_TYPES as readonly string[]).includes(c.type))
+                .map((c) => c.type)
+            ).size
           : 0;
         if (!cancelled) {
           setServiceCount({ configured, total: SERVICE_TYPES.length });

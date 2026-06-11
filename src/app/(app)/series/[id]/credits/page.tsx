@@ -5,6 +5,16 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { CreditsListPage, type CreditPerson } from '@/components/media/credits-list-page';
 
+// Append the viewing instance to a Sonarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 interface SeriesCreditsResponse {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
   crew: { id: number; name: string; profilePath: string | null; job: string }[];
@@ -15,6 +25,7 @@ export default function SeriesCreditsPage() {
   const searchParams = useSearchParams();
   const seriesId = Number(id);
   const initialTab = searchParams.get('type') === 'crew' ? 'crew' : 'cast';
+  const instance = searchParams.get('instance') ?? undefined;
 
   const [cast, setCast] = useState<CreditPerson[]>([]);
   const [crew, setCrew] = useState<CreditPerson[]>([]);
@@ -29,8 +40,8 @@ export default function SeriesCreditsPage() {
 
     try {
       const [seriesRes, creditsRes] = await Promise.all([
-        fetch(`/api/sonarr/${seriesId}`, { signal }),
-        fetch(`/api/sonarr/${seriesId}/credits`, { signal }),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}`, { signal }),
+        sonarrFetch(instance, `/api/sonarr/${seriesId}/credits`, { signal }),
       ]);
 
       if (signal.aborted) return;
@@ -65,7 +76,7 @@ export default function SeriesCreditsPage() {
     } finally {
       if (!signal.aborted) setLoading(false);
     }
-  }, [seriesId]);
+  }, [instance, seriesId]);
 
   useEffect(() => {
     const controller = new AbortController();

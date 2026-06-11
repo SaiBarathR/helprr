@@ -94,16 +94,16 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         const tmdbId = req.media?.tmdbId;
         const tvdbId = req.media?.tvdbId ?? null;
 
-        let helprr: { type: 'movie' | 'series'; id: number } | null = null;
+        let helprr: { type: 'movie' | 'series'; id: number; instanceId: string } | null = null;
         if (lookups) {
           if (req.type === 'movie' && tmdbId) {
-            const id = lookups.radarrByTmdbId.get(tmdbId);
-            if (id) helprr = { type: 'movie', id };
+            const ref = lookups.radarrByTmdbId.get(tmdbId);
+            if (ref) helprr = { type: 'movie', id: ref.id, instanceId: ref.instanceId };
           } else if (req.type === 'tv') {
             const byTvdb = tvdbId ? lookups.sonarrByTvdbId.get(tvdbId) : undefined;
             const byTmdb = tmdbId ? lookups.sonarrByTmdbId.get(tmdbId) : undefined;
-            const id = byTvdb ?? byTmdb;
-            if (id) helprr = { type: 'series', id };
+            const ref = byTvdb ?? byTmdb;
+            if (ref) helprr = { type: 'series', id: ref.id, instanceId: ref.instanceId };
           }
         }
 

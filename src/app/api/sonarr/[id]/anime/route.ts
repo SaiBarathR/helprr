@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { requireAuth, requireAdmin, requireCapability } from '@/lib/auth';
-import { getSonarrClient } from '@/lib/service-helpers';
+import { resolveConnection } from '@/lib/arr-instances';
+import { SonarrClient } from '@/lib/sonarr-client';
 import {
   addManualEntry,
   clearManualSeriesAniListMapping,
@@ -14,13 +15,15 @@ import type { SonarrSeries } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import { anilistRateLimitResponse } from '@/lib/anilist-http';
 
-async function getAnimeSeries(id: string) {
+async function getAnimeSeries(id: string, instanceId?: string): Promise<{ series: SonarrSeries; sonarrInstanceId: string }> {
   const seriesId = Number(id);
   if (!Number.isFinite(seriesId) || seriesId <= 0) {
     throw new Error('Invalid series ID');
   }
 
-  const client = await getSonarrClient();
+  // Resolve the connection so the AniList mapping is keyed by this exact instance.
+  const connection = await resolveConnection('SONARR', instanceId);
+  const client = new SonarrClient(connection.url, connection.apiKey);
   let series: SonarrSeries;
   try {
     series = await client.getSeriesById(seriesId);
@@ -38,7 +41,7 @@ async function getAnimeSeries(id: string) {
     throw new Error('Series is not an anime item');
   }
 
-  return series;
+  return { series, sonarrInstanceId: connection.id };
 }
 
 function errorStatus(message: string): number {
@@ -63,7 +66,8 @@ async function getHandler(
 
   try {
     const { id } = await params;
-    const series = await getAnimeSeries(id);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const { series, sonarrInstanceId } = await getAnimeSeries(id, instanceId);
     const searchParams = new URL(request.url).searchParams;
 
     const detailRaw = searchParams.get('detail');
@@ -72,12 +76,12 @@ async function getHandler(
       if (!Number.isFinite(anilistMediaId) || anilistMediaId <= 0) {
         return NextResponse.json({ error: 'Invalid AniList media ID' }, { status: 400 });
       }
-      const response = await getSeriesEntryDetail(series, anilistMediaId);
+      const response = await getSeriesEntryDetail(series, sonarrInstanceId, anilistMediaId);
       return NextResponse.json(response);
     }
 
     const scope = searchParams.get('full') === '1' ? 'all' : 'primary';
-    const response = await getSeriesAniListResponse(series, { scope });
+    const response = await getSeriesAniListResponse(series, sonarrInstanceId, { scope });
     return NextResponse.json(response);
   } catch (error) {
     const rateLimited = anilistRateLimitResponse(error);
@@ -106,8 +110,9 @@ async function postHandler(
     }
 
     const { id } = await params;
-    const series = await getAnimeSeries(id);
-    const response = await addManualEntry(series, anilistMediaId);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const { series, sonarrInstanceId } = await getAnimeSeries(id, instanceId);
+    const response = await addManualEntry(series, sonarrInstanceId, anilistMediaId);
     return NextResponse.json(response);
   } catch (error) {
     const rateLimited = anilistRateLimitResponse(error);
@@ -135,8 +140,9 @@ async function patchHandler(
     }
 
     const { id } = await params;
-    const series = await getAnimeSeries(id);
-    const response = await setPrimaryEntry(series, primaryId);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const { series, sonarrInstanceId } = await getAnimeSeries(id, instanceId);
+    const response = await setPrimaryEntry(series, sonarrInstanceId, primaryId);
     return NextResponse.json(response);
   } catch (error) {
     const rateLimited = anilistRateLimitResponse(error);
@@ -158,7 +164,8 @@ async function deleteHandler(
 
   try {
     const { id } = await params;
-    const series = await getAnimeSeries(id);
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const { series, sonarrInstanceId } = await getAnimeSeries(id, instanceId);
     const raw = new URL(request.url).searchParams.get('anilistMediaId');
 
     if (raw != null && raw !== '') {
@@ -166,11 +173,11 @@ async function deleteHandler(
       if (!Number.isFinite(anilistMediaId) || anilistMediaId <= 0) {
         return NextResponse.json({ error: 'Invalid AniList media ID' }, { status: 400 });
       }
-      const response = await removeManualEntry(series, anilistMediaId);
+      const response = await removeManualEntry(series, sonarrInstanceId, anilistMediaId);
       return NextResponse.json(response);
     }
 
-    const response = await clearManualSeriesAniListMapping(series);
+    const response = await clearManualSeriesAniListMapping(series, sonarrInstanceId);
     return NextResponse.json(response);
   } catch (error) {
     const rateLimited = anilistRateLimitResponse(error);

@@ -14,7 +14,8 @@ async function getHandler(
     const { id } = await params;
     const { searchParams } = new URL(request.url);
     const includeEpisodeFile = searchParams.get('includeEpisodeFile') === 'true';
-    const client = await getSonarrClient();
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const client = await getSonarrClient(instanceId);
     const episodes = await client.getEpisodes(Number(id), includeEpisodeFile);
     return NextResponse.json(episodes);
   } catch (error) {

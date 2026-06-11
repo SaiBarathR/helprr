@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient, getLidarrClient, getJellyfinClient } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients, getJellyfinClient } from '@/lib/service-helpers';
 import { requireUser } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import type { DiskSpace, ServicesStatsResponse } from '@/types/service-stats';
@@ -7,6 +7,14 @@ import { withApiLogging } from '@/lib/api-logger';
 
 function mapDiskSpace(disks: Array<DiskSpace | null | undefined>): DiskSpace[] {
   return disks.filter((disk): disk is DiskSpace => Boolean(disk));
+}
+
+// Instances often share storage, so the same path can come back from several;
+// dedupe by path (first wins) when merging disk space across instances.
+function dedupeDiskSpace(disks: DiskSpace[]): DiskSpace[] {
+  const byPath = new Map<string, DiskSpace>();
+  for (const disk of disks) if (!byPath.has(disk.path)) byPath.set(disk.path, disk);
+  return [...byPath.values()];
 }
 
 async function getHandler() {
@@ -22,65 +30,72 @@ async function getHandler() {
   // health, so a member without the cap doesn't learn its counts/disk usage.
   // Aggregates (activeDownloads, diskSpace) only fold in services the user can view.
 
-  // Fetch Radarr stats
+  // Per-instance: counts + active downloads sum across all instances of a type;
+  // disk space is unioned across instances and deduped by path below.
+  const allDisks: DiskSpace[] = [];
+
+  // Fetch Radarr stats (summed across instances)
   if (can(user, 'movies.view')) {
     try {
-      const radarr = await getRadarrClient();
-      const movies = await radarr.getMovies();
-      stats.totalMovies = movies.length;
-
-      const queue = await radarr.getQueue(1, 1);
-      activeDownloads += queue.totalRecords ?? 0;
-      hasDownloadCount = true;
-
-      const diskSpace = await radarr.getDiskSpace();
-      if (Array.isArray(diskSpace)) {
-        const mapped = mapDiskSpace(diskSpace);
-        if (mapped.length > 0) stats.diskSpace = mapped;
+      const instances = await getRadarrClients();
+      if (instances.length > 0) {
+        let total = 0;
+        for (const { client } of instances) {
+          try {
+            total += (await client.getMovies()).length;
+            activeDownloads += (await client.getQueue(1, 1)).totalRecords ?? 0;
+            hasDownloadCount = true;
+            const ds = await client.getDiskSpace();
+            if (Array.isArray(ds)) allDisks.push(...mapDiskSpace(ds));
+          } catch {}
+        }
+        stats.totalMovies = total;
       }
     } catch {}
   }
 
-  // Fetch Sonarr stats
+  // Fetch Sonarr stats (summed across instances)
   if (can(user, 'series.view')) {
     try {
-      const sonarr = await getSonarrClient();
-      const series = await sonarr.getSeries();
-      stats.totalSeries = series.length;
-
-      const queue = await sonarr.getQueue(1, 1);
-      activeDownloads += queue.totalRecords ?? 0;
-      hasDownloadCount = true;
-
-      if (!stats.diskSpace?.length) {
-        const diskSpace = await sonarr.getDiskSpace();
-        if (Array.isArray(diskSpace)) {
-          const mapped = mapDiskSpace(diskSpace);
-          if (mapped.length > 0) stats.diskSpace = mapped;
+      const instances = await getSonarrClients();
+      if (instances.length > 0) {
+        let total = 0;
+        for (const { client } of instances) {
+          try {
+            total += (await client.getSeries()).length;
+            activeDownloads += (await client.getQueue(1, 1)).totalRecords ?? 0;
+            hasDownloadCount = true;
+            const ds = await client.getDiskSpace();
+            if (Array.isArray(ds)) allDisks.push(...mapDiskSpace(ds));
+          } catch {}
         }
+        stats.totalSeries = total;
       }
     } catch {}
   }
 
-  // Fetch Lidarr stats
+  // Fetch Lidarr stats (summed across instances)
   if (can(user, 'music.view')) {
     try {
-      const lidarr = await getLidarrClient();
-      const artists = await lidarr.getArtists();
-      stats.totalArtists = artists.length;
-
-      const queue = await lidarr.getQueue(1, 1);
-      activeDownloads += queue.totalRecords ?? 0;
-      hasDownloadCount = true;
-
-      if (!stats.diskSpace?.length) {
-        const diskSpace = await lidarr.getDiskSpace();
-        if (Array.isArray(diskSpace)) {
-          const mapped = mapDiskSpace(diskSpace);
-          if (mapped.length > 0) stats.diskSpace = mapped;
+      const instances = await getLidarrClients();
+      if (instances.length > 0) {
+        let total = 0;
+        for (const { client } of instances) {
+          try {
+            total += (await client.getArtists()).length;
+            activeDownloads += (await client.getQueue(1, 1)).totalRecords ?? 0;
+            hasDownloadCount = true;
+            const ds = await client.getDiskSpace();
+            if (Array.isArray(ds)) allDisks.push(...mapDiskSpace(ds));
+          } catch {}
         }
+        stats.totalArtists = total;
       }
     } catch {}
+  }
+
+  if (allDisks.length > 0) {
+    stats.diskSpace = dedupeDiskSpace(allDisks);
   }
 
   if (hasDownloadCount) {

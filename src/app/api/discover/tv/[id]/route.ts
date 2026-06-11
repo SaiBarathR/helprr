@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import {
   buildLibraryLookups,
@@ -16,8 +16,6 @@ import { resolveTitleWatchProviders } from '@/lib/watch-providers';
 import type {
   DiscoverTvFullDetail,
   DiscoverItem,
-  RadarrMovie,
-  SonarrSeries,
 } from '@/types';
 
 function toYear(value?: string | null) {
@@ -27,24 +25,7 @@ function toYear(value?: string | null) {
 }
 
 async function getLibraries() {
-  const [movies, series] = await Promise.all([
-    (async () => {
-      try {
-        const client = await getRadarrClient();
-        return await client.getMovies();
-      } catch {
-        return [] as RadarrMovie[];
-      }
-    })(),
-    (async () => {
-      try {
-        const client = await getSonarrClient();
-        return await client.getSeries();
-      } catch {
-        return [] as SonarrSeries[];
-      }
-    })(),
-  ]);
+  const { movies, series } = await loadTaggedLibrary();
   return { movies, series };
 }
 

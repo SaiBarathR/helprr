@@ -7,10 +7,21 @@ import { CreditsListPage, type CreditPerson } from '@/components/media/credits-l
 import { crewRolePriority } from '@/lib/crew-priority';
 import type { RadarrCredit } from '@/types';
 
+// Append the viewing instance to a Radarr API path so the page reads/mutates the
+// correct instance. No-op (single-instance-identical) when instance is undefined.
+function withInstanceQuery(url: string, instance?: string): string {
+  if (!instance) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
+}
+function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  return fetch(withInstanceQuery(path, instance), init);
+}
+
 export default function MovieCreditsPage() {
   const { id } = useParams();
   const searchParams = useSearchParams();
   const movieId = Number(id);
+  const instance = searchParams.get('instance') ?? undefined;
   const initialTab = searchParams.get('type') === 'crew' ? 'crew' : 'cast';
 
   const [credits, setCredits] = useState<RadarrCredit[]>([]);
@@ -27,8 +38,8 @@ export default function MovieCreditsPage() {
     setLoading(true);
     try {
       const [movieRes, creditsRes] = await Promise.all([
-        fetch(`/api/radarr/${movieId}`, { signal }),
-        fetch(`/api/radarr/credit?movieId=${movieId}`, { signal }),
+        radarrFetch(instance, `/api/radarr/${movieId}`, { signal }),
+        radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`, { signal }),
       ]);
 
       if (signal.aborted) return;
@@ -50,7 +61,7 @@ export default function MovieCreditsPage() {
     } finally {
       if (!signal.aborted) setLoading(false);
     }
-  }, [movieId]);
+  }, [instance, movieId]);
 
   useEffect(() => {
     const controller = new AbortController();

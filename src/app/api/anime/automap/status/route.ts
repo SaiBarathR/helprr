@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, requireAdmin } from '@/lib/auth';
 import { prisma } from '@/lib/db';
-import { getSonarrClient } from '@/lib/service-helpers';
+import { getSonarrClients } from '@/lib/service-helpers';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { pollingService } from '@/lib/polling-service';
 import { withApiLogging } from '@/lib/api-logger';
@@ -30,24 +30,28 @@ async function getHandler(): Promise<NextResponse> {
   };
 
   try {
-    const client = await getSonarrClient();
-    const anime = (await client.getSeries()).filter((s) => s.seriesType === 'anime');
-    const rows = await prisma.aniListSeriesMapping.findMany({
-      where: { sonarrSeriesId: { in: anime.map((s) => s.id) } },
-      select: { sonarrSeriesId: true, state: true },
-    });
-    const stateById = new Map(rows.map((r) => [r.sonarrSeriesId, r.state]));
+    // Sum across every Sonarr instance; mappings are scoped per instance.
     let mapped = 0;
     let unmatched = 0;
     let neverMapped = 0;
-    for (const s of anime) {
-      const state = stateById.get(s.id);
-      if (state === 'AUTO_MATCH' || state === 'MANUAL_MATCH') mapped += 1;
-      else if (state === 'AUTO_UNMATCHED' || state === 'MANUAL_NONE') unmatched += 1;
-      else neverMapped += 1;
+    let total = 0;
+    for (const { connection, client } of await getSonarrClients()) {
+      const anime = (await client.getSeries()).filter((s) => s.seriesType === 'anime');
+      const rows = await prisma.aniListSeriesMapping.findMany({
+        where: { sonarrInstanceId: connection.id, sonarrSeriesId: { in: anime.map((s) => s.id) } },
+        select: { sonarrSeriesId: true, state: true },
+      });
+      const stateById = new Map(rows.map((r) => [r.sonarrSeriesId, r.state]));
+      for (const s of anime) {
+        const state = stateById.get(s.id);
+        if (state === 'AUTO_MATCH' || state === 'MANUAL_MATCH') mapped += 1;
+        else if (state === 'AUTO_UNMATCHED' || state === 'MANUAL_NONE') unmatched += 1;
+        else neverMapped += 1;
+      }
+      total += anime.length;
     }
 
-    return NextResponse.json({ ...base, mapped, unmatched, neverMapped, total: anime.length });
+    return NextResponse.json({ ...base, mapped, unmatched, neverMapped, total });
   } catch {
     // Sonarr unavailable — counts need the anime library, so they render as
     // "—" rather than misleading DB-wide numbers that include non-anime rows.

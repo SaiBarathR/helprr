@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { loadTaggedLibrary } from '@/lib/service-helpers';
 import {
   searchAnime,
   browseAnime,
@@ -13,6 +13,7 @@ import {
   buildLibraryLookups,
   matchMovieInLibrary,
   matchSeriesInLibrary,
+  type Tagged,
 } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
@@ -57,31 +58,14 @@ const VALID_STATUSES = new Set<AniListMediaStatus>([
 ]);
 
 async function getLibraries() {
-  const [movies, series] = await Promise.all([
-    (async () => {
-      try {
-        const client = await getRadarrClient();
-        return await client.getMovies();
-      } catch {
-        return [] as RadarrMovie[];
-      }
-    })(),
-    (async () => {
-      try {
-        const client = await getSonarrClient();
-        return await client.getSeries();
-      } catch {
-        return [] as SonarrSeries[];
-      }
-    })(),
-  ]);
+  const { movies, series } = await loadTaggedLibrary();
   return { movies, series };
 }
 
 function annotateAnimeItems(
   items: AniListListItem[],
-  movies: RadarrMovie[],
-  series: SonarrSeries[]
+  movies: Tagged<RadarrMovie>[],
+  series: Tagged<SonarrSeries>[]
 ): (AniListListItem & { library?: DiscoverLibraryStatus })[] {
   if (!movies.length && !series.length) return items;
 

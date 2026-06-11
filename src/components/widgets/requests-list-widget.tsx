@@ -409,7 +409,7 @@ export function RequestsListWidget({
           const canRetry = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.FAILED;
 
           const helprrHref = req.enriched.helprr
-            ? `/${req.enriched.helprr.type === 'series' ? 'series' : 'movies'}/${req.enriched.helprr.id}`
+            ? `/${req.enriched.helprr.type === 'series' ? 'series' : 'movies'}/${req.enriched.helprr.id}?instance=${req.enriched.helprr.instanceId}`
             : null;
           const jellyfinHref =
             jellyfinExternal && req.media?.jellyfinMediaId

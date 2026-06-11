@@ -11,6 +11,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-purple-400',
     placeholder: 'http://localhost:7878',
     supportsExternalUrl: true,
+    supportsMultiInstance: true,
   },
   {
     type: 'SONARR' as const,
@@ -22,6 +23,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-blue-400',
     placeholder: 'http://localhost:8989',
     supportsExternalUrl: true,
+    supportsMultiInstance: true,
   },
   {
     type: 'LIDARR' as const,
@@ -33,6 +35,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-emerald-400',
     placeholder: 'http://localhost:8686',
     supportsExternalUrl: true,
+    supportsMultiInstance: true,
   },
   {
     type: 'QBITTORRENT' as const,
@@ -44,6 +47,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-green-400',
     placeholder: 'http://localhost:8080',
     supportsExternalUrl: false,
+    supportsMultiInstance: false,
   },
   {
     type: 'PROWLARR' as const,
@@ -55,6 +59,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-orange-400',
     placeholder: 'http://localhost:9696',
     supportsExternalUrl: false,
+    supportsMultiInstance: false,
   },
   {
     type: 'JELLYFIN' as const,
@@ -66,6 +71,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-cyan-400',
     placeholder: 'http://localhost:8096',
     supportsExternalUrl: true,
+    supportsMultiInstance: false,
   },
   {
     type: 'TMDB' as const,
@@ -77,6 +83,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-cyan-400',
     placeholder: 'https://api.themoviedb.org/3',
     supportsExternalUrl: false,
+    supportsMultiInstance: false,
   },
   {
     type: 'SEERR' as const,
@@ -88,6 +95,7 @@ export const SERVICE_CONFIG = [
     iconColor: 'text-amber-400',
     placeholder: 'http://localhost:5055',
     supportsExternalUrl: true,
+    supportsMultiInstance: false,
   },
 ] as const;
 

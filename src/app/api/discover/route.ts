@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTMDBClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { annotateDiscoverItems, dedupeDiscoverItems, normalizeTmdbItem } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
@@ -8,8 +8,6 @@ import type {
   DiscoverFilters,
   DiscoverItem,
   DiscoverResponse,
-  RadarrMovie,
-  SonarrSeries,
 } from '@/types';
 import type { TmdbDiscoverParams, TmdbListItem } from '@/lib/tmdb-client';
 import { withApiLogging } from '@/lib/api-logger';
@@ -224,26 +222,7 @@ function normalizeItems(results: TmdbListItem[], mediaType: 'all' | 'movie' | 't
 }
 
 async function getLibraries() {
-  const [movies, series] = await Promise.all([
-    (async () => {
-      try {
-        const client = await getRadarrClient();
-        return await client.getMovies();
-      } catch {
-        return [] as RadarrMovie[];
-      }
-    })(),
-    (async () => {
-      try {
-        const client = await getSonarrClient();
-        return await client.getSeries();
-      } catch {
-        return [] as SonarrSeries[];
-      }
-    })(),
-  ]);
-
-  return { movies, series };
+  return loadTaggedLibrary();
 }
 
 async function buildSections() {
