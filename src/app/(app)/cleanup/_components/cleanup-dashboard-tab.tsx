@@ -89,7 +89,11 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     confirmGate: boolean;
   }>({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
 
+  // Latest-request-wins: a page change can supersede an in-flight poll/refresh,
+  // so stamp each call and drop responses a newer refresh has already replaced.
+  const refreshReqIdRef = useRef(0);
   const refresh = useCallback(async () => {
+    const reqId = ++refreshReqIdRef.current;
     setLoading(true);
     try {
       const [statsRes, strikesRes, queueCfg, downloadCfg] = await Promise.all([
@@ -100,6 +104,9 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         fetch('/api/cleanup/queue/config').then(jsonOk<Record<string, unknown>>),
         fetch('/api/cleanup/download/config').then(jsonOk<Record<string, unknown>>),
       ]);
+      // A newer refresh (e.g. a page change) started while this was in flight —
+      // drop this stale response so it can't overwrite the current page.
+      if (reqId !== refreshReqIdRef.current) return;
       setStats(statsRes);
       setStrikes(strikesRes.records);
       setStrikeTotal(strikesRes.total);
@@ -120,9 +127,11 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         },
       });
     } catch {
-      toast.error('Failed to load dashboard');
+      if (reqId === refreshReqIdRef.current) toast.error('Failed to load dashboard');
     } finally {
-      setLoading(false);
+      // Only the latest request clears loading; a superseded one leaves it set
+      // for the in-flight winner.
+      if (reqId === refreshReqIdRef.current) setLoading(false);
     }
   }, [strikePage]);
 
