@@ -89,8 +89,13 @@ async function checkConnection(connection: ServiceConnection): Promise<void> {
       await client.verify();
       return;
     }
-    default:
-      return;
+    default: {
+      // Exhaustiveness: adding a ServiceType without a probe here is a compile
+      // error, and at runtime an unknown type is reported unhealthy rather than
+      // silently healthy.
+      const _exhaustive: never = connection.type;
+      throw new Error(`Unhandled service type: ${String(_exhaustive)}`);
+    }
   }
 }
 

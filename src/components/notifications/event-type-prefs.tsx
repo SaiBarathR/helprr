@@ -100,6 +100,9 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
     } catch {
       toast.error('Failed to save filter');
+      // The inputs updated optimistically on change; re-sync from the server so
+      // the unsaved value doesn't linger after a failed save.
+      void loadPreferences();
     }
   }
 

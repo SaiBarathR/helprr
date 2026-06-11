@@ -49,11 +49,11 @@ export function PushReenableBanner() {
           <div className="font-medium text-red-200">Notifications stopped on this device</div>
           {permissionDenied ? (
             <div className="mt-0.5 text-xs text-muted-foreground">
-              Notifications are blocked. Re-allow them in your browser/iOS settings, then{' '}
+              Notifications are blocked. Re-allow them in your device or browser settings, then{' '}
               <Link href="/settings/notifications" className="text-primary underline">
-                re-enable here
-              </Link>
-              .
+                open notification settings
+              </Link>{' '}
+              to turn them back on.
             </div>
           ) : (
             <div className="mt-0.5 text-xs text-muted-foreground">

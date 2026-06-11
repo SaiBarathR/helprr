@@ -250,10 +250,18 @@ async function handleRetryAction(data: Record<string, unknown>): Promise<void> {
   }
 }
 
+function isSameOrigin(clientUrl: string): boolean {
+  try {
+    return new URL(clientUrl).origin === self.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function focusOrOpen(url: string): Promise<unknown> {
   return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
     for (const client of clients) {
-      if (client.url.includes(self.location.origin) && 'focus' in client) {
+      if (isSameOrigin(client.url) && 'focus' in client) {
         client.focus();
         (client as WindowClient).navigate(url);
         return;

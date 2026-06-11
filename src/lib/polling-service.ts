@@ -630,22 +630,31 @@ export class PollingService {
           const serviceName = SERVICE_LABELS[connection.type] ?? connection.type;
 
           if (prev !== null && prev !== ok) {
-            if (!ok) {
-              await this.notifyAndLog({
-                eventType: 'serviceDown',
-                title: `${serviceName} is unreachable`,
-                body: (error ? `${connection.label}: ${error}` : `${connection.label} is not responding`).slice(0, 200),
-                url: '/settings/status',
-                metadata: { source: 'service-health', id: connection.id, redirect: '/settings/status' },
-              }, { service: 'reachability', instanceId: connection.id, reason: 'service-down' });
-            } else {
-              await this.notifyAndLog({
-                eventType: 'serviceRestored',
-                title: `${serviceName} is back online`,
-                body: `${connection.label} is responding again`,
-                url: '/settings/status',
-                metadata: { source: 'service-health', id: connection.id, redirect: '/settings/status' },
-              }, { service: 'reachability', instanceId: connection.id, reason: 'service-restored' });
+            // Isolate notify failures: the lastReachable write below must always
+            // run, or we'd re-detect the same transition and re-alert next cycle.
+            try {
+              if (!ok) {
+                await this.notifyAndLog({
+                  eventType: 'serviceDown',
+                  title: `${serviceName} is unreachable`,
+                  body: (error ? `${connection.label}: ${error}` : `${connection.label} is not responding`).slice(0, 200),
+                  url: '/settings/status',
+                  metadata: { source: 'service-health', id: connection.id, redirect: '/settings/status' },
+                }, { service: 'reachability', instanceId: connection.id, reason: 'service-down' });
+              } else {
+                await this.notifyAndLog({
+                  eventType: 'serviceRestored',
+                  title: `${serviceName} is back online`,
+                  body: `${connection.label} is responding again`,
+                  url: '/settings/status',
+                  metadata: { source: 'service-health', id: connection.id, redirect: '/settings/status' },
+                }, { service: 'reachability', instanceId: connection.id, reason: 'service-restored' });
+              }
+            } catch (notifyError) {
+              logger.warn('Service reachability notify failed', {
+                instanceId: connection.id,
+                error: errorMessage(notifyError),
+              }, { scope: 'polling' });
             }
           }
 
