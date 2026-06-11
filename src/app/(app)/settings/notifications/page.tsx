@@ -16,6 +16,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { EventTypePrefs } from '@/components/notifications/event-type-prefs';
+import { QuietHoursSection } from '@/components/notifications/quiet-hours-section';
 import { useMe } from '@/components/permission-provider';
 
 const TIMING_OPTIONS = [
@@ -82,8 +83,6 @@ export default function NotificationsSettingsPage() {
     loading: pushLoading,
     error: pushError,
     subscriptionEndpoint,
-    wasReregistered,
-    dismissReregisteredNotice,
   } = usePushNotifications();
   const [testing, setTesting] = useState(false);
 
@@ -168,19 +167,6 @@ export default function NotificationsSettingsPage() {
         </GroupedSection>
       )}
 
-      {wasReregistered && (
-        <GroupedSection>
-          <div className="px-4 py-3 flex items-center justify-between gap-3 text-sm">
-            <span className="text-amber-300">
-              Notifications were re-registered for this device.
-            </span>
-            <Button variant="ghost" size="sm" onClick={dismissReregisteredNotice}>
-              Dismiss
-            </Button>
-          </div>
-        </GroupedSection>
-      )}
-
       {isSupported && (
         <GroupedSection title="This device" footer="Per-device — preferences below apply to this browser/PWA only">
           {!isSubscribed ? (
@@ -250,6 +236,8 @@ export default function NotificationsSettingsPage() {
       {isSupported && isSubscribed && subscriptionEndpoint && (
         <EventTypePrefs subscriptionEndpoint={subscriptionEndpoint} />
       )}
+
+      <QuietHoursSection />
 
       {isAdmin && (
       <GroupedSection title="Upcoming releases" footer="Synced across devices">

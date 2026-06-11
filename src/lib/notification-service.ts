@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { can } from '@/lib/permissions';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { isKnownEventType } from '@/lib/notification-events';
+import { getAppTimeZone, toZonedDate } from '@/lib/timezone';
 
 let vapidInitialized = false;
 let vapidMissingLogged = false;
@@ -43,6 +44,8 @@ const TTL_BY_EVENT: Record<string, number> = {
   jellyfinPlaybackStart: 60,
   jellyfinItemAdded: 3600,
   healthWarning: 3600,
+  serviceDown: 3600,
+  serviceRestored: 3600,
   upcomingPremiere: 86400,
   cleanupStrike: 60,
   cleanupRemoved: 60,
@@ -88,6 +91,41 @@ export function buildTag(eventType: string, metadata: Record<string, unknown> | 
   return id !== undefined && id !== null ? `${eventType}-${String(id)}` : eventType;
 }
 
+// Action buttons + the data the service worker needs to act on them without
+// opening the app. requestCreated → Approve/Decline; downloadFailed → Retry.
+// Only emitted where there's a clean server action to call. iOS ignores the
+// buttons (it falls back to the deep-link), so these are a progressive
+// enhancement for Android/desktop.
+function buildNotificationActions(
+  eventType: string,
+  metadata: Record<string, unknown>,
+): { actions?: { action: string; title: string }[]; data?: Record<string, unknown> } {
+  if (eventType === 'requestCreated' && metadata.id != null) {
+    return {
+      actions: [
+        { action: 'approve', title: 'Approve' },
+        { action: 'decline', title: 'Decline' },
+      ],
+      data: { pendingId: String(metadata.id) },
+    };
+  }
+  if (eventType === 'downloadFailed') {
+    if (metadata.source === 'sonarr' && metadata.episodeId != null) {
+      return {
+        actions: [{ action: 'retry', title: 'Retry' }],
+        data: { source: 'sonarr', instanceId: metadata.instanceId ?? null, episodeId: metadata.episodeId },
+      };
+    }
+    if (metadata.source === 'radarr' && metadata.movieId != null) {
+      return {
+        actions: [{ action: 'retry', title: 'Retry' }],
+        data: { source: 'radarr', instanceId: metadata.instanceId ?? null, movieId: metadata.movieId },
+      };
+    }
+  }
+  return {};
+}
+
 export function safeNotificationMetadata(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!metadata) return {};
   const safeKeys = [
@@ -111,6 +149,77 @@ export function safeNotificationMetadata(metadata: Record<string, unknown> | und
       .filter((key) => metadata[key] !== undefined)
       .map((key) => [key, metadata[key]])
   );
+}
+
+// Tag/quality filters only make sense for the per-item download/import events
+// that actually carry quality + tag metadata. Calendar/health/request/etc.
+// events ignore the filters entirely.
+const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'downloadFailed', 'importFailed']);
+
+// Critical alerts always break through a user's quiet hours — a service going
+// down at 3am is exactly what they'd want to know about.
+const QUIET_HOURS_BYPASS_EVENTS = new Set(['healthWarning', 'serviceDown', 'serviceRestored']);
+
+interface QuietHoursSettings {
+  quietHoursEnabled: boolean;
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
+  timeZone: string | null;
+}
+
+// True if `now` falls inside the recipient's quiet-hours window, evaluated in
+// the user's own timezone (falling back to the app's global timezone). The
+// window is hour-aligned [start, end); start > end means it crosses midnight
+// (e.g. 23 → 7). Disabled / incomplete config is never "within".
+function isWithinQuietHours(
+  user: { settings?: QuietHoursSettings | null } | null,
+  now: Date,
+): boolean {
+  const s = user?.settings;
+  if (!s || !s.quietHoursEnabled || s.quietHoursStart == null || s.quietHoursEnd == null) return false;
+  const start = s.quietHoursStart;
+  const end = s.quietHoursEnd;
+  if (start === end) return false; // zero-length window = effectively off
+  const hour = toZonedDate(now, s.timeZone ?? getAppTimeZone()).getHours();
+  return start < end ? hour >= start && hour < end : hour >= start || hour < end;
+}
+
+function parseFilterList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+// Per-device include-filter: when a quality and/or tag filter is set on a
+// filterable event, the item must match (case-insensitive). Quality matches if
+// the item's quality name is in the list; tags match if ANY of the item's tag
+// labels is in the list. A set filter with no matching item data → no match
+// (that's the point of "only 4K"). Events that aren't filterable, or prefs with
+// no filters, always pass.
+function matchesFilters(
+  pref: { tagFilter: string | null; qualityFilter: string | null } | undefined,
+  eventType: string,
+  metadata: Record<string, unknown>,
+): boolean {
+  if (!FILTERABLE_EVENTS.has(eventType) || !pref) return true;
+
+  const qualityFilter = parseFilterList(pref.qualityFilter);
+  if (qualityFilter.length > 0) {
+    const quality = typeof metadata.qualityName === 'string' ? metadata.qualityName.toLowerCase() : '';
+    if (!quality || !qualityFilter.includes(quality)) return false;
+  }
+
+  const tagFilter = parseFilterList(pref.tagFilter);
+  if (tagFilter.length > 0) {
+    const tags = Array.isArray(metadata.tags)
+      ? metadata.tags.map((t) => String(t).toLowerCase())
+      : [];
+    if (!tags.some((t) => tagFilter.includes(t))) return false;
+  }
+
+  return true;
 }
 
 export function initVapid() {
@@ -138,7 +247,14 @@ export function initVapid() {
 
 export async function sendPushNotification(
   subscription: { endpoint: string; p256dh: string; auth: string },
-  payload: { title: string; body: string; tag?: string; url?: string }
+  payload: {
+    title: string;
+    body: string;
+    tag?: string;
+    url?: string;
+    actions?: { action: string; title: string }[];
+    data?: Record<string, unknown>;
+  }
 ): Promise<boolean> {
   // Idempotent — early-returns once initialized. Cheap to call per-send
   // because Next.js loads each API route in a separate module instance,
@@ -273,10 +389,13 @@ export async function notifyEvent(event: {
       revokedAt: null,
       ...(event.userIds ? { userId: { in: event.userIds } } : {}),
     },
-    include: { preferences: true, user: true },
+    include: { preferences: true, user: { include: { settings: true } } },
   });
 
   const tag = buildTag(event.eventType, metadata);
+  const now = new Date();
+  const bypassesQuietHours = QUIET_HOURS_BYPASS_EVENTS.has(event.eventType);
+  const { actions, data: actionData } = buildNotificationActions(event.eventType, metadata);
 
   // Outer gate: the owning user must hold the capability mapped to this event
   // type (a Member never receives cleanup/health/admin pushes). Unmapped event
@@ -296,9 +415,11 @@ export async function notifyEvent(event: {
       }
       const pref = sub.preferences.find((p) => p.eventType === event.eventType);
       if (pref?.enabled === false) return { kind: 'skipped' };
+      if (!matchesFilters(pref, event.eventType, metadata)) return { kind: 'skipped' };
+      if (!bypassesQuietHours && isWithinQuietHours(sub.user, now)) return { kind: 'skipped' };
       const success = await sendPushNotification(
         { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
-        { title: event.title, body: event.body, tag, url: targetUrl }
+        { title: event.title, body: event.body, tag, url: targetUrl, actions, data: actionData }
       );
       return { kind: success ? 'sent' : 'failed' };
     })

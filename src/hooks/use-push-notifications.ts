@@ -2,6 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+const PUSH_ENABLED_FLAG = 'helprr-push-enabled';
+
+function setPushEnabledFlag(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(PUSH_ENABLED_FLAG, '1');
+    else localStorage.removeItem(PUSH_ENABLED_FLAG);
+  } catch {
+    /* localStorage unavailable — ignore */
+  }
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -50,6 +61,10 @@ export function usePushNotifications() {
   const [error, setError] = useState<string | null>(null);
   const [subscriptionEndpoint, setSubscriptionEndpoint] = useState<string | null>(null);
   const [wasReregistered, setWasReregistered] = useState(false);
+  // Tracks whether THIS device ever had push turned on (localStorage), so we can
+  // tell "never enabled" apart from "was enabled but iOS/permission dropped it".
+  const [previouslyEnabled, setPreviouslyEnabled] = useState(false);
+  const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -59,6 +74,12 @@ export function usePushNotifications() {
       window.matchMedia('(display-mode: standalone)').matches ||
       (navigator as unknown as { standalone?: boolean }).standalone === true
     );
+    if ('Notification' in window) setPermission(Notification.permission);
+    try {
+      if (localStorage.getItem(PUSH_ENABLED_FLAG) === '1') setPreviouslyEnabled(true);
+    } catch {
+      /* localStorage unavailable (private mode) — banner just won't fire */
+    }
 
     if (supported) {
       checkSubscription();
@@ -134,6 +155,10 @@ export function usePushNotifications() {
       } else {
         setIsSubscribed(true);
         setSubscriptionEndpoint(sub.endpoint);
+        // An active subscription means this device is opted in — remember it so a
+        // later silent drop (iOS revoking permission) surfaces the re-enable nudge.
+        setPreviouslyEnabled(true);
+        setPushEnabledFlag(true);
       }
     } catch (err) {
       console.warn('[Push] Could not check subscription:', err);
@@ -195,6 +220,9 @@ export function usePushNotifications() {
       setIsSubscribed(true);
       setSubscriptionEndpoint(sub.endpoint);
       setWasReregistered(false);
+      setPreviouslyEnabled(true);
+      setPermission('granted');
+      setPushEnabledFlag(true);
       setLoading(false);
       return { success: true };
     } catch (err) {
@@ -222,6 +250,9 @@ export function usePushNotifications() {
       setIsSubscribed(false);
       setSubscriptionEndpoint(null);
       setWasReregistered(false);
+      // Explicit opt-out: clear the flag so we don't nag them to re-enable.
+      setPreviouslyEnabled(false);
+      setPushEnabledFlag(false);
       setLoading(false);
       return { success: true };
     } catch (err) {
@@ -234,6 +265,13 @@ export function usePushNotifications() {
 
   const dismissReregisteredNotice = useCallback(() => setWasReregistered(false), []);
 
+  // This device opted in before but is no longer subscribed (iOS dropped the
+  // permission/subscription, or the server pruned it and the browser sub is
+  // gone). permissionDenied distinguishes "tap to re-enable" from "must re-allow
+  // in OS settings" — once denied, the browser won't show the prompt again.
+  const permissionDenied = permission === 'denied';
+  const needsReenable = isSupported && !loading && previouslyEnabled && !isSubscribed;
+
   return {
     isSupported,
     isSubscribed,
@@ -245,5 +283,7 @@ export function usePushNotifications() {
     subscriptionEndpoint,
     wasReregistered,
     dismissReregisteredNotice,
+    needsReenable,
+    permissionDenied,
   };
 }

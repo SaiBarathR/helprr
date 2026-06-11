@@ -16,7 +16,8 @@ import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
-import type { QueueItem, QueueResponse, SonarrSeries } from '@/types';
+import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
+import type { QueueItem, QueueResponse, SonarrSeries, Tag } from '@/types';
 import crypto from 'crypto';
 
 // Tolerance (minutes) for the "before_air" firing window. Lets a sluggish poll
@@ -48,6 +49,44 @@ function importFailureBody(item: QueueItem): string {
 function downloadFailureBody(item: QueueItem): string {
   const reason = item.errorMessage?.trim() || firstStatusMessage(item) || '';
   return reason ? `${item.title} — ${reason}` : item.title;
+}
+
+// Per-instance, per-cycle tag-id → label map so queue/history notifications can
+// carry the human tag labels their owning series/movie/artist holds. The tag
+// list is small, so this is one cheap call per service instance. A failure
+// yields an empty map (tags simply won't be available for filtering that cycle).
+async function buildTagMap(client: { getTags: () => Promise<Tag[]> }): Promise<Map<number, string>> {
+  try {
+    const tags = await client.getTags();
+    return new Map(tags.map((t) => [t.id, t.label]));
+  } catch {
+    return new Map();
+  }
+}
+
+// Quality name + resolved tag labels for a queue/history item, attached to the
+// notification metadata so NotificationPreference.tagFilter/qualityFilter can
+// gate it in notifyEvent(). The nested series/movie/artist (which carry the
+// numeric tag ids) are already included on queue/history records via the
+// includeSeries/includeMovie request params.
+function mediaFilterMeta(
+  item: {
+    quality?: { quality?: { name?: string } };
+    series?: { tags?: number[] };
+    movie?: { tags?: number[] };
+    artist?: { tags?: number[] };
+  },
+  tagMap: Map<number, string>,
+): { qualityName?: string; tags?: string[] } {
+  const qualityName = item.quality?.quality?.name;
+  const tagIds = item.series?.tags ?? item.movie?.tags ?? item.artist?.tags ?? [];
+  const tags = tagIds
+    .map((id) => tagMap.get(id))
+    .filter((label): label is string => Boolean(label));
+  return {
+    ...(qualityName ? { qualityName } : {}),
+    ...(tags.length ? { tags } : {}),
+  };
 }
 
 type QueueSnapshot = { id: number; state: string; status: string };
@@ -272,6 +311,7 @@ export class PollingService {
         'pollQBittorrent',
         'pollJellyfin',
         'pollSeerr',
+        'pollServiceReachability',
         'checkUpcoming',
         'checkWatchlistReminders',
         'checkActivityDigest',
@@ -287,6 +327,7 @@ export class PollingService {
         this.pollQBittorrent(),
         this.pollJellyfin(),
         this.pollSeerr(),
+        this.pollServiceReachability(),
         this.checkUpcoming(),
         this.checkWatchlistReminders(),
         this.checkActivityDigest(),
@@ -566,6 +607,63 @@ export class PollingService {
     );
   }
 
+  // Probes every configured service connection and fires a push when one
+  // transitions up→down (serviceDown) or down→up (serviceRestored). State lives
+  // in PollingState.lastReachable, mirroring the lastHealthHash transition
+  // pattern. The first probe of a connection only records a baseline (no alert),
+  // so a server restart while a service is down doesn't re-spam the down alert.
+  private async pollServiceReachability(): Promise<void> {
+    const connections = await prisma.serviceConnection.findMany();
+    if (connections.length === 0) return;
+
+    const states = await prisma.pollingState.findMany({
+      where: { serviceConnectionId: { in: connections.map((c) => c.id) } },
+      select: { serviceConnectionId: true, lastReachable: true },
+    });
+    const prevReachable = new Map(states.map((s) => [s.serviceConnectionId, s.lastReachable]));
+
+    await Promise.all(
+      connections.map(async (connection) => {
+        try {
+          const { ok, error } = await probeServiceHealth(connection);
+          const prev = prevReachable.get(connection.id) ?? null;
+          const serviceName = SERVICE_LABELS[connection.type] ?? connection.type;
+
+          if (prev !== null && prev !== ok) {
+            if (!ok) {
+              await this.notifyAndLog({
+                eventType: 'serviceDown',
+                title: `${serviceName} is unreachable`,
+                body: (error ? `${connection.label}: ${error}` : `${connection.label} is not responding`).slice(0, 200),
+                url: '/settings/status',
+                metadata: { source: 'service-health', id: connection.id, redirect: '/settings/status' },
+              }, { service: 'reachability', instanceId: connection.id, reason: 'service-down' });
+            } else {
+              await this.notifyAndLog({
+                eventType: 'serviceRestored',
+                title: `${serviceName} is back online`,
+                body: `${connection.label} is responding again`,
+                url: '/settings/status',
+                metadata: { source: 'service-health', id: connection.id, redirect: '/settings/status' },
+              }, { service: 'reachability', instanceId: connection.id, reason: 'service-restored' });
+            }
+          }
+
+          await prisma.pollingState.upsert({
+            where: { serviceConnectionId: connection.id },
+            update: { lastReachable: ok },
+            create: { serviceConnectionId: connection.id, lastReachable: ok, lastQueueIds: [] },
+          }).catch(() => {});
+        } catch (error) {
+          logger.debug('Reachability probe failed unexpectedly', {
+            instanceId: connection.id,
+            error: errorMessage(error),
+          }, { scope: 'polling' });
+        }
+      })
+    );
+  }
+
   private async pollSonarr() {
     let instances;
     try {
@@ -591,6 +689,7 @@ export class PollingService {
         });
 
         // Queue polling
+        const tagMap = await buildTagMap(client);
         const queue = await fetchAllQueueRecords(client);
         const prevMap = readQueueSnapshots(state.lastQueueIds);
         const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
@@ -611,6 +710,7 @@ export class PollingService {
             seriesId: item.seriesId,
             seasonNumber: item.seasonNumber ?? item.episode?.seasonNumber,
             episodeId: item.episodeId ?? item.episode?.id,
+            ...mediaFilterMeta(item, tagMap),
           };
           const mediaHref = getMediaHrefFromIds(metadata);
           const queueHref = '/activity?tab=queue&source=sonarr';
@@ -722,6 +822,7 @@ export class PollingService {
               seriesId: item.seriesId,
               seasonNumber: item.episode?.seasonNumber,
               episodeId: item.episodeId ?? item.episode?.id,
+              ...mediaFilterMeta(item, tagMap),
             };
             const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
@@ -799,6 +900,7 @@ export class PollingService {
           create: { serviceConnectionId: instanceId, lastQueueIds: [] },
         });
 
+        const tagMap = await buildTagMap(client);
         const queue = await fetchAllQueueRecords(client);
         const prevMap = readQueueSnapshots(state.lastQueueIds);
         const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
@@ -817,6 +919,7 @@ export class PollingService {
             instanceLabel,
             id: item.id,
             movieId: item.movieId,
+            ...mediaFilterMeta(item, tagMap),
           };
           const mediaHref = getMediaHrefFromIds(metadata);
           const queueHref = '/activity?tab=queue&source=radarr';
@@ -921,6 +1024,7 @@ export class PollingService {
               instanceLabel,
               id: item.id,
               movieId: item.movieId,
+              ...mediaFilterMeta(item, tagMap),
             };
             const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
@@ -996,6 +1100,7 @@ export class PollingService {
           create: { serviceConnectionId: instanceId, lastQueueIds: [] },
         });
 
+        const tagMap = await buildTagMap(client);
         const queue = await fetchAllQueueRecords(client);
         const prevMap = readQueueSnapshots(state.lastQueueIds);
         const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
@@ -1012,6 +1117,7 @@ export class PollingService {
             id: item.id,
             artistId: item.artistId,
             albumId: item.albumId,
+            ...mediaFilterMeta(item, tagMap),
           };
           const mediaHref = getMediaHrefFromIds(metadata);
           const queueHref = '/activity?tab=queue&source=lidarr';
@@ -1093,6 +1199,7 @@ export class PollingService {
               id: item.id,
               artistId: item.artistId,
               albumId: item.albumId,
+              ...mediaFilterMeta(item, tagMap),
             };
             const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
             await this.notifyAndLog({

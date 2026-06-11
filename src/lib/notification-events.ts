@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 export const EVENT_TYPES = [
   'grabbed', 'imported', 'downloadFailed', 'importFailed',
   'upcomingPremiere', 'healthWarning',
+  'serviceDown', 'serviceRestored',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
@@ -14,7 +15,7 @@ export const EVENT_TYPES = [
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'requests' | 'digests';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'requests' | 'digests';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -61,6 +62,18 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Health Warning',
     description: 'When a service has health issues',
     iconName: 'AlertTriangle', colorClass: 'bg-orange-500/10 text-orange-500',
+  },
+  serviceDown: {
+    type: 'serviceDown', group: 'services',
+    label: 'Service Down',
+    description: 'When a connected service becomes unreachable',
+    iconName: 'AlertTriangle', colorClass: 'bg-red-500/10 text-red-500',
+  },
+  serviceRestored: {
+    type: 'serviceRestored', group: 'services',
+    label: 'Service Restored',
+    description: 'When an unreachable service comes back online',
+    iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
   },
   torrentAdded: {
     type: 'torrentAdded', group: 'qbittorrent',
@@ -153,6 +166,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'sonarrRadarr',
     title: 'Sonarr / Radarr',
     types: ['grabbed', 'imported', 'downloadFailed', 'importFailed', 'upcomingPremiere', 'healthWarning'],
+  },
+  {
+    id: 'services',
+    title: 'Services',
+    types: ['serviceDown', 'serviceRestored'],
   },
   {
     id: 'qbittorrent',

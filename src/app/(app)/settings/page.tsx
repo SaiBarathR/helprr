@@ -14,6 +14,7 @@ import {
   Gauge,
   Users,
   Link2,
+  Activity,
 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
@@ -129,6 +130,14 @@ export default function SettingsIndexPage() {
           iconColor="text-rose-400"
           label="Notifications"
           subtitle="Push, event types, devices, upcoming"
+        />
+        <CategoryRow
+          href="/settings/status"
+          icon={Activity}
+          iconBg="bg-teal-500/10"
+          iconColor="text-teal-400"
+          label="Service status"
+          subtitle="Live reachability of connected services"
         />
         {canStorage && (
           <CategoryRow
