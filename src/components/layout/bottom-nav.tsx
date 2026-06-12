@@ -118,7 +118,8 @@ export function BottomNav() {
               side={isBottom ? 'top' : 'bottom'}
               align="end"
               sideOffset={8}
-              className="w-56 p-2"
+              collisionPadding={8}
+              className="w-56 p-2 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain no-scrollbar"
             >
               <div className="space-y-0.5">
                 {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {
