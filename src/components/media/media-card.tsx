@@ -126,7 +126,7 @@ export const MediaCard = memo(function MediaCard({
           onClick={onToggleSelect}
           aria-pressed={Boolean(selected)}
           aria-label={`${selected ? 'Deselect' : 'Select'} ${title}`}
-          className="block w-full text-left"
+          className="block w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {posterInner}
         </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Eye, EyeOff, Tags, Search, Trash2, X, Loader2, Plus, CheckCheck,
@@ -109,6 +109,14 @@ export function BulkActionBar({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [newLabel, setNewLabel] = useState('');
 
+  // Clear staged labels when the popover closes so reopening starts fresh.
+  useEffect(() => {
+    if (!tagOpen) {
+      setPicked(new Set());
+      setNewLabel('');
+    }
+  }, [tagOpen]);
+
   // Delete dialog state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
@@ -156,7 +164,6 @@ export function BulkActionBar({
       await onApplyTags([...picked], tagMode);
     });
     setTagOpen(false);
-    setPicked(new Set());
   }
 
   // Labels the user picked that aren't in the suggestion list (e.g. newly typed).

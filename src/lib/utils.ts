@@ -19,5 +19,10 @@ export function shallowEqualExcept<T extends object>(
     if (ignore.includes(k)) continue;
     if (a[k] !== b[k]) return false;
   }
+  // Catch keys present in b but not a (a's loop above can't see them).
+  for (const k of Object.keys(b) as (keyof T)[]) {
+    if (ignore.includes(k)) continue;
+    if (!(k in a)) return false;
+  }
   return true;
 }
