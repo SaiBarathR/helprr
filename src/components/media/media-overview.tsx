@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import type { MediaImage } from '@/types';
 import type { PosterSize } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
+import { SelectionCheck } from './selection-check';
 
 function getImageUrl(
   images: MediaImage[],
@@ -63,6 +64,10 @@ export interface MediaOverviewItemProps {
   /** Instance label shown only when >1 instance of the type is connected. */
   instanceLabel?: string;
   onNavigate?: () => void;
+  /** Selection mode: clicking the row toggles selection instead of navigating. */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 export function MediaOverviewItem({
@@ -90,17 +95,28 @@ export function MediaOverviewItem({
   genres,
   instanceLabel,
   onNavigate,
+  selectable,
+  selected,
+  onToggleSelect,
 }: MediaOverviewItemProps) {
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
   const poster = getImageUrl(images, 'poster', posterHint);
   const show = (field: string) => visibleFields.includes(field);
 
-  return (
-    <Link
-      href={href}
-      onClick={onNavigate}
-      className="flex gap-3 rounded-xl bg-card p-3 hover:bg-muted/30 active:bg-muted/50 transition-colors"
-    >
+  const rowClass = cn(
+    'flex gap-3 rounded-xl bg-card p-3 transition-colors',
+    selectable && selected
+      ? 'ring-2 ring-primary bg-primary/5'
+      : 'hover:bg-muted/30 active:bg-muted/50'
+  );
+
+  const body = (
+    <>
+      {selectable && (
+        <div className="flex shrink-0 items-center">
+          <SelectionCheck selected={Boolean(selected)} />
+        </div>
+      )}
       {/* Poster thumbnail */}
       {show('images') ? (
         <div className={cn('relative shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-muted', posterSizeClasses[posterSize])}>
@@ -189,6 +205,20 @@ export function MediaOverviewItem({
           <p className="text-xs text-muted-foreground line-clamp-2">{overview}</p>
         )}
       </div>
+    </>
+  );
+
+  if (selectable) {
+    return (
+      <button type="button" onClick={onToggleSelect} className={cn(rowClass, 'w-full text-left')}>
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={href} onClick={onNavigate} className={rowClass}>
+      {body}
     </Link>
   );
 }

@@ -34,11 +34,21 @@ async function postHandler(request: NextRequest) {
     let result;
     switch (body.name) {
       case 'ArtistSearch': {
-        const artistId = toPositiveInt(body.artistId);
-        if (artistId === null) {
-          return NextResponse.json({ error: 'artistId must be a positive integer' }, { status: 400 });
+        // Bulk callers send `artistIds` (fanned out one search per id, since Lidarr
+        // has no multi-artist search command); single-id callers keep `artistId`.
+        if (body.artistIds !== undefined) {
+          const artistIds = toPositiveIntArray(body.artistIds);
+          if (artistIds === null) {
+            return NextResponse.json({ error: 'artistIds must be a non-empty array of positive integers' }, { status: 400 });
+          }
+          result = await Promise.all(artistIds.map((id) => client.searchArtist(id)));
+        } else {
+          const artistId = toPositiveInt(body.artistId);
+          if (artistId === null) {
+            return NextResponse.json({ error: 'artistId must be a positive integer' }, { status: 400 });
+          }
+          result = await client.searchArtist(artistId);
         }
-        result = await client.searchArtist(artistId);
         break;
       }
       case 'AlbumSearch': {

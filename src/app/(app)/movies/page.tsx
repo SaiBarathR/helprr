@@ -19,9 +19,12 @@ import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Filter, ArrowUpDown, Plus, RefreshCw } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
+import { toast } from 'sonner';
 import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
+import { useBulkSelection } from '@/lib/use-bulk-selection';
+import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import {
   getCachedListData,
   getListViewState,
@@ -102,6 +105,13 @@ const sortOptions = [
   { value: 'tags', label: 'Tags' },
 ] as const;
 
+// Toast summary shared by every bulk action ("Monitoring 5 movies", "Deleted 2 movies, 1 failed").
+function reportBulk(verb: string, ok: number, fail: number) {
+  const word = ok === 1 && fail === 0 ? 'movie' : 'movies';
+  if (fail) toast.error(`${verb} ${ok} ${word}, ${fail} failed`);
+  else toast.success(`${verb} ${ok} ${word}`);
+}
+
 function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large') {
   if (posterSize === 'small') {
     if (width >= 1280) return 8;
@@ -180,6 +190,15 @@ function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, p
 export default function MoviesPage() {
   // Members can't add directly to Radarr — they request via Seerr from a detail page.
   const canAddMovies = useCan('movies.add');
+  const canMonitor = useCan('movies.editMonitoring');
+  const canTag = useCan('movies.editTags');
+  const canDelete = useCan('movies.delete');
+  const canSearch = useCan('activity.manage');
+  const canBulk = canMonitor || canTag || canDelete || canSearch;
+  const {
+    selectionMode, selectedKeys, count: selectedCount,
+    toggle, selectMany, clear, enter, exit,
+  } = useBulkSelection();
   const [movies, setMovies] = useState<RadarrMovieListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
@@ -377,6 +396,14 @@ export default function MoviesPage() {
     []
   );
 
+  // Selection keys are composite so ids that repeat across instances stay distinct.
+  const keyOf = useCallback((movie: RadarrMovieListItem) => `${movie.instanceId ?? ''}:${movie.id}`, []);
+  const movieByKey = useMemo(() => {
+    const map = new Map<string, RadarrMovieListItem>();
+    for (const movie of movies) map.set(keyOf(movie), movie);
+    return map;
+  }, [movies, keyOf]);
+
   // Drop a stale instance filter if that instance is no longer connected.
   useEffect(() => {
     if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
@@ -492,6 +519,86 @@ export default function MoviesPage() {
     return list;
   }, [movies, search, sort, sortDir, filter, instanceFilter, qualityProfileMap, tagMap]);
 
+  // ── Bulk selection ────────────────────────────────────────────────────────
+  const allFilteredSelected = filtered.length > 0 && filtered.every((m) => selectedKeys.has(keyOf(m)));
+  const toggleSelectAll = useCallback(() => {
+    if (allFilteredSelected) clear();
+    else selectMany(filtered.map(keyOf));
+  }, [allFilteredSelected, clear, selectMany, filtered, keyOf]);
+
+  // Selected movies grouped by instance so each bulk request hits the right one.
+  const groupSelectedByInstance = useCallback(() => {
+    const groups = new Map<string | undefined, number[]>();
+    for (const key of selectedKeys) {
+      const movie = movieByKey.get(key);
+      if (!movie) continue;
+      const list = groups.get(movie.instanceId) ?? [];
+      list.push(movie.id);
+      groups.set(movie.instanceId, list);
+    }
+    return groups;
+  }, [selectedKeys, movieByKey]);
+
+  const fanOut = useCallback(async (
+    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>
+  ) => {
+    let ok = 0;
+    let fail = 0;
+    await Promise.all([...groupSelectedByInstance()].map(async ([instanceId, ids]) => {
+      try {
+        const res = await run(instanceId, ids);
+        if (res.ok) ok += ids.length;
+        else fail += ids.length;
+      } catch {
+        fail += ids.length;
+      }
+    }));
+    return { ok, fail };
+  }, [groupSelectedByInstance]);
+
+  const handleMonitor = useCallback(async (monitored: boolean) => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, monitored }),
+      }));
+    reportBulk(monitored ? 'Monitoring' : 'Unmonitored', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
+  const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
+      }));
+    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
+  const handleBulkSearch = useCallback(async () => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/radarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'MoviesSearch', movieIds: ids }),
+      }));
+    reportBulk('Searching', ok, fail);
+    exit();
+  }, [fanOut, exit]);
+
+  const handleDelete = useCallback(async (deleteFiles: boolean) => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, deleteFiles }),
+      }));
+    reportBulk('Deleted', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
 
@@ -545,6 +652,7 @@ export default function MoviesPage() {
       title: movie.title,
       year: movie.year,
       href: hrefForMovie(movie),
+      instanceId: movie.instanceId,
       instanceLabel: multiInstance ? movie.instanceLabel : undefined,
       monitored: movie.monitored,
       hasFile: movie.hasFile,
@@ -705,6 +813,24 @@ export default function MoviesPage() {
 
           <div className="flex-1" />
 
+          {canBulk && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => (selectionMode ? exit() : enter())}
+                  className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                    selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
+                  }`}
+                  aria-label={selectionMode ? 'Exit selection' : 'Select movies'}
+                  aria-pressed={selectionMode}
+                >
+                  <ListChecks className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{selectionMode ? 'Exit selection' : 'Select'}</TooltipContent>
+            </Tooltip>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -783,6 +909,9 @@ export default function MoviesPage() {
                     rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
                     instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
+                    selectable={selectionMode}
+                    selected={selectedKeys.has(keyOf(movie))}
+                    onToggleSelect={() => toggle(keyOf(movie))}
                   />
                 ))}
               </div>
@@ -829,6 +958,9 @@ export default function MoviesPage() {
                   genres={movie.genres}
                   instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                   onNavigate={handleNavigateToDetail}
+                  selectable={selectionMode}
+                  selected={selectedKeys.has(keyOf(movie))}
+                  onToggleSelect={() => toggle(keyOf(movie))}
                 />
               ))}
               {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
@@ -856,6 +988,9 @@ export default function MoviesPage() {
                 topSpacerHeight={topSpacerHeight}
                 bottomSpacerHeight={bottomSpacerHeight}
                 onNavigate={handleNavigateToDetail}
+                selectable={selectionMode}
+                selectedKeys={selectedKeys}
+                onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
               />
             </div>
           );
@@ -898,12 +1033,38 @@ export default function MoviesPage() {
                 genres={movie.genres}
                 instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                 onNavigate={handleNavigateToDetail}
+                selectable={selectionMode}
+                selected={selectedKeys.has(keyOf(movie))}
+                onToggleSelect={() => toggle(keyOf(movie))}
               />
             ))}
             {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
           </div>
         );
       })()}
+
+      {selectionMode && (
+        <>
+          {/* Spacer so the floating bar doesn't cover the last rows. */}
+          <div aria-hidden className="h-24" />
+          <BulkActionBar
+            count={selectedCount}
+            allSelected={allFilteredSelected}
+            onToggleSelectAll={toggleSelectAll}
+            onCancel={exit}
+            canMonitor={canMonitor}
+            canTag={canTag}
+            canSearch={canSearch}
+            canDelete={canDelete}
+            tags={tags}
+            onMonitor={handleMonitor}
+            onApplyTags={handleApplyTags}
+            onSearch={handleBulkSearch}
+            onDelete={handleDelete}
+            itemNoun="movie"
+          />
+        </>
+      )}
     </div>
   );
 }

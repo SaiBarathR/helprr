@@ -19,9 +19,12 @@ import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Filter, ArrowUpDown, Plus, RefreshCw } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
+import { toast } from 'sonner';
 import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
+import { useBulkSelection } from '@/lib/use-bulk-selection';
+import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import {
   getCachedListData,
   getListViewState,
@@ -98,6 +101,12 @@ const sortOptions = [
   { value: 'tags', label: 'Tags' },
 ] as const;
 
+// Toast summary shared by every bulk action ("series" is invariant in the plural).
+function reportBulk(verb: string, ok: number, fail: number) {
+  if (fail) toast.error(`${verb} ${ok} series, ${fail} failed`);
+  else toast.success(`${verb} ${ok} series`);
+}
+
 function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large') {
   if (posterSize === 'small') {
     if (width >= 1280) return 8;
@@ -130,6 +139,15 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
 export default function SeriesPage() {
   // Members can't add directly to Sonarr — they request via Seerr from a detail page.
   const canAddSeries = useCan('series.add');
+  const canMonitor = useCan('series.editMonitoring');
+  const canTag = useCan('series.editTags');
+  const canDelete = useCan('series.delete');
+  const canSearch = useCan('activity.manage');
+  const canBulk = canMonitor || canTag || canDelete || canSearch;
+  const {
+    selectionMode, selectedKeys, count: selectedCount,
+    toggle, selectMany, clear, enter, exit,
+  } = useBulkSelection();
   const [series, setSeries] = useState<SonarrSeriesListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
@@ -320,6 +338,14 @@ export default function SeriesPage() {
     []
   );
 
+  // Selection keys are composite so ids that repeat across instances stay distinct.
+  const keyOf = useCallback((s: SonarrSeriesListItem) => `${s.instanceId ?? ''}:${s.id}`, []);
+  const seriesByKey = useMemo(() => {
+    const map = new Map<string, SonarrSeriesListItem>();
+    for (const s of series) map.set(keyOf(s), s);
+    return map;
+  }, [series, keyOf]);
+
   // Drop a stale instance filter if that instance is no longer connected.
   useEffect(() => {
     if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
@@ -422,6 +448,86 @@ export default function SeriesPage() {
     return list;
   }, [series, search, sort, sortDir, filter, instanceFilter, qualityProfileMap, tagMap]);
 
+  // ── Bulk selection ────────────────────────────────────────────────────────
+  const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selectedKeys.has(keyOf(s)));
+  const toggleSelectAll = useCallback(() => {
+    if (allFilteredSelected) clear();
+    else selectMany(filtered.map(keyOf));
+  }, [allFilteredSelected, clear, selectMany, filtered, keyOf]);
+
+  // Selected series grouped by instance so each bulk request hits the right one.
+  const groupSelectedByInstance = useCallback(() => {
+    const groups = new Map<string | undefined, number[]>();
+    for (const key of selectedKeys) {
+      const s = seriesByKey.get(key);
+      if (!s) continue;
+      const list = groups.get(s.instanceId) ?? [];
+      list.push(s.id);
+      groups.set(s.instanceId, list);
+    }
+    return groups;
+  }, [selectedKeys, seriesByKey]);
+
+  const fanOut = useCallback(async (
+    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>
+  ) => {
+    let ok = 0;
+    let fail = 0;
+    await Promise.all([...groupSelectedByInstance()].map(async ([instanceId, ids]) => {
+      try {
+        const res = await run(instanceId, ids);
+        if (res.ok) ok += ids.length;
+        else fail += ids.length;
+      } catch {
+        fail += ids.length;
+      }
+    }));
+    return { ok, fail };
+  }, [groupSelectedByInstance]);
+
+  const handleMonitor = useCallback(async (monitored: boolean) => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, monitored }),
+      }));
+    reportBulk(monitored ? 'Monitoring' : 'Unmonitored', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
+  const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
+      }));
+    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
+  const handleBulkSearch = useCallback(async () => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/sonarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'SeriesSearch', seriesIds: ids }),
+      }));
+    reportBulk('Searching', ok, fail);
+    exit();
+  }, [fanOut, exit]);
+
+  const handleDelete = useCallback(async (deleteFiles: boolean) => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, deleteFiles }),
+      }));
+    reportBulk('Deleted', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
   const isDesktop = viewportWidth >= 768;
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
@@ -474,6 +580,7 @@ export default function SeriesPage() {
     title: s.title,
     year: s.year,
     href: hrefForSeries(s),
+    instanceId: s.instanceId,
     instanceLabel: multiInstance ? s.instanceLabel : undefined,
     monitored: s.monitored,
     status: s.status,
@@ -632,6 +739,24 @@ export default function SeriesPage() {
 
           <div className="flex-1" />
 
+          {canBulk && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => (selectionMode ? exit() : enter())}
+                  className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                    selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
+                  }`}
+                  aria-label={selectionMode ? 'Exit selection' : 'Select series'}
+                  aria-pressed={selectionMode}
+                >
+                  <ListChecks className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{selectionMode ? 'Exit selection' : 'Select'}</TooltipContent>
+            </Tooltip>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -710,6 +835,9 @@ export default function SeriesPage() {
                     rating={s.ratings?.value}
                     instanceLabel={multiInstance ? s.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
+                    selectable={selectionMode}
+                    selected={selectedKeys.has(keyOf(s))}
+                    onToggleSelect={() => toggle(keyOf(s))}
                   />
                 ))}
               </div>
@@ -755,6 +883,9 @@ export default function SeriesPage() {
                   genres={s.genres}
                   instanceLabel={multiInstance ? s.instanceLabel : undefined}
                   onNavigate={handleNavigateToDetail}
+                  selectable={selectionMode}
+                  selected={selectedKeys.has(keyOf(s))}
+                  onToggleSelect={() => toggle(keyOf(s))}
                 />
               ))}
               {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
@@ -782,6 +913,9 @@ export default function SeriesPage() {
                 topSpacerHeight={topSpacerHeight}
                 bottomSpacerHeight={bottomSpacerHeight}
                 onNavigate={handleNavigateToDetail}
+                selectable={selectionMode}
+                selectedKeys={selectedKeys}
+                onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
               />
             </div>
           );
@@ -823,12 +957,38 @@ export default function SeriesPage() {
                 genres={s.genres}
                 instanceLabel={multiInstance ? s.instanceLabel : undefined}
                 onNavigate={handleNavigateToDetail}
+                selectable={selectionMode}
+                selected={selectedKeys.has(keyOf(s))}
+                onToggleSelect={() => toggle(keyOf(s))}
               />
             ))}
             {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
           </div>
         );
       })()}
+
+      {selectionMode && (
+        <>
+          {/* Spacer so the floating bar doesn't cover the last rows. */}
+          <div aria-hidden className="h-24" />
+          <BulkActionBar
+            count={selectedCount}
+            allSelected={allFilteredSelected}
+            onToggleSelectAll={toggleSelectAll}
+            onCancel={exit}
+            canMonitor={canMonitor}
+            canTag={canTag}
+            canSearch={canSearch}
+            canDelete={canDelete}
+            tags={tags}
+            onMonitor={handleMonitor}
+            onApplyTags={handleApplyTags}
+            onSearch={handleBulkSearch}
+            onDelete={handleDelete}
+            itemNoun="series"
+          />
+        </>
+      )}
     </div>
   );
 }

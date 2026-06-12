@@ -171,6 +171,23 @@ export class LidarrClient {
     await this.delete(`/api/v1/artist/${id}`, { deleteFiles, addImportListExclusion });
   }
 
+  // Bulk editor — one request for monitored/tags across many artists.
+  async artistEditor(body: {
+    artistIds: number[];
+    monitored?: boolean;
+    tags?: number[];
+    applyTags?: 'add' | 'remove' | 'replace';
+  }): Promise<LidarrArtist[]> {
+    return this.put<LidarrArtist[]>('/api/v1/artist/editor', body);
+  }
+
+  // DELETE /editor carries its options in the request body, not the query string.
+  async deleteArtistsBulk(artistIds: number[], deleteFiles: boolean = false): Promise<void> {
+    await this.client.delete('/api/v1/artist/editor', {
+      data: { artistIds, deleteFiles, addImportListExclusion: false },
+    });
+  }
+
   // Albums
   async getAlbums(artistId: number): Promise<LidarrAlbum[]> {
     return this.get<LidarrAlbum[]>('/api/v1/album', { artistId, includeAllArtistAlbums: true });
@@ -355,6 +372,10 @@ export class LidarrClient {
 
   async getTags(): Promise<Tag[]> {
     return this.get<Tag[]>('/api/v1/tag');
+  }
+
+  async createTag(label: string): Promise<Tag> {
+    return this.post<Tag>('/api/v1/tag', { label });
   }
 
   // System
