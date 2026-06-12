@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
-import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds } from '@/lib/bulk-editor';
+import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } from '@/lib/bulk-editor';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Bulk monitor/tag across many artists via Lidarr's native /artist/editor endpoint.
@@ -11,7 +11,9 @@ async function putHandler(request: NextRequest) {
   if (authError) return authError;
 
   try {
-    const parsed = parseBulkEditBody(await request.json());
+    const json = await readJsonBody(request);
+    if (!json.ok) return NextResponse.json({ error: 'Malformed JSON' }, { status: 400 });
+    const parsed = parseBulkEditBody(json.body);
     if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
     const guardError = await guardBulkEdit(
@@ -45,7 +47,9 @@ async function deleteHandler(request: NextRequest) {
   if (capError) return capError;
 
   try {
-    const parsed = parseBulkDeleteBody(await request.json());
+    const json = await readJsonBody(request);
+    if (!json.ok) return NextResponse.json({ error: 'Malformed JSON' }, { status: 400 });
+    const parsed = parseBulkDeleteBody(json.body);
     if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;

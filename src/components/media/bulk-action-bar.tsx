@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Eye, EyeOff, Tags, Search, Trash2, X, Loader2, Plus, CheckCheck,
@@ -115,12 +115,19 @@ export function BulkActionBar({
 
   const disabled = count === 0 || busy !== null;
 
+  // Synchronous re-entrancy lock: `busy` is state, so a sub-frame double-tap could
+  // fire two actions before the disabled prop re-renders. The ref blocks that window.
+  const runningRef = useRef(false);
+
   async function run(key: string, fn: () => Promise<void>) {
+    if (runningRef.current) return;
+    runningRef.current = true;
     setBusy(key);
     try {
       await fn();
     } finally {
       setBusy(null);
+      runningRef.current = false;
     }
   }
 
