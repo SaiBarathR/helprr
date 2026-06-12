@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Eye, EyeOff, Tags, Search, Trash2, X, Loader2, Plus, CheckCheck,
   type LucideIcon,
@@ -153,7 +154,13 @@ export function BulkActionBar({
 
   const plural = count === 1 ? itemNoun : `${itemNoun}s`;
 
-  return (
+  // Portaled to <body> so the bar's `position: fixed` is relative to the viewport.
+  // The list pages render under `.animate-content-in`, whose lingering transform
+  // (animation-fill-mode: both) would otherwise make this fixed bar a child of the
+  // full-height list — pinning it below all rows instead of floating at the bottom.
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <>
       <div
         className={cn(
@@ -369,6 +376,7 @@ export function BulkActionBar({
           </AlertDialogContent>
         </AlertDialog>
       )}
-    </>
+    </>,
+    document.body
   );
 }
