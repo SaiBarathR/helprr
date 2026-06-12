@@ -211,3 +211,31 @@ export async function guardLibraryEdit(
   }
   return null;
 }
+
+/**
+ * Capability guard for the bulk editor route. Unlike guardLibraryEdit, the intent
+ * here is explicit (the payload says exactly what it changes), so no diff against a
+ * live item is needed — we just gate each declared change behind its capability.
+ */
+export async function guardBulkEdit(
+  intent: { monitoring: boolean; tags: boolean },
+  caps: { monitoring: Capability; tags: Capability }
+): Promise<NextResponse | null> {
+  if (!intent.monitoring && !intent.tags) return null;
+
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (user.role === 'admin') return null;
+
+  const missing: Capability[] = [];
+  if (intent.monitoring && !can(user, caps.monitoring)) missing.push(caps.monitoring);
+  if (intent.tags && !can(user, caps.tags)) missing.push(caps.tags);
+
+  if (missing.length > 0) {
+    return NextResponse.json(
+      { error: `Forbidden: you cannot change ${missing.join(', ')}` },
+      { status: 403 }
+    );
+  }
+  return null;
+}

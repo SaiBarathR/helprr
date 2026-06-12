@@ -111,6 +111,23 @@ export class SonarrClient {
     await this.delete(`/api/v3/series/${id}`, { deleteFiles });
   }
 
+  // Bulk editor — one request for monitored/tags across many series.
+  async seriesEditor(body: {
+    seriesIds: number[];
+    monitored?: boolean;
+    tags?: number[];
+    applyTags?: 'add' | 'remove' | 'replace';
+  }): Promise<SonarrSeries[]> {
+    return this.put<SonarrSeries[]>('/api/v3/series/editor', body);
+  }
+
+  // DELETE /editor carries its options in the request body, not the query string.
+  async deleteSeriesBulk(seriesIds: number[], deleteFiles: boolean = false): Promise<void> {
+    await this.client.delete('/api/v3/series/editor', {
+      data: { seriesIds, deleteFiles, addImportListExclusion: false },
+    });
+  }
+
   async deleteEpisodeFile(id: number): Promise<void> {
     await this.delete(`/api/v3/episodefile/${id}`);
   }
@@ -309,6 +326,10 @@ export class SonarrClient {
 
   async getTags(): Promise<Tag[]> {
     return this.get<Tag[]>('/api/v3/tag');
+  }
+
+  async createTag(label: string): Promise<Tag> {
+    return this.post<Tag>('/api/v3/tag', { label });
   }
 
   // System

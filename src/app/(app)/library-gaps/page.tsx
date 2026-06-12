@@ -1,17 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import { formatDistanceToNow, isValid } from 'date-fns';
 import {
-  Search, Loader2, Plus, Tv, Film, CalendarClock, Clock, Layers, CheckCircle2,
+  Search, Loader2, Plus, Tv, Film, CalendarClock, Clock, Layers, CheckCircle2, ListChecks,
   type LucideIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { isProtectedApiImageSrc } from '@/lib/image';
+import { cn } from '@/lib/utils';
+import { useCan } from '@/components/permission-provider';
+import { useBulkSelection } from '@/lib/use-bulk-selection';
+import { BulkActionBar } from '@/components/media/bulk-action-bar';
+import { SelectionCheck } from '@/components/media/selection-check';
 import type {
   LibraryGapItem,
   LibraryGapSection,
@@ -39,8 +45,19 @@ async function postCommand(url: string, body: Record<string, unknown>) {
   if (!res.ok) throw new Error('Command failed');
 }
 
-function GapCard({ item }: { item: LibraryGapItem }) {
+function GapCard({
+  item,
+  selectionMode,
+  selected,
+  onToggleSelect,
+}: {
+  item: LibraryGapItem;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const [searching, setSearching] = useState(false);
+  const selectable = item.search.kind !== 'none';
   const FallbackIcon = item.search.kind === 'movie' || item.tmdbId ? Film : Tv;
 
   async function handleSearch() {
@@ -62,9 +79,16 @@ function GapCard({ item }: { item: LibraryGapItem }) {
     }
   }
 
-  // Corner action: searchable → Search button; collection film (in TMDB, not Radarr) → Add cue; upcoming → Soon badge.
+  // Corner action: in selection mode → checkbox for searchable items; otherwise
+  // searchable → Search button; collection film (in TMDB, not Radarr) → Add cue; upcoming → Soon badge.
   let action: React.ReactNode;
-  if (item.search.kind !== 'none') {
+  if (selectionMode) {
+    action = selectable ? (
+      <div className="pointer-events-none absolute right-1.5 top-1.5 z-10">
+        <SelectionCheck selected={Boolean(selected)} />
+      </div>
+    ) : null;
+  } else if (item.search.kind !== 'none') {
     action = (
       <button
         type="button"
@@ -124,15 +148,35 @@ function GapCard({ item }: { item: LibraryGapItem }) {
     </div>
   );
 
+  const ringClass = selectionMode && selectable && selected ? 'rounded-xl ring-2 ring-primary' : '';
+
   return (
-    <div className={`group relative shrink-0 ${RAIL_CARD}`}>
-      {item.href ? <Link href={item.href} className="block">{poster}</Link> : poster}
+    <div className={cn('group relative shrink-0', RAIL_CARD, selectionMode && !selectable && 'opacity-40')}>
+      {selectionMode && selectable ? (
+        <button type="button" onClick={onToggleSelect} className={cn('block w-full text-left', ringClass)}>
+          {poster}
+        </button>
+      ) : item.href && !selectionMode ? (
+        <Link href={item.href} className="block">{poster}</Link>
+      ) : (
+        <div className={ringClass}>{poster}</div>
+      )}
       {action}
     </div>
   );
 }
 
-function GapSectionView({ section }: { section: LibraryGapSection }) {
+function GapSectionView({
+  section,
+  selectionMode,
+  selectedKeys,
+  onToggle,
+}: {
+  section: LibraryGapSection;
+  selectionMode?: boolean;
+  selectedKeys?: Set<string>;
+  onToggle?: (key: string) => void;
+}) {
   const meta = SECTION_META[section.id];
   const Icon = meta.icon;
 
@@ -155,7 +199,13 @@ function GapSectionView({ section }: { section: LibraryGapSection }) {
       {section.available && (
         <div className="-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide animate-rail-in md:-mx-6 md:px-6">
           {section.items.map((item) => (
-            <GapCard key={item.key} item={item} />
+            <GapCard
+              key={item.key}
+              item={item}
+              selectionMode={selectionMode}
+              selected={selectedKeys?.has(item.key)}
+              onToggleSelect={() => onToggle?.(item.key)}
+            />
           ))}
         </div>
       )}
@@ -167,6 +217,10 @@ export default function LibraryGapsPage() {
   const [data, setData] = useState<LibraryGapsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const canSearch = useCan('activity.manage');
+  const {
+    selectionMode, selectedKeys, count, toggle, selectMany, clear, enter, exit,
+  } = useBulkSelection();
 
   useEffect(() => {
     let cancelled = false;
@@ -185,6 +239,64 @@ export default function LibraryGapsPage() {
     return () => { cancelled = true; };
   }, []);
 
+  // Every searchable gap across all sections — drives "select all" and key lookup.
+  const searchableItems = useMemo(
+    () => (data ? data.sections.flatMap((s) => (s.available ? s.items.filter((i) => i.search.kind !== 'none') : [])) : []),
+    [data]
+  );
+  const searchableByKey = useMemo(
+    () => new Map(searchableItems.map((i) => [i.key, i])),
+    [searchableItems]
+  );
+
+  const allSelected = searchableItems.length > 0 && searchableItems.every((i) => selectedKeys.has(i.key));
+  const toggleSelectAll = useCallback(() => {
+    if (allSelected) clear();
+    else selectMany(searchableItems.map((i) => i.key));
+  }, [allSelected, clear, selectMany, searchableItems]);
+
+  // Fan out the selection by service/instance/kind: episodes and movies batch into
+  // a single array command per instance; seasons have no batch form, so one each.
+  const handleBulkSearch = useCallback(async () => {
+    const episodesByInstance = new Map<string, number[]>();
+    const moviesByInstance = new Map<string, number[]>();
+    const seasons: { instanceId: string; seriesId: number; seasonNumber: number }[] = [];
+
+    for (const key of selectedKeys) {
+      const search = searchableByKey.get(key)?.search;
+      if (!search) continue;
+      if (search.kind === 'episode') {
+        const list = episodesByInstance.get(search.instanceId) ?? [];
+        list.push(search.episodeId);
+        episodesByInstance.set(search.instanceId, list);
+      } else if (search.kind === 'movie') {
+        const list = moviesByInstance.get(search.instanceId) ?? [];
+        list.push(search.radarrMovieId);
+        moviesByInstance.set(search.instanceId, list);
+      } else if (search.kind === 'season') {
+        seasons.push({ instanceId: search.instanceId, seriesId: search.sonarrSeriesId, seasonNumber: search.seasonNumber });
+      }
+    }
+
+    const calls: Promise<void>[] = [];
+    for (const [instanceId, episodeIds] of episodesByInstance) {
+      calls.push(postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(instanceId)}`, { name: 'EpisodeSearch', episodeIds }));
+    }
+    for (const [instanceId, movieIds] of moviesByInstance) {
+      calls.push(postCommand(`/api/radarr/command?instanceId=${encodeURIComponent(instanceId)}`, { name: 'MoviesSearch', movieIds }));
+    }
+    for (const s of seasons) {
+      calls.push(postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'SeasonSearch', seriesId: s.seriesId, seasonNumber: s.seasonNumber }));
+    }
+
+    const total = selectedKeys.size;
+    const results = await Promise.allSettled(calls);
+    const failed = results.filter((r) => r.status === 'rejected').length;
+    if (failed) toast.error(`Some searches failed (${failed} request${failed === 1 ? '' : 's'})`);
+    else toast.success(`Search started for ${total} item${total === 1 ? '' : 's'}`);
+    exit();
+  }, [selectedKeys, searchableByKey, exit]);
+
   if (loading) return <PageSpinner />;
 
   if (error || !data) {
@@ -197,6 +309,27 @@ export default function LibraryGapsPage() {
 
   return (
     <div className="animate-content-in">
+      {!allComplete && canSearch && searchableItems.length > 0 && (
+        <div className="mb-3 flex items-center justify-end">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => (selectionMode ? exit() : enter())}
+                className={cn(
+                  'p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors',
+                  selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
+                )}
+                aria-label={selectionMode ? 'Exit selection' : 'Select gaps to search'}
+                aria-pressed={selectionMode}
+              >
+                <ListChecks className="h-5 w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{selectionMode ? 'Exit selection' : 'Select to search'}</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+
       {allComplete ? (
         <div className="py-16 text-center text-muted-foreground">
           <CheckCircle2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
@@ -205,9 +338,31 @@ export default function LibraryGapsPage() {
       ) : (
         <div className="space-y-5">
           {data.sections.map((section) => (
-            <GapSectionView key={section.id} section={section} />
+            <GapSectionView
+              key={section.id}
+              section={section}
+              selectionMode={selectionMode}
+              selectedKeys={selectedKeys}
+              onToggle={toggle}
+            />
           ))}
         </div>
+      )}
+
+      {selectionMode && (
+        <>
+          {/* Spacer so the floating bar doesn't cover the last rail. */}
+          <div aria-hidden className="h-24" />
+          <BulkActionBar
+            count={count}
+            allSelected={allSelected}
+            onToggleSelectAll={toggleSelectAll}
+            onCancel={exit}
+            variant="search"
+            canSearch={canSearch}
+            onSearch={handleBulkSearch}
+          />
+        </>
       )}
     </div>
   );

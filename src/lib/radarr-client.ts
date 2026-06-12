@@ -117,6 +117,23 @@ export class RadarrClient {
     await this.delete(`/api/v3/movie/${id}`, { deleteFiles, addImportExclusion });
   }
 
+  // Bulk editor — one request for monitored/tags across many movies.
+  async movieEditor(body: {
+    movieIds: number[];
+    monitored?: boolean;
+    tags?: number[];
+    applyTags?: 'add' | 'remove' | 'replace';
+  }): Promise<RadarrMovie[]> {
+    return this.put<RadarrMovie[]>('/api/v3/movie/editor', body);
+  }
+
+  // DELETE /editor carries its options in the request body, not the query string.
+  async deleteMoviesBulk(movieIds: number[], deleteFiles: boolean = false): Promise<void> {
+    await this.client.delete('/api/v3/movie/editor', {
+      data: { movieIds, deleteFiles, addImportExclusion: false },
+    });
+  }
+
   // Credits
   async getCredits(movieId: number): Promise<RadarrCredit[]> {
     return this.get<RadarrCredit[]>('/api/v3/credit', { movieId });
@@ -271,6 +288,10 @@ export class RadarrClient {
 
   async getTags(): Promise<Tag[]> {
     return this.get<Tag[]>('/api/v3/tag');
+  }
+
+  async createTag(label: string): Promise<Tag> {
+    return this.post<Tag>('/api/v3/tag', { label });
   }
 
   // System
