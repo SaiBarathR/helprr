@@ -62,30 +62,49 @@ function classifySeasons(series: SonarrSeries[] | null, instanceId: string) {
   const missing: LibraryGapItem[] = [];
   const upcoming: LibraryGapItem[] = [];
   const missingKeys = new Set<string>();
+  let missingSeasonTotal = 0;
 
-  if (!series) return { missing, upcoming, missingKeys };
+  if (!series) return { missing, upcoming, missingKeys, missingSeasonTotal };
 
   for (const show of series) {
     if (!show.monitored) continue;
     const poster = resolvePoster(show.images, 'sonarr');
     const realSeasons = show.seasons.filter((s) => s.seasonNumber > 0);
 
-    // Missing aired seasons: episodes have aired (episodeCount > 0) but you have none.
+    // Missing aired seasons: episodes have aired (episodeCount > 0) but you have
+    // none. One card per show — a show with several fully-missing seasons groups
+    // into a single item instead of flooding the section with identical posters.
+    const missingSeasons: { seasonNumber: number; episodeCount: number }[] = [];
     for (const season of realSeasons) {
       const stats = season.statistics;
       if (!stats) continue;
       if (season.monitored && stats.episodeCount > 0 && stats.episodeFileCount === 0) {
         missingKeys.add(`${instanceId}:${show.id}:${season.seasonNumber}`);
-        missing.push({
-          key: `season-${instanceId}-${show.id}-${season.seasonNumber}`,
-          title: show.title,
-          subtitle: `Season ${season.seasonNumber} · ${stats.episodeCount} ep${stats.episodeCount === 1 ? '' : 's'}`,
-          year: show.year,
-          poster,
-          href: `/series/${show.id}/season/${season.seasonNumber}?instance=${instanceId}`,
-          search: { kind: 'season', sonarrSeriesId: show.id, seasonNumber: season.seasonNumber, instanceId },
-        });
+        missingSeasons.push({ seasonNumber: season.seasonNumber, episodeCount: stats.episodeCount });
       }
+    }
+    if (missingSeasons.length > 0) {
+      missingSeasonTotal += missingSeasons.length;
+      const episodeTotal = missingSeasons.reduce((sum, s) => sum + s.episodeCount, 0);
+      const single = missingSeasons.length === 1 ? missingSeasons[0] : null;
+      missing.push({
+        key: `seasons-${instanceId}-${show.id}`,
+        title: show.title,
+        subtitle: single
+          ? `Season ${single.seasonNumber} · ${episodeTotal} ep${episodeTotal === 1 ? '' : 's'}`
+          : `${missingSeasons.length} seasons · ${episodeTotal} eps`,
+        year: show.year,
+        poster,
+        href: single
+          ? `/series/${show.id}/season/${single.seasonNumber}?instance=${instanceId}`
+          : `/series/${show.id}?instance=${instanceId}`,
+        search: {
+          kind: 'seasons',
+          sonarrSeriesId: show.id,
+          seasonNumbers: missingSeasons.map((s) => s.seasonNumber),
+          instanceId,
+        },
+      });
     }
 
     // Announced/upcoming newest season — only for shows you already own.
@@ -113,7 +132,7 @@ function classifySeasons(series: SonarrSeries[] | null, instanceId: string) {
     }
   }
 
-  return { missing, upcoming, missingKeys };
+  return { missing, upcoming, missingKeys, missingSeasonTotal };
 }
 
 async function buildCollectionGaps(radarrInstances: RadarrInstance[]): Promise<LibraryGapSection> {
@@ -215,19 +234,39 @@ async function buildOverdue(
   for (const { instanceId, missing } of sonarrResults) {
     if (!missing) continue;
     sonarrTotal += missing.totalRecords ?? 0;
-    for (const ep of missing.records ?? []) {
+    const records = missing.records ?? [];
+    // Group overdue episodes by series — 20 missing episodes of one show become
+    // a single card (and a single batched EpisodeSearch) instead of 20 cards.
+    const bySeries = new Map<number, typeof records>();
+    for (const ep of records) {
       if (missingSeasonKeys.has(`${instanceId}:${ep.seriesId}:${ep.seasonNumber}`)) {
         dedupedCount++;
         continue;
       }
+      const list = bySeries.get(ep.seriesId) ?? [];
+      list.push(ep);
+      bySeries.set(ep.seriesId, list);
+    }
+    for (const [seriesId, eps] of bySeries) {
+      const first = eps[0];
+      const single = eps.length === 1 ? first : null;
+      const latestDate = eps
+        .map((e) => e.airDateUtc)
+        .filter((d): d is string => Boolean(d))
+        .sort()
+        .at(-1);
       sonarrItems.push({
-        key: `overdue-ep-${instanceId}-${ep.id}`,
-        title: `${ep.series?.title ?? 'Unknown'} — S${pad(ep.seasonNumber)}E${pad(ep.episodeNumber)}`,
-        subtitle: ep.title || undefined,
-        date: ep.airDateUtc,
-        poster: resolvePoster(ep.series?.images, 'sonarr'),
-        href: `/series/${ep.seriesId}/season/${ep.seasonNumber}/episode/${ep.id}?instance=${instanceId}`,
-        search: { kind: 'episode', episodeId: ep.id, instanceId },
+        key: `overdue-series-${instanceId}-${seriesId}`,
+        title: single
+          ? `${first.series?.title ?? 'Unknown'} — S${pad(single.seasonNumber)}E${pad(single.episodeNumber)}`
+          : first.series?.title ?? 'Unknown',
+        subtitle: single ? single.title || undefined : `${eps.length} episodes overdue`,
+        date: latestDate,
+        poster: resolvePoster(first.series?.images, 'sonarr'),
+        href: single
+          ? `/series/${seriesId}/season/${single.seasonNumber}/episode/${single.id}?instance=${instanceId}`
+          : `/series/${seriesId}?instance=${instanceId}`,
+        search: { kind: 'episodes', episodeIds: eps.map((e) => e.id), instanceId },
       });
     }
   }
@@ -292,6 +331,7 @@ async function getHandler(): Promise<NextResponse> {
     const missing: LibraryGapItem[] = [];
     const upcoming: LibraryGapItem[] = [];
     const missingKeys = new Set<string>();
+    let missingSeasonTotal = 0;
     let sonarrAnyOk = false;
 
     const sonarrSeries = await Promise.all(
@@ -306,6 +346,7 @@ async function getHandler(): Promise<NextResponse> {
       const r = classifySeasons(series, instanceId);
       missing.push(...r.missing);
       upcoming.push(...r.upcoming);
+      missingSeasonTotal += r.missingSeasonTotal;
       for (const k of r.missingKeys) missingKeys.add(k);
     }
     // Available when ≥1 Sonarr instance returned data; error only when every configured
@@ -320,7 +361,9 @@ async function getHandler(): Promise<NextResponse> {
 
     const response: LibraryGapsResponse = {
       sections: [
-        toSection('missingSeasons', missing, sonarrAvailable, { error: sonarrError }),
+        // count = total missing seasons (units), not show-groups — keeps the badge
+        // and "showing first N" truncation note meaningful after grouping.
+        toSection('missingSeasons', missing, sonarrAvailable, { error: sonarrError, count: missingSeasonTotal }),
         toSection('newUpcoming', upcoming, sonarrAvailable, { error: sonarrError }),
         collectionGaps,
         overdue,
