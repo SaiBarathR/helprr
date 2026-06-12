@@ -3,6 +3,7 @@
 // token + reachable server URL come from /api/jellyfin/play/ticket. Browser-only.
 
 import type {
+  EpisodeSummary,
   MediaSourceInfo,
   PlayableItem,
   PlaybackInfoResponse,
@@ -104,6 +105,33 @@ export async function getItem(ticket: OkTicket, itemId: string): Promise<Playabl
     Fields: 'Chapters,Trickplay,MediaSources,MediaStreams',
   });
   return jfFetch<PlayableItem>(ticket, `/Items/${itemId}?${params}`);
+}
+
+/**
+ * The episode that follows `itemId` for the autoplay overlay (plan §F):
+ * AdjacentTo spans season boundaries; NextUp covers adjacency gaps.
+ */
+export async function getNextEpisode(
+  ticket: OkTicket,
+  seriesId: string,
+  itemId: string
+): Promise<EpisodeSummary | null> {
+  const params = new URLSearchParams({ UserId: ticket.userId, AdjacentTo: itemId });
+  const adjacent = await jfFetch<{ Items?: EpisodeSummary[] }>(
+    ticket,
+    `/Shows/${seriesId}/Episodes?${params}`
+  );
+  const items = adjacent.Items ?? [];
+  const index = items.findIndex((e) => e.Id === itemId);
+  if (index >= 0 && index + 1 < items.length) return items[index + 1];
+
+  const nextUpParams = new URLSearchParams({ UserId: ticket.userId, SeriesId: seriesId });
+  const nextUp = await jfFetch<{ Items?: EpisodeSummary[] }>(
+    ticket,
+    `/Shows/NextUp?${nextUpParams}`
+  );
+  const candidate = nextUp.Items?.[0];
+  return candidate && candidate.Id !== itemId ? candidate : null;
 }
 
 // ── Playback negotiation ──────────────────────────────────────────────────────
@@ -232,6 +260,11 @@ export function buildSubtitleUrl(
     return url.toString();
   }
   return `${ticket.serverUrl}/Videos/${itemId}/${mediaSourceId}/Subtitles/${stream.Index}/0/Stream.vtt?api_key=${encodeURIComponent(ticket.token)}`;
+}
+
+/** Artwork for MediaSession/lock-screen (Jellyfin image endpoints are unauthenticated). */
+export function buildPrimaryImageUrl(ticket: OkTicket, itemId: string, maxWidth = 512): string {
+  return `${ticket.serverUrl}/Items/${itemId}/Images/Primary?maxWidth=${maxWidth}&quality=90`;
 }
 
 /** Tile-sheet JPEG for scrubber previews (CSS-sprite indexed). */

@@ -2,6 +2,13 @@
 
 import { Check } from 'lucide-react';
 import type { MediaSourceInfo } from '@/types/jellyfin-playback';
+import { formatTime } from '@/lib/playback/time';
+
+/** A chapter mapped to seconds for the menu + seekbar tick marks. */
+export interface ChapterMark {
+  name?: string;
+  seconds: number;
+}
 
 // Bitrate ladder for the quality menu (server picks resolution from the cap).
 // null = no cap: direct play when the file qualifies.
@@ -64,9 +71,14 @@ export function TrackMenus({
   audioStreamIndex,
   subtitleStreamIndex,
   maxBitrate,
+  chapters,
+  currentSeconds,
+  autoplayNext,
   onSelectAudio,
   onSelectSubtitle,
   onSelectQuality,
+  onSeekChapter,
+  onToggleAutoplayNext,
 }: {
   open: boolean;
   onClose: () => void;
@@ -74,9 +86,15 @@ export function TrackMenus({
   audioStreamIndex?: number;
   subtitleStreamIndex: number;
   maxBitrate: number | null;
+  chapters: ChapterMark[];
+  currentSeconds: number;
+  /** undefined hides the autoplay toggle (movies). */
+  autoplayNext?: boolean;
   onSelectAudio: (index: number) => void;
   onSelectSubtitle: (index: number) => void;
   onSelectQuality: (bitrate: number | null) => void;
+  onSeekChapter: (seconds: number) => void;
+  onToggleAutoplayNext?: () => void;
 }) {
   if (!open || !source) return null;
 
@@ -146,6 +164,36 @@ export function TrackMenus({
                 }}
               />
             ))}
+          </MenuSection>
+        )}
+
+        {chapters.length > 0 && (
+          <MenuSection title="Chapters">
+            {chapters.map((chapter, i) => (
+              <MenuRow
+                key={`${chapter.seconds}-${i}`}
+                label={chapter.name ?? `Chapter ${i + 1}`}
+                detail={formatTime(chapter.seconds)}
+                selected={
+                  currentSeconds >= chapter.seconds &&
+                  (i === chapters.length - 1 || currentSeconds < chapters[i + 1].seconds)
+                }
+                onSelect={() => {
+                  onSeekChapter(chapter.seconds);
+                  onClose();
+                }}
+              />
+            ))}
+          </MenuSection>
+        )}
+
+        {onToggleAutoplayNext && (
+          <MenuSection title="Playback">
+            <MenuRow
+              label="Autoplay next episode"
+              selected={autoplayNext ?? false}
+              onSelect={onToggleAutoplayNext}
+            />
           </MenuSection>
         )}
       </div>

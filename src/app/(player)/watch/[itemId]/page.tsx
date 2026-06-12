@@ -23,5 +23,7 @@ export default function WatchPage() {
   const t = rawT === null ? undefined : Number(rawT);
   const startTicks = t !== undefined && Number.isFinite(t) && t >= 0 ? t : undefined;
 
-  return <VideoPlayer itemId={itemId} startTicks={startTicks} />;
+  // Keyed so next-episode autoplay (router.replace to a new id) remounts the
+  // player instead of mutating a live playback session in place.
+  return <VideoPlayer key={itemId} itemId={itemId} startTicks={startTicks} />;
 }

@@ -8,43 +8,46 @@ import {
   Maximize,
   Minimize,
   Pause,
+  PictureInPicture2,
   Play,
   RotateCcw,
   RotateCw,
   Settings,
 } from 'lucide-react';
 import type { MediaSourceInfo } from '@/types/jellyfin-playback';
-import { TrackMenus } from '@/components/player/track-menus';
+import { formatTime } from '@/lib/playback/time';
+import type { TrickplayHandle } from '@/lib/playback/trickplay';
+import { TrackMenus, type ChapterMark } from '@/components/player/track-menus';
+import { PREVIEW_WIDTH_PX, TrickplayPreview } from '@/components/player/trickplay-preview';
 
 const HIDE_DELAY_MS = 3000;
 const DOUBLE_TAP_MS = 300;
 const SKIP_SECONDS = 10;
 
-// Safari-only extensions used for AirPlay and the iPhone native-player escape hatch.
+// Safari-only extensions used for AirPlay, PiP, and the iPhone native-player
+// escape hatch (Safari has no standard requestPictureInPicture).
 interface WebKitVideoElement extends HTMLVideoElement {
   webkitShowPlaybackTargetPicker?: () => void;
   webkitEnterFullscreen?: () => void;
-}
-
-function formatTime(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
-  return `${h > 0 ? `${h}:` : ''}${mm}:${String(s).padStart(2, '0')}`;
+  webkitSupportsPresentationMode?: (mode: string) => boolean;
+  webkitSetPresentationMode?: (mode: string) => void;
+  webkitPresentationMode?: string;
 }
 
 function SeekBar({
   currentSeconds,
   durationSeconds,
   bufferedSeconds,
+  chapterFractions,
+  preview,
   onSeekTo,
   onDraggingChange,
 }: {
   currentSeconds: number;
   durationSeconds: number;
   bufferedSeconds: number;
+  chapterFractions: number[];
+  preview?: (seconds: number) => React.ReactNode;
   onSeekTo: (seconds: number) => void;
   onDraggingChange: (dragging: boolean) => void;
 }) {
@@ -100,6 +103,13 @@ function SeekBar({
           className="absolute inset-y-0 left-0 bg-primary"
           style={{ width: `${playedFraction * 100}%` }}
         />
+        {chapterFractions.map((fraction) => (
+          <div
+            key={fraction}
+            className="absolute inset-y-0 w-px bg-white/50"
+            style={{ left: `${fraction * 100}%` }}
+          />
+        ))}
       </div>
       <div
         className="absolute h-3.5 w-3.5 -translate-x-1/2 rounded-full bg-primary opacity-0 transition-opacity group-hover:opacity-100"
@@ -107,10 +117,18 @@ function SeekBar({
       />
       {dragFraction !== null && (
         <div
-          className="absolute bottom-7 -translate-x-1/2 rounded bg-black/90 px-2 py-0.5 font-mono text-xs text-white"
-          style={{ left: `${dragFraction * 100}%` }}
+          className="pointer-events-none absolute bottom-7 flex -translate-x-1/2 flex-col items-center gap-1.5"
+          style={{
+            // The trickplay thumbnail is wide — keep it inside the bar's bounds.
+            left: preview
+              ? `clamp(${PREVIEW_WIDTH_PX / 2}px, ${dragFraction * 100}%, calc(100% - ${PREVIEW_WIDTH_PX / 2}px))`
+              : `${dragFraction * 100}%`,
+          }}
         >
-          {formatTime(dragFraction * durationSeconds)}
+          {preview?.(dragFraction * durationSeconds)}
+          <div className="rounded bg-black/90 px-2 py-0.5 font-mono text-xs text-white">
+            {formatTime(dragFraction * durationSeconds)}
+          </div>
         </div>
       )}
     </div>
@@ -130,6 +148,9 @@ export function PlayerControls({
   audioStreamIndex,
   subtitleStreamIndex,
   maxBitrate,
+  chapters,
+  trickplay,
+  autoplayNext,
   videoEl,
   containerEl,
   onTogglePlay,
@@ -139,6 +160,7 @@ export function PlayerControls({
   onSelectAudio,
   onSelectSubtitle,
   onSelectQuality,
+  onToggleAutoplayNext,
 }: {
   title: string;
   subtitle?: string;
@@ -152,6 +174,10 @@ export function PlayerControls({
   audioStreamIndex?: number;
   subtitleStreamIndex: number;
   maxBitrate: number | null;
+  chapters: ChapterMark[];
+  trickplay: TrickplayHandle | null;
+  /** undefined hides the autoplay toggle (movies). */
+  autoplayNext?: boolean;
   videoEl: HTMLVideoElement | null;
   containerEl: HTMLElement | null;
   onTogglePlay: () => void;
@@ -161,6 +187,7 @@ export function PlayerControls({
   onSelectAudio: (index: number) => void;
   onSelectSubtitle: (index: number) => void;
   onSelectQuality: (bitrate: number | null) => void;
+  onToggleAutoplayNext?: () => void;
 }) {
   const [visible, setVisible] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -244,6 +271,27 @@ export function PlayerControls({
   const supportsFullscreen = Boolean(
     containerEl?.requestFullscreen || webkitVideo?.webkitEnterFullscreen
   );
+  const supportsPip = Boolean(
+    videoEl &&
+      (document.pictureInPictureEnabled ||
+        webkitVideo?.webkitSupportsPresentationMode?.('picture-in-picture'))
+  );
+
+  const togglePip = useCallback(() => {
+    const video = videoEl as WebKitVideoElement | null;
+    if (!video) return;
+    if (document.pictureInPictureElement) {
+      void document.exitPictureInPicture().catch(() => {});
+    } else if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+      void video.requestPictureInPicture().catch(() => {});
+    } else if (video.webkitSetPresentationMode) {
+      video.webkitSetPresentationMode(
+        video.webkitPresentationMode === 'picture-in-picture'
+          ? 'inline'
+          : 'picture-in-picture'
+      );
+    }
+  }, [videoEl]);
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
@@ -351,6 +399,18 @@ export function PlayerControls({
           currentSeconds={currentSeconds}
           durationSeconds={durationSeconds}
           bufferedSeconds={bufferedSeconds}
+          chapterFractions={
+            durationSeconds > 0
+              ? chapters
+                  .map((c) => c.seconds / durationSeconds)
+                  .filter((f) => f > 0 && f < 1)
+              : []
+          }
+          preview={
+            trickplay
+              ? (seconds) => <TrickplayPreview trickplay={trickplay} seconds={seconds} />
+              : undefined
+          }
           onSeekTo={(s) => {
             onSeekTo(s);
             show();
@@ -371,6 +431,16 @@ export function PlayerControls({
           >
             <Settings className="h-5 w-5" aria-hidden />
           </button>
+          {supportsPip && (
+            <button
+              type="button"
+              onClick={togglePip}
+              aria-label="Picture in picture"
+              className="rounded-full p-2 hover:bg-white/10"
+            >
+              <PictureInPicture2 className="h-5 w-5" aria-hidden />
+            </button>
+          )}
           {supportsFullscreen && (
             <button
               type="button"
@@ -398,9 +468,14 @@ export function PlayerControls({
         audioStreamIndex={audioStreamIndex}
         subtitleStreamIndex={subtitleStreamIndex}
         maxBitrate={maxBitrate}
+        chapters={chapters}
+        currentSeconds={currentSeconds}
+        autoplayNext={autoplayNext}
         onSelectAudio={onSelectAudio}
         onSelectSubtitle={onSelectSubtitle}
         onSelectQuality={onSelectQuality}
+        onSeekChapter={onSeekTo}
+        onToggleAutoplayNext={onToggleAutoplayNext}
       />
     </div>
   );

@@ -1,12 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import {
+  buildPrimaryImageUrl,
   buildSubtitleUrl,
+  buildTrickplayUrl,
   getItem,
+  getNextEpisode,
   getTicket,
   invalidateTicket,
   JellyfinPlaybackError,
@@ -24,8 +27,14 @@ import {
   type ActivePlayback,
 } from '@/lib/playback/player-machine';
 import { attachSource, type PlaybackEngine } from '@/lib/playback/engine';
-import type { PlayableItem, PlaybackProgressReport } from '@/types/jellyfin-playback';
+import { resolveTrickplay } from '@/lib/playback/trickplay';
+import type {
+  EpisodeSummary,
+  PlayableItem,
+  PlaybackProgressReport,
+} from '@/types/jellyfin-playback';
 import { PlayerControls } from '@/components/player/player-controls';
+import { NextUpOverlay } from '@/components/player/next-up-overlay';
 import {
   diagnoseConnectivity,
   PlayerErrorScreen,
@@ -33,6 +42,8 @@ import {
 } from '@/components/player/error-screen';
 
 const PROGRESS_INTERVAL_MS = 10_000;
+// The next-up countdown appears inside the last N seconds of an episode.
+const NEXT_UP_THRESHOLD_SECONDS = 30;
 
 type Phase = 'loading' | 'ready' | 'switching' | 'error';
 
@@ -75,6 +86,9 @@ export function VideoPlayer({
   const audioOverrideRef = useRef(false);
   // One automatic direct-play → transcode fallback per item, not a retry loop.
   const directPlayFailedRef = useRef(false);
+  // Mirrored into refs so the video-event handlers (onEnded) read fresh values.
+  const nextEpisodeRef = useRef<EpisodeSummary | null>(null);
+  const nextUpDismissedRef = useRef(false);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState<{ kind: PlayerErrorKind; message?: string } | null>(null);
@@ -85,6 +99,16 @@ export function VideoPlayer({
   const [buffering, setBuffering] = useState(false);
   const [currentSeconds, setCurrentSeconds] = useState(0);
   const [bufferedSeconds, setBufferedSeconds] = useState(0);
+  const [nextEpisode, setNextEpisode] = useState<EpisodeSummary | null>(null);
+  const [nextUpDismissed, setNextUpDismissed] = useState(false);
+  const autoplayNext = useUIStore((s) => s.playerAutoplayNext);
+
+  useEffect(() => {
+    nextEpisodeRef.current = nextEpisode;
+  }, [nextEpisode]);
+  useEffect(() => {
+    nextUpDismissedRef.current = nextUpDismissed;
+  }, [nextUpDismissed]);
 
   const close = useCallback(() => {
     if (window.history.length > 1) router.back();
@@ -223,6 +247,13 @@ export function VideoPlayer({
       itemRef.current = playable;
       setItem(playable);
 
+      // Resolve the autoplay target in the background (overlay + nexttrack).
+      if (playable.Type === 'Episode' && playable.SeriesId) {
+        void getNextEpisode(ticket as OkTicket, playable.SeriesId, itemId)
+          .then(setNextEpisode)
+          .catch(() => {});
+      }
+
       const prefs = useUIStore.getState();
       const resumeTicks =
         startTicks ?? playable.UserData?.PlaybackPositionTicks ?? 0;
@@ -297,6 +328,14 @@ export function VideoPlayer({
     [attach, fail, itemId]
   );
 
+  /** Advance to the next episode in place (autoplay, "Play now", nexttrack). */
+  const goNext = useCallback(() => {
+    const next = nextEpisodeRef.current;
+    if (!next) return;
+    finalize();
+    router.replace(`/watch/${next.Id}`);
+  }, [finalize, router]);
+
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -343,7 +382,15 @@ export function VideoPlayer({
     const onSeeked = () => reportProgress('timeupdate');
     const onEnded = () => {
       finalize();
-      close();
+      if (
+        nextEpisodeRef.current &&
+        !nextUpDismissedRef.current &&
+        useUIStore.getState().playerAutoplayNext
+      ) {
+        goNext();
+      } else {
+        close();
+      }
     };
     const onError = () => {
       const a = activeRef.current;
@@ -376,7 +423,7 @@ export function VideoPlayer({
       video.removeEventListener('ended', onEnded);
       video.removeEventListener('error', onError);
     };
-  }, [close, fail, finalize, reportProgress, switchPlayback]);
+  }, [close, fail, finalize, goNext, reportProgress, switchPlayback]);
 
   // 10s heartbeat keeps the JF dashboard session + resume position live.
   useEffect(() => {
@@ -490,7 +537,96 @@ export function VideoPlayer({
     [switchPlayback]
   );
 
+  const toggleAutoplayNext = useCallback(() => {
+    const store = useUIStore.getState();
+    store.setPlayerAutoplayNext(!store.playerAutoplayNext);
+  }, []);
+
+  const durationSeconds = item?.RunTimeTicks ? ticksToSeconds(item.RunTimeTicks) : 0;
+
+  // ── MediaSession (iOS lock screen / control center) ────────────────────────
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !item) return;
+    const ticket = ticketRef.current;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: item.Name,
+      artist: item.SeriesName ?? '',
+      album: item.SeasonName ?? '',
+      // Series poster for episodes — the episode's own Primary is a still frame.
+      artwork: ticket
+        ? [{ src: buildPrimaryImageUrl(ticket, item.SeriesId ?? item.Id), sizes: '512x512' }]
+        : [],
+    });
+    return () => {
+      navigator.mediaSession.metadata = null;
+    };
+  }, [item]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused';
+  }, [playing]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    ms.setActionHandler('play', () => {
+      void videoRef.current?.play().catch(() => {});
+    });
+    ms.setActionHandler('pause', () => videoRef.current?.pause());
+    ms.setActionHandler('seekbackward', () => skip(-10));
+    ms.setActionHandler('seekforward', () => skip(10));
+    ms.setActionHandler('seekto', (details) => {
+      if (details.seekTime !== undefined && details.seekTime !== null) seekTo(details.seekTime);
+    });
+    ms.setActionHandler('nexttrack', nextEpisode ? () => goNext() : null);
+    return () => {
+      const actions: MediaSessionAction[] = [
+        'play',
+        'pause',
+        'seekbackward',
+        'seekforward',
+        'seekto',
+        'nexttrack',
+      ];
+      actions.forEach((action) => ms.setActionHandler(action, null));
+    };
+  }, [goNext, nextEpisode, seekTo, skip]);
+
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+    if (durationSeconds > 0) {
+      navigator.mediaSession.setPositionState({
+        duration: durationSeconds,
+        position: Math.min(currentSeconds, durationSeconds),
+        playbackRate: 1,
+      });
+    }
+  }, [currentSeconds, durationSeconds]);
+
   // ── Render ──────────────────────────────────────────────────────────────────
+
+  const chapters = useMemo(
+    () =>
+      (item?.Chapters ?? []).map((c) => ({
+        name: c.Name,
+        seconds: ticksToSeconds(c.StartPositionTicks),
+      })),
+    [item]
+  );
+
+  const trickplay = useMemo(() => {
+    const ticket = ticketRef.current;
+    if (!ticket || !item || !active) return null;
+    const info = resolveTrickplay(item, active.source.Id);
+    if (!info) return null;
+    return {
+      info,
+      urlForTile: (tileIndex: number) =>
+        buildTrickplayUrl(ticket, item.Id, info.Width, tileIndex, active.source.Id),
+    };
+  }, [item, active]);
 
   if (phase === 'error' && error) {
     return (
@@ -507,7 +643,16 @@ export function VideoPlayer({
     );
   }
 
-  const durationSeconds = item?.RunTimeTicks ? ticksToSeconds(item.RunTimeTicks) : 0;
+  const remainingSeconds = durationSeconds - currentSeconds;
+  const showNextUp =
+    phase === 'ready' &&
+    nextEpisode !== null &&
+    !nextUpDismissed &&
+    autoplayNext &&
+    durationSeconds > 0 &&
+    remainingSeconds > 0 &&
+    remainingSeconds <= NEXT_UP_THRESHOLD_SECONDS;
+
   const subtitle =
     item?.Type === 'Episode'
       ? [
@@ -561,6 +706,9 @@ export function VideoPlayer({
           audioStreamIndex={active?.audioStreamIndex}
           subtitleStreamIndex={active?.subtitleStreamIndex ?? -1}
           maxBitrate={active?.maxStreamingBitrate ?? null}
+          chapters={chapters}
+          trickplay={trickplay}
+          autoplayNext={item?.Type === 'Episode' ? autoplayNext : undefined}
           videoEl={videoRef.current}
           containerEl={containerRef.current}
           onTogglePlay={togglePlay}
@@ -570,6 +718,16 @@ export function VideoPlayer({
           onSelectAudio={selectAudio}
           onSelectSubtitle={selectSubtitle}
           onSelectQuality={selectQuality}
+          onToggleAutoplayNext={item?.Type === 'Episode' ? toggleAutoplayNext : undefined}
+        />
+      )}
+
+      {showNextUp && nextEpisode && (
+        <NextUpOverlay
+          episode={nextEpisode}
+          secondsRemaining={remainingSeconds}
+          onPlayNow={goNext}
+          onDismiss={() => setNextUpDismissed(true)}
         />
       )}
     </div>
