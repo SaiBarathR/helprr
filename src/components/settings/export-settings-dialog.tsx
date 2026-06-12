@@ -61,9 +61,14 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
       .then((r) => (r.ok ? r.json() : []))
       .then((data: unknown) => {
         const arr = Array.isArray(data) ? data : [];
-        const list: ConnectedServiceInfo[] = arr
-          .filter((c): c is { type: ServiceType } => !!c && typeof c === 'object' && typeof (c as { type?: unknown }).type === 'string')
-          .map((c) => ({ type: c.type }));
+        // /api/services returns one row per connection, so multi-instance setups
+        // repeat a type (e.g. two Sonarr). Export is per-type, so dedupe by type.
+        const types = new Set<ServiceType>(
+          arr
+            .filter((c): c is { type: ServiceType } => !!c && typeof c === 'object' && typeof (c as { type?: unknown }).type === 'string')
+            .map((c) => c.type)
+        );
+        const list: ConnectedServiceInfo[] = [...types].map((type) => ({ type }));
         setAvailableServices(list);
         setSelectedServices(new Set(list.map((s) => s.type)));
       })

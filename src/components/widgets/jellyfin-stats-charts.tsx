@@ -38,7 +38,7 @@ export function RankedList({
   return (
     <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50 h-full flex flex-col">
       {sorted.map((entry, i) => (
-        <div key={entry.label} className="relative px-3 flex items-center gap-3 flex-1 min-h-0">
+        <div key={`${entry.label}-${i}`} className="relative px-3 flex items-center gap-3 flex-1 min-h-0">
           <div
             className="absolute inset-0 bg-[var(--hpr-cyan)]/5"
             style={{ width: `${((sortBy === 'duration' ? entry.time : entry.count) / maxVal) * 100}%` }}
