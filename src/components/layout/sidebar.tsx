@@ -13,6 +13,7 @@ import { useNavPending } from '@/hooks/use-nav-pending';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
 import { NavBadge } from '@/components/layout/nav-badge';
+import { SidebarPlayer } from '@/components/player/sidebar-player';
 
 /**
  * Render the application's responsive, collapsible navigation sidebar.
@@ -97,6 +98,8 @@ export function Sidebar() {
           return link;
         })}
       </nav>
+
+      <SidebarPlayer />
 
       <div className="border-t border-border p-2">
         <Button

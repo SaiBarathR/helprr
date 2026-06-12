@@ -480,6 +480,9 @@ interface UIState {
   setPlayerSubtitleLanguage: (language: string | null) => void;
   playerAutoplayNext: boolean;
   setPlayerAutoplayNext: (enabled: boolean) => void;
+  // Music mini player docked into the sidebar (desktop only)
+  musicPlayerDocked: boolean;
+  setMusicPlayerDocked: (docked: boolean) => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie' | 'album';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie' | 'album') => void;
@@ -581,6 +584,7 @@ const PERSISTED_KEYS = [
   'playerMaxBitrate',
   'playerSubtitleLanguage',
   'playerAutoplayNext',
+  'musicPlayerDocked',
   'calendarTypeFilter',
   'calendarMonitoredOnly',
   'calendarInstanceFilter',
@@ -781,6 +785,8 @@ export const useUIStore = create<UIState>()(
       setPlayerSubtitleLanguage: (language) => set({ playerSubtitleLanguage: language }),
       playerAutoplayNext: true,
       setPlayerAutoplayNext: (enabled) => set({ playerAutoplayNext: enabled }),
+      musicPlayerDocked: false,
+      setMusicPlayerDocked: (docked) => set({ musicPlayerDocked: docked }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),
