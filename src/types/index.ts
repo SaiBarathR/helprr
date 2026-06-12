@@ -850,10 +850,11 @@ export interface RadarrCollection {
   movies: RadarrCollectionMovie[];
 }
 
-// Library Gaps page
+// Library Gaps page — episode/season targets carry arrays because gaps are
+// grouped per show (20 overdue episodes of one series = one card, one target).
 export type LibraryGapSearchTarget =
-  | { kind: 'episode'; episodeId: number; instanceId: string }
-  | { kind: 'season'; sonarrSeriesId: number; seasonNumber: number; instanceId: string }
+  | { kind: 'episodes'; episodeIds: number[]; instanceId: string }
+  | { kind: 'seasons'; sonarrSeriesId: number; seasonNumbers: number[]; instanceId: string }
   | { kind: 'movie'; radarrMovieId: number; instanceId: string }
   | { kind: 'none' };
 
@@ -874,7 +875,7 @@ export type LibraryGapSectionId = 'missingSeasons' | 'newUpcoming' | 'collection
 
 export interface LibraryGapSection {
   id: LibraryGapSectionId;
-  count: number; // true total found (may exceed items.length when truncated)
+  count: number; // true total of searchable units (seasons/episodes/movies) — may exceed what the shown items cover when truncated
   items: LibraryGapItem[];
   available: boolean; // false when the backing service is unconfigured or its fetch failed
   error?: boolean; // true when the service is configured but the fetch failed (vs. simply not connected)

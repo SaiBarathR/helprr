@@ -36,6 +36,21 @@ const SECTION_META: Record<LibraryGapSectionId, { title: string; icon: LucideIco
 const RAIL_CARD =
   'min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px]';
 
+// Expanded section layout — wraps every loaded card into a poster grid
+// (mirrors the movies/series library grid breakpoints).
+const EXPANDED_GRID =
+  'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5';
+
+// Rails get unwieldy past roughly one screen of cards — offer "Show all" then.
+const EXPAND_THRESHOLD = 6;
+
+// How many searchable units (seasons/episodes/movies) one card covers.
+function searchUnits(item: LibraryGapItem): number {
+  if (item.search.kind === 'episodes') return item.search.episodeIds.length;
+  if (item.search.kind === 'seasons') return item.search.seasonNumbers.length;
+  return 1;
+}
+
 async function postCommand(url: string, body: Record<string, unknown>) {
   const res = await fetch(url, {
     method: 'POST',
@@ -47,11 +62,13 @@ async function postCommand(url: string, body: Record<string, unknown>) {
 
 function GapCard({
   item,
+  layout = 'rail',
   selectionMode,
   selected,
   onToggleSelect,
 }: {
   item: LibraryGapItem;
+  layout?: 'rail' | 'grid';
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -64,10 +81,14 @@ function GapCard({
     setSearching(true);
     try {
       const s = item.search;
-      if (s.kind === 'episode') {
-        await postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'EpisodeSearch', episodeIds: [s.episodeId] });
-      } else if (s.kind === 'season') {
-        await postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'SeasonSearch', seriesId: s.sonarrSeriesId, seasonNumber: s.seasonNumber });
+      if (s.kind === 'episodes') {
+        await postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'EpisodeSearch', episodeIds: s.episodeIds });
+      } else if (s.kind === 'seasons') {
+        await Promise.all(
+          s.seasonNumbers.map((seasonNumber) =>
+            postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'SeasonSearch', seriesId: s.sonarrSeriesId, seasonNumber })
+          )
+        );
       } else if (s.kind === 'movie') {
         await postCommand(`/api/radarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'MoviesSearch', movieIds: [s.radarrMovieId] });
       }
@@ -151,7 +172,13 @@ function GapCard({
   const ringClass = selectionMode && selectable && selected ? 'rounded-xl ring-2 ring-primary' : '';
 
   return (
-    <div className={cn('group relative shrink-0', RAIL_CARD, selectionMode && !selectable && 'opacity-40')}>
+    <div
+      className={cn(
+        'group relative',
+        layout === 'rail' ? cn('shrink-0', RAIL_CARD) : 'w-full',
+        selectionMode && !selectable && 'opacity-40'
+      )}
+    >
       {selectionMode && selectable ? (
         <button
           type="button"
@@ -183,11 +210,18 @@ function GapSectionView({
   selectedKeys?: Set<string>;
   onToggle?: (key: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const meta = SECTION_META[section.id];
   const Icon = meta.icon;
 
   // Omit available-but-empty sections to keep the page focused.
   if (section.available && section.count === 0) return null;
+
+  // How many seasons/episodes/movies the shown cards actually cover — when the
+  // server truncated the section, the badge total exceeds this.
+  const shownUnits = section.items.reduce((n, item) => n + searchUnits(item), 0);
+  const truncated = section.available && section.count > shownUnits;
+  const canExpand = section.items.length > EXPAND_THRESHOLD;
 
   return (
     <section className="space-y-2">
@@ -201,19 +235,46 @@ function GapSectionView({
         ) : (
           <Badge variant="outline" className="text-[10px]">{meta.service} not connected</Badge>
         )}
+        {truncated && (
+          <span className="text-[11px] text-muted-foreground">showing first {shownUnits}</span>
+        )}
+        {canExpand && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="ml-auto shrink-0 text-xs font-medium text-primary hover:underline"
+          >
+            {expanded ? 'Collapse' : `Show all (${section.items.length})`}
+          </button>
+        )}
       </div>
       {section.available && (
-        <div className="-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide animate-rail-in md:-mx-6 md:px-6">
-          {section.items.map((item) => (
-            <GapCard
-              key={item.key}
-              item={item}
-              selectionMode={selectionMode}
-              selected={selectedKeys?.has(item.key)}
-              onToggleSelect={() => onToggle?.(item.key)}
-            />
-          ))}
-        </div>
+        expanded ? (
+          <div className={EXPANDED_GRID}>
+            {section.items.map((item) => (
+              <GapCard
+                key={item.key}
+                item={item}
+                layout="grid"
+                selectionMode={selectionMode}
+                selected={selectedKeys?.has(item.key)}
+                onToggleSelect={() => onToggle?.(item.key)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide animate-rail-in md:-mx-6 md:px-6">
+            {section.items.map((item) => (
+              <GapCard
+                key={item.key}
+                item={item}
+                selectionMode={selectionMode}
+                selected={selectedKeys?.has(item.key)}
+                onToggleSelect={() => onToggle?.(item.key)}
+              />
+            ))}
+          </div>
+        )
       )}
     </section>
   );
@@ -271,16 +332,18 @@ export default function LibraryGapsPage() {
     for (const key of selectedKeys) {
       const search = searchableByKey.get(key)?.search;
       if (!search) continue;
-      if (search.kind === 'episode') {
+      if (search.kind === 'episodes') {
         const list = episodesByInstance.get(search.instanceId) ?? [];
-        list.push(search.episodeId);
+        list.push(...search.episodeIds);
         episodesByInstance.set(search.instanceId, list);
       } else if (search.kind === 'movie') {
         const list = moviesByInstance.get(search.instanceId) ?? [];
         list.push(search.radarrMovieId);
         moviesByInstance.set(search.instanceId, list);
-      } else if (search.kind === 'season') {
-        seasons.push({ instanceId: search.instanceId, seriesId: search.sonarrSeriesId, seasonNumber: search.seasonNumber });
+      } else if (search.kind === 'seasons') {
+        for (const seasonNumber of search.seasonNumbers) {
+          seasons.push({ instanceId: search.instanceId, seriesId: search.sonarrSeriesId, seasonNumber });
+        }
       }
     }
 
@@ -295,7 +358,11 @@ export default function LibraryGapsPage() {
       calls.push(postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'SeasonSearch', seriesId: s.seriesId, seasonNumber: s.seasonNumber }));
     }
 
-    const total = selectedKeys.size;
+    // Count what's actually being searched (a grouped card covers many units).
+    const total =
+      [...episodesByInstance.values()].reduce((n, list) => n + list.length, 0) +
+      [...moviesByInstance.values()].reduce((n, list) => n + list.length, 0) +
+      seasons.length;
     const results = await Promise.allSettled(calls);
     const failed = results.filter((r) => r.status === 'rejected').length;
     if (failed) toast.error('Some searches failed');
