@@ -19,9 +19,12 @@ import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Filter, ArrowUpDown, Plus, RefreshCw } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
+import { toast } from 'sonner';
 import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
+import { useBulkSelection } from '@/lib/use-bulk-selection';
+import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import {
   getCachedListData,
   getListViewState,
@@ -36,6 +39,14 @@ interface MusicPageCacheData {
   artists: LidarrArtistListItem[];
   qualityProfiles: { id: number; name: string }[];
   metadataProfiles: { id: number; name: string }[];
+  tags: { id: number; label: string }[];
+}
+
+// Toast summary shared by every bulk action ("Monitoring 5 artists", "Deleted 2 artists, 1 failed").
+function reportBulk(verb: string, ok: number, fail: number) {
+  const word = ok === 1 && fail === 0 ? 'artist' : 'artists';
+  if (fail) toast.error(`${verb} ${ok} ${word}, ${fail} failed`);
+  else toast.success(`${verb} ${ok} ${word}`);
 }
 
 const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
@@ -166,9 +177,19 @@ function trackProgressLabel(artist: LidarrArtistListItem): string {
  */
 export default function MusicPage() {
   const canAddMusic = useCan('music.add');
+  const canMonitor = useCan('music.editMonitoring');
+  const canTag = useCan('music.editTags');
+  const canDelete = useCan('music.delete');
+  const canSearch = useCan('activity.manage');
+  const canBulk = canMonitor || canTag || canDelete || canSearch;
+  const {
+    selectionMode, selectedKeys, count: selectedCount,
+    toggle, selectMany, clear, enter, exit,
+  } = useBulkSelection();
   const [artists, setArtists] = useState<LidarrArtistListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
   const [metadataProfiles, setMetadataProfiles] = useState<{ id: number; name: string }[]>([]);
+  const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(1280);
@@ -216,6 +237,7 @@ export default function MusicPage() {
       setArtists(cached.data.artists);
       setQualityProfiles(cached.data.qualityProfiles);
       setMetadataProfiles(cached.data.metadataProfiles);
+      setTags(cached.data.tags ?? []);
       setLoading(false);
 
       if (isListDataFresh(cached)) {
@@ -230,10 +252,11 @@ export default function MusicPage() {
     }
 
     try {
-      const [a, q, mp] = await Promise.all([
+      const [a, q, mp, t] = await Promise.all([
         fetch('/api/lidarr').then((r) => { if (!r.ok) throw new Error('Failed to load artists'); return r.json(); }),
         fetch('/api/lidarr/qualityprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load quality profiles'); return r.json(); }),
         fetch('/api/lidarr/metadataprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load metadata profiles'); return r.json(); }),
+        fetch('/api/lidarr/tags').then((r) => r.ok ? r.json() : []),
       ]);
 
       // A misconfigured instance can answer 200 with a non-array body; never let
@@ -242,17 +265,20 @@ export default function MusicPage() {
         artists: Array.isArray(a) ? a : [],
         qualityProfiles: Array.isArray(q) ? q : [],
         metadataProfiles: Array.isArray(mp) ? mp : [],
+        tags: Array.isArray(t) ? t : [],
       };
 
       setArtists(next.artists);
       setQualityProfiles(next.qualityProfiles);
       setMetadataProfiles(next.metadataProfiles);
+      setTags(next.tags);
       setCachedListData('music', next);
     } catch {
       if (!hasCachedData) {
         setArtists([]);
         setQualityProfiles([]);
         setMetadataProfiles([]);
+        setTags([]);
       }
     } finally {
       setLoading(false);
@@ -366,6 +392,14 @@ export default function MusicPage() {
     []
   );
 
+  // Selection keys are composite so ids that repeat across instances stay distinct.
+  const keyOf = useCallback((artist: LidarrArtistListItem) => `${artist.instanceId ?? ''}:${artist.id}`, []);
+  const artistByKey = useMemo(() => {
+    const map = new Map<string, LidarrArtistListItem>();
+    for (const artist of artists) map.set(keyOf(artist), artist);
+    return map;
+  }, [artists, keyOf]);
+
   // Drop a stale instance filter if that instance is no longer connected.
   useEffect(() => {
     if (instanceFilter !== 'all' && !instances.some((i) => i.id === instanceFilter)) {
@@ -445,6 +479,86 @@ export default function MusicPage() {
     return list;
   }, [artists, search, sort, sortDir, filter, instanceFilter, qualityProfileMap]);
 
+  // ── Bulk selection ────────────────────────────────────────────────────────
+  const allFilteredSelected = filtered.length > 0 && filtered.every((a) => selectedKeys.has(keyOf(a)));
+  const toggleSelectAll = useCallback(() => {
+    if (allFilteredSelected) clear();
+    else selectMany(filtered.map(keyOf));
+  }, [allFilteredSelected, clear, selectMany, filtered, keyOf]);
+
+  // Selected artists grouped by instance so each bulk request hits the right one.
+  const groupSelectedByInstance = useCallback(() => {
+    const groups = new Map<string | undefined, number[]>();
+    for (const key of selectedKeys) {
+      const artist = artistByKey.get(key);
+      if (!artist) continue;
+      const list = groups.get(artist.instanceId) ?? [];
+      list.push(artist.id);
+      groups.set(artist.instanceId, list);
+    }
+    return groups;
+  }, [selectedKeys, artistByKey]);
+
+  const fanOut = useCallback(async (
+    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>
+  ) => {
+    let ok = 0;
+    let fail = 0;
+    await Promise.all([...groupSelectedByInstance()].map(async ([instanceId, ids]) => {
+      try {
+        const res = await run(instanceId, ids);
+        if (res.ok) ok += ids.length;
+        else fail += ids.length;
+      } catch {
+        fail += ids.length;
+      }
+    }));
+    return { ok, fail };
+  }, [groupSelectedByInstance]);
+
+  const handleMonitor = useCallback(async (monitored: boolean) => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, monitored }),
+      }));
+    reportBulk(monitored ? 'Monitoring' : 'Unmonitored', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
+  const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
+      }));
+    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
+  const handleBulkSearch = useCallback(async () => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/lidarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'ArtistSearch', artistIds: ids }),
+      }));
+    reportBulk('Searching', ok, fail);
+    exit();
+  }, [fanOut, exit]);
+
+  const handleDelete = useCallback(async (deleteFiles: boolean) => {
+    const { ok, fail } = await fanOut((instanceId, ids) =>
+      fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, deleteFiles }),
+      }));
+    reportBulk('Deleted', ok, fail);
+    await fetchData(true);
+    exit();
+  }, [fanOut, fetchData, exit]);
+
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
 
@@ -498,6 +612,7 @@ export default function MusicPage() {
       title: artist.artistName,
       year: 0,
       href: hrefForArtist(artist),
+      instanceId: artist.instanceId,
       instanceLabel: multiInstance ? artist.instanceLabel : undefined,
       monitored: artist.monitored,
       hasFile: !!artist.statistics && artist.statistics.totalTrackCount > 0
@@ -568,6 +683,9 @@ export default function MusicPage() {
         genres={artist.genres}
         instanceLabel={multiInstance ? artist.instanceLabel : undefined}
         onNavigate={handleNavigateToDetail}
+        selectable={selectionMode}
+        selected={selectedKeys.has(keyOf(artist))}
+        onToggleSelect={() => toggle(keyOf(artist))}
       />
     );
   }
@@ -686,6 +804,24 @@ export default function MusicPage() {
 
           <div className="flex-1" />
 
+          {canBulk && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => (selectionMode ? exit() : enter())}
+                  className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                    selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
+                  }`}
+                  aria-label={selectionMode ? 'Exit selection' : 'Select artists'}
+                  aria-pressed={selectionMode}
+                >
+                  <ListChecks className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{selectionMode ? 'Exit selection' : 'Select'}</TooltipContent>
+            </Tooltip>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -765,6 +901,9 @@ export default function MusicPage() {
                     rating={artist.ratings?.value}
                     instanceLabel={multiInstance ? artist.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
+                    selectable={selectionMode}
+                    selected={selectedKeys.has(keyOf(artist))}
+                    onToggleSelect={() => toggle(keyOf(artist))}
                   />
                 ))}
               </div>
@@ -814,6 +953,9 @@ export default function MusicPage() {
                 topSpacerHeight={topSpacerHeight}
                 bottomSpacerHeight={bottomSpacerHeight}
                 onNavigate={handleNavigateToDetail}
+                selectable={selectionMode}
+                selectedKeys={selectedKeys}
+                onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
               />
             </div>
           );
@@ -838,6 +980,29 @@ export default function MusicPage() {
           </div>
         );
       })()}
+
+      {selectionMode && (
+        <>
+          {/* Spacer so the floating bar doesn't cover the last rows. */}
+          <div aria-hidden className="h-24" />
+          <BulkActionBar
+            count={selectedCount}
+            allSelected={allFilteredSelected}
+            onToggleSelectAll={toggleSelectAll}
+            onCancel={exit}
+            canMonitor={canMonitor}
+            canTag={canTag}
+            canSearch={canSearch}
+            canDelete={canDelete}
+            tags={tags}
+            onMonitor={handleMonitor}
+            onApplyTags={handleApplyTags}
+            onSearch={handleBulkSearch}
+            onDelete={handleDelete}
+            itemNoun="artist"
+          />
+        </>
+      )}
     </div>
   );
 }

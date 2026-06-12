@@ -25,7 +25,15 @@ async function postHandler(request: NextRequest) {
         result = await client.searchSeason(body.seriesId, body.seasonNumber);
         break;
       case 'SeriesSearch':
-        result = await client.searchSeries(body.seriesId);
+        // Sonarr has no multi-series search command, so a bulk request fans out
+        // one SeriesSearch per id; single-id callers keep the legacy `seriesId`.
+        if (Array.isArray(body.seriesIds)) {
+          result = await Promise.all(
+            body.seriesIds.map((seriesId: number) => client.searchSeries(seriesId))
+          );
+        } else {
+          result = await client.searchSeries(body.seriesId);
+        }
         break;
       case 'RefreshSeries':
         result = await client.refreshSeries(body.seriesId);

@@ -6,6 +6,8 @@ import { Film, Tv, Disc3, Star } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
+import { cn } from '@/lib/utils';
+import { SelectionCheck } from './selection-check';
 
 interface MediaCardProps {
   title: string;
@@ -22,6 +24,10 @@ interface MediaCardProps {
   instanceLabel?: string;
   onNavigate?: () => void;
   cornerAction?: ReactNode;
+  /** Selection mode: clicking the card toggles selection instead of navigating. */
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 function getImageUrl(
@@ -47,16 +53,22 @@ export function MediaCard({
   instanceLabel,
   onNavigate,
   cornerAction,
+  selectable,
+  selected,
+  onToggleSelect,
 }: MediaCardProps) {
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
   const poster = getImageUrl(images, 'poster', posterHint);
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
-  return (
-    <div className="group relative">
-      <Link href={href} onClick={onNavigate} className="block">
-        <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm">
-          {poster ? (
+  const posterInner = (
+    <div
+      className={cn(
+        'relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm',
+        selectable && selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+      )}
+    >
+      {poster ? (
             <Image
               src={poster}
               alt={title}
@@ -99,19 +111,34 @@ export function MediaCard({
               />
             </div>
           )}
-          {/* Unmonitored overlay */}
-          {show('monitored') && monitored === false && (
-            <div className="absolute inset-0 bg-background/40" />
-          )}
-        </div>
-      </Link>
-      {/* cornerAction sits OUTSIDE the Link so its onClick isn't routed
-          through the anchor (no nested-interactive markup, no accidental
-          navigation). It still uses absolute positioning relative to the
-          outer wrapper. */}
-      {cornerAction && (
-        <div className="absolute top-1.5 left-1.5 z-10">{cornerAction}</div>
+      {/* Unmonitored overlay */}
+      {show('monitored') && monitored === false && (
+        <div className="absolute inset-0 bg-background/40" />
       )}
+    </div>
+  );
+
+  return (
+    <div className="group relative">
+      {selectable ? (
+        <button type="button" onClick={onToggleSelect} className="block w-full text-left">
+          {posterInner}
+        </button>
+      ) : (
+        <Link href={href} onClick={onNavigate} className="block">
+          {posterInner}
+        </Link>
+      )}
+      {/* The corner slot sits OUTSIDE the Link/button so its onClick isn't routed
+          through the anchor (no nested-interactive markup). In selection mode it
+          shows the checkbox; otherwise the optional cornerAction. */}
+      {selectable ? (
+        <div className="absolute top-1.5 left-1.5 z-10">
+          <SelectionCheck selected={Boolean(selected)} />
+        </div>
+      ) : cornerAction ? (
+        <div className="absolute top-1.5 left-1.5 z-10">{cornerAction}</div>
+      ) : null}
     </div>
   );
 }

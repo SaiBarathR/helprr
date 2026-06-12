@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { Eye, EyeOff } from 'lucide-react';
 import type { MediaImage } from '@/types';
+import { cn } from '@/lib/utils';
+import { SelectionCheck } from './selection-check';
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return '0 B';
@@ -17,6 +19,8 @@ export interface MediaTableRow {
   title: string;
   year: number;
   href: string;
+  /** Instance the item belongs to — combined with id to form the selection key. */
+  instanceId?: string;
   instanceLabel?: string;
   monitored?: boolean;
   hasFile?: boolean;
@@ -45,6 +49,9 @@ export function MediaTable({
   topSpacerHeight = 0,
   bottomSpacerHeight = 0,
   onNavigate,
+  selectable,
+  selectedKeys,
+  onToggleSelect,
 }: {
   rows: MediaTableRow[];
   visibleFields: string[];
@@ -52,9 +59,16 @@ export function MediaTable({
   topSpacerHeight?: number;
   bottomSpacerHeight?: number;
   onNavigate?: () => void;
+  /** Selection mode: a leading checkbox column appears and row clicks toggle. */
+  selectable?: boolean;
+  selectedKeys?: Set<string>;
+  onToggleSelect?: (row: MediaTableRow) => void;
 }) {
   const show = (field: string) => visibleFields.includes(field);
+  const keyOf = (row: MediaTableRow) => `${row.instanceId ?? ''}:${row.id}`;
+  const isSelected = (row: MediaTableRow) => selectedKeys?.has(keyOf(row)) ?? false;
   const columnCount = [
+    Boolean(selectable),
     show('monitored'),
     true,
     show('year'),
@@ -75,6 +89,7 @@ export function MediaTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border/50 text-xs text-muted-foreground">
+              {selectable && <th className="w-9 px-3 py-2"></th>}
               {show('monitored') && <th className="w-8 px-3 py-2"></th>}
               <th className="text-left px-3 py-2 font-medium">Title</th>
               {show('year') && <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Year</th>}
@@ -95,8 +110,34 @@ export function MediaTable({
                 <td colSpan={columnCount} style={{ height: topSpacerHeight }} />
               </tr>
             )}
-            {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-muted/30 transition-colors">
+            {rows.map((row) => {
+              const selected = isSelected(row);
+              const statusDot = (
+                <span
+                  className={`inline-block h-2 w-2 rounded-full shrink-0 ${
+                    row.hasFile
+                      ? 'bg-green-500'
+                      : row.monitored
+                        ? row.status === 'continuing' || row.status === 'released' ? 'bg-red-500' : 'bg-blue-500'
+                        : 'bg-muted-foreground'
+                  }`}
+                />
+              );
+              return (
+              <tr
+                key={row.id}
+                onClick={selectable ? () => onToggleSelect?.(row) : undefined}
+                className={cn(
+                  'transition-colors',
+                  selectable ? 'cursor-pointer' : '',
+                  selected ? 'bg-primary/10' : 'hover:bg-muted/30'
+                )}
+              >
+                {selectable && (
+                  <td className="px-3 py-2">
+                    <SelectionCheck selected={selected} className="border-muted-foreground/50 bg-transparent" />
+                  </td>
+                )}
                 {show('monitored') && (
                   <td className="px-3 py-2">
                     {row.monitored ? (
@@ -107,21 +148,23 @@ export function MediaTable({
                   </td>
                 )}
                 <td className="px-3 py-2">
-                  <Link href={row.href} onClick={onNavigate} className="hover:underline flex items-center gap-2">
-                    <span
-                      className={`inline-block h-2 w-2 rounded-full shrink-0 ${
-                        row.hasFile
-                          ? 'bg-green-500'
-                          : row.monitored
-                            ? row.status === 'continuing' || row.status === 'released' ? 'bg-red-500' : 'bg-blue-500'
-                            : 'bg-muted-foreground'
-                      }`}
-                    />
-                    <span className="truncate">{row.title}</span>
-                    {row.instanceLabel && (
-                      <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
-                    )}
-                  </Link>
+                  {selectable ? (
+                    <span className="flex items-center gap-2">
+                      {statusDot}
+                      <span className="truncate">{row.title}</span>
+                      {row.instanceLabel && (
+                        <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
+                      )}
+                    </span>
+                  ) : (
+                    <Link href={row.href} onClick={onNavigate} className="hover:underline flex items-center gap-2">
+                      {statusDot}
+                      <span className="truncate">{row.title}</span>
+                      {row.instanceLabel && (
+                        <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
+                      )}
+                    </Link>
+                  )}
                 </td>
                 {show('year') && <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell">{row.year}</td>}
                 {show('artistType') && type === 'artist' && <td className="px-3 py-2 text-muted-foreground hidden lg:table-cell">{row.artistType || '-'}</td>}
@@ -134,7 +177,8 @@ export function MediaTable({
                 {show('rating') && <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{row.rating && row.rating > 0 ? row.rating.toFixed(1) : '-'}</td>}
                 {show('sizeOnDisk') && <td className="px-3 py-2 text-muted-foreground text-right hidden sm:table-cell">{row.sizeOnDisk ? formatBytes(row.sizeOnDisk) : '-'}</td>}
               </tr>
-            ))}
+              );
+            })}
             {bottomSpacerHeight > 0 && (
               <tr aria-hidden="true">
                 <td colSpan={columnCount} style={{ height: bottomSpacerHeight }} />
