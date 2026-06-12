@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Before implementing:
 - State your assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
+- If a simpler approach exists (but don't try to hide bugs or issues because you think it's simpler), say so. Push back when warranted. Also if you are not sure about the approach, ask.
 - If something is unclear, stop. Name what's confusing. Ask.
 
 ## 2. Simplicity First
