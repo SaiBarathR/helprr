@@ -85,6 +85,9 @@ export async function resolveTagIds(
     } else if (mode !== 'remove') {
       const created = await client.createTag(label);
       ids.push(created.id);
+      // Record it so a later case-variant of the same new label in this batch
+      // (e.g. "foo" then "Foo") reuses the id instead of creating a duplicate tag.
+      byLabel.set(label.toLowerCase(), created.id);
     }
   }
   return ids;

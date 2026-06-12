@@ -10,7 +10,6 @@ export interface BulkSelection {
   selectionMode: boolean;
   selectedKeys: Set<string>;
   count: number;
-  isSelected: (key: string) => boolean;
   toggle: (key: string) => void;
   /** Add every given key to the selection (used by "select all [filtered]"). */
   selectMany: (keys: string[]) => void;
@@ -23,8 +22,6 @@ export interface BulkSelection {
 export function useBulkSelection(): BulkSelection {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
-
-  const isSelected = useCallback((key: string) => selectedKeys.has(key), [selectedKeys]);
 
   const toggle = useCallback((key: string) => {
     setSelectedKeys((prev) => {
@@ -54,7 +51,6 @@ export function useBulkSelection(): BulkSelection {
     selectionMode,
     selectedKeys,
     count: selectedKeys.size,
-    isSelected,
     toggle,
     selectMany,
     clear,
