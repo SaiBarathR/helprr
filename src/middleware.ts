@@ -16,8 +16,12 @@ const SECURITY_HEADERS: Record<string, string> = {
   'X-DNS-Prefetch-Control': 'off',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   'Content-Security-Policy': IS_DEV
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: http:; font-src 'self' https:; connect-src 'self' ws: wss: http: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: http:; media-src 'self' blob: data: http: https:; font-src 'self' https:; connect-src 'self' ws: wss: http: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    // media-src: direct Jellyfin streaming (broad https: mirrors img/connect —
+    // middleware runs on edge and can't read the JF origin from the DB); blob:
+    // is required by hls.js MSE. http-only Jellyfin under https Helprr cannot
+    // stream (mixed content) by design.
+    : "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; media-src 'self' blob: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 };
 
 function addSecurityHeaders(response: NextResponse): NextResponse {
