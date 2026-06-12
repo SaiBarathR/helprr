@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { HeroCarousel } from '@/components/hero-carousel';
 import { Input } from '@/components/ui/input';
 import {
   Sheet,
@@ -203,6 +206,65 @@ function computeCarouselItemLimit(): number {
   else cardWidth = 120;
   const visible = Math.max(1, Math.floor(w / cardWidth));
   return Math.min(46, Math.max(16, Math.ceil(visible * 2.5)));
+}
+
+function DiscoverHeroSlide({ item, priority = false }: { item: DiscoverItem; priority?: boolean }) {
+  const backdropSrc = item.backdropPath
+    ? toCachedImageSrc(item.backdropPath, 'tmdb') || item.backdropPath
+    : null;
+  const posterSrc = item.posterPath
+    ? toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath
+    : null;
+  const src = backdropSrc ?? posterSrc;
+
+  return (
+    <Link
+      href={`/discover/${item.mediaType === 'movie' ? 'movie' : 'tv'}/${item.tmdbId}`}
+      className="block h-full"
+    >
+      <div className="relative h-full overflow-hidden">
+        {src ? (
+          <Image
+            src={src}
+            alt={item.title}
+            fill
+            sizes="100vw"
+            className={backdropSrc ? 'object-cover animate-hero-zoom' : 'object-cover blur-2xl scale-125 animate-hero-zoom'}
+            priority={priority}
+            unoptimized={isProtectedApiImageSrc(src)}
+          />
+        ) : (
+          <div className="absolute inset-0 bg-muted" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+        {/* Extra bottom padding keeps badges clear of the carousel dots */}
+        <div className="absolute bottom-0 left-0 right-0 px-4 pt-4 pb-9 flex flex-col gap-1.5">
+          <h2 className="text-xl font-bold leading-tight line-clamp-2 drop-shadow-lg">{item.title}</h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            {item.rating > 0 && (
+              <Badge className="bg-background/50 text-foreground text-[10px] gap-0.5 backdrop-blur-sm">
+                <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+                {item.rating.toFixed(1)}
+              </Badge>
+            )}
+            <Badge variant="outline" className="text-[10px] border-foreground/30 text-foreground backdrop-blur-sm">
+              {item.mediaType === 'movie' ? 'Movie' : 'Show'}
+            </Badge>
+            {item.year && (
+              <Badge variant="outline" className="text-[10px] border-foreground/30 text-foreground backdrop-blur-sm">
+                {item.year}
+              </Badge>
+            )}
+            {(item.genreNames ?? []).slice(0, 3).map((genre) => (
+              <Badge key={genre} variant="outline" className="text-[10px] border-foreground/30 text-foreground backdrop-blur-sm">
+                {genre}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 function MediaPoster({
@@ -553,6 +615,13 @@ export default function DiscoverPage() {
 
     return ordered;
   }, [sections, layoutConfig, discoverContentType]);
+
+  // Hero carousel: top trending items that have a backdrop to show.
+  const heroItems = useMemo(() => {
+    const trending = sections.find((s) => s.key === 'trending' && s.type === 'media');
+    const items = (trending?.items ?? []) as DiscoverItem[];
+    return items.filter((item) => item.backdropPath).slice(0, 5);
+  }, [sections]);
 
   // Custom carousel entries from layout config (enabled custom sections in order)
   const customCarouselEntries = useMemo(() => {
@@ -1226,6 +1295,14 @@ export default function DiscoverPage() {
             <PageSpinner />
           ) : (
             <>
+              {heroItems.length > 0 && (
+                <HeroCarousel
+                  className="-mx-2 md:-mx-6 h-[280px] md:h-[380px]"
+                  slides={heroItems.map((item, i) => (
+                    <DiscoverHeroSlide key={item.id} item={item} priority={i === 0} />
+                  ))}
+                />
+              )}
               {/* Render sections in layout-config order, interleaving custom carousels */}
               {layoutConfig ? (
                 layoutConfig.sections

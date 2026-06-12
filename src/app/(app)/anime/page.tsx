@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
+import { HeroCarousel } from '@/components/hero-carousel';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Search, Star, Sparkles, CalendarClock } from 'lucide-react';
@@ -71,7 +72,7 @@ function entryToRailItem(entry: AniListMediaListEntry) {
   };
 }
 
-function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
+function HeroBanner({ anime, priority = false }: { anime: AnimeItemWithLibrary; priority?: boolean }) {
   const bannerSrc = anime.bannerImage
     ? toCachedImageSrc(anime.bannerImage, 'anilist') || anime.bannerImage
     : null;
@@ -82,15 +83,15 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
   const accentColor = anime.coverImageColor || '#6366f1';
 
   return (
-    <Link href={`/anime/${anime.id}`} className="block -mx-2 -mt-3">
-      <div className="relative h-[280px] overflow-hidden">
+    <Link href={`/anime/${anime.id}`} className="block h-full">
+      <div className="relative h-full overflow-hidden">
         {bannerSrc ? (
           <Image
             src={bannerSrc}
             alt={anime.title}
             fill
             className="object-cover animate-hero-zoom"
-            priority
+            priority={priority}
             unoptimized={isProtectedApiImageSrc(bannerSrc)}
           />
         ) : coverSrc ? (
@@ -99,7 +100,7 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
             alt={anime.title}
             fill
             className="object-cover blur-2xl scale-125 animate-hero-zoom"
-            priority
+            priority={priority}
             unoptimized={isProtectedApiImageSrc(coverSrc)}
           />
         ) : (
@@ -111,8 +112,8 @@ function HeroBanner({ anime }: { anime: AnimeItemWithLibrary }) {
           className="absolute inset-0 opacity-20"
           style={{ background: `linear-gradient(135deg, ${accentColor}40, transparent 60%)` }}
         />
-        {/* Content */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 flex flex-col gap-1.5">
+        {/* Content — extra bottom padding keeps badges clear of the carousel dots */}
+        <div className="absolute bottom-0 left-0 right-0 px-4 pt-4 pb-9 flex flex-col gap-1.5">
           <h1 className="text-xl font-bold leading-tight line-clamp-2 drop-shadow-lg">{anime.title}</h1>
           <div className="flex items-center gap-2 flex-wrap">
             {anime.averageScore != null && anime.averageScore > 0 && (
@@ -223,7 +224,7 @@ export default function AnimeHomePage() {
   const animeCarouselOrder = useUIStore((s) => s.animeCarouselOrder);
   const disabledAnimeCarousels = useUIStore((s) => s.disabledAnimeCarousels);
 
-  const heroAnime = data?.trending?.[0] ?? null;
+  const heroItems = data?.trending?.slice(0, 5) ?? [];
   const trendingItems = data?.trending?.slice(1) ?? [];
   const currentSeason = data?.currentSeason;
   const nextSeasonInfo = data?.nextSeasonInfo;
@@ -360,7 +361,14 @@ export default function AnimeHomePage() {
       ) : data ? (
         <div className="-mx-2 md:-mx-6">
           {/* Hero Banner */}
-          {heroAnime && <HeroBanner anime={heroAnime} />}
+          {heroItems.length > 0 && (
+            <HeroCarousel
+              className="-mx-2 -mt-3 h-[280px]"
+              slides={heroItems.map((anime, i) => (
+                <HeroBanner key={anime.id} anime={anime} priority={i === 0} />
+              ))}
+            />
+          )}
           <div className="space-y-5 px-2 md:p-6 md:px-8">
             {orderedCarouselIds
               .filter((id) => !disabledSet.has(id))
