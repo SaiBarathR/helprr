@@ -54,6 +54,12 @@ async function getHandler(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const to = normalizeDateKey(searchParams.get('to')) ?? todayKey;
   const from = normalizeDateKey(searchParams.get('from')) ?? shiftDayKey(to, -29);
+  // Keys are zero-padded YYYY-MM-DD, so lexicographic compare == chronological.
+  // Reject inverted ranges rather than letting eachDayKey return an empty set
+  // that masquerades as "no data".
+  if (from > to) {
+    return NextResponse.json({ error: "invalid date range: 'from' must be <= 'to'" }, { status: 400 });
+  }
   const days = eachDayKey(from, to);
 
   // Fetch only the libraries the user may view (mirrors /api/services/stats gating).

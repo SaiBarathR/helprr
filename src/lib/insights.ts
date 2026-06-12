@@ -8,11 +8,18 @@ export const INSIGHTS_MAX_DAYS = 366;
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** Validate a `YYYY-MM-DD` query param; returns null for anything malformed. */
+/** Validate a `YYYY-MM-DD` query param; returns null for anything malformed or
+ * for impossible calendar dates (bad month, or day past the month's length). */
 export function normalizeDateKey(value: string | null | undefined): string | null {
   if (!value) return null;
   const trimmed = value.trim();
-  return DATE_KEY_RE.test(trimmed) ? trimmed : null;
+  if (!DATE_KEY_RE.test(trimmed)) return null;
+  const [year, month, day] = trimmed.split('-').map(Number);
+  if (month < 1 || month > 12) return null;
+  const isLeap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (day < 1 || day > daysInMonth) return null;
+  return trimmed;
 }
 
 /** Shift a `YYYY-MM-DD` key by `delta` days (UTC math, so DST never drifts it). */

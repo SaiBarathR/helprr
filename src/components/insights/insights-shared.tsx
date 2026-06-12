@@ -41,6 +41,9 @@ export function useInsightsResource<T>(url: string | null): { data: T | null; lo
       return;
     }
     const controller = new AbortController();
+    // Drop the previous range's payload immediately so a URL→URL change shows the
+    // loading state rather than briefly rendering stale data for the old range.
+    setData(null);
     setLoading(true);
     fetch(url, { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
