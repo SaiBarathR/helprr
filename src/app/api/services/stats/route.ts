@@ -9,12 +9,35 @@ function mapDiskSpace(disks: Array<DiskSpace | null | undefined>): DiskSpace[] {
   return disks.filter((disk): disk is DiskSpace => Boolean(disk));
 }
 
-// Instances often share storage, so the same path can come back from several;
-// dedupe by path (first wins) when merging disk space across instances.
+// Instances share storage AND containers see the same filesystem under
+// different mounts (/ vs /config, /mnt/disk vs /data vs a root-folder
+// subpath), so path alone can't dedupe — one physical drive showed up as
+// three "disks". Two entries are the same filesystem when totals match
+// exactly and free space agrees within a tolerance (services sample free
+// space moments apart, so it drifts slightly during writes).
+const FREE_SPACE_TOLERANCE = 512 * 1024 ** 2; // 512 MiB
+
+function sameFilesystem(a: DiskSpace, b: DiskSpace): boolean {
+  return a.totalSpace === b.totalSpace && Math.abs(a.freeSpace - b.freeSpace) <= FREE_SPACE_TOLERANCE;
+}
+
+// Keep the most identifiable entry: a real device label (uuid) first, then
+// the shortest path (a host-style mount beats a container subpath).
+function preferDisk(a: DiskSpace, b: DiskSpace): DiskSpace {
+  const aHasLabel = Boolean(a.label);
+  const bHasLabel = Boolean(b.label);
+  if (aHasLabel !== bHasLabel) return aHasLabel ? a : b;
+  return a.path.length <= b.path.length ? a : b;
+}
+
 function dedupeDiskSpace(disks: DiskSpace[]): DiskSpace[] {
-  const byPath = new Map<string, DiskSpace>();
-  for (const disk of disks) if (!byPath.has(disk.path)) byPath.set(disk.path, disk);
-  return [...byPath.values()];
+  const out: DiskSpace[] = [];
+  for (const disk of disks) {
+    const matchIdx = out.findIndex((kept) => sameFilesystem(kept, disk));
+    if (matchIdx === -1) out.push(disk);
+    else out[matchIdx] = preferDisk(out[matchIdx], disk);
+  }
+  return out;
 }
 
 async function getHandler() {
