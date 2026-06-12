@@ -10,6 +10,7 @@ import {
   buildTrickplayUrl,
   getItem,
   getNextEpisode,
+  getSeriesEpisodes,
   getTicket,
   invalidateTicket,
   JellyfinPlaybackError,
@@ -34,6 +35,7 @@ import type {
   PlaybackProgressReport,
 } from '@/types/jellyfin-playback';
 import { PlayerControls } from '@/components/player/player-controls';
+import type { EpisodePickerHandle } from '@/components/player/episode-panel';
 import { NextUpOverlay } from '@/components/player/next-up-overlay';
 import {
   diagnoseConnectivity,
@@ -342,6 +344,16 @@ export function VideoPlayer({
     router.replace(`/watch/${next.Id}`);
   }, [finalize, router]);
 
+  /** Jump to any episode picked in the episode panel. */
+  const selectEpisode = useCallback(
+    (episodeId: string) => {
+      if (episodeId === itemId) return;
+      finalize();
+      router.replace(`/watch/${episodeId}`);
+    },
+    [finalize, itemId, router]
+  );
+
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -634,6 +646,19 @@ export function VideoPlayer({
     };
   }, [item, active]);
 
+  const episodePicker = useMemo<EpisodePickerHandle | null>(() => {
+    const ticket = ticketRef.current;
+    if (!ticket || !item || item.Type !== 'Episode' || !item.SeriesId) return null;
+    const seriesId = item.SeriesId;
+    return {
+      seriesName: item.SeriesName,
+      currentId: item.Id,
+      load: () => getSeriesEpisodes(ticket, seriesId),
+      imageUrl: (episodeId) => buildPrimaryImageUrl(ticket, episodeId, 320),
+      onSelect: selectEpisode,
+    };
+  }, [item, selectEpisode]);
+
   if (phase === 'error' && error) {
     return (
       <PlayerErrorScreen
@@ -714,6 +739,7 @@ export function VideoPlayer({
           maxBitrate={active?.maxStreamingBitrate ?? null}
           chapters={chapters}
           trickplay={trickplay}
+          episodePicker={episodePicker}
           autoplayNext={item?.Type === 'Episode' ? autoplayNext : undefined}
           videoEl={videoRef.current}
           containerEl={containerRef.current}

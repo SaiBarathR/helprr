@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Airplay,
+  AudioLines,
+  BookMarked,
+  Captions,
   ChevronLeft,
+  ListVideo,
   Loader2,
   Maximize,
   Minimize,
@@ -17,7 +21,12 @@ import {
 import type { MediaSourceInfo } from '@/types/jellyfin-playback';
 import { formatTime } from '@/lib/playback/time';
 import type { TrickplayHandle } from '@/lib/playback/trickplay';
-import { TrackMenus, type ChapterMark } from '@/components/player/track-menus';
+import {
+  TrackMenus,
+  type ChapterMark,
+  type PlayerMenuKind,
+} from '@/components/player/track-menus';
+import { EpisodePanel, type EpisodePickerHandle } from '@/components/player/episode-panel';
 import { PREVIEW_WIDTH_PX, TrickplayPreview } from '@/components/player/trickplay-preview';
 
 const HIDE_DELAY_MS = 3000;
@@ -150,6 +159,7 @@ export function PlayerControls({
   maxBitrate,
   chapters,
   trickplay,
+  episodePicker,
   autoplayNext,
   videoEl,
   containerEl,
@@ -176,6 +186,8 @@ export function PlayerControls({
   maxBitrate: number | null;
   chapters: ChapterMark[];
   trickplay: TrickplayHandle | null;
+  /** null hides the episode picker (movies). */
+  episodePicker: EpisodePickerHandle | null;
   /** undefined hides the autoplay toggle (movies). */
   autoplayNext?: boolean;
   videoEl: HTMLVideoElement | null;
@@ -190,7 +202,8 @@ export function PlayerControls({
   onToggleAutoplayNext?: () => void;
 }) {
   const [visible, setVisible] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<PlayerMenuKind | null>(null);
+  const [episodesOpen, setEpisodesOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -199,16 +212,17 @@ export function PlayerControls({
 
   // Keep the latest "may we auto-hide" inputs in a ref so the timer callback
   // doesn't capture stale state.
-  const stateRef = useRef({ playing, settingsOpen, dragging });
+  const menuOpen = openMenu !== null;
+  const stateRef = useRef({ playing, menuOpen, episodesOpen, dragging });
   useEffect(() => {
-    stateRef.current = { playing, settingsOpen, dragging };
-  }, [playing, settingsOpen, dragging]);
+    stateRef.current = { playing, menuOpen, episodesOpen, dragging };
+  }, [playing, menuOpen, episodesOpen, dragging]);
 
   const scheduleHide = useCallback(() => {
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
-      const { playing: p, settingsOpen: s, dragging: d } = stateRef.current;
-      if (p && !s && !d) setVisible(false);
+      const { playing: p, menuOpen: m, episodesOpen: e, dragging: d } = stateRef.current;
+      if (p && !m && !e && !d) setVisible(false);
     }, HIDE_DELAY_MS);
   }, []);
 
@@ -223,7 +237,7 @@ export function PlayerControls({
   }, [playing, scheduleHide]);
 
   // Paused playback, an open menu, or an in-flight scrub pins the controls.
-  const shown = visible || !playing || settingsOpen || dragging;
+  const shown = visible || !playing || menuOpen || episodesOpen || dragging;
 
   useEffect(() => {
     const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -256,7 +270,7 @@ export function PlayerControls({
       lastTapRef.current = now;
       if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
       tapTimerRef.current = setTimeout(() => {
-        if (stateRef.current.settingsOpen) return;
+        if (stateRef.current.menuOpen || stateRef.current.episodesOpen) return;
         setVisible((v) => {
           if (!v) scheduleHide();
           return !v;
@@ -305,6 +319,15 @@ export function PlayerControls({
   }, [containerEl, webkitVideo]);
 
   const busy = buffering || switching;
+
+  const toggleMenu = useCallback((kind: PlayerMenuKind) => {
+    setOpenMenu((m) => (m === kind ? null : kind));
+  }, []);
+
+  const audioTrackCount = source?.MediaStreams.filter((s) => s.Type === 'Audio').length ?? 0;
+  const hasSubtitles =
+    source?.MediaStreams.some((s) => s.Type === 'Subtitle' && s.DeliveryMethod !== 'Drop') ??
+    false;
 
   return (
     <div
@@ -423,9 +446,49 @@ export function PlayerControls({
             <span className="text-white/40"> / {formatTime(durationSeconds)}</span>
           </span>
           <div className="flex-1" />
+          {episodePicker && (
+            <button
+              type="button"
+              onClick={() => setEpisodesOpen(true)}
+              aria-label="Episodes"
+              className="rounded-full p-2 hover:bg-white/10"
+            >
+              <ListVideo className="h-5 w-5" aria-hidden />
+            </button>
+          )}
+          {audioTrackCount > 1 && (
+            <button
+              type="button"
+              onClick={() => toggleMenu('audio')}
+              aria-label="Audio tracks"
+              className="rounded-full p-2 hover:bg-white/10"
+            >
+              <AudioLines className="h-5 w-5" aria-hidden />
+            </button>
+          )}
+          {hasSubtitles && (
+            <button
+              type="button"
+              onClick={() => toggleMenu('subtitles')}
+              aria-label="Subtitles"
+              className="rounded-full p-2 hover:bg-white/10"
+            >
+              <Captions className="h-5 w-5" aria-hidden />
+            </button>
+          )}
+          {chapters.length > 0 && (
+            <button
+              type="button"
+              onClick={() => toggleMenu('chapters')}
+              aria-label="Chapters"
+              className="rounded-full p-2 hover:bg-white/10"
+            >
+              <BookMarked className="h-5 w-5" aria-hidden />
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setSettingsOpen((o) => !o)}
+            onClick={() => toggleMenu('settings')}
             aria-label="Playback settings"
             className="rounded-full p-2 hover:bg-white/10"
           >
@@ -459,9 +522,9 @@ export function PlayerControls({
       </div>
 
       <TrackMenus
-        open={settingsOpen}
+        menu={openMenu}
         onClose={() => {
-          setSettingsOpen(false);
+          setOpenMenu(null);
           scheduleHide();
         }}
         source={source}
@@ -477,6 +540,17 @@ export function PlayerControls({
         onSeekChapter={onSeekTo}
         onToggleAutoplayNext={onToggleAutoplayNext}
       />
+
+      {episodePicker && (
+        <EpisodePanel
+          open={episodesOpen}
+          onClose={() => {
+            setEpisodesOpen(false);
+            scheduleHide();
+          }}
+          picker={episodePicker}
+        />
+      )}
     </div>
   );
 }

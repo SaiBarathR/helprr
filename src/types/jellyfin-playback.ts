@@ -132,13 +132,16 @@ export interface TrickplayInfo {
   Bandwidth?: number;
 }
 
-/** Minimal episode shape for the next-up autoplay overlay. */
+/** Minimal episode shape for the next-up autoplay overlay and episode picker. */
 export interface EpisodeSummary {
   Id: string;
   Name: string;
   IndexNumber?: number;
   ParentIndexNumber?: number;
   SeriesName?: string;
+  SeasonName?: string;
+  RunTimeTicks?: number;
+  UserData?: { PlayedPercentage?: number; Played?: boolean; PlaybackPositionTicks?: number };
 }
 
 export interface PlayableItem {

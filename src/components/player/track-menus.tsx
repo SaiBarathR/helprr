@@ -10,6 +10,9 @@ export interface ChapterMark {
   seconds: number;
 }
 
+/** Which control-bar menu is open; each kind has its own button. */
+export type PlayerMenuKind = 'settings' | 'audio' | 'subtitles' | 'chapters';
+
 // Bitrate ladder for the quality menu (server picks resolution from the cap).
 // null = no cap: direct play when the file qualifies.
 const QUALITY_OPTIONS: Array<{ label: string; value: number | null }> = [
@@ -65,7 +68,7 @@ function MenuRow({
 }
 
 export function TrackMenus({
-  open,
+  menu,
   onClose,
   source,
   audioStreamIndex,
@@ -80,7 +83,7 @@ export function TrackMenus({
   onSeekChapter,
   onToggleAutoplayNext,
 }: {
-  open: boolean;
+  menu: PlayerMenuKind | null;
   onClose: () => void;
   source: MediaSourceInfo | null;
   audioStreamIndex?: number;
@@ -96,12 +99,18 @@ export function TrackMenus({
   onSeekChapter: (seconds: number) => void;
   onToggleAutoplayNext?: () => void;
 }) {
-  if (!open || !source) return null;
+  if (!menu || !source) return null;
 
   const audioStreams = source.MediaStreams.filter((s) => s.Type === 'Audio');
   const subtitleStreams = source.MediaStreams.filter(
     (s) => s.Type === 'Subtitle' && s.DeliveryMethod !== 'Drop'
   );
+  const menuLabels: Record<PlayerMenuKind, string> = {
+    settings: 'Playback settings',
+    audio: 'Audio tracks',
+    subtitles: 'Subtitles',
+    chapters: 'Chapters',
+  };
 
   return (
     <>
@@ -110,23 +119,37 @@ export function TrackMenus({
       <div
         className="absolute bottom-20 right-3 z-40 max-h-[60dvh] w-72 overflow-y-auto rounded-xl border border-white/10 bg-black/90 pb-2 shadow-2xl backdrop-blur"
         role="menu"
-        aria-label="Playback settings"
+        aria-label={menuLabels[menu]}
       >
-        <MenuSection title="Quality">
-          {QUALITY_OPTIONS.map((option) => (
-            <MenuRow
-              key={option.label}
-              label={option.label}
-              selected={maxBitrate === option.value}
-              onSelect={() => {
-                onSelectQuality(option.value);
-                onClose();
-              }}
-            />
-          ))}
-        </MenuSection>
+        {menu === 'settings' && (
+          <>
+            <MenuSection title="Quality">
+              {QUALITY_OPTIONS.map((option) => (
+                <MenuRow
+                  key={option.label}
+                  label={option.label}
+                  selected={maxBitrate === option.value}
+                  onSelect={() => {
+                    onSelectQuality(option.value);
+                    onClose();
+                  }}
+                />
+              ))}
+            </MenuSection>
 
-        {audioStreams.length > 1 && (
+            {onToggleAutoplayNext && (
+              <MenuSection title="Playback">
+                <MenuRow
+                  label="Autoplay next episode"
+                  selected={autoplayNext ?? false}
+                  onSelect={onToggleAutoplayNext}
+                />
+              </MenuSection>
+            )}
+          </>
+        )}
+
+        {menu === 'audio' && (
           <MenuSection title="Audio">
             {audioStreams.map((stream) => (
               <MenuRow
@@ -142,7 +165,7 @@ export function TrackMenus({
           </MenuSection>
         )}
 
-        {subtitleStreams.length > 0 && (
+        {menu === 'subtitles' && (
           <MenuSection title="Subtitles">
             <MenuRow
               label="Off"
@@ -167,7 +190,7 @@ export function TrackMenus({
           </MenuSection>
         )}
 
-        {chapters.length > 0 && (
+        {menu === 'chapters' && (
           <MenuSection title="Chapters">
             {chapters.map((chapter, i) => (
               <MenuRow
@@ -184,16 +207,6 @@ export function TrackMenus({
                 }}
               />
             ))}
-          </MenuSection>
-        )}
-
-        {onToggleAutoplayNext && (
-          <MenuSection title="Playback">
-            <MenuRow
-              label="Autoplay next episode"
-              selected={autoplayNext ?? false}
-              onSelect={onToggleAutoplayNext}
-            />
           </MenuSection>
         )}
       </div>

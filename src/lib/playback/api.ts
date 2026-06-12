@@ -135,6 +135,19 @@ export async function getNextEpisode(
   return candidate && candidate.Id !== itemId ? candidate : null;
 }
 
+/** Every episode of a series (all seasons, with watch state) for the episode picker. */
+export async function getSeriesEpisodes(
+  ticket: OkTicket,
+  seriesId: string
+): Promise<EpisodeSummary[]> {
+  const params = new URLSearchParams({ UserId: ticket.userId });
+  const res = await jfFetch<{ Items?: EpisodeSummary[] }>(
+    ticket,
+    `/Shows/${seriesId}/Episodes?${params}`
+  );
+  return res.Items ?? [];
+}
+
 // ── Playback negotiation ──────────────────────────────────────────────────────
 
 export interface PlaybackInfoOptions {
