@@ -125,7 +125,7 @@ export function MediaTable({
               );
               return (
               <tr
-                key={row.id}
+                key={keyOf(row)}
                 onClick={selectable ? () => onToggleSelect?.(row) : undefined}
                 className={cn(
                   'transition-colors',
