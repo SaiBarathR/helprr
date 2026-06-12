@@ -41,6 +41,8 @@ async function putHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('music.view');
+  if (capError) return capError;
 
   try {
     const { id } = await params;

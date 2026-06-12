@@ -141,9 +141,9 @@ export class SonarrClient {
     return this.get<SonarrEpisode>(`/api/v3/episode/${id}`);
   }
 
-  async setEpisodeMonitored(id: number, monitored: boolean): Promise<SonarrEpisode[]> {
+  async setEpisodesMonitored(episodeIds: number[], monitored: boolean): Promise<SonarrEpisode[]> {
     return this.put<SonarrEpisode[]>('/api/v3/episode/monitor', {
-      episodeIds: [id],
+      episodeIds,
       monitored,
     });
   }
