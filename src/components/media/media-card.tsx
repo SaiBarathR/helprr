@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Film, Tv, Disc3, Star } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
-import { cn } from '@/lib/utils';
+import { cn, shallowEqualExcept } from '@/lib/utils';
 import { SelectionCheck } from './selection-check';
 
 interface MediaCardProps {
@@ -40,7 +40,7 @@ function getImageUrl(
   return toCachedImageSrc(raw, serviceHint);
 }
 
-export function MediaCard({
+export const MediaCard = memo(function MediaCard({
   title,
   year,
   images,
@@ -147,6 +147,6 @@ export function MediaCard({
       ) : null}
     </div>
   );
-}
+}, (p, n) => shallowEqualExcept(p, n, ['onNavigate', 'onToggleSelect', 'cornerAction']));
 
 export { getImageUrl };

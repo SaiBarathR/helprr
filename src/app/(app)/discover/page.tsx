@@ -435,16 +435,14 @@ function CustomCarouselRow({
 
 export default function DiscoverPage() {
   const searchParams = useSearchParams();
-  const {
-    discoverContentType,
-    setDiscoverContentType,
-    discoverSort,
-    setDiscoverSort,
-    discoverSortDirection,
-    setDiscoverSortDirection,
-    discoverFilters,
-    setDiscoverFilters,
-  } = useUIStore();
+  const discoverContentType = useUIStore((s) => s.discoverContentType);
+  const setDiscoverContentType = useUIStore((s) => s.setDiscoverContentType);
+  const discoverSort = useUIStore((s) => s.discoverSort);
+  const setDiscoverSort = useUIStore((s) => s.setDiscoverSort);
+  const discoverSortDirection = useUIStore((s) => s.discoverSortDirection);
+  const setDiscoverSortDirection = useUIStore((s) => s.setDiscoverSortDirection);
+  const discoverFilters = useUIStore((s) => s.discoverFilters);
+  const setDiscoverFilters = useUIStore((s) => s.setDiscoverFilters);
 
   const [personFilter, setPersonFilter] = useState<{ id: number; name: string } | null>(null);
   const [query, setQuery] = useState('');
