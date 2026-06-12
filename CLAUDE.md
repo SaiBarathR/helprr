@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Before implementing:
 - State your assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
+- If a simpler approach exists (but don't try to hide bugs or issues because you think it's simpler), say so. Push back when warranted. Also if you are not sure about the approach, ask.
 - If something is unclear, stop. Name what's confusing. Ask.
 
 ## 2. Simplicity First
@@ -67,7 +67,7 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 ## Commands
 
 ```bash
-npm run dev          # Dev server with Webpack on port 3050
+npm run dev          # Dev server (Turbopack) on port 3050
 npm run build        # Production build (Webpack required for Serwist)
 npm run start        # Production server on port 3050
 npm run lint         # ESLint (Next.js core-web-vitals + TypeScript)
@@ -76,7 +76,7 @@ npm run db:push      # Sync schema to database (no migration files)
 npm run db:migrate   # Prisma migrate dev
 ```
 
-**Important:** Both `dev` and `build` use the `--webpack` flag because Serwist is incompatible with Turbopack (Next.js 16 default).
+**Important:** `build` uses the `--webpack` flag because Serwist is incompatible with Turbopack (Next.js 16 default). `dev` runs on Turbopack — Serwist is disabled in development (see Service Worker), so webpack is not needed there and on-demand route compiles are ~20x faster.
 
 ## Environment Variables
 

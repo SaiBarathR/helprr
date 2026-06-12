@@ -11,7 +11,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useUIStore } from '@/lib/store';
-import { getEnabledNavItems, getBottomNavLayout } from '@/lib/nav-config';
+import { getActiveNavHref, getEnabledNavItems, getBottomNavLayout } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
@@ -36,9 +36,8 @@ export function BottomNav() {
     return getBottomNavLayout(enabled);
   }, [navOrder, disabledNavItems, me]);
 
-  const isMoreActive = moreItems.some(
-    (item) => pathname === item.href || pathname.startsWith(item.href + '/')
-  );
+  const activeHref = getActiveNavHref([...tabs, ...moreItems], pathname);
+  const isMoreActive = moreItems.some((item) => item.href === activeHref);
 
   // Roll the hidden items' badges into one indicator on the "More" button.
   const moreBadge = useMemo<BadgeSlice>(
@@ -67,7 +66,7 @@ export function BottomNav() {
       <div className="flex items-center justify-around h-12">
         {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
           const slice = badgeArea ? counts[badgeArea] : undefined;
-          const isActive = pathname === href || pathname.startsWith(href + '/');
+          const isActive = href === activeHref;
           const isPending = pendingHref === href;
           return (
             <Link
@@ -118,12 +117,13 @@ export function BottomNav() {
               side={isBottom ? 'top' : 'bottom'}
               align="end"
               sideOffset={8}
-              className="w-56 p-2"
+              collisionPadding={8}
+              className="w-56 p-2 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain no-scrollbar"
             >
               <div className="space-y-0.5">
                 {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {
                   const slice = badgeArea ? counts[badgeArea] : undefined;
-                  const isActive = pathname === href || pathname.startsWith(href + '/');
+                  const isActive = href === activeHref;
                   const isPending = pendingHref === href;
                   return (
                     <Link
