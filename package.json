@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack -p 3050",
+    "dev": "next dev -p 3050",
     "build": "next build --webpack",
     "start": "next start -p 3050",
     "db:migrate": "npx prisma migrate dev",

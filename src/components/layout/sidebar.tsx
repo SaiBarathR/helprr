@@ -8,7 +8,7 @@ import { Clapperboard, PanelLeftClose, PanelLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useUIStore } from '@/lib/store';
-import { getEnabledNavItems } from '@/lib/nav-config';
+import { getActiveNavHref, getEnabledNavItems } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
@@ -40,6 +40,8 @@ export function Sidebar() {
     [navOrder, disabledNavItems, me]
   );
 
+  const activeHref = getActiveNavHref(navItems, pathname);
+
   return (
     <aside
       className={cn(
@@ -52,10 +54,10 @@ export function Sidebar() {
         {!sidebarCollapsed && <span className="font-semibold text-lg">Helprr</span>}
       </div>
 
-      <nav className="flex-1 py-2 space-y-1 px-2">
+      <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar py-2 space-y-1 px-2">
         {navItems.map(({ href, icon: Icon, label, badgeArea }) => {
           const slice = badgeArea ? counts[badgeArea] : undefined;
-          const isActive = pathname === href || (href !== '/dashboard' && pathname.startsWith(href));
+          const isActive = href === activeHref;
           const isPending = pendingHref === href;
           const link = (
             <Link
