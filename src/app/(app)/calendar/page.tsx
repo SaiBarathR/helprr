@@ -521,16 +521,14 @@ function ViewTabs({
  */
 
 export default function CalendarPage() {
-  const {
-    calendarView,
-    setCalendarView,
-    calendarTypeFilter: typeFilter,
-    setCalendarTypeFilter: setTypeFilter,
-    calendarMonitoredOnly: monitoredOnly,
-    setCalendarMonitoredOnly: setMonitoredOnly,
-    calendarInstanceFilter: instanceFilter,
-    setCalendarInstanceFilter: setInstanceFilter,
-  } = useUIStore();
+  const calendarView = useUIStore((s) => s.calendarView);
+  const setCalendarView = useUIStore((s) => s.setCalendarView);
+  const typeFilter = useUIStore((s) => s.calendarTypeFilter);
+  const setTypeFilter = useUIStore((s) => s.setCalendarTypeFilter);
+  const monitoredOnly = useUIStore((s) => s.calendarMonitoredOnly);
+  const setMonitoredOnly = useUIStore((s) => s.setCalendarMonitoredOnly);
+  const instanceFilter = useUIStore((s) => s.calendarInstanceFilter);
+  const setInstanceFilter = useUIStore((s) => s.setCalendarInstanceFilter);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isMobile, setIsMobile] = useState(false);

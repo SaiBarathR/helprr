@@ -160,24 +160,22 @@ export default function SeriesPage() {
   const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
 
-  const {
-    seriesView: viewMode,
-    setSeriesView: setViewMode,
-    seriesPosterSize: posterSize,
-    setSeriesPosterSize: setPosterSize,
-    seriesSort: sort,
-    setSeriesSort: setSort,
-    seriesSortDirection: sortDir,
-    setSeriesSortDirection: setSortDir,
-    seriesFilter: filter,
-    setSeriesFilter: setFilter,
-    seriesInstanceFilter: instanceFilter,
-    setSeriesInstanceFilter: setInstanceFilter,
-    seriesVisibleFields: visibleFieldsByMode,
-    setSeriesVisibleFields: setVisibleFieldsForMode,
-    seriesSearch: search,
-    setSeriesSearch: setSearch,
-  } = useUIStore();
+  const viewMode = useUIStore((s) => s.seriesView);
+  const setViewMode = useUIStore((s) => s.setSeriesView);
+  const posterSize = useUIStore((s) => s.seriesPosterSize);
+  const setPosterSize = useUIStore((s) => s.setSeriesPosterSize);
+  const sort = useUIStore((s) => s.seriesSort);
+  const setSort = useUIStore((s) => s.setSeriesSort);
+  const sortDir = useUIStore((s) => s.seriesSortDirection);
+  const setSortDir = useUIStore((s) => s.setSeriesSortDirection);
+  const filter = useUIStore((s) => s.seriesFilter);
+  const setFilter = useUIStore((s) => s.setSeriesFilter);
+  const instanceFilter = useUIStore((s) => s.seriesInstanceFilter);
+  const setInstanceFilter = useUIStore((s) => s.setSeriesInstanceFilter);
+  const visibleFieldsByMode = useUIStore((s) => s.seriesVisibleFields);
+  const setVisibleFieldsForMode = useUIStore((s) => s.setSeriesVisibleFields);
+  const search = useUIStore((s) => s.seriesSearch);
+  const setSearch = useUIStore((s) => s.setSeriesSearch);
 
   const visibleFields = visibleFieldsByMode[viewMode];
   const setVisibleFields = useCallback(
@@ -577,7 +575,7 @@ export default function SeriesPage() {
     scrollMargin: contentOffsetTop,
   });
 
-  const tableRows = filtered.map((s) => ({
+  const tableRows = useMemo(() => filtered.map((s) => ({
     id: s.id,
     title: s.title,
     year: s.year,
@@ -594,7 +592,7 @@ export default function SeriesPage() {
     episodeProgress: `${s.statistics.episodeCount}/${s.statistics.totalEpisodeCount}`,
     runtime: s.runtime,
     genres: s.genres,
-  }));
+  })), [filtered, qualityProfileMap, multiInstance, hrefForSeries]);
 
   const tableVirtualizer = useWindowVirtualizer({
     count: tableRows.length,

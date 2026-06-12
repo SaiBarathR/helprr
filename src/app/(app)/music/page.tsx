@@ -199,24 +199,22 @@ export default function MusicPage() {
   const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
 
-  const {
-    musicView: viewMode,
-    setMusicView: setViewMode,
-    musicPosterSize: posterSize,
-    setMusicPosterSize: setPosterSize,
-    musicSort: sort,
-    setMusicSort: setSort,
-    musicSortDirection: sortDir,
-    setMusicSortDirection: setSortDir,
-    musicFilter: filter,
-    setMusicFilter: setFilter,
-    musicInstanceFilter: instanceFilter,
-    setMusicInstanceFilter: setInstanceFilter,
-    musicVisibleFields: visibleFieldsByMode,
-    setMusicVisibleFields: setVisibleFieldsForMode,
-    musicSearch: search,
-    setMusicSearch: setSearch,
-  } = useUIStore();
+  const viewMode = useUIStore((s) => s.musicView);
+  const setViewMode = useUIStore((s) => s.setMusicView);
+  const posterSize = useUIStore((s) => s.musicPosterSize);
+  const setPosterSize = useUIStore((s) => s.setMusicPosterSize);
+  const sort = useUIStore((s) => s.musicSort);
+  const setSort = useUIStore((s) => s.setMusicSort);
+  const sortDir = useUIStore((s) => s.musicSortDirection);
+  const setSortDir = useUIStore((s) => s.setMusicSortDirection);
+  const filter = useUIStore((s) => s.musicFilter);
+  const setFilter = useUIStore((s) => s.setMusicFilter);
+  const instanceFilter = useUIStore((s) => s.musicInstanceFilter);
+  const setInstanceFilter = useUIStore((s) => s.setMusicInstanceFilter);
+  const visibleFieldsByMode = useUIStore((s) => s.musicVisibleFields);
+  const setVisibleFieldsForMode = useUIStore((s) => s.setMusicVisibleFields);
+  const search = useUIStore((s) => s.musicSearch);
+  const setSearch = useUIStore((s) => s.setMusicSearch);
 
   const visibleFields = visibleFieldsByMode[viewMode];
   const setVisibleFields = useCallback(

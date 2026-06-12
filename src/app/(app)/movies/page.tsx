@@ -211,24 +211,22 @@ export default function MoviesPage() {
   const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
 
-  const {
-    moviesView: viewMode,
-    setMoviesView: setViewMode,
-    moviesPosterSize: posterSize,
-    setMoviesPosterSize: setPosterSize,
-    moviesSort: sort,
-    setMoviesSort: setSort,
-    moviesSortDirection: sortDir,
-    setMoviesSortDirection: setSortDir,
-    moviesFilter: filter,
-    setMoviesFilter: setFilter,
-    moviesInstanceFilter: instanceFilter,
-    setMoviesInstanceFilter: setInstanceFilter,
-    moviesVisibleFields: visibleFieldsByMode,
-    setMoviesVisibleFields: setVisibleFieldsForMode,
-    moviesSearch: search,
-    setMoviesSearch: setSearch,
-  } = useUIStore();
+  const viewMode = useUIStore((s) => s.moviesView);
+  const setViewMode = useUIStore((s) => s.setMoviesView);
+  const posterSize = useUIStore((s) => s.moviesPosterSize);
+  const setPosterSize = useUIStore((s) => s.setMoviesPosterSize);
+  const sort = useUIStore((s) => s.moviesSort);
+  const setSort = useUIStore((s) => s.setMoviesSort);
+  const sortDir = useUIStore((s) => s.moviesSortDirection);
+  const setSortDir = useUIStore((s) => s.setMoviesSortDirection);
+  const filter = useUIStore((s) => s.moviesFilter);
+  const setFilter = useUIStore((s) => s.setMoviesFilter);
+  const instanceFilter = useUIStore((s) => s.moviesInstanceFilter);
+  const setInstanceFilter = useUIStore((s) => s.setMoviesInstanceFilter);
+  const visibleFieldsByMode = useUIStore((s) => s.moviesVisibleFields);
+  const setVisibleFieldsForMode = useUIStore((s) => s.setMoviesVisibleFields);
+  const search = useUIStore((s) => s.moviesSearch);
+  const setSearch = useUIStore((s) => s.setMoviesSearch);
 
   const visibleFields = visibleFieldsByMode[viewMode];
   const setVisibleFields = useCallback(

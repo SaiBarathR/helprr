@@ -1,10 +1,11 @@
 'use client';
 
+import { memo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Film, Tv, Disc3, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { cn, shallowEqualExcept } from '@/lib/utils';
 import type { MediaImage } from '@/types';
 import type { PosterSize } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
@@ -70,7 +71,7 @@ export interface MediaOverviewItemProps {
   onToggleSelect?: () => void;
 }
 
-export function MediaOverviewItem({
+export const MediaOverviewItem = memo(function MediaOverviewItem({
   title,
   year,
   images,
@@ -227,4 +228,4 @@ export function MediaOverviewItem({
       {body}
     </Link>
   );
-}
+}, (p, n) => shallowEqualExcept(p, n, ['onNavigate', 'onToggleSelect']));
