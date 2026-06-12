@@ -4,7 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { getLocalDateKey } from '@/lib/timezone';
-import { eachDayKey, normalizeDateKey, shiftDayKey } from '@/lib/insights';
+import { clampWindowStart, eachDayKey, normalizeDateKey, shiftDayKey } from '@/lib/insights';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Collect the local day-key of every item's `added` timestamp across instances.
@@ -53,13 +53,16 @@ async function getHandler(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const to = normalizeDateKey(searchParams.get('to')) ?? todayKey;
-  const from = normalizeDateKey(searchParams.get('from')) ?? shiftDayKey(to, -29);
+  let from = normalizeDateKey(searchParams.get('from')) ?? shiftDayKey(to, -29);
   // Keys are zero-padded YYYY-MM-DD, so lexicographic compare == chronological.
   // Reject inverted ranges rather than letting eachDayKey return an empty set
   // that masquerades as "no data".
   if (from > to) {
     return NextResponse.json({ error: "invalid date range: 'from' must be <= 'to'" }, { status: 400 });
   }
+  // Keep the most-recent INSIGHTS_MAX_DAYS so an over-long range doesn't silently
+  // drop its recent end (which would make `totals.total` a stale, ~year-old count).
+  from = clampWindowStart(from, to);
   const days = eachDayKey(from, to);
 
   // Fetch only the libraries the user may view (mirrors /api/services/stats gating).

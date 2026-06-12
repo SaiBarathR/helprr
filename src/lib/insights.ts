@@ -40,6 +40,16 @@ export function eachDayKey(from: string, to: string): string[] {
   return keys;
 }
 
+/**
+ * Clamp the window start so the range never exceeds INSIGHTS_MAX_DAYS, keeping
+ * the most-recent days (anchored at `to`). Without this, eachDayKey would drop
+ * the recent end of an over-long range — showing data that stops ~a year ago.
+ */
+export function clampWindowStart(from: string, to: string): string {
+  const earliest = shiftDayKey(to, -(INSIGHTS_MAX_DAYS - 1));
+  return from < earliest ? earliest : from;
+}
+
 export type DownloadCategory = 'grabbed' | 'imported' | 'failed';
 
 /**

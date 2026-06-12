@@ -6,6 +6,7 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { getLocalDateKey } from '@/lib/timezone';
 import {
   categorizeHistoryEvent,
+  clampWindowStart,
   eachDayKey,
   normalizeDateKey,
   shiftDayKey,
@@ -74,13 +75,16 @@ async function getHandler(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const to = normalizeDateKey(searchParams.get('to')) ?? todayKey;
-  const from = normalizeDateKey(searchParams.get('from')) ?? shiftDayKey(to, -29);
+  let from = normalizeDateKey(searchParams.get('from')) ?? shiftDayKey(to, -29);
   // Keys are zero-padded YYYY-MM-DD, so lexicographic compare == chronological.
   // Reject inverted ranges rather than letting eachDayKey return an empty set
   // that masquerades as "no data".
   if (from > to) {
     return NextResponse.json({ error: "invalid date range: 'from' must be <= 'to'" }, { status: 400 });
   }
+  // Keep the most-recent INSIGHTS_MAX_DAYS so an over-long range doesn't silently
+  // drop its recent end (which would under-count totals + the success rate).
+  from = clampWindowStart(from, to);
   const days = eachDayKey(from, to);
 
   // Gather clients across the services the user may view.

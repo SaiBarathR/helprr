@@ -133,10 +133,14 @@ export function WatchStatsSection({ range }: { range: InsightsRange }) {
     );
   }
 
+  // The /playback/activity payload carries a synthetic `labels_user` axis row, so
+  // raw `activity.length` can be > 0 with no real plays. PlayActivityChart filters
+  // it internally; gate on the filtered count so we don't render a blank chart.
+  const realActivity = activity.filter((u) => u.user_id !== 'labels_user');
   const hasData =
     shows.length > 0 ||
     movies.length > 0 ||
-    activity.length > 0 ||
+    realActivity.length > 0 ||
     userEntries.length > 0 ||
     Object.keys(hourly).length > 0;
   if (!hasData) {
@@ -154,7 +158,7 @@ export function WatchStatsSection({ range }: { range: InsightsRange }) {
     <div className="space-y-3">
       {heading}
       <div className="space-y-4">
-        {activity.length > 0 && (
+        {realActivity.length > 0 && (
           <SubCard label="Plays over time" height={200}>
             <PlayActivityChart data={activity} />
           </SubCard>
