@@ -86,6 +86,9 @@ export function VideoPlayer({
   const audioOverrideRef = useRef(false);
   // One automatic direct-play → transcode fallback per item, not a retry loop.
   const directPlayFailedRef = useRef(false);
+  // Re-entrancy guard: a second switch while one is mid-negotiation would race
+  // it (two PlaybackInfo sessions, an orphaned transcode).
+  const switchingRef = useRef(false);
   // Mirrored into refs so the video-event handlers (onEnded) read fresh values.
   const nextEpisodeRef = useRef<EpisodeSummary | null>(null);
   const nextUpDismissedRef = useRef(false);
@@ -294,7 +297,8 @@ export function VideoPlayer({
       const ticket = ticketRef.current;
       const a = activeRef.current;
       const video = videoRef.current;
-      if (!ticket || !a || !video) return;
+      if (!ticket || !a || !video || switchingRef.current) return;
+      switchingRef.current = true;
       const position =
         changes.startSeconds ?? a.baseOffsetSeconds + video.currentTime;
       setPhase('switching');
@@ -323,6 +327,8 @@ export function VideoPlayer({
           return;
         }
         fail('playback', err instanceof Error ? err.message : undefined);
+      } finally {
+        switchingRef.current = false;
       }
     },
     [attach, fail, itemId]
