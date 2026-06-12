@@ -181,6 +181,40 @@ function toNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+// (lastHistoryDate, lastHistoryId) is a keyset cursor over *arr history. The
+// date alone misses records that share the boundary timestamp across two polls
+// (e.g. a season-pack import committing while a poll runs), while a plain `>=`
+// would re-notify the newest record every cycle — so records at exactly the
+// cursor date tie-break on the auto-increment history id.
+function filterNewHistory<T extends { id: number; date: string }>(
+  records: T[],
+  lastDate: Date | null,
+  lastId: number | null,
+): T[] {
+  if (!lastDate) return [];
+  const lastTime = lastDate.getTime();
+  return records.filter((r) => {
+    const time = new Date(r.date).getTime();
+    if (time !== lastTime) return time > lastTime;
+    return lastId !== null && r.id > lastId;
+  });
+}
+
+/** Next cursor: newest record's date plus the max id among records at that date. */
+function historyCursor(
+  records: { id: number; date: string }[],
+  state: { lastHistoryDate: Date | null; lastHistoryId: number | null },
+): { lastHistoryDate: Date | null; lastHistoryId: number | null } {
+  const newestDate = records[0]?.date ? new Date(records[0].date) : null;
+  if (!newestDate) return { lastHistoryDate: state.lastHistoryDate, lastHistoryId: state.lastHistoryId };
+  const newestTime = newestDate.getTime();
+  let maxId: number | null = null;
+  for (const r of records) {
+    if (new Date(r.date).getTime() === newestTime && (maxId === null || r.id > maxId)) maxId = r.id;
+  }
+  return { lastHistoryDate: newestDate, lastHistoryId: maxId };
+}
+
 function getMediaHrefFromIds(args: {
   seriesId?: unknown;
   seasonNumber?: unknown;
@@ -810,14 +844,11 @@ export class PollingService {
 
         // History polling
         const history = await client.getHistory(1, 50, 'date', 'descending');
-        const lastDate = state.lastHistoryDate;
-        const newHistory = lastDate
-          ? history.records.filter((r) => new Date(r.date) > new Date(lastDate))
-          : [];
+        const newHistory = filterNewHistory(history.records, state.lastHistoryDate, state.lastHistoryId);
         logger.debug('Sonarr history polled', {
           instanceId,
           historyCount: history.records.length,
-          lastHistoryDate: lastDate,
+          lastHistoryDate: state.lastHistoryDate,
           newHistoryCount: newHistory.length,
         }, { scope: 'polling' });
 
@@ -863,18 +894,19 @@ export class PollingService {
         }
 
         // Update state
+        const cursor = historyCursor(history.records, state);
         await prisma.pollingState.update({
           where: { serviceConnectionId: instanceId },
           data: {
             lastQueueIds: currentSnapshots as unknown as object,
-            lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
+            ...cursor,
             lastHealthHash: healthHash,
           },
         });
         logger.debug('Sonarr polling state updated', {
           instanceId,
           queueCount: currentSnapshots.length,
-          lastHistoryDate: history.records[0]?.date ?? state.lastHistoryDate,
+          lastHistoryDate: cursor.lastHistoryDate,
           healthHash,
         }, { scope: 'polling' });
       } catch (error) {
@@ -1014,14 +1046,11 @@ export class PollingService {
         ).length;
 
         const history = await client.getHistory(1, 50, 'date', 'descending');
-        const lastDate = state.lastHistoryDate;
-        const newHistory = lastDate
-          ? history.records.filter((r) => new Date(r.date) > new Date(lastDate))
-          : [];
+        const newHistory = filterNewHistory(history.records, state.lastHistoryDate, state.lastHistoryId);
         logger.debug('Radarr history polled', {
           instanceId,
           historyCount: history.records.length,
-          lastHistoryDate: lastDate,
+          lastHistoryDate: state.lastHistoryDate,
           newHistoryCount: newHistory.length,
         }, { scope: 'polling' });
 
@@ -1063,18 +1092,19 @@ export class PollingService {
           }, { service: 'radarr', instanceId, reason: 'health-changed', healthCount: health.length });
         }
 
+        const cursor = historyCursor(history.records, state);
         await prisma.pollingState.update({
           where: { serviceConnectionId: instanceId },
           data: {
             lastQueueIds: currentSnapshots as unknown as object,
-            lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
+            ...cursor,
             lastHealthHash: healthHash,
           },
         });
         logger.debug('Radarr polling state updated', {
           instanceId,
           queueCount: currentSnapshots.length,
-          lastHistoryDate: history.records[0]?.date ?? state.lastHistoryDate,
+          lastHistoryDate: cursor.lastHistoryDate,
           healthHash,
         }, { scope: 'polling' });
       } catch (error) {
@@ -1194,10 +1224,7 @@ export class PollingService {
         ).length;
 
         const history = await client.getHistory(1, 50, 'date', 'descending');
-        const lastDate = state.lastHistoryDate;
-        const newHistory = lastDate
-          ? history.records.filter((r) => new Date(r.date) > new Date(lastDate))
-          : [];
+        const newHistory = filterNewHistory(history.records, state.lastHistoryDate, state.lastHistoryId);
 
         for (const item of newHistory) {
           if (item.eventType === 'downloadImported' || item.eventType === 'trackFileImported') {
@@ -1232,11 +1259,12 @@ export class PollingService {
           }, { service: 'lidarr', instanceId, reason: 'health-changed', healthCount: health.length });
         }
 
+        const cursor = historyCursor(history.records, state);
         await prisma.pollingState.update({
           where: { serviceConnectionId: instanceId },
           data: {
             lastQueueIds: currentSnapshots as unknown as object,
-            lastHistoryDate: history.records[0]?.date ? new Date(history.records[0].date) : state.lastHistoryDate,
+            ...cursor,
             lastHealthHash: healthHash,
           },
         });
