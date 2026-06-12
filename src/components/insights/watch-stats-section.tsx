@@ -133,7 +133,12 @@ export function WatchStatsSection({ range }: { range: InsightsRange }) {
     );
   }
 
-  const hasData = shows.length > 0 || movies.length > 0 || activity.length > 0 || userEntries.length > 0;
+  const hasData =
+    shows.length > 0 ||
+    movies.length > 0 ||
+    activity.length > 0 ||
+    userEntries.length > 0 ||
+    Object.keys(hourly).length > 0;
   if (!hasData) {
     return (
       <div className="space-y-3">
