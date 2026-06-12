@@ -10,6 +10,8 @@ async function getHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('series.view');
+  if (capError) return capError;
 
   try {
     const { id } = await params;
@@ -29,6 +31,8 @@ async function putHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('series.view');
+  if (capError) return capError;
 
   try {
     const { id } = await params;

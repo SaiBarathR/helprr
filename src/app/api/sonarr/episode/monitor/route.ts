@@ -13,21 +13,22 @@ async function putHandler(request: NextRequest) {
     const body = await request.json();
     const { episodeIds, monitored } = body;
 
-    if (!episodeIds || typeof monitored !== 'boolean') {
+    if (
+      !Array.isArray(episodeIds) ||
+      episodeIds.length === 0 ||
+      !episodeIds.every((id) => Number.isInteger(id) && id > 0) ||
+      typeof monitored !== 'boolean'
+    ) {
       return NextResponse.json(
-        { error: 'Missing episodeIds or monitored field' },
+        { error: 'episodeIds must be a non-empty array of positive integers and monitored a boolean' },
         { status: 400 }
       );
     }
 
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
-    // setEpisodeMonitored accepts a single ID; iterate for multiple
-    const results = [];
-    for (const id of episodeIds) {
-      const result = await client.setEpisodeMonitored(id, monitored);
-      results.push(...result);
-    }
+    // Sonarr's /episode/monitor endpoint accepts all IDs in one call.
+    const results = await client.setEpisodesMonitored(episodeIds, monitored);
 
     return NextResponse.json(results);
   } catch (error) {
