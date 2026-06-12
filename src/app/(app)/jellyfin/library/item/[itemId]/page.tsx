@@ -3,10 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Check, ChevronLeft, Loader2, Play, RotateCcw, Star } from 'lucide-react';
+import { Check, ChevronLeft, ListPlus, Loader2, Play, RotateCcw, Shuffle, Star } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Button } from '@/components/ui/button';
 import { useCan } from '@/components/permission-provider';
+import { formatTime } from '@/lib/playback/time';
+import { ticksToSeconds } from '@/lib/playback/player-machine';
+import { useMusicStore, type MusicTrack } from '@/lib/playback/music-store';
 import type { JellyfinItem } from '@/types/jellyfin';
 
 const ID_PATTERN = /^[0-9a-fA-F-]{8,40}$/;
@@ -88,6 +92,56 @@ function EpisodeRow({
   );
 }
 
+function TrackRow({
+  track,
+  position,
+  canPlay,
+  onPlay,
+  onEnqueue,
+}: {
+  track: JellyfinItem;
+  position: number;
+  canPlay: boolean;
+  onPlay: () => void;
+  onEnqueue: () => void;
+}) {
+  const body = (
+    <>
+      <span className="w-6 shrink-0 text-right font-mono text-xs tabular-nums text-muted-foreground">
+        {track.IndexNumber ?? position}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm">{track.Name}</span>
+      {track.RunTimeTicks !== undefined && (
+        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+          {formatTime(ticksToSeconds(track.RunTimeTicks))}
+        </span>
+      )}
+    </>
+  );
+  if (!canPlay) {
+    return <div className="flex items-center gap-3 px-2 py-2">{body}</div>;
+  }
+  return (
+    <div className="group flex items-center gap-1 rounded-lg transition-colors hover:bg-accent">
+      <button
+        type="button"
+        onClick={onPlay}
+        className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
+      >
+        {body}
+      </button>
+      <button
+        type="button"
+        onClick={onEnqueue}
+        aria-label={`Add ${track.Name} to queue`}
+        className="mr-1 rounded-full p-2 text-muted-foreground transition-colors hover:bg-background/60"
+      >
+        <ListPlus className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 export default function JellyfinItemPage() {
   const { itemId } = useParams<{ itemId: string }>();
   const router = useRouter();
@@ -96,6 +150,7 @@ export default function JellyfinItemPage() {
 
   const [item, setItem] = useState<JellyfinItem | null>(null);
   const [episodes, setEpisodes] = useState<JellyfinItem[] | null>(null);
+  const [tracks, setTracks] = useState<JellyfinItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [posterFailed, setPosterFailed] = useState(false);
   const [playLoading, setPlayLoading] = useState(false);
@@ -128,6 +183,14 @@ export default function JellyfinItemPage() {
               if (!cancelled) setEpisodes(epData.items ?? []);
             })
             .catch(() => {});
+        } else if (data.item.Type === 'MusicAlbum') {
+          fetch(`/api/jellyfin/items/${itemId}/tracks`)
+            .then(async (trackRes) => {
+              if (!trackRes.ok) return;
+              const trackData = (await trackRes.json()) as { items?: JellyfinItem[] };
+              if (!cancelled) setTracks(trackData.items ?? []);
+            })
+            .catch(() => {});
         }
       })
       .catch(() => {
@@ -153,6 +216,19 @@ export default function JellyfinItemPage() {
   const playEpisode = (episode: JellyfinItem) => {
     router.push(`/watch/${episode.Id}`);
   };
+
+  const musicQueue = useMemo<MusicTrack[]>(() => {
+    if (!item || !tracks) return [];
+    return tracks.map((t) => ({
+      id: t.Id,
+      name: t.Name,
+      artist: t.Artists?.[0] ?? t.AlbumArtist ?? item.AlbumArtist,
+      album: item.Name,
+      albumId: item.Id,
+      runTimeTicks: t.RunTimeTicks,
+      container: t.Container ?? t.MediaSources?.[0]?.Container,
+    }));
+  }, [item, tracks]);
 
   const playSeries = async () => {
     setPlayLoading(true);
@@ -184,7 +260,9 @@ export default function JellyfinItemPage() {
   const runtime = formatRuntime(item.RunTimeTicks);
   const resumeTicks = item.UserData?.PlaybackPositionTicks ?? 0;
   const isVideo = item.MediaType === 'Video' || item.Type === 'Movie' || item.Type === 'Episode';
+  const isAlbum = item.Type === 'MusicAlbum';
   const showPlay = canPlay && (isVideo || item.Type === 'Series');
+  const showMusicPlay = canPlay && isAlbum && musicQueue.length > 0;
 
   return (
     <div className="animate-content-in space-y-4 px-2 py-3">
@@ -201,7 +279,9 @@ export default function JellyfinItemPage() {
 
       <div className="flex gap-4">
         <div className="w-32 shrink-0 sm:w-40">
-          <div className="relative aspect-[2/3] overflow-hidden rounded-lg border bg-muted/40">
+          <div
+            className={`relative ${isAlbum ? 'aspect-square' : 'aspect-[2/3]'} overflow-hidden rounded-lg border bg-muted/40`}
+          >
             {!posterFailed && (
               // eslint-disable-next-line @next/next/no-img-element -- proxied, size-capped upstream
               <img
@@ -233,8 +313,30 @@ export default function JellyfinItemPage() {
               </span>
             )}
           </div>
+          {isAlbum && item.AlbumArtist && (
+            <p className="text-sm text-muted-foreground">{item.AlbumArtist}</p>
+          )}
           {item.Genres && item.Genres.length > 0 && (
             <p className="text-xs text-muted-foreground">{item.Genres.slice(0, 4).join(' · ')}</p>
+          )}
+          {showMusicPlay && (
+            <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+              <Button
+                onClick={() => useMusicStore.getState().playQueue(musicQueue)}
+                className="h-10 rounded-full sm:flex-1"
+              >
+                <Play className="mr-2 h-4 w-4 fill-current" />
+                Play
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => useMusicStore.getState().playShuffled(musicQueue)}
+                className="h-10 rounded-full sm:flex-1"
+              >
+                <Shuffle className="mr-2 h-4 w-4" />
+                Shuffle
+              </Button>
+            </div>
           )}
           {showPlay && (
             <div className="flex flex-col gap-2 pt-1 sm:flex-row">
@@ -282,6 +384,31 @@ export default function JellyfinItemPage() {
       {item.Overview && (
         <p className="text-sm leading-relaxed text-muted-foreground">{item.Overview}</p>
       )}
+
+      {isAlbum &&
+        (tracks === null ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
+          </div>
+        ) : tracks.length === 0 ? (
+          <p className="px-2 text-sm text-muted-foreground">This album has no tracks.</p>
+        ) : (
+          <div className="space-y-0.5">
+            {tracks.map((track, i) => (
+              <TrackRow
+                key={track.Id}
+                track={track}
+                position={i + 1}
+                canPlay={canPlay}
+                onPlay={() => useMusicStore.getState().playQueue(musicQueue, i)}
+                onEnqueue={() => {
+                  useMusicStore.getState().enqueue([musicQueue[i]]);
+                  toast.success(`Added “${track.Name}” to queue`);
+                }}
+              />
+            ))}
+          </div>
+        ))}
 
       {item.Type === 'Series' &&
         (seasons === null ? (

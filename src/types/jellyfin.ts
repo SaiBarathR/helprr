@@ -115,6 +115,10 @@ export interface JellyfinItem {
   MediaType?: string;
   MediaStreams?: JellyfinMediaStream[];
   Container?: string;
+  Artists?: string[];
+  AlbumArtist?: string;
+  AlbumId?: string;
+  MediaSources?: Array<{ Container?: string }>;
   ChildCount?: number;
   RecursiveItemCount?: number;
   OfficialRating?: string;

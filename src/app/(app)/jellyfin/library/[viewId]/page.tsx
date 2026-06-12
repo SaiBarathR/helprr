@@ -51,7 +51,7 @@ function posterColumns(width: number): number {
   return 6;
 }
 
-function ItemCard({ item }: { item: JellyfinItem }) {
+function ItemCard({ item, square }: { item: JellyfinItem; square?: boolean }) {
   const [imgFailed, setImgFailed] = useState(false);
   const progress = item.UserData?.PlayedPercentage;
   return (
@@ -60,7 +60,9 @@ function ItemCard({ item }: { item: JellyfinItem }) {
       className="group block min-w-0"
       title={item.Name}
     >
-      <div className="relative aspect-[2/3] overflow-hidden rounded-lg border bg-muted/40">
+      <div
+        className={`relative ${square ? 'aspect-square' : 'aspect-[2/3]'} overflow-hidden rounded-lg border bg-muted/40`}
+      >
         {!imgFailed ? (
           // eslint-disable-next-line @next/next/no-img-element -- proxied, size-capped upstream
           <img
@@ -152,6 +154,8 @@ export default function JellyfinLibraryViewPage() {
   }, [validId, viewId]);
 
   const itemType = view ? COLLECTION_ITEM_TYPES[view.CollectionType ?? ''] ?? null : null;
+  // Album covers are square; movie/series posters are 2:3.
+  const squarePosters = view?.CollectionType === 'music';
 
   const buildUrl = useCallback(
     (startIndex: number) => {
@@ -236,8 +240,8 @@ export default function JellyfinLibraryViewPage() {
   const rowHeight = useMemo(() => {
     const width = containerWidth > 0 ? containerWidth : 360;
     const cardWidth = Math.max(1, (width - POSTER_GAP * (columns - 1)) / columns);
-    return cardWidth * 1.5 + CAPTION_HEIGHT + POSTER_GAP;
-  }, [containerWidth, columns]);
+    return cardWidth * (squarePosters ? 1 : 1.5) + CAPTION_HEIGHT + POSTER_GAP;
+  }, [containerWidth, columns, squarePosters]);
 
   const rowCount = Math.ceil(items.length / columns);
   const virtualizer = useWindowVirtualizer({
@@ -415,7 +419,7 @@ export default function JellyfinLibraryViewPage() {
             }}
           >
             {items.slice(startIndex, endIndex).map((item) => (
-              <ItemCard key={item.Id} item={item} />
+              <ItemCard key={item.Id} item={item} square={squarePosters} />
             ))}
           </div>
           {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}

@@ -7,6 +7,8 @@ import { PermissionProvider, type MePayload } from '@/components/permission-prov
 import { BadgeProvider } from '@/components/layout/badge-provider';
 import { RequestedMediaProvider } from '@/components/seerr/requested-media-provider';
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
+import { AudioEngine } from '@/components/player/audio-engine';
+import { MiniPlayer } from '@/components/player/mini-player';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
 import { setImageCacheGeneration } from '@/lib/image';
@@ -62,6 +64,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <DiscoverLayoutHydrator />
             <Sidebar />
             <AppShell>{children}</AppShell>
+            {/* Music playback survives app navigation; entering /watch swaps
+                layout groups and unmounts it (video and music shouldn't fight). */}
+            <AudioEngine />
+            <MiniPlayer />
           </div>
         </BadgeProvider>
       </RequestedMediaProvider>

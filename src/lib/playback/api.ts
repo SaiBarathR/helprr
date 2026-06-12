@@ -11,6 +11,7 @@ import type {
   PlaybackProgressReport,
   PlaybackStartReport,
   PlaybackStopReport,
+  PlayMethod,
   PlayTicket,
 } from '@/types/jellyfin-playback';
 import { buildDeviceProfile, DEFAULT_MAX_STREAMING_BITRATE } from '@/lib/playback/device-profile';
@@ -209,10 +210,17 @@ export function reportPlaybackStopped(ticket: OkTicket, info: PlaybackStopReport
   }).catch(() => {});
 }
 
-/** Kill this device's active transcode before renegotiating (audio/quality switch). */
+/**
+ * Kill this device's active transcode before renegotiating (audio/quality
+ * switch) — and on player teardown, where keepalive lets the DELETE survive
+ * the document being torn down (tab close / PWA kill).
+ */
 export async function stopEncoding(ticket: OkTicket, playSessionId: string): Promise<void> {
   const params = new URLSearchParams({ deviceId: getDeviceId(), playSessionId });
-  await jfFetch<void>(ticket, `/Videos/ActiveEncodings?${params}`, { method: 'DELETE' });
+  await jfFetch<void>(ticket, `/Videos/ActiveEncodings?${params}`, {
+    method: 'DELETE',
+    keepalive: true,
+  });
 }
 
 // ── Stream / subtitle / trickplay URL builders ────────────────────────────────
@@ -260,6 +268,68 @@ export function buildSubtitleUrl(
     return url.toString();
   }
   return `${ticket.serverUrl}/Videos/${itemId}/${mediaSourceId}/Subtitles/${stream.Index}/0/Stream.vtt?api_key=${encodeURIComponent(ticket.token)}`;
+}
+
+// ── Music (universal audio endpoint, plan §G) ─────────────────────────────────
+
+const ALWAYS_PLAYABLE_AUDIO = ['mp3', 'aac', 'm4a|aac', 'm4b|aac', 'wav'];
+
+let probeAudio: HTMLAudioElement | null = null;
+function canPlayAudio(type: string): boolean {
+  if (!probeAudio) probeAudio = document.createElement('audio');
+  return probeAudio.canPlayType(type) !== '';
+}
+
+/**
+ * Containers this browser can direct-play (the universal endpoint's `Container`
+ * list, `container|codec` syntax included); everything else transcodes to mp3.
+ */
+function supportedAudioContainers(): string[] {
+  const containers = [...ALWAYS_PLAYABLE_AUDIO];
+  if (canPlayAudio('audio/flac')) containers.push('flac');
+  if (canPlayAudio('audio/ogg; codecs="vorbis"')) containers.push('ogg', 'oga');
+  if (canPlayAudio('audio/ogg; codecs="opus"')) containers.push('opus');
+  if (canPlayAudio('audio/webm; codecs="opus"')) containers.push('webm|opus', 'webma');
+  return containers;
+}
+
+/** Best guess at how the universal endpoint will serve this container, for session reports. */
+export function audioPlayMethod(container: string | undefined): PlayMethod {
+  if (!container) return 'DirectPlay';
+  const supported = supportedAudioContainers().map((c) => c.split('|')[0]);
+  return container
+    .split(',')
+    .some((c) => supported.includes(c.trim().toLowerCase()))
+    ? 'DirectPlay'
+    : 'Transcode';
+}
+
+/**
+ * Stream URL for a music track. The universal endpoint direct-plays containers
+ * the browser supports and falls back to an mp3 transcode for everything else
+ * (e.g. flac on browsers without flac support).
+ */
+export function buildAudioStreamUrl(
+  ticket: OkTicket,
+  itemId: string,
+  playSessionId: string
+): string {
+  const params = new URLSearchParams({
+    UserId: ticket.userId,
+    DeviceId: getDeviceId(),
+    api_key: ticket.token,
+    PlaySessionId: playSessionId,
+    Container: supportedAudioContainers().join(','),
+    TranscodingContainer: 'mp3',
+    TranscodingProtocol: 'http',
+    AudioCodec: 'mp3',
+    // High cap so supported containers always direct-play; the server picks a
+    // sane mp3 bitrate for the transcode path on its own.
+    MaxStreamingBitrate: String(DEFAULT_MAX_STREAMING_BITRATE),
+    EnableRedirection: 'true',
+    EnableRemoteMedia: 'false',
+  });
+  return `${ticket.serverUrl}/Audio/${itemId}/universal?${params}`;
 }
 
 /** Artwork for MediaSession/lock-screen (Jellyfin image endpoints are unauthenticated). */
