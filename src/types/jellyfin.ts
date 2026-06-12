@@ -101,6 +101,7 @@ export interface JellyfinItem {
   SeriesName?: string;
   SeriesId?: string;
   SeasonName?: string;
+  SeasonId?: string;
   ProductionYear?: number;
   CommunityRating?: number;
   RunTimeTicks?: number;

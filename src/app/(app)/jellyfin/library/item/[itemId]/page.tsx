@@ -3,7 +3,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Check, ChevronLeft, ListPlus, Loader2, Play, RotateCcw, Shuffle, Star } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  ListPlus,
+  Loader2,
+  Play,
+  RotateCcw,
+  Shuffle,
+  Star,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Button } from '@/components/ui/button';
@@ -92,6 +103,70 @@ function EpisodeRow({
   );
 }
 
+function SeasonAccordion({
+  name,
+  episodes,
+  expanded,
+  canPlay,
+  onToggle,
+  onPlay,
+}: {
+  name: string;
+  episodes: JellyfinItem[];
+  expanded: boolean;
+  canPlay: boolean;
+  onToggle: () => void;
+  onPlay: (episode: JellyfinItem) => void;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const seasonId = episodes[0]?.SeasonId;
+  const watched = episodes.filter((e) => e.UserData?.Played).length;
+  return (
+    <div className="border-b border-border/50">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-3 rounded-lg px-2 py-3 text-left transition-colors hover:bg-accent"
+      >
+        {seasonId && !imgFailed && (
+          <div className="relative h-[64px] w-[43px] shrink-0 overflow-hidden rounded border bg-muted/40">
+            {/* eslint-disable-next-line @next/next/no-img-element -- proxied, size-capped upstream */}
+            <img
+              src={`/api/jellyfin/image?itemId=${seasonId}&type=Primary&maxWidth=120`}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+              onError={() => setImgFailed(true)}
+            />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {episodes.length} episode{episodes.length === 1 ? '' : 's'} · {watched} watched
+          </p>
+        </div>
+        {episodes.length > 0 && watched === episodes.length && (
+          <Check className="h-4 w-4 shrink-0 text-primary" aria-label="All watched" />
+        )}
+        {expanded ? (
+          <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        ) : (
+          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        )}
+      </button>
+      {expanded && (
+        <div className="space-y-1 pb-3">
+          {episodes.map((episode) => (
+            <EpisodeRow key={episode.Id} episode={episode} canPlay={canPlay} onPlay={onPlay} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrackRow({
   track,
   position,
@@ -154,6 +229,8 @@ export default function JellyfinItemPage() {
   const [error, setError] = useState<string | null>(null);
   const [posterFailed, setPosterFailed] = useState(false);
   const [playLoading, setPlayLoading] = useState(false);
+  // null = default: single-season series start expanded, multi-season collapsed.
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     if (!validId) return;
@@ -212,6 +289,17 @@ export default function JellyfinItemPage() {
     }
     return [...groups.entries()];
   }, [episodes]);
+
+  const effectiveExpanded =
+    expandedSeasons ??
+    (seasons && seasons.length === 1 ? new Set([seasons[0][0]]) : new Set<string>());
+
+  const toggleSeason = (name: string) => {
+    const next = new Set(effectiveExpanded);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setExpandedSeasons(next);
+  };
 
   const playEpisode = (episode: JellyfinItem) => {
     router.push(`/watch/${episode.Id}`);
@@ -416,21 +504,17 @@ export default function JellyfinItemPage() {
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden />
           </div>
         ) : (
-          <div className="space-y-4">
+          <div>
             {seasons.map(([seasonName, seasonEpisodes]) => (
-              <section key={seasonName}>
-                <h2 className="px-2 pb-1 text-sm font-semibold">{seasonName}</h2>
-                <div className="space-y-1">
-                  {seasonEpisodes.map((episode) => (
-                    <EpisodeRow
-                      key={episode.Id}
-                      episode={episode}
-                      canPlay={canPlay}
-                      onPlay={playEpisode}
-                    />
-                  ))}
-                </div>
-              </section>
+              <SeasonAccordion
+                key={seasonName}
+                name={seasonName}
+                episodes={seasonEpisodes}
+                expanded={effectiveExpanded.has(seasonName)}
+                canPlay={canPlay}
+                onToggle={() => toggleSeason(seasonName)}
+                onPlay={playEpisode}
+              />
             ))}
           </div>
         ))}
