@@ -424,9 +424,9 @@ function AddIndexerModal({ open, onClose, onAdded }: AddIndexerModalProps) {
               ) : filteredSchemas.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">No indexers found.</p>
               ) : (
-                filteredSchemas.map((schema) => (
+                filteredSchemas.map((schema, i) => (
                   <button
-                    key={schema.implementation + schema.name}
+                    key={`${schema.implementation}-${schema.name}-${i}`}
                     onClick={() => selectSchema(schema)}
                     className="w-full flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-accent text-left transition-colors"
                   >
