@@ -280,9 +280,11 @@ export class QBittorrentClient {
     return this.post<string>('/api/v2/torrents/add', params.toString());
   }
 
-  async addTorrentFile(fileBuffer: Uint8Array, filename: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<void> {
+  async addTorrentFile(fileBuffer: Uint8Array<ArrayBuffer>, filename: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<void> {
     const formData = new FormData();
-    const blob = new Blob([fileBuffer.buffer as ArrayBuffer], { type: 'application/x-bittorrent' });
+    // Pass the view itself, not .buffer — a view over a pooled/offset buffer would
+    // otherwise upload the whole backing allocation instead of the file bytes.
+    const blob = new Blob([fileBuffer], { type: 'application/x-bittorrent' });
     formData.append('torrents', blob, filename);
     if (options?.category) formData.append('category', options.category);
     if (options?.savepath) formData.append('savepath', options.savepath);

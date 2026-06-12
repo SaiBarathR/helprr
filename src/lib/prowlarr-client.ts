@@ -192,6 +192,7 @@ export class ProwlarrClient {
         'X-Api-Key': apiKey,
         'Content-Type': 'application/json',
       },
+      timeout: 30_000,
     });
   }
 
@@ -200,9 +201,9 @@ export class ProwlarrClient {
     return response.data;
   }
 
-  private async post<T>(endpoint: string, body?: unknown): Promise<T> {
+  private async post<T>(endpoint: string, body?: unknown, config?: { timeout?: number }): Promise<T> {
     try {
-      const response = await this.client.post<T>(endpoint, body);
+      const response = await this.client.post<T>(endpoint, body, config);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.data) {
@@ -238,6 +239,7 @@ export class ProwlarrClient {
   async testAllIndexers(): Promise<ProwlarrTestAllResponse> {
     const response = await this.client.post<unknown>('/api/v1/indexer/testall', undefined, {
       validateStatus: (status) => (status >= 200 && status < 300) || status === 400,
+      timeout: 120_000, // tests every indexer; slow/unreachable trackers push this well past the default
     });
 
     if (Array.isArray(response.data) && response.data.every(isProwlarrIndexerTestResult)) {
@@ -253,7 +255,7 @@ export class ProwlarrClient {
 
   async testIndexer(id: number): Promise<unknown> {
     const indexer = await this.getIndexer(id);
-    return this.post('/api/v1/indexer/test', indexer);
+    return this.post('/api/v1/indexer/test', indexer, { timeout: 120_000 });
   }
 
   async getIndexerStatuses(): Promise<ProwlarrIndexerStatus[]> {
