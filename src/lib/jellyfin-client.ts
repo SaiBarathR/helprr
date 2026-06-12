@@ -244,7 +244,18 @@ export class JellyfinClient {
   /** Registered devices (admin endpoint). Returns the full device registry. */
   async getDevices(): Promise<JellyfinDevice[]> {
     const data = await this.get<JellyfinDevicesResponse>('/Devices');
-    return Array.isArray(data.Items) ? data.Items : [];
+    const items = Array.isArray(data.Items) ? data.Items : [];
+    // Jellyfin returns one entry per (device, user) pair, so a device shared by
+    // two accounts appears twice with the same Id. DELETE /Devices acts on the
+    // Id, so collapse to one entry per device, keeping the most recent activity.
+    const byId = new Map<string, JellyfinDevice>();
+    for (const item of items) {
+      const prev = byId.get(item.Id);
+      if (!prev || Date.parse(item.DateLastActivity ?? '') > Date.parse(prev.DateLastActivity ?? '')) {
+        byId.set(item.Id, item);
+      }
+    }
+    return [...byId.values()];
   }
 
   async deleteDevice(deviceId: string): Promise<void> {
