@@ -5,10 +5,9 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import { Dot, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
 
 interface ServiceStatus {
-  type: string;
-  name: string;
+  instanceId: string;
+  label: string;
   ok: boolean;
-  ver?: string;
 }
 
 async function fetchServiceHealth(): Promise<ServiceStatus[]> {
@@ -50,7 +49,7 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
         )}
         {list.map((s, i) => (
           <div
-            key={s.type + s.name}
+            key={s.instanceId}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -72,20 +71,8 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
                   textOverflow: 'ellipsis',
                 }}
               >
-                {s.name}
+                {s.label}
               </span>
-              {!narrow && s.ver && (
-                <span
-                  style={{
-                    fontFamily: FONT_MONO,
-                    fontSize: 9,
-                    color: HPR.fgSubtle,
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {s.ver}
-                </span>
-              )}
             </div>
             <span
               style={{

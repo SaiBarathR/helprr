@@ -1584,7 +1584,7 @@ function RankedList({ entries, sortBy, limit }: { entries: PlaybackBreakdownEntr
   return (
     <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
       {sorted.map((entry, i) => (
-        <div key={entry.label} className="relative px-3 py-2.5 flex items-center gap-3">
+        <div key={`${entry.label}-${i}`} className="relative px-3 py-2.5 flex items-center gap-3">
           <div className="absolute inset-0 bg-[var(--hpr-cyan)]/5" style={{ width: `${((sortBy === 'duration' ? entry.time : entry.count) / maxVal) * 100}%` }} />
           <span className="text-xs text-muted-foreground font-mono w-5 shrink-0 relative">{i + 1}</span>
           <span className="text-sm truncate flex-1 relative">{entry.label}</span>

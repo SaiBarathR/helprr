@@ -147,7 +147,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       const uiPrefsMigrated = buildMigratedUiPrefs(payload);
       const availableUi = (Object.keys(uiPrefsMigrated) as UiPrefCategoryId[])
         .filter((id) => uiPrefsMigrated[id] && Object.keys(uiPrefsMigrated[id]!).length > 0);
-      const availableServices = (payload.serviceConnections ?? []).map((c) => c.type);
+      // A file may carry several connections of the same type (multi-instance);
+      // import is per-type, so dedupe to avoid duplicate checkboxes / key clashes.
+      const availableServices = [...new Set((payload.serviceConnections ?? []).map((c) => c.type))];
 
       setParsed({
         payload,
