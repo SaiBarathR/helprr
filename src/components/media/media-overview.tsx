@@ -210,7 +210,13 @@ export function MediaOverviewItem({
 
   if (selectable) {
     return (
-      <button type="button" onClick={onToggleSelect} className={cn(rowClass, 'w-full text-left')}>
+      <button
+        type="button"
+        onClick={onToggleSelect}
+        aria-pressed={Boolean(selected)}
+        aria-label={`${selected ? 'Deselect' : 'Select'} ${title}`}
+        className={cn(rowClass, 'w-full text-left')}
+      >
         {body}
       </button>
     );

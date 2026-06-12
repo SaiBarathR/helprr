@@ -28,8 +28,15 @@ async function postHandler(request: NextRequest) {
         // Sonarr has no multi-series search command, so a bulk request fans out
         // one SeriesSearch per id; single-id callers keep the legacy `seriesId`.
         if (Array.isArray(body.seriesIds)) {
+          const seriesIds: unknown[] = body.seriesIds;
+          if (seriesIds.length === 0 || !seriesIds.every((x) => Number.isInteger(x) && (x as number) > 0)) {
+            return NextResponse.json(
+              { error: 'seriesIds must be a non-empty array of positive integers' },
+              { status: 400 }
+            );
+          }
           result = await Promise.all(
-            body.seriesIds.map((seriesId: number) => client.searchSeries(seriesId))
+            (seriesIds as number[]).map((seriesId) => client.searchSeries(seriesId))
           );
         } else {
           result = await client.searchSeries(body.seriesId);

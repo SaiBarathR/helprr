@@ -65,11 +65,11 @@ function GapCard({
     try {
       const s = item.search;
       if (s.kind === 'episode') {
-        await postCommand(`/api/sonarr/command?instanceId=${s.instanceId}`, { name: 'EpisodeSearch', episodeIds: [s.episodeId] });
+        await postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'EpisodeSearch', episodeIds: [s.episodeId] });
       } else if (s.kind === 'season') {
-        await postCommand(`/api/sonarr/command?instanceId=${s.instanceId}`, { name: 'SeasonSearch', seriesId: s.sonarrSeriesId, seasonNumber: s.seasonNumber });
+        await postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'SeasonSearch', seriesId: s.sonarrSeriesId, seasonNumber: s.seasonNumber });
       } else if (s.kind === 'movie') {
-        await postCommand(`/api/radarr/command?instanceId=${s.instanceId}`, { name: 'MoviesSearch', movieIds: [s.radarrMovieId] });
+        await postCommand(`/api/radarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'MoviesSearch', movieIds: [s.radarrMovieId] });
       }
       toast.success('Search started');
     } catch {
@@ -153,7 +153,13 @@ function GapCard({
   return (
     <div className={cn('group relative shrink-0', RAIL_CARD, selectionMode && !selectable && 'opacity-40')}>
       {selectionMode && selectable ? (
-        <button type="button" onClick={onToggleSelect} className={cn('block w-full text-left', ringClass)}>
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          aria-pressed={Boolean(selected)}
+          aria-label={`${selected ? 'Deselect' : 'Select'} ${item.title}`}
+          className={cn('block w-full text-left', ringClass)}
+        >
           {poster}
         </button>
       ) : item.href && !selectionMode ? (
