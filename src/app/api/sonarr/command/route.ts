@@ -35,11 +35,22 @@ async function postHandler(request: NextRequest) {
               { status: 400 }
             );
           }
-          result = await Promise.all(
-            (seriesIds as number[]).map((seriesId) => client.searchSeries(seriesId))
-          );
+          // Fan out in bounded batches so selecting a large library doesn't fire
+          // hundreds of concurrent searches at the Sonarr instance at once.
+          const ids = seriesIds as number[];
+          const searched: unknown[] = [];
+          for (let i = 0; i < ids.length; i += 5) {
+            searched.push(...(await Promise.all(ids.slice(i, i + 5).map((id) => client.searchSeries(id)))));
+          }
+          result = searched;
         } else {
-          result = await client.searchSeries(body.seriesId);
+          if (!Number.isInteger(body.seriesId) || (body.seriesId as number) <= 0) {
+            return NextResponse.json(
+              { error: 'seriesId must be a positive integer' },
+              { status: 400 }
+            );
+          }
+          result = await client.searchSeries(body.seriesId as number);
         }
         break;
       case 'RefreshSeries':
