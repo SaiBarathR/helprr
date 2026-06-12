@@ -119,6 +119,20 @@ export function getEnabledNavItems(
   }, []);
 }
 
+/**
+ * The href of the nav item that should highlight for `pathname` — the longest
+ * matching prefix wins, so `/jellyfin/library` activates "Jellyfin Library"
+ * without also activating "Jellyfin".
+ */
+export function getActiveNavHref(items: NavItemDef[], pathname: string): string | undefined {
+  let best: string | undefined;
+  for (const { href } of items) {
+    const matches = pathname === href || pathname.startsWith(href + '/');
+    if (matches && (best === undefined || href.length > best.length)) best = href;
+  }
+  return best;
+}
+
 export interface ResolveDefaultPageHrefInput {
   defaultPage: NavItemId;
   navOrder: NavItemId[];
