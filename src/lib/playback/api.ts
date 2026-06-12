@@ -4,6 +4,7 @@
 
 import type {
   MediaSourceInfo,
+  PlayableItem,
   PlaybackInfoResponse,
   PlaybackMediaStream,
   PlaybackProgressReport,
@@ -92,6 +93,17 @@ async function jfFetch<T>(ticket: OkTicket, path: string, init: RequestInit = {}
   // Reporting endpoints return 204 No Content.
   if (res.status === 204) return undefined as T;
   return (await res.json().catch(() => undefined)) as T;
+}
+
+// ── Item fetch ────────────────────────────────────────────────────────────────
+
+/** The played item with everything the player surface needs in one fetch. */
+export async function getItem(ticket: OkTicket, itemId: string): Promise<PlayableItem> {
+  const params = new URLSearchParams({
+    UserId: ticket.userId,
+    Fields: 'Chapters,Trickplay,MediaSources,MediaStreams',
+  });
+  return jfFetch<PlayableItem>(ticket, `/Items/${itemId}?${params}`);
 }
 
 // ── Playback negotiation ──────────────────────────────────────────────────────
@@ -199,7 +211,11 @@ export function buildDirectStreamUrl(
 export function buildTranscodeUrl(ticket: OkTicket, source: MediaSourceInfo): string | null {
   if (!source.TranscodingUrl) return null;
   const url = new URL(source.TranscodingUrl, ticket.serverUrl);
-  if (!url.searchParams.has('api_key')) url.searchParams.set('api_key', ticket.token);
+  // JF 10.11 embeds the caller's token as `ApiKey`; older versions omit auth
+  // entirely — append it only when neither spelling is present.
+  if (!url.searchParams.has('api_key') && !url.searchParams.has('ApiKey')) {
+    url.searchParams.set('api_key', ticket.token);
+  }
   return url.toString();
 }
 

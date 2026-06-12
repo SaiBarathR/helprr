@@ -210,7 +210,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 29;
+export const STORE_VERSION = 30;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -350,6 +350,11 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     state.insightsDateFrom = null;
     state.insightsDateTo = null;
   }
+  if (version < 30) {
+    state.playerMaxBitrate = null;
+    state.playerSubtitleLanguage = null;
+    state.playerAutoplayNext = true;
+  }
   return state;
 }
 
@@ -466,6 +471,15 @@ interface UIState {
   insightsDateFrom: string | null;
   insightsDateTo: string | null;
   setInsightsDateRange: (from: string | null, to: string | null) => void;
+  // Jellyfin player preferences
+  // Max streaming bitrate in bps; null = no cap (Auto/Direct)
+  playerMaxBitrate: number | null;
+  setPlayerMaxBitrate: (bitrate: number | null) => void;
+  // ISO 639 code preferred for subtitles, 'off' = always off, null = server default
+  playerSubtitleLanguage: string | null;
+  setPlayerSubtitleLanguage: (language: string | null) => void;
+  playerAutoplayNext: boolean;
+  setPlayerAutoplayNext: (enabled: boolean) => void;
   // Calendar preferences
   calendarTypeFilter: 'all' | 'episode' | 'movie' | 'album';
   setCalendarTypeFilter: (filter: 'all' | 'episode' | 'movie' | 'album') => void;
@@ -564,6 +578,9 @@ const PERSISTED_KEYS = [
   'cleanupHistoryFilters',
   'insightsDateFrom',
   'insightsDateTo',
+  'playerMaxBitrate',
+  'playerSubtitleLanguage',
+  'playerAutoplayNext',
   'calendarTypeFilter',
   'calendarMonitoredOnly',
   'calendarInstanceFilter',
@@ -757,6 +774,13 @@ export const useUIStore = create<UIState>()(
       insightsDateFrom: null,
       insightsDateTo: null,
       setInsightsDateRange: (from, to) => set({ insightsDateFrom: from, insightsDateTo: to }),
+      // Jellyfin player
+      playerMaxBitrate: null,
+      setPlayerMaxBitrate: (bitrate) => set({ playerMaxBitrate: bitrate }),
+      playerSubtitleLanguage: null,
+      setPlayerSubtitleLanguage: (language) => set({ playerSubtitleLanguage: language }),
+      playerAutoplayNext: true,
+      setPlayerAutoplayNext: (enabled) => set({ playerAutoplayNext: enabled }),
       // Calendar
       calendarTypeFilter: 'all',
       setCalendarTypeFilter: (filter) => set({ calendarTypeFilter: filter }),

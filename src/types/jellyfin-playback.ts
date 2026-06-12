@@ -114,6 +114,43 @@ export interface PlaybackInfoResponse {
   ErrorCode?: string;
 }
 
+// ── The played item (GET /Items/{id}?Fields=Chapters,Trickplay,MediaSources,MediaStreams) ──
+
+export interface ChapterInfo {
+  StartPositionTicks: number;
+  Name?: string;
+  ImageTag?: string;
+}
+
+export interface TrickplayInfo {
+  Width: number;
+  Height: number;
+  TileWidth: number;
+  TileHeight: number;
+  ThumbnailCount: number;
+  Interval: number;
+  Bandwidth?: number;
+}
+
+export interface PlayableItem {
+  Id: string;
+  Name: string;
+  Type: string;
+  MediaType?: string;
+  RunTimeTicks?: number;
+  ProductionYear?: number;
+  SeriesId?: string;
+  SeriesName?: string;
+  SeasonName?: string;
+  ParentIndexNumber?: number;
+  IndexNumber?: number;
+  Chapters?: ChapterInfo[];
+  /** Keyed by MediaSourceId, then by tile width. */
+  Trickplay?: Record<string, Record<string, TrickplayInfo>>;
+  MediaSources?: MediaSourceInfo[];
+  UserData?: { PlaybackPositionTicks?: number; Played?: boolean };
+}
+
 // ── POST /Sessions/Playing[/Progress|/Stopped] bodies ────────────────────────
 
 interface PlaybackReportBase {

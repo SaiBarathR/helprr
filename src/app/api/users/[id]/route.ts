@@ -53,6 +53,7 @@ async function patchHandler(
     template: string;
     permissions: object;
     jellyfinUserId: string | null;
+    jellyfinToken: string | null;
     seerrUserId: string | null;
     passwordHash: string;
   }> = {};
@@ -84,6 +85,11 @@ async function patchHandler(
       typeof body.jellyfinUserId === 'string' && body.jellyfinUserId.trim()
         ? body.jellyfinUserId.trim()
         : null;
+    // The cached token was minted for the previous link — clear it so the
+    // playback ticket can never hand out a token for a different Jellyfin user.
+    if (data.jellyfinUserId !== existing.jellyfinUserId) {
+      data.jellyfinToken = null;
+    }
   }
   if ('seerrUserId' in body) {
     data.seerrUserId =
