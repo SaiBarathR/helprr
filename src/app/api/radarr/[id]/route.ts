@@ -18,6 +18,8 @@ async function getHandler(
 ): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('movies.view');
+  if (capError) return capError;
 
   try {
     const { id } = await params;
@@ -39,6 +41,8 @@ async function putHandler(
 ): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('movies.view');
+  if (capError) return capError;
 
   try {
     const { id } = await params;
