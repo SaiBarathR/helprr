@@ -11,6 +11,9 @@ import { KpiRow } from '@/components/insights/kpi-row';
 import { ServiceHealthStrip } from '@/components/insights/service-health-strip';
 import { LibraryGrowthCard } from '@/components/insights/library-growth-card';
 import { DownloadSuccessCard } from '@/components/insights/download-success-card';
+import { DownloadPipelineCard } from '@/components/insights/download-pipeline-card';
+import { StorageInsightsCard } from '@/components/insights/storage-insights-card';
+import { SeedingEconomicsCard } from '@/components/insights/seeding-economics-card';
 import { TopIndexersCard } from '@/components/insights/top-indexers-card';
 import { WatchStatsSection } from '@/components/insights/watch-stats-section';
 import { JellyfinLibrariesCard } from '@/components/insights/jellyfin-libraries-card';
@@ -38,6 +41,7 @@ export default function InsightsPage() {
   const canProwlarr = useCan('prowlarr.view');
   const canJellyfin = useCan('jellyfin.view');
   const canWatchStats = useCan('jellyfin.stats');
+  const canTorrents = useCan('torrents.view');
 
   // "Today" is captured once at mount (lazy initializer keeps render pure).
   const [todayKey] = React.useState(() => toDateKey(new Date()));
@@ -93,6 +97,9 @@ export default function InsightsPage() {
         <KpiRow stats={stats} loading={statsLoading} />
         {showLibrary && <LibraryGrowthCard range={range} />}
         {showLibrary && <DownloadSuccessCard range={range} />}
+        {showLibrary && <DownloadPipelineCard range={range} />}
+        {showLibrary && <StorageInsightsCard />}
+        {canTorrents && <SeedingEconomicsCard />}
         {canProwlarr && <TopIndexersCard range={range} />}
         {canJellyfin && <JellyfinLibrariesCard />}
         {canWatchStats && <WatchStatsSection range={range} />}
