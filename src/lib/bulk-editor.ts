@@ -102,3 +102,18 @@ export function parseBulkDeleteBody(
   if (!ids) return { error: 'ids must be a non-empty array of positive integers' };
   return { ids, deleteFiles: b.deleteFiles === true };
 }
+
+/**
+ * Read a request's JSON body without letting a malformed payload throw past the
+ * handler (where it would surface as a 500). On bad JSON the caller returns 400 —
+ * a malformed body is a client error, not a server error.
+ */
+export async function readJsonBody(
+  request: Request
+): Promise<{ ok: true; body: unknown } | { ok: false }> {
+  try {
+    return { ok: true, body: await request.json() };
+  } catch {
+    return { ok: false };
+  }
+}
