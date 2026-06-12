@@ -22,7 +22,7 @@ export function useCalendar({ start, end, type }: UseCalendarParams): UseCalenda
   const startISO = start.toISOString();
   const endISO = end.toISOString();
 
-  const fetchEvents = useCallback(async () => {
+  const fetchEvents = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
 
@@ -36,7 +36,7 @@ export function useCalendar({ start, end, type }: UseCalendarParams): UseCalenda
         params.set('type', type);
       }
 
-      const res = await fetch(`/api/calendar?${params.toString()}`);
+      const res = await fetch(`/api/calendar?${params.toString()}`, { signal });
 
       if (!res.ok) {
         throw new Error('Failed to fetch calendar events');
@@ -45,16 +45,24 @@ export function useCalendar({ start, end, type }: UseCalendarParams): UseCalenda
       const data: CalendarEvent[] = await res.json();
       setEvents(data);
     } catch (err) {
+      // Aborted = superseded by a newer range/type; that request owns the state now.
+      if (signal?.aborted) return;
       setError(err instanceof Error ? err.message : 'An error occurred');
       setEvents([]);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [startISO, endISO, type]);
 
   useEffect(() => {
-    fetchEvents();
+    const controller = new AbortController();
+    fetchEvents(controller.signal);
+    return () => controller.abort();
   }, [fetchEvents]);
 
-  return { events, loading, error, refetch: fetchEvents };
+  const refetch = useCallback(() => {
+    void fetchEvents();
+  }, [fetchEvents]);
+
+  return { events, loading, error, refetch };
 }
