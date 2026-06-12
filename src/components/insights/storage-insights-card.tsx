@@ -33,6 +33,11 @@ export function StorageInsightsCard() {
   const maxSize = data?.topItems[0]?.sizeOnDisk ?? 0;
   const hasData =
     data && (data.totals.movies !== null || data.totals.series !== null || data.totals.music !== null);
+  const libraryTotal = data
+    ? (data.totals.movies ?? 0) + (data.totals.series ?? 0) + (data.totals.music ?? 0)
+    : 0;
+  const unmonitoredPct =
+    data && libraryTotal > 0 ? Math.round((data.unmonitoredBytes / libraryTotal) * 100) : 0;
 
   return (
     <Panel title="Storage breakdown">
@@ -43,6 +48,7 @@ export function StorageInsightsCard() {
       ) : (
         <div className="space-y-4">
           <div className="flex items-center gap-6 flex-wrap">
+            <Stat label="Library total" value={formatBytes(libraryTotal)} />
             {data!.totals.movies !== null && (
               <Stat
                 label="Movies"
@@ -68,7 +74,12 @@ export function StorageInsightsCard() {
               />
             )}
             {data!.unmonitoredBytes > 0 && (
-              <Stat label="In unmonitored items" value={formatBytes(data!.unmonitoredBytes)} color={HPR.amber} />
+              <Stat
+                label="In unmonitored items"
+                sub={`${unmonitoredPct}% of library`}
+                value={formatBytes(data!.unmonitoredBytes)}
+                color={HPR.amber}
+              />
             )}
           </div>
 
