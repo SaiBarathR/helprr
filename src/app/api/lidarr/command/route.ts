@@ -13,7 +13,7 @@ function toPositiveIntArray(value: unknown): number[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
   const out: number[] = [];
   for (const entry of value) {
-    const n = toPositiveInt(typeof entry === 'object' && entry ? (entry as { id?: unknown }).id : entry);
+    const n = toPositiveInt(entry);
     if (n === null) return null;
     out.push(n);
   }

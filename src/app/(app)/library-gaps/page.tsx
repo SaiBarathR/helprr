@@ -298,7 +298,7 @@ export default function LibraryGapsPage() {
     const total = selectedKeys.size;
     const results = await Promise.allSettled(calls);
     const failed = results.filter((r) => r.status === 'rejected').length;
-    if (failed) toast.error(`Some searches failed (${failed} request${failed === 1 ? '' : 's'})`);
+    if (failed) toast.error('Some searches failed');
     else toast.success(`Search started for ${total} item${total === 1 ? '' : 's'}`);
     exit();
   }, [selectedKeys, searchableByKey, exit]);

@@ -216,7 +216,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
         onClick={onToggleSelect}
         aria-pressed={Boolean(selected)}
         aria-label={`${selected ? 'Deselect' : 'Select'} ${title}`}
-        className={cn(rowClass, 'w-full text-left')}
+        className={cn(rowClass, 'w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring')}
       >
         {body}
       </button>
