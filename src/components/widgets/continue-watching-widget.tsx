@@ -2,6 +2,8 @@
 
 import { useCallback } from 'react';
 import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
+import { useCan } from '@/components/permission-provider';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -35,6 +37,11 @@ function jellyfinWebUrl(baseUrl: string, item: JellyfinItem): string {
   return `${baseUrl}/web/index.html#!/details?id=${targetId}`;
 }
 
+function watchUrl(item: JellyfinItem): string {
+  const ticks = item.UserData?.PlaybackPositionTicks ?? 0;
+  return ticks > 0 ? `/watch/${item.Id}?t=${ticks}` : `/watch/${item.Id}`;
+}
+
 export function ContinueWatchingWidget({
   refreshInterval,
   editMode = false,
@@ -64,6 +71,7 @@ export function ContinueWatchingWidget({
   });
   const externalUrls = useExternalUrls();
   const jellyfinUrl = externalUrls.JELLYFIN;
+  const canPlay = useCan('jellyfin.play');
 
   const list = items ?? [];
   const useList = narrow || layoutVariant === 'list';
@@ -190,6 +198,37 @@ export function ContinueWatchingWidget({
                 </div>
               </div>
             );
+            if (canPlay && !editMode) {
+              // Resume in the in-app player; JF web stays as a corner affordance.
+              return (
+                <div key={it.Id} style={{ position: 'relative' }}>
+                  <Link
+                    href={watchUrl(it)}
+                    style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+                  >
+                    {row}
+                  </Link>
+                  {jellyfinUrl && (
+                    <a
+                      href={jellyfinWebUrl(jellyfinUrl, it)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Open in Jellyfin"
+                      style={{
+                        position: 'absolute',
+                        top: 8,
+                        right: 8,
+                        padding: 4,
+                        display: 'inline-flex',
+                        color: HPR.fgSubtle,
+                      }}
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
+                </div>
+              );
+            }
             return jellyfinUrl && !editMode ? (
               <a
                 key={it.Id}
@@ -264,6 +303,42 @@ export function ContinueWatchingWidget({
               <div style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}>{sub}</div>
             </>
           );
+          if (canPlay && !editMode) {
+            // Resume in the in-app player; JF web stays as a corner affordance.
+            return (
+              <div
+                key={it.Id}
+                style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0, position: 'relative' }}
+              >
+                <Link
+                  href={watchUrl(it)}
+                  style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+                >
+                  {cardInner}
+                </Link>
+                {jellyfinUrl && (
+                  <a
+                    href={jellyfinWebUrl(jellyfinUrl, it)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Open in Jellyfin"
+                    style={{
+                      position: 'absolute',
+                      top: 6,
+                      right: 6,
+                      padding: 4,
+                      display: 'inline-flex',
+                      color: '#fff',
+                      background: 'rgba(0,0,0,0.55)',
+                      borderRadius: 999,
+                    }}
+                  >
+                    <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            );
+          }
           return jellyfinUrl && !editMode ? (
             <a
               key={it.Id}

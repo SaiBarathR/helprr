@@ -39,6 +39,7 @@ import {
   FileText,
   FileEdit,
   ExternalLink,
+  Play,
   Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -137,6 +138,7 @@ export default function MovieDetailPage() {
   const externalUrls = useExternalUrls();
   const radarrExternalUrl = useExternalUrlResolver()('RADARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
+  const [playLoading, setPlayLoading] = useState(false);
   const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
 
   const canEditMonitoring = useCan('movies.editMonitoring');
@@ -144,6 +146,7 @@ export default function MovieDetailPage() {
   const canChangePath = useCan('movies.changePath');
   const canManageActivity = useCan('activity.manage');
   const canDeleteMovie = useCan('movies.delete');
+  const canPlay = useCan('jellyfin.play');
   const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
 
   // Reference data
@@ -416,6 +419,33 @@ export default function MovieDetailPage() {
       toast.error('Jellyfin lookup failed');
     } finally {
       setJellyfinLoading(false);
+    }
+  }
+
+  // Same provider-id lookup as "Open in Jellyfin", but lands in the in-app
+  // player. Resume position is resolved by the player from the item itself.
+  async function handlePlayInHelprr() {
+    if (!movie || playLoading) return;
+    setPlayLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (movie.imdbId) params.set('imdbId', movie.imdbId);
+      if (movie.tmdbId) params.set('tmdbId', String(movie.tmdbId));
+      if (!params.toString()) {
+        toast.error('No provider IDs available');
+        return;
+      }
+      const res = await fetch(`/api/jellyfin/lookup?${params}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.itemId) {
+        router.push(`/watch/${data.itemId}`);
+      } else {
+        toast.error('Not found in Jellyfin');
+      }
+    } catch {
+      toast.error('Jellyfin lookup failed');
+    } finally {
+      setPlayLoading(false);
     }
   }
 
@@ -907,6 +937,24 @@ export default function MovieDetailPage() {
 
         {/* Cast & Crew */}
         {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />}
+
+        {/* Play in the in-app player (downloaded + capability-gated) */}
+        {canPlay && movie.hasFile && (
+          <div>
+            <Button
+              onClick={handlePlayInHelprr}
+              disabled={playLoading}
+              className="w-full rounded-full h-10"
+            >
+              {playLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Play className="h-4 w-4 mr-2 fill-current" />
+              )}
+              Play
+            </Button>
+          </div>
+        )}
 
         {/* Pill buttons */}
         <div className="flex gap-3">

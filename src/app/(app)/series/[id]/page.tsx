@@ -28,7 +28,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight, ChevronLeft,
-  Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert,
+  Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert, Play,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
@@ -175,6 +175,7 @@ export default function SeriesDetailPage() {
   const externalUrls = useExternalUrls();
   const sonarrExternalUrl = useExternalUrlResolver()('SONARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
+  const [playLoading, setPlayLoading] = useState(false);
   const [credits, setCredits] = useState<SeriesCredits>(() => initialSnapshot?.credits ?? { cast: [], crew: [] });
   const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
   const [animeData, setAnimeData] = useState<SeriesAniListResponse | null>(() => initialSnapshot?.animeData ?? null);
@@ -203,6 +204,7 @@ export default function SeriesDetailPage() {
   const canEditTags = useCan('series.editTags');
   const canChangePath = useCan('series.changePath');
   const canDeleteSeries = useCan('series.delete');
+  const canPlay = useCan('jellyfin.play');
   const canEditSeries = canEditMonitoring || canEditTags || canChangePath;
   // AniList mapping mutations are admin-only server-side — hide their triggers
   // from members so they don't open a drawer whose saves would 403.
@@ -829,6 +831,39 @@ export default function SeriesDetailPage() {
       toast.error('Jellyfin lookup failed');
     } finally {
       setJellyfinLoading(false);
+    }
+  }
+
+  // Same provider-id lookup as "Open in Jellyfin", then the next-up route picks
+  // which episode to start (resume position is resolved by the player itself).
+  async function handlePlayInHelprr() {
+    if (!series || playLoading) return;
+    setPlayLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (series.imdbId) params.set('imdbId', series.imdbId);
+      if (series.tvdbId) params.set('tvdbId', String(series.tvdbId));
+      if (!params.toString()) {
+        toast.error('No provider IDs available');
+        return;
+      }
+      const lookupRes = await fetch(`/api/jellyfin/lookup?${params}`);
+      const lookup = lookupRes.ok ? await lookupRes.json() : null;
+      if (!lookup?.itemId) {
+        toast.error('Not found in Jellyfin');
+        return;
+      }
+      const nextUpRes = await fetch(`/api/jellyfin/play/next-up?seriesId=${lookup.itemId}`);
+      const nextUp = nextUpRes.ok ? await nextUpRes.json() : null;
+      if (nextUp?.itemId) {
+        router.push(`/watch/${nextUp.itemId}`);
+      } else {
+        toast.error('No playable episode found');
+      }
+    } catch {
+      toast.error('Jellyfin lookup failed');
+    } finally {
+      setPlayLoading(false);
     }
   }
 
@@ -1643,6 +1678,24 @@ export default function SeriesDetailPage() {
                 title={animeDetail.title}
               />
             )}
+          </div>
+        )}
+
+        {/* Play next-up in the in-app player (needs files + capability) */}
+        {canPlay && (series.statistics?.episodeFileCount ?? 0) > 0 && (
+          <div>
+            <Button
+              onClick={handlePlayInHelprr}
+              disabled={playLoading}
+              className="w-full rounded-full h-10"
+            >
+              {playLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Play className="h-4 w-4 mr-2 fill-current" />
+              )}
+              Play
+            </Button>
           </div>
         )}
 

@@ -201,6 +201,24 @@ export class JellyfinClient {
     });
   }
 
+  async getNextUp(seriesId: string): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/Shows/NextUp', {
+      SeriesId: seriesId,
+      UserId: this.requireUserId(),
+      Limit: 1,
+    });
+  }
+
+  async getEpisodes(
+    seriesId: string,
+    params: { limit?: number } = {}
+  ): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Episodes`, {
+      UserId: this.requireUserId(),
+      ...(params.limit !== undefined ? { Limit: params.limit } : {}),
+    });
+  }
+
   async getResumeItems(params: { limit?: number } = {}): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/UserItems/Resume`, {
       UserId: this.requireUserId(),
