@@ -107,7 +107,7 @@ const sortOptions = [
 
 // Toast summary shared by every bulk action ("Monitoring 5 movies", "Deleted 2 movies, 1 failed").
 function reportBulk(verb: string, ok: number, fail: number) {
-  const word = ok === 1 && fail === 0 ? 'movie' : 'movies';
+  const word = ok === 1 ? 'movie' : 'movies';
   if (fail) toast.error(`${verb} ${ok} ${word}, ${fail} failed`);
   else toast.success(`${verb} ${ok} ${word}`);
 }
@@ -197,7 +197,7 @@ export default function MoviesPage() {
   const canBulk = canMonitor || canTag || canDelete || canSearch;
   const {
     selectionMode, selectedKeys, count: selectedCount,
-    toggle, selectMany, clear, enter, exit,
+    toggle, selectMany, deselectMany, enter, exit,
   } = useBulkSelection();
   const [movies, setMovies] = useState<RadarrMovieListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
@@ -522,9 +522,11 @@ export default function MoviesPage() {
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((m) => selectedKeys.has(keyOf(m)));
   const toggleSelectAll = useCallback(() => {
-    if (allFilteredSelected) clear();
+    // Deselect only the filtered keys (not clear()) so any selection made under a
+    // different filter is preserved — the mirror of selectMany(filtered) above.
+    if (allFilteredSelected) deselectMany(filtered.map(keyOf));
     else selectMany(filtered.map(keyOf));
-  }, [allFilteredSelected, clear, selectMany, filtered, keyOf]);
+  }, [allFilteredSelected, deselectMany, selectMany, filtered, keyOf]);
 
   // Selected movies grouped by instance so each bulk request hits the right one.
   const groupSelectedByInstance = useCallback(() => {
@@ -562,7 +564,7 @@ export default function MoviesPage() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, monitored }),
       }));
-    reportBulk(monitored ? 'Monitoring' : 'Unmonitored', ok, fail);
+    reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail);
     await fetchData(true);
     exit();
   }, [fanOut, fetchData, exit]);

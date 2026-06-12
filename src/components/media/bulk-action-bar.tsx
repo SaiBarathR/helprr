@@ -68,6 +68,8 @@ function BarButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
+      // The text label is hidden on small screens, so name the button for SR users.
+      aria-label={label}
       className={cn(
         'flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 min-h-[44px] text-sm font-medium transition-colors disabled:opacity-50',
         destructive
@@ -216,6 +218,7 @@ export function BulkActionBar({
                   <button
                     type="button"
                     disabled={disabled}
+                    aria-label="Tags"
                     className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 min-h-[44px] text-sm font-medium transition-colors hover:bg-accent active:bg-accent/80 disabled:opacity-50"
                   >
                     {busy === 'tags' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tags className="h-4 w-4" />}

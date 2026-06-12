@@ -13,6 +13,8 @@ export interface BulkSelection {
   toggle: (key: string) => void;
   /** Add every given key to the selection (used by "select all [filtered]"). */
   selectMany: (keys: string[]) => void;
+  /** Remove only the given keys (the inverse of selectMany, for "deselect all [filtered]"). */
+  deselectMany: (keys: string[]) => void;
   clear: () => void;
   enter: () => void;
   /** Leave selection mode and drop any selection. */
@@ -40,6 +42,14 @@ export function useBulkSelection(): BulkSelection {
     });
   }, []);
 
+  const deselectMany = useCallback((keys: string[]) => {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      for (const key of keys) next.delete(key);
+      return next;
+    });
+  }, []);
+
   const clear = useCallback(() => setSelectedKeys(new Set()), []);
   const enter = useCallback(() => setSelectionMode(true), []);
   const exit = useCallback(() => {
@@ -53,6 +63,7 @@ export function useBulkSelection(): BulkSelection {
     count: selectedKeys.size,
     toggle,
     selectMany,
+    deselectMany,
     clear,
     enter,
     exit,
