@@ -143,7 +143,10 @@ export function BulkActionBar({
   function addNewLabel() {
     const label = newLabel.trim();
     if (!label) return;
-    setPicked((prev) => new Set(prev).add(label));
+    // Canonicalize to an existing tag's casing so a typed "drama" matches a
+    // "Drama" suggestion row (checked state + submission both use the same label).
+    const existing = tags.find((t) => t.label.toLowerCase() === label.toLowerCase());
+    setPicked((prev) => new Set(prev).add(existing ? existing.label : label));
     setNewLabel('');
   }
 

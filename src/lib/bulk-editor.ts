@@ -100,6 +100,9 @@ export function parseBulkDeleteBody(
   const b = body as Record<string, unknown>;
   const ids = toPositiveIntArray(b.ids);
   if (!ids) return { error: 'ids must be a non-empty array of positive integers' };
+  if (b.deleteFiles !== undefined && typeof b.deleteFiles !== 'boolean') {
+    return { error: 'deleteFiles must be a boolean' };
+  }
   return { ids, deleteFiles: b.deleteFiles === true };
 }
 

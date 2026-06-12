@@ -135,7 +135,20 @@ export function MediaTable({
               >
                 {selectable && (
                   <td className="px-3 py-2">
-                    <SelectionCheck selected={selected} className="border-muted-foreground/50 bg-transparent" />
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={selected}
+                      aria-label={`Select ${row.title}`}
+                      // Stop propagation so this doesn't double-toggle with the row's onClick.
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleSelect?.(row);
+                      }}
+                      className="flex items-center justify-center rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <SelectionCheck selected={selected} className="border-muted-foreground/50 bg-transparent" />
+                    </button>
                   </td>
                 )}
                 {show('monitored') && (

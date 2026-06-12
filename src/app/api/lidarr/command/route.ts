@@ -41,7 +41,13 @@ async function postHandler(request: NextRequest) {
           if (artistIds === null) {
             return NextResponse.json({ error: 'artistIds must be a non-empty array of positive integers' }, { status: 400 });
           }
-          result = await Promise.all(artistIds.map((id) => client.searchArtist(id)));
+          // Fan out in bounded batches so selecting a large library doesn't fire
+          // hundreds of concurrent searches at the Lidarr instance at once.
+          const searched: unknown[] = [];
+          for (let i = 0; i < artistIds.length; i += 5) {
+            searched.push(...(await Promise.all(artistIds.slice(i, i + 5).map((id) => client.searchArtist(id)))));
+          }
+          result = searched;
         } else {
           const artistId = toPositiveInt(body.artistId);
           if (artistId === null) {
