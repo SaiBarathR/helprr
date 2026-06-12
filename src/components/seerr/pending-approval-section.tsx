@@ -31,9 +31,10 @@ interface PendingRow {
  * Helprr-side requests awaiting admin approval (the gate). Admins get
  * Approve…/Decline; members see their own pending rows with Cancel. Hidden when
  * empty. `onChanged` lets the parent refresh the Seerr list once an item is
- * approved (it then appears in Seerr).
+ * approved (it then appears in Seerr). `grid` lays rows out as a responsive
+ * card grid — only for full-page views; dashboard cells are too narrow.
  */
-export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }) {
+export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?: () => void; grid?: boolean }) {
   const canApprove = useCan('requests.approve');
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
@@ -94,6 +95,8 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Pending approval
       </h2>
+      {/* Single column on phones, card grid on wider screens (matches the requests list). */}
+      <div className={grid ? 'grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3' : 'space-y-2'}>
       {rows.map((r) => {
         const Icon = r.mediaType === 'tv' ? Tv : Film;
         const isBusy = busy.has(r.id);
@@ -166,6 +169,7 @@ export function PendingApprovalSection({ onChanged }: { onChanged?: () => void }
           </div>
         );
       })}
+      </div>
 
       {hasMore && (
         <Button

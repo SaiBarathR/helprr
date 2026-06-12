@@ -39,6 +39,9 @@ const ROW_HEIGHT = 64;
 const DEFAULT_FETCH_SIZE = 30;
 const UNBOUNDED_PAGE_SIZE = 50;
 const LOAD_MORE_ROOT_MARGIN = '300px';
+// Full-page mode: single column on phones, card grid on wider screens so the
+// list uses the horizontal space instead of stretching rows across it.
+const GRID_CLASS = 'grid grid-cols-1 gap-2 sm:gap-2.5 lg:grid-cols-2 2xl:grid-cols-3';
 
 export interface RequestsListWidgetProps extends WidgetProps {
   filter?: SeerrRequestFilter;
@@ -317,7 +320,7 @@ export function RequestsListWidget({
   // Helprr-side pending requests (the approval gate). Renders above the Seerr
   // list in every state — including when there are no Seerr requests yet — and
   // returns null when there are none. Approving here refreshes the Seerr list.
-  const pendingNode = <PendingApprovalSection onChanged={refresh} />;
+  const pendingNode = <PendingApprovalSection onChanged={refresh} grid={unbounded} />;
 
   // Shell: fills the bento cell height in widget mode (inner list scrolls);
   // grows with content in unbounded mode (the page itself scrolls).
@@ -329,8 +332,8 @@ export function RequestsListWidget({
         {header}
         {pendingNode}
         {unbounded ? (
-          <div className="flex flex-col gap-2 sm:gap-2.5" role="status" aria-busy="true" aria-label="Loading requests">
-            {Array.from({ length: 6 }).map((_, i) => (
+          <div className={GRID_CLASS} role="status" aria-busy="true" aria-label="Loading requests">
+            {Array.from({ length: 9 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3">
                 <Skeleton className="h-14 w-10 rounded-md" />
                 <div className="flex-1 space-y-2">
@@ -392,7 +395,7 @@ export function RequestsListWidget({
       <div
         className={cn(
           unbounded
-            ? 'flex flex-col gap-2 sm:gap-2.5'
+            ? GRID_CLASS
             : 'no-scrollbar scroll-fade-y flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto'
         )}
       >
@@ -476,6 +479,32 @@ export function RequestsListWidget({
                   <span className="truncate">{requesterLabel(req)}</span>
                 </div>
               </div>
+              {/* Desktop quick actions — the extra width fits the two most
+                  common actions inline; everything else stays in the menu. */}
+              {!editMode && unbounded && canApprove ? (
+                <div className="hidden shrink-0 items-center gap-0.5 lg:flex">
+                  <button
+                    type="button"
+                    aria-label="Approve request"
+                    title="Approve"
+                    disabled={isBusy}
+                    onClick={() => setModal({ req, mode: 'approve' })}
+                    className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-emerald-500/15 hover:text-emerald-400 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Decline request"
+                    title="Decline"
+                    disabled={isBusy}
+                    onClick={() => void runAction(req.id, 'decline')}
+                    className="flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-rose-500/15 hover:text-rose-400 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null}
               {editMode ? null : (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -565,7 +594,7 @@ export function RequestsListWidget({
         {unbounded && hasMore ? (
           <div
             ref={sentinelRef}
-            className="flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground"
+            className="col-span-full flex items-center justify-center gap-1.5 py-3 text-xs text-muted-foreground"
           >
             {loadingMore ? (
               <>
@@ -578,7 +607,7 @@ export function RequestsListWidget({
         ) : null}
 
         {unbounded && !hasMore && totalResults > 0 ? (
-          <div className="py-2 text-center text-[11px] text-muted-foreground/70">
+          <div className="col-span-full py-2 text-center text-[11px] text-muted-foreground/70">
             All {totalResults} requests loaded
           </div>
         ) : null}
