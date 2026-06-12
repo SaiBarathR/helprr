@@ -121,7 +121,13 @@ export function MediaCard({
   return (
     <div className="group relative">
       {selectable ? (
-        <button type="button" onClick={onToggleSelect} className="block w-full text-left">
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          aria-pressed={Boolean(selected)}
+          aria-label={`${selected ? 'Deselect' : 'Select'} ${title}`}
+          className="block w-full text-left"
+        >
           {posterInner}
         </button>
       ) : (

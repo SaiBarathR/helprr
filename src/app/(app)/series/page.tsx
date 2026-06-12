@@ -146,7 +146,7 @@ export default function SeriesPage() {
   const canBulk = canMonitor || canTag || canDelete || canSearch;
   const {
     selectionMode, selectedKeys, count: selectedCount,
-    toggle, selectMany, clear, enter, exit,
+    toggle, selectMany, deselectMany, enter, exit,
   } = useBulkSelection();
   const [series, setSeries] = useState<SonarrSeriesListItem[]>([]);
   const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
@@ -451,9 +451,11 @@ export default function SeriesPage() {
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selectedKeys.has(keyOf(s)));
   const toggleSelectAll = useCallback(() => {
-    if (allFilteredSelected) clear();
+    // Deselect only the filtered keys (not clear()) so any selection made under a
+    // different filter is preserved — the mirror of selectMany(filtered) above.
+    if (allFilteredSelected) deselectMany(filtered.map(keyOf));
     else selectMany(filtered.map(keyOf));
-  }, [allFilteredSelected, clear, selectMany, filtered, keyOf]);
+  }, [allFilteredSelected, deselectMany, selectMany, filtered, keyOf]);
 
   // Selected series grouped by instance so each bulk request hits the right one.
   const groupSelectedByInstance = useCallback(() => {
@@ -491,7 +493,7 @@ export default function SeriesPage() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, monitored }),
       }));
-    reportBulk(monitored ? 'Monitoring' : 'Unmonitored', ok, fail);
+    reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail);
     await fetchData(true);
     exit();
   }, [fanOut, fetchData, exit]);
