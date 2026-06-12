@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -187,8 +188,8 @@ export default function JellyfinPage() {
         </Button>
       </div> */}
 
-      <div className="sticky z-30 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
-        <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
+      <div className="sticky z-30 flex items-center gap-2 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
+        <div role="tablist" aria-label="Jellyfin sections" className="flex flex-1 bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {visibleTabs.map((t) => (
             <button
               key={t.key}
@@ -206,6 +207,13 @@ export default function JellyfinPage() {
             </button>
           ))}
         </div>
+        <Link
+          href="/jellyfin/library"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Library className="h-3.5 w-3.5" aria-hidden />
+          Library
+        </Link>
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 pb-4">

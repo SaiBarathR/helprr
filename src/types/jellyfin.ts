@@ -115,6 +115,9 @@ export interface JellyfinItem {
   MediaType?: string;
   MediaStreams?: JellyfinMediaStream[];
   Container?: string;
+  ChildCount?: number;
+  RecursiveItemCount?: number;
+  OfficialRating?: string;
 }
 
 export interface JellyfinItemsResponse {

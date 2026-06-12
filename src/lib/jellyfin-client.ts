@@ -211,12 +211,18 @@ export class JellyfinClient {
 
   async getEpisodes(
     seriesId: string,
-    params: { limit?: number } = {}
+    params: { limit?: number; fields?: string } = {}
   ): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Episodes`, {
       UserId: this.requireUserId(),
       ...(params.limit !== undefined ? { Limit: params.limit } : {}),
+      ...(params.fields ? { Fields: params.fields } : {}),
     });
+  }
+
+  /** Single item with user-scoped data (watch state, resume position). */
+  async getItem(itemId: string): Promise<JellyfinItem> {
+    return this.get<JellyfinItem>(`/Users/${this.requireUserId()}/Items/${itemId}`);
   }
 
   async getResumeItems(params: { limit?: number } = {}): Promise<JellyfinItemsResponse> {
