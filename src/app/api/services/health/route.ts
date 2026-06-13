@@ -6,6 +6,11 @@ import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
 import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
 import { withApiLogging } from '@/lib/api-logger';
+import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+
+const HEALTH_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+} as const;
 
 interface ServiceHealthStatus {
   instanceId: string;
@@ -38,25 +43,30 @@ async function getHandler() {
   if (!auth.ok) return auth.response;
 
   try {
-    const connections = (
-      await prisma.serviceConnection.findMany({ orderBy: { type: 'asc' } })
-    ).filter((connection) => can(auth.user, SERVICE_VIEW_CAP[connection.type]));
+    // Cache the FULL probe array (every service), then filter per user after the read so
+    // the expensive probes are shared across users without leaking which services a member
+    // isn't allowed to see.
+    let statuses = await getCachedJson<ServiceHealthStatus[]>('health', '');
+    if (!statuses) {
+      const connections = await prisma.serviceConnection.findMany({ orderBy: { type: 'asc' } });
+      statuses = await Promise.all(
+        connections.map(async (connection): Promise<ServiceHealthStatus> => {
+          const result = await probeServiceHealth(connection);
+          return {
+            instanceId: connection.id,
+            type: connection.type,
+            name: SERVICE_LABELS[connection.type] || connection.type,
+            label: connection.label || SERVICE_LABELS[connection.type] || connection.type,
+            ok: result.ok,
+            ...(result.error ? { error: result.error } : {}),
+          };
+        })
+      );
+      await setCachedJson('health', '', statuses, 60);
+    }
 
-    const statuses = await Promise.all(
-      connections.map(async (connection): Promise<ServiceHealthStatus> => {
-        const result = await probeServiceHealth(connection);
-        return {
-          instanceId: connection.id,
-          type: connection.type,
-          name: SERVICE_LABELS[connection.type] || connection.type,
-          label: connection.label || SERVICE_LABELS[connection.type] || connection.type,
-          ok: result.ok,
-          ...(result.error ? { error: result.error } : {}),
-        };
-      })
-    );
-
-    return NextResponse.json(statuses);
+    const visible = statuses.filter((status) => can(auth.user, SERVICE_VIEW_CAP[status.type]));
+    return NextResponse.json(visible, { headers: HEALTH_CACHE_HEADERS });
   } catch {
     return NextResponse.json(
       { error: 'Failed to fetch service health' },

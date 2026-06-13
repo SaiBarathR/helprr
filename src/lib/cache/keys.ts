@@ -44,6 +44,10 @@ export function buildLibraryGapsKey(generation: number): string {
   return `helprr:cache:library-gaps:v${generation}`;
 }
 
+export function buildApiReadKey(scope: string, generation: number, keySeed: string): string {
+  return `helprr:cache:api:${scope}:v${generation}:${sha256Hex(keySeed)}`;
+}
+
 export function buildLockKey(scope: string, keySeed: string): string {
   return `helprr:cache:lock:${scope}:${sha256Hex(keySeed)}`;
 }

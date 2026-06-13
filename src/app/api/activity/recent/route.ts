@@ -3,6 +3,10 @@ import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
+const RECENT_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+} as const;
+
 interface RecentItem {
   id: string;
   title: string;
@@ -98,7 +102,7 @@ async function getHandler(request: NextRequest) {
       return true;
     });
 
-    return NextResponse.json(deduplicated.slice(0, limit));
+    return NextResponse.json(deduplicated.slice(0, limit), { headers: RECENT_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch recent imports:', error);
     return NextResponse.json({ error: 'Failed to fetch recent imports' }, { status: 500 });
