@@ -210,7 +210,7 @@ function computeCarouselItemLimit(): number {
 
 function DiscoverHeroSlide({ item, priority = false }: { item: DiscoverItem; priority?: boolean }) {
   const backdropSrc = item.backdropPath
-    ? toCachedImageSrc(item.backdropPath, 'tmdb') || item.backdropPath
+    ? toCachedImageSrc(item.backdropPath, 'tmdb', { width: 1280 }) || item.backdropPath
     : null;
   const posterSrc = item.posterPath
     ? toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath

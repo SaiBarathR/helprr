@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   // Force webpack for Serwist compatibility
   turbopack: {},
+  // sharp ships a native .node binary; keep webpack from trying to bundle it so
+  // the standalone build can load it at runtime.
+  serverExternalPackages: ['sharp'],
   images: {
     remotePatterns: [
       { protocol: 'http', hostname: '**' },

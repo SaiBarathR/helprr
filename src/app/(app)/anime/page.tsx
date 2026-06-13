@@ -74,7 +74,7 @@ function entryToRailItem(entry: AniListMediaListEntry) {
 
 function HeroBanner({ anime, priority = false }: { anime: AnimeItemWithLibrary; priority?: boolean }) {
   const bannerSrc = anime.bannerImage
-    ? toCachedImageSrc(anime.bannerImage, 'anilist') || anime.bannerImage
+    ? toCachedImageSrc(anime.bannerImage, 'anilist', { width: 1280 }) || anime.bannerImage
     : null;
   const coverSrc = anime.coverImage
     ? toCachedImageSrc(anime.coverImage, 'anilist') || anime.coverImage

@@ -22,11 +22,59 @@ const SERVICE_IMAGE_PATH_PATTERNS: Record<ConnectionLike['type'], RegExp[]> = {
   TMDB: [/^\/t\/p\//i],
 };
 
+type ImageProxyConnectionRow = Pick<ConnectionLike, 'type'> & { url: string; apiKey: string };
+
+// The proxy resolves auth headers from connection rows on every image request.
+// Connections change only when an admin edits a service in Settings and Helprr
+// is single-instance, so an in-memory cache (with in-flight dedupe) collapses a
+// cold dashboard load of N posters into a single DB query. Worst-case staleness
+// after editing a service is one TTL window of a stale auth header — harmless,
+// since image URLs keep their identity and only the token would briefly lag.
+const CONNECTIONS_CACHE_TTL_MS = 30_000;
+let connectionsCache: { at: number; rows: ImageProxyConnectionRow[] } | null = null;
+let connectionsInflight: Promise<ImageProxyConnectionRow[]> | null = null;
+
+async function getImageProxyConnections(): Promise<ImageProxyConnectionRow[]> {
+  const now = Date.now();
+  if (connectionsCache && now - connectionsCache.at < CONNECTIONS_CACHE_TTL_MS) {
+    return connectionsCache.rows;
+  }
+  if (connectionsInflight) return connectionsInflight;
+
+  connectionsInflight = prisma.serviceConnection
+    .findMany({
+      where: { type: { in: ['RADARR', 'SONARR', 'JELLYFIN', 'TMDB', 'LIDARR'] } },
+      select: { type: true, url: true, apiKey: true },
+    })
+    .then((rows) => {
+      connectionsCache = { at: Date.now(), rows: rows as ImageProxyConnectionRow[] };
+      return connectionsCache.rows;
+    })
+    .finally(() => {
+      connectionsInflight = null;
+    });
+
+  return connectionsInflight;
+}
+
 function parseServiceHint(value: string | null): ServiceHint | null {
   if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'jellyfin' || value === 'anilist' || value === 'lidarr') {
     return value;
   }
   return null;
+}
+
+// Display width for the WebP transform. Call sites opt in via `&w=`; absent or
+// invalid values fall back to a server-side cap so every proxied image still
+// shrinks. Clamped to a sane max to bound transcode cost.
+const DEFAULT_IMAGE_WIDTH = 600;
+const MAX_IMAGE_WIDTH = 2000;
+
+function parseWidthParam(value: string | null): number {
+  if (value === null) return DEFAULT_IMAGE_WIDTH;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_IMAGE_WIDTH;
+  return Math.min(parsed, MAX_IMAGE_WIDTH);
 }
 
 const DEFAULT_EXTERNAL_IMAGE_HOSTS = new Set<string>([
@@ -161,6 +209,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const src = searchParams.get('src');
     const hint = parseServiceHint(searchParams.get('service'));
+    const width = parseWidthParam(searchParams.get('w'));
 
     if (!src) {
       return NextResponse.json({ error: 'Missing src parameter' }, { status: 400 });
@@ -179,18 +228,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     const isTmdbImageHost = targetUrl.hostname === 'image.tmdb.org';
 
-    const connectionsRaw = await prisma.serviceConnection.findMany({
-      where: {
-        type: {
-          in: ['RADARR', 'SONARR', 'JELLYFIN', 'TMDB', 'LIDARR'],
-        },
-      },
-      select: {
-        type: true,
-        url: true,
-        apiKey: true,
-      },
-    });
+    const connectionsRaw = await getImageProxyConnections();
 
     const connections: ConnectionLike[] = connectionsRaw
       .map((conn) => {
@@ -228,10 +266,12 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ? resolveAuthHeaders(matchedConnection)
       : undefined;
 
+    const baseCacheKey = `${hint ?? matchedConnection?.type.toLowerCase() ?? 'unknown'}:${targetUrl.toString()}`;
     const result = await fetchImageWithServerCache({
-      cacheKey: `${hint ?? matchedConnection?.type.toLowerCase() ?? 'unknown'}:${targetUrl.toString()}`,
+      cacheKey: `${baseCacheKey}:w${width}:webp`,
       upstreamUrl: targetUrl.toString(),
       upstreamHeaders,
+      transform: { width },
     });
 
     if (!result.body) {

@@ -19,7 +19,8 @@ function isHttpUrl(value: string): boolean {
 
 export function toCachedImageSrc(
   src: string | null | undefined,
-  serviceHint?: ImageServiceHint
+  serviceHint?: ImageServiceHint,
+  opts?: { width?: number }
 ): string | null {
   if (!src) return null;
 
@@ -36,6 +37,9 @@ export function toCachedImageSrc(
     const params = new URLSearchParams({ src });
     if (serviceHint) {
       params.set('service', serviceHint);
+    }
+    if (opts?.width) {
+      params.set('w', String(opts.width));
     }
     if (imageCacheGeneration > 0) {
       params.set('v', String(imageCacheGeneration));

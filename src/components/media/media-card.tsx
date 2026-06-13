@@ -33,11 +33,12 @@ interface MediaCardProps {
 function getImageUrl(
   images: MediaImage[],
   coverType: string,
-  serviceHint?: ImageServiceHint
+  serviceHint?: ImageServiceHint,
+  opts?: { width?: number }
 ): string | null {
   const img = images.find((i) => i.coverType === coverType);
   const raw = img?.remoteUrl || img?.url || null;
-  return toCachedImageSrc(raw, serviceHint);
+  return toCachedImageSrc(raw, serviceHint, opts);
 }
 
 export const MediaCard = memo(function MediaCard({
@@ -58,7 +59,9 @@ export const MediaCard = memo(function MediaCard({
   onToggleSelect,
 }: MediaCardProps) {
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
-  const poster = getImageUrl(images, 'poster', posterHint);
+  // Grid posters render at ~120–180px CSS; 360px keeps them retina-crisp while
+  // the server transcodes once per (url, width) variant.
+  const poster = getImageUrl(images, 'poster', posterHint, { width: 360 });
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
   const posterInner = (
