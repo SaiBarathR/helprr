@@ -119,7 +119,7 @@ function percentile(sorted: number[], p: number): number {
   return sorted[idx];
 }
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('insights.view');
   if (!auth.ok) return auth.response;
   const { user } = auth;

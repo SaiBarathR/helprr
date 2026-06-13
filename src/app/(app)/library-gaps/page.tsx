@@ -82,11 +82,20 @@ function GapCard({
       if (s.kind === 'episodes') {
         await postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'EpisodeSearch', episodeIds: s.episodeIds });
       } else if (s.kind === 'seasons') {
-        await Promise.all(
+        // Fan out one SeasonSearch per season. allSettled (not all) so a single failed
+        // season doesn't report the whole card as failed when others succeeded — mirrors
+        // the bulk-search path.
+        const results = await Promise.allSettled(
           s.seasonNumbers.map((seasonNumber) =>
             postCommand(`/api/sonarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'SeasonSearch', seriesId: s.sonarrSeriesId, seasonNumber })
           )
         );
+        const failed = results.filter((r) => r.status === 'rejected').length;
+        if (failed === results.length) throw new Error('all season searches failed');
+        if (failed > 0) {
+          toast.warning(`Search started — ${failed} of ${results.length} seasons failed`);
+          return;
+        }
       } else if (s.kind === 'movie') {
         await postCommand(`/api/radarr/command?instanceId=${encodeURIComponent(s.instanceId)}`, { name: 'MoviesSearch', movieIds: [s.radarrMovieId] });
       }

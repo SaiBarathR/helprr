@@ -43,7 +43,7 @@ function summarize<T extends { monitored?: boolean }>(
   return { total, count: lib.items.length, items, unmonitored };
 }
 
-async function getHandler() {
+async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('insights.view');
   if (!auth.ok) return auth.response;
   const { user } = auth;

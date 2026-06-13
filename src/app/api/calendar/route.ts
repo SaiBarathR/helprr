@@ -12,6 +12,9 @@ import type {
 
 const CALENDAR_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+  // Partition the private cache by session cookie so a capability-gated response can't be
+  // replayed from the browser cache to a different (or logged-out) user within the TTL.
+  'Vary': 'Cookie',
 } as const;
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {

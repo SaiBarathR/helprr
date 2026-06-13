@@ -8,6 +8,9 @@ import { withApiLogging } from '@/lib/api-logger';
 // Live download progress changes second-to-second — a tiny window only collapses bursts.
 const QUEUE_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=5, stale-while-revalidate=10',
+  // Partition the private cache by session cookie so a capability-gated response can't be
+  // replayed from the browser cache to a different (or logged-out) user within the TTL.
+  'Vary': 'Cookie',
 } as const;
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {

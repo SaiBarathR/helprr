@@ -4,10 +4,10 @@ import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 // Lidarr artists). One entry per (scope, instance) is reused by both the library
 // routes (/api/sonarr, /api/radarr) and Insights, so a warm cache serves them all.
 //
-// The cache is only written when the result is TRUSTWORTHY — at least one instance
-// answered. A transient all-instances-failed poll returns an empty list WITHOUT
-// caching it, so a blip can never blank (or half-blank) the library for the whole
-// TTL the way an unconditional write would.
+// The cache is only written when the result is COMPLETE — every configured instance
+// answered. A partial (some instances failed) or all-failed poll returns its list
+// WITHOUT caching it, so a blip can never blank (or half-blank) the library for the
+// whole TTL the way an unconditional write would.
 
 export type Tagged<T> = T & { instanceId: string; instanceLabel: string };
 
@@ -46,6 +46,7 @@ export async function getCachedTaggedLibrary<C, T extends object>(opts: {
 
   const instances = await opts.getInstances();
   let anyOk = false;
+  let anyFailed = false;
   const lists = await Promise.all(
     instances.map(async ({ connection, client }) => {
       try {
@@ -58,13 +59,17 @@ export async function getCachedTaggedLibrary<C, T extends object>(opts: {
         }));
       } catch {
         // One unreachable/misconfigured instance must not blank the whole library.
+        anyFailed = true;
         return [] as Tagged<T>[];
       }
     })
   );
   const items = lists.flat();
 
-  if (anyOk) {
+  // Cache only a COMPLETE result — every configured instance answered. A partial poll
+  // (some instances failed) is left uncached so a recovered instance appears on the next
+  // request instead of being masked by a stale partial aggregate for the whole TTL.
+  if (instances.length > 0 && !anyFailed) {
     await setCachedJson(opts.scope, opts.cacheKeySeed, items, opts.ttlSeconds ?? DEFAULT_TTL_SECONDS);
   }
   return { items, cached: false, available: anyOk };
