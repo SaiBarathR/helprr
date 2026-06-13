@@ -34,7 +34,7 @@ export function DiscoverHero({
   detail
 }: DiscoverHeroProps) {
   const backdropSrc = backdropPath
-    ? toCachedImageSrc(backdropPath, 'tmdb') || backdropPath
+    ? toCachedImageSrc(backdropPath, 'tmdb', { width: 1280 }) || backdropPath
     : null;
   const posterSrc = posterPath
     ? toCachedImageSrc(posterPath, 'tmdb') || posterPath

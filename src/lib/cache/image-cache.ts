@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import sharp from 'sharp';
 import { getRedisClient } from '@/lib/redis';
 import {
   IMAGE_CACHE_DIR,
@@ -18,12 +19,17 @@ import {
 
 export type ImageCacheStatus = 'BYPASS' | 'HIT' | 'MISS' | 'REVALIDATED' | 'STALE';
 
+export interface ImageTransform {
+  width?: number;
+}
+
 export interface FetchCachedImageOptions {
   cacheKey: string;
   upstreamUrl: string;
   upstreamHeaders?: HeadersInit;
   ttlSeconds?: number;
   staleSeconds?: number;
+  transform?: ImageTransform;
 }
 
 export interface FetchCachedImageResult {
@@ -189,12 +195,52 @@ async function fetchUpstreamImage(url: string, headers?: HeadersInit): Promise<{
   }
 }
 
-async function fetchBypass(url: string, headers?: HeadersInit): Promise<FetchCachedImageResult> {
+const WEBP_TRANSFORM_QUALITY = 78;
+const TRANSFORMABLE_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+// Transcode raster images to right-sized WebP. SVG/GIF (and anything else) pass
+// through untouched, and any sharp failure falls back to the original bytes so a
+// bad image never breaks the response.
+async function applyImageTransform(
+  body: Buffer,
+  contentType: string,
+  transform: ImageTransform | undefined,
+): Promise<{ body: Buffer; contentType: string }> {
+  if (!transform) return { body, contentType };
+
+  const baseType = contentType.split(';')[0].trim().toLowerCase();
+  if (!TRANSFORMABLE_CONTENT_TYPES.has(baseType)) {
+    return { body, contentType };
+  }
+
+  try {
+    const pipeline = sharp(body);
+    if (transform.width) {
+      pipeline.resize({ width: transform.width, withoutEnlargement: true });
+    }
+    const output = await pipeline.webp({ quality: WEBP_TRANSFORM_QUALITY }).toBuffer();
+    return { body: output, contentType: 'image/webp' };
+  } catch {
+    return { body, contentType };
+  }
+}
+
+async function fetchBypass(url: string, headers: HeadersInit | undefined, transform: ImageTransform | undefined): Promise<FetchCachedImageResult> {
   const upstream = await fetchUpstreamImage(url, headers);
+  if (!upstream.ok || !upstream.body) {
+    return {
+      status: upstream.status,
+      body: upstream.body,
+      contentType: upstream.contentType,
+      cacheStatus: 'BYPASS',
+    };
+  }
+
+  const transformed = await applyImageTransform(upstream.body, upstream.contentType || 'image/jpeg', transform);
   return {
     status: upstream.status,
-    body: upstream.body,
-    contentType: upstream.contentType,
+    body: transformed.body,
+    contentType: transformed.contentType,
     cacheStatus: 'BYPASS',
   };
 }
@@ -202,7 +248,7 @@ async function fetchBypass(url: string, headers?: HeadersInit): Promise<FetchCac
 export async function fetchImageWithServerCache(options: FetchCachedImageOptions): Promise<FetchCachedImageResult> {
   const enabled = await getCacheImagesEnabled();
   if (!enabled) {
-    return fetchBypass(options.upstreamUrl, options.upstreamHeaders);
+    return fetchBypass(options.upstreamUrl, options.upstreamHeaders, options.transform);
   }
 
   const generation = await getCacheGeneration();
@@ -244,12 +290,13 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
   try {
     const upstream = await fetchUpstreamImage(options.upstreamUrl, options.upstreamHeaders);
     if (upstream.ok && upstream.body) {
-      const relativePath = await saveCachedImage(generation, keyHash, upstream.body);
+      const transformed = await applyImageTransform(upstream.body, upstream.contentType || 'image/jpeg', options.transform);
+      const relativePath = await saveCachedImage(generation, keyHash, transformed.body);
       const nextMeta: ImageCacheMeta = {
         generation,
         relativePath,
-        contentType: upstream.contentType || 'image/jpeg',
-        sizeBytes: upstream.body.byteLength,
+        contentType: transformed.contentType,
+        sizeBytes: transformed.body.byteLength,
         fetchedAt: now,
         expiresAt: now + ttlSeconds * 1000,
         staleUntil: now + (ttlSeconds + staleSeconds) * 1000,
@@ -259,7 +306,7 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
 
       return {
         status: 200,
-        body: upstream.body,
+        body: transformed.body,
         contentType: nextMeta.contentType,
         cacheStatus: cachedMeta ? 'REVALIDATED' : 'MISS',
       };
