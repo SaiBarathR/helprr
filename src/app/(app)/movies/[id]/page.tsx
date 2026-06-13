@@ -717,7 +717,7 @@ export default function MovieDetailPage() {
             {/* Backdrop image */}
             <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
               <Image
-                src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb') || tmdbData.backdropPath}
+                src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
                 alt=""
                 fill
                 sizes="100vw"

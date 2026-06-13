@@ -76,7 +76,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
   }
 
   const backdropSrc = collection.backdropPath
-    ? toCachedImageSrc(collection.backdropPath, 'tmdb') || collection.backdropPath
+    ? toCachedImageSrc(collection.backdropPath, 'tmdb', { width: 1280 }) || collection.backdropPath
     : null;
 
   return (

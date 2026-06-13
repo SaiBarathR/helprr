@@ -66,7 +66,7 @@ export default function RandomWatchPage() {
     ? toCachedImageSrc(pick.posterUrl, pick.mediaType === 'movie' ? 'radarr' : 'sonarr') ?? pick.posterUrl
     : null;
   const backdrop = pick?.backdropUrl
-    ? toCachedImageSrc(pick.backdropUrl, pick.mediaType === 'movie' ? 'radarr' : 'sonarr') ?? pick.backdropUrl
+    ? toCachedImageSrc(pick.backdropUrl, pick.mediaType === 'movie' ? 'radarr' : 'sonarr', { width: 1280 }) ?? pick.backdropUrl
     : null;
 
   return (

@@ -15,10 +15,12 @@ export interface CacheUsageSummary {
   imageBytes: number;
   tmdbApiBytes: number;
   anilistApiBytes: number;
+  apiBytes: number;
   totalBytes: number;
   imageFiles: number;
   tmdbEntries: number;
   anilistEntries: number;
+  apiEntries: number;
 }
 
 export interface CachePurgeResult {
@@ -29,6 +31,8 @@ export interface CachePurgeResult {
   deletedTmdbEntries: number;
   deletedAnilistBytes: number;
   deletedAnilistEntries: number;
+  deletedApiBytes: number;
+  deletedApiEntries: number;
   deletedTotalBytes: number;
   purgedAt: string;
 }
@@ -137,14 +141,18 @@ async function purgeGeneration(generation: number): Promise<CachePurgeResult> {
   const imageMetaKeys = await scanRedisKeys(`helprr:cache:image:v${generation}:*`);
   const tmdbKeys = await scanRedisKeys(`helprr:cache:tmdb:v${generation}:*`);
   const anilistKeys = await scanRedisKeys(`helprr:cache:anilist:v${generation}:*`);
+  // scope precedes the version in the key (helprr:cache:api:<scope>:v<gen>:<hash>).
+  const apiKeys = await scanRedisKeys(`helprr:cache:api:*:v${generation}:*`);
   const tmdbUsage = await getRedisKeysUsage(tmdbKeys);
   const anilistUsage = await getRedisKeysUsage(anilistKeys);
+  const apiUsage = await getRedisKeysUsage(apiKeys);
 
   await Promise.all([
     rm(imageDir, { recursive: true, force: true }).catch(() => undefined),
     deleteRedisKeys(imageMetaKeys),
     deleteRedisKeys(tmdbKeys),
     deleteRedisKeys(anilistKeys),
+    deleteRedisKeys(apiKeys),
   ]);
 
   const purgedAt = new Date().toISOString();
@@ -158,7 +166,9 @@ async function purgeGeneration(generation: number): Promise<CachePurgeResult> {
     deletedTmdbEntries: tmdbUsage.entries,
     deletedAnilistBytes: anilistUsage.bytes,
     deletedAnilistEntries: anilistUsage.entries,
-    deletedTotalBytes: imageUsage.bytes + tmdbUsage.bytes + anilistUsage.bytes,
+    deletedApiBytes: apiUsage.bytes,
+    deletedApiEntries: apiUsage.entries,
+    deletedTotalBytes: imageUsage.bytes + tmdbUsage.bytes + anilistUsage.bytes + apiUsage.bytes,
     purgedAt,
   };
 }
@@ -168,17 +178,22 @@ export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {
   const imageUsage = await getDirectoryUsage(generationImageDirectory(generation));
   const tmdbKeys = await scanRedisKeys(`helprr:cache:tmdb:v${generation}:*`);
   const anilistKeys = await scanRedisKeys(`helprr:cache:anilist:v${generation}:*`);
+  // scope precedes the version in the key (helprr:cache:api:<scope>:v<gen>:<hash>).
+  const apiKeys = await scanRedisKeys(`helprr:cache:api:*:v${generation}:*`);
   const tmdbUsage = await getRedisKeysUsage(tmdbKeys);
   const anilistUsage = await getRedisKeysUsage(anilistKeys);
+  const apiUsage = await getRedisKeysUsage(apiKeys);
 
   return {
     imageBytes: imageUsage.bytes,
     tmdbApiBytes: tmdbUsage.bytes,
     anilistApiBytes: anilistUsage.bytes,
-    totalBytes: imageUsage.bytes + tmdbUsage.bytes + anilistUsage.bytes,
+    apiBytes: apiUsage.bytes,
+    totalBytes: imageUsage.bytes + tmdbUsage.bytes + anilistUsage.bytes + apiUsage.bytes,
     imageFiles: imageUsage.files,
     tmdbEntries: tmdbUsage.entries,
     anilistEntries: anilistUsage.entries,
+    apiEntries: apiUsage.entries,
   };
 }
 

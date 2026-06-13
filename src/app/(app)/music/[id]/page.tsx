@@ -412,7 +412,7 @@ export default function ArtistDetailPage() {
   }
 
   const poster = getImageUrl(artist.images, 'poster', 'lidarr');
-  const fanart = getImageUrl(artist.images, 'fanart', 'lidarr');
+  const fanart = getImageUrl(artist.images, 'fanart', 'lidarr', { width: 1280 });
   const qualityProfile = qualityProfiles.find((qp) => qp.id === artist.qualityProfileId);
   const metadataProfile = metadataProfiles.find((mp) => mp.id === artist.metadataProfileId);
   const artistTags = tags.filter((t) => artist.tags.includes(t.id));

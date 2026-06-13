@@ -16,10 +16,12 @@ interface CacheUsageStats {
   imageBytes: number;
   tmdbApiBytes: number;
   anilistApiBytes: number;
+  apiBytes: number;
   totalBytes: number;
   imageFiles: number;
   tmdbEntries: number;
   anilistEntries: number;
+  apiEntries: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -35,10 +37,12 @@ function emptyUsage(): CacheUsageStats {
     imageBytes: 0,
     tmdbApiBytes: 0,
     anilistApiBytes: 0,
+    apiBytes: 0,
     totalBytes: 0,
     imageFiles: 0,
     tmdbEntries: 0,
     anilistEntries: 0,
+    apiEntries: 0,
   };
 }
 
@@ -49,10 +53,12 @@ function parseUsage(raw: unknown): CacheUsageStats | null {
     imageBytes: typeof u.imageBytes === 'number' ? u.imageBytes : 0,
     tmdbApiBytes: typeof u.tmdbApiBytes === 'number' ? u.tmdbApiBytes : 0,
     anilistApiBytes: typeof u.anilistApiBytes === 'number' ? u.anilistApiBytes : 0,
+    apiBytes: typeof u.apiBytes === 'number' ? u.apiBytes : 0,
     totalBytes: typeof u.totalBytes === 'number' ? u.totalBytes : 0,
     imageFiles: typeof u.imageFiles === 'number' ? u.imageFiles : 0,
     tmdbEntries: typeof u.tmdbEntries === 'number' ? u.tmdbEntries : 0,
     anilistEntries: typeof u.anilistEntries === 'number' ? u.anilistEntries : 0,
+    apiEntries: typeof u.apiEntries === 'number' ? u.apiEntries : 0,
   };
 }
 
@@ -205,18 +211,18 @@ export default function StorageSettingsPage() {
       <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Storage</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Image cache and cleanup history.
+          Server-side cache and cleanup history.
         </p>
       </div>
 
-      <GroupedSection title="Image cache" footer="Synced across devices · Server action affects all clients">
+      <GroupedSection title="Server cache" footer="Master switch for images and API response caching · Server action affects all clients">
         <div className="grouped-row">
-          <span className="text-sm">Cache images</span>
+          <span className="text-sm">Cache images &amp; API responses</span>
           <Switch
             checked={cacheImagesEnabled}
             onCheckedChange={handleToggleCache}
             disabled={loading}
-            aria-label="Cache Images"
+            aria-label="Cache images and API responses"
           />
         </div>
 
@@ -250,6 +256,14 @@ export default function StorageSettingsPage() {
                 {loadingCacheUsage
                   ? 'Loading…'
                   : `${formatBytes(cacheUsage?.anilistApiBytes ?? 0)} (${cacheUsage?.anilistEntries ?? 0} entries)`}
+              </span>
+            </div>
+            <div className="grouped-row">
+              <span className="text-sm">API responses</span>
+              <span className="text-sm text-muted-foreground">
+                {loadingCacheUsage
+                  ? 'Loading…'
+                  : `${formatBytes(cacheUsage?.apiBytes ?? 0)} (${cacheUsage?.apiEntries ?? 0} entries)`}
               </span>
             </div>
             <div className="grouped-row">
