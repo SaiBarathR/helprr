@@ -494,7 +494,7 @@ export default function EpisodeDetailPage() {
       {tmdbEpisode?.stillPath && (
         <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
           <Image
-            src={toCachedImageSrc(tmdbEpisode.stillPath, 'tmdb') || tmdbEpisode.stillPath}
+            src={toCachedImageSrc(tmdbEpisode.stillPath, 'tmdb', { width: 1280 }) || tmdbEpisode.stillPath}
             alt=""
             fill
             sizes="100vw"

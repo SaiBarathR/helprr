@@ -236,7 +236,7 @@ function GapSectionView({
           <Badge variant="outline" className="text-[10px]">{meta.service} not connected</Badge>
         )}
         {truncated && (
-          <span className="text-[11px] text-muted-foreground">showing first {shownUnits}</span>
+          <span className="text-[11px] text-muted-foreground">showing first {shownUnits} of {section.count}</span>
         )}
         {canExpand && (
           <button
@@ -244,7 +244,9 @@ function GapSectionView({
             onClick={() => setExpanded((v) => !v)}
             className="ml-auto shrink-0 text-xs font-medium text-primary hover:underline"
           >
-            {expanded ? 'Collapse' : `Show all (${section.items.length})`}
+            {/* When the server truncated the section, expanding still can't reveal
+                everything — so don't promise "all", just toggle the grid layout. */}
+            {expanded ? 'Collapse' : truncated ? 'Expand' : `Show all (${section.items.length})`}
           </button>
         )}
       </div>
