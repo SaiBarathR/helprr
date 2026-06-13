@@ -6,6 +6,13 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+
+type TaggedMovie = RadarrMovie & { instanceId: string; instanceLabel: string };
+
+const RADARR_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+} as const;
 
 function toListItem(movie: RadarrMovie): RadarrMovieListItem {
   const poster = movie.images.find((img) => img.coverType === 'poster');
@@ -48,33 +55,46 @@ async function getHandler(request: NextRequest) {
   try {
     const full = request.nextUrl.searchParams.get('full') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const cacheKeySeed = instanceId ?? 'all';
 
-    const instances = instanceId
-      ? await (async () => {
-          const conn = await resolveConnection('RADARR', instanceId);
-          return [{ connection: conn, client: new RadarrClient(conn.url, conn.apiKey) }];
-        })()
-      : await getRadarrClients();
+    // Cache the raw tagged library (full objects) so both ?full=true and the slim list
+    // view are served from one entry. Authorized callers all get identical bytes (binary
+    // capability gate), so no per-user filtering is needed after the read.
+    const cached = await getCachedJson<TaggedMovie[]>('radarr', cacheKeySeed);
+    let tagged = cached;
+    if (!tagged) {
+      const instances = instanceId
+        ? await (async () => {
+            const conn = await resolveConnection('RADARR', instanceId);
+            return [{ connection: conn, client: new RadarrClient(conn.url, conn.apiKey) }];
+          })()
+        : await getRadarrClients();
 
-    const tagged = (await Promise.all(
-      instances.map(async ({ connection, client }) => {
-        try {
-          const movies = await client.getMovies();
-          return movies.map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
-        } catch {
-          // One unreachable/misconfigured instance must not blank the whole library.
-          return [];
-        }
-      })
-    )).flat();
+      tagged = (await Promise.all(
+        instances.map(async ({ connection, client }) => {
+          try {
+            const movies = await client.getMovies();
+            return movies.map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
+          } catch {
+            // One unreachable/misconfigured instance must not blank the whole library.
+            return [];
+          }
+        })
+      )).flat();
+      await setCachedJson('radarr', cacheKeySeed, tagged, 120);
+    }
 
     logApiDuration('/api/radarr', startedAt, {
       method: 'GET',
       full,
       movieCount: tagged.length,
+      cached: !!cached,
     });
-    if (full) return NextResponse.json(tagged);
-    return NextResponse.json(tagged.map((m) => ({ ...toListItem(m), instanceId: m.instanceId, instanceLabel: m.instanceLabel })));
+    if (full) return NextResponse.json(tagged, { headers: RADARR_CACHE_HEADERS });
+    return NextResponse.json(
+      tagged.map((m) => ({ ...toListItem(m), instanceId: m.instanceId, instanceLabel: m.instanceLabel })),
+      { headers: RADARR_CACHE_HEADERS }
+    );
   } catch (error) {
     logApiDuration('/api/radarr', startedAt, { method: 'GET', failed: true });
     const message = error instanceof Error ? error.message : 'Failed to fetch movies';

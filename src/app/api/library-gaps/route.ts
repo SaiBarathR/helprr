@@ -13,6 +13,11 @@ import type {
   LibraryGapsResponse,
 } from '@/types';
 
+// Mirrors the 30s server-side cache TTL so the browser also collapses repeat loads.
+const LIBRARY_GAPS_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+} as const;
+
 // Tagged client pairs as returned by the multi-instance getters. connection.id is
 // the instance id we thread into every href + search target so a gap card opens
 // (and its Search button commands) the instance the gap actually lives on.
@@ -318,7 +323,7 @@ async function getHandler(): Promise<NextResponse> {
   setImageCacheGeneration(await getCacheGeneration());
 
   const cached = await getCachedLibraryGaps();
-  if (cached) return NextResponse.json(cached);
+  if (cached) return NextResponse.json(cached, { headers: LIBRARY_GAPS_CACHE_HEADERS });
 
   try {
     const [sonarrInstances, radarrInstances] = await Promise.all([
@@ -375,7 +380,7 @@ async function getHandler(): Promise<NextResponse> {
       await setCachedLibraryGaps(response);
     }
 
-    return NextResponse.json(response);
+    return NextResponse.json(response, { headers: LIBRARY_GAPS_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch library gaps:', error);
     return NextResponse.json({ error: 'Failed to fetch library gaps' }, { status: 500 });
