@@ -5,6 +5,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { setImageCacheGeneration, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
 import { getCachedLibraryGaps, setCachedLibraryGaps } from '@/lib/cache/library-gaps-cache';
+import { searchUnits } from '@/lib/library-gaps';
 import type {
   MediaImage,
   SonarrSeries,
@@ -49,7 +50,9 @@ function toSection(
 ): LibraryGapSection {
   return {
     id,
-    count: opts.count ?? items.length,
+    // count is a UNIT total (episodes/seasons/movies), not a card count — so a section
+    // that later groups multiple units per card stays truthful without a caller change.
+    count: opts.count ?? items.reduce((n, item) => n + searchUnits(item), 0),
     items: items.slice(0, MAX_ITEMS_PER_SECTION),
     available,
     error: opts.error ?? false,

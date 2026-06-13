@@ -2,118 +2,106 @@ import { NextResponse } from 'next/server';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
+import {
+  getCachedTaggedLibrary,
+  emptyTaggedLibrary,
+  type Tagged,
+  type TaggedLibraryResult,
+} from '@/lib/cache/tagged-library';
+import type { RadarrMovie, SonarrSeries, LidarrArtist } from '@/types';
 import type { InsightsStorageItem, InsightsStorageResponse } from '@/types/insights';
 import { withApiLogging } from '@/lib/api-logger';
 
 const TOP_N = 8;
+
+interface ServiceRollup {
+  total: number | null;
+  count: number | null;
+  items: InsightsStorageItem[];
+  unmonitored: number;
+}
+
+// Roll a tagged library up into a per-service total/count/items + unmonitored bytes.
+// total/count stay null when the service is unavailable (unpermitted, unconfigured,
+// or every instance failed) so the card hides the row instead of showing a stray 0.
+function summarize<T extends { monitored?: boolean }>(
+  lib: TaggedLibraryResult<T>,
+  size: (row: Tagged<T>) => number,
+  toItem: (row: Tagged<T>, size: number) => InsightsStorageItem,
+): ServiceRollup {
+  if (!lib.available) return { total: null, count: null, items: [], unmonitored: 0 };
+  let total = 0;
+  let unmonitored = 0;
+  const items: InsightsStorageItem[] = [];
+  for (const row of lib.items) {
+    const bytes = size(row);
+    if (bytes <= 0) continue;
+    total += bytes;
+    if (!row.monitored) unmonitored += bytes;
+    items.push(toItem(row, bytes));
+  }
+  return { total, count: lib.items.length, items, unmonitored };
+}
 
 async function getHandler() {
   const auth = await requireUserCapability('insights.view');
   if (!auth.ok) return auth.response;
   const { user } = auth;
 
-  const [radarrInstances, sonarrInstances, lidarrInstances] = await Promise.all([
-    can(user, 'movies.view') ? getRadarrClients().catch(() => []) : [],
-    can(user, 'series.view') ? getSonarrClients().catch(() => []) : [],
-    can(user, 'music.view') ? getLidarrClients().catch(() => []) : [],
+  // Reuse the same 120s library cache the /api/sonarr & /api/radarr routes populate
+  // (full objects carry sizeOnDisk), so opening Insights doesn't re-pull every library.
+  const [movieLib, seriesLib, musicLib] = await Promise.all([
+    can(user, 'movies.view')
+      ? getCachedTaggedLibrary({
+          scope: 'radarr',
+          cacheKeySeed: 'all',
+          getInstances: () => getRadarrClients().catch(() => []),
+          fetchOne: (client) => client.getMovies(),
+        })
+      : Promise.resolve(emptyTaggedLibrary<RadarrMovie>()),
+    can(user, 'series.view')
+      ? getCachedTaggedLibrary({
+          scope: 'sonarr',
+          cacheKeySeed: 'all',
+          getInstances: () => getSonarrClients().catch(() => []),
+          fetchOne: (client) => client.getSeries(),
+        })
+      : Promise.resolve(emptyTaggedLibrary<SonarrSeries>()),
+    can(user, 'music.view')
+      ? getCachedTaggedLibrary({
+          scope: 'lidarr',
+          cacheKeySeed: 'all',
+          getInstances: () => getLidarrClients().catch(() => []),
+          fetchOne: (client) => client.getArtists(),
+        })
+      : Promise.resolve(emptyTaggedLibrary<LidarrArtist>()),
   ]);
 
-  const items: InsightsStorageItem[] = [];
-  let unmonitoredBytes = 0;
+  const movies = summarize(
+    movieLib,
+    (m) => m.sizeOnDisk ?? 0,
+    (m, size) => ({ title: m.title, year: m.year, sizeOnDisk: size, kind: 'movie', href: `/movies/${m.id}?instance=${m.instanceId}` }),
+  );
+  const series = summarize(
+    seriesLib,
+    (s) => s.statistics?.sizeOnDisk ?? 0,
+    (s, size) => ({ title: s.title, year: s.year, sizeOnDisk: size, kind: 'series', href: `/series/${s.id}?instance=${s.instanceId}` }),
+  );
+  const music = summarize(
+    musicLib,
+    (a) => a.statistics?.sizeOnDisk ?? 0,
+    (a, size) => ({ title: a.artistName, sizeOnDisk: size, kind: 'artist', href: `/music/${a.id}?instance=${a.instanceId}` }),
+  );
 
-  // Per-service totals stay null when the service is unpermitted, unconfigured,
-  // or every instance failed — the card hides those rows instead of showing 0.
-  let moviesTotal: number | null = null;
-  let moviesCount: number | null = null;
-  let seriesTotal: number | null = null;
-  let seriesCount: number | null = null;
-  let musicTotal: number | null = null;
-  let musicCount: number | null = null;
-
-  const [movieLists, seriesLists, artistLists] = await Promise.all([
-    Promise.all(
-      radarrInstances.map(async ({ connection, client }) => ({
-        instanceId: connection.id,
-        list: await client.getMovies().catch(() => null),
-      }))
-    ),
-    Promise.all(
-      sonarrInstances.map(async ({ connection, client }) => ({
-        instanceId: connection.id,
-        list: await client.getSeries().catch(() => null),
-      }))
-    ),
-    Promise.all(
-      lidarrInstances.map(async ({ connection, client }) => ({
-        instanceId: connection.id,
-        list: await client.getArtists().catch(() => null),
-      }))
-    ),
-  ]);
-
-  for (const { instanceId, list } of movieLists) {
-    if (!list) continue;
-    moviesTotal = (moviesTotal ?? 0);
-    moviesCount = (moviesCount ?? 0) + list.length;
-    for (const movie of list) {
-      const size = movie.sizeOnDisk ?? 0;
-      if (size <= 0) continue;
-      moviesTotal += size;
-      if (!movie.monitored) unmonitoredBytes += size;
-      items.push({
-        title: movie.title,
-        year: movie.year,
-        sizeOnDisk: size,
-        kind: 'movie',
-        href: `/movies/${movie.id}?instance=${instanceId}`,
-      });
-    }
-  }
-
-  for (const { instanceId, list } of seriesLists) {
-    if (!list) continue;
-    seriesTotal = (seriesTotal ?? 0);
-    seriesCount = (seriesCount ?? 0) + list.length;
-    for (const show of list) {
-      const size = show.statistics?.sizeOnDisk ?? 0;
-      if (size <= 0) continue;
-      seriesTotal += size;
-      if (!show.monitored) unmonitoredBytes += size;
-      items.push({
-        title: show.title,
-        year: show.year,
-        sizeOnDisk: size,
-        kind: 'series',
-        href: `/series/${show.id}?instance=${instanceId}`,
-      });
-    }
-  }
-
-  for (const { instanceId, list } of artistLists) {
-    if (!list) continue;
-    musicTotal = (musicTotal ?? 0);
-    musicCount = (musicCount ?? 0) + list.length;
-    for (const artist of list) {
-      const size = artist.statistics?.sizeOnDisk ?? 0;
-      if (size <= 0) continue;
-      musicTotal += size;
-      if (!artist.monitored) unmonitoredBytes += size;
-      items.push({
-        title: artist.artistName,
-        sizeOnDisk: size,
-        kind: 'artist',
-        href: `/music/${artist.id}?instance=${instanceId}`,
-      });
-    }
-  }
-
-  const topItems = items.sort((a, b) => b.sizeOnDisk - a.sizeOnDisk).slice(0, TOP_N);
+  const topItems = [...movies.items, ...series.items, ...music.items]
+    .sort((a, b) => b.sizeOnDisk - a.sizeOnDisk)
+    .slice(0, TOP_N);
 
   const response: InsightsStorageResponse = {
-    totals: { movies: moviesTotal, series: seriesTotal, music: musicTotal },
-    counts: { movies: moviesCount, series: seriesCount, music: musicCount },
+    totals: { movies: movies.total, series: series.total, music: music.total },
+    counts: { movies: movies.count, series: series.count, music: music.count },
     topItems,
-    unmonitoredBytes,
+    unmonitoredBytes: movies.unmonitored + series.unmonitored + music.unmonitored,
   };
   return NextResponse.json(response);
 }

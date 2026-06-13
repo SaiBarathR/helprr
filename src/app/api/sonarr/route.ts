@@ -6,9 +6,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { SonarrSeries, SonarrSeriesListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
-
-type TaggedSeries = SonarrSeries & { instanceId: string; instanceLabel: string };
+import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
 
 const SONARR_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
@@ -61,29 +59,17 @@ async function getHandler(request: NextRequest) {
     // Cache the raw tagged library (full objects) so both ?full=true and the slim list
     // view are served from one entry. Authorized callers all get identical bytes (binary
     // capability gate), so no per-user filtering is needed after the read.
-    const cached = await getCachedJson<TaggedSeries[]>('sonarr', cacheKeySeed);
-    let tagged = cached;
-    if (!tagged) {
-      const instances = instanceId
-        ? await (async () => {
-            const conn = await resolveConnection('SONARR', instanceId);
-            return [{ connection: conn, client: new SonarrClient(conn.url, conn.apiKey) }];
-          })()
-        : await getSonarrClients();
-
-      tagged = (await Promise.all(
-        instances.map(async ({ connection, client }) => {
-          try {
-            const series = await client.getSeries();
-            return series.map((s) => ({ ...s, instanceId: connection.id, instanceLabel: connection.label }));
-          } catch {
-            // One unreachable/misconfigured instance must not blank the whole library.
-            return [];
-          }
-        })
-      )).flat();
-      await setCachedJson('sonarr', cacheKeySeed, tagged, 120);
-    }
+    const { items: tagged, cached } = await getCachedTaggedLibrary({
+      scope: 'sonarr',
+      cacheKeySeed,
+      getInstances: () =>
+        instanceId
+          ? resolveConnection('SONARR', instanceId).then((conn) => [
+              { connection: conn, client: new SonarrClient(conn.url, conn.apiKey) },
+            ])
+          : getSonarrClients(),
+      fetchOne: (client) => client.getSeries(),
+    });
 
     logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: tagged.length, cached: !!cached });
     if (full) {

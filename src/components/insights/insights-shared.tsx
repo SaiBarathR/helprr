@@ -101,3 +101,28 @@ export function PanelEmpty({ message, height = 200 }: { message: string; height?
     </div>
   );
 }
+
+// ─── Stat: a display-font value over an uppercase muted label (optional `sub`) ───
+export function Stat({
+  label,
+  value,
+  sub,
+  color = HPR.fg,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  color?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 600, fontSize: 18, color }}>
+        {value}
+      </span>
+      <span className="text-[10px] uppercase tracking-wide" style={{ color: HPR.fgMute }}>
+        {label}
+        {sub ? <span className="normal-case"> · {sub}</span> : null}
+      </span>
+    </div>
+  );
+}

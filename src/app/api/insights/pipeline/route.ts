@@ -39,14 +39,37 @@ interface PipelineEvent {
   downloadId?: string;
 }
 
-function localHour(date: Date, tz: string): number {
+// Constructing an Intl.DateTimeFormat is among V8's most expensive operations (it
+// loads ICU locale/timezone data), so build ONE zoned formatter per request — tz is
+// constant — and reuse it for both the day key and the hour-of-day bucket instead of
+// allocating one (or two) per history record across thousands of records.
+function makeLocalParts(tz: string): (date: Date) => { day: string; hour: number } {
+  const build = (timeZone: string) =>
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      hour12: false,
+    });
+  let fmt: Intl.DateTimeFormat;
   try {
-    const h = new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: tz }).format(date);
-    const parsed = Number.parseInt(h, 10);
-    return Number.isFinite(parsed) ? parsed % 24 : date.getUTCHours();
+    fmt = build(tz);
   } catch {
-    return date.getUTCHours();
+    fmt = build('UTC');
   }
+  return (date) => {
+    if (!Number.isFinite(date.getTime())) return { day: '', hour: 0 };
+    const parts = fmt.formatToParts(date);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    const hour = Number.parseInt(get('hour'), 10);
+    return {
+      // hour12:false emits '24' for midnight on some ICU builds; % 24 maps it to 0.
+      day: `${get('year')}-${get('month')}-${get('day')}`,
+      hour: Number.isFinite(hour) ? hour % 24 : date.getUTCHours(),
+    };
+  };
 }
 
 async function collectEvents(
@@ -56,6 +79,7 @@ async function collectEvents(
   tz: string
 ): Promise<PipelineEvent[]> {
   const out: PipelineEvent[] = [];
+  const localParts = makeLocalParts(tz);
   for (let page = 1; page <= MAX_PAGES; page++) {
     let res: HistoryResponse;
     try {
@@ -67,22 +91,22 @@ async function collectEvents(
     if (records.length === 0) break;
 
     for (const rec of records) {
-      const day = getLocalDateKey(rec.date, tz);
+      const date = new Date(rec.date);
+      const { day, hour } = localParts(date);
       if (!day || day < from || day > to) continue;
       const cat = categorizeHistoryEvent(rec.eventType);
       if (!cat) continue;
-      const date = new Date(rec.date);
       out.push({
         cat,
         ts: date.getTime(),
-        hour: localHour(date, tz),
+        hour,
         indexer: rec.data?.indexer || undefined,
         releaseGroup: rec.data?.releaseGroup || undefined,
         downloadId: rec.data?.downloadId || undefined,
       });
     }
 
-    const oldest = getLocalDateKey(records[records.length - 1].date, tz);
+    const oldest = localParts(new Date(records[records.length - 1].date)).day;
     if (oldest && oldest < from) break;
     if (records.length < PAGE_SIZE) break;
   }
