@@ -60,7 +60,7 @@ export function AnimeHero({
   nextAiringEpisode
 }: AnimeHeroProps) {
   const bannerSrc = bannerImage
-    ? toCachedImageSrc(bannerImage, 'anilist') || bannerImage
+    ? toCachedImageSrc(bannerImage, 'anilist', { width: 1280 }) || bannerImage
     : null;
   const coverSrc = coverImage
     ? toCachedImageSrc(coverImage, 'anilist') || coverImage
