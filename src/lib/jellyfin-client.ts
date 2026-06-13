@@ -248,10 +248,17 @@ export class JellyfinClient {
     // Jellyfin returns one entry per (device, user) pair, so a device shared by
     // two accounts appears twice with the same Id. DELETE /Devices acts on the
     // Id, so collapse to one entry per device, keeping the most recent activity.
+    // A missing/invalid DateLastActivity sorts oldest: Date.parse('') is NaN and every
+    // NaN comparison is false, so without this a real timestamp would lose to (and be
+    // discarded in favour of) a dateless entry seen earlier for the same Id.
+    const activityMs = (d: JellyfinDevice) => {
+      const t = Date.parse(d.DateLastActivity ?? '');
+      return Number.isNaN(t) ? -Infinity : t;
+    };
     const byId = new Map<string, JellyfinDevice>();
     for (const item of items) {
       const prev = byId.get(item.Id);
-      if (!prev || Date.parse(item.DateLastActivity ?? '') > Date.parse(prev.DateLastActivity ?? '')) {
+      if (!prev || activityMs(item) > activityMs(prev)) {
         byId.set(item.Id, item);
       }
     }

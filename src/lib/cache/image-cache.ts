@@ -248,6 +248,9 @@ async function fetchBypass(url: string, headers: HeadersInit | undefined, transf
 export async function fetchImageWithServerCache(options: FetchCachedImageOptions): Promise<FetchCachedImageResult> {
   const enabled = await getCacheImagesEnabled();
   if (!enabled) {
+    // Caching is off: every request re-fetches AND re-transcodes (sharp) with no
+    // memoization — the cost the cache normally amortizes is paid each time. This is
+    // an explicit admin opt-out (debugging / reclaiming disk), not a hot-path default.
     return fetchBypass(options.upstreamUrl, options.upstreamHeaders, options.transform);
   }
 

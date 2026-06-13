@@ -3,7 +3,7 @@ import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/serv
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
-import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { startOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import type {
   CalendarEvent,
@@ -43,8 +43,13 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     // Cache the full merged event set keyed by the requested window (not `type`, which is a
     // post-fetch filter). All authorized callers see every instance (binary capability gate),
-    // so the cached events are identical per user. Now-anchored windows drift at most one TTL.
-    const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}`;
+    // so the cached events are identical per user. When start/end are absent the window is
+    // now-anchored, so fold today's LOCAL date into the key — otherwise a cached entry could
+    // outlive local midnight and serve the previous day's window.
+    const explicitWindow = Boolean(start && end);
+    const settings = explicitWindow ? null : await getOrCreateAppSettings();
+    const anchorKey = settings ? getLocalDateKey(new Date(), settings.timeZone) : '';
+    const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}`;
     const cachedEvents = await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed);
     if (cachedEvents) {
       const filtered =
@@ -55,10 +60,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     // If days provided without start/end, allow opting into full local day boundaries.
     // fullDay=true respects process TZ (e.g. TZ=Asia/Kolkata) for date-only widgets.
     if (!start || !end) {
-      const settings = await getOrCreateAppSettings();
       const parsedDays = days ? parseInt(days, 10) : 30;
       const daysNum = Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : 30;
-      const tz = settings.timeZone;
+      // settings was fetched above for the now-anchored key; reuse it (the ?? never runs).
+      const tz = (settings ?? await getOrCreateAppSettings()).timeZone;
 
       let startDate: Date;
       let endDate: Date;
@@ -120,10 +125,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       getLidarrClients().catch(() => []),
     ]);
 
+    // Cache only a trustworthy result: ≥1 instance answered, or nothing is configured.
+    // A transient all-instances-failed fetch must not blank the calendar for the TTL.
+    let anyOk = false;
     await Promise.all([
       ...sonarrClients.map(async ({ connection, client }) => {
         try {
           const entries = await client.getCalendar(start!, end!);
+          anyOk = true;
           for (const ep of entries) {
             events.push({
               id: `sonarr-${connection.id}-${ep.id}`,
@@ -147,6 +156,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ...radarrClients.map(async ({ connection, client }) => {
         try {
           const entries = await client.getCalendar(start!, end!);
+          anyOk = true;
           for (const m of entries) {
             const releases: Array<[MovieReleaseType, string | undefined]> = [
               ['cinema', m.inCinemas],
@@ -181,6 +191,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ...lidarrClients.map(async ({ connection, client }) => {
         try {
           const entries = await client.getCalendar(start!, end!);
+          anyOk = true;
           for (const album of entries) {
             if (!album.releaseDate) continue;
             const ms = new Date(album.releaseDate).getTime();
@@ -211,7 +222,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     // Sort by date ascending
     events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    await setCachedJson('calendar', cacheKeySeed, events, 120);
+    const totalInstances = sonarrClients.length + radarrClients.length + lidarrClients.length;
+    if (anyOk || totalInstances === 0) {
+      await setCachedJson('calendar', cacheKeySeed, events, 120);
+    }
 
     // Filter by type if specified
     const filtered =

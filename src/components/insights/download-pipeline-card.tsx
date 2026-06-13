@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { HPR, mix } from '@/components/widgets/bento-primitives';
 import { ChartTooltip } from '@/components/widgets/prowlarr-stats-shared';
-import { Panel, PanelLoading, PanelEmpty, useInsightsResource, type InsightsRange } from './insights-shared';
+import { Panel, PanelLoading, PanelEmpty, Stat, useInsightsResource, type InsightsRange } from './insights-shared';
 import type { InsightsPipelineResponse } from '@/types/insights';
 
 /** Minutes → compact human wait ("42m", "3.2h", "1.4d"). */
@@ -19,19 +19,6 @@ function fmtWait(mins: number): string {
   if (mins < 60) return `${mins}m`;
   if (mins < 60 * 24) return `${(mins / 60).toFixed(1)}h`;
   return `${(mins / (60 * 24)).toFixed(1)}d`;
-}
-
-function Stat({ label, value, color = HPR.fg }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 600, fontSize: 18, color }}>
-        {value}
-      </span>
-      <span className="text-[10px] uppercase tracking-wide" style={{ color: HPR.fgMute }}>
-        {label}
-      </span>
-    </div>
-  );
 }
 
 export function DownloadPipelineCard({ range }: { range: InsightsRange }) {

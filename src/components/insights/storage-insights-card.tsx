@@ -4,7 +4,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { HPR, mix } from '@/components/widgets/bento-primitives';
 import { formatBytes } from '@/lib/format';
-import { Panel, PanelLoading, PanelEmpty, useInsightsResource } from './insights-shared';
+import { Panel, PanelLoading, PanelEmpty, Stat, useInsightsResource } from './insights-shared';
 import type { InsightsStorageResponse } from '@/types/insights';
 
 const KIND_COLOR: Record<string, string> = {
@@ -12,20 +12,6 @@ const KIND_COLOR: Record<string, string> = {
   series: HPR.violet,
   artist: HPR.pink,
 };
-
-function Stat({ label, value, sub, color = HPR.fg }: { label: string; value: string; sub?: string; color?: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 600, fontSize: 18, color }}>
-        {value}
-      </span>
-      <span className="text-[10px] uppercase tracking-wide" style={{ color: HPR.fgMute }}>
-        {label}
-        {sub ? <span className="normal-case"> · {sub}</span> : null}
-      </span>
-    </div>
-  );
-}
 
 export function StorageInsightsCard() {
   const { data, loading } = useInsightsResource<InsightsStorageResponse>('/api/insights/storage');

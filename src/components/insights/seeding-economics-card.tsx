@@ -3,21 +3,8 @@
 import * as React from 'react';
 import { HPR, mix } from '@/components/widgets/bento-primitives';
 import { formatBytes } from '@/lib/format';
-import { Panel, PanelLoading, PanelEmpty, useInsightsResource } from './insights-shared';
+import { Panel, PanelLoading, PanelEmpty, Stat, useInsightsResource } from './insights-shared';
 import type { InsightsTorrentsResponse } from '@/types/insights';
-
-function Stat({ label, value, color = HPR.fg }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 600, fontSize: 18, color }}>
-        {value}
-      </span>
-      <span className="text-[10px] uppercase tracking-wide" style={{ color: HPR.fgMute }}>
-        {label}
-      </span>
-    </div>
-  );
-}
 
 export function SeedingEconomicsCard() {
   const { data, loading } = useInsightsResource<InsightsTorrentsResponse>('/api/insights/torrents');

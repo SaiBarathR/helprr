@@ -24,6 +24,7 @@ import type {
   LibraryGapSectionId,
   LibraryGapsResponse,
 } from '@/types';
+import { searchUnits } from '@/lib/library-gaps';
 
 const SECTION_META: Record<LibraryGapSectionId, { title: string; icon: LucideIcon; service: string }> = {
   missingSeasons: { title: 'Missing Seasons', icon: Tv, service: 'Sonarr' },
@@ -41,15 +42,12 @@ const RAIL_CARD =
 const EXPANDED_GRID =
   'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5';
 
+// Collapsed layout — a single horizontally-scrolling rail.
+const RAIL_ROW =
+  '-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide animate-rail-in md:-mx-6 md:px-6';
+
 // Rails get unwieldy past roughly one screen of cards — offer "Show all" then.
 const EXPAND_THRESHOLD = 6;
-
-// How many searchable units (seasons/episodes/movies) one card covers.
-function searchUnits(item: LibraryGapItem): number {
-  if (item.search.kind === 'episodes') return item.search.episodeIds.length;
-  if (item.search.kind === 'seasons') return item.search.seasonNumbers.length;
-  return 1;
-}
 
 async function postCommand(url: string, body: Record<string, unknown>) {
   const res = await fetch(url, {
@@ -251,32 +249,18 @@ function GapSectionView({
         )}
       </div>
       {section.available && (
-        expanded ? (
-          <div className={EXPANDED_GRID}>
-            {section.items.map((item) => (
-              <GapCard
-                key={item.key}
-                item={item}
-                layout="grid"
-                selectionMode={selectionMode}
-                selected={selectedKeys?.has(item.key)}
-                onToggleSelect={() => onToggle?.(item.key)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide animate-rail-in md:-mx-6 md:px-6">
-            {section.items.map((item) => (
-              <GapCard
-                key={item.key}
-                item={item}
-                selectionMode={selectionMode}
-                selected={selectedKeys?.has(item.key)}
-                onToggleSelect={() => onToggle?.(item.key)}
-              />
-            ))}
-          </div>
-        )
+        <div className={expanded ? EXPANDED_GRID : RAIL_ROW}>
+          {section.items.map((item) => (
+            <GapCard
+              key={item.key}
+              item={item}
+              layout={expanded ? 'grid' : 'rail'}
+              selectionMode={selectionMode}
+              selected={selectedKeys?.has(item.key)}
+              onToggleSelect={() => onToggle?.(item.key)}
+            />
+          ))}
+        </div>
       )}
     </section>
   );

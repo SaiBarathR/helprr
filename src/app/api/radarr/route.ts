@@ -6,9 +6,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
-
-type TaggedMovie = RadarrMovie & { instanceId: string; instanceLabel: string };
+import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
 
 const RADARR_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
@@ -60,29 +58,17 @@ async function getHandler(request: NextRequest) {
     // Cache the raw tagged library (full objects) so both ?full=true and the slim list
     // view are served from one entry. Authorized callers all get identical bytes (binary
     // capability gate), so no per-user filtering is needed after the read.
-    const cached = await getCachedJson<TaggedMovie[]>('radarr', cacheKeySeed);
-    let tagged = cached;
-    if (!tagged) {
-      const instances = instanceId
-        ? await (async () => {
-            const conn = await resolveConnection('RADARR', instanceId);
-            return [{ connection: conn, client: new RadarrClient(conn.url, conn.apiKey) }];
-          })()
-        : await getRadarrClients();
-
-      tagged = (await Promise.all(
-        instances.map(async ({ connection, client }) => {
-          try {
-            const movies = await client.getMovies();
-            return movies.map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
-          } catch {
-            // One unreachable/misconfigured instance must not blank the whole library.
-            return [];
-          }
-        })
-      )).flat();
-      await setCachedJson('radarr', cacheKeySeed, tagged, 120);
-    }
+    const { items: tagged, cached } = await getCachedTaggedLibrary({
+      scope: 'radarr',
+      cacheKeySeed,
+      getInstances: () =>
+        instanceId
+          ? resolveConnection('RADARR', instanceId).then((conn) => [
+              { connection: conn, client: new RadarrClient(conn.url, conn.apiKey) },
+            ])
+          : getRadarrClients(),
+      fetchOne: (client) => client.getMovies(),
+    });
 
     logApiDuration('/api/radarr', startedAt, {
       method: 'GET',
