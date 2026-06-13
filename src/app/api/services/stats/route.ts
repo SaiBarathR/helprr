@@ -18,6 +18,10 @@ function mapDiskSpace(disks: Array<DiskSpace | null | undefined>): DiskSpace[] {
 const FREE_SPACE_TOLERANCE = 512 * 1024 ** 2; // 512 MiB
 
 function sameFilesystem(a: DiskSpace, b: DiskSpace): boolean {
+  // Two distinct device labels (uuids) are different filesystems regardless of size —
+  // never merge them, so two same-size drives don't collapse on a coincidental match.
+  // When either label is missing fall back to the size + free-space heuristic.
+  if (a.label && b.label && a.label !== b.label) return false;
   return a.totalSpace === b.totalSpace && Math.abs(a.freeSpace - b.freeSpace) <= FREE_SPACE_TOLERANCE;
 }
 

@@ -17,6 +17,9 @@ import type {
 // Mirrors the 30s server-side cache TTL so the browser also collapses repeat loads.
 const LIBRARY_GAPS_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=30, stale-while-revalidate=60',
+  // Partition the private cache by session cookie so a capability-gated response can't be
+  // replayed from the browser cache to a different (or logged-out) user within the TTL.
+  'Vary': 'Cookie',
 } as const;
 
 // Tagged client pairs as returned by the multi-instance getters. connection.id is

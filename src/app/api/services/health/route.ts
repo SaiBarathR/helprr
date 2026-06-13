@@ -10,6 +10,9 @@ import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 
 const HEALTH_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+  // Partition the private cache by session cookie so a capability-gated response can't be
+  // replayed from the browser cache to a different (or logged-out) user within the TTL.
+  'Vary': 'Cookie',
 } as const;
 
 interface ServiceHealthStatus {

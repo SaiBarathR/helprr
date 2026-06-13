@@ -8,7 +8,7 @@ import { withApiLogging } from '@/lib/api-logger';
 const TOP_N = 5;
 const SEEDING_STATES = new Set(['uploading', 'stalledUP', 'queuedUP', 'forcedUP', 'checkingUP']);
 
-async function getHandler() {
+async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('insights.view');
   if (!auth.ok) return auth.response;
   if (!can(auth.user, 'torrents.view')) {
