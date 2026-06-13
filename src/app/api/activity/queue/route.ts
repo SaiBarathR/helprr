@@ -5,6 +5,11 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { QueueItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 
+// Live download progress changes second-to-second — a tiny window only collapses bursts.
+const QUEUE_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=5, stale-while-revalidate=10',
+} as const;
+
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -61,7 +66,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const mergedRecords = [...sonarr.records, ...radarr.records, ...lidarr.records];
     const totalRecords = sonarr.totalRecords + radarr.totalRecords + lidarr.totalRecords;
 
-    return NextResponse.json({ records: mergedRecords, totalRecords });
+    return NextResponse.json({ records: mergedRecords, totalRecords }, { headers: QUEUE_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch queue:', error);
     return NextResponse.json(

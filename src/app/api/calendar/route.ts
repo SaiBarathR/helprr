@@ -4,10 +4,15 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
+import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import type {
   CalendarEvent,
   MovieReleaseType,
 } from '@/types';
+
+const CALENDAR_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+} as const;
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -34,6 +39,17 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       if (!Number.isFinite(parsed.getTime())) {
         return NextResponse.json({ error: 'Invalid end date' }, { status: 400 });
       }
+    }
+
+    // Cache the full merged event set keyed by the requested window (not `type`, which is a
+    // post-fetch filter). All authorized callers see every instance (binary capability gate),
+    // so the cached events are identical per user. Now-anchored windows drift at most one TTL.
+    const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}`;
+    const cachedEvents = await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed);
+    if (cachedEvents) {
+      const filtered =
+        type && type !== 'all' ? cachedEvents.filter((e) => e.type === type) : cachedEvents;
+      return NextResponse.json(filtered, { headers: CALENDAR_CACHE_HEADERS });
     }
 
     // If days provided without start/end, allow opting into full local day boundaries.
@@ -195,13 +211,15 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     // Sort by date ascending
     events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+    await setCachedJson('calendar', cacheKeySeed, events, 120);
+
     // Filter by type if specified
     const filtered =
       type && type !== 'all'
         ? events.filter((e) => e.type === type)
         : events;
 
-    return NextResponse.json(filtered);
+    return NextResponse.json(filtered, { headers: CALENDAR_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch calendar:', error);
     return NextResponse.json(

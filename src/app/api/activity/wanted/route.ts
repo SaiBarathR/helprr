@@ -3,6 +3,10 @@ import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/serv
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
+const WANTED_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+} as const;
+
 type WantedType = 'missing' | 'cutoff';
 type WantedSource = 'sonarr' | 'radarr' | 'lidarr';
 type WantedPageResponse<T> = {
@@ -195,7 +199,7 @@ async function getHandler(request: NextRequest) {
     }
 
     if (!type) {
-      return NextResponse.json(await fetchWantedCounts(sourceFilter));
+      return NextResponse.json(await fetchWantedCounts(sourceFilter), { headers: WANTED_CACHE_HEADERS });
     }
 
     const wantedPage = await fetchWantedPage(type, page, pageSize, sourceFilter);
@@ -205,7 +209,7 @@ async function getHandler(request: NextRequest) {
       pageSize: wantedPage.pageSize,
       totalRecords: wantedPage.totalRecords,
       records: wantedPage.records,
-    });
+    }, { headers: WANTED_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch wanted:', error);
     return NextResponse.json(

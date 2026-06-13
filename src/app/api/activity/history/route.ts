@@ -5,6 +5,10 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { HistoryItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 
+const HISTORY_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
+} as const;
+
 type HistorySource = 'sonarr' | 'radarr';
 type CanonicalHistoryEvent =
   | 'grabbed'
@@ -291,7 +295,7 @@ async function getHandler(request: NextRequest) {
       pageSize,
       totalRecords,
       records: paginatedRecords,
-    });
+    }, { headers: HISTORY_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch history:', error);
     return NextResponse.json(
