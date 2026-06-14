@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -130,39 +130,43 @@ function buildHistoryUrl(p: number, eventFilter: EventFilterKey, instanceFilter:
 }
 
 export default function HistoryPage() {
-  // Pages beyond the first ("Load more") accumulate here; page 1 lives in the query
-  // cache so a filter change refetches it cleanly.
-  const [extraRecords, setExtraRecords] = useState<HistoryRecord[]>([]);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
   const [eventFilter, setEventFilter] = useState<EventFilterKey>('all');
   const [instanceFilter, setInstanceFilter] = useState<string>('all');
   const [selectedItem, setSelectedItem] = useState<HistoryRecord | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('basic');
 
+  // Infinite list: the filters live in the query key, so changing them swaps the
+  // key and refetches from page 1 (no manual reset). "Load more" → fetchNextPage,
+  // gated on the raw totalRecords. Mirrors the notifications / activity WantedTab
+  // pattern so the whole list lives in the query cache, not a side state array.
   const {
-    data: firstPage,
+    data,
     isLoading: loading,
     isError,
-  } = useQuery({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['activity', 'history', { eventFilter, instanceFilter }],
-    queryFn: jsonFetcher<HistoryResponse>(buildHistoryUrl(1, eventFilter, instanceFilter)),
+    queryFn: ({ pageParam, signal }) =>
+      jsonFetcher<HistoryResponse>(buildHistoryUrl(pageParam, eventFilter, instanceFilter))({ signal }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, pg) => sum + (pg.records?.length ?? 0), 0);
+      return loaded < (lastPage.totalRecords ?? 0) ? allPages.length + 1 : undefined;
+    },
   });
 
-  // The old code surfaced fetch failures as a toast; preserve that.
+  // The old code surfaced the initial fetch failure as a toast; preserve that.
+  // (A failed "Load more" just doesn't append, matching the other infinite lists.)
   useEffect(() => {
     if (isError) toast.error('Failed to load history');
   }, [isError]);
 
-  const firstRecords = firstPage?.records ?? [];
-  const total = firstPage?.totalRecords ?? 0;
-  const history = [...firstRecords, ...extraRecords];
-
-  // Reset accumulated pages whenever the filters (and thus page 1) change.
-  useEffect(() => {
-    setPage(1);
-    setExtraRecords([]);
-  }, [eventFilter, instanceFilter]);
+  const history = useMemo(
+    () => data?.pages.flatMap((pg) => pg.records ?? []) ?? [],
+    [data],
+  );
 
   // Load arr instances for the per-instance filter, independent of the (possibly
   // filtered) history so the options never collapse to the current selection.
@@ -173,31 +177,16 @@ export default function HistoryPage() {
       Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
   });
 
-  // Drop a stale instance selection if that instance no longer exists.
+  // Drop a stale instance selection if that instance no longer exists. Correcting
+  // invalid local state against freshly-loaded options is a legitimate effect; the
+  // set-state-in-effect rule (now reachable since the component became analyzable
+  // when handleLoadMore was removed) is suppressed here.
   useEffect(() => {
     if (instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setInstanceFilter('all');
     }
   }, [instanceOptions, instanceFilter]);
-
-  /**
-   * Advance to the next history page and append the newly fetched records to the existing list.
-   */
-  async function handleLoadMore() {
-    const next = page + 1;
-    setLoadingMore(true);
-    try {
-      const data = await jsonFetcher<HistoryResponse>(
-        buildHistoryUrl(next, eventFilter, instanceFilter)
-      )();
-      setExtraRecords((prev) => [...prev, ...(data.records || [])]);
-      setPage(next);
-    } catch {
-      toast.error('Failed to load history');
-    } finally {
-      setLoadingMore(false);
-    }
-  }
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
 
@@ -303,14 +292,14 @@ export default function HistoryPage() {
             ))}
 
             {/* Load more */}
-            {history.length < total && (
+            {hasNextPage && (
               <Button
                 variant="ghost"
                 className="w-full mt-2"
-                onClick={handleLoadMore}
-                disabled={loadingMore}
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
               >
-                {loadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Load more
               </Button>
             )}

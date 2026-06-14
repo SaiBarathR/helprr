@@ -129,6 +129,11 @@ export function useAppSettings(): UseAppSettingsResult {
   });
 
   const { mutateAsync } = useMutation({
+    // Serialize concurrent saves app-wide (restores the old updateChain guarantee):
+    // mutations sharing a scope id run in series, so a second update() stays paused
+    // until the first settles. Its onMutate then reads the reconciled cache, and
+    // out-of-order PUT responses can't clobber each other.
+    scope: { id: 'app-settings' },
     mutationFn: async (patch: AppSettingsPatch) => {
       const res = await fetch('/api/settings', {
         method: 'PUT',

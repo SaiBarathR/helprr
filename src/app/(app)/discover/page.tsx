@@ -812,7 +812,10 @@ export default function DiscoverPage() {
     const found =
       rl(sectionsQuery.error) ?? rl(sectionsQuery.failureReason) ??
       rl(filtersMetaQuery.error) ?? rl(filtersMetaQuery.failureReason) ??
-      rl(gridQuery.error) ?? rl(gridQuery.failureReason) ??
+      // Only let the grid drive the banner while it's the active view: a disabled
+      // grid (sections view) keeps its last RateLimitError, which would otherwise
+      // make the banner linger after returning from a rate-limited browse.
+      (gridMode ? rl(gridQuery.error) ?? rl(gridQuery.failureReason) : null) ??
       customResults.reduce<RateLimitError | null>(
         (acc, r) => acc ?? rl(r.error) ?? rl(r.failureReason),
         null,
