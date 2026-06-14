@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toast } from 'sonner';
@@ -279,7 +280,7 @@ function GapSectionView({
 
 export default function LibraryGapsPage() {
   const gapsQuery = useQuery({
-    queryKey: ['library-gaps'],
+    queryKey: queryKeys.libraryGaps(),
     queryFn: jsonFetcher<LibraryGapsResponse>('/api/library-gaps'),
   });
   const data = gapsQuery.data ?? null;
