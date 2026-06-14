@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -61,9 +61,12 @@ export default function SeriesEditPage() {
     if (seriesQuery.isError) toast.error('Failed to load series data');
   }, [seriesQuery.isError]);
 
-  // Seed the form once the series loads.
+  // Seed the form once per series — guard with a ref so a background refetch
+  // (which yields a fresh `series` object reference) can't reset unsaved edits.
+  const seededSeriesIdRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!series) return;
+    if (!series || seededSeriesIdRef.current === series.id) return;
+    seededSeriesIdRef.current = series.id;
     setQualityProfileId(series.qualityProfileId);
     setSeriesType(series.seriesType);
     setSeasonFolder(series.seasonFolder);

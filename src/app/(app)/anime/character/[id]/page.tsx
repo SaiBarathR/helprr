@@ -52,10 +52,10 @@ export default function CharacterDetailPage() {
     isFetchingNextPage,
   } = useInfiniteQuery({
     queryKey: ['anime', 'character', id, sort],
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       jsonFetcher<AniListCharacterDetailResponse>(
         `/api/anime/character/${id}?page=${pageParam}&sort=${sort}`
-      )(),
+      )({ signal }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.mediaPageInfo?.hasNextPage ? (lastPage.mediaPageInfo.currentPage || 1) + 1 : undefined,
@@ -64,7 +64,9 @@ export default function CharacterDetailPage() {
   const detail = data?.pages[0] ?? null;
   // Full-page spinner on first load and on every sort flip (old code reset to it).
   const loading = isLoading || (isFetching && !isFetchingNextPage);
-  const error = isError ? (queryError instanceof Error ? queryError.message : 'Failed to load') : null;
+  // Keep cached pages visible on a transient refetch failure; only surface the
+  // error when nothing has loaded yet.
+  const error = !data && isError ? (queryError instanceof Error ? queryError.message : 'Failed to load') : null;
   const media = useMemo<AniListCharacterMediaEdge[]>(
     () => data?.pages.flatMap((p) => p.media) ?? [],
     [data]

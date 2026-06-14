@@ -144,18 +144,21 @@ export function SeerrRequestModal({
   }, [serviceQuery.isError, seasonsQuery.isError, usersQuery.isError]);
 
   // Seed defaults that weren't pre-filled by an existing request, once the
-  // service data resolves.
+  // service data resolves. Guard on the CURRENT value (via functional updaters)
+  // rather than the initial prop, so a background refetch can't overwrite a
+  // selection the user has already made.
   useEffect(() => {
     if (!open) return;
     const svc = serviceQuery.data;
     if (!svc) return;
-    if (initialProfileId == null && svc.defaultProfileId != null) setProfileId(svc.defaultProfileId);
-    if (initialRootFolder == null && svc.defaultRootFolder != null) setRootFolder(svc.defaultRootFolder);
-    if (!initialTags && svc.defaultTags) setTags(svc.defaultTags);
-    if (requestAs == null) {
+    if (svc.defaultProfileId != null) setProfileId((prev) => (prev == null ? svc.defaultProfileId! : prev));
+    if (svc.defaultRootFolder != null) setRootFolder((prev) => (prev == null ? svc.defaultRootFolder! : prev));
+    if (svc.defaultTags?.length) setTags((prev) => (prev.length === 0 ? svc.defaultTags! : prev));
+    setRequestAs((prev) => {
+      if (prev != null) return prev;
       const own = me?.seerrUserId ? Number.parseInt(me.seerrUserId, 10) : NaN;
-      if (Number.isInteger(own)) setRequestAs(own);
-    }
+      return Number.isInteger(own) ? own : prev;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, serviceQuery.data]);
 

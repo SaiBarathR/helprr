@@ -49,6 +49,7 @@ import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { ApiError } from '@/lib/query-fetch';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import {
@@ -114,16 +115,23 @@ export default function ArtistDetailPage() {
 
   // Artist + albums — TanStack cache gives instant back-nav paint (gcTime),
   // replacing the bespoke snapshot.
+  // Instance-scoped albums key: ids repeat across Lidarr instances, so the cache
+  // (and the optimistic monitor write below) must be keyed per instance.
+  const albumsKey = ['lidarr', 'albums', instance ?? 'default', artistId] as const;
   const artistQuery = useQuery({
     queryKey: queryKeys.detail('lidarr', artistId, instance),
     queryFn: async ({ signal }): Promise<LidarrArtist | null> => {
       const r = await lidarrFetch(instance, `/api/lidarr/${artistId}`, { signal });
-      return r.ok ? ((await r.json()) as LidarrArtist) : null;
+      if (!r.ok) {
+        if (r.status === 404) return null;
+        throw new ApiError(r.status, `GET /api/lidarr/${artistId} → ${r.status}`);
+      }
+      return (await r.json()) as LidarrArtist;
     },
     enabled: Number.isFinite(artistId),
   });
   const albumsQuery = useQuery({
-    queryKey: ['lidarr', 'albums', artistId],
+    queryKey: albumsKey,
     queryFn: async ({ signal }): Promise<LidarrAlbum[]> => {
       const r = await lidarrFetch(instance, `/api/lidarr/${artistId}/albums`, { signal });
       return r.ok ? ((await r.json()) as LidarrAlbum[]) : [];
@@ -289,7 +297,7 @@ export default function ArtistDetailPage() {
       });
       if (res.ok) {
         const nextAlbums = albums.map((a) => (a.id === album.id ? { ...a, monitored: nextMonitored } : a));
-        queryClient.setQueryData(['lidarr', 'albums', artistId], nextAlbums);
+        queryClient.setQueryData(albumsKey, nextAlbums);
       } else {
         toast.error('Failed to update album');
       }

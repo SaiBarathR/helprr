@@ -1,5 +1,5 @@
 import { QueryClient, QueryCache, isServer } from '@tanstack/react-query';
-import { ApiError } from './query-fetch';
+import { ApiError } from '@/lib/query-fetch';
 
 // Canonical App Router pattern: a fresh client per request on the server, a
 // stable singleton in the browser. We don't currently prefetch on the server
@@ -35,7 +35,10 @@ function handleAuthError(error: unknown) {
   // Already on /login (or mid-redirect) — don't loop.
   if (redirectingToLogin || window.location.pathname.startsWith('/login')) return;
   redirectingToLogin = true;
-  window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+  // Preserve the full location (path + query + hash) so the user lands back on
+  // the exact view — filters/state live in search/hash, not just the pathname.
+  const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
 
 let browserQueryClient: QueryClient | undefined;

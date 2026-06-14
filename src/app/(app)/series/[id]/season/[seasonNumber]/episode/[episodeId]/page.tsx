@@ -202,8 +202,10 @@ export default function EpisodeDetailPage() {
   const episodeNumber = episode?.episodeNumber;
 
   const historyQuery = useQuery({
-    queryKey: ['activity', 'history', 'episode', episodeId],
-    queryFn: jsonFetcher<{ records?: HistoryItem[] }>(`/api/activity/history?episodeId=${episodeId}&pageSize=50`),
+    // Episode ids are only unique within a Sonarr instance — scope both the
+    // request and the cache key so connected instances don't collide.
+    queryKey: ['activity', 'history', 'episode', instance ?? 'default', episodeId],
+    queryFn: jsonFetcher<{ records?: HistoryItem[] }>(`/api/activity/history?episodeId=${episodeId}&pageSize=50`, instance),
     enabled: Number.isFinite(episodeId),
     select: (d) => d.records ?? [],
   });

@@ -743,7 +743,8 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setDeleting(true);
     try {
-      await sonarrFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
+      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
       queryClient.removeQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
       queryClient.removeQueries({ queryKey: queryKeys.episodes(series.id, instance) });
@@ -2055,7 +2056,7 @@ function ExpandedSeasonEpisodes({
   seriesRouteId: string;
   instance?: string;
 }) {
-  const { data: epData } = useQuery({
+  const { data: epData, isError: epError } = useQuery({
     queryKey: tvSeasonKey(tmdbId, seasonNumber),
     queryFn: jsonFetcher<DiscoverSeasonDetailResponse>(`/api/discover/tv/${tmdbId}/season/${seasonNumber}`),
     staleTime: 30 * 60_000,
@@ -2124,6 +2125,8 @@ function ExpandedSeasonEpisodes({
             </div>
           );
         })
+      ) : epError ? (
+        <div className="py-4 text-sm text-muted-foreground">Failed to load episodes.</div>
       ) : (
         <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />

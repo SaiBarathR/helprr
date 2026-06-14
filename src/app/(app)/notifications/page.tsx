@@ -89,6 +89,24 @@ function mapNotifications(
   return { ...data, pages: data.pages.map((pg) => ({ ...pg, records: pg.records.map(fn) })) };
 }
 
+// Drop a record from every loaded page and decrement the (per-page) totalRecords.
+// Used when a row no longer matches the active filter (e.g. marked read under the
+// unread view) so it doesn't linger until the next refetch.
+function removeNotification(
+  data: InfiniteData<NotificationsPage> | undefined,
+  id: string,
+): InfiniteData<NotificationsPage> | undefined {
+  if (!data) return data;
+  let removed = 0;
+  const pages = data.pages.map((pg) => {
+    const records = pg.records.filter((n) => n.id !== id);
+    removed += pg.records.length - records.length;
+    return { ...pg, records };
+  });
+  if (removed === 0) return data;
+  return { ...data, pages: pages.map((pg) => ({ ...pg, totalRecords: Math.max(0, (pg.totalRecords ?? 0) - removed) })) };
+}
+
 function toNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -258,12 +276,16 @@ export default function NotificationsPage() {
       const res = await fetch(`/api/notifications/${id}`, { method: 'PUT' });
       if (!res.ok) return;
       queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
-        mapNotifications(old, (n) => (n.id === id ? { ...n, read: true } : n)),
+        // Under the unread view the row no longer matches the filter — drop it
+        // rather than leaving a now-read row visible until the next refetch.
+        filters.readState === 'unread'
+          ? removeNotification(old, id)
+          : mapNotifications(old, (n) => (n.id === id ? { ...n, read: true } : n)),
       );
       // Callers only invoke this for an unread item, so the nav badge drops by 1.
       adjustBadge('notifications', -1, -1);
     } catch { }
-  }, [adjustBadge, queryClient, listKey]);
+  }, [adjustBadge, queryClient, listKey, filters.readState]);
 
   const resolveQueueNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
     const cacheKey = `${source}:${id}`;
@@ -440,9 +462,14 @@ export default function NotificationsPage() {
     try {
       const res = await fetch('/api/notifications/read-all', { method: 'POST' });
       if (!res.ok) throw new Error('Failed');
-      queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
-        mapNotifications(old, (n) => ({ ...n, read: true })),
-      );
+      if (filters.readState === 'unread') {
+        // Everything just became read — the unread list is now empty; reset it.
+        await queryClient.resetQueries({ queryKey: listKey });
+      } else {
+        queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
+          mapNotifications(old, (n) => ({ ...n, read: true })),
+        );
+      }
       setBadge('notifications', { total: 0, attention: 0 });
       toast.success('All marked as read');
     } catch { toast.error('Failed'); }

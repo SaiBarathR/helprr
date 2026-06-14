@@ -114,6 +114,7 @@ export default function LogsPage() {
   const {
     data: entries = [],
     isFetching: loading,
+    isError: loadError,
     refetch: refetchLogs,
   } = useQuery({
     queryKey: ['logs', { selectedFile, levels: [...levels], sources: [...sources], query, from, to }],
@@ -327,6 +328,10 @@ export default function LogsPage() {
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">
             <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" />
             Loading logs
+          </div>
+        ) : loadError && entries.length === 0 ? (
+          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+            Failed to load logs
           </div>
         ) : entries.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-muted-foreground">

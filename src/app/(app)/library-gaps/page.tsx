@@ -284,7 +284,7 @@ export default function LibraryGapsPage() {
   });
   const data = gapsQuery.data ?? null;
   const loading = gapsQuery.isLoading;
-  const error = gapsQuery.isError;
+  const error = !data && gapsQuery.isError;
   const canSearch = useCan('activity.manage');
   const {
     selectionMode, selectedKeys, count, toggle, selectMany, clear, enter, exit,

@@ -29,7 +29,7 @@ import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
-import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
+import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import type { RadarrMovieListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
@@ -206,8 +206,14 @@ export default function MoviesPage() {
     select: ensureArray,
   });
   const movies = moviesData ?? EMPTY_MOVIES;
-  const { data: qualityProfiles = [] } = useQualityProfiles('radarr');
-  const { data: tags = [] } = useTags('radarr');
+  // Quality-profile / tag names are resolved per-instance server-side (item.qualityProfileName,
+  // item.tagLabels). The bulk-tag picker still needs the union of every connected instance's
+  // tags as suggestions, so fetch those per instance and merge.
+  const instanceIds = useMemo(
+    () => [...new Set(movies.map((m) => m.instanceId).filter((id): id is string => Boolean(id)))],
+    [movies]
+  );
+  const tags = useUnionTags('radarr', instanceIds);
   const refreshing = isFetching && !loading;
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -325,12 +331,6 @@ export default function MoviesPage() {
     persistViewState(window.scrollY, search);
   }, [persistViewState, search]);
 
-  const qualityProfileMap = useMemo(
-    () => new Map(qualityProfiles.map((profile) => [profile.id, profile.name])),
-    [qualityProfiles]
-  );
-  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.label])), [tags]);
-
   // Connected instances derived from the (already instance-tagged) list.
   const instances = useMemo(() => {
     const m = new Map<string, string>();
@@ -409,8 +409,8 @@ export default function MoviesPage() {
           result = (a.studio || '').localeCompare(b.studio || '');
           break;
         case 'qualityProfile': {
-          const qA = qualityProfileMap.get(a.qualityProfileId) || '';
-          const qB = qualityProfileMap.get(b.qualityProfileId) || '';
+          const qA = a.qualityProfileName || '';
+          const qB = b.qualityProfileName || '';
           result = qA.localeCompare(qB);
           break;
         }
@@ -451,8 +451,8 @@ export default function MoviesPage() {
           result = (a.originalLanguage?.name || '').localeCompare(b.originalLanguage?.name || '');
           break;
         case 'tags': {
-          const tA = a.tags.map((id) => tagMap.get(id) || '').sort().join(',');
-          const tB = b.tags.map((id) => tagMap.get(id) || '').sort().join(',');
+          const tA = (a.tagLabels ?? []).slice().sort().join(',');
+          const tB = (b.tagLabels ?? []).slice().sort().join(',');
           result = tA.localeCompare(tB);
           break;
         }
@@ -464,7 +464,7 @@ export default function MoviesPage() {
     });
 
     return list;
-  }, [movies, search, sort, sortDir, filter, instanceFilter, qualityProfileMap, tagMap]);
+  }, [movies, search, sort, sortDir, filter, instanceFilter]);
 
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((m) => selectedKeys.has(keyOf(m)));
@@ -607,7 +607,7 @@ export default function MoviesPage() {
       hasFile: movie.hasFile,
       status: movie.status,
       images: movie.images,
-      qualityProfile: qualityProfileMap.get(movie.qualityProfileId),
+      qualityProfile: movie.qualityProfileName,
       studio: movie.studio,
       rating: movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value,
       sizeOnDisk: movie.sizeOnDisk,
@@ -615,7 +615,7 @@ export default function MoviesPage() {
       certification: movie.certification,
       genres: movie.genres,
     }))
-  ), [filtered, qualityProfileMap, multiInstance, hrefForMovie]);
+  ), [filtered, multiInstance, hrefForMovie]);
 
   const tableVirtualizer = useWindowVirtualizer({
     count: tableRows.length,
@@ -897,7 +897,7 @@ export default function MoviesPage() {
                   status={movie.status}
                   visibleFields={visibleFields}
                   posterSize={posterSize}
-                  qualityProfile={qualityProfileMap.get(movie.qualityProfileId)}
+                  qualityProfile={movie.qualityProfileName}
                   studio={movie.studio}
                   certification={movie.certification}
                   overview={movie.overview}
@@ -972,7 +972,7 @@ export default function MoviesPage() {
                 status={movie.status}
                 visibleFields={mobileOverviewFields}
                 posterSize={posterSize}
-                qualityProfile={qualityProfileMap.get(movie.qualityProfileId)}
+                qualityProfile={movie.qualityProfileName}
                 studio={movie.studio}
                 certification={movie.certification}
                 overview={movie.overview}

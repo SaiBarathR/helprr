@@ -92,7 +92,10 @@ export default function AnimeDetailPage() {
   const refetchDetail = detailQuery.refetch;
   const detail = detailQuery.data ?? null;
   const loading = detailQuery.isLoading;
-  const error = detailQuery.isError
+  // Only block the page on an error when there's no cached detail to show — a
+  // transient background-refetch failure keeps isError true but should not
+  // replace already-painted content.
+  const error = !detail && detailQuery.isError
     ? detailQuery.error instanceof Error
       ? detailQuery.error.message
       : 'Failed to load'
