@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import {
   User,
@@ -104,9 +106,7 @@ function calcAge(birthday: string | null, deathday: string | null) {
 export default function PersonDetailPage() {
   const { id } = useParams();
   const personId = Number(id);
-  const [person, setPerson] = useState<PersonData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const validId = Number.isFinite(personId) && personId > 0;
   const [bioExpanded, setBioExpanded] = useState(false);
   const [department, setDepartment] = useState<Department | null>(null);
   const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
@@ -114,41 +114,18 @@ export default function PersonDetailPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
-  const loadPerson = useCallback(async (signal: AbortSignal) => {
-    setLoading(true);
-    setPerson(null);
-    setError(null);
+  const {
+    data: person = null,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['discover', 'person', personId],
+    queryFn: jsonFetcher<PersonData>(`/api/discover/person?id=${personId}`),
+    enabled: validId,
+  });
 
-    if (!Number.isFinite(personId) || personId <= 0) {
-      setError('Invalid person ID');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/discover/person?id=${personId}`, { signal });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || 'Failed to load person');
-      }
-      const data = await res.json();
-      if (signal.aborted) return;
-      setPerson(data);
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      if (signal.aborted) return;
-      setError(err instanceof Error ? err.message : 'Failed to load person');
-    } finally {
-      if (signal.aborted) return;
-      setLoading(false);
-    }
-  }, [personId]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadPerson(controller.signal);
-    return () => controller.abort();
-  }, [loadPerson]);
+  const loading = validId && isLoading;
+  const error = !validId ? 'Invalid person ID' : isError ? 'Failed to load person' : null;
 
   // Combine cast + crew into a unified list with normalized departments
   const allCredits = useMemo(() => {

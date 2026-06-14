@@ -9,11 +9,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { useQuery } from '@tanstack/react-query';
 import {
-  getCachedListData,
   getListViewState,
-  isListDataFresh,
-  setCachedListData,
   setListViewState,
   type MediaListKey,
 } from '@/lib/media-list-cache';
@@ -80,7 +78,6 @@ const VALID_STATUS_VALUES = new Set<string>([
 
 const PAGE_SIZE = 30;
 const SHARED_VIEW_KEY: MediaListKey = 'anime-library:_shared';
-const VIEWER_CACHE_KEY: MediaListKey = 'anime-library:_viewer';
 
 interface SharedExtras {
   type?: AniListMediaType;
@@ -93,15 +90,6 @@ interface PerTabExtras {
 
 function tabKey(type: AniListMediaType, status: AniListMediaListStatus | 'ALL'): MediaListKey {
   return `anime-library:${type}:${status}`;
-}
-
-function viewersEqual(a: ViewerResponse | null, b: ViewerResponse | null): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  if (a.connected !== b.connected || a.configured !== b.configured || a.requiresReauth !== b.requiresReauth) {
-    return false;
-  }
-  return JSON.stringify(a.user ?? null) === JSON.stringify(b.user ?? null);
 }
 
 function flattenCollection(collection: AniListMediaListCollection): AniListMediaListEntry[] {
@@ -170,21 +158,53 @@ export default function AnimeLibraryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, type, status, pathname]);
 
-  const [viewer, setViewer] = useState<ViewerResponse | null>(null);
-  const [collection, setCollection] = useState<AniListMediaListCollection | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const cacheKey = tabKey(type, status);
 
   const [renderedCount, setRenderedCount] = useState<number>(PAGE_SIZE);
 
-  const firstTabRunRef = useRef(true);
-  const initialHydrationRef = useRef(false);
-
   const sentinelRef = useRef<HTMLDivElement>(null);
   const hasRestoredScrollRef = useRef(false);
+
+  // Viewer connection/stats. On !ok we treat it as not-configured (parity with the
+  // old fallback) rather than an error screen.
+  const viewerQuery = useQuery({
+    queryKey: ['anilist', 'viewer'],
+    queryFn: async ({ signal }): Promise<ViewerResponse> => {
+      const res = await fetch('/api/anilist/viewer', { signal });
+      if (!res.ok) return { configured: false, connected: false, requiresReauth: false };
+      return res.json() as Promise<ViewerResponse>;
+    },
+  });
+  const viewer = viewerQuery.data ?? null;
+
+  // Full collection for the active (type, status). Not server-paginated — the
+  // page slices it client-side via renderedCount. gcTime keeps each tab warm.
+  const libraryQuery = useQuery({
+    queryKey: ['anilist', 'library', type, status],
+    queryFn: async ({ signal }): Promise<LibraryResponse> => {
+      const params = new URLSearchParams({ type });
+      if (status !== 'ALL') params.set('status', status);
+      const res = await fetch(`/api/anilist/library?${params}`, { signal });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(
+          data.requiresReauth
+            ? 'Your AniList session expired. Reconnect from Settings.'
+            : data.error || 'Failed to load library',
+        );
+      }
+      return res.json() as Promise<LibraryResponse>;
+    },
+    enabled: hydrated && !!viewer?.connected,
+  });
+  const collection = libraryQuery.data?.collection ?? null;
+  const loading = !!viewer?.connected && libraryQuery.isLoading;
+  const refreshing = libraryQuery.isFetching && !libraryQuery.isLoading;
+  const errorMessage = libraryQuery.isError
+    ? libraryQuery.error instanceof Error
+      ? libraryQuery.error.message
+      : 'Failed to load library'
+    : null;
 
   useEffect(() => {
     const sharedView = getListViewState(SHARED_VIEW_KEY);
@@ -204,19 +224,14 @@ export default function AnimeLibraryPage() {
           ? sharedExtras.status
           : 'ALL';
 
-    const restoredCacheKey = tabKey(restoredType, restoredStatus);
-    const cachedCollection = getCachedListData<AniListMediaListCollection>(restoredCacheKey)?.data ?? null;
-    const cachedViewer = getCachedListData<ViewerResponse>(VIEWER_CACHE_KEY)?.data ?? null;
-    const cachedView = getListViewState(restoredCacheKey);
+    // Collection + viewer now come from the query cache; only restore tab + the
+    // client-side renderedCount from the (kept) view-state half.
+    const cachedView = getListViewState(tabKey(restoredType, restoredStatus));
     const extras = (cachedView?.extras ?? {}) as PerTabExtras;
 
     setType(restoredType);
     setStatus(restoredStatus);
-    setViewer(cachedViewer);
-    setCollection(cachedCollection);
-    setLoading(!cachedCollection);
     setRenderedCount(extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE);
-    initialHydrationRef.current = Boolean(cachedCollection);
     setHydrated(true);
   }, [urlStatus, urlType]);
 
@@ -242,106 +257,18 @@ export default function AnimeLibraryPage() {
     [cacheKey]
   );
 
-  const loadViewer = useCallback(async () => {
-    try {
-      const res = await fetch('/api/anilist/viewer');
-      if (!res.ok) {
-        const fallback: ViewerResponse = { configured: false, connected: false, requiresReauth: false };
-        setViewer((prev) => (viewersEqual(prev, fallback) ? prev : fallback));
-        setCachedListData(VIEWER_CACHE_KEY, fallback);
-        return;
-      }
-      const data: ViewerResponse = await res.json();
-      setViewer((prev) => (viewersEqual(prev, data) ? prev : data));
-      setCachedListData(VIEWER_CACHE_KEY, data);
-    } catch {
-      // On network error, leave whatever viewer we already had so the page stays usable
-      setViewer((prev) => prev ?? { configured: false, connected: false, requiresReauth: false });
-    }
-  }, []);
-
-  const loadLibrary = useCallback(
-    async (force = false) => {
-      const cached = force ? null : getCachedListData<AniListMediaListCollection>(cacheKey);
-      const hasCached = Boolean(cached?.data);
-
-      if (cached?.data) {
-        setCollection(cached.data);
-        setLoading(false);
-        if (isListDataFresh(cached)) {
-          setRefreshing(false);
-          return;
-        }
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-        setRefreshing(false);
-      }
-
-      setErrorMessage(null);
-      try {
-        const params = new URLSearchParams({ type });
-        if (status !== 'ALL') params.set('status', status);
-        const res = await fetch(`/api/anilist/library?${params}`);
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          if (data.requiresReauth) {
-            setErrorMessage('Your AniList session expired. Reconnect from Settings.');
-          } else {
-            setErrorMessage(data.error || 'Failed to load library');
-          }
-          if (!hasCached) setCollection(null);
-          return;
-        }
-        const data: LibraryResponse = await res.json();
-        setCollection(data.collection);
-        setCachedListData(cacheKey, data.collection);
-      } catch {
-        if (!hasCached) {
-          setErrorMessage('Failed to load library');
-          setCollection(null);
-        }
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [cacheKey, type, status]
-  );
-
-  useEffect(() => {
-    void loadViewer();
-  }, [loadViewer]);
-
-  // Switching tabs: hydrate from per-tab cache (if any) before refetching, and reset render count.
-  // First run is a no-op for state when initial useState already hydrated from cache —
-  // we only kick off background revalidation in that case so the cached scroll position survives.
+  // On tab/type change: persist the shared tab selection, restore that tab's
+  // client-side render count from view-state, and reset scroll-restore. The
+  // collection itself is fetched by libraryQuery (keyed on type+status).
   useEffect(() => {
     if (!viewer?.connected) return;
     persistShared(type, status);
-
-    if (firstTabRunRef.current) {
-      firstTabRunRef.current = false;
-      if (initialHydrationRef.current) {
-        // State already matches cache from useState init; just revalidate in background
-        void loadLibrary(false);
-        return;
-      }
-    }
-
-    const cached = getCachedListData<AniListMediaListCollection>(cacheKey);
-    if (cached?.data) {
-      setCollection(cached.data);
-    } else {
-      setCollection(null);
-    }
 
     const savedView = getListViewState(cacheKey);
     const extras = (savedView?.extras ?? {}) as PerTabExtras;
     setRenderedCount(extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE);
 
     hasRestoredScrollRef.current = false;
-    void loadLibrary(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewer?.connected, type, status]);
 

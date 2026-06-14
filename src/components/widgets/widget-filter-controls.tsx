@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowUpDown, CalendarIcon, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import {
@@ -88,32 +89,6 @@ interface JellyfinUserOption {
   name: string;
 }
 
-const userListCache: { promise: Promise<JellyfinUserOption[]> | null; users: JellyfinUserOption[] | null } = {
-  promise: null,
-  users: null,
-};
-
-async function loadJellyfinUsers(): Promise<JellyfinUserOption[]> {
-  if (userListCache.users) return userListCache.users;
-  if (userListCache.promise) return userListCache.promise;
-  userListCache.promise = (async () => {
-    try {
-      const res = await fetch('/api/jellyfin/playback/user-list');
-      if (!res.ok) return [];
-      const data = await res.json();
-      const users: JellyfinUserOption[] = Array.isArray(data.users) ? data.users : [];
-      userListCache.users = users;
-      return users;
-    } catch (err) {
-      console.error('Failed to load jellyfin users:', err);
-      return [];
-    } finally {
-      userListCache.promise = null;
-    }
-  })();
-  return userListCache.promise;
-}
-
 export function UserSelect({
   value,
   onChange,
@@ -121,17 +96,17 @@ export function UserSelect({
   value: string;
   onChange: (next: string) => void;
 }) {
-  const [users, setUsers] = useState<JellyfinUserOption[]>(userListCache.users ?? []);
-
-  useEffect(() => {
-    let active = true;
-    loadJellyfinUsers().then((u) => {
-      if (active) setUsers(u);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // Shared ['jellyfin','playback','user-list'] cache dedups across widget instances.
+  const { data: users = [] } = useQuery({
+    queryKey: ['jellyfin', 'playback', 'user-list'],
+    queryFn: async ({ signal }): Promise<JellyfinUserOption[]> => {
+      const res = await fetch('/api/jellyfin/playback/user-list', { signal });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.users) ? (data.users as JellyfinUserOption[]) : [];
+    },
+    staleTime: 10 * 60_000,
+  });
 
   return (
     <Select value={value || 'all'} onValueChange={(v) => onChange(v === 'all' ? '' : v)}>
@@ -152,32 +127,6 @@ export function UserSelect({
 
 // ─── Type select (Jellyfin playback filters) ───
 
-const filterListCache: { promise: Promise<string[]> | null; filters: string[] | null } = {
-  promise: null,
-  filters: null,
-};
-
-async function loadJellyfinFilters(): Promise<string[]> {
-  if (filterListCache.filters) return filterListCache.filters;
-  if (filterListCache.promise) return filterListCache.promise;
-  filterListCache.promise = (async () => {
-    try {
-      const res = await fetch('/api/jellyfin/playback/filters');
-      if (!res.ok) return [];
-      const data = await res.json();
-      const filters: string[] = Array.isArray(data.filters) ? data.filters : [];
-      filterListCache.filters = filters;
-      return filters;
-    } catch (err) {
-      console.error('Failed to load jellyfin filters:', err);
-      return [];
-    } finally {
-      filterListCache.promise = null;
-    }
-  })();
-  return filterListCache.promise;
-}
-
 export function TypeSelect({
   value,
   onChange,
@@ -185,17 +134,16 @@ export function TypeSelect({
   value: string;
   onChange: (next: string) => void;
 }) {
-  const [filters, setFilters] = useState<string[]>(filterListCache.filters ?? []);
-
-  useEffect(() => {
-    let active = true;
-    loadJellyfinFilters().then((f) => {
-      if (active) setFilters(f);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { data: filters = [] } = useQuery({
+    queryKey: ['jellyfin', 'playback', 'filters'],
+    queryFn: async ({ signal }): Promise<string[]> => {
+      const res = await fetch('/api/jellyfin/playback/filters', { signal });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.filters) ? (data.filters as string[]) : [];
+    },
+    staleTime: 10 * 60_000,
+  });
 
   if (filters.length === 0) return null;
 

@@ -1,10 +1,16 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { useMe } from '@/components/permission-provider';
 
 type MediaType = 'movie' | 'tv';
 type Key = string; // `${mediaType}:${tmdbId}`
+
+interface PendingRequestsResponse {
+  results?: Array<{ mediaType: MediaType; tmdbId: number }>;
+}
 
 const keyOf = (mediaType: MediaType, tmdbId: number): Key => `${mediaType}:${tmdbId}`;
 
@@ -27,45 +33,40 @@ const RequestedMediaContext = createContext<RequestedMediaContextValue | null>(n
 export function RequestedMediaProvider({ children }: { children: React.ReactNode }) {
   const me = useMe();
   const seerrConfigured = me?.seerrConfigured ?? false;
-  const [requested, setRequested] = useState<Set<Key>>(new Set());
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!seerrConfigured) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch('/api/seerr/pending-requests?fields=keys');
-        if (!res.ok) return;
-        const data = (await res.json()) as { results?: Array<{ mediaType: MediaType; tmdbId: number }> };
-        if (cancelled) return;
-        setRequested((prev) => {
-          const next = new Set(prev);
-          for (const r of data.results ?? []) next.add(keyOf(r.mediaType, r.tmdbId));
-          return next;
-        });
-      } catch {
-        // best-effort — leave the set as-is
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [seerrConfigured]);
+  // The pending-requests fetch is best-effort: a failure should leave the set
+  // empty rather than surface an error UI. `select` folds the response into the
+  // Set<Key> shape consumers expect; the cache itself is the canonical store, so
+  // optimistic marks persist across remounts/navigation the same as before.
+  const { data: requested } = useQuery({
+    queryKey: ['seerr', 'requested-media'],
+    queryFn: jsonFetcher<PendingRequestsResponse>('/api/seerr/pending-requests?fields=keys'),
+    enabled: seerrConfigured,
+    select: (data) => {
+      const next = new Set<Key>();
+      for (const r of data.results ?? []) next.add(keyOf(r.mediaType, r.tmdbId));
+      return next;
+    },
+  });
 
   const isRequested = useCallback(
-    (mediaType: MediaType, tmdbId: number) => requested.has(keyOf(mediaType, tmdbId)),
+    (mediaType: MediaType, tmdbId: number) => requested?.has(keyOf(mediaType, tmdbId)) ?? false,
     [requested],
   );
 
-  const markRequested = useCallback((mediaType: MediaType, tmdbId: number) => {
-    setRequested((prev) => {
-      const key = keyOf(mediaType, tmdbId);
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-  }, []);
+  // Optimistically add to the cached response so the Request button keeps reading
+  // "Requested" — `select` re-derives the Set on the next render.
+  const markRequested = useCallback(
+    (mediaType: MediaType, tmdbId: number) => {
+      queryClient.setQueryData<PendingRequestsResponse>(['seerr', 'requested-media'], (prev) => {
+        const results = prev?.results ?? [];
+        if (results.some((r) => r.mediaType === mediaType && r.tmdbId === tmdbId)) return prev;
+        return { ...prev, results: [...results, { mediaType, tmdbId }] };
+      });
+    },
+    [queryClient],
+  );
 
   const value = useMemo(() => ({ isRequested, markRequested }), [isRequested, markRequested]);
 

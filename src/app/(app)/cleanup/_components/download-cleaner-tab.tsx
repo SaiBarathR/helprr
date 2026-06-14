@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,7 +48,6 @@ interface Props {
 export function DownloadCleanerTab({ onDirtyChange }: Props) {
   const [cfg, setCfg] = useState<DownloadCleanerConfigShape | null>(null);
   const [rules, setRules] = useState<SeedingRuleShape[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
@@ -71,25 +71,33 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setFieldErrors([]);
-    try {
-      const [cfgR, rulesR] = await Promise.all([
-        fetch('/api/cleanup/download/config').then(jsonOk<DownloadCleanerConfigShape>),
-        fetch('/api/cleanup/download/seeding-rules').then(jsonOk<SeedingRuleShape[]>),
+  const configQuery = useQuery({
+    queryKey: ['cleanup', 'download', 'config'],
+    queryFn: async ({ signal }) => {
+      const [config, seedingRules] = await Promise.all([
+        fetch('/api/cleanup/download/config', { signal }).then(jsonOk<DownloadCleanerConfigShape>),
+        fetch('/api/cleanup/download/seeding-rules', { signal }).then(jsonOk<SeedingRuleShape[]>),
       ]);
-      setCfg(cfgR);
-      setRules(rulesR);
-      serverSnapshot.current = { config: cfgR, seedingRules: rulesR };
-    } catch {
-      toast.error('Failed to load Download Cleaner settings');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { config, seedingRules };
+    },
+    staleTime: 0,
+  });
+  const loading = configQuery.isLoading;
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // Seed the editable form (and the dirty-detection baseline) from server state
+  // whenever it arrives — mirrors the old refresh-on-mount.
+  useEffect(() => {
+    if (configQuery.data) {
+      setCfg(configQuery.data.config);
+      setRules(configQuery.data.seedingRules);
+      serverSnapshot.current = configQuery.data;
+      setFieldErrors([]);
+    }
+  }, [configQuery.data]);
+
+  useEffect(() => {
+    if (configQuery.isError) toast.error('Failed to load Download Cleaner settings');
+  }, [configQuery.isError]);
 
   const saveAll = async () => {
     if (!cfg) return;

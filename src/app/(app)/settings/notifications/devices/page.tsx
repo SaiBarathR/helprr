@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, BellOff, ChevronLeft, Loader2, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
@@ -62,27 +64,28 @@ export default function NotificationDevicesPage() {
     loading: pushLoading,
   } = usePushNotifications();
 
-  const [devices, setDevices] = useState<Device[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [revoking, setRevoking] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<Device | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/notifications/subscriptions');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as Device[];
-      setDevices(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load devices');
-    }
-  }, []);
+  const {
+    data: devices = null,
+    isError,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['notifications', 'subscriptions'],
+    queryFn: jsonFetcher<Device[]>('/api/notifications/subscriptions'),
+  });
+  const error = isError
+    ? queryError instanceof ApiError
+      ? `HTTP ${queryError.status}`
+      : queryError instanceof Error
+        ? queryError.message
+        : 'Failed to load devices'
+    : null;
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const load = () => queryClient.invalidateQueries({ queryKey: ['notifications', 'subscriptions'] });
 
   const isCurrent = (d: Device) => Boolean(subscriptionEndpoint && d.endpoint === subscriptionEndpoint);
 

@@ -1,8 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Loader2, RefreshCw } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { cn } from '@/lib/utils';
@@ -17,29 +19,20 @@ interface ServiceHealthStatus {
 }
 
 export default function ServiceStatusPage() {
-  const [statuses, setStatuses] = useState<ServiceHealthStatus[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/services/health', { cache: 'no-store' });
-      if (res.ok) setStatuses((await res.json()) as ServiceHealthStatus[]);
-    } catch {
-      /* leave previous */
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const {
+    data: statuses = [],
+    isLoading: loading,
+    isFetching,
+    refetch,
+  } = useQuery({
+    queryKey: queryKeys.health(),
+    queryFn: jsonFetcher<ServiceHealthStatus[]>('/api/services/health'),
+    select: ensureArray,
+  });
+  const refreshing = isFetching && !loading;
 
   function handleRefresh() {
-    setRefreshing(true);
-    void load();
+    void refetch();
   }
 
   const downCount = statuses.filter((s) => !s.ok).length;

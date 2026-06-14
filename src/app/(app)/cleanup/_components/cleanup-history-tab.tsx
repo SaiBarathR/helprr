@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { format, subDays } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
@@ -144,10 +145,7 @@ export function CleanupHistoryTab() {
   }), [filtersRaw]);
 
   const [page, setPage] = useState(1);
-  const [rows, setRows] = useState<HistoryRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState(false);
+  const queryClient = useQueryClient();
   const [deleteMode, setDeleteMode] = useState<null | 'all' | 'filtered'>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -155,23 +153,22 @@ export function CleanupHistoryTab() {
 
   const filterKey = useMemo(() => JSON.stringify(filters), [filters]);
 
-  const fetchPage = useCallback(async () => {
-    setLoading(true);
-    try {
+  const historyQuery = useQuery({
+    queryKey: ['cleanup', 'history', filterKey, page],
+    queryFn: async ({ signal }) => {
       const sp = buildSearchParams(filters, page);
-      const r = await fetch(`/api/cleanup/history?${sp.toString()}`);
-      const json = await jsonOk<{ records?: HistoryRow[]; total?: number }>(r);
-      setRows(json.records ?? []);
-      setTotal(json.total ?? 0);
-    } catch {
-      toast.error('Failed to load history');
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, page]);
+      const r = await fetch(`/api/cleanup/history?${sp.toString()}`, { signal });
+      return jsonOk<{ records?: HistoryRow[]; total?: number }>(r);
+    },
+  });
+  const rows = historyQuery.data?.records ?? [];
+  const total = historyQuery.data?.total ?? 0;
+  const loading = historyQuery.isLoading;
 
-  useEffect(() => { fetchPage(); }, [fetchPage]);
+  // Preserve the old "Failed to load history" toast on fetch failure.
+  useEffect(() => {
+    if (historyQuery.isError) toast.error('Failed to load history');
+  }, [historyQuery.isError]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const activeFilterCount =
@@ -184,10 +181,8 @@ export function CleanupHistoryTab() {
     + (filters.dateTo ? 1 : 0);
   const hasFilter = activeFilterCount > 0;
 
-  const performDelete = async () => {
-    if (!deleteMode) return;
-    setDeleting(true);
-    try {
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
       const sp = new URLSearchParams();
       if (deleteMode === 'all') {
         sp.set('all', 'true');
@@ -198,16 +193,19 @@ export function CleanupHistoryTab() {
         for (const [k, v] of filterSp.entries()) sp.set(k, v);
       }
       const r = await fetch(`/api/cleanup/history?${sp.toString()}`, { method: 'DELETE' });
-      const json = await jsonOk<{ deleted?: number }>(r);
+      return jsonOk<{ deleted?: number }>(r);
+    },
+    onSuccess: (json) => {
       toast.success(`Deleted ${json.deleted ?? 0} entries`);
       setDeleteMode(null);
       setPage(1);
-      fetchPage();
-    } catch {
-      toast.error('Delete failed');
-    } finally {
-      setDeleting(false);
-    }
+      void queryClient.invalidateQueries({ queryKey: ['cleanup', 'history'] });
+    },
+    onError: () => toast.error('Delete failed'),
+  });
+  const deleting = deleteMutation.isPending;
+  const performDelete = () => {
+    if (deleteMode) deleteMutation.mutate();
   };
 
   const toggleArrayFilter = (key: 'cleaner' | 'strikeType' | 'action', value: string) => {
@@ -268,7 +266,7 @@ export function CleanupHistoryTab() {
           </Button>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={fetchPage} disabled={loading} aria-label="Refresh">
+          <Button size="sm" variant="ghost" onClick={() => historyQuery.refetch()} disabled={loading} aria-label="Refresh">
             <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           <Button

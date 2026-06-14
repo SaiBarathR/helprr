@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
@@ -145,81 +147,56 @@ interface ViewerSummary {
 }
 
 export default function AnimeHomePage() {
-  const [data, setData] = useState<HomeData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [viewer, setViewer] = useState<ViewerSummary | null>(null);
-  const [watchingEntries, setWatchingEntries] = useState<AniListMediaListEntry[]>([]);
-  const [planningEntries, setPlanningEntries] = useState<AniListMediaListEntry[]>([]);
+  // perPage is fixed at mount (no resize handler, matching prior behavior).
+  const [perPage] = useState(() =>
+    typeof window !== 'undefined' ? getHomePerPageFromWidth(window.innerWidth) : 10,
+  );
   // AniList is a single shared operator account; its list (My Library, Continue
   // Watching, Plan to Watch) is admin-only — members never see it.
   const me = useMe();
   const isAdmin = me?.role === 'admin';
 
-  useEffect(() => {
-    async function fetchHome() {
-      try {
-        const perPage = getHomePerPageFromWidth(window.innerWidth);
-        const params = new URLSearchParams({ perPage: String(perPage) });
-        const res = await fetch(`/api/anime/home?${params.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch home data');
-        const json = await res.json();
-        setData(json);
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load anime');
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchHome();
-  }, []);
+  const homeQuery = useQuery({
+    queryKey: ['anime', 'home', perPage],
+    queryFn: jsonFetcher<HomeData>(`/api/anime/home?perPage=${perPage}`),
+  });
+  const data = homeQuery.data ?? null;
+  const loading = homeQuery.isLoading;
+  const error = homeQuery.isError ? 'Failed to load anime' : null;
 
-  useEffect(() => {
-    if (!isAdmin) {
-      setViewer({ connected: false });
-      return;
-    }
-    let cancelled = false;
-    async function loadViewer() {
-      try {
-        const res = await fetch('/api/anilist/viewer');
-        if (!res.ok) {
-          if (!cancelled) setViewer({ connected: false });
-          return;
-        }
-        const json = await res.json();
-        if (cancelled) return;
-        setViewer({ connected: !!json.connected, user: json.user });
+  const viewerQuery = useQuery({
+    queryKey: ['anilist', 'viewer'],
+    queryFn: async ({ signal }): Promise<ViewerSummary> => {
+      const res = await fetch('/api/anilist/viewer', { signal });
+      if (!res.ok) return { connected: false };
+      const json = await res.json();
+      return { connected: !!json.connected, user: json.user };
+    },
+    enabled: isAdmin,
+  });
+  const viewer: ViewerSummary | null = isAdmin ? (viewerQuery.data ?? null) : { connected: false };
 
-        if (!json.connected) {
-          setWatchingEntries([]);
-          setPlanningEntries([]);
-          return;
-        }
-
-        const [watchingRes, planningRes] = await Promise.allSettled([
-          fetch('/api/anilist/library?type=ANIME&status=CURRENT'),
-          fetch('/api/anilist/library?type=ANIME&status=PLANNING'),
-        ]);
-
-        if (!cancelled && watchingRes.status === 'fulfilled' && watchingRes.value.ok) {
-          const lib = (await watchingRes.value.json()) as { collection: AniListMediaListCollection };
-          setWatchingEntries(flattenEntries(lib.collection));
-        }
-        if (!cancelled && planningRes.status === 'fulfilled' && planningRes.value.ok) {
-          const lib = (await planningRes.value.json()) as { collection: AniListMediaListCollection };
-          setPlanningEntries(flattenEntries(lib.collection));
-        }
-      } catch {
-        if (!cancelled) setViewer({ connected: false });
-      }
-    }
-    void loadViewer();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdmin]);
+  const libraryEnabled = isAdmin && !!viewer?.connected;
+  const watchingQuery = useQuery({
+    queryKey: ['anilist', 'library', 'ANIME', 'CURRENT'],
+    queryFn: async ({ signal }): Promise<AniListMediaListEntry[]> => {
+      const res = await fetch('/api/anilist/library?type=ANIME&status=CURRENT', { signal });
+      if (!res.ok) throw new ApiError(res.status, 'library CURRENT');
+      const lib = (await res.json()) as { collection: AniListMediaListCollection };
+      return flattenEntries(lib.collection);
+    },
+    enabled: libraryEnabled,
+  });
+  const planningQuery = useQuery({
+    queryKey: ['anilist', 'library', 'ANIME', 'PLANNING'],
+    queryFn: async ({ signal }): Promise<AniListMediaListEntry[]> => {
+      const res = await fetch('/api/anilist/library?type=ANIME&status=PLANNING', { signal });
+      if (!res.ok) throw new ApiError(res.status, 'library PLANNING');
+      const lib = (await res.json()) as { collection: AniListMediaListCollection };
+      return flattenEntries(lib.collection);
+    },
+    enabled: libraryEnabled,
+  });
 
   const animeCarouselOrder = useUIStore((s) => s.animeCarouselOrder);
   const disabledAnimeCarousels = useUIStore((s) => s.disabledAnimeCarousels);
@@ -229,8 +206,8 @@ export default function AnimeHomePage() {
   const currentSeason = data?.currentSeason;
   const nextSeasonInfo = data?.nextSeasonInfo;
 
-  const watchingItems = useMemo(() => watchingEntries.map(entryToRailItem), [watchingEntries]);
-  const planningItems = useMemo(() => planningEntries.map(entryToRailItem), [planningEntries]);
+  const watchingItems = useMemo(() => (watchingQuery.data ?? []).map(entryToRailItem), [watchingQuery.data]);
+  const planningItems = useMemo(() => (planningQuery.data ?? []).map(entryToRailItem), [planningQuery.data]);
 
   const disabledSet = useMemo(() => new Set(disabledAnimeCarousels), [disabledAnimeCarousels]);
   const orderedCarouselIds = useMemo(

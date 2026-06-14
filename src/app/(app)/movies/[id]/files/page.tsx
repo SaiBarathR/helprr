@@ -17,10 +17,8 @@ import {
 } from '@/components/ui/drawer';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import type { HistoryItem, RadarrMovie } from '@/types';
-import {
-  getMovieDetailSnapshot,
-  setMovieDetailSnapshot,
-} from '@/lib/movie-route-cache';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -121,48 +119,32 @@ export default function MovieFilesPage() {
   const { id } = useParams<{ id: string }>();
   const movieId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const [movie, setMovie] = useState<RadarrMovie | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(true);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Shares the detail page's cache key so navigating back to the movie is warm.
+  const movieQuery = useQuery({
+    queryKey: queryKeys.detail('radarr', movieId, instance),
+    queryFn: async ({ signal }): Promise<RadarrMovie | null> => {
+      const r = await radarrFetch(instance, `/api/radarr/${movieId}`, { signal });
+      return r.ok ? ((await r.json()) as RadarrMovie) : null;
+    },
+    enabled: Number.isFinite(movieId),
+  });
+  const movie = movieQuery.data ?? null;
+  const loading = movieQuery.isLoading;
 
-    void Promise.allSettled([
-      radarrFetch(instance, `/api/radarr/${movieId}`).then((r) => (r.ok ? r.json() : null)),
-      radarrFetch(instance, `/api/radarr/history/movie?movieId=${movieId}`).then((r) => (r.ok ? r.json() : [])),
-    ])
-      .then(([movieResult, historyResult]) => {
-        if (cancelled) return;
-        if (movieResult.status === 'fulfilled') {
-          const nextMovie = movieResult.value as RadarrMovie | null;
-          setMovie(nextMovie);
-          if (Number.isFinite(movieId)) {
-            const cached = getMovieDetailSnapshot(movieId, instance);
-            setMovieDetailSnapshot(movieId, {
-              movie: nextMovie,
-              qualityProfiles: cached?.qualityProfiles ?? [],
-              tags: cached?.tags ?? [],
-            }, instance);
-          }
-        }
-        if (historyResult.status === 'fulfilled') {
-          setHistory(Array.isArray(historyResult.value) ? historyResult.value : []);
-        }
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-        setHistoryLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [instance, movieId]);
+  const historyQuery = useQuery({
+    queryKey: ['radarr', 'history', 'movie', movieId],
+    queryFn: async ({ signal }): Promise<HistoryItem[]> => {
+      const r = await radarrFetch(instance, `/api/radarr/history/movie?movieId=${movieId}`, { signal });
+      return r.ok ? ((await r.json()) as HistoryItem[]) : [];
+    },
+    enabled: Number.isFinite(movieId),
+    select: (d) => (Array.isArray(d) ? d : []),
+  });
+  const history = historyQuery.data ?? [];
+  const historyLoading = historyQuery.isLoading;
 
   if (loading) {
     return <><PageHeader title="Files & information" /><PageSpinner /></>;

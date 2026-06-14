@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { DiscoverHero } from '@/components/discover/discover-hero';
@@ -14,55 +15,28 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 import { DiscoverExternalLinks } from '@/components/discover/discover-external-links';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { formatCurrency } from '@/lib/format';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverMovieFullDetail } from '@/types';
 
 export default function DiscoverMovieDetailPage() {
   const { id } = useParams();
   const movieId = Number(id);
-  const [movie, setMovie] = useState<DiscoverMovieFullDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const validId = Number.isFinite(movieId) && movieId > 0;
   const [overviewExpanded, setOverviewExpanded] = useState(false);
-  const requestIdRef = useRef(0);
 
-  const loadMovie = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
-    setLoading(true);
-    setMovie(null);
-    setError(null);
+  const {
+    data: movie = null,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['discover', 'movie', movieId],
+    queryFn: jsonFetcher<DiscoverMovieFullDetail>(`/api/discover/movie/${movieId}`),
+    enabled: validId,
+  });
 
-    if (!Number.isFinite(movieId) || movieId <= 0) {
-      if (requestId !== requestIdRef.current) return;
-      setError('Invalid movie ID');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/discover/movie/${movieId}`);
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || 'Failed to load movie');
-      }
-      const data = await res.json();
-      if (requestId !== requestIdRef.current) return;
-      setMovie(data);
-    } catch (err) {
-      if (requestId !== requestIdRef.current) return;
-      setError(err instanceof Error ? err.message : 'Failed to load movie');
-    } finally {
-      if (requestId !== requestIdRef.current) return;
-      setLoading(false);
-    }
-  }, [movieId]);
-
-  useEffect(() => {
-    void loadMovie();
-    return () => {
-      requestIdRef.current += 1;
-    };
-  }, [loadMovie]);
+  const loading = validId && isLoading;
+  const error = !validId ? 'Invalid movie ID' : isError ? 'Failed to load movie' : null;
 
   const infoRows = useMemo(() => {
     if (!movie) return [];

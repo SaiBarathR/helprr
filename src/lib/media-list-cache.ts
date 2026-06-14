@@ -1,4 +1,6 @@
-export const MEDIA_LIST_CACHE_TTL_MS = 60_000;
+// View-state only (scroll position + search + per-list extras). The data-caching
+// half was removed once all list pages moved to TanStack Query — the query cache
+// now provides dedup/staleness/back-nav, so this module just persists scroll/UI.
 
 export type MediaListKey =
   | 'movies'
@@ -7,11 +9,6 @@ export type MediaListKey =
   | `anime-library:${string}`
   | `anime-explore:${string}`;
 
-export interface MediaListDataCache<T> {
-  data: T;
-  fetchedAt: number;
-}
-
 export interface MediaListViewState {
   scrollY: number;
   search: string;
@@ -19,7 +16,6 @@ export interface MediaListViewState {
   extras?: Record<string, unknown>;
 }
 
-const dataCache: Partial<Record<MediaListKey, MediaListDataCache<unknown>>> = {};
 const viewCache: Partial<Record<MediaListKey, MediaListViewState>> = {};
 
 function viewStorageKey(key: MediaListKey) {
@@ -28,28 +24,6 @@ function viewStorageKey(key: MediaListKey) {
 
 function isBrowser() {
   return typeof window !== 'undefined';
-}
-
-export function getCachedListData<T>(key: MediaListKey): MediaListDataCache<T> | null {
-  const entry = dataCache[key];
-  if (!entry) return null;
-  return entry as MediaListDataCache<T>;
-}
-
-export function setCachedListData<T>(
-  key: MediaListKey,
-  data: T,
-  fetchedAt: number = Date.now()
-) {
-  dataCache[key] = { data, fetchedAt };
-}
-
-export function isListDataFresh<T>(entry: MediaListDataCache<T>, ttlMs = MEDIA_LIST_CACHE_TTL_MS) {
-  return Date.now() - entry.fetchedAt <= ttlMs;
-}
-
-export function invalidateListData(key: MediaListKey) {
-  delete dataCache[key];
 }
 
 export function getListViewState(key: MediaListKey): MediaListViewState | null {

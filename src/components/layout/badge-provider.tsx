@@ -1,12 +1,16 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
 import {
   EMPTY_BADGE_COUNTS,
   type BadgeArea,
   type BadgeCounts,
   type BadgeSlice,
 } from '@/types/badges';
+
+const BADGES_KEY = ['badges'] as const;
 
 // One slow poll loop for the whole app shell. Badges read from /api/badges,
 // which is served from counts the background poll already stashed in Redis — so
@@ -56,33 +60,47 @@ const clampSlice = (slice: BadgeSlice): BadgeSlice => ({
 });
 
 export function BadgeProvider({ children }: { children: React.ReactNode }) {
-  const [counts, setCounts] = useState<BadgeCounts>(EMPTY_BADGE_COUNTS);
+  const qc = useQueryClient();
 
-  const fetchCounts = useCallback(async () => {
-    try {
-      const res = await fetch('/api/badges', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = (await res.json()) as BadgeCounts;
-      setCounts(data);
-    } catch {
-      // Transient network/offline — keep the last known counts.
-    }
-  }, []);
+  // One shared slow poll for the whole app shell. refetchIntervalInBackground:false
+  // pauses while the tab is hidden; refetchOnWindowFocus:true refetches on return —
+  // matching the old visibility-aware loop. Optimistic nudges below write the cache
+  // directly so actions feel instant; this poll reconciles against server truth.
+  const { data } = useQuery({
+    queryKey: BADGES_KEY,
+    queryFn: async ({ signal }): Promise<BadgeCounts> => {
+      const res = await fetch('/api/badges', { cache: 'no-store', signal });
+      if (!res.ok) throw new ApiError(res.status, `GET /api/badges → ${res.status}`);
+      return (await res.json()) as BadgeCounts;
+    },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const counts = data ?? EMPTY_BADGE_COUNTS;
 
   const refreshBadges = useCallback(() => {
-    void fetchCounts();
-  }, [fetchCounts]);
+    void qc.invalidateQueries({ queryKey: BADGES_KEY });
+  }, [qc]);
 
-  const setBadge = useCallback((area: BadgeArea, slice: BadgeSlice) => {
-    setCounts((prev) => ({ ...prev, [area]: clampSlice(slice) }));
-  }, []);
+  const setBadge = useCallback(
+    (area: BadgeArea, slice: BadgeSlice) => {
+      qc.setQueryData<BadgeCounts>(BADGES_KEY, (prev) => ({
+        ...(prev ?? EMPTY_BADGE_COUNTS),
+        [area]: clampSlice(slice),
+      }));
+    },
+    [qc],
+  );
 
   const adjustBadge = useCallback(
     (area: BadgeArea, deltaTotal: number, deltaAttention = 0) => {
-      setCounts((prev) => {
-        const cur = prev[area];
+      qc.setQueryData<BadgeCounts>(BADGES_KEY, (prev) => {
+        const base = prev ?? EMPTY_BADGE_COUNTS;
+        const cur = base[area];
         return {
-          ...prev,
+          ...base,
           [area]: clampSlice({
             total: cur.total + deltaTotal,
             attention: cur.attention + deltaAttention,
@@ -90,38 +108,14 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
         };
       });
     },
-    [],
+    [qc],
   );
 
   // Mirror the unread count onto the home-screen app icon from one place,
-  // whenever it changes — keeps the setCounts updaters pure (no side effects).
+  // whenever it changes.
   useEffect(() => {
     syncAppBadge(counts.notifications.total);
   }, [counts.notifications.total]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const tick = async () => {
-      if (cancelled) return;
-      // Don't poll a backgrounded tab/PWA — refetch happens on return instead.
-      if (document.visibilityState === 'visible') await fetchCounts();
-      if (!cancelled) timer = setTimeout(() => void tick(), POLL_MS);
-    };
-    void tick();
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void fetchCounts();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [fetchCounts]);
 
   const value = useMemo<BadgeContextValue>(
     () => ({ counts, refreshBadges, adjustBadge, setBadge }),

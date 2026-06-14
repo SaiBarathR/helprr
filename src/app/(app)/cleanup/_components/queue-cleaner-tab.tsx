@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,7 +50,6 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
   const [cfg, setCfg] = useState<QueueCleanerConfigShape | null>(null);
   const [stallRules, setStallRules] = useState<StallRuleShape[]>([]);
   const [slowRules, setSlowRules] = useState<SlowRuleShape[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
   const [pendingDelete, setPendingDelete] = useState<{ kind: 'stall' | 'slow'; rule: { id: string; name: string } } | null>(null);
@@ -74,27 +74,34 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
     onDirtyChange?.(isDirty);
   }, [isDirty, onDirtyChange]);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setFieldErrors([]);
-    try {
-      const [cfgR, stallR, slowR] = await Promise.all([
-        fetch('/api/cleanup/queue/config').then(jsonOk<QueueCleanerConfigShape>),
-        fetch('/api/cleanup/queue/stall-rules').then(jsonOk<StallRuleShape[]>),
-        fetch('/api/cleanup/queue/slow-rules').then(jsonOk<SlowRuleShape[]>),
+  const configQuery = useQuery({
+    queryKey: ['cleanup', 'queue', 'config'],
+    queryFn: async ({ signal }) => {
+      const [config, stallRules, slowRules] = await Promise.all([
+        fetch('/api/cleanup/queue/config', { signal }).then(jsonOk<QueueCleanerConfigShape>),
+        fetch('/api/cleanup/queue/stall-rules', { signal }).then(jsonOk<StallRuleShape[]>),
+        fetch('/api/cleanup/queue/slow-rules', { signal }).then(jsonOk<SlowRuleShape[]>),
       ]);
-      setCfg(cfgR);
-      setStallRules(stallR);
-      setSlowRules(slowR);
-      serverSnapshot.current = { config: cfgR, stallRules: stallR, slowRules: slowR };
-    } catch {
-      toast.error('Failed to load Queue Cleaner settings');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { config, stallRules, slowRules };
+    },
+    staleTime: 0,
+  });
+  const loading = configQuery.isLoading;
 
-  useEffect(() => { refresh(); }, [refresh]);
+  // Seed the editable form (and dirty-detection baseline) from server state.
+  useEffect(() => {
+    if (configQuery.data) {
+      setCfg(configQuery.data.config);
+      setStallRules(configQuery.data.stallRules);
+      setSlowRules(configQuery.data.slowRules);
+      serverSnapshot.current = configQuery.data;
+      setFieldErrors([]);
+    }
+  }, [configQuery.data]);
+
+  useEffect(() => {
+    if (configQuery.isError) toast.error('Failed to load Queue Cleaner settings');
+  }, [configQuery.isError]);
 
   const saveAll = async () => {
     if (!cfg) return;

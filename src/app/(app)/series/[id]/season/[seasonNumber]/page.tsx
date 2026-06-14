@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -22,16 +22,10 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import type { SonarrSeries, SonarrEpisode, DiscoverSeasonDetailResponse } from '@/types';
 import { toCachedImageSrc } from '@/lib/image';
-import {
-  getSeasonDetailSnapshot,
-  getSeriesDetailSnapshot,
-  patchEpisodeAcrossSnapshots,
-  patchEpisodesAcrossSnapshots,
-  patchSeasonAcrossSnapshots,
-  setSeasonDetailSnapshot,
-  setSeriesDetailSnapshot,
-} from '@/lib/series-route-cache';
-import { invalidateListData } from '@/lib/media-list-cache';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
 import { useCan } from '@/components/permission-provider';
 
@@ -59,113 +53,50 @@ export default function SeasonDetailPage() {
   const seriesId = Number(id);
   const seasonNumber = Number(seasonNumberParam);
   const instance = useSearchParams().get('instance') ?? undefined;
+  const queryClient = useQueryClient();
 
-  const [series, setSeries] = useState<SonarrSeries | null>(null);
-  const [episodes, setEpisodes] = useState<SonarrEpisode[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
-  const [tmdbSeason, setTmdbSeason] = useState<DiscoverSeasonDetailResponse | null>(null);
 
   const canEditMonitoring = useCan('series.editMonitoring');
   const canDeleteSeries = useCan('series.delete');
   const canManageActivity = useCan('activity.manage');
 
-  const persistSeasonSnapshot = useCallback((next: {
-    series?: SonarrSeries | null;
-    episodes?: SonarrEpisode[];
-  } = {}) => {
-    if (!Number.isFinite(seriesId) || !Number.isFinite(seasonNumber)) return;
-    setSeasonDetailSnapshot(seriesId, seasonNumber, {
-      series: next.series ?? series,
-      episodes: next.episodes ?? episodes,
-    }, instance);
-  }, [episodes, instance, seasonNumber, series, seriesId]);
+  // Series + episodes share queryKeys.detail / .episodes with the series-detail
+  // and episode pages, so a monitor change on any of them reflects here.
+  const seriesQuery = useQuery({
+    queryKey: queryKeys.detail('sonarr', seriesId, instance),
+    queryFn: jsonFetcher<SonarrSeries | null>(`/api/sonarr/${seriesId}`, instance),
+    enabled: Number.isFinite(seriesId) && Number.isFinite(seasonNumber),
+  });
+  const series = seriesQuery.data ?? null;
+  const allEpisodesQuery = useQuery({
+    queryKey: queryKeys.episodes(seriesId, instance),
+    queryFn: jsonFetcher<SonarrEpisode[]>(`/api/sonarr/${seriesId}/episodes`, instance),
+    enabled: Number.isFinite(seriesId) && Number.isFinite(seasonNumber),
+    select: ensureArray,
+  });
+  const episodes = (allEpisodesQuery.data ?? [])
+    .filter((e) => e.seasonNumber === seasonNumber)
+    .sort((a, b) => a.episodeNumber - b.episodeNumber);
+  const loading = seriesQuery.isLoading || allEpisodesQuery.isLoading;
+  const refreshing = seriesQuery.isFetching || allEpisodesQuery.isFetching;
 
-  const fetchData = useCallback(async (hasCachedData: boolean) => {
-    if (!Number.isFinite(seriesId) || !Number.isFinite(seasonNumber)) {
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
-    try {
-      const [seriesRes, episodesRes] = await Promise.all([
-        sonarrFetch(instance, `/api/sonarr/${seriesId}`),
-        sonarrFetch(instance, `/api/sonarr/${seriesId}/episodes`),
-      ]);
-
-      const nextSeries: SonarrSeries | null = seriesRes.ok ? await seriesRes.json() : null;
-      const allEpisodes: SonarrEpisode[] = episodesRes.ok ? await episodesRes.json() : [];
-      const nextSeasonEpisodes = allEpisodes
-        .filter((e) => e.seasonNumber === seasonNumber)
-        .sort((a, b) => a.episodeNumber - b.episodeNumber);
-
-      setSeries(nextSeries);
-      setEpisodes(nextSeasonEpisodes);
-
-      setSeasonDetailSnapshot(seriesId, seasonNumber, {
-        series: nextSeries,
-        episodes: nextSeasonEpisodes,
-      }, instance);
-
-      const seriesSnapshot = getSeriesDetailSnapshot(seriesId, instance);
-      if (seriesSnapshot) {
-        setSeriesDetailSnapshot(seriesId, {
-          series: nextSeries ?? seriesSnapshot.series,
-          episodes: allEpisodes.length ? allEpisodes : seriesSnapshot.episodes,
-          qualityProfiles: seriesSnapshot.qualityProfiles,
-          rootFolders: seriesSnapshot.rootFolders,
-          tags: seriesSnapshot.tags,
-        }, instance);
-      }
-    } catch {
-      if (!hasCachedData) {
-        toast.error('Failed to load season data');
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [seasonNumber, seriesId, instance]);
+  // TMDB season data for episode images/ratings (skip for anime). Shares
+  // tvSeasonKey with the series-detail expanded list + episode page.
+  const tmdbSeasonQuery = useQuery({
+    queryKey: tvSeasonKey(series?.tmdbId ?? 0, seasonNumber),
+    queryFn: jsonFetcher<DiscoverSeasonDetailResponse>(`/api/discover/tv/${series?.tmdbId}/season/${seasonNumber}`),
+    enabled: !!series?.tmdbId && series.seriesType !== 'anime',
+    staleTime: 30 * 60_000,
+  });
+  const tmdbSeason = tmdbSeasonQuery.data ?? null;
 
   useEffect(() => {
-    const cached = (
-      Number.isFinite(seriesId) && Number.isFinite(seasonNumber)
-    ) ? getSeasonDetailSnapshot(seriesId, seasonNumber, instance) : null;
-
-    if (cached) {
-      setSeries(cached.series);
-      setEpisodes(cached.episodes);
-      setLoading(false);
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-      setRefreshing(false);
-    }
-
-    void fetchData(Boolean(cached));
-  }, [fetchData, seasonNumber, seriesId, instance]);
-
-  // Background-fetch TMDB season data for episode images/ratings (skip for anime)
-  useEffect(() => {
-    if (!series?.tmdbId || series.seriesType === 'anime') {
-      setTmdbSeason(null);
-      return;
-    }
-    const controller = new AbortController();
-    fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`, { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: DiscoverSeasonDetailResponse | null) => setTmdbSeason(data))
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setTmdbSeason(null);
-      });
-    return () => controller.abort();
-  }, [series?.tmdbId, series?.seriesType, seasonNumber]);
+    if (seriesQuery.isError || allEpisodesQuery.isError) toast.error('Failed to load season data');
+  }, [seriesQuery.isError, allEpisodesQuery.isError]);
 
   const seasonData = series?.seasons.find((s) => s.seasonNumber === seasonNumber);
   const isSeasonMonitored = seasonData?.monitored ?? true;
@@ -184,8 +115,8 @@ export default function SeasonDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('sonarr', command.id, instance) : 'completed';
-      invalidateListData('series');
-      await fetchData(true);
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      await Promise.all([seriesQuery.refetch(), allEpisodesQuery.refetch()]);
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
@@ -230,12 +161,8 @@ export default function SeasonDetailPage() {
       });
       if (res.ok) {
         const updated: SonarrSeries = await res.json();
-        setSeries(updated);
-        persistSeasonSnapshot({ series: updated });
-        const updatedSeason = updated.seasons.find((s) => s.seasonNumber === seasonNumber);
-        if (updatedSeason) {
-          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason, instance);
-        }
+        // Shared series key → reflects on the series-detail + episode views.
+        queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
         toast.success(isSeasonMonitored ? 'Season unmonitored' : 'Season monitored');
       }
     } catch {
@@ -253,12 +180,9 @@ export default function SeasonDetailPage() {
         body: JSON.stringify({ episodeIds: [episodeId], monitored }),
       });
       if (res.ok) {
-        setEpisodes((prev) => {
-          const nextEpisodes = prev.map((e) => (e.id === episodeId ? { ...e, monitored } : e));
-          persistSeasonSnapshot({ episodes: nextEpisodes });
-          return nextEpisodes;
-        });
-        patchEpisodeAcrossSnapshots(seriesId, episodeId, (episode) => ({ ...episode, monitored }), instance);
+        patchEpisodesInCache(queryClient, seriesId, instance, [
+          { episodeId, updater: (episode) => ({ ...episode, monitored }) },
+        ]);
       }
     } catch {
       toast.error('Failed to update');
@@ -294,27 +218,32 @@ export default function SeasonDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
       });
-      const nextEpisodes = episodes.map((episode) => ({ ...episode, monitored: false }));
-      setEpisodes(nextEpisodes);
-      persistSeasonSnapshot({ episodes: nextEpisodes });
-      patchEpisodesAcrossSnapshots(
+      patchEpisodesInCache(
+        queryClient,
         seriesId,
-        nextEpisodes.map((episode) => ({
+        instance,
+        episodes.map((episode) => ({
           episodeId: episode.id,
           updater: (existing) => ({ ...existing, monitored: false }),
         })),
-        instance
       );
       if (updateSeasonRes.ok) {
         const updated: SonarrSeries = await updateSeasonRes.json();
-        setSeries(updated);
-        persistSeasonSnapshot({ series: updated, episodes: nextEpisodes });
-        const updatedSeason = updated.seasons.find((s) => s.seasonNumber === seasonNumber);
-        if (updatedSeason) {
-          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason, instance);
-        }
+        queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
       } else {
-        patchSeasonAcrossSnapshots(seriesId, seasonNumber, (current) => ({ ...current, monitored: false }), instance);
+        // PUT failed — still reflect the season's optimistic unmonitor locally.
+        queryClient.setQueryData<SonarrSeries | null>(
+          queryKeys.detail('sonarr', seriesId, instance),
+          (prev) =>
+            prev
+              ? {
+                  ...prev,
+                  seasons: prev.seasons.map((s) =>
+                    s.seasonNumber === seasonNumber ? { ...s, monitored: false } : s,
+                  ),
+                }
+              : prev,
+        );
       }
       toast.success('Season unmonitored');
       setShowDeleteDrawer(false);

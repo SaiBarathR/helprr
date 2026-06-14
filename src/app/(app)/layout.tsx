@@ -4,6 +4,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-redirect';
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
 import { PermissionProvider, type MePayload } from '@/components/permission-provider';
+import { QueryProvider } from '@/components/query-provider';
 import { BadgeProvider } from '@/components/layout/badge-provider';
 import { RequestedMediaProvider } from '@/components/seerr/requested-media-provider';
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
@@ -53,18 +54,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <PermissionProvider value={me}>
-      <ImageCacheGenerationInit value={imageCacheGeneration} />
-      <RequestedMediaProvider>
-        <BadgeProvider>
-          <div className="flex min-h-screen bg-background">
-            <StandaloneLaunchRedirect />
-            <DiscoverLayoutHydrator />
-            <Sidebar />
-            <AppShell>{children}</AppShell>
-          </div>
-        </BadgeProvider>
-      </RequestedMediaProvider>
-    </PermissionProvider>
+    <QueryProvider>
+      <PermissionProvider value={me}>
+        <ImageCacheGenerationInit value={imageCacheGeneration} />
+        <RequestedMediaProvider>
+          <BadgeProvider>
+            <div className="flex min-h-screen bg-background">
+              <StandaloneLaunchRedirect />
+              <DiscoverLayoutHydrator />
+              <Sidebar />
+              <AppShell>{children}</AppShell>
+            </div>
+          </BadgeProvider>
+        </RequestedMediaProvider>
+      </PermissionProvider>
+    </QueryProvider>
   );
 }

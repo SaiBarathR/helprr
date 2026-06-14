@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -26,10 +28,7 @@ import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import {
-  getCachedListData,
   getListViewState,
-  isListDataFresh,
-  setCachedListData,
   setListViewState,
   type MediaListKey,
 } from '@/lib/media-list-cache';
@@ -57,40 +56,7 @@ interface ListResponse {
   pageInfo: AniListPageInfo | null;
 }
 
-interface ExploreCacheData {
-  viewMode: 'browse' | 'search';
-  searchQuery: string;
-  sort: string;
-  filters: AnimeFiltersState;
-  items: AnimeItemWithLibrary[];
-  pageInfo: AniListPageInfo | null;
-}
-
 const EXPLORE_CACHE_KEY: MediaListKey = 'anime-explore:current';
-
-function buildStateSignature(
-  viewMode: 'browse' | 'search',
-  searchQuery: string,
-  sort: string,
-  filters: AnimeFiltersState
-): string {
-  const trimmedSearch = searchQuery.trim();
-  if (viewMode === 'search') {
-    return `search:${trimmedSearch.toLowerCase()}`;
-  }
-  const f = filters;
-  return [
-    'browse',
-    sort,
-    f.genres.slice().sort().join(','),
-    f.year,
-    f.yearMin,
-    f.yearMax,
-    f.season,
-    f.formats.slice().sort().join(','),
-    f.status,
-  ].join('|');
-}
 
 function ensureHeightReached(targetScrollY: number, timeoutMs = 1200, pollMs = 50) {
   return new Promise<void>((resolve) => {
@@ -156,15 +122,12 @@ export default function AnimePage() {
   const setAnimeFilters = useUIStore((s) => s.setAnimeFilters);
   const hasHydrated = useUIStore((s) => s.hasHydrated);
 
-  const cached = typeof window !== 'undefined' ? getCachedListData<ExploreCacheData>(EXPLORE_CACHE_KEY) : null;
-  const cachedData = cached?.data ?? null;
-
-  const [viewMode, setViewMode] = useState<'browse' | 'search'>(cachedData?.viewMode ?? 'browse');
-  const [items, setItems] = useState<AnimeItemWithLibrary[]>(cachedData?.items ?? []);
-  const [pageInfo, setPageInfo] = useState<AniListPageInfo | null>(cachedData?.pageInfo ?? null);
-  const [loading, setLoading] = useState(!cachedData);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(cachedData?.searchQuery ?? '');
+  // viewMode/searchQuery/sort/filters are restored on back-nav from the URL
+  // (write-back effect below keeps them there); list data is restored from the
+  // TanStack query cache (gcTime), replacing the bespoke media-list-cache data.
+  const [viewMode, setViewMode] = useState<'browse' | 'search'>('browse');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filterOpen, setFilterOpen] = useState(false);
   const [urlInitialized, setUrlInitialized] = useState(false);
 
@@ -269,7 +232,6 @@ export default function AnimePage() {
     setDraftSort(animeSort);
   }, [animeFilters, animeSort]);
 
-  const abortRef = useRef<AbortController | null>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const activeFilterCount =
@@ -282,156 +244,89 @@ export default function AnimePage() {
 
   const hasFilters = activeFilterCount > 0;
 
-  const writeCache = useCallback(
-    (next: ExploreCacheData) => {
-      setCachedListData(EXPLORE_CACHE_KEY, next);
-    },
-    []
-  );
+  const buildBrowseParams = useCallback((page: number) => {
+    const params = new URLSearchParams({ mode: 'browse', page: String(page), sort: animeSort });
+    if (animeFilters.genres.length) params.set('genres', animeFilters.genres.join(','));
+    if (animeFilters.formats.length) params.set('format', animeFilters.formats.join(','));
+    if (animeFilters.status) params.set('status', animeFilters.status);
+    if (animeFilters.year) params.set('year', animeFilters.year);
+    if (animeFilters.yearMin) params.set('yearMin', animeFilters.yearMin);
+    if (animeFilters.yearMax) params.set('yearMax', animeFilters.yearMax);
+    if (animeFilters.season) params.set('season', animeFilters.season);
+    return params;
+  }, [animeSort, animeFilters]);
 
-  const fetchBrowse = useCallback(async (page = 1, append = false) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    if (page === 1) setLoading(true);
-    else setLoadingMore(true);
-
-    try {
-      const params = new URLSearchParams({ mode: 'browse', page: String(page), sort: animeSort });
-
-      if (animeFilters.genres.length) params.set('genres', animeFilters.genres.join(','));
-      if (animeFilters.formats.length) params.set('format', animeFilters.formats.join(','));
-      if (animeFilters.status) params.set('status', animeFilters.status);
-
-      if (animeFilters.year) params.set('year', animeFilters.year);
-      if (animeFilters.yearMin) params.set('yearMin', animeFilters.yearMin);
-      if (animeFilters.yearMax) params.set('yearMax', animeFilters.yearMax);
-      if (animeFilters.season) params.set('season', animeFilters.season);
-
-      const res = await fetch(`/api/anime?${params}`, { signal: controller.signal });
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data: ListResponse = await res.json();
-
-      if (!controller.signal.aborted) {
-        const nextItems = append ? [...items, ...data.items] : data.items;
-        setItems(nextItems);
-        setPageInfo(data.pageInfo);
-        setViewMode('browse');
-        writeCache({
-          viewMode: 'browse',
-          searchQuery: '',
-          sort: animeSort,
-          filters: animeFilters,
-          items: nextItems,
-          pageInfo: data.pageInfo,
-        });
-      }
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error(e);
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    }
-  }, [animeSort, animeFilters, items, writeCache]);
-
-  const fetchSearch = useCallback(async (query: string, page = 1, append = false) => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    if (page === 1) setLoading(true);
-    else setLoadingMore(true);
-
-    try {
-      const params = new URLSearchParams({ mode: 'search', q: query, page: String(page) });
-      const res = await fetch(`/api/anime?${params}`, { signal: controller.signal });
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data: ListResponse = await res.json();
-
-      if (!controller.signal.aborted) {
-        const nextItems = append ? [...items, ...data.items] : data.items;
-        setItems(nextItems);
-        setPageInfo(data.pageInfo);
-        setViewMode('search');
-        writeCache({
-          viewMode: 'search',
-          searchQuery: query,
-          sort: animeSort,
-          filters: animeFilters,
-          items: nextItems,
-          pageInfo: data.pageInfo,
-        });
-      }
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      console.error(e);
-    } finally {
-      if (!controller.signal.aborted) {
-        setLoading(false);
-        setLoadingMore(false);
-      }
-    }
-  }, [animeSort, animeFilters, items, writeCache]);
-
-  // Search effect — debounced search query handler.
-  // Signature check ensures back-nav doesn't refetch when the cached search payload
-  // already matches the current query.
+  // Debounce the search box into the query key, and switch to search mode once a
+  // searchable (≥3 char) query is committed. 1–2 char input keeps the last
+  // results (matches old behavior); empty falls back to browse via the effect below.
   useEffect(() => {
-    if (!hasHydrated || !urlInitialized) return;
-    const trimmedQuery = searchQuery.trim();
-
-    // If we're in search mode and the live cache matches this query, skip the debounce/fetch
-    if (viewMode === 'search' && trimmedQuery.length >= 3) {
-      const live = getCachedListData<ExploreCacheData>(EXPLORE_CACHE_KEY);
-      if (live?.data && isListDataFresh(live, 5 * 60 * 1000)) {
-        const cachedSig = buildStateSignature(
-          live.data.viewMode,
-          live.data.searchQuery,
-          live.data.sort,
-          live.data.filters
-        );
-        const currentSig = buildStateSignature('search', trimmedQuery, animeSort, animeFilters);
-        if (cachedSig === currentSig) return;
+    const t = window.setTimeout(() => {
+      const q = searchQuery.trim();
+      if (q.length >= 3) {
+        setDebouncedQuery(q);
+        setViewMode('search');
+      } else if (q.length === 0) {
+        setDebouncedQuery('');
       }
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      if (!trimmedQuery) {
-        if (viewMode === 'search') fetchBrowse(1);
-        return;
-      }
-
-      if (trimmedQuery.length < 3) return;
-
-      fetchSearch(trimmedQuery);
     }, 300);
+    return () => window.clearTimeout(t);
+  }, [searchQuery]);
 
-    return () => window.clearTimeout(timeoutId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, hasHydrated, urlInitialized, fetchSearch, fetchBrowse, viewMode]);
+  // Empty search box while in search mode → fall back to browse.
+  useEffect(() => {
+    if (viewMode === 'search' && searchQuery.trim() === '') setViewMode('browse');
+  }, [viewMode, searchQuery]);
 
-  // Infinite scroll
+  const searchActive = viewMode === 'search' && debouncedQuery.length >= 3;
+  const queriesReady = hasHydrated && urlInitialized;
+
+  // Browse + search lists. The query key carries the full state, so the cache +
+  // staleTime (5m) replace the bespoke data cache, signature check and freshness
+  // check; gcTime gives instant back-nav paint.
+  const browseInfinite = useInfiniteQuery({
+    queryKey: ['anime', 'list', 'browse', animeSort, animeFilters],
+    queryFn: ({ pageParam, signal }) =>
+      jsonFetcher<ListResponse>(`/api/anime?${buildBrowseParams(pageParam).toString()}`)({ signal }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.pageInfo?.hasNextPage ? (last.pageInfo.currentPage || 1) + 1 : undefined),
+    enabled: queriesReady && viewMode === 'browse',
+    staleTime: 5 * 60_000,
+  });
+  const searchInfinite = useInfiniteQuery({
+    queryKey: ['anime', 'list', 'search', debouncedQuery],
+    queryFn: ({ pageParam, signal }) =>
+      jsonFetcher<ListResponse>(
+        `/api/anime?${new URLSearchParams({ mode: 'search', q: debouncedQuery, page: String(pageParam) }).toString()}`,
+      )({ signal }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.pageInfo?.hasNextPage ? (last.pageInfo.currentPage || 1) + 1 : undefined),
+    enabled: queriesReady && searchActive,
+    staleTime: 5 * 60_000,
+  });
+
+  const active = viewMode === 'search' ? searchInfinite : browseInfinite;
+  const items = useMemo<AnimeItemWithLibrary[]>(
+    () => active.data?.pages.flatMap((p) => p.items) ?? [],
+    [active.data],
+  );
+  const loading = active.isLoading || (!urlInitialized && !active.data);
+  const loadingMore = active.isFetchingNextPage;
+  const { hasNextPage, isFetchingNextPage, isLoading: activeIsLoading, fetchNextPage } = active;
+
+  // Infinite scroll — fetch the active query's next page when the sentinel shows.
   useEffect(() => {
     if (!sentinelRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && pageInfo?.hasNextPage && !loadingMore && !loading) {
-          const nextPage = (pageInfo.currentPage || 1) + 1;
-          const trimmedQuery = searchQuery.trim();
-          if (viewMode === 'search' && trimmedQuery.length >= 3) {
-            fetchSearch(trimmedQuery, nextPage, true);
-          } else if (viewMode === 'browse') {
-            fetchBrowse(nextPage, true);
-          }
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage && !activeIsLoading) {
+          void fetchNextPage();
         }
       },
       { rootMargin: '200px' }
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [viewMode, pageInfo, loadingMore, loading, searchQuery, fetchSearch, fetchBrowse]);
+  }, [hasNextPage, isFetchingNextPage, activeIsLoading, fetchNextPage]);
 
   const resetExploreScroll = useCallback(() => {
     setListViewState(EXPLORE_CACHE_KEY, { scrollY: 0, search: '' });
@@ -446,27 +341,6 @@ export default function AnimePage() {
     setViewMode('browse');
     resetExploreScroll();
   };
-
-  // Browse fetcher — runs on mount and when sort/filters change.
-  // Signature check is the single source of truth: if the live cache matches current state
-  // and is still fresh, skip the fetch entirely. This survives reference-only changes from
-  // the URL init effect (e.g. setAnimeFilters with the same values).
-  useEffect(() => {
-    if (!hasHydrated || !urlInitialized || viewMode === 'search') return;
-    const live = getCachedListData<ExploreCacheData>(EXPLORE_CACHE_KEY);
-    if (live?.data && isListDataFresh(live, 5 * 60 * 1000)) {
-      const cachedSig = buildStateSignature(
-        live.data.viewMode,
-        live.data.searchQuery,
-        live.data.sort,
-        live.data.filters
-      );
-      const currentSig = buildStateSignature('browse', '', animeSort, animeFilters);
-      if (cachedSig === currentSig) return;
-    }
-    fetchBrowse(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasHydrated, urlInitialized, animeSort, animeFilters, viewMode]);
 
   // Restore scroll once items are rendered
   useEffect(() => {

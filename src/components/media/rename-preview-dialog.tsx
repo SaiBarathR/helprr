@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import {
   Dialog,
   DialogContent,
@@ -73,45 +75,33 @@ export function RenamePreviewDialog({
   mediaId,
   mediaTitle,
 }: RenamePreviewDialogProps) {
-  const [loading, setLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [rows, setRows] = useState<RenameRow[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
+  const queryParam = service === 'sonarr' ? 'seriesId' : service === 'lidarr' ? 'artistId' : 'movieId';
+  const {
+    data: rows = [],
+    isLoading: loading,
+    isError,
+    isSuccess,
+    dataUpdatedAt,
+  } = useQuery({
+    queryKey: [service, 'rename', mediaId],
+    queryFn: jsonFetcher<SonarrRenamePreview[] | RadarrRenamePreview[] | LidarrRenamePreview[]>(
+      `/api/${service}/rename?${queryParam}=${mediaId}`,
+    ),
+    enabled: open,
+    select: (data) => toRows(service, data),
+  });
+
+  // Default every previewed file to selected once a fresh preview resolves.
   useEffect(() => {
-    if (!open) return;
+    if (open && isSuccess) setSelected(new Set(rows.map((r) => r.fileId)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isSuccess, dataUpdatedAt]);
 
-    let cancelled = false;
-    setLoading(true);
-    setRows([]);
-    setSelected(new Set());
-
-    const queryKey = service === 'sonarr' ? 'seriesId' : service === 'lidarr' ? 'artistId' : 'movieId';
-    const url = `/api/${service}/rename?${queryKey}=${mediaId}`;
-
-    fetch(url)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(await r.text());
-        return r.json() as Promise<SonarrRenamePreview[] | RadarrRenamePreview[] | LidarrRenamePreview[]>;
-      })
-      .then((data) => {
-        if (cancelled) return;
-        const next = toRows(service, data);
-        setRows(next);
-        setSelected(new Set(next.map((r) => r.fileId)));
-      })
-      .catch(() => {
-        if (cancelled) return;
-        toast.error('Failed to load rename preview');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, service, mediaId]);
+  useEffect(() => {
+    if (isError) toast.error('Failed to load rename preview');
+  }, [isError]);
 
   function toggleRow(fileId: number) {
     setSelected((prev) => {
@@ -128,31 +118,32 @@ export function RenamePreviewDialog({
     );
   }
 
-  async function handleApply() {
-    if (selected.size === 0) return;
-    setSubmitting(true);
-    try {
+  const applyMutation = useMutation({
+    mutationFn: async (fileIds: number[]) => {
       const body =
         service === 'sonarr'
-          ? { name: 'RenameFiles', seriesId: mediaId, files: Array.from(selected) }
+          ? { name: 'RenameFiles', seriesId: mediaId, files: fileIds }
           : service === 'lidarr'
-            ? { name: 'RenameFiles', artistId: mediaId, files: Array.from(selected) }
-            : { name: 'RenameFiles', movieId: mediaId, files: Array.from(selected) };
+            ? { name: 'RenameFiles', artistId: mediaId, files: fileIds }
+            : { name: 'RenameFiles', movieId: mediaId, files: fileIds };
       const res = await fetch(`/api/${service}/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(await res.text());
-      toast.success(
-        `Renaming ${selected.size} file${selected.size === 1 ? '' : 's'}`
-      );
+    },
+    onSuccess: (_data, fileIds) => {
+      toast.success(`Renaming ${fileIds.length} file${fileIds.length === 1 ? '' : 's'}`);
       onOpenChange(false);
-    } catch {
-      toast.error('Failed to rename files');
-    } finally {
-      setSubmitting(false);
-    }
+    },
+    onError: () => toast.error('Failed to rename files'),
+  });
+  const submitting = applyMutation.isPending;
+
+  function handleApply() {
+    if (selected.size === 0) return;
+    applyMutation.mutate(Array.from(selected));
   }
 
   const allSelected = rows.length > 0 && selected.size === rows.length;

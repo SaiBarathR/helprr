@@ -1,10 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2, LogOut, Monitor, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
@@ -81,94 +84,98 @@ function relativeTime(iso: string | null): string {
 
 export default function SessionsPage() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<Session[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const queryClient = useQueryClient();
   const [confirmTarget, setConfirmTarget] = useState<Session | null>(null);
   const [confirmOthers, setConfirmOthers] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Session | null>(null);
   const [renameValue, setRenameValue] = useState('');
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/sessions');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as Session[];
-      setSessions(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sessions');
-    }
-  }, []);
+  const {
+    data: sessions = null,
+    isError,
+    error: queryError,
+  } = useQuery({
+    queryKey: queryKeys.sessions(),
+    queryFn: jsonFetcher<Session[]>('/api/sessions'),
+  });
+  const error = isError
+    ? queryError instanceof ApiError
+      ? `HTTP ${queryError.status}`
+      : queryError instanceof Error
+        ? queryError.message
+        : 'Failed to load sessions'
+    : null;
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function handleRevoke(session: Session) {
-    setBusy(true);
-    try {
+  const revokeMutation = useMutation({
+    mutationFn: async (session: Session) => {
       const res = await fetch(`/api/sessions/${session.id}/revoke`, { method: 'POST' });
-      if (!res.ok) {
-        toast.error('Failed to revoke session');
-        return;
-      }
-      const data = (await res.json()) as { wasCurrent?: boolean };
+      if (!res.ok) throw new Error('Failed to revoke session');
+      return (await res.json()) as { wasCurrent?: boolean };
+    },
+    onSuccess: (data, session) => {
       if (data.wasCurrent) {
         toast.success('Signed out');
         router.push('/login');
         return;
       }
       toast.success(`Revoked ${displayName(session)}`);
-      await load();
-    } finally {
-      setBusy(false);
-      setConfirmTarget(null);
-    }
-  }
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
+    },
+    onError: () => toast.error('Failed to revoke session'),
+    onSettled: () => setConfirmTarget(null),
+  });
 
-  async function handleRevokeOthers() {
-    setBusy(true);
-    try {
+  const revokeOthersMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch('/api/sessions/revoke-others', { method: 'POST' });
-      if (!res.ok) {
-        toast.error('Failed to revoke other sessions');
-        return;
-      }
-      const data = (await res.json()) as { revoked: number };
+      if (!res.ok) throw new Error('Failed to revoke other sessions');
+      return (await res.json()) as { revoked: number };
+    },
+    onSuccess: (data) => {
       toast.success(
         data.revoked === 0
           ? 'No other sessions to revoke'
           : `Revoked ${data.revoked} session${data.revoked === 1 ? '' : 's'}`
       );
-      await load();
-    } finally {
-      setBusy(false);
-      setConfirmOthers(false);
-    }
-  }
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
+    },
+    onError: () => toast.error('Failed to revoke other sessions'),
+    onSettled: () => setConfirmOthers(false),
+  });
 
-  async function handleRename() {
-    if (!renameTarget) return;
-    const labelToSave = renameValue.trim();
-    setBusy(true);
-    try {
-      const res = await fetch(`/api/sessions/${renameTarget.id}`, {
+  const renameMutation = useMutation({
+    mutationFn: async ({ id, label }: { id: string; label: string | null }) => {
+      const res = await fetch(`/api/sessions/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: labelToSave || null }),
+        body: JSON.stringify({ label }),
       });
-      if (!res.ok) {
-        toast.error('Failed to rename');
-        return;
-      }
+      if (!res.ok) throw new Error('Failed to rename');
+    },
+    onSuccess: () => {
       toast.success('Renamed');
-      await load();
-    } finally {
-      setBusy(false);
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions() });
+    },
+    onError: () => toast.error('Failed to rename'),
+    onSettled: () => {
       setRenameTarget(null);
       setRenameValue('');
-    }
+    },
+  });
+
+  const busy = revokeMutation.isPending || revokeOthersMutation.isPending || renameMutation.isPending;
+
+  function handleRevoke(session: Session) {
+    return revokeMutation.mutateAsync(session).catch(() => {});
+  }
+
+  function handleRevokeOthers() {
+    return revokeOthersMutation.mutateAsync().catch(() => {});
+  }
+
+  function handleRename() {
+    if (!renameTarget) return;
+    renameMutation.mutate({ id: renameTarget.id, label: renameValue.trim() || null });
   }
 
   // "Revoke all other sessions" only touches the viewer's own devices, so the
@@ -294,7 +301,9 @@ export default function SessionsPage() {
         confirmLabel={confirmTarget?.isCurrent ? 'Sign out' : 'Revoke'}
         destructive
         busy={busy}
-        onConfirm={() => (confirmTarget ? handleRevoke(confirmTarget) : Promise.resolve())}
+        onConfirm={async () => {
+          if (confirmTarget) await handleRevoke(confirmTarget);
+        }}
       />
 
       <ConfirmDialog
@@ -305,7 +314,9 @@ export default function SessionsPage() {
         confirmLabel="Revoke all"
         destructive
         busy={busy}
-        onConfirm={handleRevokeOthers}
+        onConfirm={async () => {
+          await handleRevokeOthers();
+        }}
       />
 
       <Dialog

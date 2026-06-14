@@ -34,10 +34,7 @@ import { getImageUrl } from '@/components/media/media-card';
 import { format } from 'date-fns';
 import type { LidarrAlbum, LidarrTrack, LidarrTrackFile } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
-import {
-  getAlbumDetailSnapshot,
-  setAlbumDetailSnapshot,
-} from '@/lib/music-route-cache';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getDetailViewState,
   setDetailViewState,
@@ -73,17 +70,29 @@ export default function AlbumDetailPage() {
   const { albumId: albumIdParam } = useParams();
   const albumId = Number(albumIdParam);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const initialSnapshot = Number.isFinite(albumId) ? getAlbumDetailSnapshot(albumId, instance) : null;
+  const queryClient = useQueryClient();
   const detailViewKey: DetailViewKey = `album:${albumId}`;
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
-  // Guards against a stale loadData (older album) resolving after a newer one.
-  const loadRequestRef = useRef(0);
 
-  const [album, setAlbum] = useState<LidarrAlbum | null>(() => initialSnapshot?.album ?? null);
-  const [tracks, setTracks] = useState<LidarrTrack[]>(() => initialSnapshot?.tracks ?? []);
-  const [trackFiles, setTrackFiles] = useState<LidarrTrackFile[]>(() => initialSnapshot?.trackFiles ?? []);
-  const [loading, setLoading] = useState(() => !initialSnapshot);
+  // Album + tracks + files — TanStack cache gives instant back-nav (gcTime),
+  // replacing the bespoke album snapshot.
+  const albumQuery = useQuery({
+    queryKey: ['lidarr', 'album', albumId],
+    queryFn: async ({ signal }) => {
+      const [album, tracks, trackFiles] = await Promise.all([
+        lidarrFetch(instance, `/api/lidarr/album/${albumId}`, { signal }).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
+        lidarrFetch(instance, `/api/lidarr/album/${albumId}/tracks`, { signal }).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
+        lidarrFetch(instance, `/api/lidarr/trackfile?albumId=${albumId}`, { signal }).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
+      ]);
+      return { album, tracks, trackFiles };
+    },
+    enabled: Number.isFinite(albumId),
+  });
+  const album = albumQuery.data?.album ?? null;
+  const tracks = albumQuery.data?.tracks ?? [];
+  const trackFiles = albumQuery.data?.trackFiles ?? [];
+  const loading = albumQuery.isLoading;
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
@@ -95,52 +104,11 @@ export default function AlbumDetailPage() {
   const canEditMonitoring = useCan('music.editMonitoring');
   const canManageActivity = useCan('activity.manage');
 
-  const loadData = useCallback(async (hasCachedData: boolean) => {
-    if (!Number.isFinite(albumId)) {
-      setLoading(false);
-      return;
-    }
-    if (hasCachedData) setLoading(false);
-
-    const requestId = ++loadRequestRef.current;
-    try {
-      const [albumResult, nextTracks, nextFiles] = await Promise.all([
-        lidarrFetch(instance, `/api/lidarr/album/${albumId}`).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
-        lidarrFetch(instance, `/api/lidarr/album/${albumId}/tracks`).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
-        lidarrFetch(instance, `/api/lidarr/trackfile?albumId=${albumId}`).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
-      ]);
-
-      if (requestId !== loadRequestRef.current) return;
-      setAlbum(albumResult);
-      setTracks(nextTracks);
-      setTrackFiles(nextFiles);
-      setAlbumDetailSnapshot(albumId, { album: albumResult, tracks: nextTracks, trackFiles: nextFiles }, instance);
-    } catch {
-      if (requestId !== loadRequestRef.current) return;
-      if (!hasCachedData) {
-        setAlbum(null);
-        setTracks([]);
-        setTrackFiles([]);
-      }
-    } finally {
-      if (requestId === loadRequestRef.current) setLoading(false);
-    }
-  }, [albumId, instance]);
-
+  // Reset scroll-restore guards whenever the album/instance changes.
   useEffect(() => {
-    const cached = Number.isFinite(albumId) ? getAlbumDetailSnapshot(albumId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
-    if (cached) {
-      setAlbum(cached.album);
-      setTracks(cached.tracks);
-      setTrackFiles(cached.trackFiles);
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
-    void loadData(Boolean(cached));
-  }, [loadData, albumId, instance]);
+  }, [albumId, instance]);
 
   useEffect(() => {
     if (loading || !album || hasRestoredScrollRef.current) return;
@@ -209,8 +177,11 @@ export default function AlbumDetailPage() {
       });
       if (res.ok) {
         const updated = { ...album, monitored: next };
-        setAlbum(updated);
-        if (Number.isFinite(albumId)) setAlbumDetailSnapshot(albumId, { album: updated, tracks, trackFiles }, instance);
+        queryClient.setQueryData(
+          ['lidarr', 'album', albumId],
+          (prev: { album: LidarrAlbum | null; tracks: LidarrTrack[]; trackFiles: LidarrTrackFile[] } | undefined) =>
+            prev ? { ...prev, album: updated } : prev,
+        );
         toast.success(next ? 'Now monitored' : 'Unmonitored');
       } else { toast.error('Failed to update'); }
     } catch { toast.error('Failed to update'); }
@@ -233,7 +204,7 @@ export default function AlbumDetailPage() {
       });
       if (res.ok) {
         toast.success('Release selected');
-        await loadData(true);
+        await albumQuery.refetch();
       } else { toast.error('Failed to select release'); }
     } catch { toast.error('Failed to select release'); }
     finally { setSelectingRelease(null); }

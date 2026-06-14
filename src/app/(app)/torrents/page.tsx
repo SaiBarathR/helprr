@@ -17,7 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
+import { useQuery } from '@tanstack/react-query';
+import { backoffRefetchInterval } from '@/lib/query-fetch';
 import {
   Drawer,
   DrawerContent,
@@ -549,9 +550,6 @@ export default function TorrentsPage() {
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [search, setSearch] = useState('');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
@@ -592,55 +590,50 @@ export default function TorrentsPage() {
   const [bulkSpeedDrawer, setBulkSpeedDrawer] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
-  const pollInFlightRef = useRef(false);
-  const pendingPollRef = useRef(false);
+  // When exactly one filter is active, push it to qBittorrent so the server slims
+  // the payload. Multi-select uses OR semantics the qBit `filter` param doesn't
+  // support, so we fetch all + filter client-side in that case. The signature is
+  // part of the query key so switching filters refetches immediately.
+  const filterSignature = filter.length === 1 ? filter[0] : filter.length === 0 ? '__all__' : '__multi__';
 
-  const fetchSummary = useCallback(async () => {
-    if (pollInFlightRef.current) {
-      pendingPollRef.current = true;
-      return;
-    }
-
-    pollInFlightRef.current = true;
-    const startedAt = performance.now();
-
-    try {
-      // When exactly one filter is active, push it to qBittorrent so the
-      // server slims the payload. Multi-select uses OR semantics that the
-      // qBit `filter` param doesn't support, so we still fetch all + filter
-      // client-side in that case.
+  const summaryQuery = useQuery({
+    queryKey: ['torrents', 'summary', filterSignature],
+    queryFn: async ({ signal }): Promise<QBittorrentSummaryResponse> => {
       const currentFilter = useUIStore.getState().torrentsFilter;
       const params = new URLSearchParams();
       if (currentFilter.length === 1) params.set('filter', currentFilter[0]);
       const qs = params.toString();
-      const res = await fetch(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary');
+      const res = await fetch(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary', { signal });
       if (!res.ok) throw new Error('Failed to fetch');
-
-      const data = await res.json() as QBittorrentSummaryResponse & { error?: string };
+      const data = (await res.json()) as QBittorrentSummaryResponse & { error?: string };
       if (data.error) throw new Error(data.error);
+      return data;
+    },
+    enabled: hasHydrated,
+    refetchInterval: backoffRefetchInterval(refreshIntervalMs),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const refetchSummary = summaryQuery.refetch;
 
-      setTorrents((prev) => mergeTorrents(prev, data.torrents));
-      setTransferInfo(data.transferInfo);
-      setSpeedLimitsMode(data.speedLimitsMode ?? 0);
-      setError(null);
-
-      const durationMs = performance.now() - startedAt;
-      console.info(`[perf][client] torrents summary ${durationMs.toFixed(1)}ms`, {
-        torrentCount: data.torrents.length,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch torrents');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-      pollInFlightRef.current = false;
-
-      if (pendingPollRef.current) {
-        pendingPollRef.current = false;
-        void fetchSummary();
-      }
+  // Merge new data into local state so polls preserve UI ordering/identity
+  // (mergeTorrents reconciles by hash instead of replacing the list wholesale).
+  useEffect(() => {
+    if (summaryQuery.data) {
+      setTorrents((prev) => mergeTorrents(prev, summaryQuery.data.torrents));
+      setTransferInfo(summaryQuery.data.transferInfo);
+      setSpeedLimitsMode(summaryQuery.data.speedLimitsMode ?? 0);
     }
-  }, []);
+  }, [summaryQuery.data]);
+
+  const loading = summaryQuery.isLoading;
+  const refreshing = summaryQuery.isFetching && !summaryQuery.isLoading;
+  const error = summaryQuery.isError
+    ? summaryQuery.error instanceof Error
+      ? summaryQuery.error.message
+      : 'Failed to fetch torrents'
+    : null;
 
   const fetchDetail = useCallback(async (hash: string) => {
     setDetailHash(hash);
@@ -675,33 +668,12 @@ export default function TorrentsPage() {
   }, []);
 
   useEffect(() => {
-    if (!hasHydrated || typeof window === 'undefined') return;
-
-    setLoading(true);
-    void fetchSummary();
-  }, [fetchSummary, hasHydrated]);
-
-  useEffect(() => {
     async function loadRefreshInterval() {
       const intervalMs = await getRefreshIntervalMs('torrentsRefreshIntervalSecs', 5);
       setRefreshIntervalMs(intervalMs);
     }
     loadRefreshInterval();
   }, []);
-
-  // Poll only while the tab is visible (pauses when backgrounded; refetches on
-  // return). fetchSummary keeps its own in-flight dedup.
-  useVisibleInterval(fetchSummary, refreshIntervalMs, { enabled: hasHydrated });
-
-  // Re-fetch immediately when the active filter signature changes, because the
-  // server-side filter only kicks in for single-select — switching needs a
-  // fresh payload rather than waiting for the next poll tick.
-  const filterSignature = filter.length === 1 ? filter[0] : filter.length === 0 ? '__all__' : '__multi__';
-  useEffect(() => {
-    if (!hasHydrated) return;
-    void fetchSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSignature, hasHydrated]);
 
   useEffect(() => {
     setSelectedTorrents((prev) => {
@@ -760,14 +732,14 @@ export default function TorrentsPage() {
       };
       toast.success(successMessage[action] ?? 'Action successful');
       setTimeout(() => {
-        void fetchSummary();
+        void refetchSummary();
       }, 500);
       return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Action failed');
       return false;
     }
-  }, [fetchSummary]);
+  }, [refetchSummary]);
 
   const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>) => {
     if (selectedTorrents.size === 0) return;
@@ -870,11 +842,11 @@ export default function TorrentsPage() {
       });
       if (!res.ok) throw new Error('Failed');
       toast.success('Alternative speed mode toggled');
-      setTimeout(() => void fetchSummary(), 300);
+      setTimeout(() => void refetchSummary(), 300);
     } catch {
       toast.error('Failed to toggle speed mode');
     }
-  }, [fetchSummary]);
+  }, [refetchSummary]);
 
   const filteredTorrents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1021,9 +993,7 @@ export default function TorrentsPage() {
               <button
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 onClick={() => {
-                  setRefreshing(true);
-                  if (torrents.length === 0) setLoading(true);
-                  void fetchSummary();
+                  void refetchSummary();
                 }}
                 aria-label="Refresh"
               >

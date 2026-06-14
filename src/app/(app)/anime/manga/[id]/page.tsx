@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ExternalLink } from 'lucide-react';
 import type { AniListMangaDetailResponse } from '@/types/anilist';
-import { getMangaDetailSnapshot, setMangaDetailSnapshot } from '@/lib/anilist-detail-cache';
+import { useQuery } from '@tanstack/react-query';
 import {
   getDetailViewState,
   setDetailViewState,
@@ -23,89 +23,42 @@ import {
   type DetailViewKey,
 } from '@/lib/detail-view-state';
 
-interface DetailState {
-  id: string;
-  detail: AniListMangaDetailResponse | null;
-  error: string | null;
-  loading: boolean;
-}
-
 export default function MangaDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const detailViewKey: DetailViewKey = `manga:${id}`;
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
-  const [state, setState] = useState<DetailState>(() => ({
-    id,
-    detail: getMangaDetailSnapshot(id)?.detail ?? null,
-    error: null,
-    loading: !getMangaDetailSnapshot(id)?.detail,
-  }));
+  // gcTime gives instant back-nav paint without the bespoke snapshot cache.
+  const detailQuery = useQuery({
+    queryKey: ['anime', 'manga', id],
+    queryFn: async ({ signal }): Promise<AniListMangaDetailResponse> => {
+      const res = await fetch(`/api/anime/manga/${id}`, { signal });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load');
+      }
+      return res.json() as Promise<AniListMangaDetailResponse>;
+    },
+    enabled: !!id,
+  });
+  const detail = detailQuery.data ?? null;
+  const loading = detailQuery.isLoading;
+  const error = detailQuery.isError
+    ? detailQuery.error instanceof Error
+      ? detailQuery.error.message
+      : 'Failed to load'
+    : null;
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
 
+  // Reset scroll-restore guards when navigating to a different manga.
   useEffect(() => {
-    const controller = new AbortController();
-    const cached = getMangaDetailSnapshot(id);
-
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
-    queueMicrotask(() => {
-      if (cached?.detail) {
-        setState({
-          id,
-          detail: cached.detail,
-          error: null,
-          loading: false,
-        });
-      } else {
-        setState({
-          id,
-          detail: null,
-          error: null,
-          loading: true,
-        });
-      }
-    });
-
-    fetch(`/api/anime/manga/${id}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'Failed to load');
-        }
-        return res.json();
-      })
-      .then((data: AniListMangaDetailResponse) => {
-        if (!controller.signal.aborted) {
-          setState({
-            id,
-            detail: data,
-            error: null,
-            loading: false,
-          });
-          setMangaDetailSnapshot(id, { detail: data });
-        }
-      })
-      .catch((e) => {
-        if (e instanceof DOMException && e.name === 'AbortError') return;
-        if (cached?.detail) {
-          setState((prev) => (prev.id === id ? { ...prev, loading: false } : prev));
-          return;
-        }
-        setState({
-          id,
-          detail: null,
-          error: e.message,
-          loading: false,
-        });
-      });
-
-    return () => controller.abort();
   }, [id]);
 
   useEffect(() => {
-    if (state.id !== id || state.loading || !state.detail || hasRestoredScrollRef.current) return;
+    if (loading || !detail || hasRestoredScrollRef.current) return;
     const saved = getDetailViewState(detailViewKey);
     if (!saved || saved.scrollY <= 0) {
       hasRestoredScrollRef.current = true;
@@ -125,7 +78,7 @@ export default function MangaDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [detailViewKey, id, state.detail, state.id, state.loading]);
+  }, [detailViewKey, loading, detail]);
 
   useEffect(() => {
     const persistScroll = () => {
@@ -149,10 +102,6 @@ export default function MangaDetailPage() {
       window.removeEventListener('pagehide', persistScroll);
     };
   }, [detailViewKey]);
-
-  const detail = state.id === id ? state.detail : null;
-  const loading = state.id === id ? state.loading : true;
-  const error = state.id === id ? state.error : null;
 
   if (loading) {
     return <><PageHeader className='-mx-2 md:-mx-6' title="Manga" /><PageSpinner /></>;

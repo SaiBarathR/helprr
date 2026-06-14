@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import {
   Server,
   Sliders,
@@ -16,6 +15,9 @@ import {
   Link2,
   Activity,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -28,40 +30,28 @@ interface ServiceCount {
 const SERVICE_TYPES = ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'SEERR'] as const;
 
 export default function SettingsIndexPage() {
-  const [serviceCount, setServiceCount] = useState<ServiceCount | null>(null);
   const me = useMe();
   const canInstances = hasCapability(me, 'settings.instances');
 
-  useEffect(() => {
-    if (!canInstances) return; // members can't read connections; skip the 403.
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch('/api/services');
-        if (!res.ok) return;
-        const data = (await res.json()) as Array<{ type?: string }>;
-        // Count distinct service TYPES that have at least one connection — a type
-        // with several instances (e.g. two Sonarr) still counts once, so the total
-        // can't exceed SERVICE_TYPES.length.
-        const configured = Array.isArray(data)
-          ? new Set(
-              data
-                .filter((c) => typeof c?.type === 'string' && (SERVICE_TYPES as readonly string[]).includes(c.type))
-                .map((c) => c.type)
-            ).size
-          : 0;
-        if (!cancelled) {
-          setServiceCount({ configured, total: SERVICE_TYPES.length });
-        }
-      } catch {
-        // noop
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [canInstances]);
+  // members can't read connections; skip the 403 with enabled.
+  const { data: serviceCount = null } = useQuery({
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<Array<{ type?: string }>>('/api/services'),
+    enabled: canInstances,
+    // Count distinct service TYPES that have at least one connection — a type
+    // with several instances (e.g. two Sonarr) still counts once, so the total
+    // can't exceed SERVICE_TYPES.length.
+    select: (data): ServiceCount => ({
+      configured: Array.isArray(data)
+        ? new Set(
+            data
+              .filter((c) => typeof c?.type === 'string' && (SERVICE_TYPES as readonly string[]).includes(c.type as string))
+              .map((c) => c.type)
+          ).size
+        : 0,
+      total: SERVICE_TYPES.length,
+    }),
+  });
 
   const instancesSubtitle = serviceCount
     ? `${serviceCount.configured} of ${serviceCount.total} connected`

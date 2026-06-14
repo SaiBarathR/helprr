@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUIStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/use-is-mobile';
@@ -95,6 +96,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
       // After a refresh triggered by the mismatch branch, the effect re-runs
       // here with matched devices — clear the spinner so the page becomes
       // interactive again.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the reload spinner once devices match
       setReloading(false);
       setDeviceCookie(detectedDevice);
       return;
@@ -110,7 +112,6 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [refreshDrawerOpen, setRefreshDrawerOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const { widgets, isDirty, setWidgets } = useDashboardLayout();
 
@@ -128,28 +129,37 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
     return () => setEditMode(false);
   }, [setEditMode]);
 
-  const handleSave = useCallback(async (): Promise<boolean> => {
-    setSaving(true);
-    try {
+  const saveMutation = useMutation({
+    mutationFn: async (nextWidgets: WidgetInstance[]) => {
       const res = await fetch(`/api/dashboard-layouts/${initialLayout.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ widgets }),
+        body: JSON.stringify({ widgets: nextWidgets }),
       });
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(payload?.error ?? 'Failed to save');
       }
+    },
+    onSuccess: () => {
       toast.success('Saved');
       router.refresh();
-      return true;
-    } catch (error) {
+    },
+    onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Failed to save');
+    },
+  });
+
+  const saving = saveMutation.isPending;
+
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    try {
+      await saveMutation.mutateAsync(widgets);
+      return true;
+    } catch {
       return false;
-    } finally {
-      setSaving(false);
     }
-  }, [initialLayout.id, widgets, router]);
+  }, [saveMutation, widgets]);
 
   const handleDiscard = useCallback(() => {
     setWidgets(initialLayout.widgets);

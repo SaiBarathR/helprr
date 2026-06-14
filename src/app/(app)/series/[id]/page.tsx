@@ -32,20 +32,18 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
-import type { SonarrSeries, SonarrEpisode, QualityProfile, RootFolder, Tag, DiscoverTvFullDetail, DiscoverSeasonDetailResponse } from '@/types';
+import type { SonarrSeries, SonarrEpisode, DiscoverTvFullDetail, DiscoverSeasonDetailResponse } from '@/types';
 import type {
   AniListDetailResponse,
   SeriesAniListEntryDetailResponse,
   SeriesAniListResponse,
 } from '@/types/anilist';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  getSeriesDetailSnapshot,
-  patchSeasonAcrossSnapshots,
-  setSeriesDetailSnapshot,
-  clearSeriesDetailSnapshot,
-} from '@/lib/series-route-cache';
-import { invalidateListData } from '@/lib/media-list-cache';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { episodesWithFileKey, tvSeasonKey } from '@/lib/series-query-cache';
+import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import {
   getDetailViewState,
@@ -71,6 +69,16 @@ interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
   crew: { id: number; name: string; profilePath: string | null; job: string }[];
 }
+
+// The anime query holds the mapping/primary detail (animeData) plus the lazily
+// accumulated per-tab details (detailsById) in one cache entry — both survive
+// back-nav via gcTime, mirroring the old snapshot's animeData + animeDetailsById.
+interface AnimePayload {
+  animeData: SeriesAniListResponse;
+  detailsById: Map<number, AniListDetailResponse>;
+}
+
+const EMPTY_ANIME_DETAILS: Map<number, AniListDetailResponse> = new Map();
 
 function formatCountdown(seconds: number): string {
   const days = Math.floor(seconds / 86400);
@@ -152,7 +160,7 @@ export default function SeriesDetailPage() {
   const router = useRouter();
   const seriesId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const initialSnapshot = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId, instance) : null;
+  const queryClient = useQueryClient();
   const detailViewKey: DetailViewKey = `series:${seriesId}`;
   const currentSeriesIdRef = useRef(seriesId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
@@ -161,10 +169,26 @@ export default function SeriesDetailPage() {
   // The on-screen AniList entry — read by the background refresh interval.
   const activeAnimeEntryIdRef = useRef<number | null>(null);
   currentSeriesIdRef.current = seriesId;
-  const [series, setSeries] = useState<SonarrSeries | null>(() => initialSnapshot?.series ?? null);
-  const [episodes, setEpisodes] = useState<SonarrEpisode[]>(() => initialSnapshot?.episodes ?? []);
-  const [loading, setLoading] = useState(() => !initialSnapshot);
-  const [refreshing, setRefreshing] = useState(false);
+
+  // Series + episodes: TanStack's gcTime gives instant back-nav paint without a
+  // bespoke snapshot, and these are shared keys (queryKeys.detail / .episodes) so
+  // a monitor change on the season or episode view reflects here and vice-versa.
+  const seriesQuery = useQuery({
+    queryKey: queryKeys.detail('sonarr', seriesId, instance),
+    queryFn: jsonFetcher<SonarrSeries | null>(`/api/sonarr/${seriesId}`, instance),
+    enabled: Number.isFinite(seriesId),
+  });
+  const series = seriesQuery.data ?? null;
+  const episodesQuery = useQuery({
+    queryKey: queryKeys.episodes(seriesId, instance),
+    queryFn: jsonFetcher<SonarrEpisode[]>(`/api/sonarr/${seriesId}/episodes`, instance),
+    enabled: Number.isFinite(seriesId),
+    select: ensureArray,
+  });
+  const episodes = episodesQuery.data ?? [];
+  const loading = seriesQuery.isLoading || episodesQuery.isLoading;
+  const refreshing = seriesQuery.isFetching || episodesQuery.isFetching;
+
   const [showDelete, setShowDelete] = useState(false);
   const [showMonitorEdit, setShowMonitorEdit] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
@@ -175,14 +199,6 @@ export default function SeriesDetailPage() {
   const externalUrls = useExternalUrls();
   const sonarrExternalUrl = useExternalUrlResolver()('SONARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
-  const [credits, setCredits] = useState<SeriesCredits>(() => initialSnapshot?.credits ?? { cast: [], crew: [] });
-  const [tmdbData, setTmdbData] = useState<DiscoverTvFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
-  const [animeData, setAnimeData] = useState<SeriesAniListResponse | null>(() => initialSnapshot?.animeData ?? null);
-  const [animeLoading, setAnimeLoading] = useState(false);
-  // Per-tab AniList details, fetched lazily on tab select (keyed by anilistMediaId).
-  const [animeDetailsById, setAnimeDetailsById] = useState<Map<number, AniListDetailResponse>>(
-    () => initialSnapshot?.animeDetailsById ?? new Map()
-  );
   const [activeDetailLoading, setActiveDetailLoading] = useState(false);
   // Full detail set hydrated when the remap drawer opens (suggestions need every entry's relations).
   const [drawerDetails, setDrawerDetails] = useState<AniListDetailResponse[] | null>(null);
@@ -193,9 +209,6 @@ export default function SeriesDetailPage() {
   const [expandedAnimeTabId, setExpandedAnimeTabId] = useState<number | null>(null);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
-  const [seasonEpisodes, setSeasonEpisodes] = useState<Map<number, DiscoverSeasonDetailResponse>>(
-    () => initialSnapshot?.seasonEpisodes ?? new Map()
-  );
   const [animeNowMs, setAnimeNowMs] = useState(() => Date.now());
 
   const canManageActivity = useCan('activity.manage');
@@ -222,14 +235,62 @@ export default function SeriesDetailPage() {
     { value: 'none', label: 'None' },
   ];
 
-  // Reference data
-  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>(
-    () => initialSnapshot?.qualityProfiles ?? []
-  );
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>(
-    () => initialSnapshot?.rootFolders ?? []
-  );
-  const [tags, setTags] = useState<Tag[]>(() => initialSnapshot?.tags ?? []);
+  // Reference data — shared (and deduped) with the list / edit / add pages.
+  const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance);
+  const { data: rootFolders = [] } = useRootFolders('sonarr', instance);
+  const { data: tags = [] } = useTags('sonarr', instance);
+
+  // AniList payload (anime series only). The lazy per-tab fetches, background
+  // refresh, remap hydration and resync all merge into this one cache entry via
+  // queryClient.setQueryData (see below) instead of bespoke snapshot writes.
+  const animeKey = queryKeys.anime(seriesId, instance);
+  const animeQuery = useQuery({
+    queryKey: animeKey,
+    queryFn: async ({ signal }): Promise<AnimePayload> => {
+      const res = await sonarrFetch(instance, `/api/sonarr/${seriesId}/anime`, { signal });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'Failed to load AniList details');
+      }
+      const data: SeriesAniListResponse = await res.json();
+      const detailsById = new Map<number, AniListDetailResponse>();
+      for (const detail of data.details) detailsById.set(detail.id, detail);
+      return { animeData: data, detailsById };
+    },
+    enabled: Number.isFinite(seriesId) && !!series?.id && series.seriesType === 'anime',
+  });
+  const animeData = animeQuery.data?.animeData ?? null;
+  const animeDetailsById = animeQuery.data?.detailsById ?? EMPTY_ANIME_DETAILS;
+  const animeLoading = animeQuery.isLoading;
+
+  // Surface AniList load failures as a toast (parity with the old fetch's catch).
+  useEffect(() => {
+    if (animeQuery.isError) {
+      toast.error(animeQuery.error instanceof Error ? animeQuery.error.message : 'Failed to load AniList details');
+    }
+  }, [animeQuery.isError, animeQuery.error]);
+
+  // Anime with no AniList match (auto-unmatched or manually unmapped) fall back to
+  // TMDB series-level enrichment like normal shows. Episode-level TMDB data stays
+  // disabled for anime regardless — episode orders rarely line up with TMDB.
+  const animeTmdbFallback = series?.seriesType === 'anime' && animeData !== null && animeData.mapping.entries.length === 0;
+  const wantsTmdbEnrichment = !!series && (series.seriesType !== 'anime' || animeTmdbFallback);
+
+  // Cast/crew + TMDB enrichment — only for non-anime (or the unmatched-anime fallback).
+  const creditsQuery = useQuery({
+    queryKey: queryKeys.credits('sonarr', seriesId, instance),
+    queryFn: jsonFetcher<SeriesCredits>(`/api/sonarr/${seriesId}/credits`, instance),
+    enabled: wantsTmdbEnrichment,
+    staleTime: 5 * 60_000,
+  });
+  const credits = creditsQuery.data ?? { cast: [], crew: [] };
+  const tmdbQuery = useQuery({
+    queryKey: ['discover', 'tv', series?.tmdbId],
+    queryFn: jsonFetcher<DiscoverTvFullDetail | null>(`/api/discover/tv/${series?.tmdbId}`),
+    enabled: wantsTmdbEnrichment && !!series?.tmdbId,
+    staleTime: 30 * 60_000,
+  });
+  const tmdbData = tmdbQuery.data ?? null;
 
   const getCurrentScrollY = useCallback(() => {
     const content = contentScrollRef.current;
@@ -242,114 +303,15 @@ export default function SeriesDetailPage() {
     return window.scrollY;
   }, []);
 
-  const persistSeriesSnapshot = useCallback((next: {
-    series?: SonarrSeries | null;
-    episodes?: SonarrEpisode[];
-    qualityProfiles?: QualityProfile[];
-    rootFolders?: RootFolder[];
-    tags?: Tag[];
-    animeData?: SeriesAniListResponse | null;
-    animeDetailsById?: Map<number, AniListDetailResponse>;
-    tmdbData?: DiscoverTvFullDetail | null;
-    credits?: SeriesCredits;
-    seasonEpisodes?: Map<number, DiscoverSeasonDetailResponse>;
-  } = {}) => {
-    if (!Number.isFinite(seriesId)) return;
-    setSeriesDetailSnapshot(seriesId, {
-      series: next.series ?? series,
-      episodes: next.episodes ?? episodes,
-      qualityProfiles: next.qualityProfiles ?? qualityProfiles,
-      rootFolders: next.rootFolders ?? rootFolders,
-      tags: next.tags ?? tags,
-      animeData: next.animeData ?? animeData,
-      animeDetailsById: next.animeDetailsById ?? animeDetailsById,
-      tmdbData: next.tmdbData ?? tmdbData,
-      credits: next.credits ?? credits,
-      seasonEpisodes: next.seasonEpisodes ?? seasonEpisodes,
-    }, instance);
-  }, [animeData, animeDetailsById, credits, episodes, instance, qualityProfiles, rootFolders, seasonEpisodes, series, seriesId, tags, tmdbData]);
-
-  const loadData = useCallback(async (hasCachedData: boolean) => {
-    if (!Number.isFinite(seriesId)) {
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
-    const activeSeriesId = seriesId;
-
-    try {
-      const [nextSeries, nextEpisodes, nextQualityProfiles, nextRootFolders, nextTags] = await Promise.all([
-        sonarrFetch(instance, `/api/sonarr/${seriesId}`).then((r) => r.ok ? r.json() : null),
-        sonarrFetch(instance, `/api/sonarr/${seriesId}/episodes`).then((r) => r.ok ? r.json() : []),
-        sonarrFetch(instance, '/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-        sonarrFetch(instance, '/api/sonarr/rootfolders').then((r) => r.ok ? r.json() : []),
-        sonarrFetch(instance, '/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
-      ]);
-
-      if (activeSeriesId !== currentSeriesIdRef.current) return;
-
-      const existingSnapshot = getSeriesDetailSnapshot(seriesId, instance);
-      setSeries(nextSeries);
-      setEpisodes(nextEpisodes);
-      setQualityProfiles(nextQualityProfiles);
-      setRootFolders(nextRootFolders);
-      setTags(nextTags);
-
-      setSeriesDetailSnapshot(seriesId, {
-        series: nextSeries,
-        episodes: nextEpisodes,
-        qualityProfiles: nextQualityProfiles,
-        rootFolders: nextRootFolders,
-        tags: nextTags,
-        animeData: existingSnapshot?.animeData ?? null,
-        animeDetailsById: existingSnapshot?.animeDetailsById,
-        tmdbData: existingSnapshot?.tmdbData ?? null,
-        credits: existingSnapshot?.credits,
-        seasonEpisodes: existingSnapshot?.seasonEpisodes,
-      }, instance);
-    } catch {
-      if (activeSeriesId !== currentSeriesIdRef.current) return;
-
-      if (!hasCachedData) {
-        setSeries(null);
-        setEpisodes([]);
-        setQualityProfiles([]);
-        setRootFolders([]);
-        setTags([]);
-      }
-    } finally {
-      if (activeSeriesId !== currentSeriesIdRef.current) return;
-
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [seriesId, instance]);
-
+  // Reset scroll-restore guards and per-series UI state whenever the series /
+  // instance changes (Next keeps this component mounted across param changes, so
+  // this can't rely on a remount).
   useEffect(() => {
-    const cached = Number.isFinite(seriesId) ? getSeriesDetailSnapshot(seriesId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
-
-    if (cached) {
-      setSeries(cached.series);
-      setEpisodes(cached.episodes);
-      setQualityProfiles(cached.qualityProfiles);
-      setRootFolders(cached.rootFolders);
-      setTags(cached.tags);
-      setAnimeData(cached.animeData ?? null);
-      setTmdbData(cached.tmdbData ?? null);
-      setCredits(cached.credits ?? { cast: [], crew: [] });
-      setSeasonEpisodes(cached.seasonEpisodes ?? new Map());
-      setLoading(false);
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-      setRefreshing(false);
-    }
-
-    void loadData(Boolean(cached));
-  }, [loadData, seriesId, instance]);
+    setExpandedSeasons(new Set());
+    setDrawerDetails(null);
+  }, [seriesId, instance]);
 
   useEffect(() => {
     if (loading || !series || hasRestoredScrollRef.current) return;
@@ -412,159 +374,6 @@ export default function SeriesDetailPage() {
   }, [detailViewKey, getCurrentScrollY, loading, series]);
 
   useEffect(() => {
-    setExpandedSeasons(new Set());
-    if (!getSeriesDetailSnapshot(seriesId, instance)?.seasonEpisodes) {
-      setSeasonEpisodes(new Map());
-    }
-  }, [seriesId, instance]);
-
-  // Anime with no AniList match (auto-unmatched or manually unmapped) fall back to
-  // TMDB series-level enrichment like normal shows. Episode-level TMDB data stays
-  // disabled for anime regardless — episode orders rarely line up with TMDB.
-  const animeTmdbFallback = series?.seriesType === 'anime' && animeData !== null && animeData.mapping.entries.length === 0;
-
-  useEffect(() => {
-    if (!Number.isFinite(seriesId) || !series?.id || (series.seriesType === 'anime' && !animeTmdbFallback)) {
-      setCredits({ cast: [], crew: [] });
-      return;
-    }
-
-    if (!getSeriesDetailSnapshot(seriesId, instance)?.credits) {
-      setCredits({ cast: [], crew: [] });
-    }
-    const controller = new AbortController();
-    sonarrFetch(instance, `/api/sonarr/${seriesId}/credits`, { signal: controller.signal })
-      .then((r) => r.ok ? r.json() : { cast: [], crew: [] })
-      .then((data: SeriesCredits) => {
-        setCredits(data);
-        const cached = getSeriesDetailSnapshot(seriesId, instance);
-        setSeriesDetailSnapshot(seriesId, {
-          series: cached?.series ?? null,
-          episodes: cached?.episodes ?? [],
-          qualityProfiles: cached?.qualityProfiles ?? [],
-          rootFolders: cached?.rootFolders ?? [],
-          tags: cached?.tags ?? [],
-          animeData: cached?.animeData ?? null,
-          animeDetailsById: cached?.animeDetailsById,
-          tmdbData: cached?.tmdbData ?? null,
-          credits: data,
-          seasonEpisodes: cached?.seasonEpisodes,
-        }, instance);
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-      });
-
-    return () => {
-      controller.abort();
-    };
-  }, [animeTmdbFallback, series?.id, series?.seriesType, seriesId, instance]);
-
-  // Background-fetch TMDB enrichment data
-  useEffect(() => {
-    if (!series?.tmdbId || (series.seriesType === 'anime' && !animeTmdbFallback)) {
-      setTmdbData(null);
-      return;
-    }
-    const controller = new AbortController();
-    if (!getSeriesDetailSnapshot(seriesId, instance)?.tmdbData) {
-      setTmdbData(null);
-    }
-    fetch(`/api/discover/tv/${series.tmdbId}`, { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: DiscoverTvFullDetail | null) => {
-        setTmdbData(data);
-        const cached = getSeriesDetailSnapshot(seriesId, instance);
-        setSeriesDetailSnapshot(seriesId, {
-          series: cached?.series ?? null,
-          episodes: cached?.episodes ?? [],
-          qualityProfiles: cached?.qualityProfiles ?? [],
-          rootFolders: cached?.rootFolders ?? [],
-          tags: cached?.tags ?? [],
-          animeData: cached?.animeData ?? null,
-          animeDetailsById: cached?.animeDetailsById,
-          tmdbData: data,
-          credits: cached?.credits,
-          seasonEpisodes: cached?.seasonEpisodes,
-        }, instance);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setTmdbData((prev) => prev ?? null);
-      });
-    return () => controller.abort();
-  }, [animeTmdbFallback, series?.seriesType, series?.tmdbId, seriesId, instance]);
-
-  useEffect(() => {
-    if (!series?.id || series.seriesType !== 'anime') {
-      setAnimeData(null);
-      setAnimeDetailsById(new Map());
-      setDrawerDetails(null);
-      setAnimeLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    const cached = getSeriesDetailSnapshot(seriesId, instance);
-    setDrawerDetails(null);
-    if (cached?.animeData) {
-      setAnimeData(cached.animeData);
-      setAnimeDetailsById(cached.animeDetailsById ?? new Map());
-      setAnimeLoading(false);
-    } else {
-      setAnimeData(null);
-      setAnimeDetailsById(new Map());
-      setAnimeLoading(true);
-    }
-
-    // Lazy page load: the default GET returns the mapping + primary detail only;
-    // other seasons fetch when their tab is selected.
-    sonarrFetch(instance, `/api/sonarr/${series.id}/anime`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(data.error || 'Failed to load AniList details');
-        }
-        return response.json();
-      })
-      .then((data: SeriesAniListResponse) => {
-        if (!controller.signal.aborted) {
-          setAnimeData(data);
-          const current = getSeriesDetailSnapshot(seriesId, instance);
-          const nextDetailsById = new Map(current?.animeDetailsById ?? []);
-          for (const detail of data.details) nextDetailsById.set(detail.id, detail);
-          setAnimeDetailsById(nextDetailsById);
-          setSeriesDetailSnapshot(seriesId, {
-            series: current?.series ?? null,
-            episodes: current?.episodes ?? [],
-            qualityProfiles: current?.qualityProfiles ?? [],
-            rootFolders: current?.rootFolders ?? [],
-            tags: current?.tags ?? [],
-            animeData: data,
-            animeDetailsById: nextDetailsById,
-            tmdbData: current?.tmdbData ?? null,
-            credits: current?.credits,
-            seasonEpisodes: current?.seasonEpisodes,
-          }, instance);
-        }
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return;
-        if (!controller.signal.aborted) {
-          if (!cached?.animeData) setAnimeData(null);
-          toast.error(error instanceof Error ? error.message : 'Failed to load AniList details');
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setAnimeLoading(false);
-        }
-      });
-
-    return () => controller.abort();
-  }, [series?.id, series?.seriesType, seriesId, instance]);
-
-  useEffect(() => {
     if (series?.seriesType !== 'anime' || !series?.id) return;
 
     let cancelled = false;
@@ -581,22 +390,12 @@ export default function SeriesDetailPage() {
         if (cancelled) return;
 
         if (data.detail) {
-          const cached = getSeriesDetailSnapshot(seriesId, instance);
-          const nextDetailsById = new Map(cached?.animeDetailsById ?? []).set(entryId, data.detail);
-          setAnimeData((prev) => (prev ? { ...prev, mapping: data.mapping } : prev));
-          setAnimeDetailsById(nextDetailsById);
-          setSeriesDetailSnapshot(seriesId, {
-            series: cached?.series ?? null,
-            episodes: cached?.episodes ?? [],
-            qualityProfiles: cached?.qualityProfiles ?? [],
-            rootFolders: cached?.rootFolders ?? [],
-            tags: cached?.tags ?? [],
-            animeData: cached?.animeData ? { ...cached.animeData, mapping: data.mapping } : null,
-            animeDetailsById: nextDetailsById,
-            tmdbData: cached?.tmdbData ?? null,
-            credits: cached?.credits,
-            seasonEpisodes: cached?.seasonEpisodes,
-          }, instance);
+          const detail = data.detail;
+          queryClient.setQueryData<AnimePayload>(queryKeys.anime(seriesId, instance), (prev) => {
+            if (!prev) return prev;
+            const detailsById = new Map(prev.detailsById).set(entryId, detail);
+            return { animeData: { ...prev.animeData, mapping: data.mapping }, detailsById };
+          });
           return;
         }
 
@@ -606,24 +405,12 @@ export default function SeriesDetailPage() {
         const fullData: SeriesAniListResponse = await full.json();
         if (cancelled) return;
         setActiveAnimeTab(0);
-        setAnimeData(fullData);
-        const current = getSeriesDetailSnapshot(seriesId, instance);
-        const nextDetailsById = new Map(current?.animeDetailsById ?? []);
-        nextDetailsById.delete(entryId);
-        for (const detail of fullData.details) nextDetailsById.set(detail.id, detail);
-        setAnimeDetailsById(nextDetailsById);
-        setSeriesDetailSnapshot(seriesId, {
-          series: current?.series ?? null,
-          episodes: current?.episodes ?? [],
-          qualityProfiles: current?.qualityProfiles ?? [],
-          rootFolders: current?.rootFolders ?? [],
-          tags: current?.tags ?? [],
-          animeData: fullData,
-          animeDetailsById: nextDetailsById,
-          tmdbData: current?.tmdbData ?? null,
-          credits: current?.credits,
-          seasonEpisodes: current?.seasonEpisodes,
-        }, instance);
+        queryClient.setQueryData<AnimePayload>(queryKeys.anime(seriesId, instance), (prev) => {
+          const detailsById = new Map(prev?.detailsById ?? []);
+          detailsById.delete(entryId);
+          for (const detail of fullData.details) detailsById.set(detail.id, detail);
+          return { animeData: fullData, detailsById };
+        });
       } catch {
         // Keep the current detail on background refresh failures.
       }
@@ -647,7 +434,7 @@ export default function SeriesDetailPage() {
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [series?.id, series?.seriesType, seriesId, instance]);
+  }, [series?.id, series?.seriesType, seriesId, instance, queryClient]);
 
   useEffect(() => {
     setAnimeNowMs(Date.now());
@@ -678,30 +465,18 @@ export default function SeriesDetailPage() {
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
         setDrawerDetails(data.details);
-        setAnimeData(data);
-        const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
-        const nextDetailsById = new Map(cached?.animeDetailsById ?? []);
-        for (const detail of data.details) nextDetailsById.set(detail.id, detail);
-        setAnimeDetailsById(nextDetailsById);
-        setSeriesDetailSnapshot(activeSeriesId, {
-          series: cached?.series ?? null,
-          episodes: cached?.episodes ?? [],
-          qualityProfiles: cached?.qualityProfiles ?? [],
-          rootFolders: cached?.rootFolders ?? [],
-          tags: cached?.tags ?? [],
-          animeData: data,
-          animeDetailsById: nextDetailsById,
-          tmdbData: cached?.tmdbData ?? null,
-          credits: cached?.credits,
-          seasonEpisodes: cached?.seasonEpisodes,
-        }, instance);
+        queryClient.setQueryData<AnimePayload>(queryKeys.anime(activeSeriesId, instance), (prev) => {
+          const detailsById = new Map(prev?.detailsById ?? []);
+          for (const detail of data.details) detailsById.set(detail.id, detail);
+          return { animeData: data, detailsById };
+        });
       })
       .catch(() => {
         // Drawer falls back to whichever details are already loaded.
       });
 
     return () => controller.abort();
-  }, [showAniListRemap, series?.id, series?.seriesType, seriesId, instance]);
+  }, [showAniListRemap, series?.id, series?.seriesType, seriesId, instance, queryClient]);
 
   // Lazy per-tab detail fetch. The page-load GET only returns the primary;
   // other seasons load (and validate) here on first select.
@@ -717,15 +492,14 @@ export default function SeriesDetailPage() {
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
         if (data.detail) {
-          const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
-          // Merge into the snapshot's copy (not the render-time closure) so a
-          // remap that landed while this fetch was in flight isn't clobbered.
-          const baseAnime = cached?.animeData ?? animeData;
-          const nextAnime = baseAnime ? { ...baseAnime, mapping: data.mapping } : baseAnime;
-          const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById).set(entryId, data.detail);
-          setAnimeData((prev) => (prev ? { ...prev, mapping: data.mapping } : prev));
-          setAnimeDetailsById(nextDetailsById);
-          persistSeriesSnapshot({ animeData: nextAnime, animeDetailsById: nextDetailsById });
+          const detail = data.detail;
+          // Merge into the cached copy (functional updater) so a remap that landed
+          // while this fetch was in flight isn't clobbered.
+          queryClient.setQueryData<AnimePayload>(queryKeys.anime(activeSeriesId, instance), (prev) => {
+            if (!prev) return prev;
+            const detailsById = new Map(prev.detailsById).set(entryId, detail);
+            return { animeData: { ...prev.animeData, mapping: data.mapping }, detailsById };
+          });
         } else {
           // The entry no longer exists server-side (pruned) — resync everything.
           void resyncAnimeMapping();
@@ -749,51 +523,24 @@ export default function SeriesDetailPage() {
       const data: SeriesAniListResponse = await res.json();
       if (activeSeriesId !== currentSeriesIdRef.current) return;
       setActiveAnimeTab(0);
-      setAnimeData(data);
-      const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
-      const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById);
-      for (const detail of data.details) nextDetailsById.set(detail.id, detail);
-      setAnimeDetailsById(nextDetailsById);
+      queryClient.setQueryData<AnimePayload>(queryKeys.anime(activeSeriesId, instance), (prev) => {
+        const detailsById = new Map(prev?.detailsById ?? []);
+        for (const detail of data.details) detailsById.set(detail.id, detail);
+        return { animeData: data, detailsById };
+      });
       setDrawerDetails(data.details);
-      persistSeriesSnapshot({ animeData: data, animeDetailsById: nextDetailsById });
     } catch {
       // Best-effort resync.
     }
   }
 
+  // Toggle the expand state only — the per-season TMDB episode list is fetched
+  // (and cached, so re-expand is instant) by the <ExpandedSeasonEpisodes> child.
   function toggleSeasonExpand(seasonNumber: number) {
     setExpandedSeasons((prev) => {
       const next = new Set(prev);
-      if (next.has(seasonNumber)) {
-        next.delete(seasonNumber);
-      } else {
-        next.add(seasonNumber);
-        if (!seasonEpisodes.has(seasonNumber) && series?.tmdbId) {
-          const activeSeriesId = seriesId;
-          fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((data: DiscoverSeasonDetailResponse | null) => {
-              if (data && activeSeriesId === currentSeriesIdRef.current) {
-                const cached = getSeriesDetailSnapshot(activeSeriesId, instance);
-                const nextSeasonEpisodes = new Map(cached?.seasonEpisodes ?? seasonEpisodes).set(seasonNumber, data);
-                setSeasonEpisodes(nextSeasonEpisodes);
-                setSeriesDetailSnapshot(activeSeriesId, {
-                  series: cached?.series ?? series,
-                  episodes: cached?.episodes ?? episodes,
-                  qualityProfiles: cached?.qualityProfiles ?? qualityProfiles,
-                  rootFolders: cached?.rootFolders ?? rootFolders,
-                  tags: cached?.tags ?? tags,
-                  animeData: cached?.animeData ?? animeData,
-                  animeDetailsById: cached?.animeDetailsById ?? animeDetailsById,
-                  tmdbData: cached?.tmdbData ?? tmdbData,
-                  credits: cached?.credits ?? credits,
-                  seasonEpisodes: nextSeasonEpisodes,
-                }, instance);
-              }
-            })
-            .catch(() => { });
-        }
-      }
+      if (next.has(seasonNumber)) next.delete(seasonNumber);
+      else next.add(seasonNumber);
       return next;
     });
   }
@@ -833,35 +580,18 @@ export default function SeriesDetailPage() {
   }
 
   function handleAniListUpdated(next: SeriesAniListResponse) {
-    setAnimeData(next);
     setAnimeOverviewExpanded(false);
     setActiveAnimeTab(0);
-    // Mutation responses carry the full detail set — refresh the lazy map and
-    // the drawer's hydrated copy in one go.
-    const cached = getSeriesDetailSnapshot(seriesId, instance);
-    const nextDetailsById = new Map(cached?.animeDetailsById ?? animeDetailsById);
-    for (const detail of next.details) nextDetailsById.set(detail.id, detail);
-    setAnimeDetailsById(nextDetailsById);
+    // Mutation responses carry the full detail set — merge into the cached map and
+    // refresh the drawer's hydrated copy in one go. When a match now exists the
+    // TMDB fallback queries auto-disable (animeTmdbFallback flips false), so there
+    // is nothing to clear manually.
+    queryClient.setQueryData<AnimePayload>(animeKey, (prev) => {
+      const detailsById = new Map(prev?.detailsById ?? []);
+      for (const detail of next.details) detailsById.set(detail.id, detail);
+      return { animeData: next, detailsById };
+    });
     setDrawerDetails(next.details);
-    if (next.mapping.entries.length > 0) {
-      // A match now exists — drop the TMDB fallback data (state + snapshot).
-      setTmdbData(null);
-      setCredits({ cast: [], crew: [] });
-      setSeriesDetailSnapshot(seriesId, {
-        series: cached?.series ?? series,
-        episodes: cached?.episodes ?? episodes,
-        qualityProfiles: cached?.qualityProfiles ?? qualityProfiles,
-        rootFolders: cached?.rootFolders ?? rootFolders,
-        tags: cached?.tags ?? tags,
-        animeData: next,
-        animeDetailsById: nextDetailsById,
-        tmdbData: null,
-        credits: { cast: [], crew: [] },
-        seasonEpisodes: cached?.seasonEpisodes,
-      }, instance);
-    } else {
-      persistSeriesSnapshot({ animeData: next, animeDetailsById: nextDetailsById });
-    }
     toast.success(
       next.mapping.state === 'MANUAL_NONE'
         ? 'AniList mapping cleared'
@@ -896,12 +626,10 @@ export default function SeriesDetailPage() {
       });
       if (res.ok) {
         const updated: SonarrSeries = await res.json();
-        setSeries(updated);
-        persistSeriesSnapshot({ series: updated });
-        for (const season of updated.seasons) {
-          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season, instance);
-        }
-        invalidateListData('series');
+        // The series object is the single shared key — writing it here reflects on
+        // the season + episode views (which read the same key) automatically.
+        queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
     } catch { toast.error('Failed to update'); }
@@ -924,13 +652,8 @@ export default function SeriesDetailPage() {
       });
       if (res.ok) {
         const updated: SonarrSeries = await res.json();
-        setSeries(updated);
-        persistSeriesSnapshot({ series: updated });
-        const updatedSeason = updated.seasons.find((s) => s.seasonNumber === seasonNumber);
-        if (updatedSeason) {
-          patchSeasonAcrossSnapshots(updated.id, seasonNumber, () => updatedSeason, instance);
-        }
-        invalidateListData('series');
+        queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
         toast.success(`Season ${seasonNumber} ${monitored ? 'monitored' : 'unmonitored'}`);
       }
     } catch { toast.error('Failed to update season'); }
@@ -983,12 +706,8 @@ export default function SeriesDetailPage() {
       });
       if (updateRes.ok) {
         const updated: SonarrSeries = await updateRes.json();
-        setSeries(updated);
-        persistSeriesSnapshot({ series: updated });
-        for (const season of updated.seasons) {
-          patchSeasonAcrossSnapshots(updated.id, season.seasonNumber, () => season, instance);
-        }
-        invalidateListData('series');
+        queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
         toast.success(`Monitor set to: ${MONITOR_OPTIONS.find((o) => o.value === monitorOption)?.label}`);
         setShowMonitorEdit(false);
       } else {
@@ -1011,8 +730,8 @@ export default function SeriesDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('sonarr', command.id, instance) : 'completed';
-      invalidateListData('series');
-      await loadData(true);
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      await Promise.all([seriesQuery.refetch(), episodesQuery.refetch()]);
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
@@ -1025,8 +744,12 @@ export default function SeriesDetailPage() {
     setDeleting(true);
     try {
       await sonarrFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
-      invalidateListData('series');
-      clearSeriesDetailSnapshot(series.id, instance);
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      queryClient.removeQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
+      queryClient.removeQueries({ queryKey: queryKeys.episodes(series.id, instance) });
+      queryClient.removeQueries({ queryKey: episodesWithFileKey(series.id, instance) });
+      queryClient.removeQueries({ queryKey: queryKeys.anime(series.id, instance) });
+      queryClient.removeQueries({ queryKey: queryKeys.credits('sonarr', series.id, instance) });
       toast.success('Series deleted');
       router.push('/series');
     } catch { toast.error('Delete failed'); }
@@ -1723,7 +1446,6 @@ export default function SeriesDetailPage() {
               const isAnime = series.seriesType === 'anime';
               const tmdbSeason = isAnime ? undefined : tmdbData?.seasons?.find((s) => s.seasonNumber === sn);
               const isExpanded = expandedSeasons.has(sn);
-              const epData = seasonEpisodes.get(sn);
 
               return (
                 <div key={sn} className="border-b border-border/50">
@@ -1783,76 +1505,14 @@ export default function SeriesDetailPage() {
                     )}
                   </div>
                   {/* Expanded episode cards */}
-                  {isExpanded && (
-                    <div className="pb-3 pl-2">
-                      {epData ? (
-                        epData.episodes.map((ep) => {
-                          const sonarrEp = seasonEps.find((e) => e.episodeNumber === ep.episodeNumber);
-                          const episodeHref = sonarrEp
-                            ? `/series/${id}/season/${sn}/episode/${sonarrEp.id}${instance ? `?instance=${instance}` : ''}`
-                            : null;
-
-                          const content = (
-                            <>
-                              {ep.stillPath && (
-                                <div className="relative w-[90px] h-[50px] rounded overflow-hidden shrink-0 bg-muted">
-                                  <Image
-                                    src={toCachedImageSrc(ep.stillPath, 'tmdb') || ep.stillPath}
-                                    alt=""
-                                    fill
-                                    sizes="90px"
-                                    className="object-cover"
-                                    unoptimized
-                                  />
-                                </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <p className="text-sm font-medium line-clamp-1">E{ep.episodeNumber} &middot; {ep.name}</p>
-                                  {sonarrEp?.hasFile && (
-                                    <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="Downloaded" />
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                                  {ep.airDate && <span>{format(new Date(ep.airDate), 'MMM d, yyyy')}</span>}
-                                  {ep.runtime && <span>{ep.runtime}m</span>}
-                                  {ep.voteAverage > 0 && (
-                                    <span className="inline-flex items-center gap-0.5">
-                                      <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
-                                      {ep.voteAverage.toFixed(1)}
-                                    </span>
-                                  )}
-                                </div>
-                                {ep.overview && <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{ep.overview}</p>}
-                              </div>
-                              {episodeHref && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 self-center" />}
-                            </>
-                          );
-
-                          return episodeHref ? (
-                            <Link
-                              key={ep.id}
-                              href={episodeHref}
-                              className="flex gap-3 py-2 border-t border-border/20 active:bg-muted/50 transition-colors"
-                            >
-                              {content}
-                            </Link>
-                          ) : (
-                            <div
-                              key={ep.id}
-                              className="flex gap-3 py-2 border-t border-border/20"
-                            >
-                              {content}
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Loading episodes...
-                        </div>
-                      )}
-                    </div>
+                  {isExpanded && series.tmdbId && (
+                    <ExpandedSeasonEpisodes
+                      tmdbId={series.tmdbId}
+                      seasonNumber={sn}
+                      seasonEps={seasonEps}
+                      seriesRouteId={String(id)}
+                      instance={instance}
+                    />
                   )}
                 </div>
               );
@@ -2374,6 +2034,102 @@ export default function SeriesDetailPage() {
         mediaId={series.id}
         mediaTitle={series.title}
       />
+    </div>
+  );
+}
+
+// TMDB episode list for an expanded (non-anime) season. Mounted only while the
+// season is expanded; its useQuery caches per-(tmdbId, season) so re-expanding —
+// or navigating to the season page (which shares tvSeasonKey) — is an instant
+// cache hit instead of a refetch.
+function ExpandedSeasonEpisodes({
+  tmdbId,
+  seasonNumber,
+  seasonEps,
+  seriesRouteId,
+  instance,
+}: {
+  tmdbId: number;
+  seasonNumber: number;
+  seasonEps: SonarrEpisode[];
+  seriesRouteId: string;
+  instance?: string;
+}) {
+  const { data: epData } = useQuery({
+    queryKey: tvSeasonKey(tmdbId, seasonNumber),
+    queryFn: jsonFetcher<DiscoverSeasonDetailResponse>(`/api/discover/tv/${tmdbId}/season/${seasonNumber}`),
+    staleTime: 30 * 60_000,
+  });
+
+  return (
+    <div className="pb-3 pl-2">
+      {epData ? (
+        epData.episodes.map((ep) => {
+          const sonarrEp = seasonEps.find((e) => e.episodeNumber === ep.episodeNumber);
+          const episodeHref = sonarrEp
+            ? `/series/${seriesRouteId}/season/${seasonNumber}/episode/${sonarrEp.id}${instance ? `?instance=${instance}` : ''}`
+            : null;
+
+          const content = (
+            <>
+              {ep.stillPath && (
+                <div className="relative w-[90px] h-[50px] rounded overflow-hidden shrink-0 bg-muted">
+                  <Image
+                    src={toCachedImageSrc(ep.stillPath, 'tmdb') || ep.stillPath}
+                    alt=""
+                    fill
+                    sizes="90px"
+                    className="object-cover"
+                    unoptimized
+                  />
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className="text-sm font-medium line-clamp-1">E{ep.episodeNumber} &middot; {ep.name}</p>
+                  {sonarrEp?.hasFile && (
+                    <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="Downloaded" />
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                  {ep.airDate && <span>{format(new Date(ep.airDate), 'MMM d, yyyy')}</span>}
+                  {ep.runtime && <span>{ep.runtime}m</span>}
+                  {ep.voteAverage > 0 && (
+                    <span className="inline-flex items-center gap-0.5">
+                      <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />
+                      {ep.voteAverage.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+                {ep.overview && <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{ep.overview}</p>}
+              </div>
+              {episodeHref && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 self-center" />}
+            </>
+          );
+
+          return episodeHref ? (
+            <Link
+              key={ep.id}
+              href={episodeHref}
+              className="flex gap-3 py-2 border-t border-border/20 active:bg-muted/50 transition-colors"
+            >
+              {content}
+            </Link>
+          ) : (
+            <div
+              key={ep.id}
+              className="flex gap-3 py-2 border-t border-border/20"
+            >
+              {content}
+            </div>
+          );
+        })
+      ) : (
+        <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading episodes...
+        </div>
+      )}
     </div>
   );
 }

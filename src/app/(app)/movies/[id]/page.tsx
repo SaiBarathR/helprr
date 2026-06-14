@@ -47,12 +47,9 @@ import { format } from 'date-fns';
 import type { RadarrMovie, RadarrCredit, QualityProfile, Tag, DiscoverMovieFullDetail } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
-import {
-  getMovieDetailSnapshot,
-  setMovieDetailSnapshot,
-  clearMovieDetailSnapshot,
-} from '@/lib/movie-route-cache';
-import { invalidateListData } from '@/lib/media-list-cache';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import {
   getDetailViewState,
@@ -119,14 +116,34 @@ export default function MovieDetailPage() {
   const { id } = useParams();
   const movieId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const initialSnapshot = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId, instance) : null;
+  const queryClient = useQueryClient();
   const detailViewKey: DetailViewKey = `movie:${movieId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
   const router = useRouter();
-  const [movie, setMovie] = useState<RadarrMovie | null>(() => initialSnapshot?.movie ?? null);
-  const [loading, setLoading] = useState(() => !initialSnapshot);
+
+  // Movie detail — TanStack's cache gives instant paint on back-nav (gcTime)
+  // without a bespoke snapshot. 404 → null (not an error) so "not found" renders.
+  const movieQuery = useQuery({
+    queryKey: queryKeys.detail('radarr', movieId, instance),
+    queryFn: async ({ signal }): Promise<RadarrMovie | null> => {
+      const response = await radarrFetch(instance, `/api/radarr/${movieId}`, { signal });
+      if (response.ok) return (await response.json()) as RadarrMovie;
+      let message = '';
+      try {
+        const payload = (await response.json()) as { error?: string };
+        message = payload.error ?? '';
+      } catch {
+        // ignore invalid error payloads
+      }
+      if (response.status === 404 || /not found|does not exist/i.test(message)) return null;
+      throw new Error(message || `Failed to fetch movie (${response.status})`);
+    },
+    enabled: Number.isFinite(movieId),
+  });
+  const movie = movieQuery.data ?? null;
+  const loading = movieQuery.isLoading;
   const [deleting, setDeleting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
@@ -137,7 +154,16 @@ export default function MovieDetailPage() {
   const externalUrls = useExternalUrls();
   const radarrExternalUrl = useExternalUrlResolver()('RADARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
-  const [tmdbData, setTmdbData] = useState<DiscoverMovieFullDetail | null>(() => initialSnapshot?.tmdbData ?? null);
+  // TMDB enrichment, fetched once the movie (and its tmdbId) is known.
+  const { data: tmdbData = null } = useQuery({
+    queryKey: ['discover', 'movie', movie?.tmdbId],
+    queryFn: async ({ signal }): Promise<DiscoverMovieFullDetail | null> => {
+      const r = await fetch(`/api/discover/movie/${movie?.tmdbId}`, { signal });
+      return r.ok ? ((await r.json()) as DiscoverMovieFullDetail) : null;
+    },
+    enabled: !!movie?.tmdbId,
+    staleTime: 30 * 60_000,
+  });
 
   const canEditMonitoring = useCan('movies.editMonitoring');
   const canEditTags = useCan('movies.editTags');
@@ -146,11 +172,19 @@ export default function MovieDetailPage() {
   const canDeleteMovie = useCan('movies.delete');
   const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
 
-  // Reference data
-  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>(() => initialSnapshot?.qualityProfiles ?? []);
-  const [tags, setTags] = useState<Tag[]>(() => initialSnapshot?.tags ?? []);
-  const [credits, setCredits] = useState<RadarrCredit[]>(() => initialSnapshot?.credits ?? []);
-  const creditsRequestIdRef = useRef(0);
+  // Reference data — shared (and deduped) with the list / edit pages.
+  const { data: qualityProfiles = [] } = useQualityProfiles('radarr', instance);
+  const { data: tags = [] } = useTags('radarr', instance);
+  // Cast/crew, fetched in the background once the movie is loaded.
+  const { data: credits = [] } = useQuery({
+    queryKey: ['radarr', 'credits', movieId],
+    queryFn: async ({ signal }): Promise<RadarrCredit[]> => {
+      const r = await radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`, { signal });
+      return r.ok ? ((await r.json()) as RadarrCredit[]) : [];
+    },
+    enabled: !!movie,
+    staleTime: 5 * 60_000,
+  });
 
   const getCurrentScrollY = useCallback(() => {
     const content = contentScrollRef.current;
@@ -163,127 +197,11 @@ export default function MovieDetailPage() {
     return window.scrollY;
   }, []);
 
-  const persistMovieSnapshot = useCallback((next: {
-    movie?: RadarrMovie | null;
-    qualityProfiles?: QualityProfile[];
-    tags?: Tag[];
-    tmdbData?: DiscoverMovieFullDetail | null;
-    credits?: RadarrCredit[];
-  } = {}) => {
-    if (!Number.isFinite(movieId)) return;
-    setMovieDetailSnapshot(movieId, {
-      movie: next.movie ?? movie,
-      qualityProfiles: next.qualityProfiles ?? qualityProfiles,
-      tags: next.tags ?? tags,
-      tmdbData: next.tmdbData ?? tmdbData,
-      credits: next.credits ?? credits,
-    }, instance);
-  }, [credits, instance, movie, movieId, qualityProfiles, tags, tmdbData]);
-
-  const loadData = useCallback(async (hasCachedData: boolean) => {
-    if (!hasCachedData) setCredits([]);
-    const creditsRequestId = ++creditsRequestIdRef.current;
-
-    if (!Number.isFinite(movieId)) {
-      setLoading(false);
-      return;
-    }
-
-    // Keep movie detail page instant when returning from sub-pages.
-    if (hasCachedData) {
-      setLoading(false);
-    }
-
-    try {
-      const [movieResult, nextQualityProfiles, nextTags] = await Promise.all([
-        radarrFetch(instance, `/api/radarr/${movieId}`).then(async (response): Promise<{ movie: RadarrMovie | null; notFound: boolean }> => {
-          if (response.ok) {
-            return { movie: await response.json() as RadarrMovie, notFound: false };
-          }
-
-          let message = '';
-          try {
-            const payload = await response.json() as { error?: string };
-            message = payload.error ?? '';
-          } catch {
-            // Ignore invalid error payloads.
-          }
-
-          const notFound = response.status === 404 || /not found|does not exist/i.test(message);
-          if (notFound) {
-            return { movie: null, notFound: true };
-          }
-
-          throw new Error(message || `Failed to fetch movie (${response.status})`);
-        }),
-        radarrFetch(instance, '/api/radarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? await r.json() as QualityProfile[] : [])),
-        radarrFetch(instance, '/api/radarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? await r.json() as Tag[] : [])),
-      ]);
-
-      const nextMovie = movieResult.movie;
-      const existingSnapshot = getMovieDetailSnapshot(movieId, instance);
-      setMovie(nextMovie);
-      setQualityProfiles(nextQualityProfiles);
-      setTags(nextTags);
-      setMovieDetailSnapshot(movieId, {
-        movie: nextMovie,
-        qualityProfiles: nextQualityProfiles,
-        tags: nextTags,
-        tmdbData: existingSnapshot?.tmdbData ?? null,
-        credits: existingSnapshot?.credits ?? [],
-      }, instance);
-
-      if (movieResult.notFound) {
-        return;
-      }
-
-      // Fetch credits in background (non-blocking)
-      void radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`)
-        .then(async (r) => (r.ok ? (await r.json()) as RadarrCredit[] : []))
-        .then((nextCredits) => {
-          if (creditsRequestId !== creditsRequestIdRef.current) return;
-          setCredits(nextCredits);
-          setMovieDetailSnapshot(movieId, {
-            movie: nextMovie,
-            qualityProfiles: nextQualityProfiles,
-            tags: nextTags,
-            tmdbData: getMovieDetailSnapshot(movieId, instance)?.tmdbData ?? null,
-            credits: nextCredits,
-          }, instance);
-        })
-        .catch(() => {
-          if (creditsRequestId !== creditsRequestIdRef.current) return;
-          if (!hasCachedData) setCredits([]);
-        });
-    } catch {
-      if (!hasCachedData) {
-        setMovie(null);
-        setQualityProfiles([]);
-        setTags([]);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [instance, movieId]);
-
+  // Reset scroll-restore guards whenever the movie/instance changes.
   useEffect(() => {
-    const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
-
-    if (cached) {
-      setMovie(cached.movie);
-      setQualityProfiles(cached.qualityProfiles);
-      setTags(cached.tags);
-      setTmdbData(cached.tmdbData ?? null);
-      setCredits(cached.credits ?? []);
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
-
-    void loadData(Boolean(cached));
-  }, [instance, loadData, movieId]);
+  }, [instance, movieId]);
 
   useEffect(() => {
     if (loading || !movie || hasRestoredScrollRef.current) return;
@@ -347,43 +265,6 @@ export default function MovieDetailPage() {
       window.removeEventListener('pagehide', persistScroll);
     };
   }, [detailViewKey, getCurrentScrollY, loading, movie]);
-
-  // Background-fetch TMDB enrichment data
-  useEffect(() => {
-    if (!movie?.tmdbId) {
-      setTmdbData(null);
-      const cached = Number.isFinite(movieId) ? getMovieDetailSnapshot(movieId, instance) : null;
-      if (cached) {
-        setMovieDetailSnapshot(movieId, {
-          movie: cached.movie,
-          qualityProfiles: cached.qualityProfiles,
-          tags: cached.tags,
-          tmdbData: null,
-          credits: cached.credits ?? [],
-        }, instance);
-      }
-      return;
-    }
-    const controller = new AbortController();
-    fetch(`/api/discover/movie/${movie.tmdbId}`, { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: DiscoverMovieFullDetail | null) => {
-        setTmdbData(data);
-        const cached = getMovieDetailSnapshot(movieId, instance);
-        setMovieDetailSnapshot(movieId, {
-          movie: cached?.movie ?? null,
-          qualityProfiles: cached?.qualityProfiles ?? [],
-          tags: cached?.tags ?? [],
-          tmdbData: data,
-          credits: cached?.credits ?? [],
-        }, instance);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setTmdbData((prev) => prev ?? null);
-      });
-    return () => controller.abort();
-  }, [instance, movie?.tmdbId, movieId]);
 
   async function handleOpenInJellyfin() {
     if (!movie || !externalUrls.JELLYFIN) return;
@@ -460,8 +341,8 @@ export default function MovieDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('radarr', command.id, instance) : 'completed';
-      invalidateListData('movies');
-      await loadData(true);
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
+      await movieQuery.refetch();
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
@@ -480,9 +361,8 @@ export default function MovieDetailPage() {
       });
       if (res.ok) {
         const updated = await res.json();
-        setMovie(updated);
-        persistMovieSnapshot({ movie: updated });
-        invalidateListData('movies');
+        queryClient.setQueryData(queryKeys.detail('radarr', movieId, instance), updated);
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
     } catch { toast.error('Failed to update'); }
@@ -494,8 +374,8 @@ export default function MovieDetailPage() {
     setDeleting(true);
     try {
       await radarrFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
-      invalidateListData('movies');
-      clearMovieDetailSnapshot(movie.id, instance);
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
+      queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
       toast.success('Movie deleted');
       router.push('/movies');
     } catch { toast.error('Delete failed'); }

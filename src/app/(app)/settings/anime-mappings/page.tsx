@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Loader2, Square, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
@@ -17,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
-import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
+import { jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
 import { formatBytes } from '@/lib/format';
 
 function relativeTime(iso: string): string {
@@ -83,52 +84,48 @@ function formatMinutesHint(raw: string | undefined): string | null {
 
 export default function AnimeMappingsPage() {
   const { settings, update: updateSettings } = useAppSettings();
-  const [cacheUsage, setCacheUsage] = useState<AnilistCacheUsage | null>(null);
+  const queryClient = useQueryClient();
   const [ttlDraft, setTtlDraft] = useState<Record<TtlKey, string> | null>(null);
   const [savingTtls, setSavingTtls] = useState(false);
   const [confirmClearCache, setConfirmClearCache] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
 
   // Nightly auto-map section
-  const [autoMapStatus, setAutoMapStatus] = useState<AutoMapStatus | null>(null);
   const [runningAutoMap, setRunningAutoMap] = useState(false);
   const [stopping, setStopping] = useState(false);
 
-  const loadCacheUsage = useCallback(async () => {
-    try {
-      const res = await fetch('/api/settings/cache');
-      if (!res.ok) return;
-      const data = (await res.json()) as { usage?: AnilistCacheUsage };
-      if (data.usage) {
-        setCacheUsage({
-          anilistEntries: data.usage.anilistEntries,
-          anilistApiBytes: data.usage.anilistApiBytes,
-        });
+  const { data: cacheUsageRaw } = useQuery({
+    queryKey: ['settings', 'cache'],
+    queryFn: jsonFetcher<{ usage?: AnilistCacheUsage }>('/api/settings/cache'),
+  });
+  const cacheUsage: AnilistCacheUsage | null = cacheUsageRaw?.usage
+    ? {
+        anilistEntries: cacheUsageRaw.usage.anilistEntries,
+        anilistApiBytes: cacheUsageRaw.usage.anilistApiBytes,
       }
-    } catch {
-      // Stats stay as an em dash.
-    }
-  }, []);
+    : null;
 
-  const loadAutoMapStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/anime/automap/status');
-      if (!res.ok) return;
-      setAutoMapStatus((await res.json()) as AutoMapStatus);
-    } catch {
-      // Status stays as an em dash.
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadCacheUsage();
-    void loadAutoMapStatus();
-  }, [loadCacheUsage, loadAutoMapStatus]);
+  const { data: autoMapStatusData } = useQuery({
+    queryKey: ['anime-mappings', 'status'],
+    queryFn: jsonFetcher<AutoMapStatus>('/api/anime/automap/status'),
+  });
+  const autoMapStatus = autoMapStatusData ?? null;
 
   // While a drain is in progress, poll status so progress climbs and the UI
   // flips back to "Run now" once it finishes or is stopped. Pauses when the tab
   // is hidden and catches up on return.
-  useVisibleInterval(loadAutoMapStatus, 5000, { enabled: Boolean(autoMapStatus?.running) });
+  useQuery({
+    queryKey: ['anime-mappings', 'status'],
+    queryFn: jsonFetcher<AutoMapStatus>('/api/anime/automap/status'),
+    refetchInterval: backoffRefetchInterval(5000),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    enabled: Boolean(autoMapStatus?.running),
+  });
+
+  const reloadCacheUsage = () => queryClient.invalidateQueries({ queryKey: ['settings', 'cache'] });
+  const reloadAutoMapStatus = () => queryClient.invalidateQueries({ queryKey: ['anime-mappings', 'status'] });
 
   async function handleRunAutoMapNow() {
     setRunningAutoMap(true);
@@ -154,7 +151,7 @@ export default function AnimeMappingsPage() {
         // Run now is allowed even with the nightly toggle off.
         toast.error('Failed to start auto-mapping');
       }
-      void loadAutoMapStatus();
+      void reloadAutoMapStatus();
     } finally {
       setRunningAutoMap(false);
     }
@@ -171,7 +168,7 @@ export default function AnimeMappingsPage() {
       }
       const data = (await res.json()) as { stopping: boolean };
       toast.success(data.stopping ? 'Auto-mapping stopped' : 'Auto-mapping already finished');
-      void loadAutoMapStatus();
+      void reloadAutoMapStatus();
     } finally {
       setStopping(false);
     }
@@ -219,7 +216,7 @@ export default function AnimeMappingsPage() {
       toast.success(
         `Cleared ${data.deletedEntries.toLocaleString()} cached response${data.deletedEntries === 1 ? '' : 's'} (${formatBytes(data.deletedBytes)})`
       );
-      await loadCacheUsage();
+      await reloadCacheUsage();
     } finally {
       setClearingCache(false);
       setConfirmClearCache(false);

@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -43,24 +45,16 @@ export default function RequestsPage() {
 
   const [refreshTick, setRefreshTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const [counts, setCounts] = useState<SeerrRequestCount | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/seerr/requests/count')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: SeerrRequestCount | null) => {
-        if (cancelled) return;
-        if (data) setCounts(data);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshTick]);
+  const countsQuery = useQuery({
+    queryKey: ['seerr', 'requests', 'count'],
+    queryFn: jsonFetcher<SeerrRequestCount>('/api/seerr/requests/count'),
+  });
+  const counts = countsQuery.data ?? null;
 
   const handleRefresh = () => {
     setRefreshing(true);
+    void countsQuery.refetch();
+    // Bump the key so the active widget remounts and refetches too.
     setRefreshTick((n) => n + 1);
     window.setTimeout(() => setRefreshing(false), 600);
   };

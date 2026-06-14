@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
 import { SERVICE_CONFIG } from '@/lib/settings/service-config';
@@ -15,32 +17,14 @@ interface LoadedConnection {
 }
 
 export default function InstancesIndexPage() {
-  const [connections, setConnections] = useState<LoadedConnection[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch('/api/services');
-        if (!res.ok) {
-          if (!cancelled) setLoaded(true);
-          return;
-        }
-        const data = (await res.json()) as LoadedConnection[];
-        if (!cancelled) {
-          setConnections(Array.isArray(data) ? data : []);
-          setLoaded(true);
-        }
-      } catch {
-        if (!cancelled) setLoaded(true);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { data: connections = [], isSuccess, isError } = useQuery({
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<LoadedConnection[]>('/api/services'),
+    select: ensureArray,
+  });
+  // Original showed '…' until the fetch settled (success or failure), then a
+  // connected/not-configured badge; mirror that with success || error.
+  const loaded = isSuccess || isError;
 
   const byType = new Map<string, LoadedConnection[]>();
   for (const conn of connections) {

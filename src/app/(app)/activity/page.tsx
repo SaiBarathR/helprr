@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
@@ -32,7 +32,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
 import { type InstanceOption } from '@/components/instance-filter';
@@ -189,24 +190,14 @@ export default function ActivityPage() {
   const tab = urlTab && isTabKey(urlTab) ? urlTab : activityTab;
   const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
-  const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
-
-  // Load arr instances for the per-instance filter (shown only when >1 instance).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/instances');
-        if (!res.ok) return;
-        const conns = (await res.json()) as Array<{ id: string; label: string }>;
-        if (cancelled || !Array.isArray(conns)) return;
-        setInstanceOptions(conns.map((c) => ({ id: c.id, label: c.label })));
-      } catch {
-        // ignore — filter just won't render
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  // arr instances for the per-instance filter (shown only when >1 instance).
+  const { data: instanceOptions = [] } = useQuery({
+    queryKey: ['instances'],
+    queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
+    select: (conns): InstanceOption[] =>
+      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
+    staleTime: 5 * 60_000,
+  });
 
   // Drop a stale instance selection if that instance no longer exists.
   useEffect(() => {
@@ -458,28 +449,13 @@ function QueueTab({
 }) {
   const canManageActivity = useCan('activity.manage');
   const { adjustBadge } = useBadgeActions();
-  const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
   const [removing, setRemoving] = useState(false);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
 
-  const fetchQueue = useCallback(async () => {
-    try {
-      const res = await fetch('/api/activity/queue');
-      if (res.ok) {
-        const data = await res.json();
-        setQueue(data.records || []);
-      }
-    } catch { } finally { setLoading(false); }
-  }, []);
-
   useEffect(() => {
-    /**
-     * Load the configured activity refresh interval (in milliseconds) and update the component's refreshIntervalMs state.
-     *
-     * Falls back to 5 seconds if no setting is present.
-     */
+    // Load the configured activity refresh interval (ms); falls back to 5s.
     async function loadRefreshInterval() {
       const intervalMs = await getRefreshIntervalMs('activityRefreshIntervalSecs', 5);
       setRefreshIntervalMs(intervalMs);
@@ -487,8 +463,19 @@ function QueueTab({
     loadRefreshInterval();
   }, []);
 
-  // Poll only while visible (pauses when backgrounded; refetches on return).
-  useVisibleInterval(fetchQueue, refreshIntervalMs);
+  // Poll the queue: pause when the tab is hidden, refetch on return, back off on
+  // failure — same behavior the old useVisibleInterval provided.
+  const queueQuery = useQuery({
+    queryKey: ['activity', 'queue'],
+    queryFn: jsonFetcher<{ records?: (QueueItem & { source?: string })[] }>('/api/activity/queue'),
+    select: (d) => d.records ?? [],
+    refetchInterval: backoffRefetchInterval(refreshIntervalMs),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const queue = queueQuery.data ?? [];
+  const loading = queueQuery.isLoading;
 
   // Apply filter
   const filtered = queue.filter((item) =>
@@ -536,7 +523,7 @@ function QueueTab({
       toast.success('Removed from queue');
       adjustBadge('activity', -1, wasAttention ? -1 : 0);
       setSelectedItem(null);
-      fetchQueue();
+      void queryClient.invalidateQueries({ queryKey: ['activity', 'queue'] });
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
     finally { setRemoving(false); }
   }
@@ -774,39 +761,27 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
-  const [queue, setQueue] = useState<(QueueItem & { source?: string })[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  /**
-   * Load queue items that need manual import and update component state.
-   *
-   * Fetches /api/activity/queue, selects records that classifyQueueIssue
-   * marks as `'import'` (Sonarr/Radarr `importBlocked`, or `importPending`
-   * with a warning/error status — the TBA-style stuck imports), narrows to the
-   * selected `filterBy` sources when the array is non-empty, and stores the resulting
-   * list via `setQueue`. Always calls `setLoading(false)` when finished;
-   * errors are ignored.
-   */
-  const fetchFailed = useCallback(async () => {
-    try {
-      const res = await fetch('/api/activity/queue');
-      if (res.ok) {
-        const data = await res.json();
-        let failed = (data.records || []).filter(
-          (r: QueueItem) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) === 'import'
-        );
-        if (filterBy.length > 0) {
-          failed = failed.filter((r: QueueItem & { source?: string }) => r.source !== undefined && filterBy.includes(r.source));
-        }
-        if (instanceFilter !== 'all') {
-          failed = failed.filter((r: QueueItem) => r.instanceId === instanceFilter);
-        }
-        setQueue(failed);
-      }
-    } catch { } finally { setLoading(false); }
-  }, [filterBy, instanceFilter]);
-
-  useEffect(() => { fetchFailed(); }, [filterBy, fetchFailed]);
+  // Shares the ['activity','queue'] cache with the Queue tab (same endpoint).
+  const queueQuery = useQuery({
+    queryKey: ['activity', 'queue'],
+    queryFn: jsonFetcher<{ records?: (QueueItem & { source?: string })[] }>('/api/activity/queue'),
+    select: (d) => d.records ?? [],
+    staleTime: 0,
+  });
+  const loading = queueQuery.isLoading;
+  // Only import-blocked/stuck items, narrowed to the selected sources/instance.
+  const queue = useMemo(() => {
+    let failed = (queueQuery.data ?? []).filter(
+      (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) === 'import'
+    );
+    if (filterBy.length > 0) {
+      failed = failed.filter((r) => r.source !== undefined && filterBy.includes(r.source));
+    }
+    if (instanceFilter !== 'all') {
+      failed = failed.filter((r) => r.instanceId === instanceFilter);
+    }
+    return failed;
+  }, [queueQuery.data, filterBy, instanceFilter]);
 
   /**
    * Navigate to the manual import page for a queue item, embedding its identifiers in the query string.
@@ -903,39 +878,30 @@ interface WantedRecord {
  */
 function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
-  const [records, setRecords] = useState<WantedRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
   const [searching, setSearching] = useState<string | null>(null);
 
-  const fetchWanted = useCallback(async (p: number) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ type, page: String(p), pageSize: String(PAGE_SIZE) });
-      // Server-side source filter only handles a single source; for multi-select
-      // we fetch all and narrow client-side below.
+  // Server pages filter by a single source only; the raw totalRecords gates
+  // "Load more". Multi-select + instance filters are applied client-side below.
+  const wantedQuery = useInfiniteQuery({
+    queryKey: ['activity', 'wanted', type, { filterBy, instanceFilter }],
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ type, page: String(pageParam), pageSize: String(PAGE_SIZE) });
       if (filterBy.length === 1) params.set('source', filterBy[0]);
-      const res = await fetch(`/api/activity/wanted?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        let incoming: WantedRecord[] = filterBy.length > 1
-          ? (data.records || []).filter((r: WantedRecord) => filterBy.includes(r.source))
-          : (data.records || []);
-        if (instanceFilter !== 'all') {
-          incoming = incoming.filter((r: WantedRecord) => r.instanceId === instanceFilter);
-        }
-        if (p === 1) setRecords(incoming);
-        else setRecords((prev) => [...prev, ...incoming]);
-        // totalRecords counts raw (unfiltered) records, so gate "Load more" on
-        // whether the server has more raw pages — not the filtered local count,
-        // which would keep the button visible after all matches are loaded.
-        setHasMore(p * PAGE_SIZE < (data.totalRecords || 0));
-      }
-    } catch { } finally { setLoading(false); }
-  }, [filterBy, type, instanceFilter]);
-
-  useEffect(() => { setPage(1); fetchWanted(1); }, [fetchWanted]);
+      const res = await fetch(`/api/activity/wanted?${params}`, { signal });
+      if (!res.ok) throw new ApiError(res.status, `GET /api/activity/wanted → ${res.status}`);
+      return (await res.json()) as { records: WantedRecord[]; totalRecords: number };
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      allPages.length * PAGE_SIZE < (lastPage.totalRecords || 0) ? allPages.length + 1 : undefined,
+  });
+  const loading = wantedQuery.isLoading;
+  const records = useMemo(() => {
+    let list = wantedQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [];
+    if (filterBy.length > 1) list = list.filter((r) => filterBy.includes(r.source));
+    if (instanceFilter !== 'all') list = list.filter((r) => r.instanceId === instanceFilter);
+    return list;
+  }, [wantedQuery.data, filterBy, instanceFilter]);
 
   async function handleSearch(record: WantedRecord) {
     const key = `${record.source}-${record.id}`;
@@ -969,7 +935,7 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
     finally { setSearching(null); }
   }
 
-  if (loading && page === 1) {
+  if (loading) {
     return <PageSpinner />;
   }
 
@@ -1060,14 +1026,14 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
           </div>
         );
       })}
-      {hasMore && (
+      {wantedQuery.hasNextPage && (
         <Button
           variant="ghost"
           className="w-full"
-          onClick={() => { const next = page + 1; setPage(next); fetchWanted(next); }}
-          disabled={loading}
+          onClick={() => wantedQuery.fetchNextPage()}
+          disabled={wantedQuery.isFetchingNextPage}
         >
-          {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          {wantedQuery.isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Load more
         </Button>
       )}

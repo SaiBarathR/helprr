@@ -1,11 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { AnimeScheduleCard } from '@/components/anime/anime-schedule-card';
 import { AnimeScheduleWeekNav } from '@/components/anime/anime-schedule-week-nav';
+import { jsonFetcher } from '@/lib/query-fetch';
 import type { AniListScheduleEntry } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 
@@ -87,54 +89,42 @@ function buildDayBuckets(weekStart: Date, entries: EntryWithLibrary[]): DayBucke
   return buckets;
 }
 
+const EMPTY_ENTRIES: EntryWithLibrary[] = [];
+
 export default function AnimeSchedulePage() {
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
-  const [entries, setEntries] = useState<EntryWithLibrary[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<number>(() => Math.floor(Date.now() / 1000));
-  const requestIdRef = useRef<number>(0);
 
   const weekEnd = useMemo(() => endOfWeek(weekStart), [weekStart]);
   const currentWeekStart = useMemo(() => startOfWeek(new Date()), []);
   const isCurrentWeek = sameLocalDay(weekStart, currentWeekStart);
 
-  const load = useCallback(async (start: Date, end: Date) => {
-    // Each call gets a unique id; if a newer call comes in mid-flight, the
-    // older response is discarded so prev/next clicks can't race and display
-    // the wrong week.
-    const id = ++requestIdRef.current;
+  const weekStartSec = unixSec(weekStart);
+  const weekEndSec = unixSec(weekEnd);
 
-    setLoading(true);
-    setError(null);
+  const {
+    data,
+    isLoading: loading,
+    isSuccess,
+    isError,
+    error: queryError,
+  } = useQuery({
+    // Keyed by the week bounds — switching weeks swaps to that week's cache and
+    // TanStack drops stale in-flight responses, so prev/next can't race.
+    queryKey: ['anime', 'schedule', weekStartSec, weekEndSec],
+    queryFn: jsonFetcher<ScheduleResponse>(
+      `/api/anime/schedule?weekStart=${weekStartSec}&weekEnd=${weekEndSec}`
+    ),
+  });
 
-    try {
-      const params = new URLSearchParams({
-        weekStart: String(unixSec(start)),
-        weekEnd: String(unixSec(end)),
-      });
-      const res = await fetch(`/api/anime/schedule?${params.toString()}`);
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(data.error || 'Failed to load schedule');
-      }
-      const data: ScheduleResponse = await res.json();
-      if (id !== requestIdRef.current) return;
-      setEntries(data.entries || []);
-      setNow(Math.floor(Date.now() / 1000));
-    } catch (e) {
-      if (id !== requestIdRef.current) return;
-      const message = e instanceof Error ? e.message : 'Failed to load schedule';
-      setError(message);
-      setEntries([]);
-    } finally {
-      if (id === requestIdRef.current) setLoading(false);
-    }
-  }, []);
+  const entries = data?.entries ?? EMPTY_ENTRIES;
+  const error = isError ? (queryError instanceof Error ? queryError.message : 'Failed to load schedule') : null;
 
+  // Re-anchor "now" when a fresh week's data lands (old code did so on success).
   useEffect(() => {
-    void load(weekStart, weekEnd);
-  }, [weekStart, weekEnd, load]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-anchor "now" when fresh data lands
+    if (isSuccess) setNow(Math.floor(Date.now() / 1000));
+  }, [isSuccess, weekStartSec, weekEndSec]);
 
   // Tick "now" each minute so past/upcoming styling stays accurate.
   useEffect(() => {

@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Loader2, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -57,29 +59,28 @@ function entryLabel(entry: AdminAnimeMappingRow['entries'][number]): string {
 
 export default function AnimeMappingListPage() {
   const router = useRouter();
-  const [mappings, setMappings] = useState<AdminAnimeMappingRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<StateFilter>('ALL');
   const [search, setSearch] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<AdminAnimeMappingRow | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/settings/anime-mappings');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as AdminAnimeMappingsResponse;
-      setMappings(data.mappings);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load mappings');
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const {
+    data: mappings = null,
+    isError,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['anime-mappings'],
+    queryFn: jsonFetcher<AdminAnimeMappingsResponse>('/api/settings/anime-mappings'),
+    select: (data) => data.mappings,
+  });
+  const error = isError
+    ? queryError instanceof ApiError
+      ? `HTTP ${queryError.status}`
+      : queryError instanceof Error
+        ? queryError.message
+        : 'Failed to load mappings'
+    : null;
 
   const counts = useMemo(() => {
     const all = mappings ?? [];
@@ -130,39 +131,47 @@ export default function AnimeMappingListPage() {
     scrollMargin,
   });
 
-  async function handleResetOne(row: AdminAnimeMappingRow) {
-    setBusy(true);
-    try {
+  const resetOneMutation = useMutation({
+    mutationFn: async (row: AdminAnimeMappingRow) => {
       const res = await fetch(`/api/settings/anime-mappings/${row.sonarrSeriesId}?instanceId=${row.sonarrInstanceId}`, { method: 'DELETE' });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error || 'Failed to reset mapping');
-        return;
+        throw new Error(data.error || 'Failed to reset mapping');
       }
+    },
+    onSuccess: (_data, row) => {
       toast.success(`Reset ${row.seriesTitle}`);
-      await load();
-    } finally {
-      setBusy(false);
-      setConfirmTarget(null);
-    }
-  }
+      queryClient.invalidateQueries({ queryKey: ['anime-mappings'] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to reset mapping'),
+    onSettled: () => setConfirmTarget(null),
+  });
 
-  async function handleResetAll() {
-    setBusy(true);
-    try {
+  const resetAllMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch('/api/settings/anime-mappings', { method: 'DELETE' });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error || 'Failed to reset mappings');
-        return;
+        throw new Error(data.error || 'Failed to reset mappings');
       }
-      const data = (await res.json()) as { deleted: number };
+      return (await res.json()) as { deleted: number };
+    },
+    onSuccess: (data) => {
       toast.success(`Reset ${data.deleted} mapping${data.deleted === 1 ? '' : 's'}`);
-      await load();
-    } finally {
-      setBusy(false);
-      setConfirmAll(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ['anime-mappings'] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to reset mappings'),
+    onSettled: () => setConfirmAll(false),
+  });
+
+  const busy = resetOneMutation.isPending || resetAllMutation.isPending;
+
+  function handleResetOne(row: AdminAnimeMappingRow) {
+    return resetOneMutation.mutateAsync(row).catch(() => {});
+  }
+
+  function handleResetAll() {
+    return resetAllMutation.mutateAsync().catch(() => {});
   }
 
   return (
@@ -340,7 +349,9 @@ export default function AnimeMappingListPage() {
         confirmLabel="Reset all"
         destructive
         busy={busy}
-        onConfirm={handleResetAll}
+        onConfirm={async () => {
+          await handleResetAll();
+        }}
       />
     </div>
   );

@@ -25,12 +25,9 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { useMe } from '@/components/permission-provider';
 import { formatAniListRankingLabel, formatFuzzyDate, isMovieFormat } from '@/lib/anilist-helpers';
-import type { AnimeSonarrMappingItem, AnimeSonarrMappingsResponse } from '@/types/anilist';
-import {
-  getAnimeDetailSnapshot,
-  setAnimeDetailSnapshot,
-  type AnimeDetailSnapshotData,
-} from '@/lib/anilist-detail-cache';
+import type { AniListDetailResponse, AnimeSonarrMappingItem, AnimeSonarrMappingsResponse } from '@/types/anilist';
+import type { DiscoverLibraryStatus } from '@/types';
+import { useQuery } from '@tanstack/react-query';
 import {
   getDetailViewState,
   setDetailViewState,
@@ -38,13 +35,13 @@ import {
   type DetailViewKey,
 } from '@/lib/detail-view-state';
 
-type DetailWithLibrary = AnimeDetailSnapshotData;
-interface DetailState {
-  id: string;
-  detail: DetailWithLibrary | null;
-  error: string | null;
-  loading: boolean;
-}
+type DetailWithLibrary = AniListDetailResponse & {
+  library?: DiscoverLibraryStatus | null;
+  libraryAvailability?: {
+    radarr: 'ok' | 'unavailable';
+    sonarr: 'ok' | 'unavailable';
+  };
+};
 
 function formatCountdown(seconds: number): string {
   const days = Math.floor(seconds / 86400);
@@ -79,12 +76,27 @@ export default function AnimeDetailPage() {
   const detailViewKey: DetailViewKey = `anime:${id}`;
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
-  const [state, setState] = useState<DetailState>(() => ({
-    id,
-    detail: getAnimeDetailSnapshot(id)?.detail ?? null,
-    error: null,
-    loading: !getAnimeDetailSnapshot(id)?.detail,
-  }));
+  // gcTime gives instant back-nav paint without the bespoke snapshot cache.
+  const detailQuery = useQuery({
+    queryKey: ['anime', 'detail', id],
+    queryFn: async ({ signal }): Promise<DetailWithLibrary> => {
+      const res = await fetch(`/api/anime/${id}`, { signal });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to load');
+      }
+      return res.json() as Promise<DetailWithLibrary>;
+    },
+    enabled: !!id,
+  });
+  const refetchDetail = detailQuery.refetch;
+  const detail = detailQuery.data ?? null;
+  const loading = detailQuery.isLoading;
+  const error = detailQuery.isError
+    ? detailQuery.error instanceof Error
+      ? detailQuery.error.message
+      : 'Failed to load'
+    : null;
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
   const externalUrls = useExternalUrls();
   const resolveExternalUrl = useExternalUrlResolver();
@@ -96,20 +108,20 @@ export default function AnimeDetailPage() {
   // Reverse lookup so the row shows the current mapping without opening the drawer.
   const [sonarrMappings, setSonarrMappings] = useState<AnimeSonarrMappingItem[] | null>(null);
 
-  const detailFormat = state.detail?.format ?? null;
+  const detailFormat = detail?.format ?? null;
   // When the library lookup already identified the Sonarr series, pass it as a
   // hint so the reverse lookup can lazily resolve the mapping — otherwise an
   // anime whose series page was never opened reads "Not mapped" despite being
   // in the library ("Open in TV" working).
   const librarySeriesId =
-    state.detail?.library?.exists && state.detail.library.type === 'series'
-      ? state.detail.library.id ?? null
+    detail?.library?.exists && detail.library.type === 'series'
+      ? detail.library.id ?? null
       : null;
   // The instance that holds that series — a series id is only unique within an
   // instance, so the hint must name it or the server resolves the wrong one.
   const libraryInstanceId =
-    state.detail?.library?.exists && state.detail.library.type === 'series'
-      ? state.detail.library.instanceId ?? null
+    detail?.library?.exists && detail.library.type === 'series'
+      ? detail.library.instanceId ?? null
       : null;
   useEffect(() => {
     setSonarrMappings(null);
@@ -131,68 +143,14 @@ export default function AnimeDetailPage() {
     return () => controller.abort();
   }, [id, isAdmin, detailFormat, librarySeriesId, libraryInstanceId]);
 
+  // Reset scroll-restore guards when navigating to a different anime.
   useEffect(() => {
-    const controller = new AbortController();
-    const cached = getAnimeDetailSnapshot(id);
-
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
-    queueMicrotask(() => {
-      if (cached?.detail) {
-        setState({
-          id,
-          detail: cached.detail,
-          error: null,
-          loading: false,
-        });
-      } else {
-        setState({
-          id,
-          detail: null,
-          error: null,
-          loading: true,
-        });
-      }
-    });
-
-    fetch(`/api/anime/${id}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || 'Failed to load');
-        }
-        return res.json();
-      })
-      .then((data: DetailWithLibrary) => {
-        if (!controller.signal.aborted) {
-          setState({
-            id,
-            detail: data,
-            error: null,
-            loading: false,
-          });
-          setAnimeDetailSnapshot(id, { detail: data });
-        }
-      })
-      .catch((e) => {
-        if (e instanceof DOMException && e.name === 'AbortError') return;
-        if (cached?.detail) {
-          setState((prev) => (prev.id === id ? { ...prev, loading: false } : prev));
-          return;
-        }
-        setState({
-          id,
-          detail: null,
-          error: e.message,
-          loading: false,
-        });
-      });
-
-    return () => controller.abort();
   }, [id]);
 
   useEffect(() => {
-    if (state.id !== id || state.loading || !state.detail || hasRestoredScrollRef.current) return;
+    if (loading || !detail || hasRestoredScrollRef.current) return;
     const saved = getDetailViewState(detailViewKey);
     if (!saved || saved.scrollY <= 0) {
       hasRestoredScrollRef.current = true;
@@ -212,7 +170,7 @@ export default function AnimeDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [detailViewKey, id, state.detail, state.id, state.loading]);
+  }, [detailViewKey, loading, detail]);
 
   useEffect(() => {
     const persistScroll = () => {
@@ -240,7 +198,7 @@ export default function AnimeDetailPage() {
   useEffect(() => {
     setNowMs(Date.now());
 
-    if (state.id !== id || !state.detail?.nextAiringEpisode) return;
+    if (!detail?.nextAiringEpisode) return;
 
     const tick = window.setInterval(() => {
       setNowMs(Date.now());
@@ -249,55 +207,27 @@ export default function AnimeDetailPage() {
     return () => {
       window.clearInterval(tick);
     };
-  }, [id, state.detail?.nextAiringEpisode, state.id]);
+  }, [detail?.nextAiringEpisode]);
 
+  // Refresh the detail on a 10-min interval and on focus/visibility (fresh
+  // airing countdown), via the query's refetch.
   useEffect(() => {
-    if (state.id !== id || !state.detail) return;
-
-    let cancelled = false;
-
-    const refreshDetail = async () => {
-      try {
-        const res = await fetch(`/api/anime/${id}`);
-        if (!res.ok) return;
-        const data: DetailWithLibrary = await res.json();
-        if (!cancelled) {
-          setState((prev) => (prev.id === id ? {
-            ...prev,
-            detail: data,
-            error: null,
-            loading: false,
-          } : prev));
-          setAnimeDetailSnapshot(id, { detail: data });
-        }
-      } catch {
-        // Keep the current detail on background refresh failures.
-      }
-    };
-
-    const intervalId = window.setInterval(() => {
-      void refreshDetail();
-    }, 10 * 60 * 1000);
-
+    if (!detail) return;
+    const refresh = () => { void refetchDetail(); };
+    const intervalId = window.setInterval(refresh, 10 * 60 * 1000);
     const handleVisibilityOrFocus = () => {
       if (document.visibilityState === 'hidden') return;
-      void refreshDetail();
+      refresh();
     };
-
     window.addEventListener('focus', handleVisibilityOrFocus);
     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
-
     return () => {
-      cancelled = true;
       window.clearInterval(intervalId);
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [id, state.detail, state.id]);
+  }, [detail, refetchDetail]);
 
-  const detail = state.id === id ? state.detail : null;
-  const loading = state.id === id ? state.loading : true;
-  const error = state.id === id ? state.error : null;
   const nextAiringSeconds = detail?.nextAiringEpisode
     ? Math.max(0, detail.nextAiringEpisode.airingAt - Math.floor(nowMs / 1000))
     : null;

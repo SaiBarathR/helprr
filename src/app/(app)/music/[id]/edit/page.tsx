@@ -16,9 +16,15 @@ import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { invalidateListData } from '@/lib/media-list-cache';
-import { clearArtistDetailSnapshot } from '@/lib/music-route-cache';
-import type { LidarrArtist, QualityProfile, LidarrMetadataProfile, RootFolder, Tag } from '@/types';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import {
+  useQualityProfiles,
+  useMetadataProfiles,
+  useRootFolders,
+  useTags,
+} from '@/lib/hooks/use-reference-data';
+import type { LidarrArtist } from '@/types';
 
 // Append the viewing instance to a Lidarr API path so the page reads/mutates the
 // correct instance. No-op (single-instance-identical) when instance is undefined.
@@ -34,12 +40,13 @@ export default function ArtistEditPage() {
   const { id } = useParams();
   const router = useRouter();
   const instance = useSearchParams().get('instance') ?? undefined;
+  const queryClient = useQueryClient();
 
   const [artist, setArtist] = useState<LidarrArtist | null>(null);
-  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
-  const [metadataProfiles, setMetadataProfiles] = useState<LidarrMetadataProfile[]>([]);
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
+  const { data: qualityProfiles = [] } = useQualityProfiles('lidarr', instance);
+  const { data: metadataProfiles = [] } = useMetadataProfiles(instance);
+  const { data: rootFolders = [] } = useRootFolders('lidarr', instance);
+  const { data: tags = [] } = useTags('lidarr', instance);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -50,19 +57,10 @@ export default function ArtistEditPage() {
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
   useEffect(() => {
-    Promise.all([
-      lidarrFetch(instance, `/api/lidarr/${id}`).then((r) => (r.ok ? r.json() : null)),
-      lidarrFetch(instance, '/api/lidarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
-      lidarrFetch(instance, '/api/lidarr/metadataprofiles').then((r) => (r.ok ? r.json() : [])),
-      lidarrFetch(instance, '/api/lidarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
-      lidarrFetch(instance, '/api/lidarr/tags').then((r) => (r.ok ? r.json() : [])),
-    ])
-      .then(([a, qp, mp, rf, t]) => {
+    lidarrFetch(instance, `/api/lidarr/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((a: LidarrArtist | null) => {
         setArtist(a);
-        setQualityProfiles(qp);
-        setMetadataProfiles(mp);
-        setRootFolders(rf);
-        setTags(t);
         if (a) {
           setQualityProfileId(a.qualityProfileId);
           setMetadataProfileId(a.metadataProfileId);
@@ -105,8 +103,8 @@ export default function ArtistEditPage() {
       });
 
       if (res.ok) {
-        invalidateListData('music');
-        clearArtistDetailSnapshot(artist.id, instance);
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+        queryClient.invalidateQueries({ queryKey: queryKeys.detail('lidarr', artist.id, instance) });
         toast.success('Artist updated');
         router.back();
       } else {
