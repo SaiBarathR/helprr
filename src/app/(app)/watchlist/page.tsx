@@ -249,8 +249,12 @@ export default function WatchlistPage() {
         return;
       }
       toast.success('Removed from watchlist');
-      queryClient.setQueryData<WatchlistItem[]>(itemsKey, (prev) =>
-        prev ? prev.filter((i) => i.id !== item.id) : prev,
+      // Drop the item from every cached items variant (tag/search filters each
+      // have their own key) so it can't reappear when switching filters before
+      // the refetch lands.
+      queryClient.setQueriesData<WatchlistItem[]>(
+        { queryKey: ['watchlist', 'items'] },
+        (prev) => (prev ? prev.filter((i) => i.id !== item.id) : prev),
       );
       queryClient.invalidateQueries({ queryKey: ['watchlist', 'tags'] });
     } finally {
@@ -280,7 +284,8 @@ export default function WatchlistPage() {
       }
       const data = (await res.json()) as { count: number };
       toast.success(`Cleared ${data.count} item${data.count === 1 ? '' : 's'}`);
-      queryClient.setQueryData<WatchlistItem[]>(itemsKey, []);
+      // Empty every cached items variant, not just the active filter's.
+      queryClient.setQueriesData<WatchlistItem[]>({ queryKey: ['watchlist', 'items'] }, () => []);
       queryClient.invalidateQueries({ queryKey: ['watchlist'] });
     } finally {
       setClearingAll(false);

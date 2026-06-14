@@ -44,7 +44,6 @@ export default function CharacterDetailPage() {
   const {
     data,
     isLoading,
-    isFetching,
     isError,
     error: queryError,
     fetchNextPage,
@@ -62,8 +61,10 @@ export default function CharacterDetailPage() {
   });
 
   const detail = data?.pages[0] ?? null;
-  // Full-page spinner on first load and on every sort flip (old code reset to it).
-  const loading = isLoading || (isFetching && !isFetchingNextPage);
+  // Full-page spinner only while there's nothing to show (first load, or a sort
+  // flip to an uncached sort). A background refetch of cached pages keeps them
+  // visible instead of blanking to a spinner.
+  const loading = isLoading;
   // Keep cached pages visible on a transient refetch failure; only surface the
   // error when nothing has loaded yet.
   const error = !data && isError ? (queryError instanceof Error ? queryError.message : 'Failed to load') : null;
