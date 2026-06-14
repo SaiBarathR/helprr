@@ -51,6 +51,19 @@ export interface InstanceTag {
   instanceLabel: string;
 }
 
+/**
+ * Display labels resolved server-side against the item's OWN instance. List routes
+ * aggregate items from every connected instance, but quality-profile / tag /
+ * metadata-profile IDs are instance-local — so the server resolves them per instance
+ * and the client renders these names directly instead of mapping IDs through a single
+ * (default-instance) lookup, which mislabels non-default rows.
+ */
+export interface ResolvedLabels {
+  qualityProfileName?: string;
+  metadataProfileName?: string;
+  tagLabels?: string[];
+}
+
 export type SonarrSeriesListItem = Pick<
   SonarrSeries,
   | 'id'
@@ -74,7 +87,7 @@ export type SonarrSeriesListItem = Pick<
   | 'previousAiring'
   | 'statistics'
   | 'seriesType'
-> & Partial<InstanceTag>;
+> & Partial<InstanceTag> & Partial<ResolvedLabels>;
 
 export interface SonarrSeason {
   seasonNumber: number;
@@ -279,7 +292,7 @@ export type RadarrMovieListItem = Pick<
   | 'popularity'
   | 'studio'
   | 'certification'
-> & Partial<InstanceTag>;
+> & Partial<InstanceTag> & Partial<ResolvedLabels>;
 
 export type RadarrCalendarEntry = RadarrMovie;
 
@@ -373,7 +386,7 @@ export type LidarrArtistListItem = Pick<
   | 'tags'
   | 'nextAlbum'
   | 'lastAlbum'
-> & Partial<InstanceTag>;
+> & Partial<InstanceTag> & Partial<ResolvedLabels>;
 
 export interface LidarrRelease {
   id: number;

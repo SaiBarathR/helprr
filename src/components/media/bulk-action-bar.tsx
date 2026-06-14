@@ -280,7 +280,9 @@ export function BulkActionBar({
                         ))}
                         {tags.map((tag) => (
                           <button
-                            key={tag.id}
+                            // Keyed by label, not id: a union of tags across instances can
+                            // repeat ids, but labels are de-duped (case-insensitive) upstream.
+                            key={tag.label}
                             type="button"
                             onClick={() => togglePicked(tag.label)}
                             className={cn(

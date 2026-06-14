@@ -200,7 +200,7 @@ export default function AnimeLibraryPage() {
   const collection = libraryQuery.data?.collection ?? null;
   const loading = !!viewer?.connected && libraryQuery.isLoading;
   const refreshing = libraryQuery.isFetching && !libraryQuery.isLoading;
-  const errorMessage = libraryQuery.isError
+  const errorMessage = !collection && libraryQuery.isError
     ? libraryQuery.error instanceof Error
       ? libraryQuery.error.message
       : 'Failed to load library'

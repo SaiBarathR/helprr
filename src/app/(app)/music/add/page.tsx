@@ -88,16 +88,30 @@ function AddArtistPageContent() {
       .catch(() => undefined);
   }, []);
 
-  // Default the profile / metadata-profile / root-folder selection to the first
-  // option when the instance's reference data arrives (re-defaults on change).
+  // Switching instances invalidates the previously-picked (instance-local)
+  // profile/folder/tag ids — clear them so a stale value can't be POSTed before
+  // the new instance's reference data arrives (the effects below re-default).
   useEffect(() => {
-    if (profiles.length > 0) setProfileId(String(profiles[0].id));
+    setProfileId('');
+    setMetadataProfileId('');
+    setRootFolder('');
+    setSelectedTags([]);
+  }, [instanceId]);
+
+  // Default the profile / metadata-profile / root-folder selection to the first
+  // option when the instance's reference data arrives. Keep a still-valid user
+  // choice on a background refetch; re-default only when it's missing now.
+  useEffect(() => {
+    if (profiles.length === 0) return;
+    setProfileId((prev) => (prev && profiles.some((p) => String(p.id) === prev) ? prev : String(profiles[0].id)));
   }, [profiles]);
   useEffect(() => {
-    if (metadataProfiles.length > 0) setMetadataProfileId(String(metadataProfiles[0].id));
+    if (metadataProfiles.length === 0) return;
+    setMetadataProfileId((prev) => (prev && metadataProfiles.some((p) => String(p.id) === prev) ? prev : String(metadataProfiles[0].id)));
   }, [metadataProfiles]);
   useEffect(() => {
-    if (rootFolders.length > 0) setRootFolder(rootFolders[0].path);
+    if (rootFolders.length === 0) return;
+    setRootFolder((prev) => (prev && rootFolders.some((f) => f.path === prev) ? prev : rootFolders[0].path));
   }, [rootFolders]);
 
   useEffect(() => () => searchAbortRef.current?.abort(), []);

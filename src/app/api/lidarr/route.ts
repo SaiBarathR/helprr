@@ -6,6 +6,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { LidarrArtist, LidarrArtistListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
 
 function toListItem(artist: LidarrArtist): LidarrArtistListItem {
   return {
@@ -70,7 +71,23 @@ async function getHandler(request: NextRequest) {
     )).flat();
 
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', full, artistCount: tagged.length });
-    return NextResponse.json(full ? tagged : tagged.map((a) => ({ ...toListItem(a), instanceId: a.instanceId, instanceLabel: a.instanceLabel })));
+    if (full) return NextResponse.json(tagged);
+
+    // Resolve quality-profile / metadata-profile / tag IDs to names against each item's OWN
+    // instance, so an artist from a non-default Lidarr isn't mislabelled by the default lookup.
+    const labelMaps = await getInstanceLabelMaps('lidarr', instances);
+    return NextResponse.json(
+      tagged.map((a) => ({
+        ...toListItem(a),
+        instanceId: a.instanceId,
+        instanceLabel: a.instanceLabel,
+        ...labelsFor(labelMaps, a.instanceId, {
+          qualityProfileId: a.qualityProfileId,
+          metadataProfileId: a.metadataProfileId,
+          tags: a.tags,
+        }),
+      })),
+    );
   } catch (error) {
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true });
     console.error('Failed to fetch artists:', error);

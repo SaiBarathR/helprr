@@ -627,7 +627,9 @@ export default function TorrentsPage() {
     }
   }, [summaryQuery.data]);
 
-  const loading = summaryQuery.isLoading;
+  // The query is disabled until the store hydrates, so isLoading stays false in
+  // that gap — treat it as loading to avoid a brief "No torrents found" flash.
+  const loading = !hasHydrated || summaryQuery.isLoading;
   const refreshing = summaryQuery.isFetching && !summaryQuery.isLoading;
   const error = summaryQuery.isError
     ? summaryQuery.error instanceof Error

@@ -55,10 +55,10 @@ export default function StudioDetailPage() {
     isFetchingNextPage,
   } = useInfiniteQuery({
     queryKey: ['anime', 'studio', id, sort],
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       jsonFetcher<AniListStudioDetailResponse>(
         `/api/anime/studio/${id}?page=${pageParam}&sort=${sort}`
-      )(),
+      )({ signal }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.mediaPageInfo?.hasNextPage ? (lastPage.mediaPageInfo.currentPage || 1) + 1 : undefined,

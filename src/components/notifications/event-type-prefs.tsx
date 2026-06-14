@@ -57,7 +57,9 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
     savedFiltersRef.current = new Map(
       loadedPrefs.map((p) => [p.eventType, { tagFilter: p.tagFilter, qualityFilter: p.qualityFilter }]),
     );
-    if (loadedPrefs.length > 0) setSubscriptionId(loadedPrefs[0].subscriptionId);
+    // Reset (not retain) when empty, so a save can't be posted to a stale
+    // subscription after the endpoint changes.
+    setSubscriptionId(loadedPrefs.length > 0 ? loadedPrefs[0].subscriptionId : null);
   }, [loadedPrefs]);
 
   const savePreference = useMutation({

@@ -76,7 +76,9 @@ export function LayoutSwitcher({
     enabled: open,
   });
   const data = layoutsQuery.data ?? null;
-  const loading = layoutsQuery.isFetching;
+  // Initial-load only — using isFetching here would blank the whole list on the
+  // background refetch each mutation triggers via invalidateQueries.
+  const loading = layoutsQuery.isLoading;
   useEffect(() => {
     if (layoutsQuery.isError) toast.error('Failed to load layouts');
   }, [layoutsQuery.isError]);

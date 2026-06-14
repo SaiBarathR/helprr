@@ -7,6 +7,7 @@ import type { SonarrSeries, SonarrSeriesListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
 
 const SONARR_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
@@ -59,18 +60,19 @@ async function getHandler(request: NextRequest) {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const cacheKeySeed = instanceId ?? 'all';
 
+    const instances = instanceId
+      ? await resolveConnection('SONARR', instanceId).then((conn) => [
+          { connection: conn, client: new SonarrClient(conn.url, conn.apiKey) },
+        ])
+      : await getSonarrClients();
+
     // Cache the raw tagged library (full objects) so both ?full=true and the slim list
     // view are served from one entry. Authorized callers all get identical bytes (binary
     // capability gate), so no per-user filtering is needed after the read.
     const { items: tagged, cached } = await getCachedTaggedLibrary({
       scope: 'sonarr',
       cacheKeySeed,
-      getInstances: () =>
-        instanceId
-          ? resolveConnection('SONARR', instanceId).then((conn) => [
-              { connection: conn, client: new SonarrClient(conn.url, conn.apiKey) },
-            ])
-          : getSonarrClients(),
+      getInstances: () => Promise.resolve(instances),
       fetchOne: (client) => client.getSeries(),
     });
 
@@ -78,8 +80,17 @@ async function getHandler(request: NextRequest) {
     if (full) {
       return NextResponse.json(tagged, { headers: SONARR_CACHE_HEADERS });
     }
+
+    // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
+    // series from a non-default Sonarr isn't mislabelled by the default instance's lookup.
+    const labelMaps = await getInstanceLabelMaps('sonarr', instances);
     return NextResponse.json(
-      tagged.map((s) => ({ ...toListItem(s), instanceId: s.instanceId, instanceLabel: s.instanceLabel })),
+      tagged.map((s) => ({
+        ...toListItem(s),
+        instanceId: s.instanceId,
+        instanceLabel: s.instanceLabel,
+        ...labelsFor(labelMaps, s.instanceId, { qualityProfileId: s.qualityProfileId, tags: s.tags }),
+      })),
       { headers: SONARR_CACHE_HEADERS }
     );
   } catch (error) {

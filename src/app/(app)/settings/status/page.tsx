@@ -23,6 +23,7 @@ export default function ServiceStatusPage() {
     data: statuses = [],
     isLoading: loading,
     isFetching,
+    isError,
     refetch,
   } = useQuery({
     queryKey: queryKeys.health(),
@@ -55,9 +56,11 @@ export default function ServiceStatusPage() {
           <p className="text-sm text-muted-foreground mt-1">
             {loading
               ? 'Checking connected services…'
-              : downCount > 0
-                ? `${downCount} service${downCount === 1 ? '' : 's'} unreachable`
-                : 'All connected services are reachable'}
+              : isError
+                ? 'Could not check service status'
+                : downCount > 0
+                  ? `${downCount} service${downCount === 1 ? '' : 's'} unreachable`
+                  : 'All connected services are reachable'}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing || loading} className="h-9 shrink-0">
@@ -71,6 +74,12 @@ export default function ServiceStatusPage() {
           <div className="px-4 py-8 flex items-center justify-center text-sm text-muted-foreground">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             Loading…
+          </div>
+        </GroupedSection>
+      ) : isError ? (
+        <GroupedSection>
+          <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+            Could not check service status. Tap Re-test to try again.
           </div>
         </GroupedSection>
       ) : statuses.length === 0 ? (

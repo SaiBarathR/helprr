@@ -29,7 +29,7 @@ import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
-import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
+import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import type { LidarrArtistListItem } from '@/types';
 import type { MediaViewMode } from '@/lib/store';
 
@@ -192,9 +192,14 @@ export default function MusicPage() {
     select: ensureArray,
   });
   const artists = artistsData ?? EMPTY_ARTISTS;
-  const { data: qualityProfiles = [] } = useQualityProfiles('lidarr');
-  const { data: metadataProfiles = [] } = useMetadataProfiles();
-  const { data: tags = [] } = useTags('lidarr');
+  // Quality-profile / metadata-profile / tag names are resolved per-instance server-side
+  // (item.qualityProfileName, item.metadataProfileName, item.tagLabels). The bulk-tag picker
+  // still needs the union of every connected instance's tags as suggestions.
+  const instanceIds = useMemo(
+    () => [...new Set(artists.map((a) => a.instanceId).filter((id): id is string => Boolean(id)))],
+    [artists]
+  );
+  const tags = useUnionTags('lidarr', instanceIds);
   const refreshing = isFetching && !loading;
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -312,15 +317,6 @@ export default function MusicPage() {
     persistViewState(window.scrollY, search);
   }, [persistViewState, search]);
 
-  const qualityProfileMap = useMemo(
-    () => new Map(qualityProfiles.map((profile) => [profile.id, profile.name])),
-    [qualityProfiles]
-  );
-  const metadataProfileMap = useMemo(
-    () => new Map(metadataProfiles.map((profile) => [profile.id, profile.name])),
-    [metadataProfiles]
-  );
-
   // Connected instances derived from the (already instance-tagged) list.
   const instances = useMemo(() => {
     const map = new Map<string, string>();
@@ -396,8 +392,8 @@ export default function MusicPage() {
           result = (a.ratings?.value || 0) - (b.ratings?.value || 0);
           break;
         case 'qualityProfile': {
-          const qA = qualityProfileMap.get(a.qualityProfileId) || '';
-          const qB = qualityProfileMap.get(b.qualityProfileId) || '';
+          const qA = a.qualityProfileName || '';
+          const qB = b.qualityProfileName || '';
           result = qA.localeCompare(qB);
           break;
         }
@@ -418,7 +414,7 @@ export default function MusicPage() {
     });
 
     return list;
-  }, [artists, search, sort, sortDir, filter, instanceFilter, qualityProfileMap]);
+  }, [artists, search, sort, sortDir, filter, instanceFilter]);
 
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((a) => selectedKeys.has(keyOf(a)));
@@ -562,14 +558,14 @@ export default function MusicPage() {
         && artist.statistics.trackFileCount >= artist.statistics.totalTrackCount,
       status: artist.status,
       images: artist.images,
-      qualityProfile: qualityProfileMap.get(artist.qualityProfileId),
+      qualityProfile: artist.qualityProfileName,
       rating: artist.ratings?.value,
       sizeOnDisk: artist.statistics?.sizeOnDisk,
       artistType: artist.artistType,
       albumCount: artist.statistics?.albumCount,
       trackProgress: trackProgressLabel(artist),
     }))
-  ), [filtered, qualityProfileMap, multiInstance, hrefForArtist]);
+  ), [filtered, multiInstance, hrefForArtist]);
 
   const tableVirtualizer = useWindowVirtualizer({
     count: tableRows.length,
@@ -615,8 +611,8 @@ export default function MusicPage() {
         status={artist.status}
         visibleFields={fields}
         posterSize={posterSize}
-        qualityProfile={qualityProfileMap.get(artist.qualityProfileId)}
-        metadataProfile={metadataProfileMap.get(artist.metadataProfileId)}
+        qualityProfile={artist.qualityProfileName}
+        metadataProfile={artist.metadataProfileName}
         artistType={artist.artistType}
         albumCount={artist.statistics?.albumCount}
         trackProgress={trackProgressLabel(artist)}

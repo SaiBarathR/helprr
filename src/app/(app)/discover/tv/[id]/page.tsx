@@ -37,7 +37,7 @@ export default function DiscoverTvDetailPage() {
   });
 
   const loading = validId && isLoading;
-  const error = !validId ? 'Invalid TV show ID' : isError ? 'Failed to load show' : null;
+  const error = !validId ? 'Invalid TV show ID' : !show && isError ? 'Failed to load show' : null;
 
   // Lazily fetch the expanded season; the query cache retains previously-opened
   // seasons so toggling back is instant (no error screen on failure — tolerated).

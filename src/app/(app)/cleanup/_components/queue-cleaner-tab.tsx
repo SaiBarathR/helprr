@@ -85,6 +85,10 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
       return { config, stallRules, slowRules };
     },
     staleTime: 0,
+    // Don't let a focus/reconnect refetch re-seed the form mid-edit and wipe
+    // unsaved changes (the seed effect below resets the dirty baseline).
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const loading = configQuery.isLoading;
 
@@ -278,6 +282,15 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
   const configError = fieldErrors.find((e) => e.scope === 'config')?.message;
   const errorFor = (kind: 'stall' | 'slow', id: string): string | undefined =>
     fieldErrors.find((e) => e.scope === kind && e.id === id)?.message;
+
+  if (!cfg && configQuery.isError) {
+    return (
+      <div className="py-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+        <span>Failed to load Queue Cleaner settings.</span>
+        <Button variant="outline" size="sm" onClick={() => void configQuery.refetch()}>Retry</Button>
+      </div>
+    );
+  }
 
   if (loading || !cfg) {
     return <div className="py-12 flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>;

@@ -19,6 +19,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import type { HistoryItem, RadarrMovie } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { ApiError } from '@/lib/query-fetch';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -127,7 +128,13 @@ export default function MovieFilesPage() {
     queryKey: queryKeys.detail('radarr', movieId, instance),
     queryFn: async ({ signal }): Promise<RadarrMovie | null> => {
       const r = await radarrFetch(instance, `/api/radarr/${movieId}`, { signal });
-      return r.ok ? ((await r.json()) as RadarrMovie) : null;
+      if (!r.ok) {
+        // Only a genuine 404 means "not found"; surface auth/server errors instead
+        // of rendering them as a missing movie.
+        if (r.status === 404) return null;
+        throw new ApiError(r.status, `GET /api/radarr/${movieId} → ${r.status}`);
+      }
+      return (await r.json()) as RadarrMovie;
     },
     enabled: Number.isFinite(movieId),
   });
@@ -135,7 +142,7 @@ export default function MovieFilesPage() {
   const loading = movieQuery.isLoading;
 
   const historyQuery = useQuery({
-    queryKey: ['radarr', 'history', 'movie', movieId],
+    queryKey: ['radarr', 'history', 'movie', instance ?? 'default', movieId],
     queryFn: async ({ signal }): Promise<HistoryItem[]> => {
       const r = await radarrFetch(instance, `/api/radarr/history/movie?movieId=${movieId}`, { signal });
       return r.ok ? ((await r.json()) as HistoryItem[]) : [];

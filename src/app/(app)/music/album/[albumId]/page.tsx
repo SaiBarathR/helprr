@@ -76,9 +76,12 @@ export default function AlbumDetailPage() {
   const hasRestoredScrollRef = useRef(false);
 
   // Album + tracks + files — TanStack cache gives instant back-nav (gcTime),
-  // replacing the bespoke album snapshot.
+  // replacing the bespoke album snapshot. Instance-scoped: album ids repeat
+  // across Lidarr instances, so the key (and the monitor write below) must
+  // include the viewing instance.
+  const albumKey = ['lidarr', 'album', instance ?? 'default', albumId] as const;
   const albumQuery = useQuery({
-    queryKey: ['lidarr', 'album', albumId],
+    queryKey: albumKey,
     queryFn: async ({ signal }) => {
       const [album, tracks, trackFiles] = await Promise.all([
         lidarrFetch(instance, `/api/lidarr/album/${albumId}`, { signal }).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
@@ -178,7 +181,7 @@ export default function AlbumDetailPage() {
       if (res.ok) {
         const updated = { ...album, monitored: next };
         queryClient.setQueryData(
-          ['lidarr', 'album', albumId],
+          albumKey,
           (prev: { album: LidarrAlbum | null; tracks: LidarrTrack[]; trackFiles: LidarrTrackFile[] } | undefined) =>
             prev ? { ...prev, album: updated } : prev,
         );

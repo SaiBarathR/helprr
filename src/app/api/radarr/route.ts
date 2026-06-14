@@ -7,6 +7,7 @@ import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
 
 const RADARR_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
@@ -58,18 +59,19 @@ async function getHandler(request: NextRequest) {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const cacheKeySeed = instanceId ?? 'all';
 
+    const instances = instanceId
+      ? await resolveConnection('RADARR', instanceId).then((conn) => [
+          { connection: conn, client: new RadarrClient(conn.url, conn.apiKey) },
+        ])
+      : await getRadarrClients();
+
     // Cache the raw tagged library (full objects) so both ?full=true and the slim list
     // view are served from one entry. Authorized callers all get identical bytes (binary
     // capability gate), so no per-user filtering is needed after the read.
     const { items: tagged, cached } = await getCachedTaggedLibrary({
       scope: 'radarr',
       cacheKeySeed,
-      getInstances: () =>
-        instanceId
-          ? resolveConnection('RADARR', instanceId).then((conn) => [
-              { connection: conn, client: new RadarrClient(conn.url, conn.apiKey) },
-            ])
-          : getRadarrClients(),
+      getInstances: () => Promise.resolve(instances),
       fetchOne: (client) => client.getMovies(),
     });
 
@@ -80,8 +82,17 @@ async function getHandler(request: NextRequest) {
       cached: !!cached,
     });
     if (full) return NextResponse.json(tagged, { headers: RADARR_CACHE_HEADERS });
+
+    // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
+    // movie from a non-default Radarr isn't mislabelled by the default instance's lookup.
+    const labelMaps = await getInstanceLabelMaps('radarr', instances);
     return NextResponse.json(
-      tagged.map((m) => ({ ...toListItem(m), instanceId: m.instanceId, instanceLabel: m.instanceLabel })),
+      tagged.map((m) => ({
+        ...toListItem(m),
+        instanceId: m.instanceId,
+        instanceLabel: m.instanceLabel,
+        ...labelsFor(labelMaps, m.instanceId, { qualityProfileId: m.qualityProfileId, tags: m.tags }),
+      })),
       { headers: RADARR_CACHE_HEADERS }
     );
   } catch (error) {

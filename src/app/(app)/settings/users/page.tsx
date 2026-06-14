@@ -618,9 +618,18 @@ function EditUserDialog({
               Admins always have every capability and can&apos;t be restricted.
             </p>
           ) : effective === null ? (
-            <div className="py-4 text-center">
-              <Loader2 className="h-4 w-4 animate-spin mx-auto" />
-            </div>
+            permsQuery.isError ? (
+              <div className="py-4 text-center space-y-2">
+                <p className="text-xs text-muted-foreground">Couldn&apos;t load permissions.</p>
+                <Button variant="outline" size="sm" onClick={() => void permsQuery.refetch()}>
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <div className="py-4 text-center">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+              </div>
+            )
           ) : (
             CAPABILITY_GROUPS.map((group) => (
               <div key={group.id} className="space-y-1">

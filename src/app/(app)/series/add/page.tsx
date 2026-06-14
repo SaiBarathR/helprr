@@ -72,12 +72,16 @@ function AddSeriesPageContent() {
   }, []);
 
   // Default the profile / root-folder selection to the first option when the
-  // instance's reference data arrives (re-defaults when the instance changes).
+  // instance's reference data arrives. Keep a still-valid user choice on a
+  // background refetch; re-default only when the current value is missing from
+  // the fresh list (e.g. after switching instances).
   useEffect(() => {
-    if (profiles.length > 0) setProfileId(String(profiles[0].id));
+    if (profiles.length === 0) return;
+    setProfileId((prev) => (prev && profiles.some((p) => String(p.id) === prev) ? prev : String(profiles[0].id)));
   }, [profiles]);
   useEffect(() => {
-    if (rootFolders.length > 0) setRootFolder(rootFolders[0].path);
+    if (rootFolders.length === 0) return;
+    setRootFolder((prev) => (prev && rootFolders.some((f) => f.path === prev) ? prev : rootFolders[0].path));
   }, [rootFolders]);
 
   const runSearch = useCallback(async (searchTerm: string, targetTvdbId?: number, targetTmdbId?: number) => {

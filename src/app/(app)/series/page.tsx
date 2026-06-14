@@ -29,7 +29,7 @@ import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
-import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
+import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import type { SonarrSeriesListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
@@ -155,8 +155,14 @@ export default function SeriesPage() {
     select: ensureArray,
   });
   const series = seriesData ?? EMPTY_SERIES;
-  const { data: qualityProfiles = [] } = useQualityProfiles('sonarr');
-  const { data: tags = [] } = useTags('sonarr');
+  // Quality-profile / tag names are resolved per-instance server-side (item.qualityProfileName,
+  // item.tagLabels). The bulk-tag picker still needs the union of every connected instance's
+  // tags as suggestions, so fetch those per instance and merge.
+  const instanceIds = useMemo(
+    () => [...new Set(series.map((s) => s.instanceId).filter((id): id is string => Boolean(id)))],
+    [series]
+  );
+  const tags = useUnionTags('sonarr', instanceIds);
   const refreshing = isFetching && !loading;
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -265,12 +271,6 @@ export default function SeriesPage() {
     persistViewState(window.scrollY, search);
   }, [persistViewState, search]);
 
-  const qualityProfileMap = useMemo(
-    () => new Map(qualityProfiles.map((profile) => [profile.id, profile.name])),
-    [qualityProfiles]
-  );
-  const tagMap = useMemo(() => new Map(tags.map((tag) => [tag.id, tag.label])), [tags]);
-
   // Connected instances derived from the (already instance-tagged) list. The
   // badge/filter only appear when more than one instance of the type exists.
   const instances = useMemo(() => {
@@ -349,8 +349,8 @@ export default function SeriesPage() {
           result = (a.monitored === b.monitored) ? 0 : a.monitored ? -1 : 1;
           break;
         case 'qualityProfile': {
-          const qA = qualityProfileMap.get(a.qualityProfileId) || '';
-          const qB = qualityProfileMap.get(b.qualityProfileId) || '';
+          const qA = a.qualityProfileName || '';
+          const qB = b.qualityProfileName || '';
           result = qA.localeCompare(qB);
           break;
         }
@@ -379,8 +379,8 @@ export default function SeriesPage() {
           result = a.statistics.sizeOnDisk - b.statistics.sizeOnDisk;
           break;
         case 'tags': {
-          const tA = a.tags.map((id) => tagMap.get(id) || '').sort().join(',');
-          const tB = b.tags.map((id) => tagMap.get(id) || '').sort().join(',');
+          const tA = (a.tagLabels ?? []).slice().sort().join(',');
+          const tB = (b.tagLabels ?? []).slice().sort().join(',');
           result = tA.localeCompare(tB);
           break;
         }
@@ -392,7 +392,7 @@ export default function SeriesPage() {
     });
 
     return list;
-  }, [series, search, sort, sortDir, filter, instanceFilter, qualityProfileMap, tagMap]);
+  }, [series, search, sort, sortDir, filter, instanceFilter]);
 
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selectedKeys.has(keyOf(s)));
@@ -533,14 +533,14 @@ export default function SeriesPage() {
     monitored: s.monitored,
     status: s.status,
     images: s.images,
-    qualityProfile: qualityProfileMap.get(s.qualityProfileId),
+    qualityProfile: s.qualityProfileName,
     network: s.network,
     rating: s.ratings?.value,
     sizeOnDisk: s.statistics.sizeOnDisk,
     episodeProgress: `${s.statistics.episodeCount}/${s.statistics.totalEpisodeCount}`,
     runtime: s.runtime,
     genres: s.genres,
-  })), [filtered, qualityProfileMap, multiInstance, hrefForSeries]);
+  })), [filtered, multiInstance, hrefForSeries]);
 
   const tableVirtualizer = useWindowVirtualizer({
     count: tableRows.length,
@@ -821,7 +821,7 @@ export default function SeriesPage() {
                   status={s.status}
                   visibleFields={visibleFields}
                   posterSize={posterSize}
-                  qualityProfile={qualityProfileMap.get(s.qualityProfileId)}
+                  qualityProfile={s.qualityProfileName}
                   network={s.network}
                   overview={s.overview}
                   rating={s.ratings?.value}
@@ -895,7 +895,7 @@ export default function SeriesPage() {
                 status={s.status}
                 visibleFields={mobileOverviewFields}
                 posterSize={posterSize}
-                qualityProfile={qualityProfileMap.get(s.qualityProfileId)}
+                qualityProfile={s.qualityProfileName}
                 network={s.network}
                 overview={s.overview}
                 rating={s.ratings?.value}

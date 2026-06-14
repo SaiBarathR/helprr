@@ -153,7 +153,10 @@ export default function AnimePage() {
       urlSeason || urlYear || urlYearMin || urlYearMax || urlStatus || urlFormat || urlGenres
     );
 
-    if (urlSearch) {
+    if (urlSearch && urlSearch.trim().length >= 3) {
+      // Only restore search mode for a searchable (≥3 char) query — a 1–2 char
+      // ?search= would enable neither list (searchInfinite needs ≥3, browse is
+      // off in search mode) and strand the page on an empty search view.
       setSearchQuery(urlSearch);
       setViewMode('search');
     } else if (urlSort || hasUrlFilters) {

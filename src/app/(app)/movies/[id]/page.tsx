@@ -177,7 +177,7 @@ export default function MovieDetailPage() {
   const { data: tags = [] } = useTags('radarr', instance);
   // Cast/crew, fetched in the background once the movie is loaded.
   const { data: credits = [] } = useQuery({
-    queryKey: ['radarr', 'credits', movieId],
+    queryKey: queryKeys.credits('radarr', movieId, instance),
     queryFn: async ({ signal }): Promise<RadarrCredit[]> => {
       const r = await radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`, { signal });
       return r.ok ? ((await r.json()) as RadarrCredit[]) : [];
@@ -373,7 +373,8 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setDeleting(true);
     try {
-      await radarrFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
+      const res = await radarrFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
       queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
       toast.success('Movie deleted');

@@ -51,12 +51,16 @@ export default function RequestsPage() {
   });
   const counts = countsQuery.data ?? null;
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    void countsQuery.refetch();
-    // Bump the key so the active widget remounts and refetches too.
+    // Bump the key so the active widget remounts and refetches in parallel.
     setRefreshTick((n) => n + 1);
-    window.setTimeout(() => setRefreshing(false), 600);
+    try {
+      // Tie the spinner to the real count refetch so the badge can't re-enable stale.
+      await countsQuery.refetch();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const pendingBadge = useMemo(() => counts?.pending ?? 0, [counts]);

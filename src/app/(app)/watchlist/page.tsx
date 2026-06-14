@@ -629,9 +629,11 @@ export default function WatchlistPage() {
         {error && <div className="text-sm text-red-400">{error}</div>}
 
         {filtered === null ? (
-          <div className="py-16 text-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-          </div>
+          itemsQuery.isLoading ? (
+            <div className="py-16 text-center text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+            </div>
+          ) : null
         ) : filtered.length === 0 ? (
           totalCount === 0 ? (
             <div className="py-16 text-center text-muted-foreground space-y-1">
