@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher, ensureArray, withInstanceQuery } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -89,7 +90,11 @@ function ManualImportContent() {
     select: ensureArray,
   });
 
-  const episodesKey = ['sonarr', 'episodes', { seriesId, instanceId }] as const;
+  // Same key shape as the series / season / episode views (queryKeys.episodes), so
+  // this manual-import episode list shares their cache and picks up
+  // patchEpisodesInCache monitor/file updates. instanceId '' → undefined normalizes
+  // to 'default', matching how those views key off the ?instance= param.
+  const episodesKey = queryKeys.episodes(Number(seriesId), instanceId || undefined);
   const { data: allEpisodes = [] } = useQuery({
     queryKey: episodesKey,
     queryFn: jsonFetcher<SonarrEpisode[]>(
