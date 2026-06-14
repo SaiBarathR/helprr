@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogsToolbar } from './logs-toolbar';
@@ -71,8 +73,7 @@ async function downloadOrShare(url: string, fallbackName: string) {
 }
 
 export default function LogsPage() {
-  const [files, setFiles] = useState<LogFile[]>([]);
-  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState('all');
   const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set());
   const [sources, setSources] = useState<Set<LogSource>>(() => new Set());
@@ -80,7 +81,6 @@ export default function LogsPage() {
   const [query, setQuery] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [loading, setLoading] = useState(false);
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filesSheetOpen, setFilesSheetOpen] = useState(false);
@@ -94,39 +94,32 @@ export default function LogsPage() {
     return () => window.clearTimeout(handle);
   }, [searchInput]);
 
-  const loadFiles = useCallback(async () => {
-    const response = await fetch('/api/logs/files');
-    if (!response.ok) return;
-    const payload = await response.json();
-    setFiles(Array.isArray(payload.files) ? payload.files : []);
-  }, []);
+  const logsSearchPath = (() => {
+    const params = new URLSearchParams({ limit: '1000' });
+    if (selectedFile !== 'all') params.set('file', selectedFile);
+    if (levels.size > 0) params.set('level', [...levels].join(','));
+    if (sources.size > 0) params.set('source', [...sources].join(','));
+    if (query) params.set('q', query);
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return `/api/logs/search?${params.toString()}`;
+  })();
 
-  const loadLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ limit: '1000' });
-      if (selectedFile !== 'all') params.set('file', selectedFile);
-      if (levels.size > 0) params.set('level', [...levels].join(','));
-      if (sources.size > 0) params.set('source', [...sources].join(','));
-      if (query) params.set('q', query);
-      if (from) params.set('from', from);
-      if (to) params.set('to', to);
-      const response = await fetch(`/api/logs/search?${params.toString()}`);
-      if (!response.ok) return;
-      const payload = await response.json();
-      setEntries(Array.isArray(payload.entries) ? payload.entries : []);
-    } finally {
-      setLoading(false);
-    }
-  }, [from, levels, query, selectedFile, sources, to]);
+  const { data: files = [], refetch: refetchFiles } = useQuery({
+    queryKey: ['logs', 'files'],
+    queryFn: jsonFetcher<{ files?: LogFile[] }>('/api/logs/files'),
+    select: (payload) => (Array.isArray(payload.files) ? payload.files : []),
+  });
 
-  useEffect(() => {
-    void loadFiles();
-  }, [loadFiles]);
-
-  useEffect(() => {
-    void loadLogs();
-  }, [loadLogs]);
+  const {
+    data: entries = [],
+    isFetching: loading,
+    refetch: refetchLogs,
+  } = useQuery({
+    queryKey: ['logs', { selectedFile, levels: [...levels], sources: [...sources], query, from, to }],
+    queryFn: jsonFetcher<{ entries?: LogEntry[] }>(logsSearchPath),
+    select: (payload) => (Array.isArray(payload.entries) ? payload.entries : []),
+  });
 
   const handleListRef = useCallback((node: HTMLDivElement | null) => {
     listRef.current = node;
@@ -153,9 +146,9 @@ export default function LogsPage() {
   });
 
   const refresh = useCallback(() => {
-    void loadFiles();
-    void loadLogs();
-  }, [loadFiles, loadLogs]);
+    void refetchFiles();
+    void refetchLogs();
+  }, [refetchFiles, refetchLogs]);
 
   const downloadCurrent = useCallback(() => {
     const params = new URLSearchParams();
@@ -184,13 +177,12 @@ export default function LogsPage() {
         });
         if (!response.ok) return;
         if (selectedFile === file) setSelectedFile('all');
-        await loadFiles();
-        await loadLogs();
+        await queryClient.invalidateQueries({ queryKey: ['logs'] });
       } finally {
         setDeletingFile(null);
       }
     },
-    [loadFiles, loadLogs, selectedFile]
+    [queryClient, selectedFile]
   );
 
   const deleteFile = useCallback((file: string) => {

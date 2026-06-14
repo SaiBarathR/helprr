@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
@@ -96,10 +98,6 @@ function todayStr(): string {
   return toDateStr(new Date());
 }
 
-function isAbortError(error: unknown): boolean {
-  return (error as { name?: string })?.name === 'AbortError';
-}
-
 function formatDateCreated(dateStr: string): string {
   // DateCreated is UTC e.g. "2026-02-20 19:11:07.0338097"
   try {
@@ -145,48 +143,9 @@ export default function JellyfinPage() {
       }),
     [canSessions, canStats]
   );
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const refreshingRef = useRef(refreshing);
-  const refreshObservedLoadRef = useRef(false);
-  const refreshPendingRef = useRef(0);
-
-  useEffect(() => {
-    refreshingRef.current = refreshing;
-  }, [refreshing]);
-
-  const incrementPending = useCallback(() => {
-    if (!refreshingRef.current) return;
-    refreshObservedLoadRef.current = true;
-    refreshPendingRef.current += 1;
-  }, []);
-
-  const decrementPending = useCallback(() => {
-    if (!refreshingRef.current || !refreshObservedLoadRef.current) return;
-    refreshPendingRef.current = Math.max(0, refreshPendingRef.current - 1);
-    if (refreshPendingRef.current === 0) {
-      refreshingRef.current = false;
-      setRefreshing(false);
-    }
-  }, []);
-
-  // function handleRefresh() {
-  //   refreshingRef.current = true;
-  //   setRefreshing(true);
-  //   refreshObservedLoadRef.current = false;
-  //   refreshPendingRef.current = 0;
-  //   setRefreshKey((k) => k + 1);
-  // }
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
-      {/* <div className="flex items-center justify-between px-2 pt-3 pb-2">
-        <h1 className="text-xl font-bold">Jellyfin</h1>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh} disabled={refreshing}>
-          {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-        </Button>
-      </div> */}
-
       <div className="sticky z-30 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {visibleTabs.map((t) => (
@@ -210,10 +169,10 @@ export default function JellyfinPage() {
 
       <div className="flex-1 overflow-y-auto px-2 pb-4">
         <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
-          {tab === 'overview' && <OverviewTab key={`o-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
-          {tab === 'users' && <UsersTab key={`u-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
-          {tab === 'history' && <HistoryTab key={`h-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
-          {tab === 'stats' && <StatsTab key={`s-${refreshKey}`} onLoadStart={incrementPending} onLoadEnd={decrementPending} />}
+          {tab === 'overview' && <OverviewTab />}
+          {tab === 'users' && <UsersTab />}
+          {tab === 'history' && <HistoryTab />}
+          {tab === 'stats' && <StatsTab />}
         </div>
       </div>
     </div>
@@ -259,23 +218,8 @@ function PluginNotice() {
 // Tab 1: OVERVIEW
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-type TabLoadCallbacks = {
-  onLoadStart?: () => void;
-  onLoadEnd?: () => void;
-};
-
-function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
-  const [system, setSystem] = useState<JellyfinSystemInfo | null>(null);
-  const [sessions, setSessions] = useState<JellyfinSession[]>([]);
-  const [resumeItems, setResumeItems] = useState<JellyfinItem[]>([]);
-  const [counts, setCounts] = useState<JellyfinItemCounts | null>(null);
-  const [recentlyAdded, setRecentlyAdded] = useState<JellyfinItem[]>([]);
-  const [tasks, setTasks] = useState<JellyfinScheduledTask[]>([]);
-  const [devices, setDevices] = useState<JellyfinDevice[]>([]);
-  const [selfDeviceId, setSelfDeviceId] = useState('');
-  const [activity, setActivity] = useState<JellyfinActivityEntry[]>([]);
-  const [alerts, setAlerts] = useState<JellyfinActivityEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+function OverviewTab() {
+  const queryClient = useQueryClient();
   const [selectedSession, setSelectedSession] = useState<JellyfinSession | null>(null);
   const [serverAction, setServerAction] = useState<string | null>(null);
   const [pendingServerAction, setPendingServerAction] = useState<JellyfinServerAction | null>(null);
@@ -285,56 +229,102 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   // members never see (or fetch) them.
   const canControl = useCan('jellyfin.control');
 
-  const fetchData = useCallback(async () => {
-    const [sessRes, resumeRes, countsRes, recentRes] = await Promise.allSettled([
-      fetch('/api/jellyfin/sessions'),
-      fetch('/api/jellyfin/resume'),
-      fetch('/api/jellyfin/counts'),
-      fetch('/api/jellyfin/recently-added?limit=20'),
-    ]);
-    if (sessRes.status === 'fulfilled' && sessRes.value.ok) setSessions((await sessRes.value.json()).sessions || []);
-    if (resumeRes.status === 'fulfilled' && resumeRes.value.ok) setResumeItems((await resumeRes.value.json()).items || []);
-    if (countsRes.status === 'fulfilled' && countsRes.value.ok) setCounts((await countsRes.value.json()).counts);
-    if (recentRes.status === 'fulfilled' && recentRes.value.ok) setRecentlyAdded((await recentRes.value.json()).items || []);
+  // ── Always-on slices ──────────────────────────────────────────────
+  // sessions + resume are the live data (who's watching / progress) — they poll
+  // every 15s while the tab is focused. counts/recently-added rarely change, so
+  // they just revalidate on mount (staleTime:0) and tab switch.
+  const sessionsQuery = useQuery({
+    queryKey: ['jellyfin', 'sessions'],
+    queryFn: jsonFetcher<{ sessions?: JellyfinSession[] }>('/api/jellyfin/sessions'),
+    select: (d) => d.sessions ?? [],
+    staleTime: 0,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+  const resumeQuery = useQuery({
+    queryKey: ['jellyfin', 'resume'],
+    queryFn: jsonFetcher<{ items?: JellyfinItem[] }>('/api/jellyfin/resume'),
+    select: (d) => d.items ?? [],
+    staleTime: 0,
+    refetchInterval: 15_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+  });
+  const countsQuery = useQuery({
+    queryKey: ['jellyfin', 'counts'],
+    queryFn: jsonFetcher<{ counts?: JellyfinItemCounts }>('/api/jellyfin/counts'),
+    select: (d) => d.counts ?? null,
+    staleTime: 0,
+  });
+  const recentQuery = useQuery({
+    queryKey: ['jellyfin', 'recently-added'],
+    queryFn: jsonFetcher<{ items?: JellyfinItem[] }>('/api/jellyfin/recently-added?limit=20'),
+    select: (d) => d.items ?? [],
+    staleTime: 0,
+  });
 
-    // Server administration data is control-gated; skip the fetches for members.
-    if (canControl) {
-      const [sysRes, taskRes, devRes, actRes, alertRes] = await Promise.allSettled([
-        fetch('/api/jellyfin/system'),
-        fetch('/api/jellyfin/tasks'),
-        fetch('/api/jellyfin/devices'),
-        fetch('/api/jellyfin/activity?hasUserId=true&limit=20'),
-        fetch('/api/jellyfin/activity?hasUserId=false&limit=20'),
-      ]);
-      if (sysRes.status === 'fulfilled' && sysRes.value.ok) setSystem((await sysRes.value.json()).system);
-      if (taskRes.status === 'fulfilled' && taskRes.value.ok) setTasks((await taskRes.value.json()).tasks || []);
-      if (devRes.status === 'fulfilled' && devRes.value.ok) {
-        const d = await devRes.value.json();
-        setDevices(d.devices || []);
-        setSelfDeviceId(d.selfDeviceId || '');
-      }
-      if (actRes.status === 'fulfilled' && actRes.value.ok) setActivity((await actRes.value.json()).entries || []);
-      if (alertRes.status === 'fulfilled' && alertRes.value.ok) setAlerts((await alertRes.value.json()).entries || []);
-    }
-    setLoading(false);
-  }, [canControl]);
+  // ── Admin slices (control-gated; never fetched for members) ───────
+  const systemQuery = useQuery({
+    queryKey: ['jellyfin', 'system'],
+    queryFn: jsonFetcher<{ system?: JellyfinSystemInfo }>('/api/jellyfin/system'),
+    select: (d) => d.system ?? null,
+    staleTime: 0,
+    enabled: canControl,
+  });
+  const tasksQuery = useQuery({
+    queryKey: ['jellyfin', 'tasks'],
+    queryFn: jsonFetcher<{ tasks?: JellyfinScheduledTask[] }>('/api/jellyfin/tasks'),
+    staleTime: 0,
+    enabled: canControl,
+    // Keep scan/task progress live only while something is actually running —
+    // otherwise the slice is mount-only (no idle polling).
+    refetchInterval: (query) =>
+      (query.state.data?.tasks ?? []).some((t) => t.State === 'Running' || t.State === 'Cancelling')
+        ? 15_000
+        : false,
+    refetchIntervalInBackground: false,
+  });
+  const devicesQuery = useQuery({
+    queryKey: ['jellyfin', 'devices'],
+    queryFn: jsonFetcher<{ devices?: JellyfinDevice[]; selfDeviceId?: string }>('/api/jellyfin/devices'),
+    staleTime: 0,
+    enabled: canControl,
+  });
+  const activityQuery = useQuery({
+    queryKey: ['jellyfin', 'activity', 'user'],
+    queryFn: jsonFetcher<{ entries?: JellyfinActivityEntry[] }>('/api/jellyfin/activity?hasUserId=true&limit=20'),
+    select: (d) => d.entries ?? [],
+    staleTime: 0,
+    enabled: canControl,
+  });
+  const alertsQuery = useQuery({
+    queryKey: ['jellyfin', 'activity', 'no-user'],
+    queryFn: jsonFetcher<{ entries?: JellyfinActivityEntry[] }>('/api/jellyfin/activity?hasUserId=false&limit=20'),
+    select: (d) => d.entries ?? [],
+    staleTime: 0,
+    enabled: canControl,
+  });
 
-  const refreshDevices = useCallback(async () => {
-    const res = await fetch('/api/jellyfin/devices');
-    if (res.ok) {
-      const d = await res.json();
-      setDevices(d.devices || []);
-      setSelfDeviceId(d.selfDeviceId || '');
-    }
-  }, []);
+  const sessions = sessionsQuery.data ?? [];
+  const resumeItems = resumeQuery.data ?? [];
+  const counts = countsQuery.data ?? null;
+  const recentlyAdded = recentQuery.data ?? [];
+  const system = systemQuery.data ?? null;
+  const tasks = useMemo(() => tasksQuery.data?.tasks ?? [], [tasksQuery.data]);
+  const devices = devicesQuery.data?.devices ?? [];
+  const selfDeviceId = devicesQuery.data?.selfDeviceId ?? '';
+  const activity = activityQuery.data ?? [];
+  const alerts = alertsQuery.data ?? [];
 
-  const refreshTasks = useCallback(async () => {
-    const res = await fetch('/api/jellyfin/tasks');
-    if (res.ok) {
-      const data = await res.json();
-      setTasks(data.tasks || []);
-    }
-  }, []);
+  const refreshDevices = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['jellyfin', 'devices'] }),
+    [queryClient]
+  );
+  const refreshTasks = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['jellyfin', 'tasks'] }),
+    [queryClient]
+  );
 
   const runServerAction = useCallback(async (action: JellyfinServerAction) => {
     const label = SERVER_ACTION_LABELS[action];
@@ -370,24 +360,10 @@ function OverviewTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
 
   const scanRunning = useMemo(() => tasks.some((t) => t.Key === 'RefreshLibrary' && t.State === 'Running'), [tasks]);
 
-  useEffect(() => {
-    let active = true;
-    onLoadStart?.();
-    void Promise.resolve()
-      .then(fetchData)
-      .finally(() => {
-        if (active) onLoadEnd?.();
-      });
-    const interval = setInterval(() => {
-      void fetchData();
-    }, 15000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [fetchData, onLoadStart, onLoadEnd]);
-
-  if (loading) {
+  // First-paint spinner: gate only on the always-on slices (admin slices are
+  // disabled for members and resolve independently). gcTime keeps data warm, so
+  // switching back to this tab renders instantly while revalidating.
+  if (sessionsQuery.isLoading || resumeQuery.isLoading || countsQuery.isLoading || recentQuery.isLoading) {
     return <PageSpinner />;
   }
 
@@ -730,83 +706,51 @@ function ActivityFeed({ title, entries, alert = false }: { title: string; entrie
 // Tab 2: USERS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function UsersTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
-  const [users, setUsers] = useState<PlaybackUserActivity[]>([]);
-  const [jellyfinUsers, setJellyfinUsers] = useState<JellyfinUser[]>([]);
-  const [pluginAvailable, setPluginAvailable] = useState(true);
-  const [loading, setLoading] = useState(true);
+function UsersTab() {
   const [selectedUser, setSelectedUser] = useState<PlaybackUserActivity | null>(null);
-  const [userHistory, setUserHistory] = useState<CustomHistoryItem[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
-    let active = true;
+  const playbackQuery = useQuery({
+    queryKey: ['jellyfin', 'playback', 'users', MAX_DAYS],
+    queryFn: jsonFetcher<{ users?: PlaybackUserActivity[]; pluginAvailable?: boolean }>(
+      `/api/jellyfin/playback/users?days=${MAX_DAYS}`
+    ),
+    staleTime: 0,
+  });
+  const jellyfinUsersQuery = useQuery({
+    queryKey: ['jellyfin', 'users'],
+    queryFn: jsonFetcher<{ users?: JellyfinUser[] }>('/api/jellyfin/users'),
+    select: (d) => d.users ?? [],
+    staleTime: 0,
+  });
 
-    async function fetch_() {
-      const [pbRes, jfRes] = await Promise.allSettled([
-        fetch(`/api/jellyfin/playback/users?days=${MAX_DAYS}`, { signal }),
-        fetch('/api/jellyfin/users', { signal }),
-      ]);
-      if (signal.aborted || !active) return;
+  // Per-user "recent plays" drawer — fetched on demand when a user is selected.
+  // last-30-days window is computed in the queryFn; cached per user via the key.
+  const userHistoryQuery = useQuery({
+    queryKey: ['jellyfin', 'playback', 'user-history', selectedUser?.user_id],
+    queryFn: jsonFetcher<{ items?: CustomHistoryItem[] }>(
+      (() => {
+        const to = todayStr();
+        const from = new Date();
+        from.setDate(from.getDate() - 30);
+        return `/api/jellyfin/playback/custom-history?from=${toDateStr(from)}&to=${to}&userId=${selectedUser?.user_id}&limit=30`;
+      })()
+    ),
+    select: (d) => d.items ?? [],
+    staleTime: 0,
+    enabled: !!selectedUser,
+  });
 
-      if (pbRes.status === 'fulfilled' && pbRes.value.ok) {
-        const d = await pbRes.value.json();
-        if (signal.aborted || !active) return;
-        setUsers(d.users || []);
-        setPluginAvailable(d.pluginAvailable !== false);
-      }
-      if (jfRes.status === 'fulfilled' && jfRes.value.ok) {
-        const d = await jfRes.value.json();
-        if (signal.aborted || !active) return;
-        setJellyfinUsers(d.users || []);
-      }
-      setLoading(false);
-    }
+  const users = playbackQuery.data?.users ?? [];
+  const jellyfinUsers = jellyfinUsersQuery.data ?? [];
+  const pluginAvailable = playbackQuery.data?.pluginAvailable !== false;
+  const userHistory = userHistoryQuery.data ?? [];
+  const historyLoading = userHistoryQuery.isLoading;
 
-    onLoadStart?.();
-    void fetch_()
-      .catch((error) => {
-        if (isAbortError(error) || signal.aborted || !active) return;
-        setLoading(false);
-      })
-      .finally(() => {
-        if (!signal.aborted && active) {
-          onLoadEnd?.();
-        }
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [onLoadStart, onLoadEnd]);
-
-  async function openUserHistory(user: PlaybackUserActivity) {
+  function openUserHistory(user: PlaybackUserActivity) {
     setSelectedUser(user);
-    setHistoryLoading(true);
-    try {
-      const to = todayStr();
-      const from = new Date();
-      from.setDate(from.getDate() - 30);
-      const res = await fetch(
-        `/api/jellyfin/playback/custom-history?from=${toDateStr(from)}&to=${to}&userId=${user.user_id}&limit=30`
-      );
-      if (res.ok) {
-        const d = await res.json();
-        setUserHistory(d.items || []);
-      } else {
-        setUserHistory([]);
-      }
-    } catch {
-      setUserHistory([]);
-    } finally {
-      setHistoryLoading(false);
-    }
   }
 
-  if (loading) return <PageSpinner />;
+  if (playbackQuery.isLoading || jellyfinUsersQuery.isLoading) return <PageSpinner />;
   if (!pluginAvailable) return <PluginNotice />;
   if (users.length === 0) return <div className="text-center py-16 text-muted-foreground"><Users className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">No user activity found</p></div>;
 
@@ -877,15 +821,7 @@ const QUICK_RANGES = [
 
 const PAGE_SIZE = 50;
 
-function HistoryTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
-  const [items, setItems] = useState<CustomHistoryItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [pluginAvailable, setPluginAvailable] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [users, setUsers] = useState<{ name: string; id: string }[]>([]);
-  const [filters, setFilters] = useState<string[]>([]);
+function HistoryTab() {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedFilter, setSelectedFilter] = useState<string>('');
   const [dateRange, setDateRange] = useState<DateRange>(() => {
@@ -896,95 +832,66 @@ function HistoryTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
   });
   const [calendarOpen, setCalendarOpen] = useState(false);
 
-  // Load users and filters on mount
-  useEffect(() => {
-    async function loadMeta() {
-      const [uRes, fRes] = await Promise.allSettled([
-        fetch('/api/jellyfin/playback/user-list'),
-        fetch('/api/jellyfin/playback/filters'),
-      ]);
-      if (uRes.status === 'fulfilled' && uRes.value.ok) {
-        const d = await uRes.value.json();
-        setUsers(d.users || []);
-        setPluginAvailable(d.pluginAvailable !== false);
-      }
-      if (fRes.status === 'fulfilled' && fRes.value.ok) {
-        const d = await fRes.value.json();
-        setFilters(d.filters || []);
-      }
-    }
-    loadMeta();
-  }, []);
+  // Users + filters for the dropdowns (loaded once).
+  const userListQuery = useQuery({
+    queryKey: ['jellyfin', 'playback', 'user-list'],
+    queryFn: jsonFetcher<{ users?: { name: string; id: string }[]; pluginAvailable?: boolean }>(
+      '/api/jellyfin/playback/user-list'
+    ),
+    staleTime: 0,
+  });
+  const filtersQuery = useQuery({
+    queryKey: ['jellyfin', 'playback', 'filters'],
+    queryFn: jsonFetcher<{ filters?: string[] }>('/api/jellyfin/playback/filters'),
+    select: (d) => d.filters ?? [],
+    staleTime: 0,
+  });
 
-  // Build fetch URL from current filters
-  const buildUrl = useCallback((pageOffset: number) => {
-    if (!dateRange.from) return null;
-    const from = toDateStr(dateRange.from);
-    const to = toDateStr(dateRange.to || dateRange.from);
-    const params = new URLSearchParams({
-      from, to,
-      limit: String(PAGE_SIZE),
-      offset: String(pageOffset),
-    });
-    if (selectedUserId) params.set('userId', selectedUserId);
-    if (selectedFilter) params.set('type', selectedFilter);
-    return `/api/jellyfin/playback/custom-history?${params}`;
-  }, [dateRange, selectedUserId, selectedFilter]);
+  const fromDateStr = dateRange.from ? toDateStr(dateRange.from) : null;
+  const toDateStrVal = dateRange.from ? toDateStr(dateRange.to || dateRange.from) : null;
 
-  // Fetch history when params change (reset to page 0)
-  useEffect(() => {
-    const url = buildUrl(0);
-    if (!url) { setLoading(false); return; }
-    const controller = new AbortController();
-    const { signal } = controller;
-
-    onLoadStart?.();
-    setLoading(true);
-    setOffset(0);
-    fetch(url, { signal })
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => {
-        if (signal.aborted) return;
-        if (d) {
-          setItems(d.items || []);
-          setTotal(d.total || 0);
-          if (d.pluginAvailable === false) setPluginAvailable(false);
-        } else {
-          setItems([]);
-          setTotal(0);
-        }
-      })
-      .catch((error) => {
-        if (isAbortError(error) || signal.aborted) return;
-        setItems([]);
-        setTotal(0);
-      })
-      .finally(() => {
-        if (!signal.aborted) {
-          setLoading(false);
-          onLoadEnd?.();
-        }
+  // Paginated history (offset-based "load more") → useInfiniteQuery keyed on the
+  // active filters; changing any filter is a new key (fresh page 0).
+  const historyQuery = useInfiniteQuery({
+    queryKey: [
+      'jellyfin', 'playback', 'custom-history',
+      { from: fromDateStr, to: toDateStrVal, userId: selectedUserId, type: selectedFilter },
+    ],
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams({
+        from: fromDateStr!,
+        to: toDateStrVal!,
+        limit: String(PAGE_SIZE),
+        offset: String(pageParam),
       });
+      if (selectedUserId) params.set('userId', selectedUserId);
+      if (selectedFilter) params.set('type', selectedFilter);
+      return jsonFetcher<{ items?: CustomHistoryItem[]; total?: number; pluginAvailable?: boolean }>(
+        `/api/jellyfin/playback/custom-history?${params}`
+      )({ signal });
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((n, p) => n + (p.items?.length ?? 0), 0);
+      return loaded < (lastPage.total ?? 0) ? loaded : undefined;
+    },
+    staleTime: 0,
+    enabled: !!dateRange.from,
+  });
 
-    return () => controller.abort();
-  }, [buildUrl, onLoadStart, onLoadEnd]);
-
-  async function loadMore() {
-    const nextOffset = offset + PAGE_SIZE;
-    const url = buildUrl(nextOffset);
-    if (!url) return;
-    setLoadingMore(true);
-    try {
-      const res = await fetch(url);
-      if (res.ok) {
-        const d = await res.json();
-        setItems((prev) => [...prev, ...(d.items || [])]);
-        setOffset(nextOffset);
-      }
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  const users = userListQuery.data?.users ?? [];
+  const filters = filtersQuery.data ?? [];
+  const items = useMemo(
+    () => historyQuery.data?.pages.flatMap((p) => p.items ?? []) ?? [],
+    [historyQuery.data]
+  );
+  const total = historyQuery.data?.pages[0]?.total ?? 0;
+  const loading = historyQuery.isLoading;
+  const loadingMore = historyQuery.isFetchingNextPage;
+  // Plugin reports its absence via either meta endpoint or the history payload.
+  const pluginAvailable =
+    userListQuery.data?.pluginAvailable !== false &&
+    historyQuery.data?.pages[0]?.pluginAvailable !== false;
 
   function applyQuickRange(days: number) {
     const to = new Date();
@@ -1067,7 +974,7 @@ function HistoryTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
         <>
           <div className="space-y-1">{items.map((e) => <CustomHistoryRow key={e.RowId} item={e} />)}</div>
           {hasMore && (
-            <Button variant="outline" className="w-full text-xs h-9" onClick={loadMore} disabled={loadingMore}>
+            <Button variant="outline" className="w-full text-xs h-9" onClick={() => historyQuery.fetchNextPage()} disabled={loadingMore}>
               {loadingMore ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <ChevronDown className="h-3.5 w-3.5 mr-2" />}
               Load more ({items.length} of {total})
             </Button>
@@ -1118,138 +1025,93 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
 
 type SortMode = 'plays' | 'duration';
 
-function StatsTab({ onLoadStart, onLoadEnd }: TabLoadCallbacks) {
+function StatsTab() {
   const [days, setDays] = useState(3);
-  const [pluginAvailable, setPluginAvailable] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
-  const [playActivity, setPlayActivity] = useState<PlayActivityUser[]>([]);
-  const [topTv, setTopTv] = useState<PlaybackBreakdownEntry[]>([]);
-  const [topMovies, setTopMovies] = useState<PlaybackBreakdownEntry[]>([]);
-  const [methodBreakdown, setMethodBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
-  const [clientBreakdown, setClientBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
-  const [deviceBreakdown, setDeviceBreakdown] = useState<PlaybackBreakdownEntry[]>([]);
-  const [hourlyData, setHourlyData] = useState<Record<string, number>>({});
   const [methodSort, setMethodSort] = useState<SortMode>('duration');
   const [tvSort, setTvSort] = useState<SortMode>('duration');
   const [clientSort, setClientSort] = useState<SortMode>('duration');
   const [deviceSort, setDeviceSort] = useState<SortMode>('duration');
   const [movieSort, setMovieSort] = useState<SortMode>('duration');
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
+  // Shared with HistoryTab's user dropdown (same query key → one fetch).
+  const userListQuery = useQuery({
+    queryKey: ['jellyfin', 'playback', 'user-list'],
+    queryFn: jsonFetcher<{ users?: { id: string; name: string }[]; pluginAvailable?: boolean }>(
+      '/api/jellyfin/playback/user-list'
+    ),
+    staleTime: 0,
+  });
 
-    async function fetchUsers() {
-      try {
-        const res = await fetch('/api/jellyfin/playback/user-list', { signal });
-        if (!res.ok || signal.aborted) return;
-        const data = await res.json();
-        if (signal.aborted) return;
+  const queryDays = days === 0 ? MAX_DAYS : days;
+  const statsParams = new URLSearchParams({ days: String(queryDays) });
+  if (selectedUserId) statsParams.set('userId', selectedUserId);
+  const statsQs = statsParams.toString();
+  const statsFilters = { days: queryDays, userId: selectedUserId };
 
-        setUsers(Array.isArray(data.users) ? data.users : []);
-        if (data.pluginAvailable === false) setPluginAvailable(false);
-      } catch (error) {
-        if (isAbortError(error) || signal.aborted) return;
-      }
-    }
+  // Seven independent stat panels keyed on (range, user). Separate queries paint
+  // progressively and dedupe naturally; changing the range/user is a new key.
+  const activityQ = useQuery({
+    queryKey: ['jellyfin', 'playback', 'activity', statsFilters],
+    queryFn: jsonFetcher<{ data?: PlayActivityUser[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/activity?${statsQs}`),
+    staleTime: 0,
+  });
+  const tvQ = useQuery({
+    queryKey: ['jellyfin', 'playback', 'tv-shows', statsFilters],
+    queryFn: jsonFetcher<{ shows?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/tv-shows?${statsQs}`),
+    staleTime: 0,
+  });
+  const movQ = useQuery({
+    queryKey: ['jellyfin', 'playback', 'movies', statsFilters],
+    queryFn: jsonFetcher<{ movies?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/movies?${statsQs}`),
+    staleTime: 0,
+  });
+  const methodQ = useQuery({
+    queryKey: ['jellyfin', 'playback', 'breakdown', 'PlaybackMethod', statsFilters],
+    queryFn: jsonFetcher<{ entries?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/breakdown/PlaybackMethod?${statsQs}`),
+    staleTime: 0,
+  });
+  const clientQ = useQuery({
+    queryKey: ['jellyfin', 'playback', 'breakdown', 'ClientName', statsFilters],
+    queryFn: jsonFetcher<{ entries?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/breakdown/ClientName?${statsQs}`),
+    staleTime: 0,
+  });
+  const deviceQ = useQuery({
+    queryKey: ['jellyfin', 'playback', 'breakdown', 'DeviceName', statsFilters],
+    queryFn: jsonFetcher<{ entries?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/breakdown/DeviceName?${statsQs}`),
+    staleTime: 0,
+  });
+  const hourlyQ = useQuery({
+    queryKey: ['jellyfin', 'playback', 'hourly', statsFilters],
+    queryFn: jsonFetcher<{ data?: Record<string, number>; pluginAvailable?: boolean }>(`/api/jellyfin/playback/hourly?${statsQs}`),
+    staleTime: 0,
+  });
 
-    void fetchUsers();
-    return () => controller.abort();
-  }, []);
+  const users = userListQuery.data?.users ?? [];
+  const playActivity = activityQ.data?.data ?? [];
+  const topTv = tvQ.data?.shows ?? [];
+  const topMovies = movQ.data?.movies ?? [];
+  const methodBreakdown = methodQ.data?.entries ?? [];
+  const clientBreakdown = clientQ.data?.entries ?? [];
+  const deviceBreakdown = deviceQ.data?.entries ?? [];
+  const hourlyData = hourlyQ.data?.data ?? {};
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
+  // Spinner until the stat panels first resolve; changing range/user is a fresh
+  // key, so this re-shows the spinner on every range change (matches the old flow).
+  const loading =
+    activityQ.isLoading || tvQ.isLoading || movQ.isLoading ||
+    methodQ.isLoading || clientQ.isLoading || deviceQ.isLoading || hourlyQ.isLoading;
 
-    async function fetchStats() {
-      onLoadStart?.();
-      setLoading(true);
-      try {
-        const queryDays = days === 0 ? MAX_DAYS : days;
-        const params = new URLSearchParams({ days: String(queryDays) });
-        if (selectedUserId) params.set('userId', selectedUserId);
-        const query = params.toString();
-
-        const [actRes, tvRes, movRes, methRes, clientRes, deviceRes, hourRes] = await Promise.allSettled([
-          fetch(`/api/jellyfin/playback/activity?${query}`, { signal }),
-          fetch(`/api/jellyfin/playback/tv-shows?${query}`, { signal }),
-          fetch(`/api/jellyfin/playback/movies?${query}`, { signal }),
-          fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?${query}`, { signal }),
-          fetch(`/api/jellyfin/playback/breakdown/ClientName?${query}`, { signal }),
-          fetch(`/api/jellyfin/playback/breakdown/DeviceName?${query}`, { signal }),
-          fetch(`/api/jellyfin/playback/hourly?${query}`, { signal }),
-        ]);
-
-        // Parse all JSON before any setState so updates batch in a single render
-        let newActivity: PlayActivityUser[] = [];
-        let newPluginAvailable = pluginAvailable;
-        let newTopTv: PlaybackBreakdownEntry[] = [];
-        let newTopMovies: PlaybackBreakdownEntry[] = [];
-        let newMethodBreakdown: PlaybackBreakdownEntry[] = [];
-        let newClientBreakdown: PlaybackBreakdownEntry[] = [];
-        let newDeviceBreakdown: PlaybackBreakdownEntry[] = [];
-        let newHourlyData: Record<string, number> = {};
-
-        if (actRes.status === 'fulfilled' && actRes.value.ok) {
-          const d = await actRes.value.json();
-          newActivity = d.data || [];
-          if (d.pluginAvailable === false) newPluginAvailable = false;
-        }
-        if (tvRes.status === 'fulfilled' && tvRes.value.ok) {
-          const d = await tvRes.value.json();
-          newTopTv = d.shows || [];
-          if (d.pluginAvailable === false) newPluginAvailable = false;
-        }
-        if (movRes.status === 'fulfilled' && movRes.value.ok) {
-          const d = await movRes.value.json();
-          newTopMovies = d.movies || [];
-          if (d.pluginAvailable === false) newPluginAvailable = false;
-        }
-        if (methRes.status === 'fulfilled' && methRes.value.ok) {
-          const d = await methRes.value.json();
-          newMethodBreakdown = d.entries || [];
-          if (d.pluginAvailable === false) newPluginAvailable = false;
-        }
-        if (clientRes.status === 'fulfilled' && clientRes.value.ok) {
-          const d = await clientRes.value.json();
-          newClientBreakdown = d.entries || [];
-          if (d.pluginAvailable === false) newPluginAvailable = false;
-        }
-        if (deviceRes.status === 'fulfilled' && deviceRes.value.ok) {
-          const d = await deviceRes.value.json();
-          newDeviceBreakdown = d.entries || [];
-          if (d.pluginAvailable === false) newPluginAvailable = false;
-        }
-        if (hourRes.status === 'fulfilled' && hourRes.value.ok) {
-          const d = await hourRes.value.json();
-          newHourlyData = d.data || {};
-          if (d.pluginAvailable === false) newPluginAvailable = false;
-        }
-        if (signal.aborted) return;
-
-        // All setState calls synchronous — React 18 batches into one render
-        setPlayActivity(newActivity);
-        setPluginAvailable(newPluginAvailable);
-        setTopTv(newTopTv);
-        setTopMovies(newTopMovies);
-        setMethodBreakdown(newMethodBreakdown);
-        setClientBreakdown(newClientBreakdown);
-        setDeviceBreakdown(newDeviceBreakdown);
-        setHourlyData(newHourlyData);
-      } catch (error) {
-        if (isAbortError(error) || signal.aborted) return;
-      } finally {
-        if (!signal.aborted) {
-          setLoading(false);
-          onLoadEnd?.();
-        }
-      }
-    }
-    fetchStats();
-    return () => controller.abort();
-  }, [days, selectedUserId, onLoadStart, onLoadEnd, pluginAvailable]);
+  // Any endpoint reporting pluginAvailable:false means the plugin is missing.
+  const pluginAvailable =
+    userListQuery.data?.pluginAvailable !== false &&
+    activityQ.data?.pluginAvailable !== false &&
+    tvQ.data?.pluginAvailable !== false &&
+    movQ.data?.pluginAvailable !== false &&
+    methodQ.data?.pluginAvailable !== false &&
+    clientQ.data?.pluginAvailable !== false &&
+    deviceQ.data?.pluginAvailable !== false &&
+    hourlyQ.data?.pluginAvailable !== false;
 
   if (loading) return <PageSpinner />;
 

@@ -42,6 +42,8 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 import { EventIcon, getEventColorClass } from '@/components/notifications/event-visuals';
@@ -74,6 +76,17 @@ interface Notification {
   metadata?: NotificationMetadata | null;
   read: boolean;
   createdAt: string;
+}
+
+type NotificationsPage = { records: Notification[]; totalRecords: number };
+
+// Apply an updater to every record across all loaded pages of the infinite list.
+function mapNotifications(
+  data: InfiniteData<NotificationsPage> | undefined,
+  fn: (n: Notification) => Notification,
+): InfiniteData<NotificationsPage> | undefined {
+  if (!data) return data;
+  return { ...data, pages: data.pages.map((pg) => ({ ...pg, records: pg.records.map(fn) })) };
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -142,16 +155,12 @@ export default function NotificationsPage() {
   const resetFilters = useUIStore((s) => s.resetNotificationsFilters);
   const hasHydrated = useUIStore((s) => s.hasHydrated);
 
+  const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useState(filters.search);
   const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
   const [markingAll, setMarkingAll] = useState(false);
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [detailNotification, setDetailNotification] = useState<Notification | null>(null);
-  const [availableEventTypes, setAvailableEventTypes] = useState<Set<string>>(() => new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -193,51 +202,68 @@ export default function NotificationsPage() {
     return params;
   }, [debouncedSearch, filters.eventTypes, filters.readState, filters.dateFrom, filters.dateTo]);
 
-  const fetchNotifications = useCallback(async (p: number, append: boolean) => {
-    if (!append) setLoading(true);
-    try {
-      const res = await fetch(`/api/notifications?${buildParams(p).toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setNotifications((prev) => append ? [...prev, ...(data.records || [])] : (data.records || []));
-        setTotal(data.totalRecords ?? 0);
-      }
-    } catch { } finally {
-      setLoading(false);
-    }
-  }, [buildParams]);
+  // The list query key carries the active filters; changing a filter swaps the
+  // key and useInfiniteQuery refetches automatically (replaces the manual effect).
+  const listKey = useMemo(
+    () =>
+      [
+        'notifications',
+        'list',
+        {
+          q: debouncedSearch.trim(),
+          eventTypes: filters.eventTypes,
+          readState: filters.readState,
+          dateFrom: filters.dateFrom,
+          dateTo: filters.dateTo,
+        },
+      ] as const,
+    [debouncedSearch, filters.eventTypes, filters.readState, filters.dateFrom, filters.dateTo],
+  );
 
-  // Refetch whenever filters change
-  useEffect(() => {
-    if (!hasHydrated) return;
-    setPage(1);
-    fetchNotifications(1, false);
-  }, [hasHydrated, debouncedSearch, filters.eventTypes, filters.readState, filters.dateFrom, filters.dateTo, fetchNotifications]);
+  const notificationsQuery = useInfiniteQuery({
+    queryKey: listKey,
+    queryFn: async ({ pageParam, signal }) => {
+      const res = await fetch(`/api/notifications?${buildParams(pageParam).toString()}`, { signal });
+      if (!res.ok) throw new ApiError(res.status, `GET /api/notifications → ${res.status}`);
+      return (await res.json()) as NotificationsPage;
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, pg) => sum + (pg.records?.length ?? 0), 0);
+      return loaded < (lastPage.totalRecords ?? 0) ? allPages.length + 1 : undefined;
+    },
+    enabled: hasHydrated,
+  });
+  const notifications = useMemo(
+    () => notificationsQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [],
+    [notificationsQuery.data],
+  );
+  const total = notificationsQuery.data?.pages[0]?.totalRecords ?? 0;
+  const loading = !hasHydrated || notificationsQuery.isLoading;
 
   // Event types present in the user's history — so anything they can see is
   // filterable, even without the matching notify.* receive capability.
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/api/notifications/event-types')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled && Array.isArray(d?.eventTypes)) {
-          setAvailableEventTypes(new Set<string>(d.eventTypes));
-        }
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
+  const { data: eventTypesData } = useQuery({
+    queryKey: ['notifications', 'event-types'],
+    queryFn: jsonFetcher<{ eventTypes?: string[] }>('/api/notifications/event-types'),
+    staleTime: 5 * 60_000,
+  });
+  const availableEventTypes = useMemo(
+    () => new Set<string>(Array.isArray(eventTypesData?.eventTypes) ? eventTypesData.eventTypes : []),
+    [eventTypesData],
+  );
 
   const markAsRead = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/notifications/${id}`, { method: 'PUT' });
       if (!res.ok) return;
-      setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+      queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
+        mapNotifications(old, (n) => (n.id === id ? { ...n, read: true } : n)),
+      );
       // Callers only invoke this for an unread item, so the nav badge drops by 1.
       adjustBadge('notifications', -1, -1);
     } catch { }
-  }, [adjustBadge]);
+  }, [adjustBadge, queryClient, listKey]);
 
   const resolveQueueNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
     const cacheKey = `${source}:${id}`;
@@ -414,7 +440,9 @@ export default function NotificationsPage() {
     try {
       const res = await fetch('/api/notifications/read-all', { method: 'POST' });
       if (!res.ok) throw new Error('Failed');
-      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
+        mapNotifications(old, (n) => ({ ...n, read: true })),
+      );
       setBadge('notifications', { total: 0, attention: 0 });
       toast.success('All marked as read');
     } catch { toast.error('Failed'); }
@@ -486,8 +514,8 @@ export default function NotificationsPage() {
       const data = await res.json();
       toast.success(`Deleted ${data.deletedCount} notification${data.deletedCount === 1 ? '' : 's'}`);
       setDeleteDialogOpen(false);
-      setPage(1);
-      await fetchNotifications(1, false);
+      // Reset the infinite list back to a fresh first page.
+      await queryClient.resetQueries({ queryKey: listKey });
       // A delete can remove an unknown number of unread rows; the badge endpoint
       // counts unread live from the DB, so refetch the authoritative number.
       refreshBadges();
@@ -652,13 +680,18 @@ export default function NotificationsPage() {
               </div>
             ))}
           </div>
-          {notifications.length < total && (
+          {notificationsQuery.hasNextPage && (
             <Button
               variant="ghost"
               className="w-full"
-              onClick={() => { const next = page + 1; setPage(next); fetchNotifications(next, true); }}
+              onClick={() => notificationsQuery.fetchNextPage()}
+              disabled={notificationsQuery.isFetchingNextPage}
             >
-              Load more
+              {notificationsQuery.isFetchingNextPage ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Load more'
+              )}
             </Button>
           )}
         </>

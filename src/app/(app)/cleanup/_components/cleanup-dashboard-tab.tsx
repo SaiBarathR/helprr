@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +14,7 @@ import { formatDelta } from '@/lib/cleanup/format-delta';
 import { jsonOk } from '@/lib/http';
 import { PageControls } from '@/components/ui/page-controls';
 import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
+import { backoffRefetchInterval } from '@/lib/query-fetch';
 
 const STRIKES_PAGE_SIZE = 30;
 
@@ -64,13 +66,8 @@ interface SchedulerStatusResponse {
 }
 
 export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queue' | 'download' | 'history') => void }) {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [strikes, setStrikes] = useState<StrikeRow[]>([]);
-  const [strikeTotal, setStrikeTotal] = useState(0);
   const [strikePage, setStrikePage] = useState(1);
-  const [status, setStatus] = useState<DashboardStatus | null>(null);
-  const [scheduler, setScheduler] = useState<SchedulerStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const [queuePreview, setQueuePreview] = useState<{
     open: boolean;
@@ -89,32 +86,21 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     confirmGate: boolean;
   }>({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
 
-  // Latest-request-wins: a page change can supersede an in-flight poll/refresh,
-  // so stamp each call and drop responses a newer refresh has already replaced.
-  const refreshReqIdRef = useRef(0);
-  const refresh = useCallback(async () => {
-    const reqId = ++refreshReqIdRef.current;
-    setLoading(true);
-    try {
+  // Dashboard stats + strikes + cleaner status, polled every 15s. Keyed by
+  // strikePage so a page change auto-refetches (TanStack cancels superseded
+  // in-flight requests — replaces the old latest-request-wins guard).
+  const dashboardQuery = useQuery({
+    queryKey: ['cleanup', 'dashboard', strikePage],
+    queryFn: async ({ signal }) => {
       const [statsRes, strikesRes, queueCfg, downloadCfg] = await Promise.all([
-        fetch('/api/cleanup/stats').then(jsonOk<Stats>),
-        fetch(`/api/cleanup/strikes?page=${strikePage}&pageSize=${STRIKES_PAGE_SIZE}`).then(
+        fetch('/api/cleanup/stats', { signal }).then(jsonOk<Stats>),
+        fetch(`/api/cleanup/strikes?page=${strikePage}&pageSize=${STRIKES_PAGE_SIZE}`, { signal }).then(
           jsonOk<{ records: StrikeRow[]; total: number }>
         ),
-        fetch('/api/cleanup/queue/config').then(jsonOk<Record<string, unknown>>),
-        fetch('/api/cleanup/download/config').then(jsonOk<Record<string, unknown>>),
+        fetch('/api/cleanup/queue/config', { signal }).then(jsonOk<Record<string, unknown>>),
+        fetch('/api/cleanup/download/config', { signal }).then(jsonOk<Record<string, unknown>>),
       ]);
-      // A newer refresh (e.g. a page change) started while this was in flight —
-      // drop this stale response so it can't overwrite the current page.
-      if (reqId !== refreshReqIdRef.current) return;
-      setStats(statsRes);
-      setStrikes(strikesRes.records);
-      setStrikeTotal(strikesRes.total);
-      // Strikes may have been resolved since the last poll — if the current page
-      // is now past the end, clamp back so the list doesn't render blank.
-      const maxStrikePage = Math.max(1, Math.ceil(strikesRes.total / STRIKES_PAGE_SIZE));
-      if (strikePage > maxStrikePage) setStrikePage(maxStrikePage);
-      setStatus({
+      const status: DashboardStatus = {
         queue: {
           enabled: Boolean(queueCfg?.enabled),
           autoRunMode: (queueCfg?.autoRunMode ?? 'disabled') as AutoRunMode,
@@ -125,41 +111,42 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
           autoRunMode: (downloadCfg?.autoRunMode ?? 'disabled') as AutoRunMode,
           intervalMinutes: Number(downloadCfg?.intervalMinutes ?? 0),
         },
-      });
-    } catch {
-      if (reqId === refreshReqIdRef.current) toast.error('Failed to load dashboard');
-    } finally {
-      // Only the latest request clears loading; a superseded one leaves it set
-      // for the in-flight winner.
-      if (reqId === refreshReqIdRef.current) setLoading(false);
-    }
-  }, [strikePage]);
+      };
+      return { stats: statsRes, strikes: strikesRes.records, strikeTotal: strikesRes.total, status };
+    },
+    refetchInterval: backoffRefetchInterval(15000),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const stats = dashboardQuery.data?.stats ?? null;
+  const strikes = dashboardQuery.data?.strikes ?? [];
+  const strikeTotal = dashboardQuery.data?.strikeTotal ?? 0;
+  const status = dashboardQuery.data?.status ?? null;
+  const loading = dashboardQuery.isLoading;
 
-  const refreshScheduler = useCallback(async () => {
-    try {
-      const r = await fetch('/api/cleanup/scheduler-status').then(jsonOk<SchedulerStatusResponse>);
-      setScheduler(r);
-    } catch {
-      // Silent — countdown just falls back to "—".
-    }
-  }, []);
+  const schedulerQuery = useQuery({
+    queryKey: ['cleanup', 'scheduler'],
+    queryFn: ({ signal }) =>
+      fetch('/api/cleanup/scheduler-status', { signal }).then(jsonOk<SchedulerStatusResponse>),
+    refetchInterval: backoffRefetchInterval(5000),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+  });
+  const scheduler = schedulerQuery.data ?? null;
 
-  // Poll only while visible (pauses when the tab/PWA is backgrounded; refetches on
-  // return). Each hook runs once on mount, then on its own cadence.
-  useVisibleInterval(refresh, 15000);
-  useVisibleInterval(refreshScheduler, 5000);
-
-  // Refetch immediately on strike-page change — the polling hook only re-runs on its
-  // own cadence, not when the callback closes over a new page.
-  const didMountRef = useRef(false);
+  // Strikes may have been resolved since the last poll — if the current page is
+  // now past the end, clamp back so the list doesn't render blank.
   useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [strikePage]);
+    const maxStrikePage = Math.max(1, Math.ceil(strikeTotal / STRIKES_PAGE_SIZE));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clamp once when strikes resolve past the current page
+    if (strikePage > maxStrikePage) setStrikePage(maxStrikePage);
+  }, [strikeTotal, strikePage]);
+
+  useEffect(() => {
+    if (dashboardQuery.isError) toast.error('Failed to load dashboard');
+  }, [dashboardQuery.isError]);
 
   const startQueueDryRun = async () => {
     setQueuePreview({ open: true, loading: true, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
@@ -197,7 +184,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
       const failed = json.failed ?? 0;
       toast.success(`Removed ${succeeded} torrent(s)${failed > 0 ? ` — ${failed} failed` : ''}`);
       setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
-      refresh();
+      void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
     } catch {
       toast.error('Queue run failed');
       setQueuePreview((p) => ({ ...p, confirming: false }));
@@ -247,7 +234,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
       const failed = json.failed ?? 0;
       toast.success(`Removed ${succeeded} torrent(s)${failed > 0 ? ` — ${failed} failed` : ''}`);
       setDownloadPreview({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
-      refresh();
+      void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
     } catch {
       toast.error('Download run failed');
       setDownloadPreview((p) => ({ ...p, confirming: false }));

@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type JSX } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -117,75 +119,59 @@ function eventLabel(eventType: string) {
  * @returns The React element for the History page.
  */
 
+type HistoryRecord = HistoryItem & { source?: string };
+type HistoryResponse = { records?: HistoryRecord[]; totalRecords?: number };
+
+function buildHistoryUrl(p: number, eventFilter: EventFilterKey, instanceFilter: string) {
+  const params = new URLSearchParams({ page: String(p), pageSize: '20' });
+  if (eventFilter !== 'all') params.set('eventType', eventFilter);
+  if (instanceFilter !== 'all') params.set('instanceId', instanceFilter);
+  return `/api/activity/history?${params}`;
+}
+
 export default function HistoryPage() {
-  const [history, setHistory] = useState<(HistoryItem & { source?: string })[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Pages beyond the first ("Load more") accumulate here; page 1 lives in the query
+  // cache so a filter change refetches it cleanly.
+  const [extraRecords, setExtraRecords] = useState<HistoryRecord[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
   const [eventFilter, setEventFilter] = useState<EventFilterKey>('all');
   const [instanceFilter, setInstanceFilter] = useState<string>('all');
-  const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
-  const [selectedItem, setSelectedItem] = useState<(HistoryItem & { source?: string }) | null>(null);
+  const [selectedItem, setSelectedItem] = useState<HistoryRecord | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('basic');
 
-  /**
-   * Fetches a page of history events from the server and updates component state (history list, total count, and loading flags).
-   *
-   * Uses the current event and instance filters when querying the API. On network or parsing failure, displays a toast error and clears loading indicators.
-   *
-   * @param p - The 1-based page number to fetch
-   * @param append - If `true`, append fetched records to the current history; otherwise replace the history
-   */
-  async function fetchHistory(p: number, append = false) {
-    if (append) setLoadingMore(true);
-    else setLoading(true);
+  const {
+    data: firstPage,
+    isLoading: loading,
+    isError,
+  } = useQuery({
+    queryKey: ['activity', 'history', { eventFilter, instanceFilter }],
+    queryFn: jsonFetcher<HistoryResponse>(buildHistoryUrl(1, eventFilter, instanceFilter)),
+  });
 
-    try {
-      const params = new URLSearchParams({ page: String(p), pageSize: '20' });
-      if (eventFilter !== 'all') params.set('eventType', eventFilter);
-      if (instanceFilter !== 'all') params.set('instanceId', instanceFilter);
-      const res = await fetch(`/api/activity/history?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (append) {
-          setHistory((prev) => [...prev, ...(data.records || [])]);
-        } else {
-          setHistory(data.records || []);
-        }
-        setTotal(data.totalRecords || 0);
-      }
-    } catch {
-      toast.error('Failed to load history');
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }
+  // The old code surfaced fetch failures as a toast; preserve that.
+  useEffect(() => {
+    if (isError) toast.error('Failed to load history');
+  }, [isError]);
 
+  const firstRecords = firstPage?.records ?? [];
+  const total = firstPage?.totalRecords ?? 0;
+  const history = [...firstRecords, ...extraRecords];
+
+  // Reset accumulated pages whenever the filters (and thus page 1) change.
   useEffect(() => {
     setPage(1);
-    fetchHistory(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setExtraRecords([]);
   }, [eventFilter, instanceFilter]);
 
   // Load arr instances for the per-instance filter, independent of the (possibly
   // filtered) history so the options never collapse to the current selection.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/instances');
-        if (!res.ok) return;
-        const conns = (await res.json()) as Array<{ id: string; label: string }>;
-        if (cancelled || !Array.isArray(conns)) return;
-        setInstanceOptions(conns.map((c) => ({ id: c.id, label: c.label })));
-      } catch {
-        // ignore — the filter just won't render
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: instanceOptions = [] } = useQuery({
+    queryKey: ['instances'],
+    queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
+    select: (conns): InstanceOption[] =>
+      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
+  });
 
   // Drop a stale instance selection if that instance no longer exists.
   useEffect(() => {
@@ -197,10 +183,20 @@ export default function HistoryPage() {
   /**
    * Advance to the next history page and append the newly fetched records to the existing list.
    */
-  function handleLoadMore() {
+  async function handleLoadMore() {
     const next = page + 1;
-    setPage(next);
-    fetchHistory(next, true);
+    setLoadingMore(true);
+    try {
+      const data = await jsonFetcher<HistoryResponse>(
+        buildHistoryUrl(next, eventFilter, instanceFilter)
+      )();
+      setExtraRecords((prev) => [...prev, ...(data.records || [])]);
+      setPage(next);
+    } catch {
+      toast.error('Failed to load history');
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -21,13 +21,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
-import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries, DiscoverSeasonDetailResponse, DiscoverSeasonEpisode } from '@/types';
+import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries, DiscoverSeasonDetailResponse } from '@/types';
 import { toCachedImageSrc } from '@/lib/image';
-import {
-  getEpisodeDetailSnapshot,
-  patchEpisodeAcrossSnapshots,
-  setEpisodeDetailSnapshot,
-} from '@/lib/series-route-cache';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { episodesWithFileKey, patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { useCan } from '@/components/permission-provider';
 
 function formatBytes(bytes: number) {
@@ -172,131 +171,61 @@ export default function EpisodeDetailPage() {
   const episodeId = Number(episodeIdParam);
   const instance = useSearchParams().get('instance') ?? undefined;
 
-  const [series, setSeries] = useState<SonarrSeries | null>(null);
-  const [episode, setEpisode] = useState<EpisodeWithFile | null>(null);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
-  const [tmdbEpisode, setTmdbEpisode] = useState<DiscoverSeasonEpisode | null>(null);
-  const episodeNumber = episode?.episodeNumber;
 
   const canDeleteSeries = useCan('series.delete');
   const canManageActivity = useCan('activity.manage');
   const canEditMonitoring = useCan('series.editMonitoring');
+  const queryClient = useQueryClient();
 
-  const fetchData = useCallback(async (hasCachedData: boolean) => {
-    if (!Number.isFinite(seriesId) || !Number.isFinite(episodeId)) {
-      setLoading(false);
-      return;
-    }
+  // Series shares queryKeys.detail; the episode comes from the with-file list
+  // (its own key, patched in tandem with the slim list so monitor/file changes
+  // mirror across the series-detail and season views).
+  const seriesQuery = useQuery({
+    queryKey: queryKeys.detail('sonarr', seriesId, instance),
+    queryFn: jsonFetcher<SonarrSeries | null>(`/api/sonarr/${seriesId}`, instance),
+    enabled: Number.isFinite(seriesId) && Number.isFinite(episodeId),
+  });
+  const series = seriesQuery.data ?? null;
+  const episodesQuery = useQuery({
+    queryKey: episodesWithFileKey(seriesId, instance),
+    queryFn: jsonFetcher<EpisodeWithFile[]>(`/api/sonarr/${seriesId}/episodes?includeEpisodeFile=true`, instance),
+    enabled: Number.isFinite(seriesId) && Number.isFinite(episodeId),
+    select: ensureArray,
+  });
+  const episode = (episodesQuery.data ?? []).find((e) => e.id === episodeId) ?? null;
+  const episodeNumber = episode?.episodeNumber;
 
-    try {
-      const [seriesRes, episodesRes] = await Promise.all([
-        sonarrFetch(instance, `/api/sonarr/${seriesId}`),
-        sonarrFetch(instance, `/api/sonarr/${seriesId}/episodes?includeEpisodeFile=true`),
-      ]);
+  const historyQuery = useQuery({
+    queryKey: ['activity', 'history', 'episode', episodeId],
+    queryFn: jsonFetcher<{ records?: HistoryItem[] }>(`/api/activity/history?episodeId=${episodeId}&pageSize=50`),
+    enabled: Number.isFinite(episodeId),
+    select: (d) => d.records ?? [],
+  });
+  const history = historyQuery.data ?? [];
 
-      const nextSeries: SonarrSeries | null = seriesRes.ok ? await seriesRes.json() : null;
-      const allEpisodes: EpisodeWithFile[] = episodesRes.ok ? await episodesRes.json() : [];
-      const nextEpisode = allEpisodes.find((episodeItem) => episodeItem.id === episodeId) ?? null;
+  const loading = seriesQuery.isLoading || episodesQuery.isLoading;
+  const historyLoading = historyQuery.isLoading;
+  const refreshing = seriesQuery.isFetching || episodesQuery.isFetching;
 
-      setSeries(nextSeries);
-      setEpisode(nextEpisode);
-      const cached = getEpisodeDetailSnapshot(seriesId, episodeId, instance);
-      setEpisodeDetailSnapshot(seriesId, episodeId, {
-        series: nextSeries,
-        episode: nextEpisode,
-        history: cached?.history ?? [],
-      }, instance);
-      if (nextEpisode) {
-        patchEpisodeAcrossSnapshots(seriesId, episodeId, () => nextEpisode, instance);
-      }
-    } catch {
-      if (!hasCachedData) {
-        toast.error('Failed to load episode data');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [episodeId, seriesId, instance]);
-
-  const fetchHistory = useCallback(async (hasCachedData: boolean) => {
-    if (!hasCachedData) {
-      setHistoryLoading(true);
-    }
-
-    try {
-      const res = await fetch(`/api/activity/history?episodeId=${episodeId}&pageSize=50`);
-      if (res.ok) {
-        const data = await res.json();
-        const records = data.records || [];
-        setHistory(records);
-        const cached = getEpisodeDetailSnapshot(seriesId, episodeId, instance);
-        setEpisodeDetailSnapshot(seriesId, episodeId, {
-          series: cached?.series ?? null,
-          episode: cached?.episode ?? null,
-          history: records,
-        }, instance);
-      }
-    } catch {
-      // Silently fail - history is non-critical
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [episodeId, seriesId, instance]);
+  // TMDB episode still/rating (skip for anime); shares tvSeasonKey with the
+  // series-detail expanded list + season page.
+  const tmdbSeasonQuery = useQuery({
+    queryKey: tvSeasonKey(series?.tmdbId ?? 0, seasonNumber),
+    queryFn: jsonFetcher<DiscoverSeasonDetailResponse>(`/api/discover/tv/${series?.tmdbId}/season/${seasonNumber}`),
+    enabled: !!series?.tmdbId && !!episodeNumber && series.seriesType !== 'anime',
+    staleTime: 30 * 60_000,
+  });
+  const tmdbEpisode = tmdbSeasonQuery.data?.episodes.find((e) => e.episodeNumber === episodeNumber) ?? null;
 
   useEffect(() => {
-    const cached = (
-      Number.isFinite(seriesId) && Number.isFinite(episodeId)
-    ) ? getEpisodeDetailSnapshot(seriesId, episodeId, instance) : null;
-
-    if (cached) {
-      setSeries(cached.series);
-      setEpisode(cached.episode);
-      setHistory(cached.history);
-      setLoading(false);
-      setHistoryLoading(false);
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-      setHistoryLoading(true);
-      setRefreshing(false);
-    }
-
-    void Promise.all([
-      fetchData(Boolean(cached)),
-      fetchHistory(Boolean(cached)),
-    ]).finally(() => {
-      setRefreshing(false);
-    });
-  }, [episodeId, fetchData, fetchHistory, seriesId, instance]);
-
-  // Background-fetch TMDB episode data for still image and rating (skip for anime)
-  useEffect(() => {
-    if (!series?.tmdbId || !episodeNumber || series.seriesType === 'anime') {
-      setTmdbEpisode(null);
-      return;
-    }
-    const controller = new AbortController();
-    fetch(`/api/discover/tv/${series.tmdbId}/season/${seasonNumber}`, { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: DiscoverSeasonDetailResponse | null) => {
-        const match = data?.episodes.find((e) => e.episodeNumber === episodeNumber) ?? null;
-        setTmdbEpisode(match);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setTmdbEpisode(null);
-      });
-    return () => controller.abort();
-  }, [episodeNumber, seasonNumber, series?.seriesType, series?.tmdbId]);
+    if (seriesQuery.isError || episodesQuery.isError) toast.error('Failed to load episode data');
+  }, [seriesQuery.isError, episodesQuery.isError]);
 
   async function handleAutomaticSearch() {
     setActionLoading('search');
@@ -325,14 +254,9 @@ export default function EpisodeDetailPage() {
         body: JSON.stringify({ episodeIds: [episodeId], monitored: nextMonitored }),
       });
       if (res.ok) {
-        const nextEpisode = { ...episode, monitored: nextMonitored };
-        setEpisode(nextEpisode);
-        setEpisodeDetailSnapshot(seriesId, episodeId, {
-          series,
-          episode: nextEpisode,
-          history,
-        }, instance);
-        patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({ ...current, monitored: nextMonitored }), instance);
+        patchEpisodesInCache(queryClient, seriesId, instance, [
+          { episodeId, updater: (current) => ({ ...current, monitored: nextMonitored }) },
+        ]);
         toast.success(episode.monitored ? 'Episode unmonitored' : 'Episode monitored');
       }
     } catch {
@@ -364,23 +288,12 @@ export default function EpisodeDetailPage() {
 
       toast.success('Episode file deleted');
       setShowDeleteDrawer(false);
-      const nextEpisode = {
-        ...episode,
-        hasFile: false,
-        episodeFileId: 0,
-        episodeFile: undefined,
-      };
-      setEpisode(nextEpisode);
-      setEpisodeDetailSnapshot(seriesId, episodeId, {
-        series,
-        episode: nextEpisode,
-        history,
-      }, instance);
-      patchEpisodeAcrossSnapshots(seriesId, episodeId, (current) => ({
-        ...current,
-        hasFile: false,
-        episodeFileId: 0,
-      }), instance);
+      patchEpisodesInCache(queryClient, seriesId, instance, [
+        {
+          episodeId,
+          updater: (current) => ({ ...current, hasFile: false, episodeFileId: 0, episodeFile: undefined }),
+        },
+      ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to delete file';
       toast.error(message);

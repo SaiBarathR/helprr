@@ -25,7 +25,8 @@ import {
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Search, Plus, Loader2, Film, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import type { RadarrLookupResult, QualityProfile, RootFolder, Tag } from '@/types';
+import type { RadarrLookupResult } from '@/types';
+import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
 function AddMoviePageContent() {
@@ -35,9 +36,6 @@ function AddMoviePageContent() {
   const [results, setResults] = useState<RadarrLookupResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<RadarrLookupResult | null>(null);
-  const [profiles, setProfiles] = useState<QualityProfile[]>([]);
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
   const [profileId, setProfileId] = useState('');
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
@@ -48,6 +46,10 @@ function AddMoviePageContent() {
   const [autoSearched, setAutoSearched] = useState(false);
   const [instances, setInstances] = useState<{ id: string; label: string; isDefault: boolean }[]>([]);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
+  // Per-instance reference data, shared (and deduped) with the list/edit pages.
+  const { data: profiles = [] } = useQualityProfiles('radarr', instanceId);
+  const { data: rootFolders = [] } = useRootFolders('radarr', instanceId);
+  const { data: tags = [] } = useTags('radarr', instanceId);
   const lastPrefillTermRef = useRef<string | null>(null);
   const lastPrefillTmdbIdRef = useRef<number | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -66,21 +68,14 @@ function AddMoviePageContent() {
       .catch(() => undefined);
   }, []);
 
-  // Profiles / root folders / tags are per-instance; re-fetch when the instance changes.
+  // Default the profile / root-folder selection to the first option when the
+  // instance's reference data arrives (re-defaults when the instance changes).
   useEffect(() => {
-    const qs = instanceId ? `?instanceId=${instanceId}` : '';
-    Promise.all([
-      fetch(`/api/radarr/qualityprofiles${qs}`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/radarr/rootfolders${qs}`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/radarr/tags${qs}`).then((r) => r.ok ? r.json() : []),
-    ]).then(([p, r, t]) => {
-      setProfiles(p);
-      setRootFolders(r);
-      setTags(t);
-      if (p.length > 0) setProfileId(String(p[0].id));
-      if (r.length > 0) setRootFolder(r[0].path);
-    });
-  }, [instanceId]);
+    if (profiles.length > 0) setProfileId(String(profiles[0].id));
+  }, [profiles]);
+  useEffect(() => {
+    if (rootFolders.length > 0) setRootFolder(rootFolders[0].path);
+  }, [rootFolders]);
 
   useEffect(() => {
     return () => {

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import {
   Dialog,
@@ -64,8 +65,21 @@ export function LayoutSwitcher({
     () => buildDashboardThemeStyle({ accent, palette, gradient, font }),
     [accent, palette, gradient, font],
   );
-  const [data, setData] = useState<LayoutsList | null>(null);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  const layoutsQuery = useQuery({
+    queryKey: ['dashboard-layouts'],
+    queryFn: async ({ signal }): Promise<LayoutsList> => {
+      const res = await fetch('/api/dashboard-layouts', { signal });
+      if (!res.ok) throw new Error('Failed to load layouts');
+      return (await res.json()) as LayoutsList;
+    },
+    enabled: open,
+  });
+  const data = layoutsQuery.data ?? null;
+  const loading = layoutsQuery.isFetching;
+  useEffect(() => {
+    if (layoutsQuery.isError) toast.error('Failed to load layouts');
+  }, [layoutsQuery.isError]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<
     'desktop' | 'mobile' | 'copy' | 'rename' | null
@@ -83,24 +97,6 @@ export function LayoutSwitcher({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [resetTarget, setResetTarget] = useState<LayoutRecord | null>(null);
   const [resetBusy, setResetBusy] = useState(false);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/dashboard-layouts');
-      if (!res.ok) throw new Error('Failed to load layouts');
-      const json = (await res.json()) as LayoutsList;
-      setData(json);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load layouts');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (open) void refresh();
-  }, [open, refresh]);
 
   async function callApi(input: RequestInfo, init?: RequestInit, successMessage?: string): Promise<unknown> {
     const res = await fetch(input, init);
@@ -133,7 +129,7 @@ export function LayoutSwitcher({
         },
         `Set as ${target} default`,
       );
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
       // Auto-switch the dashboard when the user makes a different layout the
       // default for the device they're currently on. The provider no longer
       // re-keys on layout id, so router.refresh() can re-render the page
@@ -155,7 +151,7 @@ export function LayoutSwitcher({
     setBusyAction('copy');
     try {
       await callApi(`/api/dashboard-layouts/${layoutId}/copy`, { method: 'POST' }, 'Copied');
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed');
     } finally {
@@ -202,7 +198,7 @@ export function LayoutSwitcher({
         },
         'Renamed',
       );
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed');
     } finally {
@@ -234,7 +230,7 @@ export function LayoutSwitcher({
           setWidgets(next as WidgetInstance[]);
         }
       }
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
       if (target.id === activeLayoutId) {
         onLayoutSwitched();
       }
@@ -251,7 +247,7 @@ export function LayoutSwitcher({
     try {
       await callApi(`/api/dashboard-layouts/${deleteTarget.id}`, { method: 'DELETE' }, 'Deleted');
       setDeleteTarget(null);
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed');
     } finally {
@@ -281,7 +277,7 @@ export function LayoutSwitcher({
         },
         'Layout created',
       );
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
       setSaveAsOpen(false);
       setSaveAsValue('');
     } catch (error) {
@@ -313,7 +309,7 @@ export function LayoutSwitcher({
         },
         'Layout created',
       );
-      await refresh();
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
       setEmptyOpen(false);
       setEmptyValue('');
     } catch (error) {

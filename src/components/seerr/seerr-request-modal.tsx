@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -94,70 +96,68 @@ export function SeerrRequestModal({
   const isTv = mediaType === 'tv';
   const service = isTv ? 'sonarr' : 'radarr';
 
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [serviceData, setServiceData] = useState<SeerrServiceData | null>(null);
-  const [seasonsInfo, setSeasonsInfo] = useState<SeerrSeasonInfo[]>([]);
-  const [users, setUsers] = useState<SeerrUserOption[]>([]);
-
   // Form state.
   const [selectedSeasons, setSelectedSeasons] = useState<Set<number>>(new Set(initialSeasons ?? []));
   const [profileId, setProfileId] = useState<number | null>(initialProfileId ?? null);
   const [rootFolder, setRootFolder] = useState<string | null>(initialRootFolder ?? null);
   const [tags, setTags] = useState<number[]>(initialTags ?? []);
   const [requestAs, setRequestAs] = useState<number | null>(initialRequestedById ?? null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [svcRes, seasonsRes] = await Promise.all([
-        fetch(`/api/seerr/service/${service}`),
-        isTv ? fetch(`/api/seerr/tv/${tmdbId}`) : Promise.resolve(null),
-      ]);
+  const serviceQuery = useQuery({
+    queryKey: ['seerr', 'service', service],
+    queryFn: jsonFetcher<SeerrServiceData>(`/api/seerr/service/${service}`),
+    enabled: open,
+  });
+  const seasonsQuery = useQuery({
+    queryKey: ['seerr', 'tv', tmdbId],
+    queryFn: jsonFetcher<{ seasons: SeerrSeasonInfo[] }>(`/api/seerr/tv/${tmdbId}`),
+    enabled: open && isTv,
+  });
+  const usersQuery = useQuery({
+    queryKey: ['seerr', 'users'],
+    queryFn: jsonFetcher<{ results?: Array<{ id: number; displayName?: string; username?: string }> }>(
+      '/api/seerr/users?take=100',
+    ),
+    enabled: open && isAdmin,
+  });
 
-      let svc: SeerrServiceData | null = null;
-      if (svcRes.ok) {
-        svc = (await svcRes.json()) as SeerrServiceData;
-        setServiceData(svc);
-      }
-      if (seasonsRes && seasonsRes.ok) {
-        const data = (await seasonsRes.json()) as { seasons: SeerrSeasonInfo[] };
-        setSeasonsInfo(data.seasons ?? []);
-      }
-      if (isAdmin) {
-        const usersRes = await fetch('/api/seerr/users?take=100');
-        if (usersRes.ok) {
-          const data = (await usersRes.json()) as {
-            results?: Array<{ id: number; displayName?: string; username?: string }>;
-          };
-          setUsers(
-            (data.results ?? []).map((u) => ({
-              id: u.id,
-              name: u.displayName || u.username || `User ${u.id}`,
-            }))
-          );
-        }
-      }
+  const serviceData = serviceQuery.data ?? null;
+  const seasonsInfo = useMemo(() => seasonsQuery.data?.seasons ?? [], [seasonsQuery.data]);
+  const users: SeerrUserOption[] = useMemo(
+    () =>
+      (usersQuery.data?.results ?? []).map((u) => ({
+        id: u.id,
+        name: u.displayName || u.username || `User ${u.id}`,
+      })),
+    [usersQuery.data],
+  );
 
-      // Seed defaults that weren't pre-filled by an existing request.
-      if (initialProfileId == null && svc?.defaultProfileId != null) setProfileId(svc.defaultProfileId);
-      if (initialRootFolder == null && svc?.defaultRootFolder != null) setRootFolder(svc.defaultRootFolder);
-      if (!initialTags && svc?.defaultTags) setTags(svc.defaultTags);
-      if (requestAs == null) {
-        const own = me?.seerrUserId ? Number.parseInt(me.seerrUserId, 10) : NaN;
-        if (Number.isInteger(own)) setRequestAs(own);
-      }
-    } catch {
+  const loading =
+    serviceQuery.isLoading || (isTv && seasonsQuery.isLoading) || (isAdmin && usersQuery.isLoading);
+
+  // Any of the option fetches failing matches the old single catch toast.
+  useEffect(() => {
+    if (serviceQuery.isError || seasonsQuery.isError || usersQuery.isError) {
       toast.error('Failed to load request options');
-    } finally {
-      setLoading(false);
+    }
+  }, [serviceQuery.isError, seasonsQuery.isError, usersQuery.isError]);
+
+  // Seed defaults that weren't pre-filled by an existing request, once the
+  // service data resolves.
+  useEffect(() => {
+    if (!open) return;
+    const svc = serviceQuery.data;
+    if (!svc) return;
+    if (initialProfileId == null && svc.defaultProfileId != null) setProfileId(svc.defaultProfileId);
+    if (initialRootFolder == null && svc.defaultRootFolder != null) setRootFolder(svc.defaultRootFolder);
+    if (!initialTags && svc.defaultTags) setTags(svc.defaultTags);
+    if (requestAs == null) {
+      const own = me?.seerrUserId ? Number.parseInt(me.seerrUserId, 10) : NaN;
+      if (Number.isInteger(own)) setRequestAs(own);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [service, isTv, tmdbId, isAdmin]);
-
-  useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
+  }, [open, serviceQuery.data]);
 
   const selectableSeasons = useMemo(
     () => seasonsInfo.filter((s) => s.status !== SEERR_MEDIA_STATUS.AVAILABLE),

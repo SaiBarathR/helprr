@@ -1,20 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import DOMPurify from 'isomorphic-dompurify';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Heart, Loader2, Star, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { formatFavourites, formatFuzzyDate } from '@/lib/anilist-helpers';
 import type {
   AniListCharacterDetailResponse,
   AniListCharacterMediaEdge,
-  AniListPageInfo,
 } from '@/types/anilist';
 
 const SORT_OPTIONS = [
@@ -30,81 +31,60 @@ export default function CharacterDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [detail, setDetail] = useState<AniListCharacterDetailResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
   const [spoilerVisible, setSpoilerVisible] = useState(false);
   const [spoilerNamesVisible, setSpoilerNamesVisible] = useState(false);
 
   // Media state
-  const [media, setMedia] = useState<AniListCharacterMediaEdge[]>([]);
-  const [pageInfo, setPageInfo] = useState<AniListPageInfo | null>(null);
   const [sort, setSort] = useState('POPULARITY_DESC');
-  const [loadingMore, setLoadingMore] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const sortDropdownRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
+  const {
+    data,
+    isLoading,
+    isFetching,
+    isError,
+    error: queryError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['anime', 'character', id, sort],
+    queryFn: ({ pageParam }) =>
+      jsonFetcher<AniListCharacterDetailResponse>(
+        `/api/anime/character/${id}?page=${pageParam}&sort=${sort}`
+      )(),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.mediaPageInfo?.hasNextPage ? (lastPage.mediaPageInfo.currentPage || 1) + 1 : undefined,
+  });
 
-    fetch(`/api/anime/character/${id}?page=1&sort=${sort}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load');
-        return res.json();
-      })
-      .then((data: AniListCharacterDetailResponse) => {
-        if (!controller.signal.aborted) {
-          setDetail(data);
-          setMedia(data.media);
-          setPageInfo(data.mediaPageInfo);
-          setLoading(false);
-        }
-      })
-      .catch((e) => {
-        if (e instanceof DOMException && e.name === 'AbortError') return;
-        setError(e.message);
-        setLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [id, sort]);
-
-  // Fetch more media
-  const fetchMore = useCallback(async () => {
-    if (!pageInfo?.hasNextPage || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const nextPage = (pageInfo.currentPage || 1) + 1;
-      const res = await fetch(`/api/anime/character/${id}?page=${nextPage}&sort=${sort}`);
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data: AniListCharacterDetailResponse = await res.json();
-      setMedia((prev) => [...prev, ...data.media]);
-      setPageInfo(data.mediaPageInfo);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [id, pageInfo, loadingMore, sort]);
+  const detail = data?.pages[0] ?? null;
+  // Full-page spinner on first load and on every sort flip (old code reset to it).
+  const loading = isLoading || (isFetching && !isFetchingNextPage);
+  const error = isError ? (queryError instanceof Error ? queryError.message : 'Failed to load') : null;
+  const media = useMemo<AniListCharacterMediaEdge[]>(
+    () => data?.pages.flatMap((p) => p.media) ?? [],
+    [data]
+  );
+  const loadingMore = isFetchingNextPage;
 
   // Infinite scroll
   useEffect(() => {
     if (!sentinelRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && pageInfo?.hasNextPage && !loadingMore) {
-          fetchMore();
+        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
         }
       },
       { rootMargin: '300px' }
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [pageInfo, loadingMore, fetchMore]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   // Close sort dropdown on outside click
   useEffect(() => {

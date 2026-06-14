@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv } from 'lucide-react';
@@ -26,41 +28,22 @@ interface RandomPick {
 
 export default function RandomWatchPage() {
   const [type, setType] = useState<FilterType>('any');
-  const [pick, setPick] = useState<RandomPick | null>(null);
-  const [poolSize, setPoolSize] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  // Monotonic request id — if the user clicks "Pick another" while the
-  // previous request is still in flight, drop the stale response so it
-  // can't overwrite the newer one.
-  const requestIdRef = useRef(0);
-
-  const roll = useCallback(
-    async (next: FilterType) => {
-      const localId = ++requestIdRef.current;
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/random-watch?type=${next}`);
-        if (localId !== requestIdRef.current) return;
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as { pick: RandomPick | null; poolSize: number };
-        if (localId !== requestIdRef.current) return;
-        setPick(data.pick);
-        setPoolSize(data.poolSize);
-      } catch (err) {
-        if (localId !== requestIdRef.current) return;
-        setError(err instanceof Error ? err.message : 'Failed to fetch a pick');
-      } finally {
-        if (localId === requestIdRef.current) setLoading(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    void roll(type);
-  }, [type, roll]);
+  // Each fetch returns a fresh random pick; gcTime:0 so we never reuse a stale
+  // one. Changing `type` (new key) or refetching (manual reroll) rolls again.
+  const rollQuery = useQuery({
+    queryKey: ['random-watch', type],
+    queryFn: jsonFetcher<{ pick: RandomPick | null; poolSize: number }>(`/api/random-watch?type=${type}`),
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const pick = rollQuery.data?.pick ?? null;
+  const poolSize = rollQuery.data?.poolSize ?? null;
+  const loading = rollQuery.isFetching;
+  const error = rollQuery.isError
+    ? rollQuery.error instanceof Error
+      ? rollQuery.error.message
+      : 'Failed to fetch a pick'
+    : null;
 
   const poster = pick?.posterUrl
     ? toCachedImageSrc(pick.posterUrl, pick.mediaType === 'movie' ? 'radarr' : 'sonarr') ?? pick.posterUrl
@@ -101,7 +84,7 @@ export default function RandomWatchPage() {
             )}
             <Button
               size="sm"
-              onClick={() => roll(type)}
+              onClick={() => rollQuery.refetch()}
               disabled={loading}
               variant="outline"
             >

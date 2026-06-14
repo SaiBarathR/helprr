@@ -1,7 +1,9 @@
 'use client';
 
-import { Suspense, useEffect, useState, useMemo, useCallback } from 'react';
+import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher, ensureArray, withInstanceQuery } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -52,14 +54,12 @@ function ManualImportContent() {
   const itemTitle = searchParams.get('title') || 'Manual Import';
 
   const isSonarr = source === 'sonarr';
+  const queryClient = useQueryClient();
 
   // State
-  const [files, setFiles] = useState<ManualImportItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Episode data (Sonarr only)
-  const [allEpisodes, setAllEpisodes] = useState<SonarrEpisode[]>([]);
+  // Episode refresh (Sonarr only)
   const [refreshingEpisodes, setRefreshingEpisodes] = useState(false);
 
   // Per-file episode overrides: fileIndex → episodes
@@ -72,37 +72,41 @@ function ManualImportContent() {
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
-  const fetchData = useCallback(async () => {
-    if (!downloadId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ downloadId, source });
-      if (instanceId) params.set('instanceId', instanceId);
-      const episodesQs = instanceId ? `?instanceId=${instanceId}` : '';
-      const fetches: Promise<unknown>[] = [
-        fetch(`/api/activity/manualimport?${params}`).then((r) => r.ok ? r.json() : []),
-      ];
+  const manualImportPath = (() => {
+    const params = new URLSearchParams({ downloadId, source });
+    if (instanceId) params.set('instanceId', instanceId);
+    return `/api/activity/manualimport?${params}`;
+  })();
 
-      if (isSonarr && seriesId) {
-        fetches.push(
-          fetch(`/api/sonarr/${seriesId}/episodes${episodesQs}`).then((r) => r.ok ? r.json() : [])
-        );
-      }
+  const {
+    data: files = [],
+    isLoading: filesLoading,
+    isError: filesError,
+  } = useQuery({
+    queryKey: ['activity', 'manualimport', { downloadId, source, instanceId }],
+    queryFn: jsonFetcher<ManualImportItem[]>(manualImportPath),
+    enabled: Boolean(downloadId),
+    select: ensureArray,
+  });
 
-      const [filesResult, episodesResult] = await Promise.all(fetches);
-      setFiles(filesResult as ManualImportItem[]);
-      if (episodesResult) setAllEpisodes(episodesResult as SonarrEpisode[]);
-    } catch {
-      toast.error('Failed to load import data');
-    } finally {
-      setLoading(false);
-    }
-  }, [downloadId, source, isSonarr, seriesId, instanceId]);
+  const episodesKey = ['sonarr', 'episodes', { seriesId, instanceId }] as const;
+  const { data: allEpisodes = [] } = useQuery({
+    queryKey: episodesKey,
+    queryFn: jsonFetcher<SonarrEpisode[]>(
+      withInstanceQuery(`/api/sonarr/${seriesId}/episodes`, instanceId || undefined)
+    ),
+    enabled: isSonarr && Boolean(seriesId),
+    select: ensureArray,
+  });
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // No downloadId means there's nothing to load — mirror the old early-return that
+  // cleared the loading state instead of spinning forever.
+  const loading = Boolean(downloadId) && filesLoading;
+
+  // The old code surfaced load failures as a toast; preserve that.
+  useEffect(() => {
+    if (filesError) toast.error('Failed to load import data');
+  }, [filesError]);
 
   // ── Episode helpers ───────────────────────────────────────────────────────
 
@@ -154,12 +158,8 @@ function ManualImportContent() {
       const status = command.id ? await pollCommand('sonarr', command.id, instanceId || undefined) : 'completed';
       if (status === 'timeout') { toast.warning('Refresh still running'); return; }
       if (status !== 'completed') { toast.error('Failed to refresh episodes'); return; }
-      const res = await fetch(`/api/sonarr/${seriesId}/episodes${qs}`);
-      if (res.ok) {
-        const episodes = await res.json();
-        setAllEpisodes(episodes);
-        toast.success('Episodes refreshed');
-      }
+      await queryClient.invalidateQueries({ queryKey: episodesKey });
+      toast.success('Episodes refreshed');
     } catch {
       toast.error('Failed to refresh episodes');
     } finally {

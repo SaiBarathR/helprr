@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +63,7 @@ import {
   type ProwlarrIndexerStat,
   type ProwlarrTestAllResponse,
   type ProwlarrHistoryRecord,
+  type ProwlarrHistoryResponse,
   type ProwlarrStats,
   type ProwlarrUserAgentStat,
 } from '@/lib/prowlarr-client';
@@ -556,41 +559,26 @@ function AddIndexerModal({ open, onClose, onAdded }: AddIndexerModalProps) {
  */
 
 function IndexersTab() {
-  const [indexers, setIndexers] = useState<ProwlarrIndexer[]>([]);
-  const [statuses, setStatuses] = useState<ProwlarrIndexerStatus[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [testingId, setTestingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [indexersRes, statusRes] = await Promise.allSettled([
-        fetch('/api/prowlarr/indexers'),
-        fetch('/api/prowlarr/status'),
-      ]);
+  const indexersQuery = useQuery({
+    queryKey: ['prowlarr', 'indexers'],
+    queryFn: jsonFetcher<ProwlarrIndexer[]>('/api/prowlarr/indexers'),
+    select: ensureArray,
+  });
+  // Status is best-effort, like the old Promise.allSettled: a failure here just
+  // means no "Blocked" dots, never an error screen for the whole tab.
+  const statusQuery = useQuery({
+    queryKey: ['prowlarr', 'status'],
+    queryFn: jsonFetcher<ProwlarrIndexerStatus[]>('/api/prowlarr/status'),
+    select: ensureArray,
+  });
 
-      if (indexersRes.status === 'fulfilled' && indexersRes.value.ok) {
-        const data = await indexersRes.value.json();
-        if (Array.isArray(data)) setIndexers(data);
-        else setError(data.error || 'Failed to load indexers');
-      } else {
-        setError('Failed to load indexers');
-      }
-
-      if (statusRes.status === 'fulfilled' && statusRes.value.ok) {
-        const data = await statusRes.value.json();
-        if (Array.isArray(data)) setStatuses(data);
-      }
-    } catch {
-      setError('Failed to load indexers');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const indexers = indexersQuery.data ?? [];
+  const statuses = statusQuery.data ?? [];
 
   /**
    * Initiates a test for the indexer with the given id, displays a success or error toast, and manages the testing state while the request is in progress.
@@ -625,7 +613,12 @@ function IndexersTab() {
       const res = await fetch(`/api/prowlarr/indexers/${id}`, { method: 'DELETE' });
       if (res.ok) {
         toast.success('Indexer deleted');
-        setIndexers((prev) => prev.filter((i) => i.id !== id));
+        // Drop it from the shared cache immediately (instant, as before), then
+        // refresh status so any stale block for the gone indexer clears.
+        queryClient.setQueryData<ProwlarrIndexer[]>(['prowlarr', 'indexers'], (prev) =>
+          Array.isArray(prev) ? prev.filter((i) => i.id !== id) : prev,
+        );
+        void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to delete');
@@ -638,7 +631,7 @@ function IndexersTab() {
     }
   }
 
-  if (loading) {
+  if (indexersQuery.isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -646,10 +639,10 @@ function IndexersTab() {
     );
   }
 
-  if (error) {
+  if (indexersQuery.isError) {
     return (
       <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-        <p>{error}</p>
+        <p>Failed to load indexers</p>
         <p className="text-sm mt-2">Make sure Prowlarr is configured in Settings.</p>
       </div>
     );
@@ -894,36 +887,29 @@ const CHART_MARGIN = { top: 2, right: 12, left: 0, bottom: 2 };
  * @returns A React element containing the stats UI and charts for the selected date range.
  */
 function StatsTab() {
-  const [stats, setStats] = useState<ProwlarrStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<DateRange>('7d');
 
-  const fetchStats = useCallback(async (range: DateRange) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const startDate = getStartDate(range);
+  // Range lives in the key, so switching ranges auto-refetches (and re-paints
+  // from cache instantly when returning to a range fetched within staleTime).
+  const statsQuery = useQuery({
+    queryKey: ['prowlarr', 'stats', dateRange],
+    queryFn: ({ signal }) => {
+      const startDate = getStartDate(dateRange);
       const url = startDate
         ? `/api/prowlarr/stats?startDate=${encodeURIComponent(startDate)}`
         : '/api/prowlarr/stats';
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.error) setError(data.error);
-      else setStats(data);
-    } catch {
-      setError('Failed to load stats');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return jsonFetcher<ProwlarrStats>(url)({ signal });
+    },
+    staleTime: 60_000,
+  });
 
-  useEffect(() => { fetchStats(dateRange); }, [fetchStats, dateRange]);
+  const stats = statsQuery.data ?? null;
+  const loading = statsQuery.isLoading;
 
-  if (error) {
+  if (statsQuery.isError) {
     return (
       <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
-        {error}
+        Failed to load stats
       </div>
     );
   }
@@ -1384,77 +1370,48 @@ function HistoryDrawer({
  * @returns The History tab as a React element
  */
 function HistoryTab() {
-  const [records, setRecords] = useState<ProwlarrHistoryRecord[]>([]);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<ProwlarrHistoryRecord | null>(null);
   const [activeFilter, setActiveFilter] = useState<HistoryFilterValue>('');
-  const [indexerMap, setIndexerMap] = useState<Record<number, string>>({});
 
   const PAGE_SIZE = 20;
 
-  // Fetch indexers once to build id→name map
-  useEffect(() => {
-    fetch('/api/prowlarr/indexers')
-      .then((r) => r.json())
-      .then((data: ProwlarrIndexer[]) => {
-        if (Array.isArray(data)) {
-          const map: Record<number, string> = {};
-          for (const idx of data) map[idx.id] = idx.name;
-          setIndexerMap(map);
-        }
-      })
-      .catch(() => { /* non-fatal */ });
-  }, []);
+  // Reuse the shared indexers cache (dedups with IndexersTab) to build the
+  // id→name map; failure is non-fatal — records just fall back to record.indexer.
+  const indexersQuery = useQuery({
+    queryKey: ['prowlarr', 'indexers'],
+    queryFn: jsonFetcher<ProwlarrIndexer[]>('/api/prowlarr/indexers'),
+    select: ensureArray,
+  });
+  const indexerMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const idx of indexersQuery.data ?? []) map[idx.id] = idx.name;
+    return map;
+  }, [indexersQuery.data]);
 
-  function buildUrl(p: number, filterValue: HistoryFilterValue) {
-    const f = HISTORY_FILTERS.find((x) => x.value === filterValue)!;
-    const params = new URLSearchParams({ page: String(p), pageSize: String(PAGE_SIZE) });
-    if (f.eventType) params.set('eventType', f.eventType);
-    if (f.successful !== undefined) params.set('successful', f.successful);
-    return `/api/prowlarr/history?${params}`;
-  }
+  // Changing the filter is a new key → fresh page 1 with its own loading state.
+  const historyQuery = useInfiniteQuery({
+    queryKey: ['prowlarr', 'history', activeFilter],
+    queryFn: async ({ pageParam, signal }) => {
+      const f = HISTORY_FILTERS.find((x) => x.value === activeFilter)!;
+      const params = new URLSearchParams({ page: String(pageParam), pageSize: String(PAGE_SIZE) });
+      if (f.eventType) params.set('eventType', f.eventType);
+      if (f.successful !== undefined) params.set('successful', f.successful);
+      const res = await fetch(`/api/prowlarr/history?${params}`, { signal });
+      if (!res.ok) throw new ApiError(res.status, `GET /api/prowlarr/history → ${res.status}`);
+      return (await res.json()) as ProwlarrHistoryResponse;
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      allPages.length * PAGE_SIZE < (lastPage.totalRecords || 0) ? allPages.length + 1 : undefined,
+  });
 
-  useEffect(() => {
-    setLoading(true);
-    setRecords([]);
-    fetch(buildUrl(1, activeFilter))
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setRecords(data.records ?? []);
-          setTotalRecords(data.totalRecords ?? 0);
-          setPage(1);
-        }
-      })
-      .catch(() => setError('Failed to load history'))
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter]);
-
-  async function loadMore() {
-    setLoadingMore(true);
-    const nextPage = page + 1;
-    try {
-      const res = await fetch(buildUrl(nextPage, activeFilter));
-      const data = await res.json();
-      if (data.error) {
-        toast.error(data.error);
-      } else {
-        setRecords((prev) => [...prev, ...(data.records ?? [])]);
-        setPage(nextPage);
-      }
-    } catch {
-      toast.error('Failed to load more history');
-    } finally {
-      setLoadingMore(false);
-    }
-  }
+  const records = useMemo(
+    () => historyQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [],
+    [historyQuery.data],
+  );
+  const totalRecords = historyQuery.data?.pages.at(-1)?.totalRecords ?? 0;
+  const loading = historyQuery.isLoading;
+  const loadingMore = historyQuery.isFetchingNextPage;
 
   return (
     <div className="space-y-3">
@@ -1478,9 +1435,9 @@ function HistoryTab() {
         <div className="flex items-center justify-center py-16">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : error ? (
+      ) : historyQuery.isError ? (
         <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
-          {error}
+          Failed to load history
         </div>
       ) : records.length === 0 ? (
         <div className="rounded-xl bg-card border border-border p-8 text-center text-muted-foreground">
@@ -1554,7 +1511,7 @@ function HistoryTab() {
             <Button
               variant="outline"
               className="w-full"
-              onClick={loadMore}
+              onClick={() => historyQuery.fetchNextPage()}
               disabled={loadingMore}
             >
               {loadingMore ? (
@@ -1585,6 +1542,7 @@ function HistoryTab() {
  */
 
 export default function ProwlarrPage() {
+  const queryClient = useQueryClient();
   const [syncing, setSyncing] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
   const [testAllResults, setTestAllResults] = useState<ProwlarrTestAllResponse | null>(null);
@@ -1644,25 +1602,25 @@ export default function ProwlarrPage() {
           toast.error(`${data.passed} passed, ${data.failed} failed`);
 
           try {
-            const indexersRes = await fetch('/api/prowlarr/indexers');
-            if (!indexersRes.ok) {
-              setTestAllIndexerNames({});
+            // Reuse the shared indexers cache (IndexersTab/HistoryTab) instead of
+            // a fresh fetch; returns cached when fresh, fetches otherwise.
+            const indexerData = await queryClient.fetchQuery({
+              queryKey: ['prowlarr', 'indexers'],
+              queryFn: jsonFetcher<ProwlarrIndexer[]>('/api/prowlarr/indexers'),
+            });
+            if (Array.isArray(indexerData)) {
+              setTestAllIndexerNames(Object.fromEntries(
+                indexerData
+                  .filter((indexer): indexer is ProwlarrIndexer => (
+                    !!indexer
+                    && typeof indexer === 'object'
+                    && typeof (indexer as ProwlarrIndexer).id === 'number'
+                    && typeof (indexer as ProwlarrIndexer).name === 'string'
+                  ))
+                  .map((indexer) => [indexer.id, indexer.name])
+              ));
             } else {
-              const indexerData = await indexersRes.json().catch(() => []);
-              if (Array.isArray(indexerData)) {
-                setTestAllIndexerNames(Object.fromEntries(
-                  indexerData
-                    .filter((indexer): indexer is ProwlarrIndexer => (
-                      !!indexer
-                      && typeof indexer === 'object'
-                      && typeof (indexer as ProwlarrIndexer).id === 'number'
-                      && typeof (indexer as ProwlarrIndexer).name === 'string'
-                    ))
-                    .map((indexer) => [indexer.id, indexer.name])
-                ));
-              } else {
-                setTestAllIndexerNames({});
-              }
+              setTestAllIndexerNames({});
             }
           } catch {
             setTestAllIndexerNames({});
@@ -1681,6 +1639,8 @@ export default function ProwlarrPage() {
       toast.error('Test All failed');
     } finally {
       setTestingAll(false);
+      // A test run can change blocked status; refresh it so IndexersTab dots reflect.
+      void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
     }
   }
 

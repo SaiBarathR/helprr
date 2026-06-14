@@ -25,22 +25,17 @@ import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
-import {
-  getCachedListData,
-  getListViewState,
-  isListDataFresh,
-  setCachedListData,
-  setListViewState,
-} from '@/lib/media-list-cache';
+import { getListViewState, setListViewState } from '@/lib/media-list-cache';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import type { SonarrSeriesListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
 
-interface SeriesPageCacheData {
-  series: SonarrSeriesListItem[];
-  qualityProfiles: { id: number; name: string }[];
-  tags: { id: number; label: string }[];
-}
+// Stable empty reference so memo deps don't churn before the query resolves.
+const EMPTY_SERIES: SonarrSeriesListItem[] = [];
 
 const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
   posters: [
@@ -148,11 +143,21 @@ export default function SeriesPage() {
     selectionMode, selectedKeys, count: selectedCount,
     toggle, selectMany, deselectMany, enter, exit,
   } = useBulkSelection();
-  const [series, setSeries] = useState<SonarrSeriesListItem[]>([]);
-  const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
-  const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    data: seriesData,
+    isLoading: loading,
+    isFetching,
+    refetch: refetchSeries,
+  } = useQuery({
+    queryKey: queryKeys.library('sonarr'),
+    queryFn: jsonFetcher<SonarrSeriesListItem[]>('/api/sonarr'),
+    staleTime: 60_000, // matches the old media-list-cache TTL
+    select: ensureArray,
+  });
+  const series = seriesData ?? EMPTY_SERIES;
+  const { data: qualityProfiles = [] } = useQualityProfiles('sonarr');
+  const { data: tags = [] } = useTags('sonarr');
+  const refreshing = isFetching && !loading;
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
@@ -186,63 +191,6 @@ export default function SeriesPage() {
   const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
     setListViewState('series', { scrollY, search: searchValue });
   }, [search]);
-
-  const fetchData = useCallback(async (force = false) => {
-    const cached = force ? null : getCachedListData<SeriesPageCacheData>('series');
-    const hasCachedData = Boolean(cached?.data);
-
-    if (cached?.data) {
-      setSeries(cached.data.series);
-      setQualityProfiles(cached.data.qualityProfiles);
-      setTags(cached.data.tags);
-      setLoading(false);
-
-      if (isListDataFresh(cached)) {
-        setRefreshing(false);
-        return;
-      }
-
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-      setRefreshing(false);
-    }
-
-    try {
-      const [s, q, t] = await Promise.all([
-        fetch('/api/sonarr').then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/qualityprofiles').then((r) => r.ok ? r.json() : []),
-        fetch('/api/sonarr/tags').then((r) => r.ok ? r.json() : []),
-      ]);
-
-      // A misconfigured instance can answer 200 with a non-array body (e.g. an
-      // arr web-UI page when its URL/key is wrong); never let that white-screen
-      // the library — fall back to empty for any non-array.
-      const next: SeriesPageCacheData = {
-        series: Array.isArray(s) ? s : [],
-        qualityProfiles: Array.isArray(q) ? q : [],
-        tags: Array.isArray(t) ? t : [],
-      };
-
-      setSeries(next.series);
-      setQualityProfiles(next.qualityProfiles);
-      setTags(next.tags);
-      setCachedListData('series', next);
-    } catch {
-      if (!hasCachedData) {
-        setSeries([]);
-        setQualityProfiles([]);
-        setTags([]);
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData(false);
-  }, [fetchData]);
 
   useEffect(() => {
     if (hasRestoredSearchRef.current) return;
@@ -492,9 +440,9 @@ export default function SeriesPage() {
         body: JSON.stringify({ ids, monitored }),
       }));
     reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail);
-    await fetchData(true);
+    await refetchSeries();
     exit();
-  }, [fanOut, fetchData, exit]);
+  }, [fanOut, refetchSeries, exit]);
 
   const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
     const { ok, fail } = await fanOut((instanceId, ids) =>
@@ -503,9 +451,9 @@ export default function SeriesPage() {
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
       }));
     reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail);
-    await fetchData(true);
+    await refetchSeries();
     exit();
-  }, [fanOut, fetchData, exit]);
+  }, [fanOut, refetchSeries, exit]);
 
   const handleBulkSearch = useCallback(async () => {
     const { ok, fail } = await fanOut((instanceId, ids) =>
@@ -524,9 +472,9 @@ export default function SeriesPage() {
         body: JSON.stringify({ ids, deleteFiles }),
       }));
     reportBulk('Deleted', ok, fail);
-    await fetchData(true);
+    await refetchSeries();
     exit();
-  }, [fanOut, fetchData, exit]);
+  }, [fanOut, refetchSeries, exit]);
 
   const isDesktop = viewportWidth >= 768;
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
@@ -760,7 +708,7 @@ export default function SeriesPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => fetchData(true)}
+                onClick={() => refetchSeries()}
                 disabled={refreshing}
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 aria-label="Refresh Series"

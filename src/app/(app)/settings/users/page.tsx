@@ -1,9 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Loader2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,37 +51,45 @@ interface ExternalUser {
 const NONE = '__none__';
 
 export default function UsersAdminPage() {
-  const [users, setUsers] = useState<SafeUser[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<SafeUser | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<SafeUser | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch('/api/users');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setUsers((await res.json()) as SafeUser[]);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load users');
-    }
-  }, []);
+  const {
+    data: users = null,
+    isError,
+    error: queryError,
+  } = useQuery({
+    queryKey: queryKeys.users(),
+    queryFn: jsonFetcher<SafeUser[]>('/api/users'),
+  });
+  const error = isError
+    ? queryError instanceof ApiError
+      ? `HTTP ${queryError.status}`
+      : queryError instanceof Error
+        ? queryError.message
+        : 'Failed to load users'
+    : null;
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const deleteMutation = useMutation({
+    mutationFn: async (user: SafeUser) => {
+      const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Failed to delete user');
+      }
+    },
+    onSuccess: (_data, user) => {
+      toast.success(`Deleted ${user.displayName}`);
+      setConfirmDelete(null);
+      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to delete user'),
+  });
 
-  async function handleDelete(user: SafeUser) {
-    const res = await fetch(`/api/users/${user.id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      toast.error(data.error ?? 'Failed to delete user');
-      return;
-    }
-    toast.success(`Deleted ${user.displayName}`);
-    setConfirmDelete(null);
-    await load();
+  function handleDelete(user: SafeUser) {
+    return deleteMutation.mutateAsync(user).catch(() => {});
   }
 
   return (
@@ -153,7 +164,7 @@ export default function UsersAdminPage() {
           onClose={() => setCreating(false)}
           onCreated={() => {
             setCreating(false);
-            void load();
+            void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
           }}
         />
       )}
@@ -163,7 +174,7 @@ export default function UsersAdminPage() {
           user={editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
-            void load();
+            void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
           }}
           onRequestDelete={(u) => {
             setEditing(null);
@@ -186,49 +197,37 @@ export default function UsersAdminPage() {
 }
 
 function useExternalUsers(open: boolean) {
-  const [jellyfin, setJellyfin] = useState<ExternalUser[]>([]);
-  const [seerr, setSeerr] = useState<ExternalUser[]>([]);
+  // Both services may be unconfigured; the queries tolerate failure and fall
+  // back to [] (the global onError only redirects on 401, not 4xx/5xx here —
+  // and these endpoints 200 with empty when unconfigured). The `.data ?? []`
+  // keeps an unconfigured/erroring service from breaking the dialog.
+  const { data: jellyfin } = useQuery({
+    queryKey: ['jellyfin', 'users'],
+    queryFn: jsonFetcher<{ users?: Array<{ Id?: string; Name?: string }> }>('/api/jellyfin/users'),
+    enabled: open,
+    retry: false,
+    select: (data): ExternalUser[] =>
+      (Array.isArray(data?.users) ? data.users : [])
+        .filter((u) => u.Id && u.Name)
+        .map((u) => ({ id: u.Id as string, name: u.Name as string })),
+  });
+  const { data: seerr } = useQuery({
+    queryKey: ['seerr', 'users'],
+    queryFn: jsonFetcher<
+      | { results?: Array<{ id?: number; displayName?: string; username?: string }> }
+      | Array<{ id?: number; displayName?: string; username?: string }>
+    >('/api/seerr/users'),
+    enabled: open,
+    retry: false,
+    select: (raw): ExternalUser[] => {
+      const list = Array.isArray(raw) ? raw : raw.results ?? [];
+      return list
+        .filter((u) => u.id != null)
+        .map((u) => ({ id: String(u.id), name: u.displayName || u.username || `User ${u.id}` }));
+    },
+  });
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/jellyfin/users');
-        if (res.ok && !cancelled) {
-          // The endpoint returns { users: [...] }, not a bare array.
-          const data = (await res.json()) as { users?: Array<{ Id?: string; Name?: string }> };
-          const list = Array.isArray(data?.users) ? data.users : [];
-          setJellyfin(
-            list
-              .filter((u) => u.Id && u.Name)
-              .map((u) => ({ id: u.Id as string, name: u.Name as string }))
-          );
-        }
-      } catch {
-        /* Jellyfin not configured — leave empty */
-      }
-      try {
-        const res = await fetch('/api/seerr/users');
-        if (res.ok && !cancelled) {
-          const raw = (await res.json()) as { results?: Array<{ id?: number; displayName?: string; username?: string }> } | Array<{ id?: number; displayName?: string; username?: string }>;
-          const list = Array.isArray(raw) ? raw : raw.results ?? [];
-          setSeerr(
-            list
-              .filter((u) => u.id != null)
-              .map((u) => ({ id: String(u.id), name: u.displayName || u.username || `User ${u.id}` }))
-          );
-        }
-      } catch {
-        /* Seerr not configured — leave empty */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
-  return { jellyfin, seerr };
+  return { jellyfin: jellyfin ?? [], seerr: seerr ?? [] };
 }
 
 function ExternalLinkFields({
@@ -309,11 +308,9 @@ function CreateUserDialog({
   const [role, setRole] = useState<'admin' | 'member'>('member');
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(null);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
-  async function submit() {
-    setBusy(true);
-    try {
+  const createMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -329,14 +326,19 @@ function CreateUserDialog({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error ?? 'Failed to create user');
-        return;
+        throw new Error(data.error ?? 'Failed to create user');
       }
+    },
+    onSuccess: () => {
       toast.success('User created');
       onCreated();
-    } finally {
-      setBusy(false);
-    }
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create user'),
+  });
+  const busy = createMutation.isPending;
+
+  function submit() {
+    createMutation.mutate();
   }
 
   return (
@@ -408,6 +410,7 @@ function EditUserDialog({
   onSaved: () => void;
   onRequestDelete: (u: SafeUser) => void;
 }) {
+  const queryClient = useQueryClient();
   const [username, setUsername] = useState(user.username);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [role, setRole] = useState<'admin' | 'member'>(user.role);
@@ -415,34 +418,32 @@ function EditUserDialog({
   const [password, setPassword] = useState('');
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(user.jellyfinUserId);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(user.seerrUserId);
-  const [busy, setBusy] = useState(false);
 
-  // Permissions editor state.
+  // Permissions editor state. Seeded from the permissions query, then driven by
+  // the template/toggle mutations (which return the authoritative effective set).
   const [template, setTemplate] = useState(user.template);
   const [effective, setEffective] = useState<Partial<Record<Capability, boolean>> | null>(null);
-  const [permBusy, setPermBusy] = useState(false);
 
-  const loadPerms = useCallback(async () => {
-    const res = await fetch(`/api/users/${user.id}/permissions`);
-    if (res.ok) {
-      const data = (await res.json()) as {
-        template: string;
-        effective: Partial<Record<Capability, boolean>>;
-      };
-      setTemplate(data.template);
-      setEffective(data.effective);
-    }
-  }, [user.id]);
+  const permsQuery = useQuery({
+    queryKey: ['users', 'permissions', user.id],
+    queryFn: jsonFetcher<{
+      template: string;
+      effective: Partial<Record<Capability, boolean>>;
+    }>(`/api/users/${user.id}/permissions`),
+  });
 
   useEffect(() => {
-    void loadPerms();
-  }, [loadPerms]);
+    if (permsQuery.data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seed editable state from the permissions query
+      setTemplate(permsQuery.data.template);
+      setEffective(permsQuery.data.effective);
+    }
+  }, [permsQuery.data]);
 
   const isAdmin = role === 'admin';
 
-  async function saveIdentity() {
-    setBusy(true);
-    try {
+  const saveIdentityMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch(`/api/users/${user.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -458,64 +459,77 @@ function EditUserDialog({
       });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        toast.error(data.error ?? 'Failed to save user');
-        return;
+        throw new Error(data.error ?? 'Failed to save user');
       }
+    },
+    onSuccess: () => {
       toast.success('Saved');
       setPassword('');
       onSaved();
       // Role change realigns template/overrides server-side; reload the editor.
-      await loadPerms();
-    } finally {
-      setBusy(false);
-    }
-  }
+      queryClient.invalidateQueries({
+        queryKey: ['users', 'permissions', user.id],
+      });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to save user'),
+  });
+  const busy = saveIdentityMutation.isPending;
 
-  async function applyTemplate(next: string) {
-    setPermBusy(true);
-    try {
+  const applyTemplateMutation = useMutation({
+    mutationFn: async (next: string) => {
       const res = await fetch(`/api/users/${user.id}/permissions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ template: next }),
       });
-      if (!res.ok) {
-        toast.error('Failed to apply template');
-        return;
-      }
-      const data = (await res.json()) as {
+      if (!res.ok) throw new Error('Failed to apply template');
+      return (await res.json()) as {
         template: string;
         effective: Partial<Record<Capability, boolean>>;
       };
+    },
+    onSuccess: (data) => {
       setTemplate(data.template);
       setEffective(data.effective);
       toast.success('Template applied');
-    } finally {
-      setPermBusy(false);
-    }
-  }
+    },
+    onError: () => toast.error('Failed to apply template'),
+  });
 
-  async function toggleCap(cap: Capability, value: boolean) {
-    if (!effective) return;
-    const next = { ...effective, [cap]: value };
-    setEffective(next);
-    setPermBusy(true);
-    try {
+  const toggleCapMutation = useMutation({
+    mutationFn: async (next: Partial<Record<Capability, boolean>>) => {
       const res = await fetch(`/api/users/${user.id}/permissions`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ permissions: next }),
       });
-      if (!res.ok) {
+      if (!res.ok) throw new Error('Failed to update permission');
+      return (await res.json()) as { effective: Partial<Record<Capability, boolean>> };
+    },
+    onSuccess: (data) => setEffective(data.effective),
+  });
+
+  const permBusy = applyTemplateMutation.isPending || toggleCapMutation.isPending;
+
+  function saveIdentity() {
+    saveIdentityMutation.mutate();
+  }
+
+  function applyTemplate(next: string) {
+    applyTemplateMutation.mutate(next);
+  }
+
+  function toggleCap(cap: Capability, value: boolean) {
+    if (!effective) return;
+    const prev = effective;
+    const next = { ...effective, [cap]: value };
+    setEffective(next); // optimistic
+    toggleCapMutation.mutate(next, {
+      onError: () => {
         toast.error('Failed to update permission');
-        setEffective(effective); // revert
-        return;
-      }
-      const data = (await res.json()) as { effective: Partial<Record<Capability, boolean>> };
-      setEffective(data.effective);
-    } finally {
-      setPermBusy(false);
-    }
+        setEffective(prev); // revert
+      },
+    });
   }
 
   return (

@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -44,10 +47,10 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
   DiscoverFiltersResponse,
   DiscoverItem,
+  DiscoverResponse,
   DiscoverSection,
 } from '@/types';
 import type {
-  DiscoverLayoutConfig,
   DiscoverLayoutSection,
   DiscoverLayoutCustomFilters,
 } from '@/lib/discover-layout-config';
@@ -95,7 +98,57 @@ interface RateLimitInfo {
   retryAt: string | null;
 }
 
+// Discover fetches proxy TMDB, which is rate-limited; a 429 (or a 200 carrying
+// code:'TMDB_RATE_LIMIT') must surface the rate-limit banner rather than an error
+// screen. discoverFetch throws a typed RateLimitError on that case (read in
+// render to drive the banner) and an ApiError on any other !ok (so the global
+// 401 handler still redirects). Queries set retry:false so a 429 isn't re-hit.
+class RateLimitError extends Error {
+  constructor(public payload: unknown) {
+    super('TMDB_RATE_LIMIT');
+    this.name = 'RateLimitError';
+  }
+}
 
+async function discoverFetch<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { signal });
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    // non-JSON body (e.g. a 500 HTML page) — fall through to the !ok throw
+  }
+  if (res.status === 429 || (data as { code?: string } | null)?.code === 'TMDB_RATE_LIMIT') {
+    throw new RateLimitError(data);
+  }
+  if (!res.ok) throw new ApiError(res.status, `GET ${url} → ${res.status}`);
+  return data as T;
+}
+
+function buildCustomCarouselParams(f: DiscoverLayoutCustomFilters, limit: number): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set('mode', 'browse');
+  params.set('page', '1');
+  params.set('limit', String(limit));
+  params.set('contentType', f.contentType);
+  params.set('sortBy', f.sortBy);
+  params.set('sortOrder', f.sortOrder);
+  if (f.genres?.length) params.set('genres', f.genres.join(','));
+  if (f.yearFrom) params.set('yearFrom', f.yearFrom);
+  if (f.yearTo) params.set('yearTo', f.yearTo);
+  if (f.runtimeMin) params.set('runtimeMin', f.runtimeMin);
+  if (f.runtimeMax) params.set('runtimeMax', f.runtimeMax);
+  if (f.ratingMin) params.set('ratingMin', f.ratingMin);
+  if (f.ratingMax) params.set('ratingMax', f.ratingMax);
+  if (f.voteCountMin) params.set('voteCountMin', f.voteCountMin);
+  if (f.language) params.set('language', f.language);
+  if (f.region) params.set('region', f.region);
+  if (f.providers?.length) params.set('providers', f.providers.join(','));
+  if (f.networks?.length) params.set('networks', f.networks.join(','));
+  if (f.companies?.length) params.set('companies', f.companies.join(','));
+  if (f.releaseState) params.set('releaseState', f.releaseState);
+  return params;
+}
 
 function cardTypeIcon(type: 'movie' | 'tv') {
   return (
@@ -508,50 +561,16 @@ export default function DiscoverPage() {
 
   const [personFilter, setPersonFilter] = useState<{ id: number; name: string } | null>(null);
   const [query, setQuery] = useState('');
-  const [sections, setSections] = useState<DiscoverSection[]>([]);
-  const [items, setItems] = useState<DiscoverItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loadingSections, setLoadingSections] = useState(true);
-  const [loadingItems, setLoadingItems] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [manualBrowseMode, setManualBrowseMode] = useState(false);
-  const [filtersMeta, setFiltersMeta] = useState<DiscoverFiltersResponse | null>(null);
   const [draftFilters, setDraftFilters] = useState<DiscoverFiltersState>(discoverFilters);
   const [draftSort, setDraftSort] = useState(discoverSort);
   const [draftSortDirection, setDraftSortDirection] = useState(discoverSortDirection);
   const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
-  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
   const [carouselItemLimit] = useState(computeCarouselItemLimit);
-  const gridFetchControllerRef = useRef<AbortController | null>(null);
-  const loadMoreControllerRef = useRef<AbortController | null>(null);
-  const carouselFetchStartedRef = useRef<Set<string>>(new Set());
-
-  // Discover layout config (server-side, cross-device)
-  const [layoutConfig, setLayoutConfig] = useState<DiscoverLayoutConfig | null>(null);
-  const [customCarouselItems, setCustomCarouselItems] = useState<Record<string, DiscoverItem[]>>({});
-  const [customCarouselLoading, setCustomCarouselLoading] = useState<Record<string, boolean>>({});
 
   const router = useRouter();
-
-  const applyRateLimit = useCallback((payload: unknown) => {
-    const data = payload as {
-      error?: string;
-      code?: string;
-      retryAfterSeconds?: number | null;
-      retryAt?: string | null;
-    } | null;
-
-    setRateLimitInfo({
-      message: data?.error || 'TMDB rate limit reached',
-      retryAfterSeconds: Number.isFinite(data?.retryAfterSeconds as number)
-        ? Math.max(1, Number(data?.retryAfterSeconds))
-        : null,
-      retryAt: data?.retryAt || null,
-    });
-  }, []);
 
   const hasAdvancedFilters = useMemo(() => !isDefaultFilters(discoverFilters), [discoverFilters]);
   const activeAdvancedFilterCount = useMemo(
@@ -575,6 +594,40 @@ export default function DiscoverPage() {
       || personFilter
     );
   }, [manualBrowseMode, query, hasAdvancedFilters, activeSectionKey, discoverSort, discoverContentType, personFilter]);
+
+  // Sections, filters meta and layout config (replaces fetchSections /
+  // fetchFiltersMeta / fetchLayoutConfig + the mount effect). 60s staleTime keeps
+  // carousels warm across navigation; layout config is cross-device server state
+  // so it refetches on mount (staleTime 0). discoverFetch surfaces TMDB 429s as
+  // RateLimitError (drives the banner below) instead of an error screen.
+  const sectionsQuery = useQuery({
+    queryKey: queryKeys.discover('sections', { perSectionLimit: carouselItemLimit }),
+    queryFn: ({ signal }) =>
+      discoverFetch<DiscoverResponse>(`/api/discover?mode=sections&perSectionLimit=${carouselItemLimit}`, signal),
+    select: (data: DiscoverResponse) => data.sections ?? [],
+    staleTime: 60_000,
+    retry: false,
+  });
+  const filtersMetaQuery = useQuery({
+    queryKey: queryKeys.discover('filters'),
+    queryFn: ({ signal }) => discoverFetch<DiscoverFiltersResponse>('/api/discover/filters', signal),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const layoutConfigQuery = useQuery({
+    queryKey: queryKeys.discover('layout'),
+    queryFn: ({ signal }) => discoverFetch<unknown>('/api/settings/discover-layout', signal),
+    select: (data: unknown) => validateDiscoverLayout(data),
+    staleTime: 0,
+    retry: false,
+  });
+
+  // useMemo keeps a stable [] reference when data is absent, so the downstream
+  // visibleSections/heroItems memos don't recompute on every render.
+  const sections = useMemo(() => sectionsQuery.data ?? [], [sectionsQuery.data]);
+  const filtersMeta = filtersMetaQuery.data ?? null;
+  const layoutConfig = layoutConfigQuery.data ?? null;
+  const loadingSections = sectionsQuery.isLoading;
 
   // Layout-aware visible sections: respects user-configured order, visibility, and content type filter
   const visibleSections = useMemo(() => {
@@ -631,39 +684,38 @@ export default function DiscoverPage() {
     );
   }, [layoutConfig]);
 
-  const fetchSections = useCallback(async () => {
-    setLoadingSections(true);
-    try {
-      const res = await fetch(`/api/discover?mode=sections&perSectionLimit=${carouselItemLimit}`);
-      const data = await res.json();
-      if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
-        applyRateLimit(data);
-        return;
-      }
-      if (res.ok) {
-        setRateLimitInfo(null);
-        setSections(data.sections || []);
-      }
-    } finally {
-      setLoadingSections(false);
-    }
-  }, [applyRateLimit, carouselItemLimit]);
+  // One query per custom carousel entry (replaces the per-entry fetch +
+  // carouselFetchStartedRef de-dupe hack — keying per entry id+filters is exactly
+  // what that ref hand-rolled). useQueries handles the dynamic list as one hook.
+  const customResults = useQueries({
+    queries: customCarouselEntries.map((entry) => ({
+      queryKey: queryKeys.discover('custom', { id: entry.id, filters: entry.filters }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        discoverFetch<DiscoverResponse>(
+          `/api/discover?${buildCustomCarouselParams(entry.filters!, carouselItemLimit).toString()}`,
+          signal,
+        ),
+      select: (data: DiscoverResponse) => (data.items ?? []).slice(0, carouselItemLimit),
+      staleTime: 60_000,
+      retry: false,
+    })),
+  });
 
-  const fetchFiltersMeta = useCallback(async () => {
-    try {
-      const res = await fetch('/api/discover/filters');
-      const data = await res.json();
-      if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
-        applyRateLimit(data);
-        return;
-      }
-      if (!res.ok) return;
-      setRateLimitInfo(null);
-      setFiltersMeta(data);
-    } catch {
-      // no-op
-    }
-  }, [applyRateLimit]);
+  const customCarouselItems = useMemo(() => {
+    const map: Record<string, DiscoverItem[]> = {};
+    customCarouselEntries.forEach((entry, i) => {
+      map[entry.id] = customResults[i]?.data ?? [];
+    });
+    return map;
+  }, [customCarouselEntries, customResults]);
+
+  const customCarouselLoading = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    customCarouselEntries.forEach((entry, i) => {
+      map[entry.id] = customResults[i]?.isLoading ?? true;
+    });
+    return map;
+  }, [customCarouselEntries, customResults]);
 
   const buildQueryString = useCallback((pageValue: number) => {
     const params = new URLSearchParams();
@@ -705,158 +757,91 @@ export default function DiscoverPage() {
     personFilter,
   ]);
 
-  const fetchGridItems = useCallback(async (pageValue: number, append = false, signal?: AbortSignal) => {
-    if (append) setLoadingMore(true);
-    else setLoadingItems(true);
+  // Browse/search grid. The query key carries the full browse state, so the
+  // cache + staleTime replace the manual abort + page/totalPages tracking; gcTime
+  // gives instant back-nav paint. The query `signal` handles abort (the old
+  // gridFetchControllerRef/loadMoreControllerRef are gone).
+  const gridQuery = useInfiniteQuery({
+    queryKey: queryKeys.discover('grid', {
+      query: query.trim(),
+      contentType: discoverContentType,
+      sort: discoverSort,
+      sortDirection: discoverSortDirection,
+      filters: discoverFilters,
+      activeSectionKey,
+      personId: personFilter?.id ?? null,
+    }),
+    queryFn: ({ pageParam, signal }) =>
+      discoverFetch<DiscoverResponse>(`/api/discover?${buildQueryString(pageParam)}`, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      (last.page ?? 1) < (last.totalPages ?? 1) ? (last.page ?? 1) + 1 : undefined,
+    enabled: gridMode,
+    staleTime: 60_000,
+    retry: false,
+  });
 
-    let aborted = false;
+  const { fetchNextPage, refetch: refetchGrid, isFetchingNextPage, isLoading: gridIsLoading } = gridQuery;
+  const hasNextPage = gridQuery.hasNextPage;
+  const loadingItems = gridIsLoading;
+  const loadingMore = isFetchingNextPage;
 
-    try {
-      const res = await fetch(`/api/discover?${buildQueryString(pageValue)}`, { signal });
-      if (signal?.aborted) {
-        aborted = true;
-        return;
-      }
-      const data = await res.json();
-      if (signal?.aborted) {
-        aborted = true;
-        return;
-      }
-      if (res.status === 429 || data?.code === 'TMDB_RATE_LIMIT') {
-        if (signal?.aborted) {
-          aborted = true;
-          return;
-        }
-        applyRateLimit(data);
-        return;
-      }
-      if (!res.ok) return;
-      if (signal?.aborted) {
-        aborted = true;
-        return;
-      }
-
-      setRateLimitInfo(null);
-      const nextItems: DiscoverItem[] = data.items || [];
-      setItems((prev) => {
-        if (!append) return nextItems;
-        const seen = new Set(prev.map((item) => `${item.mediaType}-${item.tmdbId}`));
-        const fresh = nextItems.filter((item) => !seen.has(`${item.mediaType}-${item.tmdbId}`));
-        return [...prev, ...fresh];
-      });
-      setPage(data.page || 1);
-      setTotalPages(data.totalPages || 1);
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') {
-        aborted = true;
-      }
-    } finally {
-      if (!aborted) {
-        setLoadingItems(false);
-        setLoadingMore(false);
+  // Dedup in the flatten: useInfiniteQuery re-runs every page on refetch, so
+  // per-append de-dup isn't enough — collapse the full list by mediaType-tmdbId.
+  const items = useMemo<DiscoverItem[]>(() => {
+    const seen = new Set<string>();
+    const flat: DiscoverItem[] = [];
+    for (const p of gridQuery.data?.pages ?? []) {
+      for (const item of p.items ?? []) {
+        const key = `${item.mediaType}-${item.tmdbId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        flat.push(item);
       }
     }
-  }, [buildQueryString, applyRateLimit]);
+    return flat;
+  }, [gridQuery.data]);
 
-  // Fetch layout config from server
-  const fetchLayoutConfig = useCallback(async () => {
-    try {
-      const res = await fetch('/api/settings/discover-layout');
-      if (res.ok) {
-        const data = await res.json();
-        const validated = validateDiscoverLayout(data);
-        if (validated) setLayoutConfig(validated);
-      }
-    } catch {
-      // noop — will fall back to default ordering
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchSections();
-    fetchFiltersMeta();
-    fetchLayoutConfig();
-  }, [fetchSections, fetchFiltersMeta, fetchLayoutConfig]);
-
-  // Fetch items for custom carousels when they change.
-  // NOTE: deps intentionally exclude customCarouselItems/customCarouselLoading.
-  // Including them caused setCustomCarouselLoading to retrigger the effect, whose
-  // cleanup aborted the in-flight fetch before it could resolve — leaving the
-  // carousel stuck in the loading state forever. We use a ref to track which
-  // entries have already been started in this mount.
-  useEffect(() => {
-    if (customCarouselEntries.length === 0) return;
-
-    const controllers: AbortController[] = [];
-
-    for (const entry of customCarouselEntries) {
-      if (carouselFetchStartedRef.current.has(entry.id)) continue;
-      carouselFetchStartedRef.current.add(entry.id);
-
-      const f = entry.filters!;
-      const params = new URLSearchParams();
-      params.set('mode', 'browse');
-      params.set('page', '1');
-      params.set('limit', String(carouselItemLimit));
-      params.set('contentType', f.contentType);
-      params.set('sortBy', f.sortBy);
-      params.set('sortOrder', f.sortOrder);
-      if (f.genres?.length) params.set('genres', f.genres.join(','));
-      if (f.yearFrom) params.set('yearFrom', f.yearFrom);
-      if (f.yearTo) params.set('yearTo', f.yearTo);
-      if (f.runtimeMin) params.set('runtimeMin', f.runtimeMin);
-      if (f.runtimeMax) params.set('runtimeMax', f.runtimeMax);
-      if (f.ratingMin) params.set('ratingMin', f.ratingMin);
-      if (f.ratingMax) params.set('ratingMax', f.ratingMax);
-      if (f.voteCountMin) params.set('voteCountMin', f.voteCountMin);
-      if (f.language) params.set('language', f.language);
-      if (f.region) params.set('region', f.region);
-      if (f.providers?.length) params.set('providers', f.providers.join(','));
-      if (f.networks?.length) params.set('networks', f.networks.join(','));
-      if (f.companies?.length) params.set('companies', f.companies.join(','));
-      if (f.releaseState) params.set('releaseState', f.releaseState);
-
-      const controller = new AbortController();
-      controllers.push(controller);
-
-      setCustomCarouselLoading((prev) => ({ ...prev, [entry.id]: true }));
-
-      fetch(`/api/discover?${params.toString()}`, { signal: controller.signal })
-        .then(async (res) => {
-          if (!res.ok) {
-            carouselFetchStartedRef.current.delete(entry.id);
-            return null;
-          }
-          return res.json();
-        })
-        .then((data) => {
-          if (controller.signal.aborted) return;
-          if (data == null) return;
-          const fetchedItems: DiscoverItem[] = data?.items || [];
-          setCustomCarouselItems((prev) => ({ ...prev, [entry.id]: fetchedItems.slice(0, carouselItemLimit) }));
-        })
-        .catch((err) => {
-          if (err instanceof DOMException && err.name === 'AbortError') return;
-          carouselFetchStartedRef.current.delete(entry.id);
-        })
-        .finally(() => {
-          if (controller.signal.aborted) return;
-          setCustomCarouselLoading((prev) => ({ ...prev, [entry.id]: false }));
-        });
-    }
-
-    return () => {
-      for (const controller of controllers) controller.abort();
+  // TMDB rate-limit banner, derived from query state (replaces the rateLimitInfo
+  // useState + applyRateLimit + per-fetch set/clear). Any discover query carrying
+  // a RateLimitError shows the banner; it clears when that query next succeeds
+  // (error/failureReason reset). failureReason covers infinite-scroll next-page
+  // 429s, where the query keeps its data and status stays 'success'.
+  const rateLimitInfo: RateLimitInfo | null = (() => {
+    const rl = (e: unknown) => (e instanceof RateLimitError ? e : null);
+    const found =
+      rl(sectionsQuery.error) ?? rl(sectionsQuery.failureReason) ??
+      rl(filtersMetaQuery.error) ?? rl(filtersMetaQuery.failureReason) ??
+      rl(gridQuery.error) ?? rl(gridQuery.failureReason) ??
+      customResults.reduce<RateLimitError | null>(
+        (acc, r) => acc ?? rl(r.error) ?? rl(r.failureReason),
+        null,
+      );
+    if (!found) return null;
+    const data = found.payload as {
+      error?: string;
+      retryAfterSeconds?: number | null;
+      retryAt?: string | null;
+    } | null;
+    return {
+      message: data?.error || 'TMDB rate limit reached',
+      retryAfterSeconds: Number.isFinite(data?.retryAfterSeconds as number)
+        ? Math.max(1, Number(data?.retryAfterSeconds))
+        : null,
+      retryAt: data?.retryAt || null,
     };
-  }, [customCarouselEntries, carouselItemLimit]);
+  })();
 
-  // Handle person URL params (from movie detail cast/crew links)
+  // Handle person URL params (from movie detail cast/crew links). Syncing state
+  // from the URL is a legitimate effect, so the set-state-in-effect rule is
+  // suppressed (the grid query keys off this state and refetches automatically).
   useEffect(() => {
     const rawPersonId = searchParams.get('person');
     const personName = searchParams.get('personName')?.trim() || '';
     const personId = Number(rawPersonId);
 
     const hasValidPerson = Number.isFinite(personId) && personId > 0 && Boolean(personName);
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (hasValidPerson) {
       setPersonFilter({ id: personId, name: personName });
       setDiscoverContentType('movie');
@@ -867,6 +852,7 @@ export default function DiscoverPage() {
 
     setPersonFilter(null);
     setManualBrowseMode(false);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [
     searchParams,
     setPersonFilter,
@@ -913,6 +899,9 @@ export default function DiscoverPage() {
 
     const ct = rawContentType === 'movie' || rawContentType === 'show' ? rawContentType : 'all';
 
+    // Syncing filters/sort/section from URL params is a legitimate effect; the
+    // grid query keys off this state and refetches automatically.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (rawSection) {
       setActiveSectionKey(rawSection);
       const mapped = SECTION_TO_BROWSE[rawSection];
@@ -959,6 +948,7 @@ export default function DiscoverPage() {
       });
     }
     setManualBrowseMode(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [
     searchParams,
     setDiscoverContentType,
@@ -968,39 +958,17 @@ export default function DiscoverPage() {
     setManualBrowseMode,
   ]);
 
+  // Countdown ticker for the rate-limit banner (non-fetch interval); setState in
+  // the effect is inherent to a ticker, so the rule is suppressed.
   useEffect(() => {
-    if (!gridMode) return;
-    const controller = new AbortController();
-    gridFetchControllerRef.current?.abort();
-    gridFetchControllerRef.current = controller;
-    void fetchGridItems(1, false, controller.signal);
-    return () => {
-      controller.abort();
-      if (gridFetchControllerRef.current === controller) {
-        gridFetchControllerRef.current = null;
-      }
-    };
-  }, [gridMode, fetchGridItems]);
-
-  useEffect(() => {
-    loadMoreControllerRef.current?.abort();
-    loadMoreControllerRef.current = null;
-  }, [buildQueryString]);
-
-  useEffect(() => {
-    return () => {
-      gridFetchControllerRef.current?.abort();
-      loadMoreControllerRef.current?.abort();
-    };
-  }, []);
-
-  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!rateLimitInfo?.retryAfterSeconds) {
       setRateLimitCountdown(null);
       return;
     }
 
     setRateLimitCountdown(rateLimitInfo.retryAfterSeconds);
+    /* eslint-enable react-hooks/set-state-in-effect */
     const timer = setInterval(() => {
       setRateLimitCountdown((current) => {
         if (current == null) return null;
@@ -1011,19 +979,18 @@ export default function DiscoverPage() {
     return () => clearInterval(timer);
   }, [rateLimitInfo?.retryAfterSeconds]);
 
+  // Re-seed the draft controls from the committed filters on each open (and keep
+  // them in sync if the committed filters change while the sheet is open).
+  // Syncing local draft state to a prop-like source on an open transition is a
+  // legitimate effect, so the set-state-in-effect rule is suppressed here.
   useEffect(() => {
     if (!filtersOpen) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
     setDraftFilters(discoverFilters);
     setDraftSort(discoverSort);
     setDraftSortDirection(discoverSortDirection);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [filtersOpen, discoverFilters, discoverSort, discoverSortDirection]);
-
-  useEffect(() => {
-    if (query.trim()) {
-      setActiveSectionKey(null);
-      setManualBrowseMode(true);
-    }
-  }, [query]);
 
   const handleOpenItem = useCallback((item: DiscoverItem) => {
     router.push(`/discover/${item.mediaType === 'movie' ? 'movie' : 'tv'}/${item.tmdbId}`);
@@ -1037,38 +1004,25 @@ export default function DiscoverPage() {
   }, [discoverFilters, discoverSort, discoverSortDirection]);
 
   const handleSelectContentType = useCallback((type: 'all' | 'movie' | 'show') => {
+    // Clicking the already-active content type while browsing forces a refresh.
     if (discoverContentType === type && gridMode) {
-      const controller = new AbortController();
-      gridFetchControllerRef.current?.abort();
-      gridFetchControllerRef.current = controller;
-      void fetchGridItems(1, false, controller.signal);
+      void refetchGrid();
       return;
     }
     setDiscoverContentType(type);
     setActiveSectionKey(null);
     setManualBrowseMode(true);
-  }, [discoverContentType, gridMode, fetchGridItems, setDiscoverContentType]);
+  }, [discoverContentType, gridMode, refetchGrid, setDiscoverContentType]);
 
   const handleSelectSort = useCallback((sort: string) => {
     if (discoverSort === sort && gridMode) {
-      const controller = new AbortController();
-      gridFetchControllerRef.current?.abort();
-      gridFetchControllerRef.current = controller;
-      void fetchGridItems(1, false, controller.signal);
+      void refetchGrid();
       return;
     }
     setDiscoverSort(sort);
     setActiveSectionKey(null);
     setManualBrowseMode(true);
-  }, [discoverSort, gridMode, fetchGridItems, setDiscoverSort]);
-
-  const handleLoadMore = useCallback(() => {
-    if (loadingMore || page >= totalPages) return;
-    const controller = new AbortController();
-    loadMoreControllerRef.current?.abort();
-    loadMoreControllerRef.current = controller;
-    void fetchGridItems(page + 1, true, controller.signal);
-  }, [fetchGridItems, loadingMore, page, totalPages]);
+  }, [discoverSort, gridMode, refetchGrid, setDiscoverSort]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1077,15 +1031,15 @@ export default function DiscoverPage() {
     if (!node) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && page < totalPages && !loadingMore && !loadingItems) {
-          handleLoadMore();
+        if (entries[0]?.isIntersecting && hasNextPage && !loadingMore && !loadingItems) {
+          void fetchNextPage();
         }
       },
       { rootMargin: '200px' }
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [gridMode, page, totalPages, loadingMore, loadingItems, handleLoadMore, items.length]);
+  }, [gridMode, hasNextPage, loadingMore, loadingItems, fetchNextPage, items.length]);
 
   const goToDiscoverHome = useCallback(() => {
     setDiscoverFilters({ ...DEFAULT_DISCOVER_FILTERS });
@@ -1200,7 +1154,15 @@ export default function DiscoverPage() {
           <div className="flex-1">
             <SearchBar
               value={query}
-              onChange={setQuery}
+              onChange={(value) => {
+                setQuery(value);
+                // Typing a query is an explicit browse intent: leave any active
+                // section and switch to grid mode (was a query-watching effect).
+                if (value.trim()) {
+                  setActiveSectionKey(null);
+                  setManualBrowseMode(true);
+                }
+              }}
               placeholder="Search movies and shows"
             />
           </div>
@@ -1415,7 +1377,7 @@ export default function DiscoverPage() {
                 ))}
               </div>
 
-              {page < totalPages && (
+              {hasNextPage && (
                 <div
                   ref={sentinelRef}
                   className="flex justify-center py-4"

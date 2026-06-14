@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { DiscoverHero } from '@/components/discover/discover-hero';
@@ -13,6 +14,7 @@ import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { DiscoverExternalLinks } from '@/components/discover/discover-external-links';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { ChevronDown, ChevronUp, Star, Loader2 } from 'lucide-react';
 import type { DiscoverTvFullDetail, DiscoverSeasonDetailResponse, DiscoverSeasonBrief } from '@/types';
@@ -20,73 +22,36 @@ import type { DiscoverTvFullDetail, DiscoverSeasonDetailResponse, DiscoverSeason
 export default function DiscoverTvDetailPage() {
   const { id } = useParams();
   const tvId = Number(id);
-  const [show, setShow] = useState<DiscoverTvFullDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const validId = Number.isFinite(tvId) && tvId > 0;
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
-  const [seasonData, setSeasonData] = useState<Record<number, DiscoverSeasonDetailResponse>>({});
-  const [seasonLoading, setSeasonLoading] = useState<number | null>(null);
 
-  const loadShow = useCallback(async (signal: AbortSignal) => {
-    setLoading(true);
-    setShow(null);
-    setError(null);
+  const {
+    data: show = null,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['discover', 'tv', tvId],
+    queryFn: jsonFetcher<DiscoverTvFullDetail>(`/api/discover/tv/${tvId}`),
+    enabled: validId,
+  });
 
-    if (!Number.isFinite(tvId) || tvId <= 0) {
-      setError('Invalid TV show ID');
-      setLoading(false);
-      return;
-    }
+  const loading = validId && isLoading;
+  const error = !validId ? 'Invalid TV show ID' : isError ? 'Failed to load show' : null;
 
-    try {
-      const res = await fetch(`/api/discover/tv/${tvId}`, { signal });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || 'Failed to load show');
-      }
-      const data = await res.json();
-      if (signal.aborted) return;
-      setShow(data);
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      if (signal.aborted) return;
-      setError(err instanceof Error ? err.message : 'Failed to load show');
-    } finally {
-      if (signal.aborted) return;
-      setLoading(false);
-    }
-  }, [tvId]);
+  // Lazily fetch the expanded season; the query cache retains previously-opened
+  // seasons so toggling back is instant (no error screen on failure — tolerated).
+  const { data: expandedSeasonData, isFetching: seasonFetching } = useQuery({
+    queryKey: ['discover', 'tv', tvId, 'season', expandedSeason],
+    queryFn: jsonFetcher<DiscoverSeasonDetailResponse>(
+      `/api/discover/tv/${tvId}/season/${expandedSeason}`
+    ),
+    enabled: validId && expandedSeason !== null,
+  });
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadShow(controller.signal);
-    return () => controller.abort();
-  }, [loadShow]);
-
-  const handleToggleSeason = useCallback(async (seasonNumber: number) => {
-    if (expandedSeason === seasonNumber) {
-      setExpandedSeason(null);
-      return;
-    }
-
-    setExpandedSeason(seasonNumber);
-
-    if (seasonData[seasonNumber]) return;
-
-    setSeasonLoading(seasonNumber);
-    try {
-      const res = await fetch(`/api/discover/tv/${tvId}/season/${seasonNumber}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSeasonData((prev) => ({ ...prev, [seasonNumber]: data }));
-      }
-    } catch {
-      // silent fail
-    } finally {
-      setSeasonLoading(null);
-    }
-  }, [expandedSeason, seasonData, tvId]);
+  const handleToggleSeason = useCallback((seasonNumber: number) => {
+    setExpandedSeason((prev) => (prev === seasonNumber ? null : seasonNumber));
+  }, []);
 
   const infoRows = useMemo(() => {
     if (!show) return [];
@@ -289,8 +254,8 @@ export default function DiscoverTvDetailPage() {
                   season={season}
                   expanded={expandedSeason === season.seasonNumber}
                   onToggle={() => handleToggleSeason(season.seasonNumber)}
-                  seasonDetail={seasonData[season.seasonNumber]}
-                  loading={seasonLoading === season.seasonNumber}
+                  seasonDetail={expandedSeason === season.seasonNumber ? expandedSeasonData : undefined}
+                  loading={expandedSeason === season.seasonNumber && seasonFetching}
                 />
               ))}
             </div>

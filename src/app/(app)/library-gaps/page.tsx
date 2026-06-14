@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toast } from 'sonner';
@@ -276,30 +278,17 @@ function GapSectionView({
 }
 
 export default function LibraryGapsPage() {
-  const [data, setData] = useState<LibraryGapsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const gapsQuery = useQuery({
+    queryKey: ['library-gaps'],
+    queryFn: jsonFetcher<LibraryGapsResponse>('/api/library-gaps'),
+  });
+  const data = gapsQuery.data ?? null;
+  const loading = gapsQuery.isLoading;
+  const error = gapsQuery.isError;
   const canSearch = useCan('activity.manage');
   const {
     selectionMode, selectedKeys, count, toggle, selectMany, clear, enter, exit,
   } = useBulkSelection();
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/library-gaps');
-        if (!res.ok) throw new Error('Failed');
-        const json = (await res.json()) as LibraryGapsResponse;
-        if (!cancelled) setData(json);
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
 
   // Every searchable gap across all sections — drives "select all" and key lookup.
   const searchableItems = useMemo(

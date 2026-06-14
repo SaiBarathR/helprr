@@ -25,7 +25,13 @@ import {
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Search, Plus, Loader2, Disc3, Check } from 'lucide-react';
 import { toast } from 'sonner';
-import type { LidarrArtistLookupResult, QualityProfile, LidarrMetadataProfile, RootFolder, Tag, MediaImage } from '@/types';
+import type { LidarrArtistLookupResult, MediaImage } from '@/types';
+import {
+  useQualityProfiles,
+  useMetadataProfiles,
+  useRootFolders,
+  useTags,
+} from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
 const MONITOR_OPTIONS = [
@@ -50,10 +56,6 @@ function AddArtistPageContent() {
   const [results, setResults] = useState<LidarrArtistLookupResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState<LidarrArtistLookupResult | null>(null);
-  const [profiles, setProfiles] = useState<QualityProfile[]>([]);
-  const [metadataProfiles, setMetadataProfiles] = useState<LidarrMetadataProfile[]>([]);
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
   const [profileId, setProfileId] = useState('');
   const [metadataProfileId, setMetadataProfileId] = useState('');
   const [rootFolder, setRootFolder] = useState('');
@@ -65,6 +67,11 @@ function AddArtistPageContent() {
   const [autoSearched, setAutoSearched] = useState(false);
   const [instances, setInstances] = useState<{ id: string; label: string; isDefault: boolean }[]>([]);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
+  // Per-instance reference data, shared (and deduped) with the list/edit pages.
+  const { data: profiles = [] } = useQualityProfiles('lidarr', instanceId);
+  const { data: metadataProfiles = [] } = useMetadataProfiles(instanceId);
+  const { data: rootFolders = [] } = useRootFolders('lidarr', instanceId);
+  const { data: tags = [] } = useTags('lidarr', instanceId);
   const searchAbortRef = useRef<AbortController | null>(null);
 
   // Load Lidarr instances; default to the marked default (picker only shows when >1).
@@ -81,24 +88,17 @@ function AddArtistPageContent() {
       .catch(() => undefined);
   }, []);
 
-  // Profiles / root folders / tags are per-instance; re-fetch when the instance changes.
+  // Default the profile / metadata-profile / root-folder selection to the first
+  // option when the instance's reference data arrives (re-defaults on change).
   useEffect(() => {
-    const qs = instanceId ? `?instanceId=${instanceId}` : '';
-    Promise.all([
-      fetch(`/api/lidarr/qualityprofiles${qs}`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/lidarr/metadataprofiles${qs}`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/lidarr/rootfolders${qs}`).then((r) => r.ok ? r.json() : []),
-      fetch(`/api/lidarr/tags${qs}`).then((r) => r.ok ? r.json() : []),
-    ]).then(([p, mp, r, t]) => {
-      setProfiles(p);
-      setMetadataProfiles(mp);
-      setRootFolders(r);
-      setTags(t);
-      if (p.length > 0) setProfileId(String(p[0].id));
-      if (mp.length > 0) setMetadataProfileId(String(mp[0].id));
-      if (r.length > 0) setRootFolder(r[0].path);
-    });
-  }, [instanceId]);
+    if (profiles.length > 0) setProfileId(String(profiles[0].id));
+  }, [profiles]);
+  useEffect(() => {
+    if (metadataProfiles.length > 0) setMetadataProfileId(String(metadataProfiles[0].id));
+  }, [metadataProfiles]);
+  useEffect(() => {
+    if (rootFolders.length > 0) setRootFolder(rootFolders[0].path);
+  }, [rootFolders]);
 
   useEffect(() => () => searchAbortRef.current?.abort(), []);
 

@@ -1,10 +1,14 @@
 'use no memo';
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { CreditsListPage, type CreditPerson } from '@/components/media/credits-list-page';
+import { jsonFetcher } from '@/lib/query-fetch';
 import type { DiscoverMovieFullDetail } from '@/types';
+
+const EMPTY_CREDITS: CreditPerson[] = [];
 
 export default function DiscoverMovieCreditsPage() {
   const { id } = useParams();
@@ -12,61 +16,41 @@ export default function DiscoverMovieCreditsPage() {
   const movieId = Number(id);
   const initialTab = searchParams.get('type') === 'crew' ? 'crew' : 'cast';
 
-  const [cast, setCast] = useState<CreditPerson[]>([]);
-  const [crew, setCrew] = useState<CreditPerson[]>([]);
-  const [title, setTitle] = useState('');
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = useQuery({
+    queryKey: ['discover', 'movie', movieId, 'credits'],
+    queryFn: jsonFetcher<DiscoverMovieFullDetail>(`/api/discover/movie/${movieId}`),
+    enabled: Number.isFinite(movieId) && movieId > 0,
+  });
 
-  const loadData = useCallback(async (signal: AbortSignal) => {
-    if (!Number.isFinite(movieId) || movieId <= 0) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/discover/movie/${movieId}`, { signal });
-      if (!res.ok) throw new Error('Failed to load');
-      const data: DiscoverMovieFullDetail = await res.json();
-      if (signal.aborted) return;
-
-      setTitle(data.title);
-      setCast(
-        data.cast.map((c) => ({
-          id: c.id,
-          name: c.name,
-          imagePath: c.profilePath,
-          role: c.character,
-        }))
-      );
-      setCrew(
-        data.crew.map((c) => ({
-          id: c.id,
-          name: c.name,
-          imagePath: c.profilePath,
-          role: c.job,
-          department: c.department,
-        }))
-      );
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-    } finally {
-      if (!signal.aborted) setLoading(false);
-    }
-  }, [movieId]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadData(controller.signal);
-    return () => controller.abort();
-  }, [loadData]);
+  const cast = useMemo<CreditPerson[]>(
+    () =>
+      data?.cast.map((c) => ({
+        id: c.id,
+        name: c.name,
+        imagePath: c.profilePath,
+        role: c.character,
+      })) ?? EMPTY_CREDITS,
+    [data]
+  );
+  const crew = useMemo<CreditPerson[]>(
+    () =>
+      data?.crew.map((c) => ({
+        id: c.id,
+        name: c.name,
+        imagePath: c.profilePath,
+        role: c.job,
+        department: c.department,
+      })) ?? EMPTY_CREDITS,
+    [data]
+  );
 
   return (
     <CreditsListPage
-      mediaTitle={title}
+      mediaTitle={data?.title ?? ''}
       cast={cast}
       crew={crew}
       cacheService="tmdb"
-      loading={loading}
+      loading={isLoading}
       initialTab={initialTab}
     />
   );

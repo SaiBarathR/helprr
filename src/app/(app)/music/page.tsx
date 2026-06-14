@@ -25,22 +25,16 @@ import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
-import {
-  getCachedListData,
-  getListViewState,
-  isListDataFresh,
-  setCachedListData,
-  setListViewState,
-} from '@/lib/media-list-cache';
+import { getListViewState, setListViewState } from '@/lib/media-list-cache';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import type { LidarrArtistListItem } from '@/types';
 import type { MediaViewMode } from '@/lib/store';
 
-interface MusicPageCacheData {
-  artists: LidarrArtistListItem[];
-  qualityProfiles: { id: number; name: string }[];
-  metadataProfiles: { id: number; name: string }[];
-  tags: { id: number; label: string }[];
-}
+// Stable empty reference so memo deps don't churn before the query resolves.
+const EMPTY_ARTISTS: LidarrArtistListItem[] = [];
 
 // Toast summary shared by every bulk action ("Monitoring 5 artists", "Deleted 2 artists, 1 failed").
 function reportBulk(verb: string, ok: number, fail: number) {
@@ -186,12 +180,22 @@ export default function MusicPage() {
     selectionMode, selectedKeys, count: selectedCount,
     toggle, selectMany, deselectMany, enter, exit,
   } = useBulkSelection();
-  const [artists, setArtists] = useState<LidarrArtistListItem[]>([]);
-  const [qualityProfiles, setQualityProfiles] = useState<{ id: number; name: string }[]>([]);
-  const [metadataProfiles, setMetadataProfiles] = useState<{ id: number; name: string }[]>([]);
-  const [tags, setTags] = useState<{ id: number; label: string }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    data: artistsData,
+    isLoading: loading,
+    isFetching,
+    refetch: refetchArtists,
+  } = useQuery({
+    queryKey: queryKeys.library('lidarr'),
+    queryFn: jsonFetcher<LidarrArtistListItem[]>('/api/lidarr'),
+    staleTime: 60_000, // matches the old media-list-cache TTL
+    select: ensureArray,
+  });
+  const artists = artistsData ?? EMPTY_ARTISTS;
+  const { data: qualityProfiles = [] } = useQualityProfiles('lidarr');
+  const { data: metadataProfiles = [] } = useMetadataProfiles();
+  const { data: tags = [] } = useTags('lidarr');
+  const refreshing = isFetching && !loading;
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
@@ -226,67 +230,6 @@ export default function MusicPage() {
   const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
     setListViewState('music', { scrollY, search: searchValue });
   }, [search]);
-
-  const fetchData = useCallback(async (force = false) => {
-    const cached = force ? null : getCachedListData<MusicPageCacheData>('music');
-    const hasCachedData = Boolean(cached?.data);
-
-    if (cached?.data) {
-      setArtists(cached.data.artists);
-      setQualityProfiles(cached.data.qualityProfiles);
-      setMetadataProfiles(cached.data.metadataProfiles);
-      setTags(cached.data.tags ?? []);
-      setLoading(false);
-
-      if (isListDataFresh(cached)) {
-        setRefreshing(false);
-        return;
-      }
-
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-      setRefreshing(false);
-    }
-
-    try {
-      const [a, q, mp, t] = await Promise.all([
-        fetch('/api/lidarr').then((r) => { if (!r.ok) throw new Error('Failed to load artists'); return r.json(); }),
-        fetch('/api/lidarr/qualityprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load quality profiles'); return r.json(); }),
-        fetch('/api/lidarr/metadataprofiles').then((r) => { if (!r.ok) throw new Error('Failed to load metadata profiles'); return r.json(); }),
-        fetch('/api/lidarr/tags').then((r) => r.ok ? r.json() : []),
-      ]);
-
-      // A misconfigured instance can answer 200 with a non-array body; never let
-      // that white-screen the library — fall back to empty for any non-array.
-      const next: MusicPageCacheData = {
-        artists: Array.isArray(a) ? a : [],
-        qualityProfiles: Array.isArray(q) ? q : [],
-        metadataProfiles: Array.isArray(mp) ? mp : [],
-        tags: Array.isArray(t) ? t : [],
-      };
-
-      setArtists(next.artists);
-      setQualityProfiles(next.qualityProfiles);
-      setMetadataProfiles(next.metadataProfiles);
-      setTags(next.tags);
-      setCachedListData('music', next);
-    } catch {
-      if (!hasCachedData) {
-        setArtists([]);
-        setQualityProfiles([]);
-        setMetadataProfiles([]);
-        setTags([]);
-      }
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData(false);
-  }, [fetchData]);
 
   useEffect(() => {
     if (hasRestoredSearchRef.current) return;
@@ -523,9 +466,9 @@ export default function MusicPage() {
         body: JSON.stringify({ ids, monitored }),
       }));
     reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail);
-    await fetchData(true);
+    await refetchArtists();
     exit();
-  }, [fanOut, fetchData, exit]);
+  }, [fanOut, refetchArtists, exit]);
 
   const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
     const { ok, fail } = await fanOut((instanceId, ids) =>
@@ -534,9 +477,9 @@ export default function MusicPage() {
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
       }));
     reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail);
-    await fetchData(true);
+    await refetchArtists();
     exit();
-  }, [fanOut, fetchData, exit]);
+  }, [fanOut, refetchArtists, exit]);
 
   const handleBulkSearch = useCallback(async () => {
     const { ok, fail } = await fanOut((instanceId, ids) =>
@@ -555,9 +498,9 @@ export default function MusicPage() {
         body: JSON.stringify({ ids, deleteFiles }),
       }));
     reportBulk('Deleted', ok, fail);
-    await fetchData(true);
+    await refetchArtists();
     exit();
-  }, [fanOut, fetchData, exit]);
+  }, [fanOut, refetchArtists, exit]);
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
@@ -825,7 +768,7 @@ export default function MusicPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => fetchData(true)}
+                onClick={() => refetchArtists()}
                 disabled={refreshing}
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 aria-label="Refresh Music"

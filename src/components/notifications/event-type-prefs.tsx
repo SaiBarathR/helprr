@@ -1,6 +1,8 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
@@ -28,70 +30,85 @@ interface EventTypePrefsProps {
 }
 
 export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
+  const queryClient = useQueryClient();
   const [preferences, setPreferences] = useState<Preference[]>([]);
   const [subscriptionId, setSubscriptionId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // Last server-confirmed filter values per event, so a failed save reverts only
   // the edited field locally (no full reload, which would race in-progress edits).
   const savedFiltersRef = useRef<Map<string, { tagFilter: string | null; qualityFilter: string | null }>>(new Map());
   const me = useMe();
 
-  const loadPreferences = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/notifications/preferences?endpoint=${encodeURIComponent(subscriptionEndpoint)}`,
-      );
-      if (!res.ok) return;
-      const prefs = (await res.json()) as Preference[];
-      setPreferences(prefs);
-      savedFiltersRef.current = new Map(
-        prefs.map((p) => [p.eventType, { tagFilter: p.tagFilter, qualityFilter: p.qualityFilter }]),
-      );
-      if (prefs.length > 0) setSubscriptionId(prefs[0].subscriptionId);
-    } catch (err) {
-      console.error('loadPreferences failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [subscriptionEndpoint]);
+  const prefsQueryKey = ['notification-prefs', subscriptionEndpoint] as const;
+  const { data: loadedPrefs, isLoading: loading } = useQuery({
+    queryKey: prefsQueryKey,
+    queryFn: jsonFetcher<Preference[]>(
+      `/api/notifications/preferences?endpoint=${encodeURIComponent(subscriptionEndpoint)}`,
+    ),
+  });
 
+  // Seed local editing state from the query — the toggles/filters are edited
+  // optimistically in place, so the query is the load source and local state
+  // holds the live, user-edited copy.
   useEffect(() => {
-    void loadPreferences();
-  }, [loadPreferences]);
+    if (!loadedPrefs) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seed editable prefs from the query
+    setPreferences(loadedPrefs);
+    savedFiltersRef.current = new Map(
+      loadedPrefs.map((p) => [p.eventType, { tagFilter: p.tagFilter, qualityFilter: p.qualityFilter }]),
+    );
+    if (loadedPrefs.length > 0) setSubscriptionId(loadedPrefs[0].subscriptionId);
+  }, [loadedPrefs]);
 
-  async function togglePreference(eventType: string, enabled: boolean) {
+  const savePreference = useMutation({
+    mutationFn: async (body: {
+      subscriptionId: string;
+      eventType: string;
+      enabled: boolean;
+      tagFilter: string | null;
+      qualityFilter: string | null;
+    }) => {
+      const res = await fetch('/api/notifications/preferences', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    },
+  });
+
+  function togglePreference(eventType: string, enabled: boolean) {
     if (!subscriptionId) return;
     const current = preferences.find((p) => p.eventType === eventType);
     setPreferences((prev) =>
       prev.map((p) => (p.eventType === eventType ? { ...p, enabled } : p)),
     );
-    try {
-      const res = await fetch('/api/notifications/preferences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // Include the stored filters — the upsert nulls any field we omit, so
-        // toggling enabled would otherwise wipe this event's tag/quality filter.
-        body: JSON.stringify({
-          subscriptionId,
-          eventType,
-          enabled,
-          tagFilter: current?.tagFilter ?? null,
-          qualityFilter: current?.qualityFilter ?? null,
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      savedFiltersRef.current.set(eventType, {
+    // Include the stored filters — the upsert nulls any field we omit, so
+    // toggling enabled would otherwise wipe this event's tag/quality filter.
+    savePreference.mutate(
+      {
+        subscriptionId,
+        eventType,
+        enabled,
         tagFilter: current?.tagFilter ?? null,
         qualityFilter: current?.qualityFilter ?? null,
-      });
-    } catch {
-      toast.error('Failed to update preference');
-      setPreferences((prev) =>
-        prev.map((p) => (p.eventType === eventType ? { ...p, enabled: !enabled } : p)),
-      );
-    }
+      },
+      {
+        onSuccess: () => {
+          savedFiltersRef.current.set(eventType, {
+            tagFilter: current?.tagFilter ?? null,
+            qualityFilter: current?.qualityFilter ?? null,
+          });
+          queryClient.invalidateQueries({ queryKey: prefsQueryKey });
+        },
+        onError: () => {
+          toast.error('Failed to update preference');
+          setPreferences((prev) =>
+            prev.map((p) => (p.eventType === eventType ? { ...p, enabled: !enabled } : p)),
+          );
+        },
+      },
+    );
   }
 
   function setFilterValue(eventType: string, field: 'tagFilter' | 'qualityFilter', value: string) {
@@ -100,37 +117,38 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
     );
   }
 
-  async function persistFilters(eventType: string) {
+  function persistFilters(eventType: string) {
     if (!subscriptionId) return;
     const pref = preferences.find((p) => p.eventType === eventType);
     if (!pref) return;
-    try {
-      const res = await fetch('/api/notifications/preferences', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subscriptionId,
-          eventType,
-          enabled: pref.enabled,
-          tagFilter: pref.tagFilter,
-          qualityFilter: pref.qualityFilter,
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      savedFiltersRef.current.set(eventType, { tagFilter: pref.tagFilter, qualityFilter: pref.qualityFilter });
-    } catch {
-      toast.error('Failed to save filter');
-      // Revert only this event's filter fields to the last saved values — a full
-      // reload would race any edit in flight on another field.
-      const saved = savedFiltersRef.current.get(eventType) ?? { tagFilter: null, qualityFilter: null };
-      setPreferences((prev) =>
-        prev.map((p) =>
-          p.eventType === eventType
-            ? { ...p, tagFilter: saved.tagFilter, qualityFilter: saved.qualityFilter }
-            : p,
-        ),
-      );
-    }
+    savePreference.mutate(
+      {
+        subscriptionId,
+        eventType,
+        enabled: pref.enabled,
+        tagFilter: pref.tagFilter,
+        qualityFilter: pref.qualityFilter,
+      },
+      {
+        onSuccess: () => {
+          savedFiltersRef.current.set(eventType, { tagFilter: pref.tagFilter, qualityFilter: pref.qualityFilter });
+          queryClient.invalidateQueries({ queryKey: prefsQueryKey });
+        },
+        onError: () => {
+          toast.error('Failed to save filter');
+          // Revert only this event's filter fields to the last saved values — a full
+          // reload would race any edit in flight on another field.
+          const saved = savedFiltersRef.current.get(eventType) ?? { tagFilter: null, qualityFilter: null };
+          setPreferences((prev) =>
+            prev.map((p) =>
+              p.eventType === eventType
+                ? { ...p, tagFilter: saved.tagFilter, qualityFilter: saved.qualityFilter }
+                : p,
+            ),
+          );
+        },
+      },
+    );
   }
 
   function toggleExpanded(eventType: string) {

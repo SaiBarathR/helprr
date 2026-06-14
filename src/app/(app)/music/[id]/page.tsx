@@ -45,14 +45,11 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { format } from 'date-fns';
-import type { LidarrArtist, LidarrAlbum, QualityProfile, LidarrMetadataProfile, Tag } from '@/types';
+import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
-import {
-  getArtistDetailSnapshot,
-  setArtistDetailSnapshot,
-  clearArtistDetailSnapshot,
-} from '@/lib/music-route-cache';
-import { invalidateListData } from '@/lib/media-list-cache';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import {
   getDetailViewState,
@@ -108,21 +105,39 @@ export default function ArtistDetailPage() {
   const { id } = useParams();
   const artistId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const initialSnapshot = Number.isFinite(artistId) ? getArtistDetailSnapshot(artistId, instance) : null;
+  const queryClient = useQueryClient();
   const detailViewKey: DetailViewKey = `artist:${artistId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const scrollReadyRef = useRef(false);
   const hasRestoredScrollRef = useRef(false);
-  // Guards against a stale loadData (older artist) resolving after a newer one.
-  const loadRequestRef = useRef(0);
   const router = useRouter();
 
-  const [artist, setArtist] = useState<LidarrArtist | null>(() => initialSnapshot?.artist ?? null);
-  const [albums, setAlbums] = useState<LidarrAlbum[]>(() => initialSnapshot?.albums ?? []);
-  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>(() => initialSnapshot?.qualityProfiles ?? []);
-  const [metadataProfiles, setMetadataProfiles] = useState<LidarrMetadataProfile[]>(() => initialSnapshot?.metadataProfiles ?? []);
-  const [tags, setTags] = useState<Tag[]>(() => initialSnapshot?.tags ?? []);
-  const [loading, setLoading] = useState(() => !initialSnapshot);
+  // Artist + albums — TanStack cache gives instant back-nav paint (gcTime),
+  // replacing the bespoke snapshot.
+  const artistQuery = useQuery({
+    queryKey: queryKeys.detail('lidarr', artistId, instance),
+    queryFn: async ({ signal }): Promise<LidarrArtist | null> => {
+      const r = await lidarrFetch(instance, `/api/lidarr/${artistId}`, { signal });
+      return r.ok ? ((await r.json()) as LidarrArtist) : null;
+    },
+    enabled: Number.isFinite(artistId),
+  });
+  const albumsQuery = useQuery({
+    queryKey: ['lidarr', 'albums', artistId],
+    queryFn: async ({ signal }): Promise<LidarrAlbum[]> => {
+      const r = await lidarrFetch(instance, `/api/lidarr/${artistId}/albums`, { signal });
+      return r.ok ? ((await r.json()) as LidarrAlbum[]) : [];
+    },
+    enabled: Number.isFinite(artistId),
+    select: (d) => (Array.isArray(d) ? d : []),
+  });
+  const artist = artistQuery.data ?? null;
+  const albums = albumsQuery.data ?? [];
+  // Reference data — shared (and deduped) with the list / edit / add pages.
+  const { data: qualityProfiles = [] } = useQualityProfiles('lidarr', instance);
+  const { data: metadataProfiles = [] } = useMetadataProfiles(instance);
+  const { data: tags = [] } = useTags('lidarr', instance);
+  const loading = artistQuery.isLoading;
   const [deleting, setDeleting] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -149,65 +164,11 @@ export default function ArtistDetailPage() {
     return window.scrollY;
   }, []);
 
-  const loadData = useCallback(async (hasCachedData: boolean) => {
-    if (!Number.isFinite(artistId)) {
-      setLoading(false);
-      return;
-    }
-    if (hasCachedData) setLoading(false);
-
-    const requestId = ++loadRequestRef.current;
-    try {
-      const [artistResult, nextAlbums, nextQp, nextMp, nextTags] = await Promise.all([
-        lidarrFetch(instance, `/api/lidarr/${artistId}`).then(async (r): Promise<LidarrArtist | null> => (r.ok ? (await r.json() as LidarrArtist) : null)),
-        lidarrFetch(instance, `/api/lidarr/${artistId}/albums`).then(async (r): Promise<LidarrAlbum[]> => (r.ok ? (await r.json() as LidarrAlbum[]) : [])),
-        lidarrFetch(instance, '/api/lidarr/qualityprofiles').then(async (r): Promise<QualityProfile[]> => (r.ok ? (await r.json() as QualityProfile[]) : [])),
-        lidarrFetch(instance, '/api/lidarr/metadataprofiles').then(async (r): Promise<LidarrMetadataProfile[]> => (r.ok ? (await r.json() as LidarrMetadataProfile[]) : [])),
-        lidarrFetch(instance, '/api/lidarr/tags').then(async (r): Promise<Tag[]> => (r.ok ? (await r.json() as Tag[]) : [])),
-      ]);
-
-      if (requestId !== loadRequestRef.current) return;
-      setArtist(artistResult);
-      setAlbums(nextAlbums);
-      setQualityProfiles(nextQp);
-      setMetadataProfiles(nextMp);
-      setTags(nextTags);
-      setArtistDetailSnapshot(artistId, {
-        artist: artistResult,
-        albums: nextAlbums,
-        qualityProfiles: nextQp,
-        metadataProfiles: nextMp,
-        tags: nextTags,
-      }, instance);
-    } catch {
-      if (requestId !== loadRequestRef.current) return;
-      if (!hasCachedData) {
-        setArtist(null);
-        setAlbums([]);
-      }
-    } finally {
-      if (requestId === loadRequestRef.current) setLoading(false);
-    }
-  }, [artistId, instance]);
-
+  // Reset scroll-restore guards whenever the artist/instance changes.
   useEffect(() => {
-    const cached = Number.isFinite(artistId) ? getArtistDetailSnapshot(artistId, instance) : null;
     scrollReadyRef.current = false;
     hasRestoredScrollRef.current = false;
-
-    if (cached) {
-      setArtist(cached.artist);
-      setAlbums(cached.albums);
-      setQualityProfiles(cached.qualityProfiles);
-      setMetadataProfiles(cached.metadataProfiles);
-      setTags(cached.tags);
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
-
-    void loadData(Boolean(cached));
-  }, [loadData, artistId, instance]);
+  }, [artistId, instance]);
 
   useEffect(() => {
     if (loading || !artist || hasRestoredScrollRef.current) return;
@@ -256,16 +217,8 @@ export default function ArtistDetailPage() {
   }, [detailViewKey, getCurrentScrollY, loading, artist]);
 
   const persistArtist = useCallback((next: LidarrArtist) => {
-    setArtist(next);
-    if (!Number.isFinite(artistId)) return;
-    setArtistDetailSnapshot(artistId, {
-      artist: next,
-      albums,
-      qualityProfiles,
-      metadataProfiles,
-      tags,
-    }, instance);
-  }, [albums, artistId, instance, metadataProfiles, qualityProfiles, tags]);
+    queryClient.setQueryData(queryKeys.detail('lidarr', artistId, instance), next);
+  }, [queryClient, artistId, instance]);
 
   async function handleSearch() {
     if (!artist) return;
@@ -295,8 +248,8 @@ export default function ArtistDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('lidarr', command.id, instance) : 'completed';
-      invalidateListData('music');
-      await loadData(true);
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+      await Promise.all([artistQuery.refetch(), albumsQuery.refetch()]);
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
@@ -316,7 +269,7 @@ export default function ArtistDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         persistArtist(updated);
-        invalidateListData('music');
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       } else {
         toast.error('Failed to update');
@@ -336,10 +289,7 @@ export default function ArtistDetailPage() {
       });
       if (res.ok) {
         const nextAlbums = albums.map((a) => (a.id === album.id ? { ...a, monitored: nextMonitored } : a));
-        setAlbums(nextAlbums);
-        if (Number.isFinite(artistId) && artist) {
-          setArtistDetailSnapshot(artistId, { artist, albums: nextAlbums, qualityProfiles, metadataProfiles, tags }, instance);
-        }
+        queryClient.setQueryData(['lidarr', 'albums', artistId], nextAlbums);
       } else {
         toast.error('Failed to update album');
       }
@@ -353,8 +303,8 @@ export default function ArtistDetailPage() {
     try {
       const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (res.ok) {
-        invalidateListData('music');
-        clearArtistDetailSnapshot(artist.id, instance);
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+        queryClient.removeQueries({ queryKey: queryKeys.detail('lidarr', artist.id, instance) });
         toast.success('Artist deleted');
         router.push('/music');
       } else {

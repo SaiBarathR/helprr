@@ -1,7 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { normalizeRegionCode } from '@/lib/region';
 
 export interface AppSettingsState {
@@ -36,44 +38,7 @@ export interface AppSettingsState {
 
 export type AppSettingsPatch = Partial<Omit<AppSettingsState, 'envTimeZone'>>;
 
-type SettingsListener = (state: AppSettingsState | null) => void;
-
-let cachedState: AppSettingsState | null = null;
-let inflightLoad: Promise<AppSettingsState | null> | null = null;
-let updateChain: Promise<unknown> = Promise.resolve();
-const listeners = new Set<SettingsListener>();
-
-function notify() {
-  for (const listener of listeners) listener(cachedState);
-}
-
-async function fetchSettings(): Promise<AppSettingsState | null> {
-  if (cachedState) return cachedState;
-  if (inflightLoad) return inflightLoad;
-  inflightLoad = (async () => {
-    try {
-      const res = await fetch('/api/settings');
-      if (!res.ok) {
-        console.error('[use-app-settings] fetch failed', res.status, res.statusText);
-        cachedState = null;
-        notify();
-        return null;
-      }
-      const data = await res.json();
-      cachedState = normalize(data);
-      notify();
-      return cachedState;
-    } catch (err) {
-      console.error('[use-app-settings] fetch failed', err);
-      cachedState = null;
-      notify();
-      return null;
-    } finally {
-      inflightLoad = null;
-    }
-  })();
-  return inflightLoad;
-}
+const SETTINGS_KEY = ['settings'] as const;
 
 const LOG_LEVELS = ['debug', 'info', 'warn', 'error'] as const;
 const UPCOMING_NOTIFY_MODES = ['before_air', 'daily_digest'] as const;
@@ -87,6 +52,15 @@ function pickEnum<T extends readonly string[]>(
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
     ? (value as T[number])
     : fallback;
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
 }
 
 function normalize(raw: Record<string, unknown>): AppSettingsState {
@@ -121,15 +95,6 @@ function normalize(raw: Record<string, unknown>): AppSettingsState {
   };
 }
 
-function numberOr(value: unknown, fallback: number): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
-  }
-  return fallback;
-}
-
 export interface UpdateOptions {
   /** When false, suppresses the inline saved/error toast. */
   toast?: boolean;
@@ -150,73 +115,76 @@ export interface UseAppSettingsResult {
   reload: () => Promise<void>;
 }
 
+// Backed by TanStack Query: a single ['settings'] cache shared across every
+// consumer (replacing the module singleton + listener set + in-flight dedup).
+// `update` keeps the optimistic-write + rollback + toast/successMessage contract.
 export function useAppSettings(): UseAppSettingsResult {
-  const [settings, setSettings] = useState<AppSettingsState | null>(cachedState);
-  const [loading, setLoading] = useState<boolean>(cachedState === null);
+  const qc = useQueryClient();
 
-  useEffect(() => {
-    const listener: SettingsListener = (next) => setSettings(next);
-    listeners.add(listener);
-    if (cachedState === null) {
-      void fetchSettings().finally(() => setLoading(false));
-    }
-    return () => {
-      listeners.delete(listener);
-    };
-  }, []);
+  const query = useQuery({
+    queryKey: SETTINGS_KEY,
+    queryFn: async ({ signal }) =>
+      normalize(await jsonFetcher<Record<string, unknown>>('/api/settings')({ signal })),
+    staleTime: 5 * 60_000,
+  });
 
-  const update = useCallback<UseAppSettingsResult['update']>((patch, opts) => {
-    const run = updateChain.then(async () => {
+  const { mutateAsync } = useMutation({
+    mutationFn: async (patch: AppSettingsPatch) => {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(payload?.error || 'Failed to save');
+      return { state: normalize(payload ?? {}), raw: payload };
+    },
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: SETTINGS_KEY });
+      const previous = qc.getQueryData<AppSettingsState>(SETTINGS_KEY);
+      if (previous) qc.setQueryData<AppSettingsState>(SETTINGS_KEY, { ...previous, ...patch });
+      return { previous };
+    },
+    onError: (_err, _patch, ctx) => {
+      if (ctx?.previous) qc.setQueryData(SETTINGS_KEY, ctx.previous);
+    },
+    onSuccess: ({ state }) => {
+      qc.setQueryData(SETTINGS_KEY, state);
+    },
+  });
+
+  const update = useCallback<UseAppSettingsResult['update']>(
+    async (patch, opts) => {
       const showToast = opts?.toast !== false;
-      const previous = cachedState;
-      if (previous) {
-        cachedState = { ...previous, ...patch };
-        notify();
-      }
-
       try {
-        const res = await fetch('/api/settings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(patch),
-        });
-        const payload = await res.json().catch(() => null);
-        if (!res.ok) {
-          cachedState = previous;
-          notify();
-          if (showToast) toast.error(payload?.error || 'Failed to save');
-          return null;
-        }
-        cachedState = normalize(payload ?? {});
-        notify();
+        const { state, raw } = await mutateAsync(patch);
         if (showToast) {
           let custom: string | undefined;
           try {
-            custom = opts?.successMessage?.(cachedState, payload);
+            custom = opts?.successMessage?.(state, raw);
           } catch (err) {
             console.error('[use-app-settings] successMessage callback threw', err);
           }
           if (custom) toast.success(custom, { duration: 1800 });
           else toast.success('Saved', { duration: 1200 });
         }
-        return cachedState;
-      } catch {
-        cachedState = previous;
-        notify();
-        if (showToast) toast.error('Failed to save');
+        return state;
+      } catch (err) {
+        if (showToast) toast.error(err instanceof Error ? err.message : 'Failed to save');
         return null;
       }
-    });
-    updateChain = run.catch(() => {});
-    return run;
-  }, []);
+    },
+    [mutateAsync],
+  );
 
   const reload = useCallback(async () => {
-    cachedState = null;
-    inflightLoad = null;
-    notify();
-    await fetchSettings();
-  }, []);
+    await qc.invalidateQueries({ queryKey: SETTINGS_KEY });
+  }, [qc]);
 
-  return { settings, loading, update, reload };
+  return {
+    settings: query.data ?? null,
+    loading: query.isLoading,
+    update,
+    reload,
+  };
 }

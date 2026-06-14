@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -23,46 +24,46 @@ const TRIGGER_CLASS =
   'w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5';
 
 export function QuietHoursSection() {
-  const [state, setState] = useState<QuietHours | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const { data: state = null, isLoading: loading } = useQuery({
+    queryKey: ['me-settings'],
+    queryFn: jsonFetcher<QuietHours>('/api/me/settings'),
+  });
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await fetch('/api/me/settings');
-        if (res.ok && active) setState((await res.json()) as QuietHours);
-      } catch {
-        /* leave defaults */
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  async function patch(next: Partial<QuietHours>) {
-    const previous = state;
-    setState((prev) => ({
-      quietHoursEnabled: prev?.quietHoursEnabled ?? false,
-      quietHoursStart: prev?.quietHoursStart ?? null,
-      quietHoursEnd: prev?.quietHoursEnd ?? null,
-      ...next,
-    }));
-    try {
+  const patchMutation = useMutation({
+    mutationFn: async (next: Partial<QuietHours>) => {
       const res = await fetch('/api/me/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(next),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setState((await res.json()) as QuietHours);
-    } catch {
+      return (await res.json()) as QuietHours;
+    },
+    onMutate: async (next) => {
+      await queryClient.cancelQueries({ queryKey: ['me-settings'] });
+      const previous = queryClient.getQueryData<QuietHours>(['me-settings']);
+      queryClient.setQueryData<QuietHours>(['me-settings'], (prev) => ({
+        quietHoursEnabled: prev?.quietHoursEnabled ?? false,
+        quietHoursStart: prev?.quietHoursStart ?? null,
+        quietHoursEnd: prev?.quietHoursEnd ?? null,
+        ...next,
+      }));
+      return { previous };
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['me-settings'], data);
+    },
+    onError: (_err, _next, context) => {
       toast.error('Failed to save quiet hours');
-      setState(previous);
-    }
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['me-settings'], context.previous);
+      }
+    },
+  });
+
+  function patch(next: Partial<QuietHours>) {
+    patchMutation.mutate(next);
   }
 
   const enabled = state?.quietHoursEnabled ?? false;

@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowUpDown,
@@ -155,12 +157,10 @@ const GRID_GAP = 12; // gap-3
 
 export default function WatchlistPage() {
   const canEdit = useCan('watchlist.edit');
-  const [items, setItems] = useState<WatchlistItem[] | null>(null);
-  const [tags, setTags] = useState<WatchlistTag[]>([]);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [activeTagId, setActiveTagId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = useState<WatchlistItem | null>(null);
   const [removing, setRemoving] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -189,39 +189,37 @@ export default function WatchlistPage() {
     }
   }, [view, viewLoaded]);
 
-  const loadItems = useCallback(async () => {
-    try {
-      const url = new URL('/api/watchlist', window.location.origin);
-      if (activeTagId) url.searchParams.set('tag', activeTagId);
-      if (appliedSearch) url.searchParams.set('q', appliedSearch);
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as WatchlistItem[];
-      setItems(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load watchlist');
-    }
-  }, [activeTagId, appliedSearch]);
+  // The items query key carries the active tag + search so changing either
+  // refetches; gcTime keeps the list warm for instant back-nav.
+  const itemsKey = useMemo(
+    () => ['watchlist', 'items', { tag: activeTagId, q: appliedSearch }] as const,
+    [activeTagId, appliedSearch],
+  );
+  const itemsQuery = useQuery({
+    queryKey: itemsKey,
+    queryFn: jsonFetcher<WatchlistItem[]>(
+      `/api/watchlist${activeTagId || appliedSearch
+        ? `?${new URLSearchParams({
+            ...(activeTagId ? { tag: activeTagId } : {}),
+            ...(appliedSearch ? { q: appliedSearch } : {}),
+          }).toString()}`
+        : ''}`,
+    ),
+    select: ensureArray,
+  });
+  const items = itemsQuery.data ?? null;
+  const error = itemsQuery.isError
+    ? itemsQuery.error instanceof Error
+      ? itemsQuery.error.message
+      : 'Failed to load watchlist'
+    : null;
 
-  const loadTags = useCallback(async () => {
-    try {
-      const res = await fetch('/api/watchlist/tags');
-      if (!res.ok) return;
-      const data = (await res.json()) as WatchlistTag[];
-      setTags(data);
-    } catch {
-      // noop
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadItems();
-  }, [loadItems]);
-
-  useEffect(() => {
-    void loadTags();
-  }, [loadTags]);
+  const tagsQuery = useQuery({
+    queryKey: ['watchlist', 'tags'],
+    queryFn: jsonFetcher<WatchlistTag[]>('/api/watchlist/tags'),
+    select: ensureArray,
+  });
+  const tags = useMemo(() => tagsQuery.data ?? [], [tagsQuery.data]);
 
   const debouncedApply = useMemo(
     () =>
@@ -251,8 +249,10 @@ export default function WatchlistPage() {
         return;
       }
       toast.success('Removed from watchlist');
-      setItems((prev) => prev?.filter((i) => i.id !== item.id) ?? null);
-      void loadTags();
+      queryClient.setQueryData<WatchlistItem[]>(itemsKey, (prev) =>
+        prev ? prev.filter((i) => i.id !== item.id) : prev,
+      );
+      queryClient.invalidateQueries({ queryKey: ['watchlist', 'tags'] });
     } finally {
       setRemoving(false);
       setRemoveTarget(null);
@@ -280,8 +280,8 @@ export default function WatchlistPage() {
       }
       const data = (await res.json()) as { count: number };
       toast.success(`Cleared ${data.count} item${data.count === 1 ? '' : 's'}`);
-      setItems([]);
-      void loadTags();
+      queryClient.setQueryData<WatchlistItem[]>(itemsKey, []);
+      queryClient.invalidateQueries({ queryKey: ['watchlist'] });
     } finally {
       setClearingAll(false);
       setClearAllOpen(false);
@@ -719,8 +719,7 @@ export default function WatchlistPage() {
         onOpenChange={(o) => {
           setManageOpen(o);
           if (!o) {
-            void loadTags();
-            void loadItems();
+            queryClient.invalidateQueries({ queryKey: ['watchlist'] });
           }
         }}
         tags={tags}

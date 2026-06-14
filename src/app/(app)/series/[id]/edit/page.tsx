@@ -11,9 +11,10 @@ import { Switch } from '@/components/ui/switch';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { invalidateListData } from '@/lib/media-list-cache';
-import { clearSeriesDetailSnapshot } from '@/lib/series-route-cache';
-import type { SonarrSeries, QualityProfile, RootFolder, Tag } from '@/types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/query-keys';
+import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
+import type { SonarrSeries } from '@/types';
 
 // Append the viewing instance to a Sonarr API path so the page reads/mutates the
 // correct instance. No-op (single-instance-identical) when instance is undefined.
@@ -29,12 +30,23 @@ export default function SeriesEditPage() {
   const { id } = useParams();
   const router = useRouter();
   const instance = useSearchParams().get('instance') ?? undefined;
+  const queryClient = useQueryClient();
 
-  const [series, setSeries] = useState<SonarrSeries | null>(null);
-  const [qualityProfiles, setQualityProfiles] = useState<QualityProfile[]>([]);
-  const [rootFolders, setRootFolders] = useState<RootFolder[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Shares queryKeys.detail with the series detail page (gcTime → no refetch when
+  // arriving from there). null on !ok preserves the original "not found" path.
+  const seriesQuery = useQuery({
+    queryKey: queryKeys.detail('sonarr', Number(id), instance),
+    queryFn: async ({ signal }): Promise<SonarrSeries | null> => {
+      const r = await sonarrFetch(instance, `/api/sonarr/${id}`, { signal });
+      return r.ok ? ((await r.json()) as SonarrSeries) : null;
+    },
+    enabled: Number.isFinite(Number(id)),
+  });
+  const series = seriesQuery.data ?? null;
+  const loading = seriesQuery.isLoading;
+  const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance);
+  const { data: rootFolders = [] } = useRootFolders('sonarr', instance);
+  const { data: tags = [] } = useTags('sonarr', instance);
   const [saving, setSaving] = useState(false);
 
   // Edit form state
@@ -46,30 +58,18 @@ export default function SeriesEditPage() {
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
   useEffect(() => {
-    Promise.all([
-      sonarrFetch(instance, `/api/sonarr/${id}`).then((r) => (r.ok ? r.json() : null)),
-      sonarrFetch(instance, '/api/sonarr/qualityprofiles').then((r) => (r.ok ? r.json() : [])),
-      sonarrFetch(instance, '/api/sonarr/rootfolders').then((r) => (r.ok ? r.json() : [])),
-      sonarrFetch(instance, '/api/sonarr/tags').then((r) => (r.ok ? r.json() : [])),
-    ])
-      .then(([s, qp, rf, t]) => {
-        setSeries(s);
-        setQualityProfiles(qp);
-        setRootFolders(rf);
-        setTags(t);
-        if (s) {
-          setQualityProfileId(s.qualityProfileId);
-          setSeriesType(s.seriesType);
-          setSeasonFolder(s.seasonFolder);
-          setSelectedTags([...s.tags]);
-          setRootFolder(s.path ? s.path.split('/').slice(0, -1).join('/') : '');
-        }
-      })
-      .catch(() => {
-        toast.error('Failed to load series data');
-      })
-      .finally(() => setLoading(false));
-  }, [id, instance]);
+    if (seriesQuery.isError) toast.error('Failed to load series data');
+  }, [seriesQuery.isError]);
+
+  // Seed the form once the series loads.
+  useEffect(() => {
+    if (!series) return;
+    setQualityProfileId(series.qualityProfileId);
+    setSeriesType(series.seriesType);
+    setSeasonFolder(series.seasonFolder);
+    setSelectedTags([...series.tags]);
+    setRootFolder(series.path ? series.path.split('/').slice(0, -1).join('/') : '');
+  }, [series]);
 
   function toggleTag(tagId: number) {
     setSelectedTags((prev) =>
@@ -106,8 +106,11 @@ export default function SeriesEditPage() {
         body: JSON.stringify(updatedSeries),
       });
       if (res.ok) {
-        invalidateListData('series');
-        clearSeriesDetailSnapshot(series.id, instance);
+        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+        // Refetch the detail (and episodes — a path move can shift files) so the
+        // detail page we return to shows the saved changes.
+        queryClient.invalidateQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.episodes(series.id, instance) });
         toast.success('Series updated');
         router.back();
       } else {
