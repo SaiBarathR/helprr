@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
 import { Bell, Loader2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -112,7 +114,6 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
   const [selected, setSelected] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [knownTags, setKnownTags] = useState<KnownTag[]>([]);
-  const [saving, setSaving] = useState(false);
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderValue, setReminderValue] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
@@ -153,7 +154,37 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
     return knownTags.find((t) => t.name === name)?.color ?? undefined;
   }
 
-  async function handleSave() {
+  const saveMutation = useMutation({
+    mutationFn: async (body: Record<string, unknown>) => {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, err?.error ?? 'Failed to save');
+      }
+      return res.json() as Promise<{ created: boolean }>;
+    },
+    onSuccess: (data) => {
+      const reminderMsg = reminderEnabled ? ' · reminder set' : '';
+      toast.success((data.created ? 'Added to watchlist' : 'Watchlist updated') + reminderMsg);
+      // New tags may have been created by ensureTagIds on the server; drop
+      // the cache so the next dialog open sees them.
+      invalidateWatchlistTagCache();
+      onOpenChange(false);
+      onSaved?.();
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    },
+  });
+  const saving = saveMutation.isPending;
+
+  function handleSave() {
     if (!draft) return;
     const cleanedTitle = title.trim();
     if (!cleanedTitle) {
@@ -181,49 +212,20 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
       // Explicitly clear any prior reminder so the dialog can be used to remove one.
       reminderAt = null;
     }
-    setSaving(true);
-    try {
-      const pending = tagInput.trim();
-      const tagsToSend = pending ? [...selected, normalizeTagName(pending)] : selected;
-      let res: Response;
-      try {
-        res = await fetch('/api/watchlist', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            source: draft.source,
-            externalId: draft.externalId,
-            mediaType: draft.mediaType,
-            title: cleanedTitle,
-            year: draft.year ?? null,
-            posterUrl: draft.posterUrl ?? null,
-            overview: draft.overview ?? null,
-            rating: draft.rating ?? null,
-            tags: tagsToSend,
-            reminderAt,
-          }),
-        });
-      } catch (err) {
-        console.error('[Watchlist] add network error:', err);
-        toast.error('Failed to save (network error)');
-        return;
-      }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        toast.error(err?.error ?? 'Failed to save');
-        return;
-      }
-      const data = (await res.json()) as { created: boolean };
-      const reminderMsg = reminderEnabled ? ' · reminder set' : '';
-      toast.success((data.created ? 'Added to watchlist' : 'Watchlist updated') + reminderMsg);
-      // New tags may have been created by ensureTagIds on the server; drop
-      // the cache so the next dialog open sees them.
-      invalidateWatchlistTagCache();
-      onOpenChange(false);
-      onSaved?.();
-    } finally {
-      setSaving(false);
-    }
+    const pending = tagInput.trim();
+    const tagsToSend = pending ? [...selected, normalizeTagName(pending)] : selected;
+    saveMutation.mutate({
+      source: draft.source,
+      externalId: draft.externalId,
+      mediaType: draft.mediaType,
+      title: cleanedTitle,
+      year: draft.year ?? null,
+      posterUrl: draft.posterUrl ?? null,
+      overview: draft.overview ?? null,
+      rating: draft.rating ?? null,
+      tags: tagsToSend,
+      reminderAt,
+    });
   }
 
   return (

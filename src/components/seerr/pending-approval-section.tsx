@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Check, X, Loader2, Film, Tv, Clock } from 'lucide-react';
@@ -36,7 +39,6 @@ interface PendingRow {
  */
 export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?: () => void; grid?: boolean }) {
   const canApprove = useCan('requests.approve');
-  const [busy, setBusy] = useState<Set<string>>(new Set());
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
   const [focusHandled, setFocusHandled] = useState(false);
   // Deep-link target from a `requestCreated` notification tap (?focus=<pendingId>)
@@ -45,7 +47,12 @@ export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?
 
   const fetchPage = useCallback(async (skip: number, take: number) => {
     const res = await fetch(`/api/seerr/pending-requests?skip=${skip}&take=${take}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      // useInfiniteScroll swallows the error locally, so honor the 401→/login
+      // redirect invariant here before re-throwing.
+      if (res.status === 401) handleAuthError(new ApiError(401, 'Session expired'));
+      throw new ApiError(res.status, `HTTP ${res.status}`);
+    }
     const data = (await res.json()) as { results: PendingRow[]; pageInfo?: { results?: number } };
     return { results: data.results ?? [], total: data.pageInfo?.results ?? 0 };
   }, []);
@@ -68,24 +75,24 @@ export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?
     }
   }, [focusId, rows, canApprove, focusHandled, loading, loadingMore, hasMore, loadMore]);
 
-  async function remove(id: string) {
-    setBusy((p) => new Set(p).add(id));
-    try {
+  const removeMutation = useMutation({
+    mutationFn: async (id: string) => {
       const res = await fetch(`/api/seerr/pending-requests/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        toast.error('Failed');
-        return;
-      }
+      if (!res.ok) throw new ApiError(res.status, 'Failed');
+    },
+    onSuccess: (_data, id) => {
       toast.success(canApprove ? 'Declined' : 'Cancelled');
       removeItem(id);
       onChanged?.();
-    } finally {
-      setBusy((p) => {
-        const n = new Set(p);
-        n.delete(id);
-        return n;
-      });
-    }
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed');
+    },
+  });
+  function remove(id: string) {
+    removeMutation.mutate(id);
   }
 
   if (rows.length === 0) return null;
@@ -99,7 +106,7 @@ export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?
       <div className={grid ? 'grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3' : 'space-y-2'}>
       {rows.map((r) => {
         const Icon = r.mediaType === 'tv' ? Tv : Film;
-        const isBusy = busy.has(r.id);
+        const isBusy = removeMutation.isPending && removeMutation.variables === r.id;
         return (
           <div
             key={r.id}
