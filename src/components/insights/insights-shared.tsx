@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { jsonFetcher } from '@/lib/query-fetch';
 import { Loader2 } from 'lucide-react';
 import { SectionHeader, HPR } from '@/components/widgets/bento-primitives';
 
@@ -27,40 +29,20 @@ export function shortDate(dateKey: string): string {
 
 /**
  * Fetch a JSON resource whenever `url` changes. Returns null `data` while
- * loading or on error. Aborts the in-flight request on url change / unmount so a
- * stale range's response can't overwrite a newer one.
+ * loading or on error. Backed by TanStack Query: it threads the AbortSignal (a
+ * stale range's response can't overwrite a newer one) and a 401 throws so the
+ * global handler redirects to /login instead of silently rendering null.
  */
 export function useInsightsResource<T>(url: string | null): { data: T | null; loading: boolean } {
-  const [data, setData] = React.useState<T | null>(null);
-  const [loading, setLoading] = React.useState<boolean>(url !== null);
-
-  React.useEffect(() => {
-    if (!url) {
-      setData(null);
-      setLoading(false);
-      return;
-    }
-    const controller = new AbortController();
-    // Drop the previous range's payload immediately so a URL→URL change shows the
-    // loading state rather than briefly rendering stale data for the old range.
-    setData(null);
-    setLoading(true);
-    fetch(url, { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        if (controller.signal.aborted) return;
-        setData(json ?? null);
-        setLoading(false);
-      })
-      .catch((err) => {
-        if ((err as { name?: string })?.name === 'AbortError') return;
-        setData(null);
-        setLoading(false);
-      });
-    return () => controller.abort();
-  }, [url]);
-
-  return { data, loading };
+  const query = useQuery({
+    queryKey: ['insights', url],
+    queryFn: jsonFetcher<T>(url ?? ''),
+    enabled: url !== null,
+  });
+  return {
+    data: url === null ? null : (query.data ?? null),
+    loading: url !== null && query.isLoading,
+  };
 }
 
 // ─── Panel: the standard Insights card shell ───

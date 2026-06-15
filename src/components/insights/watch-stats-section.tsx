@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
 import { AlertCircle } from 'lucide-react';
 import { Eyebrow, HPR } from '@/components/widgets/bento-primitives';
 import { RankedList, HourlyHeatmap, PlayActivityChart } from '@/components/widgets/jellyfin-stats-charts';
@@ -18,21 +20,13 @@ function SubCard({ label, height, children }: { label: string; height: number; c
 }
 
 export function WatchStatsSection({ range }: { range: InsightsRange }) {
-  const [loading, setLoading] = React.useState(true);
-  const [pluginAvailable, setPluginAvailable] = React.useState(true);
-  const [shows, setShows] = React.useState<PlaybackBreakdownEntry[]>([]);
-  const [movies, setMovies] = React.useState<PlaybackBreakdownEntry[]>([]);
-  const [activity, setActivity] = React.useState<PlayActivityUser[]>([]);
-  const [hourly, setHourly] = React.useState<Record<string, number>>({});
-  const [users, setUsers] = React.useState<PlaybackUserActivity[]>([]);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
-    const q = `days=${range.days}`;
-    setLoading(true);
-
-    (async () => {
+  // One query over the 5 Jellyfin stat endpoints. Each is optional (a missing
+  // plugin / down endpoint degrades to empty), but a 401 throws so the global
+  // handler redirects to /login. TanStack threads the AbortSignal.
+  const statsQuery = useQuery({
+    queryKey: ['insights', 'watch-stats', range.days],
+    queryFn: async ({ signal }) => {
+      const q = `days=${range.days}`;
       const [tvRes, movRes, actRes, hourRes, userRes] = await Promise.allSettled([
         fetch(`/api/jellyfin/playback/tv-shows?${q}`, { signal }),
         fetch(`/api/jellyfin/playback/movies?${q}`, { signal }),
@@ -40,7 +34,11 @@ export function WatchStatsSection({ range }: { range: InsightsRange }) {
         fetch(`/api/jellyfin/playback/hourly?${q}`, { signal }),
         fetch(`/api/jellyfin/playback/users?${q}`, { signal }),
       ]);
-      if (signal.aborted) return;
+      for (const r of [tvRes, movRes, actRes, hourRes, userRes]) {
+        if (r.status === 'fulfilled' && r.value.status === 401) {
+          throw new ApiError(401, 'Session expired');
+        }
+      }
 
       let plugin = true;
       let nShows: PlaybackBreakdownEntry[] = [];
@@ -74,22 +72,18 @@ export function WatchStatsSection({ range }: { range: InsightsRange }) {
         nUsers = d.users || [];
         if (d.pluginAvailable === false) plugin = false;
       }
-      if (signal.aborted) return;
 
-      setShows(nShows);
-      setMovies(nMovies);
-      setActivity(nActivity);
-      setHourly(nHourly);
-      setUsers(nUsers);
-      setPluginAvailable(plugin);
-      setLoading(false);
-    })().catch((err) => {
-      if ((err as { name?: string })?.name === 'AbortError') return;
-      setLoading(false);
-    });
+      return { shows: nShows, movies: nMovies, activity: nActivity, hourly: nHourly, users: nUsers, pluginAvailable: plugin };
+    },
+  });
 
-    return () => controller.abort();
-  }, [range.days]);
+  const loading = statsQuery.isLoading;
+  const pluginAvailable = statsQuery.data?.pluginAvailable ?? true;
+  const shows = statsQuery.data?.shows ?? [];
+  const movies = statsQuery.data?.movies ?? [];
+  const activity = statsQuery.data?.activity ?? [];
+  const hourly = statsQuery.data?.hourly ?? {};
+  const users = statsQuery.data?.users ?? [];
 
   const userEntries: PlaybackBreakdownEntry[] = React.useMemo(
     () =>
