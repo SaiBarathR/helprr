@@ -1,6 +1,8 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { FileUp, Link as LinkIcon, Loader2 } from 'lucide-react';
@@ -28,54 +30,49 @@ export default function AddTorrentPage() {
   const [addMode, setAddMode] = useState<'magnet' | 'file'>('magnet');
   const [magnetLink, setMagnetLink] = useState('');
   const [torrentFile, setTorrentFile] = useState<File | null>(null);
-  const [adding, setAdding] = useState(false);
 
-  async function handleAddTorrent() {
-    setAdding(true);
-    try {
-      if (addMode === 'magnet') {
-        if (!magnetLink.trim()) {
-          toast.error('Please enter a magnet link');
-          return;
-        }
+  const addMutation = useMutation({
+    mutationFn: async () => {
+      const res = addMode === 'magnet'
+        ? await fetch('/api/qbittorrent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls: magnetLink.trim() }),
+          })
+        : await (() => {
+            const formData = new FormData();
+            formData.append('file', torrentFile as File);
+            return fetch('/api/qbittorrent', { method: 'POST', body: formData });
+          })();
 
-        const res = await fetch('/api/qbittorrent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ urls: magnetLink.trim() }),
-        });
-
-        const data = await parseApiResult(res);
-        if (!res.ok || data.error || data.success !== true) {
-          throw new Error(data.error || 'Failed to add torrent');
-        }
-      } else {
-        if (!torrentFile) {
-          toast.error('Please select a .torrent file');
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', torrentFile);
-
-        const res = await fetch('/api/qbittorrent', {
-          method: 'POST',
-          body: formData,
-        });
-
-        const data = await parseApiResult(res);
-        if (!res.ok || data.error || data.success !== true) {
-          throw new Error(data.error || 'Failed to add torrent');
-        }
+      const data = await parseApiResult(res);
+      // ApiError carries the status so a 401 reaches the global MutationCache
+      // handler (redirect); a 200 with success:false toasts as a normal failure.
+      if (!res.ok || data.error || data.success !== true) {
+        throw new ApiError(res.status, data.error || 'Failed to add torrent');
       }
-
+    },
+    onSuccess: () => {
       toast.success('Torrent added');
       router.push('/torrents');
-    } catch (err) {
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
       toast.error(err instanceof Error ? err.message : 'Failed to add torrent');
-    } finally {
-      setAdding(false);
+    },
+  });
+  const adding = addMutation.isPending;
+
+  function handleAddTorrent() {
+    if (addMode === 'magnet' && !magnetLink.trim()) {
+      toast.error('Please enter a magnet link');
+      return;
     }
+    if (addMode === 'file' && !torrentFile) {
+      toast.error('Please select a .torrent file');
+      return;
+    }
+    addMutation.mutate();
   }
 
   return (
