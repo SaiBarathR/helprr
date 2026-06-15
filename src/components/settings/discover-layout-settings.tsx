@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
 import {
   DndContext,
   closestCenter,
@@ -527,45 +529,42 @@ function CustomCarouselEditor({
 
 export function DiscoverLayoutSettings() {
   const [layout, setLayout] = useState<DiscoverLayoutConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
   // Custom carousel editor
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Filters metadata for genre/provider pickers
-  const [filtersMeta, setFiltersMeta] = useState<DiscoverFiltersResponse | null>(null);
-
-  // Load current layout
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      try {
-        const [layoutRes, filtersRes] = await Promise.allSettled([
-          fetch('/api/settings/discover-layout'),
-          fetch('/api/discover/filters'),
-        ]);
-
-        if (layoutRes.status === 'fulfilled' && layoutRes.value.ok) {
-          const data = await layoutRes.value.json();
-          setLayout(data);
-        }
-
-        if (filtersRes.status === 'fulfilled' && filtersRes.value.ok) {
-          const data = await filtersRes.value.json();
-          setFiltersMeta(data);
-        }
-      } catch {
-        // noop
-      } finally {
-        setLoading(false);
+  // Load layout + filters metadata in one query. Each is graceful on a normal
+  // failure, but a 401 throws so the global handler redirects to /login.
+  const initQuery = useQuery({
+    queryKey: ['discover-layout-settings'],
+    queryFn: async ({ signal }) => {
+      const [layoutRes, filtersRes] = await Promise.allSettled([
+        fetch('/api/settings/discover-layout', { signal }),
+        fetch('/api/discover/filters', { signal }),
+      ]);
+      for (const r of [layoutRes, filtersRes]) {
+        if (r.status === 'fulfilled' && r.value.status === 401) throw new ApiError(401, 'Session expired');
       }
-    }
+      let layoutData: DiscoverLayoutConfig | null = null;
+      let filtersData: DiscoverFiltersResponse | null = null;
+      if (layoutRes.status === 'fulfilled' && layoutRes.value.ok) layoutData = await layoutRes.value.json();
+      if (filtersRes.status === 'fulfilled' && filtersRes.value.ok) filtersData = await filtersRes.value.json();
+      return { layout: layoutData, filtersMeta: filtersData };
+    },
+  });
+  const loading = initQuery.isLoading;
+  // Filters metadata for genre/provider pickers (read-only; derive from the query).
+  const filtersMeta = initQuery.data?.filtersMeta ?? null;
 
-    load();
-  }, []);
+  // Seed the editable layout once from the query (don't clobber edits on refetch).
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || !initQuery.data) return;
+    seeded.current = true;
+    if (initQuery.data.layout) setLayout(initQuery.data.layout);
+  }, [initQuery.data]);
 
   const sections = useMemo(() => layout?.sections ?? [], [layout]);
   const sectionIds = useMemo(() => sections.map((s) => s.id), [sections]);
@@ -665,58 +664,43 @@ export function DiscoverLayoutSettings() {
     [editingId, updateLayout]
   );
 
-  const handleSave = useCallback(async () => {
-    if (!layout) return;
-    setSaving(true);
-    try {
+  const saveMutation = useMutation({
+    mutationFn: async (vars: { payload: DiscoverLayoutConfig; successMsg: string }) => {
       const res = await fetch('/api/settings/discover-layout', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(layout),
+        body: JSON.stringify(vars.payload),
       });
-      if (res.ok) {
-        const saved = await res.json();
-        setLayout(saved);
-        useUIStore.getState().setDiscoverLayout(saved);
-        setDirty(false);
-        toast.success('Discover layout saved');
-      } else {
+      if (!res.ok) {
         const data = await res.json().catch(() => null);
-        toast.error(data?.error ?? 'Failed to save layout');
+        throw new ApiError(res.status, data?.error ?? 'Failed to save layout');
       }
-    } catch {
-      toast.error('Failed to save layout');
-    } finally {
-      setSaving(false);
-    }
-  }, [layout]);
+      return res.json() as Promise<DiscoverLayoutConfig>;
+    },
+    onSuccess: (saved, vars) => {
+      setLayout(saved);
+      useUIStore.getState().setDiscoverLayout(saved);
+      setDirty(false);
+      toast.success(vars.successMsg);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to save layout');
+    },
+  });
+  const saving = saveMutation.isPending;
 
-  const handleReset = useCallback(async () => {
-    const defaultLayout = {
-      sections: DEFAULT_DISCOVER_LAYOUT.sections.map((s) => ({ ...s })),
-    };
-    setSaving(true);
-    try {
-      const res = await fetch('/api/settings/discover-layout', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(defaultLayout),
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setLayout(saved);
-        useUIStore.getState().setDiscoverLayout(saved);
-        setDirty(false);
-        toast.success('Discover layout reset to default');
-      } else {
-        toast.error('Failed to reset layout');
-      }
-    } catch {
-      toast.error('Failed to reset layout');
-    } finally {
-      setSaving(false);
-    }
-  }, []);
+  const handleSave = useCallback(() => {
+    if (!layout) return;
+    saveMutation.mutate({ payload: layout, successMsg: 'Discover layout saved' });
+  }, [layout, saveMutation]);
+
+  const handleReset = useCallback(() => {
+    saveMutation.mutate({
+      payload: { sections: DEFAULT_DISCOVER_LAYOUT.sections.map((s) => ({ ...s })) } as DiscoverLayoutConfig,
+      successMsg: 'Discover layout reset to default',
+    });
+  }, [saveMutation]);
 
   const editingSection = editingId
     ? sections.find((s) => s.id === editingId)
