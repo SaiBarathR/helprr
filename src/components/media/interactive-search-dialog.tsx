@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import {
   Drawer, DrawerContent, DrawerTitle,
 } from '@/components/ui/drawer';
@@ -71,10 +73,7 @@ export function InteractiveSearchDialog({
   searchParams,
   showSeasonPackFilter = false,
 }: InteractiveSearchDialogProps) {
-  const [releases, setReleases] = useState<Release[]>([]);
-  const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  const [grabbing, setGrabbing] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>('quality');
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -86,10 +85,93 @@ export function InteractiveSearchDialog({
 
   // Override state
   const [overrideRelease, setOverrideRelease] = useState<Release | null>(null);
-  const [downloadClients, setDownloadClients] = useState<DownloadClient[]>([]);
-  const [loadingClients, setLoadingClients] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
-  const [overriding, setOverriding] = useState(false);
+  const queryClient = useQueryClient();
+
+  const searchQueryString = useMemo(() => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(searchParams)) params.set(k, String(v));
+    return params.toString();
+  }, [searchParams]);
+
+  // Release search is manual (button-triggered) — enabled:false, run via refetch.
+  // jsonFetcher throws on !ok so a 401 (revoked session) redirects via the global
+  // handler; other failures surface below as a "Search failed" toast.
+  const releasesQuery = useQuery({
+    queryKey: ['release-search', service, searchQueryString],
+    queryFn: jsonFetcher<Release[]>(`/api/${service}/release?${searchQueryString}`),
+    enabled: false,
+  });
+  const releases = useMemo(() => releasesQuery.data ?? [], [releasesQuery.data]);
+  const loading = releasesQuery.isFetching;
+
+  useEffect(() => {
+    if (releasesQuery.isError && !(releasesQuery.error instanceof ApiError && releasesQuery.error.status === 401)) {
+      toast.error('Search failed');
+    }
+  }, [releasesQuery.isError, releasesQuery.error]);
+
+  // Download clients load lazily when the override sheet opens (cached after).
+  const clientsQuery = useQuery({
+    queryKey: [service, 'downloadclients'],
+    queryFn: jsonFetcher<DownloadClient[]>(`/api/${service}/downloadclient`),
+    enabled: overrideRelease !== null,
+    select: (d) => (Array.isArray(d) ? d.filter((c) => c.enable) : []),
+  });
+  const downloadClients = clientsQuery.data ?? [];
+  const loadingClients = clientsQuery.isLoading;
+
+  useEffect(() => {
+    if (clientsQuery.isError && !(clientsQuery.error instanceof ApiError && clientsQuery.error.status === 401)) {
+      toast.error('Failed to load download clients');
+    }
+  }, [clientsQuery.isError, clientsQuery.error]);
+
+  const grabMutation = useMutation({
+    mutationFn: async (release: Release) => {
+      const res = await fetch(`/api/${service}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guid: release.guid, indexerId: release.indexerId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error || 'Grab failed');
+      }
+    },
+    onSuccess: () => toast.success('Added to download queue'),
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Grab failed');
+    },
+  });
+  // Per-release spinner: the guid of the release currently being grabbed (or null).
+  const grabbing = grabMutation.isPending ? (grabMutation.variables?.guid ?? null) : null;
+
+  const overrideGrabMutation = useMutation({
+    mutationFn: async (vars: { release: Release; clientId: number | null }) => {
+      const body: Record<string, unknown> = { guid: vars.release.guid, indexerId: vars.release.indexerId };
+      if (vars.clientId !== null) body.downloadClientId = vars.clientId;
+      const res = await fetch(`/api/${service}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error || 'Grab failed');
+      }
+    },
+    onSuccess: () => {
+      toast.success('Added to download queue');
+      setOverrideRelease(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Grab failed');
+    },
+  });
+  const overriding = overrideGrabMutation.isPending;
 
   // Derive available indexers and qualities from results
   const indexers = useMemo(() => {
@@ -107,96 +189,23 @@ export function InteractiveSearchDialog({
     return [...set].sort();
   }, [releases]);
 
-  async function doSearch() {
-    setLoading(true);
+  function doSearch() {
     setSearched(true);
-    try {
-      const params = new URLSearchParams();
-      for (const [k, v] of Object.entries(searchParams)) {
-        params.set(k, String(v));
-      }
-      const res = await fetch(`/api/${service}/release?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setReleases(data);
-      } else {
-        toast.error('Search failed');
-      }
-    } catch {
-      toast.error('Search failed');
-    } finally {
-      setLoading(false);
-    }
+    void releasesQuery.refetch();
   }
 
-  async function handleGrab(release: Release) {
-    setGrabbing(release.guid);
-    try {
-      const res = await fetch(`/api/${service}/release`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guid: release.guid, indexerId: release.indexerId }),
-      });
-      if (res.ok) {
-        toast.success('Added to download queue');
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Grab failed');
-      }
-    } catch {
-      toast.error('Grab failed');
-    } finally {
-      setGrabbing(null);
-    }
+  function handleGrab(release: Release) {
+    grabMutation.mutate(release);
   }
 
-  async function openOverride(release: Release) {
+  function openOverride(release: Release) {
     setOverrideRelease(release);
     setSelectedClientId(null);
-    if (downloadClients.length === 0) {
-      setLoadingClients(true);
-      try {
-        const res = await fetch(`/api/${service}/downloadclient`);
-        if (res.ok) {
-          const data: DownloadClient[] = await res.json();
-          setDownloadClients(data.filter((c) => c.enable));
-        } else {
-          toast.error('Failed to load download clients');
-        }
-      } catch {
-        toast.error('Failed to load download clients');
-      } finally {
-        setLoadingClients(false);
-      }
-    }
   }
 
-  async function handleOverrideGrab() {
+  function handleOverrideGrab() {
     if (!overrideRelease) return;
-    setOverriding(true);
-    try {
-      const body: Record<string, unknown> = {
-        guid: overrideRelease.guid,
-        indexerId: overrideRelease.indexerId,
-      };
-      if (selectedClientId !== null) body.downloadClientId = selectedClientId;
-      const res = await fetch(`/api/${service}/release`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        toast.success('Added to download queue');
-        setOverrideRelease(null);
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Grab failed');
-      }
-    } catch {
-      toast.error('Grab failed');
-    } finally {
-      setOverriding(false);
-    }
+    overrideGrabMutation.mutate({ release: overrideRelease, clientId: selectedClientId });
   }
 
   function copyToClipboard(url: string) {
@@ -218,7 +227,7 @@ export function InteractiveSearchDialog({
 
   function handleOpenChange(v: boolean) {
     if (!v) {
-      setReleases([]);
+      queryClient.removeQueries({ queryKey: ['release-search', service, searchQueryString] });
       setSearched(false);
       setTextFilter('');
       setIndexerFilter([]);
