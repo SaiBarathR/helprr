@@ -34,7 +34,10 @@ function makeQueryClient() {
 
 let redirectingToLogin = false;
 
-function handleAuthError(error: unknown) {
+// Exported so imperative fetches that don't flow through useQuery/useMutation
+// (e.g. infinite-scroll "load more" paginators) can honor the same 401→/login
+// redirect invariant: call this in their catch with the thrown ApiError.
+export function handleAuthError(error: unknown) {
   if (!(error instanceof ApiError) || error.status !== 401) return;
   if (typeof window === 'undefined') return;
   // Already on /login (or mid-redirect) — don't loop.

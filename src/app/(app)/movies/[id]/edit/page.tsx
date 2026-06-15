@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
@@ -17,31 +17,29 @@ import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import type { RadarrMovie } from '@/types';
-
-async function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 export default function MovieEditPage() {
   const { id } = useParams();
   const router = useRouter();
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
+  const movieId = Number(id);
 
-  const [movie, setMovie] = useState<RadarrMovie | null>(null);
+  const movieQuery = useQuery({
+    queryKey: queryKeys.detail('radarr', movieId, instance),
+    queryFn: jsonFetcher<RadarrMovie>(`/api/radarr/${movieId}`, instance),
+    enabled: Number.isFinite(movieId),
+  });
+  const movie = movieQuery.data ?? null;
+  const loading = movieQuery.isLoading;
+
   const { data: qualityProfiles = [] } = useQualityProfiles('radarr', instance);
   const { data: rootFolders = [] } = useRootFolders('radarr', instance);
   const { data: tags = [] } = useTags('radarr', instance);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   // Edit form state
   const [qualityProfileId, setQualityProfileId] = useState<number>(0);
@@ -49,23 +47,39 @@ export default function MovieEditPage() {
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
+  // Seed the form once the movie loads (and re-seed if the cached movie changes).
   useEffect(() => {
-    radarrFetch(instance, `/api/radarr/${id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((m: RadarrMovie | null) => {
-        setMovie(m);
-        if (m) {
-          setQualityProfileId(m.qualityProfileId);
-          setMinimumAvailability(m.minimumAvailability);
-          setSelectedTags([...m.tags]);
-          setRootFolder(
-            m.path ? m.path.split('/').slice(0, -1).join('/') : ''
-          );
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [id, instance]);
+    if (!movie) return;
+    setQualityProfileId(movie.qualityProfileId);
+    setMinimumAvailability(movie.minimumAvailability);
+    setSelectedTags([...movie.tags]);
+    setRootFolder(movie.path ? movie.path.split('/').slice(0, -1).join('/') : '');
+  }, [movie]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (updatedMovie: RadarrMovie) => {
+      const res = await fetch(withInstanceQuery(`/api/radarr/${updatedMovie.id}`, instance), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedMovie),
+      });
+      // ApiError (not a plain Error) so a 401 carries its status to the global
+      // MutationCache handler, which redirects to /login.
+      if (!res.ok) throw new ApiError(res.status, 'Failed to update movie');
+    },
+    onSuccess: (_data, updatedMovie) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
+      queryClient.invalidateQueries({ queryKey: queryKeys.detail('radarr', updatedMovie.id, instance) });
+      toast.success('Movie updated');
+      router.back();
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed to update movie');
+    },
+  });
+  const saving = saveMutation.isPending;
 
   function toggleTag(tagId: number) {
     setSelectedTags((prev) =>
@@ -75,43 +89,23 @@ export default function MovieEditPage() {
     );
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (!movie) return;
-    setSaving(true);
 
-    try {
-      const updatedMovie = {
-        ...movie,
-        qualityProfileId,
-        minimumAvailability,
-        tags: selectedTags,
-      };
+    const updatedMovie: RadarrMovie = {
+      ...movie,
+      qualityProfileId,
+      minimumAvailability,
+      tags: selectedTags,
+    };
 
-      // Update root folder path if changed
-      if (rootFolder && movie.path) {
-        const movieFolder = movie.path.split('/').pop();
-        updatedMovie.path = `${rootFolder}/${movieFolder}`;
-      }
-
-      const res = await radarrFetch(instance, `/api/radarr/${movie.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedMovie),
-      });
-
-      if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
-        queryClient.invalidateQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
-        toast.success('Movie updated');
-        router.back();
-      } else {
-        toast.error('Failed to update movie');
-      }
-    } catch {
-      toast.error('Failed to update movie');
-    } finally {
-      setSaving(false);
+    // Update root folder path if changed
+    if (rootFolder && movie.path) {
+      const movieFolder = movie.path.split('/').pop();
+      updatedMovie.path = `${rootFolder}/${movieFolder}`;
     }
+
+    saveMutation.mutate(updatedMovie);
   }
 
   if (loading) {

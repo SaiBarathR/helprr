@@ -1,20 +1,14 @@
 'use no memo';
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { useParams, useSearchParams } from 'next/navigation';
 import { CreditsListPage, type CreditPerson } from '@/components/media/credits-list-page';
 import { crewRolePriority } from '@/lib/crew-priority';
-import type { RadarrCredit } from '@/types';
-
-async function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
+import type { RadarrCredit, RadarrMovie } from '@/types';
 
 export default function MovieCreditsPage() {
   const { id } = useParams();
@@ -22,51 +16,24 @@ export default function MovieCreditsPage() {
   const movieId = Number(id);
   const instance = searchParams.get('instance') ?? undefined;
   const initialTab = searchParams.get('type') === 'crew' ? 'crew' : 'cast';
+  const enabled = Number.isFinite(movieId) && movieId > 0;
 
-  const [credits, setCredits] = useState<RadarrCredit[]>([]);
-  const [title, setTitle] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  const movieQuery = useQuery({
+    queryKey: queryKeys.detail('radarr', movieId, instance),
+    queryFn: jsonFetcher<RadarrMovie>(`/api/radarr/${movieId}`, instance),
+    enabled,
+  });
+  const creditsQuery = useQuery({
+    queryKey: queryKeys.credits('radarr', movieId, instance),
+    queryFn: jsonFetcher<RadarrCredit[]>(`/api/radarr/credit?movieId=${movieId}`, instance),
+    enabled,
+    select: ensureArray,
+  });
 
-  const loadData = useCallback(async (signal: AbortSignal) => {
-    if (!Number.isFinite(movieId) || movieId <= 0) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [movieRes, creditsRes] = await Promise.all([
-        radarrFetch(instance, `/api/radarr/${movieId}`, { signal }),
-        radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`, { signal }),
-      ]);
-
-      if (signal.aborted) return;
-
-      if (movieRes.ok) {
-        const movieData = await movieRes.json();
-        setTitle(movieData.title);
-      }
-
-      if (creditsRes.ok) {
-        const data: RadarrCredit[] = await creditsRes.json();
-        setCredits(data);
-      }
-
-      setError(null);
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      setError(err instanceof Error ? err : new Error('Failed to load credits'));
-    } finally {
-      if (!signal.aborted) setLoading(false);
-    }
-  }, [instance, movieId]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void loadData(controller.signal);
-    return () => controller.abort();
-  }, [loadData]);
+  const title = movieQuery.data?.title ?? '';
+  const credits = creditsQuery.data ?? [];
+  const loading = movieQuery.isLoading || creditsQuery.isLoading;
+  const error = creditsQuery.error;
 
   const { cast, crew } = useMemo((): { cast: CreditPerson[]; crew: CreditPerson[] } => {
     const castItems: CreditPerson[] = credits

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import {
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import {
   useQualityProfiles,
@@ -27,27 +27,25 @@ import {
 } from '@/lib/hooks/use-reference-data';
 import type { LidarrArtist } from '@/types';
 
-async function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
-
 export default function ArtistEditPage() {
   const { id } = useParams();
   const router = useRouter();
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
+  const artistId = Number(id);
 
-  const [artist, setArtist] = useState<LidarrArtist | null>(null);
+  const artistQuery = useQuery({
+    queryKey: queryKeys.detail('lidarr', artistId, instance),
+    queryFn: jsonFetcher<LidarrArtist>(`/api/lidarr/${artistId}`, instance),
+    enabled: Number.isFinite(artistId),
+  });
+  const artist = artistQuery.data ?? null;
+  const loading = artistQuery.isLoading;
+
   const { data: qualityProfiles = [] } = useQualityProfiles('lidarr', instance);
   const { data: metadataProfiles = [] } = useMetadataProfiles(instance);
   const { data: rootFolders = [] } = useRootFolders('lidarr', instance);
   const { data: tags = [] } = useTags('lidarr', instance);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   const [qualityProfileId, setQualityProfileId] = useState<number>(0);
   const [metadataProfileId, setMetadataProfileId] = useState<number>(0);
@@ -55,22 +53,40 @@ export default function ArtistEditPage() {
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
+  // Seed the form once the artist loads (and re-seed if the cached artist changes).
   useEffect(() => {
-    lidarrFetch(instance, `/api/lidarr/${id}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((a: LidarrArtist | null) => {
-        setArtist(a);
-        if (a) {
-          setQualityProfileId(a.qualityProfileId);
-          setMetadataProfileId(a.metadataProfileId);
-          setMonitorNewItems(a.monitorNewItems || 'all');
-          setSelectedTags([...a.tags]);
-          setRootFolder(a.path ? a.path.split('/').slice(0, -1).join('/') : '');
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [id, instance]);
+    if (!artist) return;
+    setQualityProfileId(artist.qualityProfileId);
+    setMetadataProfileId(artist.metadataProfileId);
+    setMonitorNewItems(artist.monitorNewItems || 'all');
+    setSelectedTags([...artist.tags]);
+    setRootFolder(artist.path ? artist.path.split('/').slice(0, -1).join('/') : '');
+  }, [artist]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (updated: LidarrArtist) => {
+      const res = await fetch(withInstanceQuery(`/api/lidarr/${updated.id}`, instance), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      // ApiError (not a plain Error) so a 401 carries its status to the global
+      // MutationCache handler, which redirects to /login.
+      if (!res.ok) throw new ApiError(res.status, 'Failed to update artist');
+    },
+    onSuccess: (_data, updated) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+      queryClient.invalidateQueries({ queryKey: queryKeys.detail('lidarr', updated.id, instance) });
+      toast.success('Artist updated');
+      router.back();
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed to update artist');
+    },
+  });
+  const saving = saveMutation.isPending;
 
   function toggleTag(tagId: number) {
     setSelectedTags((prev) =>
@@ -78,42 +94,23 @@ export default function ArtistEditPage() {
     );
   }
 
-  async function handleSave() {
+  function handleSave() {
     if (!artist) return;
-    setSaving(true);
-    try {
-      const updated: LidarrArtist = {
-        ...artist,
-        qualityProfileId,
-        metadataProfileId,
-        monitorNewItems,
-        tags: selectedTags,
-      };
 
-      if (rootFolder && artist.path) {
-        const artistFolder = artist.path.split('/').pop();
-        updated.path = `${rootFolder}/${artistFolder}`;
-      }
+    const updated: LidarrArtist = {
+      ...artist,
+      qualityProfileId,
+      metadataProfileId,
+      monitorNewItems,
+      tags: selectedTags,
+    };
 
-      const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated),
-      });
-
-      if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
-        queryClient.invalidateQueries({ queryKey: queryKeys.detail('lidarr', artist.id, instance) });
-        toast.success('Artist updated');
-        router.back();
-      } else {
-        toast.error('Failed to update artist');
-      }
-    } catch {
-      toast.error('Failed to update artist');
-    } finally {
-      setSaving(false);
+    if (rootFolder && artist.path) {
+      const artistFolder = artist.path.split('/').pop();
+      updated.path = `${rootFolder}/${artistFolder}`;
     }
+
+    saveMutation.mutate(updated);
   }
 
   if (loading) {

@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -49,53 +51,47 @@ function getIcon(name: string): LucideIcon {
 }
 
 export default function DashboardRefreshSettingsPage() {
-  const [data, setData] = useState<LayoutsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [overrides, setOverrides] = useState<OverrideMap>({});
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const queryClient = useQueryClient();
 
+  const layoutsQuery = useQuery({
+    queryKey: ['dashboard-layouts'],
+    queryFn: jsonFetcher<LayoutsResponse>('/api/dashboard-layouts'),
+    // Edit form: don't let a background refetch change `data` (and thus the dirty
+    // calc) mid-edit. Only mount + the post-save invalidate refresh it.
+    staleTime: Infinity,
+    refetchOnReconnect: false,
+  });
+  const data = layoutsQuery.data ?? null;
+  const loading = layoutsQuery.isLoading;
+
+  // Seed the editable override/draft/expanded state once from the loaded layouts.
+  const seeded = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/dashboard-layouts', { cache: 'no-store' });
-        if (!res.ok) throw new Error('Failed to load layouts');
-        const json: LayoutsResponse = await res.json();
-        if (cancelled) return;
-        setData(json);
-        const initial: OverrideMap = {};
-        const initialDrafts: Record<string, Record<string, string>> = {};
-        const initialExpanded: Record<string, boolean> = {};
-        for (const layout of json.layouts) {
-          initial[layout.id] = {};
-          initialDrafts[layout.id] = {};
-          for (const inst of layout.widgets) {
-            initial[layout.id][inst.id] = inst.refreshIntervalSecs;
-            initialDrafts[layout.id][inst.id] =
-              inst.refreshIntervalSecs !== undefined ? String(inst.refreshIntervalSecs) : '';
-          }
-          initialExpanded[layout.id] =
-            layout.id === json.defaultDesktopLayoutId
-            || layout.id === json.defaultMobileLayoutId;
-        }
-        setOverrides(initial);
-        setDrafts(initialDrafts);
-        setExpanded(initialExpanded);
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Failed to load layouts');
-      } finally {
-        if (!cancelled) setLoading(false);
+    if (seeded.current || !data) return;
+    seeded.current = true;
+    const initial: OverrideMap = {};
+    const initialDrafts: Record<string, Record<string, string>> = {};
+    const initialExpanded: Record<string, boolean> = {};
+    for (const layout of data.layouts) {
+      initial[layout.id] = {};
+      initialDrafts[layout.id] = {};
+      for (const inst of layout.widgets) {
+        initial[layout.id][inst.id] = inst.refreshIntervalSecs;
+        initialDrafts[layout.id][inst.id] =
+          inst.refreshIntervalSecs !== undefined ? String(inst.refreshIntervalSecs) : '';
       }
+      initialExpanded[layout.id] =
+        layout.id === data.defaultDesktopLayoutId
+        || layout.id === data.defaultMobileLayoutId;
     }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    setOverrides(initial);
+    setDrafts(initialDrafts);
+    setExpanded(initialExpanded);
+  }, [data]);
 
   const dirty = useMemo(() => {
     if (!data) return false;
@@ -203,36 +199,34 @@ export default function DashboardRefreshSettingsPage() {
     return false;
   }, [data, overrides]);
 
-  async function handleSave() {
-    if (!data || !dirty || hasInvalid) return;
-    setSaving(true);
-    const succeeded: string[] = [];
-    const failed: string[] = [];
-    try {
-      const layoutsToSave = data.layouts.filter((l) => dirtyLayoutIds.has(l.id));
+  const saveMutation = useMutation({
+    mutationFn: async (layoutsToSave: LayoutRecord[]) => {
+      const succeeded: string[] = [];
+      const failed: string[] = [];
       for (const layout of layoutsToSave) {
-        try {
-          const updatedWidgets = layout.widgets.map((inst) => {
-            const value = overrides[layout.id]?.[inst.id];
-            const next: WidgetInstance = { ...inst, refreshIntervalSecs: value };
-            if (value === undefined) delete next.refreshIntervalSecs;
-            return next;
-          });
-          const res = await fetch(`/api/dashboard-layouts/${layout.id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ widgets: updatedWidgets }),
-          });
-          if (!res.ok) {
-            const payload = await res.json().catch(() => ({}));
-            throw new Error(payload?.error ?? `Failed to save ${layout.name}`);
-          }
-          succeeded.push(layout.name);
-        } catch {
+        const updatedWidgets = layout.widgets.map((inst) => {
+          const value = overrides[layout.id]?.[inst.id];
+          const next: WidgetInstance = { ...inst, refreshIntervalSecs: value };
+          if (value === undefined) delete next.refreshIntervalSecs;
+          return next;
+        });
+        const res = await fetch(`/api/dashboard-layouts/${layout.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ widgets: updatedWidgets }),
+        });
+        // A 401 means the session was revoked — bail to the global MutationCache
+        // handler (redirect to /login) instead of recording it as a failed layout.
+        if (res.status === 401) throw new ApiError(401, 'Session expired');
+        if (!res.ok) {
           failed.push(layout.name);
+          continue;
         }
+        succeeded.push(layout.name);
       }
-
+      return { succeeded, failed };
+    },
+    onSuccess: ({ succeeded, failed }) => {
       if (failed.length === 0) {
         toast.success('Refresh intervals saved');
       } else if (succeeded.length === 0) {
@@ -242,15 +236,19 @@ export default function DashboardRefreshSettingsPage() {
           `Saved ${succeeded.length}, failed ${failed.length}: ${failed.join(', ')}`,
         );
       }
+      queryClient.invalidateQueries({ queryKey: ['dashboard-layouts'] });
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed to save refresh intervals');
+    },
+  });
+  const saving = saveMutation.isPending;
 
-      const refresh = await fetch('/api/dashboard-layouts', { cache: 'no-store' });
-      if (refresh.ok) {
-        const next: LayoutsResponse = await refresh.json();
-        setData(next);
-      }
-    } finally {
-      setSaving(false);
-    }
+  function handleSave() {
+    if (!data || !dirty || hasInvalid) return;
+    saveMutation.mutate(data.layouts.filter((l) => dirtyLayoutIds.has(l.id)));
   }
 
   return (

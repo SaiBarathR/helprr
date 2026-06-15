@@ -1,6 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -32,9 +35,6 @@ export default function StaffDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [detail, setDetail] = useState<AniListStaffDetailResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [descExpanded, setDescExpanded] = useState(false);
 
   // Anime media state
@@ -67,42 +67,32 @@ export default function StaffDetailPage() {
     setVaSort(DEFAULT_SORT);
   }, [id]);
 
+  const detailQuery = useQuery({
+    queryKey: ['anime', 'staff', id, animeSort, mangaSort, vaSort],
+    queryFn: jsonFetcher<AniListStaffDetailResponse>(
+      `/api/anime/staff/${id}?${new URLSearchParams({ animeSort, mangaSort, vaSort }).toString()}`,
+    ),
+    enabled: !!id,
+    // Keep appended "load more" pages alive — only a sort change (new key) or
+    // mount should reset the seeded lists, not a background refetch.
+    staleTime: Infinity,
+  });
+  const detail = detailQuery.data ?? null;
+  const loading = detailQuery.isLoading;
+  const error = detailQuery.error;
+
+  // Seed the paginated lists from the page-1 payload. Resets on a sort change
+  // (the query key changes), matching the old re-run-on-sort behavior.
   useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-
-    const params = new URLSearchParams({
-      animeSort,
-      mangaSort,
-      vaSort,
-    });
-
-    fetch(`/api/anime/staff/${id}?${params.toString()}`, { signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to load');
-        return res.json();
-      })
-      .then((data: AniListStaffDetailResponse) => {
-        if (!controller.signal.aborted) {
-          setDetail(data);
-          setAnimeMedia(data.animeMedia);
-          setAnimePageInfo(data.animePageInfo);
-          setMangaMedia(data.mangaMedia);
-          setMangaPageInfo(data.mangaPageInfo);
-          setVaMedia(data.voiceActingMedia);
-          setVaPageInfo(data.voiceActingPageInfo);
-          setLoading(false);
-        }
-      })
-      .catch((e) => {
-        if (e instanceof DOMException && e.name === 'AbortError') return;
-        setError(e.message);
-        setLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [id, animeSort, mangaSort, vaSort]);
+    const data = detailQuery.data;
+    if (!data) return;
+    setAnimeMedia(data.animeMedia);
+    setAnimePageInfo(data.animePageInfo);
+    setMangaMedia(data.mangaMedia);
+    setMangaPageInfo(data.mangaPageInfo);
+    setVaMedia(data.voiceActingMedia);
+    setVaPageInfo(data.voiceActingPageInfo);
+  }, [detailQuery.data]);
 
   // Fetch more anime
   const fetchMoreAnime = useCallback(async () => {
@@ -111,11 +101,12 @@ export default function StaffDetailPage() {
     try {
       const page = (animePageInfo.currentPage || 1) + 1;
       const res = await fetch(`/api/anime/staff/${id}?page=${page}&sort=${animeSort}&type=ANIME`);
-      if (!res.ok) throw new Error('Failed to fetch');
+      if (!res.ok) throw new ApiError(res.status, 'Failed to fetch');
       const data = await res.json();
       setAnimeMedia((prev) => [...prev, ...data.edges]);
       setAnimePageInfo(data.pageInfo);
     } catch (e) {
+      handleAuthError(e); // 401 → redirect to /login; no-op otherwise
       console.error(e);
     } finally {
       setAnimeLoadingMore(false);
@@ -129,11 +120,12 @@ export default function StaffDetailPage() {
     try {
       const page = (mangaPageInfo.currentPage || 1) + 1;
       const res = await fetch(`/api/anime/staff/${id}?page=${page}&sort=${mangaSort}&type=MANGA`);
-      if (!res.ok) throw new Error('Failed to fetch');
+      if (!res.ok) throw new ApiError(res.status, 'Failed to fetch');
       const data = await res.json();
       setMangaMedia((prev) => [...prev, ...data.edges]);
       setMangaPageInfo(data.pageInfo);
     } catch (e) {
+      handleAuthError(e); // 401 → redirect to /login; no-op otherwise
       console.error(e);
     } finally {
       setMangaLoadingMore(false);
@@ -147,11 +139,12 @@ export default function StaffDetailPage() {
     try {
       const page = (vaPageInfo.currentPage || 1) + 1;
       const res = await fetch(`/api/anime/staff/${id}?page=${page}&sort=${vaSort}&type=VOICE_ACTING`);
-      if (!res.ok) throw new Error('Failed to fetch');
+      if (!res.ok) throw new ApiError(res.status, 'Failed to fetch');
       const data = await res.json();
       setVaMedia((prev) => [...prev, ...data.edges]);
       setVaPageInfo(data.pageInfo);
     } catch (e) {
+      handleAuthError(e); // 401 → redirect to /login; no-op otherwise
       console.error(e);
     } finally {
       setVaLoadingMore(false);
@@ -211,7 +204,7 @@ export default function StaffDetailPage() {
     return (
       <div>
         <PageHeader className="-mx-2 md:-mx-6" title="Error" />
-        <div className="p-4 text-center text-muted-foreground">{error || 'Failed to load'}</div>
+        <div className="p-4 text-center text-muted-foreground">{error?.message || 'Failed to load'}</div>
       </div>
     );
   }

@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ArrowLeft, ChevronRight, ChevronDown, Folder, File, Loader2 } from 'lucide-react';
@@ -38,36 +40,58 @@ export default function TorrentFilesPage() {
   const hash = params.hash;
   const torrentName = searchParams.get('name') || 'Torrent Files';
 
-  const [files, setFiles] = useState<TorrentFile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
+  const queryClient = useQueryClient();
+  const filesKey = ['qbittorrent', hash, 'files'] as const;
 
-  const pendingMutationRef = useRef(false);
-  const mutationIdRef = useRef(0);
+  // Optimistic priority change. A 401 carries its status to the global
+  // MutationCache handler (redirect to /login).
+  const setPriorityMutation = useMutation({
+    mutationFn: async ({ fileIds, priority }: { fileIds: number[]; priority: number }) => {
+      const res = await fetch(`/api/qbittorrent/${hash}/files/priority`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: fileIds, priority }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error || 'Failed to set priority');
+      }
+    },
+    onMutate: async ({ fileIds, priority }) => {
+      // Cancel any in-flight poll so it can't clobber the optimistic value.
+      await queryClient.cancelQueries({ queryKey: filesKey });
+      const previous = queryClient.getQueryData<{ files: TorrentFile[] }>(filesKey);
+      queryClient.setQueryData<{ files: TorrentFile[] }>(filesKey, (old) =>
+        old
+          ? { ...old, files: old.files.map((f) => (fileIds.includes(f.index) ? { ...f, priority } : f)) }
+          : old,
+      );
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(filesKey, context.previous);
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to set priority');
+    },
+  });
+  const { mutate: mutatePriority, isPending: priorityPending } = setPriorityMutation;
 
-  // Fetch files from the existing details endpoint
-  const fetchFiles = useCallback(async () => {
-    // Skip refresh if a mutation is in-flight
-    if (pendingMutationRef.current) return;
-
-    try {
-      const res = await fetch(`/api/qbittorrent/${hash}/details`);
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = await res.json();
-      setFiles(data.files as TorrentFile[]);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch files');
-    } finally {
-      setLoading(false);
-    }
-  }, [hash]);
-
-  useEffect(() => {
-    void fetchFiles();
-  }, [fetchFiles]);
+  const filesQuery = useQuery({
+    queryKey: filesKey,
+    queryFn: jsonFetcher<{ files: TorrentFile[] }>(`/api/qbittorrent/${hash}/details`),
+    select: (d) => d.files ?? [],
+    // Pause polling while a priority change is in flight so the next poll can't
+    // overwrite the optimistic update before the server commits (matches the old
+    // pendingMutationRef guard).
+    refetchInterval: () => (priorityPending ? false : refreshIntervalMs),
+    refetchIntervalInBackground: false,
+  });
+  const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data]);
+  const loading = filesQuery.isLoading;
+  const error = filesQuery.error;
 
   useEffect(() => {
     async function loadRefreshInterval() {
@@ -76,13 +100,6 @@ export default function TorrentFilesPage() {
     }
     loadRefreshInterval();
   }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void fetchFiles();
-    }, refreshIntervalMs);
-    return () => clearInterval(interval);
-  }, [fetchFiles, refreshIntervalMs]);
 
   const tree = useMemo(() => buildFileTree(files), [files]);
 
@@ -93,45 +110,14 @@ export default function TorrentFilesPage() {
     return wp / totalSize;
   }, [files, totalSize]);
 
-  // Set priority via API with optimistic update
-  const setPriority = useCallback(async (fileIds: number[], priority: number) => {
-    const mutationId = ++mutationIdRef.current;
-    pendingMutationRef.current = true;
-
-    // Optimistic update
-    let prevFiles: TorrentFile[] = [];
-    setFiles((prev) => {
-      prevFiles = prev;
-      return prev.map((f) => (fileIds.includes(f.index) ? { ...f, priority } : f));
-    });
-
-    try {
-      const res = await fetch(`/api/qbittorrent/${hash}/files/priority`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: fileIds, priority }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to set priority');
-      }
-    } catch (err) {
-      // Revert on error
-      if (mutationId === mutationIdRef.current) {
-        setFiles(prevFiles);
-        toast.error(err instanceof Error ? err.message : 'Failed to set priority');
-      }
-    } finally {
-      if (mutationId === mutationIdRef.current) {
-        pendingMutationRef.current = false;
-      }
-    }
-  }, [hash]);
+  const setPriority = useCallback((fileIds: number[], priority: number) => {
+    mutatePriority({ fileIds, priority });
+  }, [mutatePriority]);
 
   // Toggle file download (priority 0 <-> 1)
   const toggleFileDownload = useCallback((fileIds: number[], currentlySelected: boolean) => {
     const newPriority = currentlySelected ? 0 : 1;
-    void setPriority(fileIds, newPriority);
+    setPriority(fileIds, newPriority);
   }, [setPriority]);
 
   // Toggle directory expand/collapse
@@ -163,7 +149,7 @@ export default function TorrentFilesPage() {
       <div className="space-y-3">
         <PageHeader name={torrentName} onBack={() => router.back()} />
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-          <p>{error}</p>
+          <p>{error?.message ?? 'Failed to fetch files'}</p>
         </div>
       </div>
     );
