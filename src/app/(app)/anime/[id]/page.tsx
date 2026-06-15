@@ -28,6 +28,8 @@ import { formatAniListRankingLabel, formatFuzzyDate, isMovieFormat } from '@/lib
 import type { AniListDetailResponse, AnimeSonarrMappingItem, AnimeSonarrMappingsResponse } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 import { useQuery } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import {
   getDetailViewState,
   setDetailViewState,
@@ -83,7 +85,9 @@ export default function AnimeDetailPage() {
       const res = await fetch(`/api/anime/${id}`, { signal });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to load');
+        // ApiError so a 401 (revoked Helprr session — /api/anime serves public
+        // AniList data, no AniList token involved) redirects via the global handler.
+        throw new ApiError(res.status, data.error || 'Failed to load');
       }
       return res.json() as Promise<DetailWithLibrary>;
     },
@@ -135,7 +139,10 @@ export default function AnimeDetailPage() {
       ? `?sonarrSeriesId=${librarySeriesId}${libraryInstanceId ? `&sonarrInstanceId=${libraryInstanceId}` : ''}`
       : '';
     fetch(`/api/anime/${id}/sonarr${hint}`, { signal: controller.signal })
-      .then((r) => (r.ok ? (r.json() as Promise<AnimeSonarrMappingsResponse>) : null))
+      .then((r) => {
+        if (r.status === 401) handleAuthError(new ApiError(401, 'Session expired'));
+        return r.ok ? (r.json() as Promise<AnimeSonarrMappingsResponse>) : null;
+      })
       .then((data) => {
         if (data) setSonarrMappings(data.mappings);
       })
@@ -352,6 +359,11 @@ export default function AnimeDetailPage() {
         return;
       }
       const res = await fetch(`/api/jellyfin/lookup?${params}`);
+      if (res.status === 401) {
+        popup.close();
+        handleAuthError(new ApiError(401, 'Session expired'));
+        return;
+      }
       const data = res.ok ? await res.json() : null;
       if (data?.itemId) {
         popup.location.href = `${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`;
