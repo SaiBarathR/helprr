@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { ApiError } from '@/lib/query-fetch';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { Sparkles, Loader2, ChevronRight, ExternalLink, AlertTriangle, Check } from 'lucide-react';
@@ -36,12 +38,8 @@ export function AnilistConnectionCard() {
   const router = useRouter();
   const pathname = usePathname();
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [viewer, setViewer] = useState<ViewerResponse | null>(null);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
   const [redirectUri, setRedirectUri] = useState('');
 
   useEffect(() => {
@@ -50,26 +48,25 @@ export function AnilistConnectionCard() {
     }
   }, []);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/anilist/viewer');
-      if (!res.ok) {
-        setViewer({ configured: false, connected: false, requiresReauth: false });
-        return;
-      }
-      const data: ViewerResponse = await res.json();
-      setViewer(data);
-    } catch {
-      setViewer({ configured: false, connected: false, requiresReauth: false });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  const viewerQuery = useQuery({
+    queryKey: ['anilist', 'viewer'],
+    queryFn: async ({ signal }): Promise<ViewerResponse> => {
+      const res = await fetch('/api/anilist/viewer', { signal });
+      // /api/anilist/* returns 401 for AniList-token issues too (not only a
+      // revoked Helprr session), so a !ok here degrades to "not connected"
+      // rather than redirecting — preserving the original behavior. The
+      // authorize/disconnect mutations below hit Helprr's own /api/services/*
+      // endpoints, where a 401 IS a revoked session and does redirect.
+      if (!res.ok) return { configured: false, connected: false, requiresReauth: false };
+      return res.json();
+    },
+  });
+  const viewer = viewerQuery.data ?? null;
+  const loading = viewerQuery.isLoading;
+  const { refetch: refetchViewer } = viewerQuery;
+  const reload = useCallback(() => {
+    void refetchViewer();
+  }, [refetchViewer]);
 
   // Surface OAuth callback result, but only fire the toast once per status
   const status = searchParams.get('anilist');
@@ -105,51 +102,57 @@ export function AnilistConnectionCard() {
     return 'Not connected';
   }, [loading, isConnected, requiresReauth, isConfigured, viewer]);
 
-  async function handleConnect() {
+  const connectMutation = useMutation({
+    mutationFn: async (body: { clientId: string; clientSecret: string }) => {
+      const res = await fetch('/api/services/anilist/authorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.authorizeUrl) {
+        throw new ApiError(res.status, data?.error || 'Failed to start AniList authorization');
+      }
+      return data as { authorizeUrl: string };
+    },
+    onSuccess: (data) => {
+      window.location.href = data.authorizeUrl;
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to start AniList authorization');
+    },
+  });
+  const submitting = connectMutation.isPending;
+
+  function handleConnect() {
     if (!clientId.trim() || !clientSecret.trim()) {
       toast.error('Client ID and Client Secret are required');
       return;
     }
-
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/services/anilist/authorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clientId: clientId.trim(),
-          clientSecret: clientSecret.trim(),
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.authorizeUrl) {
-        toast.error(data.error || 'Failed to start AniList authorization');
-        setSubmitting(false);
-        return;
-      }
-      window.location.href = data.authorizeUrl;
-    } catch {
-      toast.error('Failed to start AniList authorization');
-      setSubmitting(false);
-    }
+    connectMutation.mutate({ clientId: clientId.trim(), clientSecret: clientSecret.trim() });
   }
 
-  async function handleDisconnect() {
-    setDisconnecting(true);
-    try {
+  const disconnectMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch('/api/services/anilist/disconnect', { method: 'POST' });
-      if (!res.ok) {
-        toast.error('Failed to disconnect');
-        return;
-      }
+      if (!res.ok) throw new ApiError(res.status, 'Failed to disconnect');
+    },
+    onSuccess: () => {
       setClientId('');
       setClientSecret('');
       toast.success('AniList disconnected');
-      await reload();
-    } finally {
-      setDisconnecting(false);
-    }
+      reload();
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed to disconnect');
+    },
+  });
+  const disconnecting = disconnectMutation.isPending;
+
+  function handleDisconnect() {
+    disconnectMutation.mutate();
   }
 
   return (
