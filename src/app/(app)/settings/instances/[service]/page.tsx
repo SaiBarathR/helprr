@@ -1,6 +1,9 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useRef, useState, use } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import Link from 'next/link';
 import { notFound, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -22,6 +25,17 @@ import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 interface JellyfinUserOption {
   id: string;
   name: string;
+}
+
+interface ServiceRecord {
+  id?: string;
+  type?: string;
+  label?: string;
+  isDefault?: boolean;
+  url?: string;
+  apiKey?: string;
+  username?: string | null;
+  externalUrl?: string | null;
 }
 
 interface JellyfinApiUser {
@@ -91,109 +105,87 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const [jellyfinValidated, setJellyfinValidated] = useState<{ userId: string } | null>(null);
   const [jellyfinUsers, setJellyfinUsers] = useState<JellyfinUserOption[]>([]);
   const [configured, setConfigured] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [testing, setTesting] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savingExternalUrl, setSavingExternalUrl] = useState(false);
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [isDefault, setIsDefault] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch('/api/services');
-        if (!res.ok) {
-          if (!cancelled) setLoading(false);
-          return;
-        }
-        const data = (await res.json()) as Array<{
-          id?: string;
-          type?: string;
-          label?: string;
-          isDefault?: boolean;
-          url?: string;
-          apiKey?: string;
-          username?: string | null;
-          externalUrl?: string | null;
-        }>;
-        const existing = isMultiInstance
-          ? (editingId ? data.find((c) => c.id === editingId) : undefined)
-          : data.find((c) => c.type === type);
-        if (existing) {
-          if (!cancelled) {
-            setEditingConnId(existing.id ?? null);
-            if (isMultiInstance) {
-              setLabel(existing.label ?? '');
-              setIsDefault(existing.isDefault ?? false);
-            }
-            setUrl(existing.url ?? '');
-            setApiKey(existing.apiKey ?? '');
-            setUsername(existing.username ?? '');
-            setExternalUrl(existing.externalUrl ?? '');
-            setConfigured(true);
-            if (isJellyfin && existing.username) {
-              setJellyfinValidated({ userId: existing.username });
-            }
-          }
-          if (isJellyfin && existing.url && existing.apiKey) {
-            try {
-              const usersRes = await fetch('/api/jellyfin/users');
-              if (usersRes.ok) {
-                const usersData = await usersRes.json();
-                const rawUsers: unknown[] = Array.isArray((usersData as { users?: unknown }).users)
-                  ? (usersData as { users: unknown[] }).users
-                  : [];
-                const options = mapJellyfinUsers(rawUsers);
-                if (existing.username && !options.some((u) => u.id === existing.username)) {
-                  options.unshift({ id: existing.username, name: `Saved User (${existing.username})` });
-                }
-                if (!cancelled) setJellyfinUsers(options);
-              }
-            } catch {
-              // noop
-            }
-          }
-        }
-      } catch {
-        // noop
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [type, isJellyfin, isMultiInstance, editingId]);
+  const servicesQuery = useQuery({
+    queryKey: ['services'],
+    queryFn: jsonFetcher<ServiceRecord[]>('/api/services'),
+  });
+  const loading = servicesQuery.isLoading;
 
-  async function handleTest() {
-    const trimmedUrl = url.trim();
-    const trimmedKey = apiKey.trim();
-    const trimmedUser = username?.trim() ?? '';
-    if (!trimmedUrl || !trimmedKey) {
-      toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
-      return;
+  // Seed the form from the matching connection. Re-seeds when the edited entity
+  // (editingId) changes, but not on a background refetch (which would clobber
+  // in-progress edits).
+  const seededFor = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const data = servicesQuery.data;
+    if (!data || seededFor.current === editingId) return;
+    seededFor.current = editingId;
+    const existing = isMultiInstance
+      ? (editingId ? data.find((c) => c.id === editingId) : undefined)
+      : data.find((c) => c.type === type);
+    if (!existing) return;
+    setEditingConnId(existing.id ?? null);
+    if (isMultiInstance) {
+      setLabel(existing.label ?? '');
+      setIsDefault(existing.isDefault ?? false);
     }
-    setTesting(true);
-    try {
+    setUrl(existing.url ?? '');
+    setApiKey(existing.apiKey ?? '');
+    setUsername(existing.username ?? '');
+    setExternalUrl(existing.externalUrl ?? '');
+    setConfigured(true);
+    if (isJellyfin && existing.username) {
+      setJellyfinValidated({ userId: existing.username });
+    }
+    if (isJellyfin && existing.url && existing.apiKey) {
+      void (async () => {
+        try {
+          const usersRes = await fetch('/api/jellyfin/users');
+          if (usersRes.status === 401) {
+            handleAuthError(new ApiError(401, 'Session expired'));
+            return;
+          }
+          if (!usersRes.ok) return;
+          const usersData = await usersRes.json();
+          const rawUsers: unknown[] = Array.isArray((usersData as { users?: unknown }).users)
+            ? (usersData as { users: unknown[] }).users
+            : [];
+          const options = mapJellyfinUsers(rawUsers);
+          if (existing.username && !options.some((u) => u.id === existing.username)) {
+            options.unshift({ id: existing.username, name: `Saved User (${existing.username})` });
+          }
+          setJellyfinUsers(options);
+        } catch {
+          // noop
+        }
+      })();
+    }
+  }, [servicesQuery.data, editingId, isJellyfin, isMultiInstance, type]);
+
+  const testMutation = useMutation({
+    mutationFn: async (vars: { url: string; apiKey: string; username: string }) => {
       const res = await fetch('/api/services/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type,
-          url: trimmedUrl,
-          apiKey: trimmedKey,
-          ...(isQbt && { username: trimmedUser || 'admin' }),
+          url: vars.url,
+          apiKey: vars.apiKey,
+          ...(isQbt && { username: vars.username || 'admin' }),
         }),
       });
-      const data = await res.json();
+      // The test endpoint returns 200 with { success } even on a failed probe;
+      // only a 401 means the session was revoked → redirect via the global handler.
+      if (res.status === 401) throw new ApiError(401, 'Session expired');
+      return res.json();
+    },
+    onSuccess: (data) => {
       if (data.success) {
         if (isJellyfin && data.userId) {
-          const rawUsers: unknown[] = Array.isArray((data as { users?: unknown }).users)
-            ? (data as { users: unknown[] }).users
-            : [];
+          const rawUsers: unknown[] = Array.isArray(data.users) ? data.users : [];
           const users = mapJellyfinUsers(rawUsers);
           setJellyfinUsers(users);
           const selectedUserId = users.find((u) => u.id === username)?.id
@@ -220,18 +212,118 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           icon: <XCircle className="h-4 w-4 text-red-500" />,
         });
       }
-    } catch {
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
       if (isJellyfin) {
         setJellyfinValidated(null);
         setJellyfinUsers([]);
       }
       toast.error('Failed to test connection');
-    } finally {
-      setTesting(false);
+    },
+  });
+  const testing = testMutation.isPending;
+
+  const saveMutation = useMutation({
+    mutationFn: async (body: Record<string, string | boolean>) => {
+      const res = await fetch('/api/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error || 'Failed to save connection');
+      }
+      return res.json().catch(() => null);
+    },
+    onSuccess: (saved, body) => {
+      const wasNew = !body.id;
+      if (saved?.id) setEditingConnId(saved.id);
+      setConfigured(true);
+      invalidateExternalUrls();
+      toast.success('Connection saved');
+      if (isMultiInstance && wasNew) {
+        router.push('/settings/instances');
+      }
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to save connection');
+    },
+  });
+  const saving = saveMutation.isPending;
+
+  const externalUrlMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/services/external-url', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingConnId, externalUrl: externalUrl.trim() }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new ApiError(res.status, data?.error || 'Failed to save external URL');
+      }
+    },
+    onSuccess: () => {
+      invalidateExternalUrls();
+      toast.success('External URL saved');
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to save external URL');
+    },
+  });
+  const savingExternalUrl = externalUrlMutation.isPending;
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/services/${editingConnId}`, { method: 'DELETE' });
+      if (!res.ok) throw new ApiError(res.status, 'Failed to remove instance');
+    },
+    onSuccess: () => {
+      toast.success('Instance removed');
+      invalidateExternalUrls();
+      router.push('/settings/instances');
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed to remove instance');
+    },
+  });
+
+  const makeDefaultMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/services/${editingConnId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDefault: true }),
+      });
+      if (!res.ok) throw new ApiError(res.status, 'Failed to set default');
+    },
+    onSuccess: () => {
+      toast.success('Set as default');
+      setIsDefault(true);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed to set default');
+    },
+  });
+
+  function handleTest() {
+    const trimmedUrl = url.trim();
+    const trimmedKey = apiKey.trim();
+    const trimmedUser = username?.trim() ?? '';
+    if (!trimmedUrl || !trimmedKey) {
+      toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
+      return;
     }
+    testMutation.mutate({ url: trimmedUrl, apiKey: trimmedKey, username: trimmedUser });
   }
 
-  async function handleSave() {
+  function handleSave() {
     const trimmedUrl = url.trim();
     const trimmedKey = apiKey.trim();
     const trimmedUser = username?.trim() ?? '';
@@ -247,99 +339,38 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       toast.error('Please select a Jellyfin user');
       return;
     }
-    setSaving(true);
-    try {
-      const body: Record<string, string | boolean> = { type, url: trimmedUrl, apiKey: trimmedKey };
-      if (isMultiInstance) {
-        if (!label.trim()) {
-          toast.error('Please name this instance');
-          setSaving(false);
-          return;
-        }
-        body.label = label.trim();
-        if (editingConnId) body.id = editingConnId;
-      }
-      if (isQbt) body.username = trimmedUser || 'admin';
-      else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
 
-      const res = await fetch('/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-
-      if (res.ok) {
-        const wasNew = !editingConnId;
-        const saved = await res.json().catch(() => null);
-        if (saved?.id) setEditingConnId(saved.id);
-        setConfigured(true);
-        invalidateExternalUrls();
-        toast.success('Connection saved');
-        if (isMultiInstance && wasNew) {
-          router.push('/settings/instances');
-        }
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Failed to save connection');
+    const body: Record<string, string | boolean> = { type, url: trimmedUrl, apiKey: trimmedKey };
+    if (isMultiInstance) {
+      if (!label.trim()) {
+        toast.error('Please name this instance');
+        return;
       }
-    } catch {
-      toast.error('Failed to save connection');
-    } finally {
-      setSaving(false);
+      body.label = label.trim();
+      if (editingConnId) body.id = editingConnId;
     }
+    if (isQbt) body.username = trimmedUser || 'admin';
+    else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
+
+    saveMutation.mutate(body);
   }
 
-  async function handleSaveExternalUrl() {
+  function handleSaveExternalUrl() {
     if (!editingConnId) {
       toast.error('Save the connection first');
       return;
     }
-    setSavingExternalUrl(true);
-    try {
-      const res = await fetch('/api/services/external-url', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingConnId, externalUrl: externalUrl.trim() }),
-      });
-      if (res.ok) {
-        invalidateExternalUrls();
-        toast.success('External URL saved');
-      } else {
-        const data = await res.json().catch(() => null);
-        toast.error(data?.error || 'Failed to save external URL');
-      }
-    } catch {
-      toast.error('Failed to save external URL');
-    } finally {
-      setSavingExternalUrl(false);
-    }
+    externalUrlMutation.mutate();
   }
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!editingConnId) return;
-    const res = await fetch(`/api/services/${editingConnId}`, { method: 'DELETE' });
-    if (res.ok) {
-      toast.success('Instance removed');
-      invalidateExternalUrls();
-      router.push('/settings/instances');
-    } else {
-      toast.error('Failed to remove instance');
-    }
+    deleteMutation.mutate();
   }
 
-  async function handleMakeDefault() {
+  function handleMakeDefault() {
     if (!editingConnId) return;
-    const res = await fetch(`/api/services/${editingConnId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isDefault: true }),
-    });
-    if (res.ok) {
-      toast.success('Set as default');
-      setIsDefault(true);
-    } else {
-      toast.error('Failed to set default');
-    }
+    makeDefaultMutation.mutate();
   }
 
   const Icon = config.icon;

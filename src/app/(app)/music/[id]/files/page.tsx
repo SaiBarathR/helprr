@@ -1,7 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { useParams, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Loader2, Trash2 } from 'lucide-react';
@@ -21,14 +23,6 @@ import { toast } from 'sonner';
 import type { LidarrArtist, LidarrAlbum, LidarrTrackFile, HistoryItem } from '@/types';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
-
-async function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
 
@@ -79,36 +73,70 @@ export default function ArtistFilesPage() {
   const { id } = useParams<{ id: string }>();
   const artistId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
-  const [artist, setArtist] = useState<LidarrArtist | null>(null);
-  const [albums, setAlbums] = useState<LidarrAlbum[]>([]);
-  const [files, setFiles] = useState<LidarrTrackFile[]>([]);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<LidarrTrackFile | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const canDelete = useCan('music.delete');
+  const enabled = Number.isFinite(artistId);
+  const inst = instance ?? 'default';
+  const trackfilesKey = ['lidarr', 'trackfile', inst, artistId] as const;
 
-  useEffect(() => {
-    let cancelled = false;
-    void Promise.allSettled([
-      lidarrFetch(instance, `/api/lidarr/${artistId}`).then((r) => (r.ok ? r.json() : null)),
-      lidarrFetch(instance, `/api/lidarr/${artistId}/albums`).then((r) => (r.ok ? r.json() : [])),
-      lidarrFetch(instance, `/api/lidarr/trackfile?artistId=${artistId}`).then((r) => (r.ok ? r.json() : [])),
-      lidarrFetch(instance, `/api/lidarr/history/artist?artistId=${artistId}`).then((r) => (r.ok ? r.json() : [])),
-    ])
-      .then(([a, alb, f, h]) => {
-        if (cancelled) return;
-        if (a.status === 'fulfilled') setArtist(a.value as LidarrArtist | null);
-        if (alb.status === 'fulfilled') setAlbums(Array.isArray(alb.value) ? alb.value : []);
-        if (f.status === 'fulfilled') setFiles(Array.isArray(f.value) ? f.value : []);
-        if (h.status === 'fulfilled') setHistory(Array.isArray(h.value) ? h.value : []);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+  const artistQuery = useQuery({
+    queryKey: queryKeys.detail('lidarr', artistId, instance),
+    queryFn: jsonFetcher<LidarrArtist>(`/api/lidarr/${artistId}`, instance),
+    enabled,
+  });
+  const albumsQuery = useQuery({
+    queryKey: ['lidarr', 'albums', inst, artistId],
+    queryFn: jsonFetcher<LidarrAlbum[]>(`/api/lidarr/${artistId}/albums`, instance),
+    enabled,
+    select: ensureArray,
+  });
+  const filesQuery = useQuery({
+    queryKey: trackfilesKey,
+    queryFn: jsonFetcher<LidarrTrackFile[]>(`/api/lidarr/trackfile?artistId=${artistId}`, instance),
+    enabled,
+    select: ensureArray,
+  });
+  const historyQuery = useQuery({
+    queryKey: ['lidarr', 'history', 'artist', inst, artistId],
+    queryFn: jsonFetcher<HistoryItem[]>(`/api/lidarr/history/artist?artistId=${artistId}`, instance),
+    enabled,
+    select: ensureArray,
+  });
+
+  const artist = artistQuery.data ?? null;
+  const albums = albumsQuery.data ?? [];
+  const files = filesQuery.data ?? [];
+  const history = historyQuery.data ?? [];
+  const loading =
+    artistQuery.isLoading || albumsQuery.isLoading || filesQuery.isLoading || historyQuery.isLoading;
+
+  const deleteMutation = useMutation({
+    mutationFn: async (fileId: number) => {
+      const res = await fetch(withInstanceQuery(`/api/lidarr/trackfile/${fileId}`, instance), {
+        method: 'DELETE',
       });
-    return () => { cancelled = true; };
-  }, [artistId, instance]);
+      // ApiError (not a plain Error) so a 401 carries its status to the global
+      // MutationCache handler, which redirects to /login.
+      if (!res.ok) throw new ApiError(res.status, 'Failed to delete file');
+    },
+    onSuccess: (_data, fileId) => {
+      // Drop the deleted file from the cached list in place (matches the old
+      // optimistic setFiles); no refetch needed.
+      queryClient.setQueryData<LidarrTrackFile[]>(trackfilesKey, (prev) =>
+        prev ? prev.filter((f) => f.id !== fileId) : prev
+      );
+      toast.success('File deleted');
+      setSelectedFile(null);
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error('Failed to delete file');
+    },
+  });
+  const deleting = deleteMutation.isPending;
 
   const albumTitleById = useMemo(
     () => new Map(albums.map((a) => [a.id, a.title])),
@@ -129,20 +157,9 @@ export default function ArtistFilesPage() {
     }));
   }, [files, albumTitleById]);
 
-  async function handleDelete() {
+  function handleDelete() {
     if (!selectedFile) return;
-    setDeleting(true);
-    try {
-      const res = await lidarrFetch(instance, `/api/lidarr/trackfile/${selectedFile.id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setFiles((prev) => prev.filter((f) => f.id !== selectedFile.id));
-        toast.success('File deleted');
-        setSelectedFile(null);
-      } else {
-        toast.error('Failed to delete file');
-      }
-    } catch { toast.error('Failed to delete file'); }
-    finally { setDeleting(false); }
+    deleteMutation.mutate(selectedFile.id);
   }
 
   if (loading) {

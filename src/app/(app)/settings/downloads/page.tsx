@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import Link from 'next/link';
 import { ChevronLeft, Plus, Trash2, Save, Loader2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
@@ -75,31 +77,56 @@ export default function DownloadsSettingsPage() {
   const [rules, setRules] = useState<BandwidthRule[]>([]);
   const [timeZone, setTimeZone] = useState<string>('UTC');
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/qbittorrent/bandwidth-schedule');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as ScheduleResponse;
-      setRules(data.schedule.rules);
-      setTimeZone(data.timeZone);
-      setActiveRuleId(data.activeRuleId);
-      setDirty(false);
-    } catch (err) {
-      console.error('Failed to load bandwidth schedule', err);
-      toast.error('Failed to load bandwidth schedule');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const scheduleQuery = useQuery({
+    queryKey: ['qbittorrent', 'bandwidth-schedule'],
+    queryFn: jsonFetcher<ScheduleResponse>('/api/qbittorrent/bandwidth-schedule'),
+  });
+  const loading = scheduleQuery.isLoading;
 
+  // Seed the editable state once from the loaded schedule (don't re-seed on
+  // background refetches — that would clobber in-progress edits). The save
+  // mutation updates this state directly from its response.
+  const seeded = useRef(false);
   useEffect(() => {
-    void load();
-  }, [load]);
+    const data = scheduleQuery.data;
+    if (seeded.current || !data) return;
+    seeded.current = true;
+    setRules(data.schedule.rules);
+    setTimeZone(data.timeZone);
+    setActiveRuleId(data.activeRuleId);
+  }, [scheduleQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (rulesToSave: BandwidthRule[]) => {
+      const res = await fetch('/api/qbittorrent/bandwidth-schedule', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rules: rulesToSave }),
+      });
+      const payload = (await res.json().catch(() => null)) as ScheduleResponse | { error?: string } | null;
+      if (!res.ok || !payload || !('schedule' in payload)) {
+        const message = (payload && 'error' in payload && payload.error) || 'Failed to save schedule';
+        // ApiError so a 401 carries its status to the global MutationCache handler.
+        throw new ApiError(res.status, message);
+      }
+      return payload;
+    },
+    onSuccess: (payload) => {
+      setRules(payload.schedule.rules);
+      setTimeZone(payload.timeZone);
+      setActiveRuleId(payload.activeRuleId);
+      setDirty(false);
+      toast.success('Schedule saved');
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to save schedule');
+    },
+  });
+  const saving = saveMutation.isPending;
 
   const activeRule = useMemo(
     () => rules.find((r) => r.id === activeRuleId) ?? null,
@@ -119,33 +146,6 @@ export default function DownloadsSettingsPage() {
   function removeRule(id: string) {
     setRules((prev) => prev.filter((r) => r.id !== id));
     setDirty(true);
-  }
-
-  async function save() {
-    setSaving(true);
-    try {
-      const res = await fetch('/api/qbittorrent/bandwidth-schedule', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rules }),
-      });
-      const payload = (await res.json().catch(() => null)) as ScheduleResponse | { error?: string } | null;
-      if (!res.ok || !payload || !('schedule' in payload)) {
-        const message = (payload && 'error' in payload && payload.error) || 'Failed to save schedule';
-        toast.error(message);
-        return;
-      }
-      setRules(payload.schedule.rules);
-      setTimeZone(payload.timeZone);
-      setActiveRuleId(payload.activeRuleId);
-      setDirty(false);
-      toast.success('Schedule saved');
-    } catch (err) {
-      console.error('Failed to save bandwidth schedule', err);
-      toast.error('Failed to save schedule');
-    } finally {
-      setSaving(false);
-    }
   }
 
   return (
@@ -225,7 +225,7 @@ export default function DownloadsSettingsPage() {
         </Button>
         <Button
           type="button"
-          onClick={() => void save()}
+          onClick={() => saveMutation.mutate(rules)}
           disabled={!dirty || saving || loading}
           className="h-9"
         >
