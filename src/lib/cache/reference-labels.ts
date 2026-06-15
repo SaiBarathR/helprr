@@ -11,7 +11,12 @@ import type { ResolvedLabels } from '@/types';
 // Best-effort: a failed instance yields empty maps (labels fall back to undefined,
 // same as an un-enriched row) instead of failing the whole list.
 
-const REFERENCE_TTL_SECONDS = 600;
+// Matches the 120s tagged-library TTL. A longer TTL here would let labels lag the
+// library: after a bulk-tag edit (which can create a new tag id) the refreshed
+// library shows the new id while a stale label map lacks its name, so the chip
+// renders blank until the labels expire. Keeping the two TTLs equal means labels
+// never go stale for longer than the library row that references them.
+const REFERENCE_TTL_SECONDS = 120;
 
 export interface InstanceLabelMaps {
   qualityProfile: Record<number, string>;
@@ -25,28 +30,39 @@ interface ReferenceClient {
   getMetadataProfiles?(): Promise<Array<{ id: number; name: string }>>;
 }
 
-const EMPTY_MAPS: InstanceLabelMaps = { qualityProfile: {}, tag: {}, metadataProfile: {} };
+// Resolve one reference call independently so a single failing endpoint (e.g. a
+// transient 500 from getMetadataProfiles) doesn't drop the other two label maps
+// for the instance. `ok:false` means "don't cache" — a partial map would otherwise
+// pin missing labels for the whole TTL.
+async function settle<T>(p: Promise<T[]> | undefined): Promise<{ ok: boolean; data: T[] }> {
+  if (!p) return { ok: true, data: [] };
+  try {
+    return { ok: true, data: await p };
+  } catch {
+    return { ok: false, data: [] };
+  }
+}
 
 async function loadOne(scope: string, connectionId: string, client: ReferenceClient): Promise<InstanceLabelMaps> {
   const cached = await getCachedJson<InstanceLabelMaps>(`${scope}-labels`, connectionId);
   if (cached) return cached;
 
-  try {
-    const [profiles, tags, metadataProfiles] = await Promise.all([
-      client.getQualityProfiles(),
-      client.getTags(),
-      client.getMetadataProfiles?.() ?? Promise.resolve([]),
-    ]);
-    const maps: InstanceLabelMaps = {
-      qualityProfile: Object.fromEntries(profiles.map((p) => [p.id, p.name])),
-      tag: Object.fromEntries(tags.map((t) => [t.id, t.label])),
-      metadataProfile: Object.fromEntries(metadataProfiles.map((m) => [m.id, m.name])),
-    };
+  const [profiles, tags, metadataProfiles] = await Promise.all([
+    settle(client.getQualityProfiles()),
+    settle(client.getTags()),
+    settle(client.getMetadataProfiles?.()),
+  ]);
+  const maps: InstanceLabelMaps = {
+    qualityProfile: Object.fromEntries(profiles.data.map((p) => [p.id, p.name])),
+    tag: Object.fromEntries(tags.data.map((t) => [t.id, t.label])),
+    metadataProfile: Object.fromEntries(metadataProfiles.data.map((m) => [m.id, m.name])),
+  };
+  // Only cache a fully-resolved map; if any call failed, serve what we have this
+  // request but let the next one retry instead of caching the gap.
+  if (profiles.ok && tags.ok && metadataProfiles.ok) {
     await setCachedJson(`${scope}-labels`, connectionId, maps, REFERENCE_TTL_SECONDS);
-    return maps;
-  } catch {
-    return EMPTY_MAPS;
   }
+  return maps;
 }
 
 /**

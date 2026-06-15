@@ -24,7 +24,7 @@ import type { SonarrSeries, SonarrEpisode, DiscoverSeasonDetailResponse } from '
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
 import { useCan } from '@/components/permission-provider';
@@ -37,14 +37,12 @@ function formatBytes(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-// Append the viewing instance to a Sonarr API path so the page reads/mutates the
-// correct instance. No-op (single-instance-identical) when instance is undefined.
-function withInstanceQuery(url: string, instance?: string): string {
-  if (!instance) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
-}
-function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(withInstanceQuery(path, instance), init);
+async function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(withInstanceQuery(path, instance), init);
+  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
+  // handler redirects to /login instead of swallowing it into an empty read.
+  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
+  return res;
 }
 
 export default function SeasonDetailPage() {

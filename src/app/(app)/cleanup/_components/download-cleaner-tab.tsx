@@ -81,6 +81,10 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
       return { config, seedingRules };
     },
     staleTime: 0,
+    // Don't let a focus/reconnect refetch re-seed the form mid-edit and wipe
+    // unsaved changes (the seed effect below resets the dirty baseline).
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   const loading = configQuery.isLoading;
 

@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { normalizeRegionCode } from '@/lib/region';
 
 export interface AppSettingsState {
@@ -141,7 +141,9 @@ export function useAppSettings(): UseAppSettingsResult {
         body: JSON.stringify(patch),
       });
       const payload = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(payload?.error || 'Failed to save');
+      // ApiError (not plain Error) so a 401 carries its status to the global
+      // MutationCache handler and redirects to /login instead of just toasting.
+      if (!res.ok) throw new ApiError(res.status, payload?.error || 'Failed to save');
       return { state: normalize(payload ?? {}), raw: payload };
     },
     onMutate: async (patch) => {

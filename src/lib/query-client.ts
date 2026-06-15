@@ -1,4 +1,4 @@
-import { QueryClient, QueryCache, isServer } from '@tanstack/react-query';
+import { QueryClient, QueryCache, MutationCache, isServer } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 
 // Canonical App Router pattern: a fresh client per request on the server, a
@@ -12,6 +12,11 @@ function makeQueryClient() {
     // fetches. Catch it here so a revoked session redirects instead of leaving
     // the page stranded on an error.
     queryCache: new QueryCache({ onError: handleAuthError }),
+    // Same redirect for a 401 thrown by a mutation (a PUT/POST/DELETE after the
+    // session was revoked): QueryCache.onError only covers reads, so without this
+    // a write would just toast "failed" and strand the user on an authed page.
+    // Mutations must throw an ApiError carrying the status for this to fire.
+    mutationCache: new MutationCache({ onError: handleAuthError }),
     defaultOptions: {
       queries: {
         staleTime: 30_000, // baseline; reference hooks raise this, live hooks lower it

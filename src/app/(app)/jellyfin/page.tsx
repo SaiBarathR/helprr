@@ -872,6 +872,9 @@ function HistoryTab() {
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
+      // An empty page means we've reached the end even if `total` over-reports —
+      // otherwise the offset stalls and "Load more" refetches the same page.
+      if (!lastPage.items?.length) return undefined;
       const loaded = allPages.reduce((n, p) => n + (p.items?.length ?? 0), 0);
       return loaded < (lastPage.total ?? 0) ? loaded : undefined;
     },

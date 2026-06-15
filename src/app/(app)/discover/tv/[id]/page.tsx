@@ -15,6 +15,8 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 import { DiscoverExternalLinks } from '@/components/discover/discover-external-links';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
+import { tvSeasonKey } from '@/lib/series-query-cache';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { ChevronDown, ChevronUp, Star, Loader2 } from 'lucide-react';
 import type { DiscoverTvFullDetail, DiscoverSeasonDetailResponse, DiscoverSeasonBrief } from '@/types';
@@ -31,7 +33,7 @@ export default function DiscoverTvDetailPage() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['discover', 'tv', tvId],
+    queryKey: queryKeys.discoverDetail('tv', tvId),
     queryFn: jsonFetcher<DiscoverTvFullDetail>(`/api/discover/tv/${tvId}`),
     enabled: validId,
   });
@@ -42,7 +44,9 @@ export default function DiscoverTvDetailPage() {
   // Lazily fetch the expanded season; the query cache retains previously-opened
   // seasons so toggling back is instant (no error screen on failure — tolerated).
   const { data: expandedSeasonData, isFetching: seasonFetching } = useQuery({
-    queryKey: ['discover', 'tv', tvId, 'season', expandedSeason],
+    // Shares the season cache with the Sonarr series / season / episode pages
+    // (same endpoint + key), so opening a season here warms those views and back.
+    queryKey: tvSeasonKey(tvId, expandedSeason ?? 0),
     queryFn: jsonFetcher<DiscoverSeasonDetailResponse>(
       `/api/discover/tv/${tvId}/season/${expandedSeason}`
     ),

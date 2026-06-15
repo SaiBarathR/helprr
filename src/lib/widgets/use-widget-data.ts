@@ -28,8 +28,9 @@ interface UseWidgetDataResult<T> {
  * Widget data hook, backed by TanStack Query. Public API is unchanged so every
  * widget keeps working as-is. Behavior parity with the previous hand-rolled
  * implementation:
- *   - constant-cadence polling at `refreshInterval` (keeps polling while the tab
- *     is backgrounded, like the old setInterval),
+ *   - polling at `refreshInterval`, paused while the tab is hidden (a dashboard
+ *     mounts ~10-15 widgets; polling them all in a backgrounded iOS PWA is exactly
+ *     the focus/background churn the app avoids — matches badge/activity/jellyfin),
  *   - cross-instance cache + in-flight coalescing when `cacheKey` is shared,
  *   - resets to a loading state when `cacheKey` changes (different query),
  *   - warm cache survives a remount within one interval.
@@ -51,7 +52,7 @@ export function useWidgetData<T>({
     queryFn: () => fetchFn(),
     enabled,
     refetchInterval: refreshInterval,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: false,
     // Refetch on every mount (matching the old doFetch-on-mount), but the keyed
     // cache still shows the previous value immediately during that refetch — so

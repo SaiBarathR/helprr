@@ -49,9 +49,13 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
 
   // Seed local editing state from the query — the toggles/filters are edited
   // optimistically in place, so the query is the load source and local state
-  // holds the live, user-edited copy.
+  // holds the live, user-edited copy. Seed ONCE per endpoint: the post-save
+  // invalidate refetches to keep the cache fresh for the next mount, but
+  // re-seeding on that refetch would clobber a concurrent edit on another event.
+  const seededEndpointRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!loadedPrefs) return;
+    if (!loadedPrefs || seededEndpointRef.current === subscriptionEndpoint) return;
+    seededEndpointRef.current = subscriptionEndpoint;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- seed editable prefs from the query
     setPreferences(loadedPrefs);
     savedFiltersRef.current = new Map(
@@ -60,7 +64,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
     // Reset (not retain) when empty, so a save can't be posted to a stale
     // subscription after the endpoint changes.
     setSubscriptionId(loadedPrefs.length > 0 ? loadedPrefs[0].subscriptionId : null);
-  }, [loadedPrefs]);
+  }, [loadedPrefs, subscriptionEndpoint]);
 
   const savePreference = useMutation({
     mutationFn: async (body: {

@@ -41,7 +41,7 @@ import type {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { episodesWithFileKey, tvSeasonKey } from '@/lib/series-query-cache';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
@@ -144,15 +144,12 @@ function waitForElementScrollY(
   });
 }
 
-// Append the viewing instance to a Sonarr API path so the detail page reads/mutates
-// the correct instance. No-op (and thus single-instance-identical) when instance is undefined.
-function withInstanceQuery(url: string, instance?: string): string {
-  if (!instance) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
-}
-
-function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(withInstanceQuery(path, instance), init);
+async function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(withInstanceQuery(path, instance), init);
+  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
+  // handler redirects to /login instead of swallowing it into an empty read.
+  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
+  return res;
 }
 
 export default function SeriesDetailPage() {
@@ -285,7 +282,7 @@ export default function SeriesDetailPage() {
   });
   const credits = creditsQuery.data ?? { cast: [], crew: [] };
   const tmdbQuery = useQuery({
-    queryKey: ['discover', 'tv', series?.tmdbId],
+    queryKey: queryKeys.discoverDetail('tv', series?.tmdbId),
     queryFn: jsonFetcher<DiscoverTvFullDetail | null>(`/api/discover/tv/${series?.tmdbId}`),
     enabled: wantsTmdbEnrichment && !!series?.tmdbId,
     staleTime: 30 * 60_000,
@@ -2065,7 +2062,7 @@ function ExpandedSeasonEpisodes({
   return (
     <div className="pb-3 pl-2">
       {epData ? (
-        epData.episodes.map((ep) => {
+        (epData.episodes ?? []).map((ep) => {
           const sonarrEp = seasonEps.find((e) => e.episodeNumber === ep.episodeNumber);
           const episodeHref = sonarrEp
             ? `/series/${seriesRouteId}/season/${seasonNumber}/episode/${sonarrEp.id}${instance ? `?instance=${instance}` : ''}`

@@ -165,14 +165,20 @@ export default function AnimeLibraryPage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const hasRestoredScrollRef = useRef(false);
 
-  // Viewer connection/stats. On !ok we treat it as not-configured (parity with the
-  // old fallback) rather than an error screen.
+  // Viewer connection/stats. On !ok — or a network rejection (offline PWA) — we
+  // treat it as not-configured (parity with the old loadViewer catch) rather than
+  // leaving `viewer` null, which would strand the page on an infinite spinner.
   const viewerQuery = useQuery({
     queryKey: ['anilist', 'viewer'],
     queryFn: async ({ signal }): Promise<ViewerResponse> => {
-      const res = await fetch('/api/anilist/viewer', { signal });
-      if (!res.ok) return { configured: false, connected: false, requiresReauth: false };
-      return res.json() as Promise<ViewerResponse>;
+      try {
+        const res = await fetch('/api/anilist/viewer', { signal });
+        if (!res.ok) return { configured: false, connected: false, requiresReauth: false };
+        return (await res.json()) as ViewerResponse;
+      } catch (e) {
+        if (signal?.aborted) throw e; // a cancelled fetch must stay cancelled, not resolve
+        return { configured: false, connected: false, requiresReauth: false };
+      }
     },
   });
   const viewer = viewerQuery.data ?? null;

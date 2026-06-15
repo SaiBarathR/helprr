@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clapperboard, Loader2 } from 'lucide-react';
+import { getQueryClient } from '@/lib/query-client';
 
 const DEVICE_COOKIE = 'helprr-device';
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
@@ -86,6 +87,11 @@ export default function LoginPage() {
         // Re-read device class right before redirect in case the user resized
         // the window between mount and login.
         setDeviceCookieFromMatchMedia();
+        // Drop any in-memory TanStack cache from a prior session before entering
+        // the app — the browser QueryClient is a persistent singleton, so without
+        // this a different user signing in on the same browser could briefly see
+        // the previous user's cached lists/sessions/widgets.
+        getQueryClient().clear();
         router.replace(getPostLoginTarget());
         router.refresh();
         return;

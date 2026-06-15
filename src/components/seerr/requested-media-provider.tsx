@@ -14,6 +14,15 @@ interface PendingRequestsResponse {
 
 const keyOf = (mediaType: MediaType, tmdbId: number): Key => `${mediaType}:${tmdbId}`;
 
+// Module-level (stable identity) so TanStack memoizes the derived Set: an inline
+// select would re-run every render and hand back a new Set, churning the context
+// value and re-rendering every Request button consumer.
+function toRequestedSet(data: PendingRequestsResponse): Set<Key> {
+  const next = new Set<Key>();
+  for (const r of data.results ?? []) next.add(keyOf(r.mediaType, r.tmdbId));
+  return next;
+}
+
 interface RequestedMediaContextValue {
   isRequested: (mediaType: MediaType, tmdbId: number) => boolean;
   markRequested: (mediaType: MediaType, tmdbId: number) => void;
@@ -43,11 +52,7 @@ export function RequestedMediaProvider({ children }: { children: React.ReactNode
     queryKey: ['seerr', 'requested-media'],
     queryFn: jsonFetcher<PendingRequestsResponse>('/api/seerr/pending-requests?fields=keys'),
     enabled: seerrConfigured,
-    select: (data) => {
-      const next = new Set<Key>();
-      for (const r of data.results ?? []) next.add(keyOf(r.mediaType, r.tmdbId));
-      return next;
-    },
+    select: toRequestedSet,
   });
 
   const isRequested = useCallback(

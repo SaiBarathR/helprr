@@ -192,7 +192,10 @@ export default function ActivityPage() {
   const [queueCount, setQueueCount] = useState(0);
   // arr instances for the per-instance filter (shown only when >1 instance).
   const { data: instanceOptions = [] } = useQuery({
-    queryKey: ['instances'],
+    // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
+    // is the /api/instances connection list for the filter. Keep it from prefix-
+    // overlapping the services key so the two can't cross-invalidate.
+    queryKey: ['arr-instances'],
     queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
       Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
@@ -903,6 +906,17 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
     return list;
   }, [wantedQuery.data, filterBy, instanceFilter]);
 
+  // "Load more" gates on the raw server totalRecords, but multi-source / instance
+  // filters are applied client-side — so a fetched page can be entirely filtered
+  // out, leaving records empty while more pages remain. Auto-advance so the tab
+  // doesn't show a false "nothing here" when matches exist further down.
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = wantedQuery;
+  useEffect(() => {
+    if (!loading && records.length === 0 && hasNextPage && !isFetchingNextPage) {
+      void fetchNextPage();
+    }
+  }, [loading, records.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   async function handleSearch(record: WantedRecord) {
     const key = `${record.source}-${record.id}`;
     setSearching(key);
@@ -940,6 +954,9 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   }
 
   if (records.length === 0) {
+    // Still paging through server results the client filters excluded — the effect
+    // above is fetching the next page, so this isn't empty yet.
+    if (hasNextPage || isFetchingNextPage) return <PageSpinner />;
     return (
       <div className="text-center py-16 text-muted-foreground">
         {type === 'missing' ? (
