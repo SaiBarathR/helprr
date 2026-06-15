@@ -42,6 +42,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, tvSeasonKey } from '@/lib/series-query-cache';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
@@ -561,6 +562,11 @@ export default function SeriesDetailPage() {
         return;
       }
       const res = await fetch(`/api/jellyfin/lookup?${params}`);
+      if (res.status === 401) {
+        popup.close();
+        handleAuthError(new ApiError(401, 'Session expired'));
+        return;
+      }
       const data = res.ok ? await res.json() : null;
       if (data?.itemId) {
         popup.location.href = `${externalUrls.JELLYFIN}/web/index.html#!/details?id=${data.itemId}`;
