@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import {
   User,
@@ -119,7 +120,7 @@ export default function PersonDetailPage() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['discover', 'person', personId],
+    queryKey: queryKeys.discoverDetail('person', personId),
     queryFn: jsonFetcher<PersonData>(`/api/discover/person?id=${personId}`),
     enabled: validId,
   });

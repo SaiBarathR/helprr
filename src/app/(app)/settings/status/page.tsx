@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { ChevronLeft, Loader2, RefreshCw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { ApiError, ensureArray } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { cn } from '@/lib/utils';
@@ -27,7 +27,13 @@ export default function ServiceStatusPage() {
     refetch,
   } = useQuery({
     queryKey: queryKeys.health(),
-    queryFn: jsonFetcher<ServiceHealthStatus[]>('/api/services/health'),
+    // The health route is Cache-Control: max-age=60, so a plain GET (jsonFetcher)
+    // could serve a stale snapshot to "Re-test". Force a live probe with no-store.
+    queryFn: async ({ signal }): Promise<ServiceHealthStatus[]> => {
+      const res = await fetch('/api/services/health', { cache: 'no-store', signal });
+      if (!res.ok) throw new ApiError(res.status, `GET /api/services/health → ${res.status}`);
+      return (await res.json()) as ServiceHealthStatus[];
+    },
     select: ensureArray,
   });
   const refreshing = isFetching && !loading;

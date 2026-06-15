@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import {
@@ -31,13 +31,17 @@ export function QuietHoursSection() {
   });
 
   const patchMutation = useMutation({
+    // Serialize concurrent me-settings PATCHes so out-of-order responses can't
+    // clobber each other (toggle enabled then change start fires two writes).
+    scope: { id: 'me-settings' },
     mutationFn: async (next: Partial<QuietHours>) => {
       const res = await fetch('/api/me/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(next),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // ApiError (carrying status) so a 401 hits the global MutationCache redirect.
+      if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`);
       return (await res.json()) as QuietHours;
     },
     onMutate: async (next) => {

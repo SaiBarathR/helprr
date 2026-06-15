@@ -19,7 +19,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import type { HistoryItem, RadarrMovie } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError } from '@/lib/query-fetch';
+import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -106,14 +106,12 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
   );
 }
 
-// Append the viewing instance to a Radarr API path so the page reads/mutates the
-// correct instance. No-op (single-instance-identical) when instance is undefined.
-function withInstanceQuery(url: string, instance?: string): string {
-  if (!instance) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
-}
-function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(withInstanceQuery(path, instance), init);
+async function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(withInstanceQuery(path, instance), init);
+  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
+  // handler redirects to /login instead of swallowing it into an empty read.
+  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
+  return res;
 }
 
 export default function MovieFilesPage() {

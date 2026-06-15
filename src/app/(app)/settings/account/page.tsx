@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { getQueryClient } from '@/lib/query-client';
 
 export default function AccountSettingsPage() {
   const router = useRouter();
@@ -16,6 +17,10 @@ export default function AccountSettingsPage() {
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (res.ok) {
+        // Drop the in-memory TanStack cache so a different user signing in on this
+        // device can't see this session's cached data (the QueryClient is a
+        // persistent browser singleton). Login also clears, as a backstop.
+        getQueryClient().clear();
         // Best-effort: drop this device's cached shell + read data so the next
         // sign-in starts clean. Fire-and-forget; don't block the redirect.
         const clearMsg = { type: 'helprr-clear-user-caches' };

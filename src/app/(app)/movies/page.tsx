@@ -208,12 +208,13 @@ export default function MoviesPage() {
   const movies = moviesData ?? EMPTY_MOVIES;
   // Quality-profile / tag names are resolved per-instance server-side (item.qualityProfileName,
   // item.tagLabels). The bulk-tag picker still needs the union of every connected instance's
-  // tags as suggestions, so fetch those per instance and merge.
+  // tags as suggestions, so fetch those per instance and merge — but only once selection mode
+  // is active (the picker's only consumer), not on every list load.
   const instanceIds = useMemo(
     () => [...new Set(movies.map((m) => m.instanceId).filter((id): id is string => Boolean(id)))],
     [movies]
   );
-  const tags = useUnionTags('radarr', instanceIds);
+  const tags = useUnionTags('radarr', selectionMode ? instanceIds : []);
   const refreshing = isFetching && !loading;
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);

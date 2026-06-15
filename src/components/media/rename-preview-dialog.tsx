@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import {
   Dialog,
   DialogContent,
@@ -83,7 +83,6 @@ export function RenamePreviewDialog({
     isLoading: loading,
     isError,
     isSuccess,
-    dataUpdatedAt,
   } = useQuery({
     queryKey: [service, 'rename', mediaId],
     queryFn: jsonFetcher<SonarrRenamePreview[] | RadarrRenamePreview[] | LidarrRenamePreview[]>(
@@ -93,11 +92,21 @@ export function RenamePreviewDialog({
     select: (data) => toRows(service, data),
   });
 
-  // Default every previewed file to selected once a fresh preview resolves.
+  // Default every previewed file to selected once the preview resolves — but only
+  // once per open. Keying this on the data timestamp would re-run on a background
+  // refetch (e.g. reconnect) and silently re-select files the user just deselected.
+  const seededRef = useRef(false);
   useEffect(() => {
-    if (open && isSuccess) setSelected(new Set(rows.map((r) => r.fileId)));
+    if (!open) {
+      seededRef.current = false;
+      return;
+    }
+    if (isSuccess && !seededRef.current) {
+      seededRef.current = true;
+      setSelected(new Set(rows.map((r) => r.fileId)));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isSuccess, dataUpdatedAt]);
+  }, [open, isSuccess]);
 
   useEffect(() => {
     if (isError) toast.error('Failed to load rename preview');
@@ -131,7 +140,7 @@ export function RenamePreviewDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) throw new ApiError(res.status, await res.text());
     },
     onSuccess: (_data, fileIds) => {
       toast.success(`Renaming ${fileIds.length} file${fileIds.length === 1 ? '' : 's'}`);

@@ -39,7 +39,12 @@ export function patchEpisodesInCache(
   const updaterMap = new Map(updates.map((u) => [u.episodeId, u.updater] as const));
 
   queryClient.setQueryData<SonarrEpisode[]>(queryKeys.episodes(seriesId, instanceId), (prev) =>
-    prev ? prev.map((episode) => updaterMap.get(episode.id)?.(episode) ?? episode) : prev,
+    prev
+      ? prev.map((episode) => {
+          const updater = updaterMap.get(episode.id);
+          return updater ? { ...episode, ...updater(episode) } : episode;
+        })
+      : prev,
   );
   queryClient.setQueryData<EpisodeWithFile[]>(episodesWithFileKey(seriesId, instanceId), (prev) =>
     prev

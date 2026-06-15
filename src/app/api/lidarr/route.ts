@@ -6,7 +6,15 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { LidarrArtist, LidarrArtistListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
+
+const LIDARR_CACHE_HEADERS = {
+  'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+  // Partition the private cache by session cookie so a capability-gated response can't be
+  // replayed from the browser cache to a different (or logged-out) user within the TTL.
+  'Vary': 'Cookie',
+} as const;
 
 function toListItem(artist: LidarrArtist): LidarrArtistListItem {
   return {
@@ -50,32 +58,37 @@ async function getHandler(request: NextRequest) {
   try {
     const full = request.nextUrl.searchParams.get('full') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const cacheKeySeed = instanceId ?? 'all';
 
-    const instances = instanceId
-      ? await (async () => {
-          const conn = await resolveConnection('LIDARR', instanceId);
-          return [{ connection: conn, client: new LidarrClient(conn.url, conn.apiKey) }];
-        })()
-      : await getLidarrClients();
+    // Resolve connections lazily and at most once (mirrors radarr/sonarr): a slim
+    // cache hit or ?full=true that never needs labels does zero DB/client work.
+    let instancesPromise:
+      | Promise<{ connection: { id: string; label: string }; client: LidarrClient }[]>
+      | undefined;
+    const resolveInstances = () =>
+      (instancesPromise ??= instanceId
+        ? resolveConnection('LIDARR', instanceId).then((conn) => [
+            { connection: conn, client: new LidarrClient(conn.url, conn.apiKey) },
+          ])
+        : getLidarrClients());
 
-    const tagged = (await Promise.all(
-      instances.map(async ({ connection, client }) => {
-        try {
-          const artists = await client.getArtists();
-          return artists.map((a) => ({ ...a, instanceId: connection.id, instanceLabel: connection.label }));
-        } catch {
-          // One unreachable/misconfigured instance must not blank the whole library.
-          return [];
-        }
-      })
-    )).flat();
+    // Shared tagged-library cache: one Redis entry per (scope, instance), reused by
+    // ?full=true and the slim list. A partial (some-instance-failed) poll is left
+    // uncached, so a blip can't half-blank the library for the whole TTL — matching
+    // sonarr/radarr instead of the old swallow-to-[] aggregation.
+    const { items: tagged, cached } = await getCachedTaggedLibrary({
+      scope: 'lidarr',
+      cacheKeySeed,
+      getInstances: resolveInstances,
+      fetchOne: (client) => client.getArtists(),
+    });
 
-    logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', full, artistCount: tagged.length });
-    if (full) return NextResponse.json(tagged);
+    logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', full, artistCount: tagged.length, cached: !!cached });
+    if (full) return NextResponse.json(tagged, { headers: LIDARR_CACHE_HEADERS });
 
     // Resolve quality-profile / metadata-profile / tag IDs to names against each item's OWN
     // instance, so an artist from a non-default Lidarr isn't mislabelled by the default lookup.
-    const labelMaps = await getInstanceLabelMaps('lidarr', instances);
+    const labelMaps = await getInstanceLabelMaps('lidarr', await resolveInstances());
     return NextResponse.json(
       tagged.map((a) => ({
         ...toListItem(a),
@@ -87,6 +100,7 @@ async function getHandler(request: NextRequest) {
           tags: a.tags,
         }),
       })),
+      { headers: LIDARR_CACHE_HEADERS },
     );
   } catch (error) {
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true });

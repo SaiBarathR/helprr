@@ -49,7 +49,7 @@ import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError } from '@/lib/query-fetch';
+import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import {
@@ -91,15 +91,12 @@ function albumYear(album: LidarrAlbum): number | null {
   return Number.isFinite(y) ? y : null;
 }
 
-// Append the viewing instance to a Lidarr API path so the detail page reads/mutates
-// the correct instance. No-op when instance is undefined (single-instance-identical).
-function withInstanceQuery(url: string, instance?: string): string {
-  if (!instance) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
-}
-
-function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(withInstanceQuery(path, instance), init);
+async function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(withInstanceQuery(path, instance), init);
+  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
+  // handler redirects to /login instead of swallowing it into an empty read.
+  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
+  return res;
 }
 
 export default function ArtistDetailPage() {

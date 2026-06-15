@@ -25,7 +25,7 @@ import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries, Dis
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { episodesWithFileKey, patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { useCan } from '@/components/permission-provider';
 
@@ -56,14 +56,12 @@ function formatRuntime(value?: string | number): string | null {
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-// Append the viewing instance to a Sonarr API path so the page reads/mutates the
-// correct instance. No-op (single-instance-identical) when instance is undefined.
-function withInstanceQuery(url: string, instance?: string): string {
-  if (!instance) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
-}
-function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(withInstanceQuery(path, instance), init);
+async function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(withInstanceQuery(path, instance), init);
+  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
+  // handler redirects to /login instead of swallowing it into an empty read.
+  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
+  return res;
 }
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
@@ -220,7 +218,7 @@ export default function EpisodeDetailPage() {
   const tmdbSeasonQuery = useQuery({
     queryKey: tvSeasonKey(series?.tmdbId ?? 0, seasonNumber),
     queryFn: jsonFetcher<DiscoverSeasonDetailResponse>(`/api/discover/tv/${series?.tmdbId}/season/${seasonNumber}`),
-    enabled: !!series?.tmdbId && !!episodeNumber && series.seriesType !== 'anime',
+    enabled: !!series?.tmdbId && episodeNumber != null && series.seriesType !== 'anime',
     staleTime: 30 * 60_000,
   });
   const tmdbEpisode = tmdbSeasonQuery.data?.episodes.find((e) => e.episodeNumber === episodeNumber) ?? null;

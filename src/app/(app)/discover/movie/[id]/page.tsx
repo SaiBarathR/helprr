@@ -16,6 +16,7 @@ import { DiscoverExternalLinks } from '@/components/discover/discover-external-l
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { formatCurrency } from '@/lib/format';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverMovieFullDetail } from '@/types';
 
@@ -30,7 +31,7 @@ export default function DiscoverMovieDetailPage() {
     isLoading,
     isError,
   } = useQuery({
-    queryKey: ['discover', 'movie', movieId],
+    queryKey: queryKeys.discoverDetail('movie', movieId),
     queryFn: jsonFetcher<DiscoverMovieFullDetail>(`/api/discover/movie/${movieId}`),
     enabled: validId,
   });

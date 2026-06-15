@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -101,15 +102,12 @@ function formatRatingVotes(votes: number): string {
   return String(votes);
 }
 
-// Append the viewing instance to a Radarr API path so the detail page reads/mutates
-// the correct instance. No-op when instance is undefined (single-instance-identical).
-function withInstanceQuery(url: string, instance?: string): string {
-  if (!instance) return url;
-  return `${url}${url.includes('?') ? '&' : '?'}instanceId=${instance}`;
-}
-
-function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  return fetch(withInstanceQuery(path, instance), init);
+async function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(withInstanceQuery(path, instance), init);
+  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
+  // handler redirects to /login instead of swallowing it into an empty read.
+  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
+  return res;
 }
 
 export default function MovieDetailPage() {
@@ -156,11 +154,12 @@ export default function MovieDetailPage() {
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   // TMDB enrichment, fetched once the movie (and its tmdbId) is known.
   const { data: tmdbData = null } = useQuery({
-    queryKey: ['discover', 'movie', movie?.tmdbId],
-    queryFn: async ({ signal }): Promise<DiscoverMovieFullDetail | null> => {
-      const r = await fetch(`/api/discover/movie/${movie?.tmdbId}`, { signal });
-      return r.ok ? ((await r.json()) as DiscoverMovieFullDetail) : null;
-    },
+    // Shares queryKeys.discoverDetail('movie', tmdbId) with /discover/movie/[id],
+    // so use the same throwing jsonFetcher — caching `null` here would otherwise
+    // surface as a false "not found" on the discover page reading the shared slot.
+    // A failed enrichment just leaves tmdbData null (graceful) via `data ?? null`.
+    queryKey: queryKeys.discoverDetail('movie', movie?.tmdbId),
+    queryFn: jsonFetcher<DiscoverMovieFullDetail>(`/api/discover/movie/${movie?.tmdbId}`),
     enabled: !!movie?.tmdbId,
     staleTime: 30 * 60_000,
   });
@@ -312,7 +311,6 @@ export default function MovieDetailPage() {
     if (ratings.trakt && ratings.trakt.value > 0) items.push({ label: 'Trakt', score: ratings.trakt.value.toFixed(1), votes: ratings.trakt.votes, color: 'text-purple-500 fill-purple-500' });
     return items;
   }, [movie?.ratings]);
-
 
   async function handleSearch() {
     if (!movie) return;

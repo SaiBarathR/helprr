@@ -171,7 +171,10 @@ export default function HistoryPage() {
   // Load arr instances for the per-instance filter, independent of the (possibly
   // filtered) history so the options never collapse to the current selection.
   const { data: instanceOptions = [] } = useQuery({
-    queryKey: ['instances'],
+    // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
+    // is the /api/instances connection list for the filter. Shares with the activity
+    // page's same-key query, and can't prefix-collide with the services key.
+    queryKey: ['arr-instances'],
     queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
       Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],

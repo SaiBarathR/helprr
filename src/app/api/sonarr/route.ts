@@ -60,11 +60,18 @@ async function getHandler(request: NextRequest) {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const cacheKeySeed = instanceId ?? 'all';
 
-    const instances = instanceId
-      ? await resolveConnection('SONARR', instanceId).then((conn) => [
-          { connection: conn, client: new SonarrClient(conn.url, conn.apiKey) },
-        ])
-      : await getSonarrClients();
+    // Resolve connections lazily and at most once. getCachedTaggedLibrary only calls
+    // getInstances on a cache MISS, and only the slim path needs them (for labels), so a
+    // ?full=true or slim cache hit that never touches labels does zero DB/client work.
+    let instancesPromise:
+      | Promise<{ connection: { id: string; label: string }; client: SonarrClient }[]>
+      | undefined;
+    const resolveInstances = () =>
+      (instancesPromise ??= instanceId
+        ? resolveConnection('SONARR', instanceId).then((conn) => [
+            { connection: conn, client: new SonarrClient(conn.url, conn.apiKey) },
+          ])
+        : getSonarrClients());
 
     // Cache the raw tagged library (full objects) so both ?full=true and the slim list
     // view are served from one entry. Authorized callers all get identical bytes (binary
@@ -72,7 +79,7 @@ async function getHandler(request: NextRequest) {
     const { items: tagged, cached } = await getCachedTaggedLibrary({
       scope: 'sonarr',
       cacheKeySeed,
-      getInstances: () => Promise.resolve(instances),
+      getInstances: resolveInstances,
       fetchOne: (client) => client.getSeries(),
     });
 
@@ -83,7 +90,7 @@ async function getHandler(request: NextRequest) {
 
     // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
     // series from a non-default Sonarr isn't mislabelled by the default instance's lookup.
-    const labelMaps = await getInstanceLabelMaps('sonarr', instances);
+    const labelMaps = await getInstanceLabelMaps('sonarr', await resolveInstances());
     return NextResponse.json(
       tagged.map((s) => ({
         ...toListItem(s),

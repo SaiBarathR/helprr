@@ -48,4 +48,12 @@ export const queryKeys = {
   // ── Discover / Seerr ─────────────────────────────────────────────
   discover: (kind: string, params?: Record<string, unknown>) =>
     params ? (['discover', kind, params] as const) : (['discover', kind] as const),
+  // Detail / credits — flat id-keyed shapes (distinct from discover()'s params-keyed
+  // browse lists). Shared by the discover detail pages AND the Sonarr/Radarr detail
+  // pages' TMDB-enrichment queries (same endpoint → one cache entry). Season detail
+  // has its own factory, tvSeasonKey, in series-query-cache.
+  discoverDetail: (kind: 'movie' | 'tv' | 'person', id: number | undefined) =>
+    ['discover', kind, id] as const,
+  discoverCredits: (kind: 'movie' | 'tv', id: number) =>
+    ['discover', kind, id, 'credits'] as const,
 } as const;

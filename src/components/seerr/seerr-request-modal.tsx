@@ -153,7 +153,10 @@ export function SeerrRequestModal({
     if (!svc) return;
     if (svc.defaultProfileId != null) setProfileId((prev) => (prev == null ? svc.defaultProfileId! : prev));
     if (svc.defaultRootFolder != null) setRootFolder((prev) => (prev == null ? svc.defaultRootFolder! : prev));
-    if (svc.defaultTags?.length) setTags((prev) => (prev.length === 0 ? svc.defaultTags! : prev));
+    // Only auto-fill default tags for a NEW request (initialTags nullish). An
+    // existing request opened with an explicit [] tags must stay tagless — don't
+    // inject defaults onto it (prev.length===0 alone can't tell the two apart).
+    if (initialTags == null && svc.defaultTags?.length) setTags((prev) => (prev.length === 0 ? svc.defaultTags! : prev));
     setRequestAs((prev) => {
       if (prev != null) return prev;
       const own = me?.seerrUserId ? Number.parseInt(me.seerrUserId, 10) : NaN;
