@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
@@ -105,7 +106,7 @@ function getPosterUrl(r: HistoryRecord): string | null {
 
 async function fetchHistory(pageSize: number): Promise<HistoryRecord[]> {
   const res = await fetch(`/api/activity/history?pageSize=${pageSize}`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return data.records || [];
 }

@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import Link from 'next/link';
 import { Check, Disc3, Film, Tv } from 'lucide-react';
@@ -67,7 +68,7 @@ function typeColor(type: CalendarEvent['type']): string {
 
 async function fetchToday(): Promise<CalendarEvent[]> {
   const res = await fetch('/api/calendar?days=1&fullDay=true');
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
 

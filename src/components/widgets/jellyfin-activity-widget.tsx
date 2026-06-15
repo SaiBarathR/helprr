@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useState } from 'react';
 import type { JellyfinActivityEntry } from '@/types/jellyfin';
@@ -16,7 +17,7 @@ const CAROUSEL_MAX = 20;
 function makeFetcher(hasUserId: boolean) {
   return async function fetchActivity(): Promise<JellyfinActivityEntry[]> {
     const res = await fetch(`/api/jellyfin/activity?hasUserId=${hasUserId}&limit=50`);
-    if (!res.ok) return [];
+    if (!res.ok) throw new ApiError(res.status, 'Request failed');
     const data = await res.json();
     return Array.isArray(data.entries) ? data.entries : [];
   };

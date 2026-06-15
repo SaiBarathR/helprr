@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
 import Link from 'next/link';
@@ -41,7 +42,7 @@ function itemKey(item: QueueWidgetItem): string {
 
 async function fetchQueue(pageSize: number): Promise<QueueWidgetItem[]> {
   const res = await fetch(`/api/activity/queue?pageSize=${pageSize}`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data: QueueApiResponse = await res.json();
   return data.records || [];
 }

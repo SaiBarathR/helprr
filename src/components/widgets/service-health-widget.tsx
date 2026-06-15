@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -12,7 +13,7 @@ interface ServiceStatus {
 
 async function fetchServiceHealth(): Promise<ServiceStatus[]> {
   const res = await fetch('/api/services/health');
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
 

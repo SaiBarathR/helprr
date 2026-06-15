@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
@@ -102,7 +103,7 @@ export function UpcomingWidget({
 
   const fetchUpcoming = useCallback(async (): Promise<CalendarEvent[]> => {
     const res = await fetch(`/api/calendar?days=${days}`);
-    if (!res.ok) return [];
+    if (!res.ok) throw new ApiError(res.status, 'Request failed');
     return res.json();
   }, [days]);
 

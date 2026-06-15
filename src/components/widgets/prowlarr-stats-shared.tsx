@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import * as React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
@@ -17,7 +18,7 @@ export async function fetchProwlarrStats(days: number): Promise<ProwlarrStats | 
     ? `/api/prowlarr/stats?startDate=${encodeURIComponent(startDate)}`
     : '/api/prowlarr/stats';
   const res = await fetch(url);
-  if (!res.ok) return null;
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   if (data?.error) return null;
   return data as ProwlarrStats;
