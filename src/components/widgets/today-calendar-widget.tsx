@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Check, Film, Tv } from 'lucide-react';
+import { Check, Disc3, Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
-import { toCachedImageSrc } from '@/lib/image';
+import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { FinaleBadge, ReleaseTypeBadge } from '@/components/calendar/release-badges';
 import type { CalendarEvent, MediaImage } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -30,9 +30,39 @@ function formatTime(dateStr: string): string {
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-function getPoster(images: MediaImage[], hint?: 'radarr' | 'sonarr'): string | null {
-  const img = images.find((i) => i.coverType === 'poster');
+function getPoster(images: MediaImage[], hint?: ImageServiceHint): string | null {
+  const img =
+    images.find((i) => i.coverType === 'poster') ??
+    images.find((i) => i.coverType === 'cover');
   return toCachedImageSrc(img?.remoteUrl || img?.url || null, hint);
+}
+
+/** Detail-page link for a calendar event, by media type. Mirrors the calendar
+ * page's `eventHref` so albums (Lidarr) route to the music detail page instead
+ * of `/movies/undefined`. Carries the owning instance. */
+function eventHref(ev: CalendarEvent): string {
+  const q = ev.instanceId ? `?instance=${ev.instanceId}` : '';
+  if (ev.type === 'episode') return `/series/${ev.seriesId}${q}`;
+  if (ev.type === 'album') return `/music/album/${ev.albumId}${q}`;
+  return `/movies/${ev.movieId}${q}`;
+}
+
+function posterHint(type: CalendarEvent['type']): ImageServiceHint {
+  if (type === 'movie') return 'radarr';
+  if (type === 'album') return 'lidarr';
+  return 'sonarr';
+}
+
+function typeIcon(type: CalendarEvent['type']) {
+  if (type === 'movie') return <Film size={11} strokeWidth={2.4} />;
+  if (type === 'album') return <Disc3 size={11} strokeWidth={2.4} />;
+  return <Tv size={11} strokeWidth={2.4} />;
+}
+
+function typeColor(type: CalendarEvent['type']): string {
+  if (type === 'movie') return HPR.blue;
+  if (type === 'album') return HPR.green;
+  return HPR.purple;
 }
 
 async function fetchToday(): Promise<CalendarEvent[]> {
@@ -139,9 +169,7 @@ export function TodayCalendarWidget({
         >
           {list.slice(0, visibleCount).map((ev) => {
             const time = formatTime(ev.date);
-            const poster = getPoster(ev.images, ev.type === 'movie' ? 'radarr' : 'sonarr');
-            const isMovie = ev.type === 'movie';
-            const typeColor = isMovie ? HPR.blue : HPR.purple;
+            const poster = getPoster(ev.images, posterHint(ev.type));
             const row = (
               <div
                 style={{
@@ -228,7 +256,7 @@ export function TodayCalendarWidget({
                     width: 20,
                     height: 20,
                     borderRadius: 6,
-                    background: typeColor,
+                    background: typeColor(ev.type),
                     color: 'var(--hpr-fg)',
                     display: 'flex',
                     alignItems: 'center',
@@ -239,7 +267,7 @@ export function TodayCalendarWidget({
                     opacity: 0.85,
                   }}
                 >
-                  {isMovie ? <Film size={11} strokeWidth={2.4} /> : <Tv size={11} strokeWidth={2.4} />}
+                  {typeIcon(ev.type)}
                 </div>
               </div>
             );
@@ -248,7 +276,7 @@ export function TodayCalendarWidget({
             ) : (
               <Link
                 key={ev.id}
-                href={`${ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}${ev.instanceId ? `?instance=${ev.instanceId}` : ''}`}
+                href={eventHref(ev)}
                 style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
               >
                 {row}
@@ -273,8 +301,7 @@ export function TodayCalendarWidget({
       >
         {list.slice(0, visibleCount).map((ev) => {
           const time = formatTime(ev.date);
-          const poster = getPoster(ev.images, ev.type === 'movie' ? 'radarr' : 'sonarr');
-          const isMovie = ev.type === 'movie';
+          const poster = getPoster(ev.images, posterHint(ev.type));
           const tag = shortTagFor(ev);
           const card = (
             <>
@@ -288,13 +315,8 @@ export function TodayCalendarWidget({
                   timePill={time || undefined}
                   check={Boolean(ev.hasFile)}
                   badge={{
-                    icon:
-                      isMovie ? (
-                        <Film size={11} strokeWidth={2.4} />
-                      ) : (
-                        <Tv size={11} strokeWidth={2.4} />
-                      ),
-                    color: isMovie ? HPR.blue : HPR.purple,
+                    icon: typeIcon(ev.type),
+                    color: typeColor(ev.type),
                   }}
                 />
                 {tag && (
@@ -353,7 +375,7 @@ export function TodayCalendarWidget({
           ) : (
             <Link
               key={ev.id}
-              href={`${ev.type === 'episode' ? `/series/${ev.seriesId}` : `/movies/${ev.movieId}`}${ev.instanceId ? `?instance=${ev.instanceId}` : ''}`}
+              href={eventHref(ev)}
               style={{
                 width: CAROUSEL_CARD_WIDTH,
                 flexShrink: 0,
