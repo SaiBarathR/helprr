@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -52,9 +55,9 @@ function posterUrl(images: MediaImage[] | undefined, remotePoster?: string) {
 function AddArtistPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const [term, setTerm] = useState('');
-  const [results, setResults] = useState<LidarrArtistLookupResult[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [submittedTerm, setSubmittedTerm] = useState('');
   const [selected, setSelected] = useState<LidarrArtistLookupResult | null>(null);
   const [profileId, setProfileId] = useState('');
   const [metadataProfileId, setMetadataProfileId] = useState('');
@@ -63,30 +66,48 @@ function AddArtistPageContent() {
   const [monitor, setMonitor] = useState('all');
   const [monitorNewItems, setMonitorNewItems] = useState<'all' | 'none'>('all');
   const [searchOnAdd, setSearchOnAdd] = useState(true);
-  const [adding, setAdding] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
-  const [instances, setInstances] = useState<{ id: string; label: string; isDefault: boolean }[]>([]);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
+
+  const instancesQuery = useQuery({
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<Array<{ id: string; type: string; label: string; isDefault: boolean }>>('/api/instances'),
+    select: (all) =>
+      (Array.isArray(all) ? all : [])
+        .filter((c) => c.type === 'LIDARR')
+        .map((c) => ({ id: c.id, label: c.label, isDefault: c.isDefault })),
+  });
+  const instances = useMemo(() => instancesQuery.data ?? [], [instancesQuery.data]);
+
   // Per-instance reference data, shared (and deduped) with the list/edit pages.
   const { data: profiles = [] } = useQualityProfiles('lidarr', instanceId);
   const { data: metadataProfiles = [] } = useMetadataProfiles(instanceId);
   const { data: rootFolders = [] } = useRootFolders('lidarr', instanceId);
   const { data: tags = [] } = useTags('lidarr', instanceId);
-  const searchAbortRef = useRef<AbortController | null>(null);
 
-  // Load Lidarr instances; default to the marked default (picker only shows when >1).
+  // Search runs against the submitted term; TanStack threads the AbortSignal so
+  // an in-flight lookup is cancelled on a new search automatically.
+  const lookupQuery = useQuery({
+    queryKey: ['lidarr', 'lookup', submittedTerm],
+    queryFn: jsonFetcher<LidarrArtistLookupResult[]>(`/api/lidarr/lookup?term=${encodeURIComponent(submittedTerm)}`),
+    enabled: submittedTerm.trim().length > 0,
+    staleTime: 60_000,
+  });
+  const results = lookupQuery.data ?? [];
+  const searching = lookupQuery.isFetching;
+
+  // Default to the marked-default instance once instances load (picker shows when >1).
   useEffect(() => {
-    fetch('/api/instances')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((all: Array<{ id: string; type: string; label: string; isDefault: boolean }>) => {
-        const list = (Array.isArray(all) ? all : [])
-          .filter((c) => c.type === 'LIDARR')
-          .map((c) => ({ id: c.id, label: c.label, isDefault: c.isDefault }));
-        setInstances(list);
-        setInstanceId((prev) => prev ?? list.find((i) => i.isDefault)?.id ?? list[0]?.id);
-      })
-      .catch(() => undefined);
-  }, []);
+    if (instances.length === 0) return;
+    setInstanceId((prev) => prev ?? instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+  }, [instances]);
+
+  // Surface a non-401 lookup failure (a 401 is handled globally → redirect).
+  useEffect(() => {
+    if (!lookupQuery.isError) return;
+    if (lookupQuery.error instanceof ApiError && lookupQuery.error.status === 401) return;
+    toast.error('Search failed');
+  }, [lookupQuery.isError, lookupQuery.error]);
 
   // Switching instances invalidates the previously-picked (instance-local)
   // profile/folder/tag ids — clear them so a stale value can't be POSTed before
@@ -114,50 +135,39 @@ function AddArtistPageContent() {
     setRootFolder((prev) => (prev && rootFolders.some((f) => f.path === prev) ? prev : rootFolders[0].path));
   }, [rootFolders]);
 
-  useEffect(() => () => searchAbortRef.current?.abort(), []);
-
-  const runSearch = useCallback(async (searchTerm: string) => {
-    searchAbortRef.current?.abort();
-    if (!searchTerm.trim()) {
-      searchAbortRef.current = null;
-      setResults([]);
-      setSelected(null);
-      setSearching(false);
-      return;
-    }
-    const controller = new AbortController();
-    const { signal } = controller;
-    searchAbortRef.current = controller;
-    setSearching(true);
-    try {
-      const res = await fetch(`/api/lidarr/lookup?term=${encodeURIComponent(searchTerm)}`, { signal });
-      if (signal.aborted || searchAbortRef.current !== controller) return;
-      if (!res.ok) {
-        setResults([]);
-        toast.error(`Search failed (${res.status})`);
-        return;
-      }
-      const data: LidarrArtistLookupResult[] = await res.json();
-      if (signal.aborted || searchAbortRef.current !== controller) return;
-      setResults(data);
-    } catch (error) {
-      if ((error as { name?: string })?.name === 'AbortError' || signal.aborted) return;
-      setResults([]);
-      toast.error('Search failed');
-    } finally {
-      if (!signal.aborted && searchAbortRef.current === controller) {
-        setSearching(false);
-        searchAbortRef.current = null;
-      }
-    }
-  }, []);
-
-  async function handleSearch(e: React.FormEvent) {
+  function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    await runSearch(term);
+    setSelected(null);
+    setSubmittedTerm(term);
   }
 
-  async function handleAdd() {
+  const addMutation = useMutation({
+    mutationFn: async (payload: { artistName: string; [k: string]: unknown }) => {
+      const res = await fetch('/api/lidarr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new ApiError(res.status, err?.error || 'Failed to add artist');
+      }
+      return res.json();
+    },
+    onSuccess: (artist, payload) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+      toast.success(`${payload.artistName} added`);
+      router.push(`/music/${artist.id}${instanceId ? `?instance=${instanceId}` : ''}`);
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to add artist');
+    },
+  });
+  const adding = addMutation.isPending;
+
+  function handleAdd() {
     if (!selected || !profileId || !metadataProfileId || !rootFolder) return;
     if (selected.library?.exists) {
       if (selected.library.id) {
@@ -168,35 +178,19 @@ function AddArtistPageContent() {
       return;
     }
 
-    setAdding(true);
-    try {
-      const res = await fetch('/api/lidarr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instanceId,
-          artistName: selected.artistName,
-          foreignArtistId: selected.foreignArtistId,
-          qualityProfileId: Number(profileId),
-          metadataProfileId: Number(metadataProfileId),
-          rootFolderPath: rootFolder,
-          monitored: monitor !== 'none',
-          monitorNewItems,
-          tags: selectedTags,
-          images: selected.images,
-          addOptions: { monitor, searchForMissingAlbums: searchOnAdd },
-        }),
-      });
-      if (res.ok) {
-        const artist = await res.json();
-        toast.success(`${selected.artistName} added`);
-        router.push(`/music/${artist.id}${instanceId ? `?instance=${instanceId}` : ''}`);
-      } else {
-        const err = await res.json();
-        toast.error(err.error || 'Failed to add artist');
-      }
-    } catch { toast.error('Failed to add artist'); }
-    finally { setAdding(false); }
+    addMutation.mutate({
+      instanceId,
+      artistName: selected.artistName,
+      foreignArtistId: selected.foreignArtistId,
+      qualityProfileId: Number(profileId),
+      metadataProfileId: Number(metadataProfileId),
+      rootFolderPath: rootFolder,
+      monitored: monitor !== 'none',
+      monitorNewItems,
+      tags: selectedTags,
+      images: selected.images,
+      addOptions: { monitor, searchForMissingAlbums: searchOnAdd },
+    });
   }
 
   function toggleTag(tagId: number, checked: boolean) {
@@ -225,8 +219,8 @@ function AddArtistPageContent() {
     const prefill = searchParams.get('term');
     if (!prefill) return;
     setAutoSearched(true);
-    runSearch(prefill);
-  }, [searchParams, autoSearched, runSearch]);
+    setSubmittedTerm(prefill);
+  }, [searchParams, autoSearched]);
 
   return (
     <div className="animate-content-in">

@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -32,9 +35,11 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 function AddSeriesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const [term, setTerm] = useState('');
-  const [results, setResults] = useState<SonarrLookupResult[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [submittedTerm, setSubmittedTerm] = useState('');
+  const [targetTvdbId, setTargetTvdbId] = useState<number | null>(null);
+  const [targetTmdbId, setTargetTmdbId] = useState<number | null>(null);
   const [selected, setSelected] = useState<SonarrLookupResult | null>(null);
   const [profileId, setProfileId] = useState('');
   const [rootFolder, setRootFolder] = useState('');
@@ -43,10 +48,19 @@ function AddSeriesPageContent() {
   const [searchForMissingEpisodes, setSearchForMissingEpisodes] = useState(true);
   const [seriesType, setSeriesType] = useState('standard');
   const [seasonFolder, setSeasonFolder] = useState(true);
-  const [adding, setAdding] = useState(false);
   const [autoSearched, setAutoSearched] = useState(false);
-  const [instances, setInstances] = useState<{ id: string; label: string; isDefault: boolean }[]>([]);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
+
+  const instancesQuery = useQuery({
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<Array<{ id: string; type: string; label: string; isDefault: boolean }>>('/api/instances'),
+    select: (all) =>
+      (Array.isArray(all) ? all : [])
+        .filter((c) => c.type === 'SONARR')
+        .map((c) => ({ id: c.id, label: c.label, isDefault: c.isDefault })),
+  });
+  const instances = useMemo(() => instancesQuery.data ?? [], [instancesQuery.data]);
+
   // Per-instance reference data, shared (and deduped) with the list/edit pages.
   const { data: profiles = [] } = useQualityProfiles('sonarr', instanceId);
   const { data: rootFolders = [] } = useRootFolders('sonarr', instanceId);
@@ -57,19 +71,42 @@ function AddSeriesPageContent() {
     tmdbId: null,
   });
 
-  // Load Sonarr instances; default to the marked default (picker only shows when >1).
+  // Search runs against the submitted term; TanStack threads the AbortSignal so
+  // an in-flight lookup is cancelled on a new search automatically.
+  const lookupQuery = useQuery({
+    queryKey: ['sonarr', 'lookup', submittedTerm],
+    queryFn: jsonFetcher<SonarrLookupResult[]>(`/api/sonarr/lookup?term=${encodeURIComponent(submittedTerm)}`),
+    enabled: submittedTerm.trim().length > 0,
+    staleTime: 60_000,
+  });
+  const results = lookupQuery.data ?? [];
+  const searching = lookupQuery.isFetching;
+
+  // Default to the marked-default instance once instances load (picker shows when >1).
   useEffect(() => {
-    fetch('/api/instances')
-      .then((r) => (r.ok ? r.json() : []))
-      .then((all: Array<{ id: string; type: string; label: string; isDefault: boolean }>) => {
-        const list = (Array.isArray(all) ? all : [])
-          .filter((c) => c.type === 'SONARR')
-          .map((c) => ({ id: c.id, label: c.label, isDefault: c.isDefault }));
-        setInstances(list);
-        setInstanceId((prev) => prev ?? list.find((i) => i.isDefault)?.id ?? list[0]?.id);
-      })
-      .catch(() => undefined);
-  }, []);
+    if (instances.length === 0) return;
+    setInstanceId((prev) => prev ?? instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+  }, [instances]);
+
+  // Auto-select the prefilled result (by tvdbId or tmdbId) once the lookup resolves.
+  useEffect(() => {
+    if ((targetTvdbId == null && targetTmdbId == null) || !lookupQuery.data) return;
+    const matched = lookupQuery.data.find((item) => {
+      if (targetTvdbId != null && item.tvdbId === targetTvdbId) return true;
+      if (targetTmdbId != null) return item.tmdbId === targetTmdbId;
+      return false;
+    });
+    if (matched) setSelected(matched);
+    setTargetTvdbId(null);
+    setTargetTmdbId(null);
+  }, [lookupQuery.data, targetTvdbId, targetTmdbId]);
+
+  // Surface a non-401 lookup failure (a 401 is handled globally → redirect).
+  useEffect(() => {
+    if (!lookupQuery.isError) return;
+    if (lookupQuery.error instanceof ApiError && lookupQuery.error.status === 401) return;
+    toast.error('Search failed');
+  }, [lookupQuery.isError, lookupQuery.error]);
 
   // Default the profile / root-folder selection to the first option when the
   // instance's reference data arrives. Keep a still-valid user choice on a
@@ -84,39 +121,41 @@ function AddSeriesPageContent() {
     setRootFolder((prev) => (prev && rootFolders.some((f) => f.path === prev) ? prev : rootFolders[0].path));
   }, [rootFolders]);
 
-  const runSearch = useCallback(async (searchTerm: string, targetTvdbId?: number, targetTmdbId?: number) => {
-    if (!searchTerm.trim()) return;
-    setSearching(true);
-    try {
-      const res = await fetch(`/api/sonarr/lookup?term=${encodeURIComponent(searchTerm)}`);
-      if (!res.ok) {
-        setResults([]);
-        setSelected(null);
-        toast.error(`Search failed (${res.status} ${res.statusText || 'Unknown error'})`);
-        return;
-      }
-
-      const data: SonarrLookupResult[] = await res.json();
-      setResults(data);
-
-      if (targetTvdbId || targetTmdbId) {
-        const matched = data.find((item) => {
-          if (targetTvdbId && item.tvdbId === targetTvdbId) return true;
-          if (targetTmdbId) return item.tmdbId === targetTmdbId;
-          return false;
-        });
-        if (matched) setSelected(matched);
-      }
-    } catch { toast.error('Search failed'); }
-    finally { setSearching(false); }
-  }, []);
-
-  async function handleSearch(e: React.FormEvent) {
+  function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    await runSearch(term);
+    setSelected(null);
+    setTargetTvdbId(null);
+    setTargetTmdbId(null);
+    setSubmittedTerm(term);
   }
 
-  async function handleAdd() {
+  const addMutation = useMutation({
+    mutationFn: async (payload: { title: string; [k: string]: unknown }) => {
+      const res = await fetch('/api/sonarr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new ApiError(res.status, err?.error || 'Failed to add series');
+      }
+      return res.json();
+    },
+    onSuccess: (s, payload) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      toast.success(`${payload.title} added`);
+      router.push(`/series/${s.id}${instanceId ? `?instance=${instanceId}` : ''}`);
+    },
+    onError: (err) => {
+      // 401 is handled globally (redirect to /login); only toast other failures.
+      if (err instanceof ApiError && err.status === 401) return;
+      toast.error(err instanceof Error ? err.message : 'Failed to add series');
+    },
+  });
+  const adding = addMutation.isPending;
+
+  function handleAdd() {
     if (!selected || !profileId || !rootFolder) return;
     if (selected.library?.exists) {
       if (selected.library.id) {
@@ -127,42 +166,26 @@ function AddSeriesPageContent() {
       return;
     }
 
-    setAdding(true);
-    try {
-      const res = await fetch('/api/sonarr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          instanceId,
-          title: selected.title,
-          tvdbId: selected.tvdbId,
-          qualityProfileId: Number(profileId),
-          rootFolderPath: rootFolder,
-          monitored: monitorOption !== 'none',
-          tags: selectedTags,
-          seriesType,
-          seasonFolder,
-          titleSlug: selected.titleSlug,
-          images: selected.images,
-          seasons: selected.seasons,
-          year: selected.year,
-          addOptions: {
-            monitor: monitorOption,
-            searchForMissingEpisodes,
-            searchForCutoffUnmetEpisodes: false,
-          },
-        }),
-      });
-      if (res.ok) {
-        const s = await res.json();
-        toast.success(`${selected.title} added`);
-        router.push(`/series/${s.id}${instanceId ? `?instance=${instanceId}` : ''}`);
-      } else {
-        const err = await res.json();
-        toast.error(err.error || 'Failed to add series');
-      }
-    } catch { toast.error('Failed to add series'); }
-    finally { setAdding(false); }
+    addMutation.mutate({
+      instanceId,
+      title: selected.title,
+      tvdbId: selected.tvdbId,
+      qualityProfileId: Number(profileId),
+      rootFolderPath: rootFolder,
+      monitored: monitorOption !== 'none',
+      tags: selectedTags,
+      seriesType,
+      seasonFolder,
+      titleSlug: selected.titleSlug,
+      images: selected.images,
+      seasons: selected.seasons,
+      year: selected.year,
+      addOptions: {
+        monitor: monitorOption,
+        searchForMissingEpisodes,
+        searchForCutoffUnmetEpisodes: false,
+      },
+    });
   }
 
   const posterUrl = (images: { coverType: string; remoteUrl: string }[]) =>
@@ -242,7 +265,6 @@ function AddSeriesPageContent() {
     ) {
       setAutoSearched(false);
       setSelected(null);
-      setResults([]);
       lastAutoSearchParamsRef.current = { term: nextTerm, tvdbId, tmdbId };
     }
 
@@ -260,15 +282,13 @@ function AddSeriesPageContent() {
 
     const tvdbIdParam = searchParams.get('tvdbId');
     const tmdbIdParam = searchParams.get('tmdbId');
-    const targetTvdbId = tvdbIdParam ? Number(tvdbIdParam) : undefined;
-    const targetTmdbId = tmdbIdParam ? Number(tmdbIdParam) : undefined;
+    const tvdb = tvdbIdParam ? Number(tvdbIdParam) : null;
+    const tmdb = tmdbIdParam ? Number(tmdbIdParam) : null;
     setAutoSearched(true);
-    runSearch(
-      prefillTerm,
-      typeof targetTvdbId === 'number' && Number.isFinite(targetTvdbId) ? targetTvdbId : undefined,
-      typeof targetTmdbId === 'number' && Number.isFinite(targetTmdbId) ? targetTmdbId : undefined
-    );
-  }, [searchParams, autoSearched, runSearch]);
+    setTargetTvdbId(tvdb !== null && Number.isFinite(tvdb) ? tvdb : null);
+    setTargetTmdbId(tmdb !== null && Number.isFinite(tmdb) ? tmdb : null);
+    setSubmittedTerm(prefillTerm);
+  }, [searchParams, autoSearched]);
 
   return (
     <div className="animate-content-in">
