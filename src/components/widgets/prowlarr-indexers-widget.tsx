@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Layers } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { ApiError } from '@/lib/query-fetch';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { getProwlarrIndexerStatusId, isProwlarrIndexerBlocked, type ProwlarrIndexerStatus } from '@/lib/prowlarr-client';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -20,7 +21,10 @@ async function fetchProwlarr(): Promise<ProwlarrSummary | null> {
     fetch('/api/prowlarr/indexers'),
     fetch('/api/prowlarr/status'),
   ]);
-  if (indexersRes.status !== 'fulfilled' || !indexersRes.value.ok) return null;
+  // Network failure → graceful empty (matches the allSettled intent); a non-ok
+  // response throws so a 401 redirects via the global handler.
+  if (indexersRes.status !== 'fulfilled') return null;
+  if (!indexersRes.value.ok) throw new ApiError(indexersRes.value.status, 'Request failed');
   const indexers: { id: number; enable: boolean }[] = await indexersRes.value.json();
   if (!Array.isArray(indexers)) return null;
   const statuses: ProwlarrIndexerStatus[] =

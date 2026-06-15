@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import type { PlayActivityUser } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -9,7 +10,7 @@ async function fetchPlayActivity({ days, userId }: { days: number; userId: strin
   const params = new URLSearchParams({ days: String(days) });
   if (userId) params.set('userId', userId);
   const res = await fetch(`/api/jellyfin/playback/activity?${params}`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data.data) ? data.data : [];
 }

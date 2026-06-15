@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { formatBytes } from '@/lib/format';
@@ -8,7 +9,7 @@ import { Bar, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
 
 async function fetchStorage(): Promise<DiskSpace[]> {
   const res = await fetch('/api/services/stats');
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data: ServicesStatsResponse = await res.json();
   return data.diskSpace || [];
 }

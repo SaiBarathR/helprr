@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
 import Link from 'next/link';
@@ -24,7 +25,7 @@ interface CleanupHistoryRecord {
 
 async function fetchCleanupHistory(pageSize: number): Promise<CleanupHistoryRecord[]> {
   const res = await fetch(`/api/cleanup/history?pageSize=${pageSize}`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return (data?.records ?? []) as CleanupHistoryRecord[];
 }

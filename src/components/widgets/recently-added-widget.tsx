@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
 import Link from 'next/link';
@@ -43,7 +44,7 @@ function formatShortDate(dateStr: string): string {
 
 async function fetchRecent(limit: number): Promise<RecentItem[]> {
   const res = await fetch(`/api/activity/recent?limit=${limit}`);
-  if (!res.ok) return [];
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data) ? data : [];
 }

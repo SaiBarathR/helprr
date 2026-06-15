@@ -1,4 +1,5 @@
 'use client';
+import { ApiError } from '@/lib/query-fetch';
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -101,7 +102,7 @@ export function UserSelect({
     queryKey: ['jellyfin', 'playback', 'user-list'],
     queryFn: async ({ signal }): Promise<JellyfinUserOption[]> => {
       const res = await fetch('/api/jellyfin/playback/user-list', { signal });
-      if (!res.ok) return [];
+      if (!res.ok) throw new ApiError(res.status, 'Request failed');
       const data = await res.json();
       return Array.isArray(data.users) ? (data.users as JellyfinUserOption[]) : [];
     },
@@ -138,7 +139,7 @@ export function TypeSelect({
     queryKey: ['jellyfin', 'playback', 'filters'],
     queryFn: async ({ signal }): Promise<string[]> => {
       const res = await fetch('/api/jellyfin/playback/filters', { signal });
-      if (!res.ok) return [];
+      if (!res.ok) throw new ApiError(res.status, 'Request failed');
       const data = await res.json();
       return Array.isArray(data.filters) ? (data.filters as string[]) : [];
     },
