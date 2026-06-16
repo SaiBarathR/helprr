@@ -30,10 +30,6 @@ export const queryKeys = {
   anime: (seriesId: number, id?: string) => ['sonarr', 'anime', inst(id), seriesId] as const,
 
   // ── Activity / live ──────────────────────────────────────────────
-  queue: (id?: string) => ['activity', 'queue', inst(id)] as const,
-  history: (id?: string) => ['activity', 'history', inst(id)] as const,
-  wanted: (id?: string) => ['activity', 'wanted', inst(id)] as const,
-  recent: (id?: string) => ['activity', 'recent', inst(id)] as const,
   calendar: (range: string) => ['calendar', range] as const,
   health: () => ['services', 'health'] as const,
   libraryGaps: () => ['library-gaps'] as const,

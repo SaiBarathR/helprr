@@ -28,7 +28,8 @@ import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import type { RadarrMovieListItem } from '@/types';
 
@@ -198,6 +199,7 @@ export default function MoviesPage() {
     data: moviesData,
     isLoading: loading,
     isFetching,
+    isError,
     refetch: refetchMovies,
   } = useQuery({
     queryKey: queryKeys.library('radarr'),
@@ -497,9 +499,11 @@ export default function MoviesPage() {
     await Promise.all([...groupSelectedByInstance()].map(async ([instanceId, ids]) => {
       try {
         const res = await run(instanceId, ids);
+        if (res.status === 401) handleAuthError(new ApiError(401, 'Session expired'));
         if (res.ok) ok += ids.length;
         else fail += ids.length;
-      } catch {
+      } catch (e) {
+        handleAuthError(e);
         fail += ids.length;
       }
     }));
@@ -820,6 +824,21 @@ export default function MoviesPage() {
         }
 
         if (filtered.length === 0) {
+          // Distinguish a fetch failure (nothing cached) from a genuinely empty
+          // library — the former offers Retry, not "add a connection".
+          if (isError && movies.length === 0) {
+            return (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>Couldn&apos;t load your library — check the connection.</p>
+                <button
+                  onClick={() => void refetchMovies()}
+                  className="mt-3 inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent active:bg-accent/80 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            );
+          }
           return (
             <div className="text-center py-12 text-muted-foreground">
               {movies.length === 0

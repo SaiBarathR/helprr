@@ -144,6 +144,7 @@ async function getHandler(
         service: 'radarr',
         exists: library.exists,
         id: library.id,
+        instanceId: library.instanceId,
       },
       tagline: details.tagline || null,
       budget: details.budget || null,

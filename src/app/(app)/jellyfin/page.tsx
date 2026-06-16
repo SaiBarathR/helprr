@@ -231,8 +231,9 @@ function OverviewTab() {
 
   // ── Always-on slices ──────────────────────────────────────────────
   // sessions + resume are the live data (who's watching / progress) — they poll
-  // every 15s while the tab is focused. counts/recently-added rarely change, so
-  // they just revalidate on mount (staleTime:0) and tab switch.
+  // every 15s while the tab is focused (staleTime:0). counts/recently-added and
+  // the other admin slices rarely change, so they hold a 60s staleTime — no
+  // refetch on every mount/tab-return within that window.
   const sessionsQuery = useQuery({
     queryKey: ['jellyfin', 'sessions'],
     queryFn: jsonFetcher<{ sessions?: JellyfinSession[] }>('/api/jellyfin/sessions'),
@@ -255,13 +256,13 @@ function OverviewTab() {
     queryKey: ['jellyfin', 'counts'],
     queryFn: jsonFetcher<{ counts?: JellyfinItemCounts }>('/api/jellyfin/counts'),
     select: (d) => d.counts ?? null,
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const recentQuery = useQuery({
     queryKey: ['jellyfin', 'recently-added'],
     queryFn: jsonFetcher<{ items?: JellyfinItem[] }>('/api/jellyfin/recently-added?limit=20'),
     select: (d) => d.items ?? [],
-    staleTime: 0,
+    staleTime: 60_000,
   });
 
   // ── Admin slices (control-gated; never fetched for members) ───────
@@ -269,7 +270,7 @@ function OverviewTab() {
     queryKey: ['jellyfin', 'system'],
     queryFn: jsonFetcher<{ system?: JellyfinSystemInfo }>('/api/jellyfin/system'),
     select: (d) => d.system ?? null,
-    staleTime: 0,
+    staleTime: 60_000,
     enabled: canControl,
   });
   const tasksQuery = useQuery({
@@ -288,21 +289,21 @@ function OverviewTab() {
   const devicesQuery = useQuery({
     queryKey: ['jellyfin', 'devices'],
     queryFn: jsonFetcher<{ devices?: JellyfinDevice[]; selfDeviceId?: string }>('/api/jellyfin/devices'),
-    staleTime: 0,
+    staleTime: 60_000,
     enabled: canControl,
   });
   const activityQuery = useQuery({
     queryKey: ['jellyfin', 'activity', 'user'],
     queryFn: jsonFetcher<{ entries?: JellyfinActivityEntry[] }>('/api/jellyfin/activity?hasUserId=true&limit=20'),
     select: (d) => d.entries ?? [],
-    staleTime: 0,
+    staleTime: 60_000,
     enabled: canControl,
   });
   const alertsQuery = useQuery({
     queryKey: ['jellyfin', 'activity', 'no-user'],
     queryFn: jsonFetcher<{ entries?: JellyfinActivityEntry[] }>('/api/jellyfin/activity?hasUserId=false&limit=20'),
     select: (d) => d.entries ?? [],
-    staleTime: 0,
+    staleTime: 60_000,
     enabled: canControl,
   });
 
@@ -714,13 +715,13 @@ function UsersTab() {
     queryFn: jsonFetcher<{ users?: PlaybackUserActivity[]; pluginAvailable?: boolean }>(
       `/api/jellyfin/playback/users?days=${MAX_DAYS}`
     ),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const jellyfinUsersQuery = useQuery({
     queryKey: ['jellyfin', 'users'],
     queryFn: jsonFetcher<{ users?: JellyfinUser[] }>('/api/jellyfin/users'),
     select: (d) => d.users ?? [],
-    staleTime: 0,
+    staleTime: 60_000,
   });
 
   // Per-user "recent plays" drawer — fetched on demand when a user is selected.
@@ -736,7 +737,7 @@ function UsersTab() {
       })()
     ),
     select: (d) => d.items ?? [],
-    staleTime: 0,
+    staleTime: 60_000,
     enabled: !!selectedUser,
   });
 
@@ -838,13 +839,13 @@ function HistoryTab() {
     queryFn: jsonFetcher<{ users?: { name: string; id: string }[]; pluginAvailable?: boolean }>(
       '/api/jellyfin/playback/user-list'
     ),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const filtersQuery = useQuery({
     queryKey: ['jellyfin', 'playback', 'filters'],
     queryFn: jsonFetcher<{ filters?: string[] }>('/api/jellyfin/playback/filters'),
     select: (d) => d.filters ?? [],
-    staleTime: 0,
+    staleTime: 60_000,
   });
 
   const fromDateStr = dateRange.from ? toDateStr(dateRange.from) : null;
@@ -878,7 +879,7 @@ function HistoryTab() {
       const loaded = allPages.reduce((n, p) => n + (p.items?.length ?? 0), 0);
       return loaded < (lastPage.total ?? 0) ? loaded : undefined;
     },
-    staleTime: 0,
+    staleTime: 60_000,
     enabled: !!dateRange.from,
   });
 
@@ -1043,7 +1044,7 @@ function StatsTab() {
     queryFn: jsonFetcher<{ users?: { id: string; name: string }[]; pluginAvailable?: boolean }>(
       '/api/jellyfin/playback/user-list'
     ),
-    staleTime: 0,
+    staleTime: 60_000,
   });
 
   const queryDays = days === 0 ? MAX_DAYS : days;
@@ -1057,37 +1058,37 @@ function StatsTab() {
   const activityQ = useQuery({
     queryKey: ['jellyfin', 'playback', 'activity', statsFilters],
     queryFn: jsonFetcher<{ data?: PlayActivityUser[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/activity?${statsQs}`),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const tvQ = useQuery({
     queryKey: ['jellyfin', 'playback', 'tv-shows', statsFilters],
     queryFn: jsonFetcher<{ shows?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/tv-shows?${statsQs}`),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const movQ = useQuery({
     queryKey: ['jellyfin', 'playback', 'movies', statsFilters],
     queryFn: jsonFetcher<{ movies?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/movies?${statsQs}`),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const methodQ = useQuery({
     queryKey: ['jellyfin', 'playback', 'breakdown', 'PlaybackMethod', statsFilters],
     queryFn: jsonFetcher<{ entries?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/breakdown/PlaybackMethod?${statsQs}`),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const clientQ = useQuery({
     queryKey: ['jellyfin', 'playback', 'breakdown', 'ClientName', statsFilters],
     queryFn: jsonFetcher<{ entries?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/breakdown/ClientName?${statsQs}`),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const deviceQ = useQuery({
     queryKey: ['jellyfin', 'playback', 'breakdown', 'DeviceName', statsFilters],
     queryFn: jsonFetcher<{ entries?: PlaybackBreakdownEntry[]; pluginAvailable?: boolean }>(`/api/jellyfin/playback/breakdown/DeviceName?${statsQs}`),
-    staleTime: 0,
+    staleTime: 60_000,
   });
   const hourlyQ = useQuery({
     queryKey: ['jellyfin', 'playback', 'hourly', statsFilters],
     queryFn: jsonFetcher<{ data?: Record<string, number>; pluginAvailable?: boolean }>(`/api/jellyfin/playback/hourly?${statsQs}`),
-    staleTime: 0,
+    staleTime: 60_000,
   });
 
   const users = userListQuery.data?.users ?? [];

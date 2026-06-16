@@ -62,6 +62,7 @@ export function ContinueWatchingWidget({
     refreshInterval,
     enabled: !editMode,
     cacheKey: `continue-watching-${fetchLimit}`,
+    refetchOnFocus: true,
   });
   const externalUrls = useExternalUrls();
   const jellyfinUrl = externalUrls.JELLYFIN;

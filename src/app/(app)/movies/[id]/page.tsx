@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -102,13 +103,6 @@ function formatRatingVotes(votes: number): string {
   return String(votes);
 }
 
-async function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -126,7 +120,7 @@ export default function MovieDetailPage() {
   const movieQuery = useQuery({
     queryKey: queryKeys.detail('radarr', movieId, instance),
     queryFn: async ({ signal }): Promise<RadarrMovie | null> => {
-      const response = await radarrFetch(instance, `/api/radarr/${movieId}`, { signal });
+      const response = await arrMutationFetch(instance, `/api/radarr/${movieId}`, { signal });
       if (response.ok) return (await response.json()) as RadarrMovie;
       let message = '';
       try {
@@ -178,7 +172,7 @@ export default function MovieDetailPage() {
   const { data: credits = [] } = useQuery({
     queryKey: queryKeys.credits('radarr', movieId, instance),
     queryFn: async ({ signal }): Promise<RadarrCredit[]> => {
-      const r = await radarrFetch(instance, `/api/radarr/credit?movieId=${movieId}`, { signal });
+      const r = await arrMutationFetch(instance, `/api/radarr/credit?movieId=${movieId}`, { signal });
       return r.ok ? ((await r.json()) as RadarrCredit[]) : [];
     },
     enabled: !!movie,
@@ -316,13 +310,13 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('search');
     try {
-      await radarrFetch(instance, '/api/radarr/command', {
+      await arrMutationFetch(instance, '/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'MoviesSearch', movieIds: [movie.id] }),
       });
       toast.success('Search started');
-    } catch { toast.error('Search failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Search failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -330,7 +324,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('refresh');
     try {
-      const res = await radarrFetch(instance, '/api/radarr/command', {
+      const res = await arrMutationFetch(instance, '/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshMovie', movieId: movie.id }),
@@ -344,7 +338,7 @@ export default function MovieDetailPage() {
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
-    } catch { toast.error('Refresh failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -352,7 +346,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('monitor');
     try {
-      const res = await radarrFetch(instance, `/api/radarr/${movie.id}`, {
+      const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...movie, monitored: !movie.monitored }),
@@ -360,10 +354,14 @@ export default function MovieDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         queryClient.setQueryData(queryKeys.detail('radarr', movieId, instance), updated);
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
+        // Patch this movie's monitored flag in the cached library lists
+        // (slim/full/all-instances) instead of refetching the whole library —
+        // preserves the server-resolved profile/tag labels.
+        queryClient.setQueriesData({ queryKey: queryKeys.library('radarr') }, (prev) =>
+          Array.isArray(prev) ? prev.map((m) => (m.id === movieId ? { ...m, monitored: updated.monitored } : m)) : prev);
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
-    } catch { toast.error('Failed to update'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to update'); }
     finally { setActionLoading(''); }
   }
 
@@ -371,13 +369,13 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setDeleting(true);
     try {
-      const res = await radarrFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
       queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
       toast.success('Movie deleted');
       router.push('/movies');
-    } catch { toast.error('Delete failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Delete failed'); }
     finally { setDeleting(false); }
   }
 

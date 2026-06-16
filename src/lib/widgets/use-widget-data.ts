@@ -15,6 +15,13 @@ interface UseWidgetDataOptions<T> {
    * keyed cache + request dedup; previously a hand-rolled Map.)
    */
   cacheKey?: string;
+  /**
+   * Refetch immediately when the tab/window regains focus. Default `false`.
+   * Opt-in for live widgets (queue, Jellyfin activity, continue-watching, service
+   * health) so they refresh the instant the user returns; static widgets
+   * (calendar, upcoming, stats, …) leave it off and wait for the next interval.
+   */
+  refetchOnFocus?: boolean;
 }
 
 interface UseWidgetDataResult<T> {
@@ -25,12 +32,15 @@ interface UseWidgetDataResult<T> {
 }
 
 /**
- * Widget data hook, backed by TanStack Query. Public API is unchanged so every
- * widget keeps working as-is. Behavior parity with the previous hand-rolled
- * implementation:
- *   - polling at `refreshInterval`, paused while the tab is hidden (a dashboard
- *     mounts ~10-15 widgets; polling them all in a backgrounded iOS PWA is exactly
- *     the focus/background churn the app avoids — matches badge/activity/jellyfin),
+ * Widget data hook, backed by TanStack Query. Behavior:
+ *   - polls at a FIXED `refreshInterval` (no backoff) so a widget pointed at a
+ *     briefly-down service recovers within one interval once it returns,
+ *   - PAUSES polling while the tab is hidden (`refetchIntervalInBackground:false`):
+ *     a dashboard mounts ~10-15 widgets; polling them all in a backgrounded iOS
+ *     PWA is exactly the focus/background churn the app avoids. (The old
+ *     hand-rolled hook never paused — this is a deliberate change.)
+ *   - optionally refetches on focus (`refetchOnFocus`, default off) so live
+ *     widgets refresh the instant the user returns; static ones wait for the tick,
  *   - cross-instance cache + in-flight coalescing when `cacheKey` is shared,
  *   - resets to a loading state when `cacheKey` changes (different query),
  *   - warm cache survives a remount within one interval.
@@ -40,6 +50,7 @@ export function useWidgetData<T>({
   refreshInterval,
   enabled = true,
   cacheKey,
+  refetchOnFocus = false,
 }: UseWidgetDataOptions<T>): UseWidgetDataResult<T> {
   // No cacheKey → a stable per-instance key so instances don't share (matches the
   // old behavior where keyless callers each fetched independently).
@@ -53,7 +64,7 @@ export function useWidgetData<T>({
     enabled,
     refetchInterval: refreshInterval,
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: refetchOnFocus,
     // Refetch on every mount (matching the old doFetch-on-mount), but the keyed
     // cache still shows the previous value immediately during that refetch — so
     // a remount (DragOverlay, a key-change refresh) gets fresh data with no

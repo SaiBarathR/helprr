@@ -1089,6 +1089,9 @@ export interface DiscoverDetail extends DiscoverItem {
     service: 'radarr' | 'sonarr';
     exists: boolean;
     id?: number;
+    // The instance the matched item lives in (when exists). Detail-page links use
+    // it so a non-default-instance item caches under the same ?instance= slot.
+    instanceId?: string;
   };
 }
 

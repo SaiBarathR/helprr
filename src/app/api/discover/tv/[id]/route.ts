@@ -168,6 +168,7 @@ async function getHandler(
         service: 'sonarr',
         exists: library.exists,
         id: library.id,
+        instanceId: library.instanceId,
       },
       tagline: details.tagline || null,
       homepage: details.homepage || null,

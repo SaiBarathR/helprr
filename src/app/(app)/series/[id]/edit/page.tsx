@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { arrMutationFetch } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -18,14 +19,6 @@ import { episodesWithFileKey } from '@/lib/series-query-cache';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import type { SonarrSeries } from '@/types';
 
-async function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
-
 export default function SeriesEditPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -37,7 +30,7 @@ export default function SeriesEditPage() {
   const seriesQuery = useQuery({
     queryKey: queryKeys.detail('sonarr', Number(id), instance),
     queryFn: async ({ signal }): Promise<SonarrSeries | null> => {
-      const r = await sonarrFetch(instance, `/api/sonarr/${id}`, { signal });
+      const r = await arrMutationFetch(instance, `/api/sonarr/${id}`, { signal });
       return r.ok ? ((await r.json()) as SonarrSeries) : null;
     },
     enabled: Number.isFinite(Number(id)),
@@ -103,7 +96,7 @@ export default function SeriesEditPage() {
       const moveFiles = rootFolderTouched;
       const url = `/api/sonarr/${series.id}${moveFiles ? '?moveFiles=true' : ''}`;
 
-      const res = await sonarrFetch(instance, url, {
+      const res = await arrMutationFetch(instance, url, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
@@ -122,7 +115,8 @@ export default function SeriesEditPage() {
       } else {
         toast.error('Failed to update series');
       }
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Failed to update series');
     } finally {
       setSaving(false);

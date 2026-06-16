@@ -41,7 +41,7 @@ import type {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { ApiError, arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, tvSeasonKey } from '@/lib/series-query-cache';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
@@ -145,13 +145,6 @@ function waitForElementScrollY(
   });
 }
 
-async function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 export default function SeriesDetailPage() {
   const { id } = useParams();
@@ -245,7 +238,7 @@ export default function SeriesDetailPage() {
   const animeQuery = useQuery({
     queryKey: animeKey,
     queryFn: async ({ signal }): Promise<AnimePayload> => {
-      const res = await sonarrFetch(instance, `/api/sonarr/${seriesId}/anime`, { signal });
+      const res = await arrMutationFetch(instance, `/api/sonarr/${seriesId}/anime`, { signal });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to load AniList details');
@@ -382,7 +375,7 @@ export default function SeriesDetailPage() {
       const entryId = activeAnimeEntryIdRef.current;
       if (entryId == null) return;
       try {
-        const response = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`);
+        const response = await arrMutationFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`);
         if (!response.ok) return;
         const data: SeriesAniListEntryDetailResponse = await response.json();
         if (cancelled) return;
@@ -398,7 +391,7 @@ export default function SeriesDetailPage() {
         }
 
         // The on-screen entry was pruned server-side — resync mapping + primary.
-        const full = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime`);
+        const full = await arrMutationFetch(instance, `/api/sonarr/${series.id}/anime`);
         if (!full.ok) return;
         const fullData: SeriesAniListResponse = await full.json();
         if (cancelled) return;
@@ -458,7 +451,7 @@ export default function SeriesDetailPage() {
 
     const controller = new AbortController();
     const activeSeriesId = seriesId;
-    sonarrFetch(instance, `/api/sonarr/${series.id}/anime?full=1`, { signal: controller.signal })
+    arrMutationFetch(instance, `/api/sonarr/${series.id}/anime?full=1`, { signal: controller.signal })
       .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListResponse>) : null))
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
@@ -485,7 +478,7 @@ export default function SeriesDetailPage() {
 
     const activeSeriesId = seriesId;
     setActiveDetailLoading(true);
-    sonarrFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`)
+    arrMutationFetch(instance, `/api/sonarr/${series.id}/anime?detail=${entryId}`)
       .then((r) => (r.ok ? (r.json() as Promise<SeriesAniListEntryDetailResponse>) : null))
       .then((data) => {
         if (!data || activeSeriesId !== currentSeriesIdRef.current) return;
@@ -516,7 +509,7 @@ export default function SeriesDetailPage() {
     if (!series?.id) return;
     const activeSeriesId = seriesId;
     try {
-      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}/anime?full=1`);
+      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}/anime?full=1`);
       if (!res.ok) return;
       const data: SeriesAniListResponse = await res.json();
       if (activeSeriesId !== currentSeriesIdRef.current) return;
@@ -608,13 +601,13 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('search');
     try {
-      await sonarrFetch(instance, '/api/sonarr/command', {
+      await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'SeriesSearch', seriesId: series.id }),
       });
       toast.success('Series search started');
-    } catch { toast.error('Search failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Search failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -622,7 +615,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('monitor');
     try {
-      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
+      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...series, monitored: !series.monitored }),
@@ -632,10 +625,14 @@ export default function SeriesDetailPage() {
         // The series object is the single shared key — writing it here reflects on
         // the season + episode views (which read the same key) automatically.
         queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+        // Patch this series' monitored flag in the cached library lists
+        // (slim/full/all-instances) instead of refetching the whole library —
+        // preserves the server-resolved profile/tag labels.
+        queryClient.setQueriesData({ queryKey: queryKeys.library('sonarr') }, (prev) =>
+          Array.isArray(prev) ? prev.map((s) => (s.id === seriesId ? { ...s, monitored: updated.monitored } : s)) : prev);
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       }
-    } catch { toast.error('Failed to update'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to update'); }
     finally { setActionLoading(''); }
   }
 
@@ -648,25 +645,27 @@ export default function SeriesDetailPage() {
           s.seasonNumber === seasonNumber ? { ...s, monitored } : s
         ),
       };
-      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
+      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
       });
       if (res.ok) {
         const updated: SonarrSeries = await res.json();
+        // Shared detail key → reflects on the series-detail + season + episode views.
+        // No library invalidation: a season-monitor change doesn't alter the
+        // series-level `monitored` shown in the list.
         queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
         toast.success(`Season ${seasonNumber} ${monitored ? 'monitored' : 'unmonitored'}`);
       }
-    } catch { toast.error('Failed to update season'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to update season'); }
   }
 
   async function handleApplyMonitor() {
     if (!series || !monitorOption) return;
     setActionLoading('applyMonitor');
     try {
-      await sonarrFetch(instance, '/api/sonarr/command', {
+      await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -702,7 +701,7 @@ export default function SeriesDetailPage() {
         }),
         addOptions: { monitor: monitorOption },
       };
-      const updateRes = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
+      const updateRes = await arrMutationFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(monitorUpdate),
@@ -716,7 +715,7 @@ export default function SeriesDetailPage() {
       } else {
         toast.error('Failed to update monitor');
       }
-    } catch { toast.error('Failed to update monitor'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to update monitor'); }
     finally { setActionLoading(''); }
   }
 
@@ -724,7 +723,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('refresh');
     try {
-      const res = await sonarrFetch(instance, '/api/sonarr/command', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: series.id }),
@@ -738,7 +737,7 @@ export default function SeriesDetailPage() {
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
-    } catch { toast.error('Refresh failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -746,7 +745,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setDeleting(true);
     try {
-      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
       queryClient.removeQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
@@ -756,7 +755,7 @@ export default function SeriesDetailPage() {
       queryClient.removeQueries({ queryKey: queryKeys.credits('sonarr', series.id, instance) });
       toast.success('Series deleted');
       router.push('/series');
-    } catch { toast.error('Delete failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Delete failed'); }
     finally { setDeleting(false); }
   }
 

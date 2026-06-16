@@ -23,6 +23,7 @@ export function JellyfinPlayActivityWidget({ refreshInterval, editMode = false }
       refreshInterval={refreshInterval}
       editMode={editMode}
       fetchFn={fetchPlayActivity}
+      refetchOnFocus
       isEmpty={(d) => !d || d.filter((u) => u.user_id !== 'labels_user').length === 0}
       initialDays={30}
       renderContent={(data) => <PlayActivityChart data={data ?? []} />}

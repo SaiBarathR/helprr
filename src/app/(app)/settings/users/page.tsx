@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Loader2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -423,6 +423,10 @@ function EditUserDialog({
   // the template/toggle mutations (which return the authoritative effective set).
   const [template, setTemplate] = useState(user.template);
   const [effective, setEffective] = useState<Partial<Record<Capability, boolean>> | null>(null);
+  // Mirror of `effective` read synchronously when building a toggle's payload, so
+  // two toggles fired in the same frame (before a re-render) each build on the
+  // previous one's change rather than the stale render-closure value.
+  const effectiveRef = useRef<Partial<Record<Capability, boolean>> | null>(null);
 
   const permsQuery = useQuery({
     queryKey: ['users', 'permissions', user.id],
@@ -437,6 +441,7 @@ function EditUserDialog({
       // eslint-disable-next-line react-hooks/set-state-in-effect -- seed editable state from the permissions query
       setTemplate(permsQuery.data.template);
       setEffective(permsQuery.data.effective);
+      effectiveRef.current = permsQuery.data.effective;
     }
   }, [permsQuery.data]);
 
@@ -491,12 +496,16 @@ function EditUserDialog({
     onSuccess: (data) => {
       setTemplate(data.template);
       setEffective(data.effective);
+      effectiveRef.current = data.effective;
       toast.success('Template applied');
     },
     onError: () => toast.error('Failed to apply template'),
   });
 
   const toggleCapMutation = useMutation({
+    // Serialize this user's permission writes so two fast toggles run in order and
+    // an out-of-order response can't clobber the later one.
+    scope: { id: `user-perms-${user.id}` },
     mutationFn: async (next: Partial<Record<Capability, boolean>>) => {
       const res = await fetch(`/api/users/${user.id}/permissions`, {
         method: 'PUT',
@@ -506,7 +515,10 @@ function EditUserDialog({
       if (!res.ok) throw new Error('Failed to update permission');
       return (await res.json()) as { effective: Partial<Record<Capability, boolean>> };
     },
-    onSuccess: (data) => setEffective(data.effective),
+    onSuccess: (data) => {
+      setEffective(data.effective);
+      effectiveRef.current = data.effective;
+    },
   });
 
   const permBusy = applyTemplateMutation.isPending || toggleCapMutation.isPending;
@@ -520,14 +532,22 @@ function EditUserDialog({
   }
 
   function toggleCap(cap: Capability, value: boolean) {
-    if (!effective) return;
-    const prev = effective;
-    const next = { ...effective, [cap]: value };
+    // Build from the freshest state (ref), not the render closure, so a second
+    // toggle in the same frame extends the first's change instead of overwriting it.
+    const base = effectiveRef.current ?? effective;
+    if (!base) return;
+    const next = { ...base, [cap]: value };
+    effectiveRef.current = next;
     setEffective(next); // optimistic
     toggleCapMutation.mutate(next, {
       onError: () => {
         toast.error('Failed to update permission');
-        setEffective(prev); // revert
+        // Revert only this cap functionally so a failed toggle can't drop a
+        // concurrent successful one.
+        effectiveRef.current = effectiveRef.current
+          ? { ...effectiveRef.current, [cap]: !value }
+          : effectiveRef.current;
+        setEffective((cur) => (cur ? { ...cur, [cap]: !value } : cur));
       },
     });
   }

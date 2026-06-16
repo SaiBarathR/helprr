@@ -43,6 +43,8 @@ export interface JellyfinStatsWidgetShellProps<T> {
   showSortToggle?: boolean;
   initialDays?: number;
   initialSort?: SortMode;
+  /** Refetch on focus — opt-in per widget (live ones), off for the static charts. */
+  refetchOnFocus?: boolean;
 }
 
 export function JellyfinStatsWidgetShell<T>(props: JellyfinStatsWidgetShellProps<T>) {
@@ -58,6 +60,7 @@ export function JellyfinStatsWidgetShell<T>(props: JellyfinStatsWidgetShellProps
     showSortToggle = false,
     initialDays,
     initialSort,
+    refetchOnFocus = false,
   } = props;
 
   const defaults: JellyfinStatsFilters = {
@@ -78,6 +81,7 @@ export function JellyfinStatsWidgetShell<T>(props: JellyfinStatsWidgetShellProps
     refreshInterval,
     enabled: !editMode,
     cacheKey: `${widgetId}-${filters.days}-${filters.userId || 'all'}`,
+    refetchOnFocus,
   });
 
   const hasActiveFilters = filters.days !== defaults.days || filters.userId !== defaults.userId;

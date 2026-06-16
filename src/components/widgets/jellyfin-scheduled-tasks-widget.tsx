@@ -40,23 +40,20 @@ function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
 }
 
 export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false }: WidgetProps) {
-  const [refreshCounter, setRefreshCounter] = useState(0);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   const [busyTasks, setBusyTasks] = useState<Set<string>>(new Set());
   const [manualRefreshing, setManualRefreshing] = useState(false);
 
-  const { data, loading } = useWidgetData<JellyfinScheduledTask[]>({
+  const { data, loading, refresh } = useWidgetData<JellyfinScheduledTask[]>({
     fetchFn: fetchTasks,
     refreshInterval,
     enabled: !editMode,
-    cacheKey: `jellyfin-scheduled-tasks-${refreshCounter}`,
+    // Stable key — a task action refetches via the hook's refresh() rather than
+    // bumping a counter into the key, which orphaned the previous cache slot.
+    cacheKey: 'jellyfin-scheduled-tasks',
   });
 
   const tasks = useMemo(() => data ?? [], [data]);
-
-  const bumpRefresh = useCallback(() => {
-    setRefreshCounter((c) => c + 1);
-  }, []);
 
   const handleTaskAction = useCallback(
     async (taskId: string, action: 'start' | 'stop') => {
@@ -71,7 +68,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
           toast.error(body?.error || `Failed to ${action} task`);
           return;
         }
-        bumpRefresh();
+        void refresh();
       } catch {
         toast.error(`Failed to ${action} task`);
       } finally {
@@ -82,7 +79,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
         });
       }
     },
-    [editMode, bumpRefresh],
+    [editMode, refresh],
   );
 
   const visible = useMemo(() => tasks.filter((t) => !t.IsHidden), [tasks]);
@@ -137,9 +134,9 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
       disabled={manualRefreshing || editMode}
       onClick={() => {
         setManualRefreshing(true);
-        bumpRefresh();
-        // micro-debounce: the useEffect on cacheKey change fires synchronously,
-        // but the fetch resolves later — release the button after a beat.
+        void refresh();
+        // micro-debounce: refresh() kicks off the refetch but resolves later —
+        // release the button after a beat.
         setTimeout(() => setManualRefreshing(false), 600);
       }}
     >
