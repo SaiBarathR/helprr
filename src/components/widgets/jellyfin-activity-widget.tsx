@@ -55,6 +55,7 @@ export function JellyfinActivityFeed({
     refreshInterval,
     enabled: !editMode,
     cacheKey,
+    refetchOnFocus: true,
   });
   const list = data ?? [];
 

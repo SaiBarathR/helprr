@@ -25,7 +25,8 @@ import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries, Dis
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { useCan } from '@/components/permission-provider';
 
@@ -56,13 +57,6 @@ function formatRuntime(value?: string | number): string | null {
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-async function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
 
@@ -230,13 +224,14 @@ export default function EpisodeDetailPage() {
   async function handleAutomaticSearch() {
     setActionLoading('search');
     try {
-      await sonarrFetch(instance, '/api/sonarr/command', {
+      await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [episodeId] }),
       });
       toast.success('Episode search started');
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Search failed');
     } finally {
       setActionLoading('');
@@ -248,7 +243,7 @@ export default function EpisodeDetailPage() {
     setActionLoading('monitor');
     try {
       const nextMonitored = !episode.monitored;
-      const res = await sonarrFetch(instance, '/api/sonarr/episode/monitor', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/episode/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ episodeIds: [episodeId], monitored: nextMonitored }),
@@ -259,7 +254,8 @@ export default function EpisodeDetailPage() {
         ]);
         toast.success(episode.monitored ? 'Episode unmonitored' : 'Episode monitored');
       }
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Failed to update');
     } finally {
       setActionLoading('');
@@ -270,7 +266,7 @@ export default function EpisodeDetailPage() {
     if (!series || !episode || !episode.episodeFileId) return;
     setDeleting(true);
     try {
-      const deleteRes = await sonarrFetch(instance, `/api/sonarr/episodefile/${episode.episodeFileId}`, {
+      const deleteRes = await arrMutationFetch(instance, `/api/sonarr/episodefile/${episode.episodeFileId}`, {
         method: 'DELETE',
       });
       if (!deleteRes.ok) {
@@ -295,6 +291,7 @@ export default function EpisodeDetailPage() {
         },
       ]);
     } catch (error) {
+      handleAuthError(error);
       const message = error instanceof Error ? error.message : 'Failed to delete file';
       toast.error(message);
     } finally {

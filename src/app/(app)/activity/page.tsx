@@ -764,11 +764,27 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
-  // Shares the ['activity','queue'] cache with the Queue tab (same endpoint).
+  const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
+
+  useEffect(() => {
+    // Load the configured activity refresh interval (ms); falls back to 5s.
+    async function loadRefreshInterval() {
+      const intervalMs = await getRefreshIntervalMs('activityRefreshIntervalSecs', 5);
+      setRefreshIntervalMs(intervalMs);
+    }
+    loadRefreshInterval();
+  }, []);
+
+  // Shares the ['activity','queue'] cache with the Queue tab (same endpoint). The
+  // tabs are mutually exclusive, so this tab needs its own poller — QueueTab's
+  // interval doesn't run while Failed Imports is mounted.
   const queueQuery = useQuery({
     queryKey: ['activity', 'queue'],
     queryFn: jsonFetcher<{ records?: (QueueItem & { source?: string })[] }>('/api/activity/queue'),
     select: (d) => d.records ?? [],
+    refetchInterval: backoffRefetchInterval(refreshIntervalMs),
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
     staleTime: 0,
   });
   const loading = queueQuery.isLoading;
@@ -886,7 +902,10 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   // Server pages filter by a single source only; the raw totalRecords gates
   // "Load more". Multi-select + instance filters are applied client-side below.
   const wantedQuery = useInfiniteQuery({
-    queryKey: ['activity', 'wanted', type, { filterBy, instanceFilter }],
+    // Key on server-affecting params only (the API pages by a single source).
+    // Multi-select + instance filters are applied client-side below, so they must
+    // not churn the key — that would refetch every loaded page on a filter change.
+    queryKey: ['activity', 'wanted', type, filterBy.length === 1 ? filterBy[0] : 'all'],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({ type, page: String(pageParam), pageSize: String(PAGE_SIZE) });
       if (filterBy.length === 1) params.set('source', filterBy[0]);

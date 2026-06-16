@@ -23,6 +23,7 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
     refreshInterval,
     enabled: !editMode,
     cacheKey: 'service-health',
+    refetchOnFocus: true,
   });
 
   const list = services ?? [];

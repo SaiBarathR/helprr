@@ -19,7 +19,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import type { HistoryItem, RadarrMovie } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -106,14 +106,6 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
   );
 }
 
-async function radarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
-
 export default function MovieFilesPage() {
   const { id } = useParams<{ id: string }>();
   const movieId = Number(id);
@@ -125,7 +117,7 @@ export default function MovieFilesPage() {
   const movieQuery = useQuery({
     queryKey: queryKeys.detail('radarr', movieId, instance),
     queryFn: async ({ signal }): Promise<RadarrMovie | null> => {
-      const r = await radarrFetch(instance, `/api/radarr/${movieId}`, { signal });
+      const r = await arrMutationFetch(instance, `/api/radarr/${movieId}`, { signal });
       if (!r.ok) {
         // Only a genuine 404 means "not found"; surface auth/server errors instead
         // of rendering them as a missing movie.
@@ -142,7 +134,7 @@ export default function MovieFilesPage() {
   const historyQuery = useQuery({
     queryKey: ['radarr', 'history', 'movie', instance ?? 'default', movieId],
     queryFn: async ({ signal }): Promise<HistoryItem[]> => {
-      const r = await radarrFetch(instance, `/api/radarr/history/movie?movieId=${movieId}`, { signal });
+      const r = await arrMutationFetch(instance, `/api/radarr/history/movie?movieId=${movieId}`, { signal });
       return r.ok ? ((await r.json()) as HistoryItem[]) : [];
     },
     enabled: Number.isFinite(movieId),

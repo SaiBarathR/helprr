@@ -178,6 +178,7 @@ export default function HistoryPage() {
     queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
       Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
+    staleTime: 5 * 60_000,
   });
 
   // Drop a stale instance selection if that instance no longer exists. Correcting

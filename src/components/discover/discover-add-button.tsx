@@ -14,9 +14,12 @@ interface DiscoverAddButtonProps {
 
 function buildAddHref(detail: DiscoverDetail): string | null {
   if (detail.addTarget.exists && detail.addTarget.id) {
+    // Carry the matched item's instance so the detail page caches under the same
+    // ?instance= slot the optimistic monitor writes use (mirrors anime-add-button).
+    const q = detail.addTarget.instanceId ? `?instance=${detail.addTarget.instanceId}` : '';
     return detail.addTarget.service === 'radarr'
-      ? `/movies/${detail.addTarget.id}`
-      : `/series/${detail.addTarget.id}`;
+      ? `/movies/${detail.addTarget.id}${q}`
+      : `/series/${detail.addTarget.id}${q}`;
   }
 
   if (detail.mediaType === 'movie') {

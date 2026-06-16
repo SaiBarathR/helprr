@@ -37,6 +37,23 @@ export function withInstanceQuery(url: string, instanceId?: string): string {
 }
 
 /**
+ * Shared *arr mutation fetch. Replaces the per-page `sonarrFetch`/`radarrFetch`/
+ * `lidarrFetch` copies for imperative writes (monitor/season/search/refresh/
+ * delete/bulk). A 401 = session revoked mid-view; throw an ApiError so the
+ * caller's catch can route it through `handleAuthError` (redirect to /login)
+ * instead of swallowing it into a misleading "failed" toast.
+ */
+export async function arrMutationFetch(
+  instance: string | undefined,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const res = await fetch(withInstanceQuery(path, instance), init);
+  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
+  return res;
+}
+
+/**
  * queryFn factory: GET `<path>` (+ optional instanceId), throw on !ok, return
  * typed JSON. `signal` is threaded through so TanStack cancels in-flight
  * requests on unmount/refetch.

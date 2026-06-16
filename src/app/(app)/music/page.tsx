@@ -28,7 +28,8 @@ import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import type { LidarrArtistListItem } from '@/types';
 import type { MediaViewMode } from '@/lib/store';
@@ -184,6 +185,7 @@ export default function MusicPage() {
     data: artistsData,
     isLoading: loading,
     isFetching,
+    isError,
     refetch: refetchArtists,
   } = useQuery({
     queryKey: queryKeys.library('lidarr'),
@@ -199,7 +201,7 @@ export default function MusicPage() {
     () => [...new Set(artists.map((a) => a.instanceId).filter((id): id is string => Boolean(id)))],
     [artists]
   );
-  const tags = useUnionTags('lidarr', instanceIds);
+  const tags = useUnionTags('lidarr', selectionMode ? instanceIds : []);
   const refreshing = isFetching && !loading;
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -446,9 +448,11 @@ export default function MusicPage() {
     await Promise.all([...groupSelectedByInstance()].map(async ([instanceId, ids]) => {
       try {
         const res = await run(instanceId, ids);
+        if (res.status === 401) handleAuthError(new ApiError(401, 'Session expired'));
         if (res.ok) ok += ids.length;
         else fail += ids.length;
-      } catch {
+      } catch (e) {
+        handleAuthError(e);
         fail += ids.length;
       }
     }));
@@ -800,6 +804,21 @@ export default function MusicPage() {
         }
 
         if (filtered.length === 0) {
+          // Distinguish a fetch failure (nothing cached) from a genuinely empty
+          // library — the former offers Retry, not "add a connection".
+          if (isError && artists.length === 0) {
+            return (
+              <div className="text-center py-12 text-muted-foreground">
+                <p>Couldn&apos;t load your library — check the connection.</p>
+                <button
+                  onClick={() => void refetchArtists()}
+                  className="mt-3 inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent active:bg-accent/80 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            );
+          }
           return (
             <div className="text-center py-12 text-muted-foreground">
               {artists.length === 0

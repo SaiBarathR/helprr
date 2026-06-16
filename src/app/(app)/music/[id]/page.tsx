@@ -49,7 +49,8 @@ import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import {
@@ -91,13 +92,6 @@ function albumYear(album: LidarrAlbum): number | null {
   return Number.isFinite(y) ? y : null;
 }
 
-async function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 export default function ArtistDetailPage() {
   const { id } = useParams();
@@ -118,7 +112,7 @@ export default function ArtistDetailPage() {
   const artistQuery = useQuery({
     queryKey: queryKeys.detail('lidarr', artistId, instance),
     queryFn: async ({ signal }): Promise<LidarrArtist | null> => {
-      const r = await lidarrFetch(instance, `/api/lidarr/${artistId}`, { signal });
+      const r = await arrMutationFetch(instance, `/api/lidarr/${artistId}`, { signal });
       if (!r.ok) {
         if (r.status === 404) return null;
         throw new ApiError(r.status, `GET /api/lidarr/${artistId} → ${r.status}`);
@@ -130,7 +124,7 @@ export default function ArtistDetailPage() {
   const albumsQuery = useQuery({
     queryKey: albumsKey,
     queryFn: async ({ signal }): Promise<LidarrAlbum[]> => {
-      const r = await lidarrFetch(instance, `/api/lidarr/${artistId}/albums`, { signal });
+      const r = await arrMutationFetch(instance, `/api/lidarr/${artistId}/albums`, { signal });
       return r.ok ? ((await r.json()) as LidarrAlbum[]) : [];
     },
     enabled: Number.isFinite(artistId),
@@ -229,14 +223,14 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('search');
     try {
-      const res = await lidarrFetch(instance, '/api/lidarr/command', {
+      const res = await arrMutationFetch(instance, '/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'ArtistSearch', artistId: artist.id }),
       });
       if (res.ok) toast.success('Search started');
       else toast.error('Search failed');
-    } catch { toast.error('Search failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Search failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -244,7 +238,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('refresh');
     try {
-      const res = await lidarrFetch(instance, '/api/lidarr/command', {
+      const res = await arrMutationFetch(instance, '/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshArtist', artistId: artist.id }),
@@ -258,7 +252,7 @@ export default function ArtistDetailPage() {
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
-    } catch { toast.error('Refresh failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Refresh failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -266,7 +260,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setActionLoading('monitor');
     try {
-      const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}`, {
+      const res = await arrMutationFetch(instance, `/api/lidarr/${artist.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...artist, monitored: !artist.monitored }),
@@ -274,12 +268,16 @@ export default function ArtistDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         persistArtist(updated);
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+        // Patch this artist's monitored flag in the cached library lists
+        // (slim/full/all-instances) instead of refetching the whole library —
+        // preserves the server-resolved profile/tag labels.
+        queryClient.setQueriesData({ queryKey: queryKeys.library('lidarr') }, (prev) =>
+          Array.isArray(prev) ? prev.map((a) => (a.id === artist.id ? { ...a, monitored: updated.monitored } : a)) : prev);
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       } else {
         toast.error('Failed to update');
       }
-    } catch { toast.error('Failed to update'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to update'); }
     finally { setActionLoading(''); }
   }
 
@@ -287,7 +285,7 @@ export default function ArtistDetailPage() {
     setAlbumMonitorPending(album.id);
     const nextMonitored = !album.monitored;
     try {
-      const res = await lidarrFetch(instance, '/api/lidarr/album/monitor', {
+      const res = await arrMutationFetch(instance, '/api/lidarr/album/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ albumIds: [album.id], monitored: nextMonitored }),
@@ -298,7 +296,7 @@ export default function ArtistDetailPage() {
       } else {
         toast.error('Failed to update album');
       }
-    } catch { toast.error('Failed to update album'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to update album'); }
     finally { setAlbumMonitorPending(null); }
   }
 
@@ -306,7 +304,7 @@ export default function ArtistDetailPage() {
     if (!artist) return;
     setDeleting(true);
     try {
-      const res = await lidarrFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (res.ok) {
         queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
         queryClient.removeQueries({ queryKey: queryKeys.detail('lidarr', artist.id, instance) });
@@ -315,7 +313,7 @@ export default function ArtistDetailPage() {
       } else {
         toast.error('Delete failed');
       }
-    } catch { toast.error('Delete failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Delete failed'); }
     finally { setDeleting(false); }
   }
 

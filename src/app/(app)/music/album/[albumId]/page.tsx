@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ApiError, withInstanceQuery } from '@/lib/query-fetch';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { arrMutationFetch } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -56,13 +57,6 @@ function formatDuration(ms?: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-async function lidarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 export default function AlbumDetailPage() {
   const { albumId: albumIdParam } = useParams();
@@ -82,9 +76,9 @@ export default function AlbumDetailPage() {
     queryKey: albumKey,
     queryFn: async ({ signal }) => {
       const [album, tracks, trackFiles] = await Promise.all([
-        lidarrFetch(instance, `/api/lidarr/album/${albumId}`, { signal }).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
-        lidarrFetch(instance, `/api/lidarr/album/${albumId}/tracks`, { signal }).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
-        lidarrFetch(instance, `/api/lidarr/trackfile?albumId=${albumId}`, { signal }).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
+        arrMutationFetch(instance, `/api/lidarr/album/${albumId}`, { signal }).then(async (r): Promise<LidarrAlbum | null> => (r.ok ? (await r.json() as LidarrAlbum) : null)),
+        arrMutationFetch(instance, `/api/lidarr/album/${albumId}/tracks`, { signal }).then(async (r): Promise<LidarrTrack[]> => (r.ok ? (await r.json() as LidarrTrack[]) : [])),
+        arrMutationFetch(instance, `/api/lidarr/trackfile?albumId=${albumId}`, { signal }).then(async (r): Promise<LidarrTrackFile[]> => (r.ok ? (await r.json() as LidarrTrackFile[]) : [])),
       ]);
       return { album, tracks, trackFiles };
     },
@@ -155,14 +149,14 @@ export default function AlbumDetailPage() {
     if (!album) return;
     setActionLoading('search');
     try {
-      const res = await lidarrFetch(instance, '/api/lidarr/command', {
+      const res = await arrMutationFetch(instance, '/api/lidarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'AlbumSearch', albumIds: [album.id] }),
       });
       if (!res.ok) throw new Error(`Search failed (${res.status})`);
       toast.success('Search started');
-    } catch { toast.error('Search failed'); }
+    } catch (e) { handleAuthError(e); toast.error('Search failed'); }
     finally { setActionLoading(''); }
   }
 
@@ -171,7 +165,7 @@ export default function AlbumDetailPage() {
     setActionLoading('monitor');
     const next = !album.monitored;
     try {
-      const res = await lidarrFetch(instance, '/api/lidarr/album/monitor', {
+      const res = await arrMutationFetch(instance, '/api/lidarr/album/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ albumIds: [album.id], monitored: next }),
@@ -185,7 +179,7 @@ export default function AlbumDetailPage() {
         );
         toast.success(next ? 'Now monitored' : 'Unmonitored');
       } else { toast.error('Failed to update'); }
-    } catch { toast.error('Failed to update'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to update'); }
     finally { setActionLoading(''); }
   }
 
@@ -198,7 +192,7 @@ export default function AlbumDetailPage() {
         anyReleaseOk: false,
         releases: album.releases.map((r) => ({ ...r, monitored: r.id === releaseId })),
       };
-      const res = await lidarrFetch(instance, `/api/lidarr/album/${album.id}`, {
+      const res = await arrMutationFetch(instance, `/api/lidarr/album/${album.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated),
@@ -207,7 +201,7 @@ export default function AlbumDetailPage() {
         toast.success('Release selected');
         await albumQuery.refetch();
       } else { toast.error('Failed to select release'); }
-    } catch { toast.error('Failed to select release'); }
+    } catch (e) { handleAuthError(e); toast.error('Failed to select release'); }
     finally { setSelectingRelease(null); }
   }
 

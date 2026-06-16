@@ -79,6 +79,7 @@ export function ActiveDownloadsWidget({
     refreshInterval,
     enabled: !editMode,
     cacheKey: `active-downloads-${fetchPageSize}`,
+    refetchOnFocus: true,
   });
   const list = queue ?? [];
   const useList = narrow || layoutVariant === 'list';

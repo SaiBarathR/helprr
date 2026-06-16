@@ -24,7 +24,8 @@ import type { SonarrSeries, SonarrEpisode, DiscoverSeasonDetailResponse } from '
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
+import { arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 import { patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
 import { useCan } from '@/components/permission-provider';
@@ -37,13 +38,6 @@ function formatBytes(bytes: number) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-async function sonarrFetch(instance: string | undefined, path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(withInstanceQuery(path, instance), init);
-  // 401 = session revoked mid-view; throw so the global QueryCache/MutationCache
-  // handler redirects to /login instead of swallowing it into an empty read.
-  if (res.status === 401) throw new ApiError(401, `${path} → 401`);
-  return res;
-}
 
 export default function SeasonDetailPage() {
   const { id, seasonNumber: seasonNumberParam } = useParams();
@@ -104,7 +98,7 @@ export default function SeasonDetailPage() {
     if (!series) return;
     setActionLoading('refresh');
     try {
-      const res = await sonarrFetch(instance, '/api/sonarr/command', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RefreshSeries', seriesId: series.id }),
@@ -118,7 +112,8 @@ export default function SeasonDetailPage() {
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
       else toast.error('Refresh failed');
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Refresh failed');
     } finally {
       setActionLoading('');
@@ -129,13 +124,14 @@ export default function SeasonDetailPage() {
     if (!series) return;
     setActionLoading('search');
     try {
-      await sonarrFetch(instance, '/api/sonarr/command', {
+      await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'SeasonSearch', seriesId: series.id, seasonNumber }),
       });
       toast.success(`Season ${seasonNumber} search started`);
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Search failed');
     } finally {
       setActionLoading('');
@@ -152,7 +148,7 @@ export default function SeasonDetailPage() {
           s.seasonNumber === seasonNumber ? { ...s, monitored: !isSeasonMonitored } : s
         ),
       };
-      const res = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
+      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
@@ -163,7 +159,8 @@ export default function SeasonDetailPage() {
         queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
         toast.success(isSeasonMonitored ? 'Season unmonitored' : 'Season monitored');
       }
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Failed to update season');
     } finally {
       setActionLoading('');
@@ -172,7 +169,7 @@ export default function SeasonDetailPage() {
 
   async function handleToggleEpisodeMonitor(episodeId: number, monitored: boolean) {
     try {
-      const res = await sonarrFetch(instance, '/api/sonarr/episode/monitor', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/episode/monitor', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ episodeIds: [episodeId], monitored }),
@@ -182,7 +179,8 @@ export default function SeasonDetailPage() {
           { episodeId, updater: (episode) => ({ ...episode, monitored }) },
         ]);
       }
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Failed to update');
     }
   }
@@ -194,7 +192,7 @@ export default function SeasonDetailPage() {
       // Unmonitor all episodes in this season
       const episodeIds = episodes.map((e) => e.id);
       if (episodeIds.length > 0) {
-        const unmonitorEpisodesRes = await sonarrFetch(instance, '/api/sonarr/episode/monitor', {
+        const unmonitorEpisodesRes = await arrMutationFetch(instance, '/api/sonarr/episode/monitor', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ episodeIds, monitored: false }),
@@ -211,7 +209,7 @@ export default function SeasonDetailPage() {
           s.seasonNumber === seasonNumber ? { ...s, monitored: false } : s
         ),
       };
-      const updateSeasonRes = await sonarrFetch(instance, `/api/sonarr/${series.id}`, {
+      const updateSeasonRes = await arrMutationFetch(instance, `/api/sonarr/${series.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedSeries),
@@ -246,7 +244,8 @@ export default function SeasonDetailPage() {
       toast.success('Season unmonitored');
       setShowDeleteDrawer(false);
       router.back();
-    } catch {
+    } catch (e) {
+      handleAuthError(e);
       toast.error('Failed to unmonitor season');
     } finally {
       setDeleting(false);
