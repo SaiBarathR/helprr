@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowUpRight, Plus, Sparkles } from 'lucide-react';
+import { ArrowUpRight, Plus } from 'lucide-react';
 import { isMovieFormat, buildSonarrAddParams, buildRadarrAddParams } from '@/lib/anilist-helpers';
 import type { AniListMediaFormat } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
+import { OpenInInstances } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
 
 interface AnimeAddButtonProps {
@@ -28,20 +29,21 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
     : libraryAvailability?.sonarr !== 'unavailable';
 
   if (library?.exists && library.id) {
-    const targetService = library.type === 'movie' ? 'Movies' : 'TV';
-    const q = library.instanceId ? `?instance=${library.instanceId}` : '';
-    const href = library.type === 'movie' ? `/movies/${library.id}${q}` : `/series/${library.id}${q}`;
+    const type: 'movie' | 'series' = library.type === 'movie' ? 'movie' : 'series';
+    const targetService = type === 'movie' ? 'Movies' : 'TV';
+    // The matched title may live in more than one instance; fall back to the
+    // top-level fields when the (always-populated) instances list is absent.
+    const instances = library.instances?.length
+      ? library.instances
+      : [{ instanceId: library.instanceId ?? '', instanceLabel: '', id: library.id, titleSlug: library.titleSlug }];
 
     return (
-      <Link
-        href={href}
+      <OpenInInstances
+        type={type}
+        instances={instances}
+        label={`Open in ${targetService}`}
         className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
-      >
-        <Sparkles className="h-3.5 w-3.5" />
-        <span className="tracking-widest uppercase">
-          Open in {targetService}
-        </span>
-      </Link>
+      />
     );
   }
 

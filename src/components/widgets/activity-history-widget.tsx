@@ -3,7 +3,7 @@ import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
-import { Download, Film, Tv, AlertTriangle, Trash2, Info, Import } from 'lucide-react';
+import { Download, Film, Tv, AlertTriangle, Trash2, Info, Import, Clock } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -265,10 +265,23 @@ export function ActivityHistoryWidget({
       onChange={(next) => setWidgetLayoutOverride(instanceId, next, { mobile: mobileGrid })}
     />
   ) : null;
+  // Shortcut straight to the full history page (sits left of the view-mode switcher)
+  // so history is reachable from the dashboard without going via the Activity page.
+  const historyNode = (
+    <Link
+      href="/activity/history"
+      aria-label="Activity history"
+      onClick={(e) => e.stopPropagation()}
+      style={{ display: 'inline-flex', alignItems: 'center', color: 'inherit', marginRight: 4 }}
+    >
+      <Clock size={14} strokeWidth={2} />
+    </Link>
+  );
   const headerRight = (
     <>
+      {historyNode}
       {toggleNode}
-      <Link href="/activity" style={{ color: 'inherit', textDecoration: 'none' }}>
+      <Link href="/activity?tab=queue" style={{ color: 'inherit', textDecoration: 'none' }}>
         View all →
       </Link>
     </>
@@ -282,7 +295,7 @@ export function ActivityHistoryWidget({
         ref={ref}
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
-        <SectionHeader title="Activity" right={toggleNode} />
+        <SectionHeader title="Activity" right={<>{historyNode}{toggleNode}</>} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       </div>
     );
@@ -293,7 +306,7 @@ export function ActivityHistoryWidget({
         ref={ref}
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
-        <SectionHeader title="Activity" right={toggleNode} />
+        <SectionHeader title="Activity" right={<>{historyNode}{toggleNode}</>} />
         <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
           No recent activity
         </div>

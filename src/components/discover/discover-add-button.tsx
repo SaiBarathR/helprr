@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { Plus, Sparkles } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
+import { OpenInInstances } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { tmdbImageUrl } from '@/lib/discover';
 
@@ -62,6 +63,14 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
 
   if (detail.addTarget.exists) {
     const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
+    const type: 'movie' | 'series' = detail.addTarget.service === 'radarr' ? 'movie' : 'series';
+    // The matched title may live in more than one instance (DiscoverDetail already
+    // carries the full library); fall back to the addTarget when the list is absent.
+    const instances = detail.library?.instances?.length
+      ? detail.library.instances
+      : detail.addTarget.id
+        ? [{ instanceId: detail.addTarget.instanceId ?? '', instanceLabel: '', id: detail.addTarget.id, titleSlug: detail.library?.titleSlug }]
+        : [];
     return (
       <div className="absolute top-1 right-1 md:top-2 md:right-1.5 hero-meta-fade flex items-center gap-1.5">
         <WatchlistButton
@@ -69,13 +78,12 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
           variant="icon"
           className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
         />
-        <Link
-          href={href}
+        <OpenInInstances
+          type={type}
+          instances={instances}
+          label={`Open in ${targetService}`}
           className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          <span className="tracking-widest uppercase">Open in {targetService}</span>
-        </Link>
+        />
       </div>
     );
   }
