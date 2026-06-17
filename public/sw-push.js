@@ -74,6 +74,42 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// Mirror the production worker: handle endpoint rotation (iOS rotates the push
+// endpoint) so dev/testing doesn't silently lose pushes or accumulate duplicate
+// devices. Hand the server both endpoints so it migrates the row in place. No
+// VAPID fallback here — this static file isn't webpack-processed, so the inlined
+// key isn't available; we rely on the event's own subscription / old key.
+async function rotateSubscription(event) {
+  try {
+    const oldEndpoint = event.oldSubscription && event.oldSubscription.endpoint;
+    let sub = event.newSubscription || null;
+    if (!sub) {
+      const applicationServerKey =
+        event.oldSubscription && event.oldSubscription.options && event.oldSubscription.options.applicationServerKey;
+      if (!applicationServerKey) return;
+      sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+    }
+    const json = sub.toJSON();
+    if (!json.keys || !json.keys.p256dh || !json.keys.auth) return;
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: sub.endpoint,
+        keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+        oldEndpoint,
+      }),
+    });
+  } catch (error) {
+    logToClients('error', 'Service worker pushsubscriptionchange failed', { error: String(error) });
+  }
+}
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(rotateSubscription(event));
+});
+
 async function confirm(body, tag) {
   await self.registration.showNotification('Helprr', {
     body,

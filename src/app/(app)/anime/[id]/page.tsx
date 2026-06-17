@@ -381,13 +381,31 @@ export default function AnimeDetailPage() {
 
   const libraryLinks: { label: string; url: string; icon: 'sonarr' | 'radarr' }[] = [];
   if (detail.library?.exists) {
-    const sonarrUrl = resolveExternalUrl('SONARR', detail.library.instanceId);
-    const radarrUrl = resolveExternalUrl('RADARR', detail.library.instanceId);
-    if (detail.library.type === 'series' && sonarrUrl && detail.library.titleSlug) {
-      libraryLinks.push({ label: 'Open in Sonarr', url: `${sonarrUrl}/series/${detail.library.titleSlug}`, icon: 'sonarr' });
-    }
-    if (detail.library.type === 'movie' && radarrUrl && detail.library.tmdbId) {
-      libraryLinks.push({ label: 'Open in Radarr', url: `${radarrUrl}/movie/${detail.library.tmdbId}`, icon: 'radarr' });
+    // A title can live in more than one instance — link to each one's web UI.
+    const instances = detail.library.instances?.length
+      ? detail.library.instances
+      : [{ instanceId: detail.library.instanceId ?? '', instanceLabel: '', id: detail.library.id ?? 0, titleSlug: detail.library.titleSlug }];
+    const multi = instances.length > 1;
+    for (const inst of instances) {
+      if (detail.library.type === 'series') {
+        const sonarrUrl = resolveExternalUrl('SONARR', inst.instanceId);
+        if (sonarrUrl && inst.titleSlug) {
+          libraryLinks.push({
+            label: multi ? `Open in Sonarr · ${inst.instanceLabel}` : 'Open in Sonarr',
+            url: `${sonarrUrl}/series/${inst.titleSlug}`,
+            icon: 'sonarr',
+          });
+        }
+      } else if (detail.library.type === 'movie') {
+        const radarrUrl = resolveExternalUrl('RADARR', inst.instanceId);
+        if (radarrUrl && detail.library.tmdbId) {
+          libraryLinks.push({
+            label: multi ? `Open in Radarr · ${inst.instanceLabel}` : 'Open in Radarr',
+            url: `${radarrUrl}/movie/${detail.library.tmdbId}`,
+            icon: 'radarr',
+          });
+        }
+      }
     }
   }
 

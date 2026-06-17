@@ -32,7 +32,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
@@ -177,7 +177,6 @@ export default function ActivityPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasHydrated = useUIStore((s) => s.hasHydrated);
-  const activityTab = useUIStore((s) => s.activityTab);
   const setActivityTab = useUIStore((s) => s.setActivityTab);
   const sortBy = useUIStore((s) => s.activitySortBy);
   const setSortBy = useUIStore((s) => s.setActivitySortBy);
@@ -185,9 +184,18 @@ export default function ActivityPage() {
   const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
   const instanceFilter = useUIStore((s) => s.activityInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setActivityInstanceFilter);
-  const urlTab = searchParams.get('tab');
   const searchParamsKey = searchParams.toString();
-  const tab = urlTab && isTabKey(urlTab) ? urlTab : activityTab;
+  // Tab priority: an explicit ?tab (a widget or push-notification deep-link) wins
+  // and is applied here on the first paint; otherwise we resume the last-used tab
+  // from the persisted store in the effect below (the nav item / a generic "view
+  // all"). The initializer can't read the persisted store — it hydrates after the
+  // first render, and reading it during render would break SSR hydration — so the
+  // default here is 'queue' and the resume happens post-hydration. Local state
+  // drives the render so in-page taps switch instantly.
+  const [tab, setTab] = useState<TabKey>(() => {
+    const t = searchParams.get('tab');
+    return t && isTabKey(t) ? t : 'queue';
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
   // arr instances for the per-instance filter (shown only when >1 instance).
@@ -209,35 +217,43 @@ export default function ActivityPage() {
     }
   }, [instanceOptions, instanceFilter, setInstanceFilter]);
   const initRef = useRef(false);
+  // Set when the user taps a tab in-page, so a late hydration resume can't override it.
+  const userSwitchedTabRef = useRef(false);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
   useEffect(() => {
     if (!hasHydrated || initRef.current) return;
+    initRef.current = true;
     const params = new URLSearchParams(searchParamsKey);
-    const requestedTab = params.get('tab');
+    const currentState = useUIStore.getState();
+    // Resume the last-used tab when arriving without an explicit ?tab deep-link
+    // (the nav item / a generic "view all"). A ?tab from a widget or push wins and
+    // was already applied by the useState initializer above.
+    if (!params.get('tab') && !userSwitchedTabRef.current && isTabKey(currentState.activityTab)) {
+      setTab(currentState.activityTab);
+    }
     const requestedSource = params.get('source');
     const requestedSort = params.get('sort');
-    const currentState = useUIStore.getState();
-    if (requestedTab && isTabKey(requestedTab) && requestedTab !== currentState.activityTab) {
-      setActivityTab(requestedTab);
-    }
     if (requestedSource && isFilterKey(requestedSource) && requestedSource !== 'all') {
       setFilterBy([requestedSource]);
     }
     if (requestedSort && isSortKey(requestedSort) && requestedSort !== currentState.activitySortBy) {
       setSortBy(requestedSort);
     }
-    initRef.current = true;
-  }, [hasHydrated, searchParamsKey, setActivityTab, setFilterBy, setSortBy]);
+  }, [hasHydrated, searchParamsKey, setFilterBy, setSortBy]);
 
   function handleTabChange(nextTab: TabKey) {
     if (!isTabKey(nextTab)) return;
-    setActivityTab(nextTab);
+    setTab(nextTab); // local state is the render source → the tab switches instantly
+    userSwitchedTabRef.current = true; // don't let a late hydration resume override this
+    setActivityTab(nextTab); // persist as the last-used tab (resumed on a no-?tab entry)
 
+    // Mirror the tab into the URL for deep-linking, but via history.replaceState so
+    // there's no router navigation / RSC round-trip to delay the switch.
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', nextTab);
     const query = params.toString();
-    router.replace(query ? `/activity?${query}` : '/activity', { scroll: false });
+    window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
   }
 
   /**
@@ -916,6 +932,9 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) =>
       allPages.length * PAGE_SIZE < (lastPage.totalRecords || 0) ? allPages.length + 1 : undefined,
+    // Keep the current results visible while a source-filter change refetches,
+    // instead of blanking to a full-screen spinner.
+    placeholderData: keepPreviousData,
   });
   const loading = wantedQuery.isLoading;
   const records = useMemo(() => {

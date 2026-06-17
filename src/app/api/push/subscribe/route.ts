@@ -10,10 +10,41 @@ async function postHandler(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { endpoint, keys, deviceName } = body;
+    const { endpoint, keys, deviceName, oldEndpoint } = body;
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return NextResponse.json({ error: 'Missing subscription data' }, { status: 400 });
+    }
+
+    // Endpoint rotation (the SW's pushsubscriptionchange handler — iOS rotates the
+    // push endpoint periodically). Migrate the existing device row *in place* so its
+    // per-event NotificationPreference rows (linked by subscription id) survive and
+    // we don't accumulate a duplicate "device". Same ownership gate as DELETE.
+    if (oldEndpoint && oldEndpoint !== endpoint) {
+      const existing = await prisma.pushSubscription.findUnique({ where: { endpoint: oldEndpoint } });
+      if (existing && (auth.user.role === 'admin' || existing.userId === auth.user.id)) {
+        // Drop any pre-existing row for the new endpoint so the unique constraint
+        // doesn't block the rename; the migrated row keeps the curated preferences.
+        await prisma.pushSubscription
+          .deleteMany({ where: { endpoint, NOT: { id: existing.id } } })
+          .catch(() => {});
+        const migrated = await prisma.pushSubscription.update({
+          where: { id: existing.id },
+          data: {
+            userId: auth.user.id,
+            endpoint,
+            p256dh: keys.p256dh,
+            auth: keys.auth,
+            // The SW doesn't know the device name — keep the existing one.
+            ...(deviceName ? { deviceName } : {}),
+            revokedAt: null,
+            consecutiveFailures: 0,
+          },
+        });
+        await ensureNotificationPreferences(migrated.id);
+        return NextResponse.json(migrated);
+      }
+      // No matching old row (already pruned) — fall through to a normal upsert.
     }
 
     // Own the subscription so per-user notification gating/targeting works. The

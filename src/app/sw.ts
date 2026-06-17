@@ -5,6 +5,7 @@ import {
   CacheableResponsePlugin,
   CacheFirst,
   ExpirationPlugin,
+  NetworkFirst,
   NetworkOnly,
   Serwist,
   StaleWhileRevalidate,
@@ -18,14 +19,19 @@ declare global {
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 
-// Read-only library/dashboard GET routes that are safe to serve briefly stale so
-// the installed PWA cold-opens (and works offline) with the last-synced data.
-// Allowlist, not denylist: anything not matched here stays NetworkOnly, so a
-// future mutation-ish or auth-sensitive GET can't silently become cacheable.
-// `/api/me`, `/api/badges`, status polls, and auth/session routes are
-// deliberately excluded (per-user / must-be-fresh).
-const READONLY_API_SWR =
-  /^\/api\/(?:sonarr|radarr|lidarr|calendar|qbittorrent|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:queue|history|wanted))(?:\/.*)?$/;
+// Read-only library/dashboard GET routes served NetworkFirst: an online PWA
+// always gets fresh data (so a TanStack refetch right after a mutation returns
+// the new value — StaleWhileRevalidate used to hand back the cached body and
+// only revalidate for the *next* request, which made saves look like they didn't
+// stick), falling back to last-known-good only when offline. Allowlist, not
+// denylist: anything not matched here stays NetworkOnly, so a future mutation-ish
+// or auth-sensitive GET can't silently become cacheable. `/api/me`, `/api/badges`,
+// status polls, and auth/session routes are deliberately excluded (per-user /
+// must-be-fresh). Live, second-to-second reads (`/api/activity/queue`,
+// `/api/qbittorrent/*`) are intentionally *not* listed — they fall through to the
+// catch-all NetworkOnly below so a cached copy can never show removed downloads.
+const READONLY_API_NETWORK_FIRST =
+  /^\/api\/(?:sonarr|radarr|lidarr|calendar|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:history|wanted))(?:\/.*)?$/;
 
 const runtimeCaching: RuntimeCaching[] =
   process.env.NODE_ENV !== 'production'
@@ -37,13 +43,15 @@ const runtimeCaching: RuntimeCaching[] =
       ]
     : [
         {
-          // Read-only library/dashboard reads → instant + offline last-known-good.
+          // Read-only library/dashboard reads → fresh online, offline last-known-good.
+          // networkTimeoutSeconds falls back to cache only if the network stalls.
           // CacheableResponsePlugin([200]) means 401/403/3xx are never written, so
           // a revoked session can't read another user's stale data here.
-          matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && READONLY_API_SWR.test(pathname),
+          matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && READONLY_API_NETWORK_FIRST.test(pathname),
           method: 'GET',
-          handler: new StaleWhileRevalidate({
+          handler: new NetworkFirst({
             cacheName: 'api-readonly',
+            networkTimeoutSeconds: 3,
             plugins: [
               new CacheableResponsePlugin({ statuses: [200] }),
               new ExpirationPlugin({
@@ -262,6 +270,62 @@ self.addEventListener('push', (event) => {
       updateAppBadge(),
     ])
   );
+});
+
+// Some user agents (notably iOS) periodically rotate the push subscription
+// endpoint. Without handling pushsubscriptionchange the old endpoint silently
+// dies: the server keeps sending to a dead endpoint and a later manual
+// re-subscribe creates a duplicate "device". Re-subscribe with the same VAPID key
+// and hand the server BOTH endpoints so it migrates the existing row in place
+// (preserving this device's per-event notification preferences).
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
+async function rotateSubscription(event: {
+  oldSubscription?: PushSubscription | null;
+  newSubscription?: PushSubscription | null;
+}): Promise<void> {
+  try {
+    const oldEndpoint = event.oldSubscription?.endpoint;
+    let sub = event.newSubscription ?? null;
+    if (!sub) {
+      const applicationServerKey =
+        event.oldSubscription?.options?.applicationServerKey ??
+        (VAPID_PUBLIC_KEY ? (urlBase64ToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer) : undefined);
+      if (!applicationServerKey) return;
+      sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+    }
+    const json = sub.toJSON();
+    if (!json.keys?.p256dh || !json.keys?.auth) return;
+    await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        endpoint: sub.endpoint,
+        keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+        oldEndpoint,
+      }),
+    });
+  } catch (error) {
+    logToClients('error', 'Service worker pushsubscriptionchange failed', { error: String(error) });
+  }
+}
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  const e = event as ExtendableEvent & {
+    oldSubscription?: PushSubscription | null;
+    newSubscription?: PushSubscription | null;
+  };
+  e.waitUntil(rotateSubscription(e));
 });
 
 async function confirm(body: string, tag: string): Promise<void> {
