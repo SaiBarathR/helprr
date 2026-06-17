@@ -915,16 +915,15 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   const PAGE_SIZE = 20;
   const [searching, setSearching] = useState<string | null>(null);
 
-  // Server pages filter by a single source only; the raw totalRecords gates
-  // "Load more". Multi-select + instance filters are applied client-side below.
+  // The server filters and paginates for exactly this source set + instance, so
+  // every filter combination is a genuinely different result — key on all of them
+  // and request the page directly. No client-side filtering, no auto-advance.
   const wantedQuery = useInfiniteQuery({
-    // Key on server-affecting params only (the API pages by a single source).
-    // Multi-select + instance filters are applied client-side below, so they must
-    // not churn the key — that would refetch every loaded page on a filter change.
-    queryKey: ['activity', 'wanted', type, filterBy.length === 1 ? filterBy[0] : 'all'],
+    queryKey: ['activity', 'wanted', type, [...filterBy].sort().join(',') || 'all', instanceFilter],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({ type, page: String(pageParam), pageSize: String(PAGE_SIZE) });
-      if (filterBy.length === 1) params.set('source', filterBy[0]);
+      if (filterBy.length > 0) params.set('sources', filterBy.join(','));
+      if (instanceFilter !== 'all') params.set('instanceId', instanceFilter);
       const res = await fetch(`/api/activity/wanted?${params}`, { signal });
       if (!res.ok) throw new ApiError(res.status, `GET /api/activity/wanted → ${res.status}`);
       return (await res.json()) as { records: WantedRecord[]; totalRecords: number };
@@ -932,28 +931,12 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) =>
       allPages.length * PAGE_SIZE < (lastPage.totalRecords || 0) ? allPages.length + 1 : undefined,
-    // Keep the current results visible while a source-filter change refetches,
+    // Keep the current results visible while a filter change refetches,
     // instead of blanking to a full-screen spinner.
     placeholderData: keepPreviousData,
   });
   const loading = wantedQuery.isLoading;
-  const records = useMemo(() => {
-    let list = wantedQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [];
-    if (filterBy.length > 1) list = list.filter((r) => filterBy.includes(r.source));
-    if (instanceFilter !== 'all') list = list.filter((r) => r.instanceId === instanceFilter);
-    return list;
-  }, [wantedQuery.data, filterBy, instanceFilter]);
-
-  // "Load more" gates on the raw server totalRecords, but multi-source / instance
-  // filters are applied client-side — so a fetched page can be entirely filtered
-  // out, leaving records empty while more pages remain. Auto-advance so the tab
-  // doesn't show a false "nothing here" when matches exist further down.
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = wantedQuery;
-  useEffect(() => {
-    if (!loading && records.length === 0 && hasNextPage && !isFetchingNextPage) {
-      void fetchNextPage();
-    }
-  }, [loading, records.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  const records = wantedQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [];
 
   async function handleSearch(record: WantedRecord) {
     const key = `${record.source}-${record.id}`;
@@ -992,9 +975,6 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   }
 
   if (records.length === 0) {
-    // Still paging through server results the client filters excluded — the effect
-    // above is fetching the next page, so this isn't empty yet.
-    if (hasNextPage || isFetchingNextPage) return <PageSpinner />;
     return (
       <div className="text-center py-16 text-muted-foreground">
         {type === 'missing' ? (
