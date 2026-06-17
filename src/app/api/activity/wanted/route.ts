@@ -63,6 +63,11 @@ async function getWantedSlice<T>(
 
 type WantedRecord = { id?: number; artistId?: number };
 
+// Server-side filter dimensions. `sources` (empty/undefined = all sources) and
+// `instanceId` (undefined = all instances) intersect: a bucket survives only if
+// it matches both.
+type WantedFilter = { sources?: WantedSource[]; instanceId?: string };
+
 type WantedBucket = {
   source: WantedSource;
   instanceId: string;
@@ -74,9 +79,11 @@ type WantedBucket = {
 // One bucket per connected instance, ordered sonarr → radarr → lidarr, each with
 // its own page fetcher + record tagger. Pagination treats the buckets as one
 // concatenated list (generalizing the old per-type offset math to N instances).
-// sourceFilter still gates a whole type.
-async function buildWantedBuckets(type: WantedType, sourceFilter?: WantedSource): Promise<WantedBucket[]> {
-  const want = (s: WantedSource) => !sourceFilter || sourceFilter === s;
+// The filter narrows which buckets exist (by source set and/or instance), so
+// totalRecords and the page slice fall out correctly with no other edits.
+async function buildWantedBuckets(type: WantedType, filter: WantedFilter = {}): Promise<WantedBucket[]> {
+  const { sources, instanceId } = filter;
+  const want = (s: WantedSource) => !sources || sources.length === 0 || sources.includes(s);
   const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
     want('sonarr') ? getSonarrClients().catch(() => []) : Promise.resolve([]),
     want('radarr') ? getRadarrClients().catch(() => []) : Promise.resolve([]),
@@ -115,16 +122,35 @@ async function buildWantedBuckets(type: WantedType, sourceFilter?: WantedSource)
       tag: (record) => ({ ...record, source: 'lidarr' as const, mediaType: 'album' as const, albumId: record.id, artistId: record.artistId, instanceId: connection.id, instanceLabel: connection.label }),
     });
   }
-  return buckets;
+  return instanceId ? buckets.filter((bucket) => bucket.instanceId === instanceId) : buckets;
 }
 
-async function fetchWantedPage(type: WantedType, page: number, pageSize: number, sourceFilter?: WantedSource) {
+async function fetchWantedPage(type: WantedType, page: number, pageSize: number, filter: WantedFilter = {}) {
   const safePage = Number.isFinite(page) && page > 0 ? page : 1;
   const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20;
   const startIndex = (safePage - 1) * safePageSize;
   const endIndex = startIndex + safePageSize;
 
-  const buckets = await buildWantedBuckets(type, sourceFilter);
+  const buckets = await buildWantedBuckets(type, filter);
+
+  // Single bucket (e.g. an instance filter) maps 1:1 to upstream pagination —
+  // fetch the requested page directly and reuse its own totalRecords. One
+  // upstream call instead of the separate total probe + slice fetch.
+  if (buckets.length === 1) {
+    const bucket = buckets[0];
+    try {
+      const upstream = await bucket.fetchPage(safePage, safePageSize);
+      return {
+        page: safePage,
+        pageSize: safePageSize,
+        totalRecords: upstream.totalRecords ?? 0,
+        records: upstream.records.map(bucket.tag),
+      };
+    } catch {
+      return { page: safePage, pageSize: safePageSize, totalRecords: 0, records: [] };
+    }
+  }
+
   const totals = await Promise.all(buckets.map((bucket) => getWantedTotal(bucket.fetchPage)));
 
   // Carve the global [startIndex, endIndex) window across the concatenated buckets.
@@ -151,9 +177,9 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
   };
 }
 
-async function fetchWantedCounts(sourceFilter?: WantedSource) {
+async function fetchWantedCounts(filter: WantedFilter = {}) {
   const totalFor = async (type: WantedType) => {
-    const buckets = await buildWantedBuckets(type, sourceFilter);
+    const buckets = await buildWantedBuckets(type, filter);
     const totals = await Promise.all(buckets.map((bucket) => getWantedTotal(bucket.fetchPage)));
     return totals.reduce((sum, n) => sum + n, 0);
   };
@@ -173,7 +199,10 @@ async function fetchWantedCounts(sourceFilter?: WantedSource) {
  * - `type`: optional; when present must be "missing" or "cutoff"
  * - `page`: 1-based page number (default 1)
  * - `pageSize`: number of items per page (default 20)
- * - `source`: optional; when set to "sonarr" or "radarr" restricts results to that backend
+ * - `sources`: optional CSV of "sonarr"/"radarr"/"lidarr"; restricts results to those
+ *   backends (unknown tokens ignored; empty/absent = all). Falls back to the legacy
+ *   single `source` param when `sources` is absent.
+ * - `instanceId`: optional; restricts results to that connection's instance (absent = all)
  *
  * When `type` is omitted the response contains `{ missingTotal, cutoffTotal }`.
  * When `type` is present the response merges records from both services, adds `source`
@@ -194,18 +223,36 @@ async function getHandler(request: NextRequest) {
     const type = typeParam === null ? null : normalizeWantedType(typeParam);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
-    const source = searchParams.get('source');
-    const sourceFilter = source === 'sonarr' || source === 'radarr' || source === 'lidarr' ? source : undefined;
+
+    const isWantedSource = (value: string): value is WantedSource =>
+      value === 'sonarr' || value === 'radarr' || value === 'lidarr';
+
+    // `sources` (CSV) is the current contract; fall back to the legacy single
+    // `source` so a stale client/cache keeps working during rollout.
+    const sourcesParam = searchParams.get('sources');
+    const legacySource = searchParams.get('source');
+    let sources: WantedSource[] | undefined;
+    if (sourcesParam !== null) {
+      const parsed = sourcesParam.split(',').map((t) => t.trim()).filter(isWantedSource);
+      sources = parsed.length > 0 ? parsed : undefined; // empty after validation = all
+    } else if (legacySource !== null && isWantedSource(legacySource)) {
+      sources = [legacySource];
+    }
+
+    const instanceIdParam = searchParams.get('instanceId')?.trim();
+    const instanceId = instanceIdParam ? instanceIdParam : undefined;
+
+    const filter: WantedFilter = { sources, instanceId };
 
     if (typeParam !== null && type === null) {
       return NextResponse.json({ error: 'Unknown wanted type' }, { status: 400 });
     }
 
     if (!type) {
-      return NextResponse.json(await fetchWantedCounts(sourceFilter), { headers: WANTED_CACHE_HEADERS });
+      return NextResponse.json(await fetchWantedCounts(filter), { headers: WANTED_CACHE_HEADERS });
     }
 
-    const wantedPage = await fetchWantedPage(type, page, pageSize, sourceFilter);
+    const wantedPage = await fetchWantedPage(type, page, pageSize, filter);
 
     return NextResponse.json({
       page: wantedPage.page,
