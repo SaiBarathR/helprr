@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { AppSettings, Prisma, ServiceType } from '@prisma/client';
+import type { AppSettings, Prisma, ServiceType, UserRole, UserStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
@@ -15,13 +15,24 @@ import { EVENT_TYPES } from '@/lib/notification-events';
 import { isServiceType } from '@/lib/service-connection-secrets';
 import { isArrType, ensureDefaultForType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
+import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
+import { parsePermissions } from '@/lib/permissions';
+import { normalizeRegionCode } from '@/lib/region';
+import { setCachedAnilistTtlSettings } from '@/lib/cache/state';
 import {
   MAX_IMPORT_BYTES,
+  ANIME_MAPPING_STATES,
+  ANIME_MAPPING_ENTRY_SOURCES,
+  USER_ROLE_VALUES,
+  USER_STATUS_VALUES,
+  USER_TEMPLATE_VALUES,
   type ExportedAppSettings,
+  type ExportedAnimeMappings,
   type ExportedCleanup,
   type ExportedDashboardLayouts,
   type ExportedServiceConnection,
   type ExportedNotificationDevice,
+  type ExportedUsers,
   type ExportedWatchlist,
 } from '@/lib/settings-export';
 import {
@@ -47,6 +58,7 @@ import {
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
+const ACTIVITY_DIGEST_MODES = new Set(['off', 'daily', 'weekly']);
 
 // Watchlist field caps — match the regular POST /api/watchlist handler so an
 // imported backup can't smuggle past validations the live UI enforces.
@@ -69,6 +81,8 @@ interface ImportRequestBody {
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;
   watchlist?: ExportedWatchlist;
+  animeMappings?: ExportedAnimeMappings;
+  users?: ExportedUsers;
 }
 
 interface ImportResult {
@@ -80,10 +94,26 @@ interface ImportResult {
     dashboardLayouts: number;
     watchlistItems: number;
     watchlistTags: number;
+    animeMappings: number;
+    users: number;
   };
   skipped: string[];
   pollingRestarted: boolean;
   discoverLayoutApplied: boolean;
+}
+
+/** Coerce to an integer, or null for null/undefined/non-integer values. */
+function coerceIntOrNull(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isInteger(n) ? n : null;
+}
+
+/** A nullable hour-of-day (0–23), or null when absent/out of range. */
+function clampHourOrNull(value: unknown): number | null {
+  const n = coerceIntOrNull(value);
+  if (n === null || n < 0 || n > 23) return null;
+  return n;
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
@@ -138,6 +168,30 @@ function buildAppSettingsUpdate(
     out.upcomingNotifyBeforeMins = clampInt(input.upcomingNotifyBeforeMins, 0, 10_080, 60);
   if (input.upcomingDailyNotifyHour !== undefined)
     out.upcomingDailyNotifyHour = clampInt(input.upcomingDailyNotifyHour, 0, 23, 9);
+  if (input.watchProviderRegion !== undefined)
+    out.watchProviderRegion = normalizeRegionCode(input.watchProviderRegion) ?? 'US';
+  if (input.activityDigestMode !== undefined)
+    out.activityDigestMode = pickEnum(input.activityDigestMode, ACTIVITY_DIGEST_MODES, 'off');
+  if (input.activityDigestHour !== undefined)
+    out.activityDigestHour = clampInt(input.activityDigestHour, 0, 23, 8);
+  if (input.activityDigestDayOfWeek !== undefined)
+    out.activityDigestDayOfWeek = clampInt(input.activityDigestDayOfWeek, 0, 6, 1);
+  if (input.animeAutoMapEnabled !== undefined)
+    out.animeAutoMapEnabled = Boolean(input.animeAutoMapEnabled);
+  if (input.animeAutoMapHour !== undefined)
+    out.animeAutoMapHour = clampInt(input.animeAutoMapHour, 0, 23, 0);
+  // AniList cache TTLs in minutes (max 30 days), mirroring PATCH /api/settings.
+  if (input.anilistSectionsTtlMin !== undefined)
+    out.anilistSectionsTtlMin = clampInt(input.anilistSectionsTtlMin, 1, 43_200, 5);
+  if (input.anilistBrowseTtlMin !== undefined)
+    out.anilistBrowseTtlMin = clampInt(input.anilistBrowseTtlMin, 1, 43_200, 10);
+  if (input.anilistDetailTtlMin !== undefined)
+    out.anilistDetailTtlMin = clampInt(input.anilistDetailTtlMin, 1, 43_200, 1440);
+  if (input.anilistAiringTtlMin !== undefined)
+    out.anilistAiringTtlMin = clampInt(input.anilistAiringTtlMin, 1, 43_200, 10);
+  if (input.qbtBandwidthSchedule !== undefined)
+    out.qbtBandwidthSchedule =
+      parseBandwidthSchedule(input.qbtBandwidthSchedule) as unknown as Prisma.InputJsonValue;
   return out;
 }
 
@@ -180,6 +234,19 @@ async function applyAppSettingsInTxn(
       upcomingNotifyMode: (data.upcomingNotifyMode as string | undefined) ?? 'before_air',
       upcomingNotifyBeforeMins: (data.upcomingNotifyBeforeMins as number | undefined) ?? 60,
       upcomingDailyNotifyHour: (data.upcomingDailyNotifyHour as number | undefined) ?? 9,
+      watchProviderRegion: (data.watchProviderRegion as string | undefined) ?? 'US',
+      activityDigestMode: (data.activityDigestMode as string | undefined) ?? 'off',
+      activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
+      activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
+      animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
+      animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
+      anilistSectionsTtlMin: (data.anilistSectionsTtlMin as number | undefined) ?? 5,
+      anilistBrowseTtlMin: (data.anilistBrowseTtlMin as number | undefined) ?? 10,
+      anilistDetailTtlMin: (data.anilistDetailTtlMin as number | undefined) ?? 1440,
+      anilistAiringTtlMin: (data.anilistAiringTtlMin as number | undefined) ?? 10,
+      ...(data.qbtBandwidthSchedule !== undefined
+        ? { qbtBandwidthSchedule: data.qbtBandwidthSchedule as Prisma.InputJsonValue }
+        : {}),
     },
   });
 
@@ -884,6 +951,265 @@ async function applyWatchlistInTxn(
   return { items: itemCount, tags: tagCount };
 }
 
+async function applyAnimeMappingsInTxn(
+  tx: Prisma.TransactionClient,
+  data: ExportedAnimeMappings,
+  skipped: string[],
+): Promise<number> {
+  if (!Array.isArray(data.mappings)) {
+    skipped.push('Anime mappings: missing mappings array');
+    return 0;
+  }
+
+  // Re-resolve each mapping's install-local Sonarr instance id by label. Fall
+  // back to the default instance (isDefault flag, else oldest). Read inside the
+  // transaction so a mapping never lands on a connection deleted mid-import.
+  const sonarrConnections = await tx.serviceConnection.findMany({
+    where: { type: 'SONARR' },
+    select: { id: true, label: true, isDefault: true, createdAt: true },
+  });
+  if (sonarrConnections.length === 0) {
+    skipped.push('Anime mappings: no Sonarr instances configured — skipped');
+    return 0;
+  }
+  const idByLabel = new Map(sonarrConnections.map((c) => [c.label, c.id] as const));
+  const defaultSonarr =
+    sonarrConnections.find((c) => c.isDefault) ??
+    [...sonarrConnections].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0];
+
+  let applied = 0;
+  for (const m of data.mappings) {
+    if (!m || typeof m !== 'object') continue;
+    const state = typeof m.state === 'string' && ANIME_MAPPING_STATES.has(m.state) ? m.state : null;
+    if (!state) {
+      skipped.push(`Anime mapping skipped: unknown state "${String(m.state)}"`);
+      continue;
+    }
+    const sonarrSeriesId = coerceIntOrNull(m.sonarrSeriesId);
+    if (sonarrSeriesId === null || sonarrSeriesId <= 0) {
+      skipped.push('Anime mapping skipped: invalid sonarrSeriesId');
+      continue;
+    }
+    const label = typeof m.sonarrInstanceLabel === 'string' ? m.sonarrInstanceLabel.trim() : '';
+    const instanceId = (label && idByLabel.get(label)) || defaultSonarr.id;
+    if (label && !idByLabel.has(label)) {
+      skipped.push(
+        `Anime mapping "${m.seriesTitleSnapshot ?? sonarrSeriesId}" resolved to the default Sonarr instance (instance "${label}" not found).`
+      );
+    }
+
+    // Coerce + dedupe entries (the @@unique([mappingId, anilistMediaId])), then
+    // enforce exactly-one-primary.
+    const seen = new Set<number>();
+    const entries: { anilistMediaId: number; isPrimary: boolean; order: number; source: string; titleSnapshot: string | null }[] = [];
+    for (const e of Array.isArray(m.entries) ? m.entries : []) {
+      if (!e || typeof e !== 'object') continue;
+      const anilistMediaId = coerceIntOrNull(e.anilistMediaId) ?? 0;
+      if (anilistMediaId <= 0 || seen.has(anilistMediaId)) continue;
+      seen.add(anilistMediaId);
+      entries.push({
+        anilistMediaId,
+        isPrimary: Boolean(e.isPrimary),
+        order: coerceIntOrNull(e.order) ?? 0,
+        source:
+          typeof e.source === 'string' && ANIME_MAPPING_ENTRY_SOURCES.has(e.source) ? e.source : 'manual',
+        titleSnapshot: typeof e.titleSnapshot === 'string' ? e.titleSnapshot : null,
+      });
+    }
+
+    const primaryCount = entries.filter((e) => e.isPrimary).length;
+    if (entries.length > 0 && primaryCount !== 1) {
+      entries.forEach((e, i) => { e.isPrimary = i === 0; });
+    }
+
+    const base = {
+      state,
+      matchMethod: typeof m.matchMethod === 'string' ? m.matchMethod : null,
+      confidence: coerceIntOrNull(m.confidence),
+      seriesTitleSnapshot:
+        typeof m.seriesTitleSnapshot === 'string' && m.seriesTitleSnapshot.length > 0
+          ? m.seriesTitleSnapshot
+          : String(sonarrSeriesId),
+      seriesYearSnapshot: coerceIntOrNull(m.seriesYearSnapshot),
+      seriesTvdbIdSnapshot: coerceIntOrNull(m.seriesTvdbIdSnapshot),
+      seriesTmdbIdSnapshot: coerceIntOrNull(m.seriesTmdbIdSnapshot),
+    };
+
+    const record = await tx.aniListSeriesMapping.upsert({
+      where: { sonarrInstanceId_sonarrSeriesId: { sonarrInstanceId: instanceId, sonarrSeriesId } },
+      update: base,
+      create: { sonarrInstanceId: instanceId, sonarrSeriesId, ...base },
+    });
+
+    // Replace the entry set (deleteMany + recreate), same as persistResolution.
+    await tx.aniListSeriesMappingEntry.deleteMany({ where: { mappingId: record.id } });
+    if (entries.length > 0) {
+      await tx.aniListSeriesMappingEntry.createMany({
+        data: entries.map((e) => ({
+          mappingId: record.id,
+          anilistMediaId: e.anilistMediaId,
+          isPrimary: e.isPrimary,
+          order: e.order,
+          source: e.source,
+          titleSnapshot: e.titleSnapshot,
+        })),
+      });
+    }
+    applied += 1;
+  }
+  return applied;
+}
+
+async function applyUsersInTxn(
+  tx: Prisma.TransactionClient,
+  data: ExportedUsers,
+  skipped: string[],
+): Promise<number> {
+  if (!Array.isArray(data.accounts)) {
+    skipped.push('Users: missing accounts array');
+    return 0;
+  }
+
+  let applied = 0;
+  for (const acc of data.accounts) {
+    if (!acc || typeof acc !== 'object') continue;
+    const username = typeof acc.username === 'string' ? acc.username.trim() : '';
+    if (!username) {
+      skipped.push('User skipped: missing username');
+      continue;
+    }
+    const exportedId = typeof acc.id === 'string' && acc.id.length > 0 ? acc.id : null;
+    const isBootstrap = exportedId === BOOTSTRAP_ADMIN_ID;
+
+    // Identity: the bootstrap admin matches by its fixed id; everyone else by id
+    // first (clean re-attach on a same-install restore), then by username.
+    let target = null as Awaited<ReturnType<typeof tx.user.findUnique>>;
+    if (isBootstrap) {
+      target = await tx.user.findUnique({ where: { id: BOOTSTRAP_ADMIN_ID } });
+    } else {
+      if (exportedId) target = await tx.user.findUnique({ where: { id: exportedId } });
+      if (!target) target = await tx.user.findUnique({ where: { username } });
+    }
+    const targetId = target?.id ?? exportedId ?? undefined;
+
+    const role = pickEnum(acc.role, USER_ROLE_VALUES, 'member');
+    const status = pickEnum(acc.status, USER_STATUS_VALUES, 'active');
+    const template = pickEnum(acc.template, USER_TEMPLATE_VALUES, role === 'admin' ? 'admin' : 'member');
+    const permissions = parsePermissions(acc.permissions);
+    const displayName =
+      typeof acc.displayName === 'string' && acc.displayName.trim().length > 0
+        ? acc.displayName.trim()
+        : username;
+
+    // Unique-column collision guards — a violation here would roll back the
+    // whole import, so pre-check username/jellyfin/seerr against other rows.
+    const usernameOwner = await tx.user.findUnique({ where: { username }, select: { id: true } });
+    if (usernameOwner && usernameOwner.id !== targetId) {
+      skipped.push(`User "${username}" skipped: username already belongs to another account`);
+      continue;
+    }
+
+    let jellyfinUserId =
+      typeof acc.jellyfinUserId === 'string' && acc.jellyfinUserId.length > 0 ? acc.jellyfinUserId : null;
+    if (jellyfinUserId) {
+      const owner = await tx.user.findUnique({ where: { jellyfinUserId }, select: { id: true } });
+      if (owner && owner.id !== targetId) {
+        skipped.push(`User "${username}": Jellyfin link dropped (already linked to another account)`);
+        jellyfinUserId = null;
+      }
+    }
+    let seerrUserId =
+      typeof acc.seerrUserId === 'string' && acc.seerrUserId.length > 0 ? acc.seerrUserId : null;
+    if (seerrUserId) {
+      const owner = await tx.user.findUnique({ where: { seerrUserId }, select: { id: true } });
+      if (owner && owner.id !== targetId) {
+        skipped.push(`User "${username}": Seerr link dropped (already linked to another account)`);
+        seerrUserId = null;
+      }
+    }
+
+    // Password: exported hash → existing row's hash → null (no local login until
+    // an admin sets one). Same fallback shape as service-connection secrets.
+    const passwordHash =
+      typeof acc.passwordHash === 'string' && acc.passwordHash.length > 0
+        ? acc.passwordHash
+        : target?.passwordHash ?? null;
+
+    const baseData = {
+      username,
+      displayName,
+      role: role as UserRole,
+      status: status as UserStatus,
+      template,
+      permissions: permissions as unknown as Prisma.InputJsonValue,
+      jellyfinUserId,
+      seerrUserId,
+      passwordHash,
+    };
+
+    let userId: string;
+    if (target) {
+      await tx.user.update({ where: { id: target.id }, data: baseData });
+      userId = target.id;
+    } else {
+      const created = await tx.user.create({
+        data: { ...(exportedId ? { id: exportedId } : {}), ...baseData },
+      });
+      userId = created.id;
+    }
+    applied += 1;
+
+    // Per-user settings. Nullable string fields are validated lightly; per-user
+    // layout default ids are deliberately dropped (install-local; not restored).
+    if (acc.settings && typeof acc.settings === 'object') {
+      const s = acc.settings;
+      const timeZone =
+        typeof s.timeZone === 'string' && isValidTimeZone(s.timeZone) ? s.timeZone : null;
+      const settingsData = {
+        timeZone,
+        upcomingNotifyMode:
+          typeof s.upcomingNotifyMode === 'string' && UPCOMING_NOTIFY_MODES.has(s.upcomingNotifyMode)
+            ? s.upcomingNotifyMode
+            : null,
+        activityDigestMode:
+          typeof s.activityDigestMode === 'string' && ACTIVITY_DIGEST_MODES.has(s.activityDigestMode)
+            ? s.activityDigestMode
+            : null,
+        quietHoursEnabled: Boolean(s.quietHoursEnabled),
+        quietHoursStart: clampHourOrNull(s.quietHoursStart),
+        quietHoursEnd: clampHourOrNull(s.quietHoursEnd),
+      };
+      await tx.userSettings.upsert({
+        where: { userId },
+        update: settingsData,
+        create: { userId, ...settingsData },
+      });
+    }
+
+    // AniList identity only — tokens are left null (install-bound), so the user
+    // re-authenticates after import.
+    if (acc.anilist && typeof acc.anilist === 'object') {
+      const a = acc.anilist;
+      const linkData = {
+        anilistUserId: coerceIntOrNull(a.anilistUserId),
+        username: typeof a.username === 'string' ? a.username : null,
+        avatar: typeof a.avatar === 'string' ? a.avatar : null,
+        siteUrl: typeof a.siteUrl === 'string' ? a.siteUrl : null,
+        scoreFormat: typeof a.scoreFormat === 'string' ? a.scoreFormat : null,
+        accessToken: null,
+        refreshToken: null,
+        tokenExpiresAt: null,
+      };
+      await tx.userAniListLink.upsert({
+        where: { userId },
+        update: linkData,
+        create: { userId, ...linkData },
+      });
+    }
+  }
+  return applied;
+}
+
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -940,6 +1266,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   let appliedDashboardLayouts = 0;
   let appliedWatchlistItems = 0;
   let appliedWatchlistTags = 0;
+  let appliedAnimeMappings = 0;
+  let appliedUsers = 0;
   let appSettingsTxnResult: AppSettingsTxnResult | null = null;
 
   try {
@@ -997,6 +1325,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         appliedWatchlistTags = r.tags;
       }
 
+      if (body.animeMappings && typeof body.animeMappings === 'object') {
+        appliedAnimeMappings = await applyAnimeMappingsInTxn(tx, body.animeMappings, skipped);
+      }
+
+      if (body.users && typeof body.users === 'object') {
+        appliedUsers = await applyUsersInTxn(tx, body.users, skipped);
+      }
+
       return innerAppSettings;
     });
   } catch (error) {
@@ -1013,6 +1349,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (appSettingsTxnResult) {
     const { settings, wasCachingEnabled, pollingIntervalSecsChanged } = appSettingsTxnResult;
     setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
+    setCachedAnilistTtlSettings({
+      sectionsTtlMin: settings.anilistSectionsTtlMin,
+      browseTtlMin: settings.anilistBrowseTtlMin,
+      detailTtlMin: settings.anilistDetailTtlMin,
+      airingTtlMin: settings.anilistAiringTtlMin,
+    });
     setAppTimeZone(settings.timeZone);
     configureLogger({
       timeZone: settings.timeZone,
@@ -1094,6 +1436,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       dashboardLayouts: appliedDashboardLayouts,
       watchlistItems: appliedWatchlistItems,
       watchlistTags: appliedWatchlistTags,
+      animeMappings: appliedAnimeMappings,
+      users: appliedUsers,
     },
     skipped,
     pollingRestarted,

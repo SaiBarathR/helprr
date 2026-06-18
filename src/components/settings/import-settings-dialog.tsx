@@ -89,6 +89,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedCleanup, setSelectedCleanup] = useState(false);
   const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(false);
   const [selectedWatchlist, setSelectedWatchlist] = useState(false);
+  const [selectedAnimeMappings, setSelectedAnimeMappings] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
   const [importing, setImporting] = useState(false);
@@ -107,6 +109,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedCleanup(false);
       setSelectedDashboardLayouts(false);
       setSelectedWatchlist(false);
+      setSelectedAnimeMappings(false);
+      setSelectedUsers(false);
       setSelectedServices(new Set());
       setSelectedSourceDevice('');
       setPendingConfirm(null);
@@ -163,9 +167,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedDiscoverLayout(!!payload.discoverLayout);
       setSelectedCleanup(!!payload.cleanup);
       setSelectedDashboardLayouts(!!payload.dashboardLayouts);
-      // Watchlist is content, not settings — leave off by default; the user
-      // can opt in. "Replace everything" still pulls it in.
+      // Watchlist, anime mappings, and user accounts are content/sensitive —
+      // leave off by default; the user can opt in. "Replace everything" still
+      // pulls them in.
       setSelectedWatchlist(false);
+      setSelectedAnimeMappings(false);
+      setSelectedUsers(false);
       setSelectedServices(new Set(availableServices));
       const devices = payload.notificationPrefs ?? [];
       setSelectedSourceDevice(devices[0]?.deviceName ?? '');
@@ -211,19 +218,28 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedCleanup
       || selectedDashboardLayouts
       || selectedWatchlist
+      || selectedAnimeMappings
+      || selectedUsers
       || selectedServices.size > 0
       || (!!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedServices, selectedSourceDevice, availableNotifDevices]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
-    const willOverwriteSecrets = parsed.payload.includesSecrets && (
+    const willOverwriteServiceSecrets = parsed.payload.includesSecrets && (
       replaceAll
         ? parsed.availableServices.length > 0
         : selectedServices.size > 0
     );
-    if (willOverwriteSecrets) {
+    // User password hashes are credentials too — trip the same confirmation.
+    const hasUserSecrets = (parsed.payload.users?.accounts ?? []).some(
+      (a) => typeof a.passwordHash === 'string' && a.passwordHash.length > 0
+    );
+    const willOverwriteUserSecrets = hasUserSecrets && (
+      replaceAll ? !!parsed.payload.users : selectedUsers
+    );
+    if (willOverwriteServiceSecrets || willOverwriteUserSecrets) {
       setPendingConfirm({ replaceAll });
       return;
     }
@@ -238,6 +254,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     let useCleanup = selectedCleanup;
     let useDashboardLayouts = selectedDashboardLayouts;
     let useWatchlist = selectedWatchlist;
+    let useAnimeMappings = selectedAnimeMappings;
+    let useUsers = selectedUsers;
     let useServices = selectedServices;
     let useDevice = selectedSourceDevice;
     if (replaceAll) {
@@ -247,6 +265,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       useCleanup = !!parsed.payload.cleanup;
       useDashboardLayouts = !!parsed.payload.dashboardLayouts;
       useWatchlist = !!parsed.payload.watchlist;
+      useAnimeMappings = !!parsed.payload.animeMappings;
+      useUsers = !!parsed.payload.users;
       useServices = new Set(parsed.availableServices);
       useDevice = availableNotifDevices[0]?.deviceName ?? '';
       setSelectedUi(useUi);
@@ -255,6 +275,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedCleanup(useCleanup);
       setSelectedDashboardLayouts(useDashboardLayouts);
       setSelectedWatchlist(useWatchlist);
+      setSelectedAnimeMappings(useAnimeMappings);
+      setSelectedUsers(useUsers);
       setSelectedServices(useServices);
       setSelectedSourceDevice(useDevice);
     }
@@ -300,8 +322,14 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       if (useWatchlist && parsed.payload.watchlist) {
         body.watchlist = parsed.payload.watchlist;
       }
+      if (useAnimeMappings && parsed.payload.animeMappings) {
+        body.animeMappings = parsed.payload.animeMappings;
+      }
+      if (useUsers && parsed.payload.users) {
+        body.users = parsed.payload.users;
+      }
 
-      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout || body.dashboardLayouts || body.watchlist;
+      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout || body.dashboardLayouts || body.watchlist || body.animeMappings || body.users;
       if (needsServerCall) {
         const res = await fetch('/api/settings/import', {
           method: 'POST',
@@ -508,6 +536,44 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
+            {parsed.payload.animeMappings && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedAnimeMappings}
+                    onCheckedChange={(v) => setSelectedAnimeMappings(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Anime mappings</div>
+                    <div className="text-xs text-muted-foreground">
+                      {parsed.payload.animeMappings.mappings.length} Sonarr ↔ AniList mapping(s).
+                      Re-attached by Sonarr instance label (falls back to the default instance).
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
+            {parsed.payload.users && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedUsers}
+                    onCheckedChange={(v) => setSelectedUsers(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Users &amp; accounts</div>
+                    <div className="text-xs text-muted-foreground">
+                      {parsed.payload.users.accounts.length} account(s) with roles, permissions &amp; per-user settings.
+                      {parsed.payload.users.accounts.some((a) => typeof a.passwordHash === 'string' && a.passwordHash.length > 0)
+                        ? ' Includes password hashes.'
+                        : ' No passwords in file — accounts without an existing one need an admin to set it.'}
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
             {parsed.availableServices.length > 0 && (
               <section>
                 <div className="text-sm font-medium mb-2">
@@ -585,9 +651,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       <Dialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Overwrite service connections?</DialogTitle>
+            <DialogTitle>Overwrite stored credentials?</DialogTitle>
             <DialogDescription>
-              This will overwrite existing service connection API keys with values from the import file. Continue?
+              This will overwrite existing credentials (service connection API keys and/or user passwords) with values from the import file. Continue?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

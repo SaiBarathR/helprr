@@ -48,6 +48,8 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
   const [selectedCleanup, setSelectedCleanup] = useState(true);
   const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(true);
   const [selectedWatchlist, setSelectedWatchlist] = useState(false);
+  const [selectedAnimeMappings, setSelectedAnimeMappings] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState(false);
   const [availableServices, setAvailableServices] = useState<ConnectedServiceInfo[]>([]);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [includeSecrets, setIncludeSecrets] = useState(false);
@@ -121,8 +123,10 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
     && !selectedCleanup
     && !selectedDashboardLayouts
     && !selectedWatchlist
+    && !selectedAnimeMappings
+    && !selectedUsers
     && selectedServices.size === 0
-  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedServices]);
+  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedAnimeMappings, selectedUsers, selectedServices]);
 
   async function handleExport() {
     if (nothingSelected) {
@@ -142,6 +146,8 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
           cleanup: selectedCleanup,
           dashboardLayouts: selectedDashboardLayouts,
           watchlist: selectedWatchlist,
+          animeMappings: selectedAnimeMappings,
+          users: selectedUsers,
           includeSecrets,
         }),
       });
@@ -171,6 +177,8 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         ...(serverPayload.discoverLayout && { discoverLayout: serverPayload.discoverLayout }),
         ...(serverPayload.dashboardLayouts && { dashboardLayouts: serverPayload.dashboardLayouts }),
         ...(serverPayload.watchlist && { watchlist: serverPayload.watchlist }),
+        ...(serverPayload.animeMappings && { animeMappings: serverPayload.animeMappings }),
+        ...(serverPayload.users && { users: serverPayload.users }),
       };
 
       const json = JSON.stringify(fullPayload, null, 2);
@@ -248,8 +256,9 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               <div>
                 <div className="text-sm font-medium">App Settings</div>
                 <div className="text-xs text-muted-foreground">
-                  Polling intervals, theme, timezone, logging, image cache, upcoming-release notification timing.
-                  Discover homepage layout is a separate option below.
+                  Polling intervals, timezone, logging, image cache, upcoming-release notification timing,
+                  watch-provider region, activity digest, anime auto-map, AniList cache TTLs, and the
+                  qBittorrent bandwidth schedule. Discover homepage layout is a separate option below.
                 </div>
               </div>
             </label>
@@ -369,6 +378,40 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
                 <div className="text-sm font-medium">Watchlist</div>
                 <div className="text-xs text-muted-foreground">
                   Watchlist items (with tags &amp; reminders). Off by default — content, not settings.
+                </div>
+              </div>
+            </label>
+          </section>
+
+          {/* Anime Mappings */}
+          <section>
+            <label className="flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedAnimeMappings}
+                onCheckedChange={(v) => setSelectedAnimeMappings(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">Anime mappings</div>
+                <div className="text-xs text-muted-foreground">
+                  Sonarr series ↔ AniList links (manual &amp; auto), with their cached titles. Off by default — content, not settings.
+                </div>
+              </div>
+            </label>
+          </section>
+
+          {/* Users & accounts */}
+          <section>
+            <label className="flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedUsers}
+                onCheckedChange={(v) => setSelectedUsers(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">Users &amp; accounts</div>
+                <div className="text-xs text-muted-foreground">
+                  Accounts, roles, permissions, and per-user settings. Passwords are only included when
+                  &ldquo;Include API keys / tokens&rdquo; is on; AniList/Jellyfin tokens are never exported.
+                  Off by default.
                 </div>
               </div>
             </label>
