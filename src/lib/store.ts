@@ -210,7 +210,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 29;
+export const STORE_VERSION = 30;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -349,6 +349,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 29) {
     state.insightsDateFrom = null;
     state.insightsDateTo = null;
+  }
+  if (version < 30) {
+    state.searchHistory = {};
   }
   return state;
 }
@@ -511,6 +514,10 @@ interface UIState {
   // Discover layout (server-side, cached locally for dashboard widget catalog)
   discoverLayout: DiscoverLayoutConfig | null;
   setDiscoverLayout: (config: DiscoverLayoutConfig | null) => void;
+  // Recent-search history, keyed per search bar. Most-recent-first, capped at 20.
+  searchHistory: Record<string, string[]>;
+  addSearchTerm: (key: string, term: string) => void;
+  removeSearchTerm: (key: string, term: string) => void;
   // Settings import
   applyImportedUiPrefs: (partial: Record<string, unknown>) => void;
 }
@@ -582,6 +589,7 @@ const PERSISTED_KEYS = [
   'dashboardFg',
   'dashboardFgMute',
   'dashboardFgSubtle',
+  'searchHistory',
 ] as const satisfies readonly (keyof UIState)[];
 
 const PERSISTED_KEY_SET: ReadonlySet<string> = new Set(PERSISTED_KEYS);
@@ -618,6 +626,15 @@ function isVisibleFieldsByMode(value: unknown): value is VisibleFieldsByMode {
   const obj = value as Record<string, unknown>;
   return (['posters', 'overview', 'table'] as const).every(
     (mode) => Array.isArray(obj[mode]) && (obj[mode] as unknown[]).every((f) => typeof f === 'string')
+  );
+}
+
+// searchHistory is a plain object of string arrays (key -> recent terms). Imported
+// files can be hand-edited, so validate the shape before accepting it.
+function isSearchHistoryMap(value: unknown): value is Record<string, string[]> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.values(value as Record<string, unknown>).every(
+    (terms) => Array.isArray(terms) && terms.every((t) => typeof t === 'string')
   );
 }
 
@@ -850,6 +867,20 @@ export const useUIStore = create<UIState>()(
         set(() => ({
           discoverLayout: config ? reconcileDiscoverLayout(config) : null,
         })),
+      searchHistory: {},
+      addSearchTerm: (key, term) =>
+        set((state) => {
+          const t = term.trim();
+          if (!t) return {};
+          const prev = state.searchHistory[key] ?? [];
+          const next = [t, ...prev.filter((h) => h.toLowerCase() !== t.toLowerCase())].slice(0, 20);
+          return { searchHistory: { ...state.searchHistory, [key]: next } };
+        }),
+      removeSearchTerm: (key, term) =>
+        set((state) => {
+          const prev = state.searchHistory[key] ?? [];
+          return { searchHistory: { ...state.searchHistory, [key]: prev.filter((h) => h !== term) } };
+        }),
       applyImportedUiPrefs: (partial) =>
         set((state) => {
           const next: Record<string, unknown> = {};
@@ -860,6 +891,11 @@ export const useUIStore = create<UIState>()(
             // Drop values whose shape would break call sites.
             if (VISIBLE_FIELDS_KEYS.has(key)) {
               if (!isVisibleFieldsByMode(value)) continue;
+              next[key] = value;
+              continue;
+            }
+            if (key === 'searchHistory') {
+              if (!isSearchHistoryMap(value)) continue;
               next[key] = value;
               continue;
             }

@@ -7,7 +7,7 @@ import { format, subDays } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Calendar } from '@/components/ui/calendar';
@@ -595,9 +595,10 @@ export default function NotificationsPage() {
 
       <div className="relative">
         <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-        <Input
+        <SearchInput
           value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
+          onChange={setSearchInput}
+          historyKey="notifications"
           placeholder="Search notifications…"
           className="pl-9 pr-9 h-10"
         />

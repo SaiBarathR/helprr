@@ -7,7 +7,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import {
   Activity,
   ArrowUpDown,
@@ -160,10 +160,11 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
         <div className="px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input
+            <SearchInput
               type="search"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={setQuery}
+              historyKey="widget-gallery"
               placeholder="Search widgets…"
               className="h-9 pl-8 text-sm"
             />

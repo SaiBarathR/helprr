@@ -10,7 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -298,11 +298,19 @@ function AddSeriesPageContent() {
       <div className="space-y-4 mt-2 pb-8">
         {/* Search form */}
         <form onSubmit={handleSearch} className="flex gap-2">
-          <Input
+          <SearchInput
             placeholder="Search for a TV series..."
             value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            className="flex-1 h-10"
+            onChange={setTerm}
+            historyKey="series-add"
+            onSubmit={(t) => {
+              setSelected(null);
+              setTargetTvdbId(null);
+              setTargetTmdbId(null);
+              setSubmittedTerm(t);
+            }}
+            wrapperClassName="flex-1"
+            className="h-10"
           />
           <Button type="submit" disabled={searching} className="h-10 w-10 p-0 shrink-0">
             {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}

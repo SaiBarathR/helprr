@@ -1167,6 +1167,7 @@ export default function DiscoverPage() {
                 }
               }}
               placeholder="Search movies and shows"
+              historyKey="discover"
             />
           </div>
           <DropdownMenu>

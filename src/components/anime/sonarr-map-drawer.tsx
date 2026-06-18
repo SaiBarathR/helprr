@@ -10,7 +10,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
@@ -175,10 +175,12 @@ export function SonarrMapDrawer({
         <div className="px-4 pb-4 space-y-3 flex-1 min-h-0 flex flex-col">
           <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-            <Input
+            <SearchInput
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={setQuery}
+              historyKey="sonarr-map"
               placeholder="Filter Sonarr anime series"
+              wrapperClassName="flex-1"
               className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
             />
           </div>

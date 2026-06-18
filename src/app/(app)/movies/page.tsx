@@ -815,7 +815,7 @@ export default function MoviesPage() {
           )}
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." />
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." historyKey="movies" />
       </div>
 
       {(() => {
