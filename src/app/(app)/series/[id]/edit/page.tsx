@@ -118,7 +118,7 @@ export default function SeriesEditPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !series) {
     return <><PageHeader title="Edit Series" /><PageSpinner /></>;
   }
 

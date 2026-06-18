@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { AnimeScheduleCard } from '@/components/anime/anime-schedule-card';
 import { AnimeScheduleWeekNav } from '@/components/anime/anime-schedule-week-nav';
@@ -115,6 +115,10 @@ export default function AnimeSchedulePage() {
     queryFn: jsonFetcher<ScheduleResponse>(
       `/api/anime/schedule?weekStart=${weekStartSec}&weekEnd=${weekEndSec}`
     ),
+    // Keep the previous week's grid on screen while the new week loads, instead of
+    // blanking to a full-screen spinner. The newest response still wins (the key
+    // swap drops stale in-flight responses), so no per-week race is reintroduced.
+    placeholderData: keepPreviousData,
   });
 
   const entries = data?.entries ?? EMPTY_ENTRIES;
@@ -154,7 +158,16 @@ export default function AnimeSchedulePage() {
     setWeekStart(startOfWeek(new Date()));
   }, []);
 
-  const buckets = useMemo(() => buildDayBuckets(weekStart, entries), [weekStart, entries]);
+  // Build the grid from the week the loaded entries actually belong to (the
+  // response echoes its requested weekStart). While keepPreviousData is showing
+  // the prior week, this keeps that week's cards in place until the new week
+  // lands — bucketing the kept entries against the just-changed `weekStart`
+  // would instead drop them into non-matching days and blank the grid.
+  const displayWeekStart = useMemo(
+    () => (data ? new Date(data.weekStart * 1000) : weekStart),
+    [data, weekStart],
+  );
+  const buckets = useMemo(() => buildDayBuckets(displayWeekStart, entries), [displayWeekStart, entries]);
 
   return (
     <div className="animate-content-in">

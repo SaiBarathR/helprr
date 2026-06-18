@@ -51,7 +51,7 @@ export default function DiscoverMovieCreditsPage() {
       cast={cast}
       crew={crew}
       cacheService="tmdb"
-      loading={isLoading}
+      loading={isLoading && !data}
       initialTab={initialTab}
     />
   );

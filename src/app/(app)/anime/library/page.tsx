@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   getListViewState,
   setListViewState,
@@ -202,6 +202,10 @@ export default function AnimeLibraryPage() {
       return res.json() as Promise<LibraryResponse>;
     },
     enabled: hydrated && !!viewer?.connected,
+    // Keep the current tab's grid on screen while another type/status tab loads,
+    // instead of blanking to a full-screen spinner (the refreshing indicator below
+    // covers the in-flight fetch).
+    placeholderData: keepPreviousData,
   });
   const collection = libraryQuery.data?.collection ?? null;
   const loading = !!viewer?.connected && libraryQuery.isLoading;

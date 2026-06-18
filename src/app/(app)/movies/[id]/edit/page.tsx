@@ -108,7 +108,7 @@ export default function MovieEditPage() {
     saveMutation.mutate(updatedMovie);
   }
 
-  if (loading) {
+  if (loading && !movie) {
     return <><PageHeader title="Edit Movie" /><PageSpinner /></>;
   }
 

@@ -226,7 +226,7 @@ export default function AlbumDetailPage() {
       }));
   }, [tracks]);
 
-  if (loading) {
+  if (loading && !album) {
     return <><PageHeader className="-mx-2 md:-mx-6" title="Album" /><PageSpinner /></>;
   }
 

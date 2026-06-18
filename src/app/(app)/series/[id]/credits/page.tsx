@@ -33,7 +33,9 @@ export default function SeriesCreditsPage() {
   });
 
   const title = seriesQuery.data?.title ?? '';
-  const loading = seriesQuery.isLoading || creditsQuery.isLoading;
+  // First-load-only: once credits are cached, a background refetch must not
+  // re-blank CreditsListPage to a full-screen spinner.
+  const loading = (seriesQuery.isLoading || creditsQuery.isLoading) && !creditsQuery.data;
 
   const { cast, crew } = useMemo((): { cast: CreditPerson[]; crew: CreditPerson[] } => {
     const credits = creditsQuery.data;

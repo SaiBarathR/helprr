@@ -242,7 +242,7 @@ export default function AnimeDetailPage() {
     ? Math.max(0, detail.nextAiringEpisode.airingAt - Math.floor(nowMs / 1000))
     : null;
 
-  if (loading) {
+  if (loading && !detail) {
     return <><PageHeader className='-mx-2 md:-mx-6' title="Anime" /><PageSpinner /></>;
   }
 

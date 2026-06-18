@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import Link from 'next/link';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -155,6 +155,9 @@ export default function HistoryPage() {
       const loaded = allPages.reduce((sum, pg) => sum + (pg.records?.length ?? 0), 0);
       return loaded < (lastPage.totalRecords ?? 0) ? allPages.length + 1 : undefined;
     },
+    // Keep the current list on screen while an event/instance filter change
+    // refetches, so the page never blanks to a full-screen spinner.
+    placeholderData: keepPreviousData,
   });
 
   // The old code surfaced the initial fetch failure as a toast; preserve that.

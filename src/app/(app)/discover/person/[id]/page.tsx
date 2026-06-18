@@ -247,7 +247,7 @@ export default function PersonDetailPage() {
     );
   }), [filteredCredits]);
 
-  if (loading) {
+  if (loading && !person) {
     return <><PageHeader title="Person" /><PageSpinner /></>;
   }
 

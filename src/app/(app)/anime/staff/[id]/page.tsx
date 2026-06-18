@@ -196,7 +196,7 @@ export default function StaffDetailPage() {
     return () => observer.disconnect();
   }, [vaPageInfo, vaLoadingMore, fetchMoreVa]);
 
-  if (loading) {
+  if (loading && !detail) {
     return <><PageHeader className="-mx-2 md:-mx-6" title="Staff" /><PageSpinner /></>;
   }
 

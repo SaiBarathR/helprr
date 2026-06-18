@@ -143,7 +143,7 @@ export default function MovieFilesPage() {
   const history = historyQuery.data ?? [];
   const historyLoading = historyQuery.isLoading;
 
-  if (loading) {
+  if (loading && !movie) {
     return <><PageHeader title="Files & information" /><PageSpinner /></>;
   }
 

@@ -799,7 +799,7 @@ export default function MusicPage() {
       </div>
 
       {(() => {
-        if (loading) {
+        if (loading && artists.length === 0) {
           return <PageSpinner />;
         }
 

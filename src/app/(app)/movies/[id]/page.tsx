@@ -380,7 +380,7 @@ export default function MovieDetailPage() {
     finally { setDeleting(false); }
   }
 
-  if (loading) {
+  if (loading && !movie) {
     return <><PageHeader className='-mx-2 md:-mx-6' title="Movie" /><PageSpinner /></>;
   }
 

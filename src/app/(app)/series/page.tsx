@@ -744,7 +744,7 @@ export default function SeriesPage() {
       </div>
 
       {(() => {
-        if (loading) {
+        if (loading && series.length === 0) {
           return <PageSpinner />;
         }
 

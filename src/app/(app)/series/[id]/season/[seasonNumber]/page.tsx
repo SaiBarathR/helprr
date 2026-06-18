@@ -253,7 +253,7 @@ export default function SeasonDetailPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !series) {
     return <><PageHeader title="Season" /><PageSpinner /></>;
   }
 
