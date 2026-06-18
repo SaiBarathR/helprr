@@ -7,16 +7,16 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { TagSelector } from '@/components/media/tag-selector';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateSeries } from '@/lib/query-invalidation';
-import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
+import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import type { SonarrSeries } from '@/types';
 
 export default function SeriesEditPage() {
@@ -39,7 +39,6 @@ export default function SeriesEditPage() {
   const loading = seriesQuery.isLoading;
   const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance);
   const { data: rootFolders = [] } = useRootFolders('sonarr', instance);
-  const { data: tags = [] } = useTags('sonarr', instance);
   const [saving, setSaving] = useState(false);
 
   // Edit form state
@@ -66,12 +65,6 @@ export default function SeriesEditPage() {
     setSelectedTags([...series.tags]);
     setRootFolder(series.path ? series.path.split('/').slice(0, -1).join('/') : '');
   }, [series]);
-
-  function toggleTag(tagId: number) {
-    setSelectedTags((prev) =>
-      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
-    );
-  }
 
   async function handleSave() {
     if (!series) return;
@@ -231,27 +224,19 @@ export default function SeriesEditPage() {
         </div>
 
         {/* Tags */}
-        {tags.length > 0 && (
-          <div className="grouped-section">
-            <p className="grouped-section-title">Tags</p>
-            <div className="grouped-section-content">
-              <div className="px-4 py-3">
-                <div className="flex flex-wrap gap-2">
-                  {tags.map((t) => (
-                    <Badge
-                      key={t.id}
-                      variant={selectedTags.includes(t.id) ? 'default' : 'outline'}
-                      className="cursor-pointer select-none transition-colors"
-                      onClick={() => toggleTag(t.id)}
-                    >
-                      {t.label}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+        <div className="grouped-section">
+          <p className="grouped-section-title">Tags</p>
+          <div className="grouped-section-content">
+            <div className="px-4 py-3">
+              <TagSelector
+                service="sonarr"
+                instanceId={instance}
+                value={selectedTags}
+                onChange={setSelectedTags}
+              />
             </div>
           </div>
-        )}
+        </div>
 
         {/* Actions */}
         <div className="flex gap-3 pt-2">
