@@ -8,6 +8,17 @@ import type {
   SlowRuleShape,
   StallRuleShape,
 } from '@/lib/cleanup/types';
+import type { BandwidthSchedule } from '@/lib/bandwidth-scheduler/types';
+
+// Allow-lists shared by import validation + the import route. Kept here so the
+// client-side validator and the server-side applier agree on what's known.
+export const ANIME_MAPPING_STATES = new Set<string>([
+  'AUTO_MATCH', 'AUTO_UNMATCHED', 'MANUAL_MATCH', 'MANUAL_NONE',
+]);
+export const ANIME_MAPPING_ENTRY_SOURCES = new Set<string>(['auto', 'manual']);
+export const USER_ROLE_VALUES = new Set<string>(['admin', 'member']);
+export const USER_STATUS_VALUES = new Set<string>(['active', 'pending', 'disabled']);
+export const USER_TEMPLATE_VALUES = new Set<string>(['admin', 'member']);
 
 export const EXPORT_FORMAT_KIND = 'helprr-settings-export';
 export const EXPORT_FORMAT_VERSION = 1;
@@ -115,6 +126,18 @@ export interface ExportedAppSettings {
   upcomingNotifyMode: string;
   upcomingNotifyBeforeMins: number;
   upcomingDailyNotifyHour: number;
+  watchProviderRegion: string;
+  activityDigestMode: string;
+  activityDigestHour: number;
+  activityDigestDayOfWeek: number;
+  animeAutoMapEnabled: boolean;
+  animeAutoMapHour: number;
+  anilistSectionsTtlMin: number;
+  anilistBrowseTtlMin: number;
+  anilistDetailTtlMin: number;
+  anilistAiringTtlMin: number;
+  // Stored bandwidth-schedule JSON; re-normalized via parseBandwidthSchedule() on import.
+  qbtBandwidthSchedule: BandwidthSchedule | null;
 }
 
 export interface ExportedNotificationRule {
@@ -179,6 +202,70 @@ export interface ExportedWatchlist {
   tags: ExportedWatchlistTag[];
 }
 
+export interface ExportedAnimeMappingEntry {
+  anilistMediaId: number;
+  isPrimary: boolean;
+  order: number;
+  source: string;
+  titleSnapshot: string | null;
+}
+
+export interface ExportedAnimeMapping {
+  // ServiceConnection.label of the mapping's Sonarr instance (IDs are install-local).
+  sonarrInstanceLabel: string;
+  sonarrSeriesId: number;
+  state: string;
+  matchMethod: string | null;
+  confidence: number | null;
+  seriesTitleSnapshot: string;
+  seriesYearSnapshot: number | null;
+  seriesTvdbIdSnapshot: number | null;
+  seriesTmdbIdSnapshot: number | null;
+  entries: ExportedAnimeMappingEntry[];
+}
+
+export interface ExportedAnimeMappings {
+  mappings: ExportedAnimeMapping[];
+}
+
+export interface ExportedUserSettings {
+  timeZone: string | null;
+  upcomingNotifyMode: string | null;
+  activityDigestMode: string | null;
+  quietHoursEnabled: boolean;
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
+}
+
+export interface ExportedUserAniListIdentity {
+  anilistUserId: number | null;
+  username: string | null;
+  avatar: string | null;
+  siteUrl: string | null;
+  scoreFormat: string | null;
+}
+
+export interface ExportedUserAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  role: string;
+  status: string;
+  template: string;
+  permissions: Record<string, unknown>; // capability deltas, validated via parsePermissions()
+  jellyfinUserId: string | null;
+  seerrUserId: string | null;
+  // Only written when "Include API keys / tokens" is on (the scrypt hash).
+  passwordHash?: string | null;
+  settings: ExportedUserSettings | null;
+  // Identity only — OAuth tokens are install-bound and deliberately excluded.
+  anilist: ExportedUserAniListIdentity | null;
+}
+
+export interface ExportedUsers {
+  accounts: ExportedUserAccount[];
+}
+
 export interface SettingsExportPayload {
   kind: typeof EXPORT_FORMAT_KIND;
   version: number;
@@ -193,6 +280,8 @@ export interface SettingsExportPayload {
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;
   watchlist?: ExportedWatchlist;
+  animeMappings?: ExportedAnimeMappings;
+  users?: ExportedUsers;
 }
 
 export function extractUiPrefsByCategory(
@@ -286,6 +375,24 @@ export function validateImportFile(
   ) {
     return { ok: false, error: 'Invalid watchlist section.' };
   }
+  if (
+    obj.animeMappings !== undefined &&
+    (typeof obj.animeMappings !== 'object' ||
+      obj.animeMappings === null ||
+      Array.isArray(obj.animeMappings) ||
+      !Array.isArray((obj.animeMappings as { mappings?: unknown }).mappings))
+  ) {
+    return { ok: false, error: 'Invalid animeMappings section.' };
+  }
+  if (
+    obj.users !== undefined &&
+    (typeof obj.users !== 'object' ||
+      obj.users === null ||
+      Array.isArray(obj.users) ||
+      !Array.isArray((obj.users as { accounts?: unknown }).accounts))
+  ) {
+    return { ok: false, error: 'Invalid users section.' };
+  }
 
   if (Array.isArray(obj.notificationPrefs)) {
     for (const device of obj.notificationPrefs as unknown[]) {
@@ -297,6 +404,28 @@ export function validateImportFile(
         if (typeof r.eventType !== 'string' || !(EVENT_TYPES as readonly string[]).includes(r.eventType)) {
           warnings.push(`Unknown event type "${String(r.eventType)}" will be skipped.`);
         }
+      }
+    }
+  }
+
+  const animeMappings = obj.animeMappings as { mappings?: unknown } | undefined;
+  if (animeMappings && Array.isArray(animeMappings.mappings)) {
+    for (const m of animeMappings.mappings as unknown[]) {
+      if (!m || typeof m !== 'object') continue;
+      const state = (m as { state?: unknown }).state;
+      if (typeof state !== 'string' || !ANIME_MAPPING_STATES.has(state)) {
+        warnings.push(`Anime mapping with unknown state "${String(state)}" will be skipped.`);
+      }
+    }
+  }
+
+  const users = obj.users as { accounts?: unknown } | undefined;
+  if (users && Array.isArray(users.accounts)) {
+    for (const a of users.accounts as unknown[]) {
+      if (!a || typeof a !== 'object') continue;
+      const role = (a as { role?: unknown }).role;
+      if (typeof role !== 'string' || !USER_ROLE_VALUES.has(role)) {
+        warnings.push(`User with unknown role "${String(role)}" will be imported as a member.`);
       }
     }
   }

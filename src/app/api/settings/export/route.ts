@@ -5,12 +5,15 @@ import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { withApiLogging } from '@/lib/api-logger';
 import {
+  type ExportedAnimeMapping,
+  type ExportedAppSettings,
   type ExportedCleanup,
   type ExportedDashboardLayout,
   type ExportedDashboardLayouts,
   type ExportedNotificationDevice,
   type ExportedNotificationRule,
   type ExportedServiceConnection,
+  type ExportedUserAccount,
   type ExportedWatchlistItem,
   type ExportedWatchlistTag,
   type SettingsExportPayload,
@@ -31,6 +34,8 @@ interface ExportRequestBody {
   cleanup?: boolean;
   dashboardLayouts?: boolean;
   watchlist?: boolean;
+  animeMappings?: boolean;
+  users?: boolean;
   includeSecrets?: boolean;
 }
 
@@ -54,6 +59,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const wantCleanup = body.cleanup === true;
   const wantDashboardLayouts = body.dashboardLayouts === true;
   const wantWatchlist = body.watchlist === true;
+  const wantAnimeMappings = body.animeMappings === true;
+  const wantUsers = body.users === true;
   const selectedServices: ServiceType[] = Array.isArray(body.services)
     ? (SERVICE_TYPES_EXPORTABLE.filter((t) => (body.services as string[]).includes(t)) as ServiceType[])
     : [];
@@ -92,6 +99,19 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         upcomingNotifyMode: settings.upcomingNotifyMode,
         upcomingNotifyBeforeMins: settings.upcomingNotifyBeforeMins,
         upcomingDailyNotifyHour: settings.upcomingDailyNotifyHour,
+        watchProviderRegion: settings.watchProviderRegion,
+        activityDigestMode: settings.activityDigestMode,
+        activityDigestHour: settings.activityDigestHour,
+        activityDigestDayOfWeek: settings.activityDigestDayOfWeek,
+        animeAutoMapEnabled: settings.animeAutoMapEnabled,
+        animeAutoMapHour: settings.animeAutoMapHour,
+        anilistSectionsTtlMin: settings.anilistSectionsTtlMin,
+        anilistBrowseTtlMin: settings.anilistBrowseTtlMin,
+        anilistDetailTtlMin: settings.anilistDetailTtlMin,
+        anilistAiringTtlMin: settings.anilistAiringTtlMin,
+        // Stored as-is; import re-normalizes via parseBandwidthSchedule().
+        qbtBandwidthSchedule:
+          (settings.qbtBandwidthSchedule ?? null) as unknown as ExportedAppSettings['qbtBandwidthSchedule'],
       };
     }
 
@@ -223,6 +243,81 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         color: t.color ?? null,
       }));
       payload.watchlist = { items: exportedItems, tags: exportedTags };
+    }
+
+    if (wantAnimeMappings) {
+      const [mappings, sonarrConnections] = await Promise.all([
+        prisma.aniListSeriesMapping.findMany({
+          include: { entries: { orderBy: { order: 'asc' } } },
+          orderBy: [{ sonarrInstanceId: 'asc' }, { sonarrSeriesId: 'asc' }],
+        }),
+        prisma.serviceConnection.findMany({
+          where: { type: 'SONARR' },
+          select: { id: true, label: true },
+        }),
+      ]);
+      const labelById = new Map(sonarrConnections.map((c) => [c.id, c.label] as const));
+      const exportedMappings: ExportedAnimeMapping[] = mappings.map((m) => ({
+        sonarrInstanceLabel: labelById.get(m.sonarrInstanceId) ?? '',
+        sonarrSeriesId: m.sonarrSeriesId,
+        state: m.state,
+        matchMethod: m.matchMethod ?? null,
+        confidence: m.confidence ?? null,
+        seriesTitleSnapshot: m.seriesTitleSnapshot,
+        seriesYearSnapshot: m.seriesYearSnapshot ?? null,
+        seriesTvdbIdSnapshot: m.seriesTvdbIdSnapshot ?? null,
+        seriesTmdbIdSnapshot: m.seriesTmdbIdSnapshot ?? null,
+        entries: m.entries.map((e) => ({
+          anilistMediaId: e.anilistMediaId,
+          isPrimary: e.isPrimary,
+          order: e.order,
+          source: e.source,
+          titleSnapshot: e.titleSnapshot ?? null,
+        })),
+      }));
+      payload.animeMappings = { mappings: exportedMappings };
+    }
+
+    if (wantUsers) {
+      const users = await prisma.user.findMany({
+        include: { settings: true, aniListLink: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const accounts: ExportedUserAccount[] = users.map((u) => ({
+        id: u.id,
+        username: u.username,
+        displayName: u.displayName,
+        role: u.role,
+        status: u.status,
+        template: u.template,
+        permissions: (u.permissions ?? {}) as Record<string, unknown>,
+        jellyfinUserId: u.jellyfinUserId ?? null,
+        seerrUserId: u.seerrUserId ?? null,
+        // passwordHash is a credential — only when secrets are explicitly included.
+        ...(includeSecrets ? { passwordHash: u.passwordHash ?? null } : {}),
+        settings: u.settings
+          ? {
+              timeZone: u.settings.timeZone ?? null,
+              upcomingNotifyMode: u.settings.upcomingNotifyMode ?? null,
+              activityDigestMode: u.settings.activityDigestMode ?? null,
+              quietHoursEnabled: u.settings.quietHoursEnabled,
+              quietHoursStart: u.settings.quietHoursStart ?? null,
+              quietHoursEnd: u.settings.quietHoursEnd ?? null,
+            }
+          : null,
+        // Identity only — OAuth tokens are AES-GCM encrypted with an install key,
+        // so they'd never decrypt elsewhere; the user re-authenticates after import.
+        anilist: u.aniListLink
+          ? {
+              anilistUserId: u.aniListLink.anilistUserId ?? null,
+              username: u.aniListLink.username ?? null,
+              avatar: u.aniListLink.avatar ?? null,
+              siteUrl: u.aniListLink.siteUrl ?? null,
+              scoreFormat: u.aniListLink.scoreFormat ?? null,
+            }
+          : null,
+      }));
+      payload.users = { accounts };
     }
 
     return NextResponse.json(payload);
