@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 
@@ -19,4 +19,33 @@ async function getHandler(request: NextRequest) {
   }
 }
 
+// Create a tag on the spot from the add/edit forms. Gated by movies.view — the same
+// bar the edit page clears (movie PUT only needs movies.view), so edit-only users
+// aren't blocked.
+async function postHandler(request: NextRequest) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+  const capError = await requireCapability('movies.view');
+  if (capError) return capError;
+
+  try {
+    const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
+    const body = (await request.json().catch(() => null)) as { label?: unknown } | null;
+    const label = typeof body?.label === 'string' ? body.label.trim() : '';
+    if (!label) return NextResponse.json({ error: 'label is required' }, { status: 400 });
+
+    const client = await getRadarrClient(instanceId);
+    // Dedup case-insensitively (mirrors resolveTagIds in bulk-editor.ts) so we never
+    // create a duplicate and always hand back a real {id,label}.
+    const existing = await client.getTags();
+    const match = existing.find((t) => t.label.toLowerCase() === label.toLowerCase());
+    const tag = match ?? (await client.createTag(label));
+    return NextResponse.json(tag);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to create tag';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 export const GET = withApiLogging(getHandler, 'api/radarr/tags');
+export const POST = withApiLogging(postHandler, 'api/radarr/tags');

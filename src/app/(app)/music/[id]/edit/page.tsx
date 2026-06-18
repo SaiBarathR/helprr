@@ -12,9 +12,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { TagSelector } from '@/components/media/tag-selector';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -24,7 +24,6 @@ import {
   useQualityProfiles,
   useMetadataProfiles,
   useRootFolders,
-  useTags,
 } from '@/lib/hooks/use-reference-data';
 import type { LidarrArtist } from '@/types';
 
@@ -46,7 +45,6 @@ export default function ArtistEditPage() {
   const { data: qualityProfiles = [] } = useQualityProfiles('lidarr', instance);
   const { data: metadataProfiles = [] } = useMetadataProfiles(instance);
   const { data: rootFolders = [] } = useRootFolders('lidarr', instance);
-  const { data: tags = [] } = useTags('lidarr', instance);
 
   const [qualityProfileId, setQualityProfileId] = useState<number>(0);
   const [metadataProfileId, setMetadataProfileId] = useState<number>(0);
@@ -87,12 +85,6 @@ export default function ArtistEditPage() {
     },
   });
   const saving = saveMutation.isPending;
-
-  function toggleTag(tagId: number) {
-    setSelectedTags((prev) =>
-      prev.includes(tagId) ? prev.filter((t) => t !== tagId) : [...prev, tagId]
-    );
-  }
 
   function handleSave() {
     if (!artist) return;
@@ -185,27 +177,19 @@ export default function ArtistEditPage() {
           </div>
         </div>
 
-        {tags.length > 0 && (
-          <div className="grouped-section">
-            <div className="grouped-section-title">Tags</div>
-            <div className="grouped-section-content">
-              <div className="grouped-row">
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((t) => (
-                    <Badge
-                      key={t.id}
-                      variant={selectedTags.includes(t.id) ? 'default' : 'outline'}
-                      className="cursor-pointer select-none"
-                      onClick={() => toggleTag(t.id)}
-                    >
-                      {t.label}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+        <div className="grouped-section">
+          <div className="grouped-section-title">Tags</div>
+          <div className="grouped-section-content">
+            <div className="grouped-row">
+              <TagSelector
+                service="lidarr"
+                instanceId={instance}
+                value={selectedTags}
+                onChange={setSelectedTags}
+              />
             </div>
           </div>
-        )}
+        </div>
 
         <div className="flex gap-3 pt-2">
           <Button className="flex-1" onClick={handleSave} disabled={saving}>

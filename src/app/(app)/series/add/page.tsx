@@ -20,17 +20,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { TagSelector } from '@/components/media/tag-selector';
 import { Search, Plus, Loader2, Tv, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SonarrLookupResult } from '@/types';
-import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
+import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
 function AddSeriesPageContent() {
@@ -65,7 +60,6 @@ function AddSeriesPageContent() {
   // Per-instance reference data, shared (and deduped) with the list/edit pages.
   const { data: profiles = [] } = useQualityProfiles('sonarr', instanceId);
   const { data: rootFolders = [] } = useRootFolders('sonarr', instanceId);
-  const { data: tags = [] } = useTags('sonarr', instanceId);
   const lastAutoSearchParamsRef = useRef<{ term: string; tvdbId: string | null; tmdbId: string | null }>({
     term: '',
     tvdbId: null,
@@ -226,24 +220,6 @@ function AddSeriesPageContent() {
 
   function getRootFolderLabel(path: string) {
     return path || 'Select folder';
-  }
-
-  function toggleTag(tagId: number, checked: boolean) {
-    setSelectedTags((prev) => {
-      if (checked) {
-        if (prev.includes(tagId)) return prev;
-        return [...prev, tagId];
-      }
-      return prev.filter((id) => id !== tagId);
-    });
-  }
-
-  function getTagsLabel() {
-    if (selectedTags.length === 0) return 'No tags';
-    if (selectedTags.length === 1) {
-      return tags.find((tag) => tag.id === selectedTags[0])?.label ?? '1 tag';
-    }
-    return `${selectedTags.length} tags`;
   }
 
   const selectedInLibrary = selected?.library?.exists === true;
@@ -438,40 +414,21 @@ function AddSeriesPageContent() {
                     <Switch checked={seasonFolder} onCheckedChange={setSeasonFolder} />
                   </div>
 
-                  <div
-                    className="grouped-row"
-                    style={tags.length === 0 ? { borderBottom: 'none' } : undefined}
-                  >
+                  <div className="grouped-row">
                     <Label className="text-sm shrink-0">Start Search For Missing Episodes</Label>
                     <Switch checked={searchForMissingEpisodes} onCheckedChange={setSearchForMissingEpisodes} />
                   </div>
 
-                  {tags.length > 0 && (
-                    <div className="grouped-row" style={{ borderBottom: 'none' }}>
-                      <Label className="text-sm shrink-0">Tags</Label>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-end rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent/40 transition-colors"
-                          >
-                            {getTagsLabel()}
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52">
-                          {tags.map((tag) => (
-                            <DropdownMenuCheckboxItem
-                              key={tag.id}
-                              checked={selectedTags.includes(tag.id)}
-                              onCheckedChange={(checked) => toggleTag(tag.id, checked === true)}
-                            >
-                              {tag.label}
-                            </DropdownMenuCheckboxItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  )}
+                  <div className="grouped-row">
+                    <Label className="text-sm shrink-0">Tags</Label>
+                    <TagSelector
+                      service="sonarr"
+                      instanceId={instanceId}
+                      value={selectedTags}
+                      onChange={setSelectedTags}
+                      className="justify-end"
+                    />
+                  </div>
                 </div>
               </div>
             )}

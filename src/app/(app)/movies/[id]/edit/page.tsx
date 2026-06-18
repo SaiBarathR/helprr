@@ -12,15 +12,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { TagSelector } from '@/components/media/tag-selector';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateMovies } from '@/lib/query-invalidation';
-import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
+import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import type { RadarrMovie } from '@/types';
 
 export default function MovieEditPage() {
@@ -40,7 +40,6 @@ export default function MovieEditPage() {
 
   const { data: qualityProfiles = [] } = useQualityProfiles('radarr', instance);
   const { data: rootFolders = [] } = useRootFolders('radarr', instance);
-  const { data: tags = [] } = useTags('radarr', instance);
 
   // Edit form state
   const [qualityProfileId, setQualityProfileId] = useState<number>(0);
@@ -80,14 +79,6 @@ export default function MovieEditPage() {
     },
   });
   const saving = saveMutation.isPending;
-
-  function toggleTag(tagId: number) {
-    setSelectedTags((prev) =>
-      prev.includes(tagId)
-        ? prev.filter((t) => t !== tagId)
-        : [...prev, tagId]
-    );
-  }
 
   function handleSave() {
     if (!movie) return;
@@ -192,29 +183,19 @@ export default function MovieEditPage() {
         </div>
 
         {/* Tags Section */}
-        {tags.length > 0 && (
-          <div className="grouped-section">
-            <div className="grouped-section-title">Tags</div>
-            <div className="grouped-section-content">
-              <div className="grouped-row">
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((t) => (
-                    <Badge
-                      key={t.id}
-                      variant={
-                        selectedTags.includes(t.id) ? 'default' : 'outline'
-                      }
-                      className="cursor-pointer select-none"
-                      onClick={() => toggleTag(t.id)}
-                    >
-                      {t.label}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
+        <div className="grouped-section">
+          <div className="grouped-section-title">Tags</div>
+          <div className="grouped-section-content">
+            <div className="grouped-row">
+              <TagSelector
+                service="radarr"
+                instanceId={instance}
+                value={selectedTags}
+                onChange={setSelectedTags}
+              />
             </div>
           </div>
-        )}
+        </div>
 
         {/* Action Buttons */}
         <div className="flex gap-3 pt-2">

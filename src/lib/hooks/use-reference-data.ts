@@ -1,8 +1,8 @@
 'use client';
 
-import { useQuery, useQueries } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, type ArrService } from '@/lib/query-keys';
-import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { jsonFetcher, ensureArray, withInstanceQuery, ApiError } from '@/lib/query-fetch';
 import type { QualityProfile, RootFolder, Tag, LidarrMetadataProfile } from '@/types';
 
 // Reference data (quality profiles, tags, root folders, metadata profiles)
@@ -26,6 +26,38 @@ export function useTags(service: ArrService, instanceId?: string) {
     queryFn: jsonFetcher<Tag[]>(`/api/${service}/tags`, instanceId),
     staleTime: REFERENCE_STALE,
     select: ensureArray,
+  });
+}
+
+/**
+ * Create a tag (eagerly, in the *arr server) and slot it into the shared tags
+ * cache so the picker — and any other open form on the same instance — sees it
+ * immediately without a refetch. The route dedups by label, so an existing tag
+ * is returned rather than duplicated.
+ */
+export function useCreateTag(service: ArrService, instanceId?: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (label: string): Promise<Tag> => {
+      const res = await fetch(withInstanceQuery(`/api/${service}/tags`, instanceId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new ApiError(res.status, err?.error || 'Failed to create tag');
+      }
+      return res.json();
+    },
+    onSuccess: (tag) => {
+      // setQueryData writes the raw cache; useTags applies `select: ensureArray`
+      // on read, so appending a Tag here is correct.
+      queryClient.setQueryData<Tag[]>(queryKeys.tags(service, instanceId), (prev) => {
+        const list = Array.isArray(prev) ? prev : [];
+        return list.some((t) => t.id === tag.id) ? list : [...list, tag];
+      });
+    },
   });
 }
 

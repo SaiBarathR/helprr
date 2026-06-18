@@ -20,13 +20,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { TagSelector } from '@/components/media/tag-selector';
 import { Search, Plus, Loader2, Disc3, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LidarrArtistLookupResult, MediaImage } from '@/types';
@@ -34,7 +29,6 @@ import {
   useQualityProfiles,
   useMetadataProfiles,
   useRootFolders,
-  useTags,
 } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
@@ -84,7 +78,6 @@ function AddArtistPageContent() {
   const { data: profiles = [] } = useQualityProfiles('lidarr', instanceId);
   const { data: metadataProfiles = [] } = useMetadataProfiles(instanceId);
   const { data: rootFolders = [] } = useRootFolders('lidarr', instanceId);
-  const { data: tags = [] } = useTags('lidarr', instanceId);
 
   // Search runs against the submitted term; TanStack threads the AbortSignal so
   // an in-flight lookup is cancelled on a new search automatically.
@@ -192,19 +185,6 @@ function AddArtistPageContent() {
       images: selected.images,
       addOptions: { monitor, searchForMissingAlbums: searchOnAdd },
     });
-  }
-
-  function toggleTag(tagId: number, checked: boolean) {
-    setSelectedTags((prev) => {
-      if (checked) return prev.includes(tagId) ? prev : [...prev, tagId];
-      return prev.filter((id) => id !== tagId);
-    });
-  }
-
-  function getTagsLabel() {
-    if (selectedTags.length === 0) return 'No tags';
-    if (selectedTags.length === 1) return tags.find((t) => t.id === selectedTags[0])?.label ?? '1 tag';
-    return `${selectedTags.length} tags`;
   }
 
   const selectedInLibrary = selected?.library?.exists === true;
@@ -372,37 +352,21 @@ function AddArtistPageContent() {
                     </Select>
                   </div>
 
-                  <div className="grouped-row" style={tags.length === 0 ? { borderBottom: 'none' } : undefined}>
+                  <div className="grouped-row">
                     <Label className="text-sm shrink-0">Search on Add</Label>
                     <Switch checked={searchOnAdd} onCheckedChange={setSearchOnAdd} />
                   </div>
 
-                  {tags.length > 0 && (
-                    <div className="grouped-row" style={{ borderBottom: 'none' }}>
-                      <Label className="text-sm shrink-0">Tags</Label>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex items-center justify-end rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-accent/40 transition-colors"
-                          >
-                            {getTagsLabel()}
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52">
-                          {tags.map((tag) => (
-                            <DropdownMenuCheckboxItem
-                              key={tag.id}
-                              checked={selectedTags.includes(tag.id)}
-                              onCheckedChange={(checked) => toggleTag(tag.id, checked === true)}
-                            >
-                              {tag.label}
-                            </DropdownMenuCheckboxItem>
-                          ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  )}
+                  <div className="grouped-row">
+                    <Label className="text-sm shrink-0">Tags</Label>
+                    <TagSelector
+                      service="lidarr"
+                      instanceId={instanceId}
+                      value={selectedTags}
+                      onChange={setSelectedTags}
+                      className="justify-end"
+                    />
+                  </div>
                 </div>
               </div>
             )}
