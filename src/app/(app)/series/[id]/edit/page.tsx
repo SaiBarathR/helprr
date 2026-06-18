@@ -15,7 +15,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { episodesWithFileKey } from '@/lib/series-query-cache';
+import { invalidateSeries } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import type { SonarrSeries } from '@/types';
 
@@ -102,14 +102,9 @@ export default function SeriesEditPage() {
         body: JSON.stringify(updatedSeries),
       });
       if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
-        // Refetch the detail (and episodes — a path move can shift files) so the
-        // detail page we return to shows the saved changes.
-        queryClient.invalidateQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.episodes(series.id, instance) });
-        // The with-file episode list (paths/quality/mediaInfo) also goes stale on a
-        // root-folder move or quality change; the slim episodes key above doesn't cover it.
-        queryClient.invalidateQueries({ queryKey: episodesWithFileKey(series.id, instance) });
+        // Refresh the list + this series' detail/episodes so the page we return to
+        // shows the saved changes (a path move can shift files).
+        invalidateSeries(queryClient, { itemId: series.id, instanceId: instance });
         toast.success('Series updated');
         router.back();
       } else {

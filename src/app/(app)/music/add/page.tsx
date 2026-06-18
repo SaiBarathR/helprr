@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateMusic } from '@/lib/query-invalidation';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -155,7 +156,7 @@ function AddArtistPageContent() {
       return res.json();
     },
     onSuccess: (artist, payload) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+      invalidateMusic(queryClient);
       toast.success(`${payload.artistName} added`);
       router.push(`/music/${artist.id}${instanceId ? `?instance=${instanceId}` : ''}`);
     },

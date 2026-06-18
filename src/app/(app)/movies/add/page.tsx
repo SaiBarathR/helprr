@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateMovies } from '@/lib/query-invalidation';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -132,7 +133,7 @@ function AddMoviePageContent() {
       return res.json();
     },
     onSuccess: (movie, payload) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
+      invalidateMovies(queryClient);
       toast.success(`${payload.title} added`);
       router.push(`/movies/${movie.id}${instanceId ? `?instance=${instanceId}` : ''}`);
     },

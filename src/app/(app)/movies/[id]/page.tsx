@@ -51,6 +51,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateMovies } from '@/lib/query-invalidation';
 import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import {
@@ -333,7 +334,7 @@ export default function MovieDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('radarr', command.id, instance) : 'completed';
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
+      invalidateMovies(queryClient);
       await movieQuery.refetch();
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
@@ -371,7 +372,7 @@ export default function MovieDetailPage() {
     try {
       const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
+      invalidateMovies(queryClient);
       queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
       toast.success('Movie deleted');
       router.push('/movies');

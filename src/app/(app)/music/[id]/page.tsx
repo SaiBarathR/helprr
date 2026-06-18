@@ -49,6 +49,7 @@ import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateMusic } from '@/lib/query-invalidation';
 import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
@@ -247,7 +248,7 @@ export default function ArtistDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('lidarr', command.id, instance) : 'completed';
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+      invalidateMusic(queryClient);
       await Promise.all([artistQuery.refetch(), albumsQuery.refetch()]);
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
@@ -306,7 +307,7 @@ export default function ArtistDetailPage() {
     try {
       const res = await arrMutationFetch(instance, `/api/lidarr/${artist.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (res.ok) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
+        invalidateMusic(queryClient);
         queryClient.removeQueries({ queryKey: queryKeys.detail('lidarr', artist.id, instance) });
         toast.success('Artist deleted');
         router.push('/music');
