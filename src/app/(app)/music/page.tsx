@@ -795,7 +795,7 @@ export default function MusicPage() {
           )}
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search artists..." />
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search artists..." historyKey="music" />
       </div>
 
       {(() => {

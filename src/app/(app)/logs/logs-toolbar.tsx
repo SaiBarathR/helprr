@@ -1,7 +1,7 @@
 'use client';
 
 import { Download, FolderOpen, Loader2, RefreshCw, Search, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import {
   Select,
   SelectContent,
@@ -69,9 +69,10 @@ export function LogsToolbar({
     >
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
+        <SearchInput
           value={searchInput}
-          onChange={(event) => onSearchInputChange(event.target.value)}
+          onChange={onSearchInputChange}
+          historyKey="logs"
           placeholder="Search logs"
           className="h-10 pl-9 pr-9"
         />

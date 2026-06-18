@@ -12,7 +12,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -439,15 +439,17 @@ export function AniListRemapDrawer({
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Search AniList</p>
             <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
               <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-              <Input
+              <SearchInput
                 value={query}
-                onChange={(event) => {
+                onChange={(value) => {
                   setResults([]);
                   setLoading(false);
                   setError(null);
-                  setQuery(event.target.value);
+                  setQuery(value);
                 }}
+                historyKey="anilist-remap"
                 placeholder="Search AniList"
+                wrapperClassName="flex-1"
                 className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
               />
             </div>

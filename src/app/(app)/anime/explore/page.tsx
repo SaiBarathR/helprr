@@ -423,6 +423,7 @@ export default function AnimePage() {
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search anime..."
+          historyKey="anime-explore"
         />
 
         {/* Sort pills + Filter button */}

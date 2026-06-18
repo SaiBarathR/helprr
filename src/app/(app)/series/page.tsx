@@ -740,7 +740,7 @@ export default function SeriesPage() {
           )}
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." />
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." historyKey="series" />
       </div>
 
       {(() => {

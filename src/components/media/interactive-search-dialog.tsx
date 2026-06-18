@@ -12,7 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem,
   DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
@@ -330,10 +330,11 @@ export function InteractiveSearchDialog({
                   <div className="flex items-center gap-2">
                     <div className="relative flex-1">
                       <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input
+                      <SearchInput
                         placeholder="Filter releases..."
                         value={textFilter}
-                        onChange={(e) => setTextFilter(e.target.value)}
+                        onChange={setTextFilter}
+                        historyKey="interactive-search"
                         className="h-9 pl-8 text-sm"
                       />
                     </div>

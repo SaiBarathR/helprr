@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
@@ -1075,10 +1076,11 @@ export default function TorrentsPage() {
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
+          <SearchInput
             placeholder="Search torrents..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
+            historyKey="torrents"
             className="pl-9"
           />
         </div>

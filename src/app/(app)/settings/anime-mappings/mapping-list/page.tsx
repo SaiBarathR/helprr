@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/media/search-input';
 import type {
   AdminAnimeMappingRow,
   AdminAnimeMappingsResponse,
@@ -203,11 +203,12 @@ export default function AnimeMappingListPage() {
         <>
           <div className="px-4 mb-3 space-y-2">
             <div className="flex items-center gap-2">
-              <Input
+              <SearchInput
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={setSearch}
+                historyKey="anime-mappings"
                 placeholder="Filter by series title"
-              // className="border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                wrapperClassName="flex-1"
               />
               {counts.total > 0 && (
                 <Button
