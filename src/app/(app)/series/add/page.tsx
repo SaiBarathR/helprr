@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateSeries } from '@/lib/query-invalidation';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -143,7 +144,7 @@ function AddSeriesPageContent() {
       return res.json();
     },
     onSuccess: (s, payload) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      invalidateSeries(queryClient);
       toast.success(`${payload.title} added`);
       router.push(`/series/${s.id}${instanceId ? `?instance=${instanceId}` : ''}`);
     },

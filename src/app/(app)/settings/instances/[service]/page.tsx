@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, use } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Link from 'next/link';
@@ -21,6 +21,7 @@ import {
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
+import { invalidateInstances } from '@/lib/query-invalidation';
 
 interface JellyfinUserOption {
   id: string;
@@ -108,6 +109,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [isDefault, setIsDefault] = useState(false);
+  const queryClient = useQueryClient();
 
   const servicesQuery = useQuery({
     queryKey: ['services'],
@@ -242,6 +244,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       if (saved?.id) setEditingConnId(saved.id);
       setConfigured(true);
       invalidateExternalUrls();
+      invalidateInstances(queryClient);
       toast.success('Connection saved');
       if (isMultiInstance && wasNew) {
         router.push('/settings/instances');
@@ -285,6 +288,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     onSuccess: () => {
       toast.success('Instance removed');
       invalidateExternalUrls();
+      invalidateInstances(queryClient);
       router.push('/settings/instances');
     },
     onError: (err) => {
@@ -305,6 +309,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     onSuccess: () => {
       toast.success('Set as default');
       setIsDefault(true);
+      invalidateInstances(queryClient);
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 401) return;

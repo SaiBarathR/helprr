@@ -19,6 +19,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateMusic } from '@/lib/query-invalidation';
 import {
   useQualityProfiles,
   useMetadataProfiles,
@@ -75,8 +76,7 @@ export default function ArtistEditPage() {
       if (!res.ok) throw new ApiError(res.status, 'Failed to update artist');
     },
     onSuccess: (_data, updated) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('lidarr') });
-      queryClient.invalidateQueries({ queryKey: queryKeys.detail('lidarr', updated.id, instance) });
+      invalidateMusic(queryClient, { itemId: updated.id, instanceId: instance });
       toast.success('Artist updated');
       router.back();
     },

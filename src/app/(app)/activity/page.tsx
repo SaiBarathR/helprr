@@ -34,6 +34,7 @@ import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
+import { invalidateActivity } from '@/lib/query-invalidation';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
 import { type InstanceOption } from '@/components/instance-filter';
@@ -198,6 +199,7 @@ export default function ActivityPage() {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const queryClient = useQueryClient();
   // arr instances for the per-instance filter (shown only when >1 instance).
   const { data: instanceOptions = [] } = useQuery({
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
@@ -274,6 +276,9 @@ export default function ActivityPage() {
       ]);
       const anyOk = results.some((r) => r.status === 'fulfilled' && r.value.ok);
       if (anyOk) {
+        // Pull the current queue/history/wanted now (the command keeps updating
+        // server-side; the normal poll reconciles anything that lands later).
+        invalidateActivity(queryClient);
         toast.success('Activity refresh triggered');
       } else {
         toast.error('Failed to refresh activity');
@@ -542,7 +547,7 @@ function QueueTab({
       toast.success('Removed from queue');
       adjustBadge('activity', -1, wasAttention ? -1 : 0);
       setSelectedItem(null);
-      void queryClient.invalidateQueries({ queryKey: ['activity', 'queue'] });
+      void invalidateActivity(queryClient);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
     finally { setRemoving(false); }
   }

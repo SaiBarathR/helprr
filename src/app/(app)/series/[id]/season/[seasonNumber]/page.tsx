@@ -24,6 +24,7 @@ import type { SonarrSeries, SonarrEpisode, DiscoverSeasonDetailResponse } from '
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateSeries } from '@/lib/query-invalidation';
 import { arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
@@ -107,7 +108,7 @@ export default function SeasonDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('sonarr', command.id, instance) : 'completed';
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      invalidateSeries(queryClient);
       await Promise.all([seriesQuery.refetch(), allEpisodesQuery.refetch()]);
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');

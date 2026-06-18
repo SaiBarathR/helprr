@@ -19,6 +19,7 @@ import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateMovies } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import type { RadarrMovie } from '@/types';
 
@@ -68,8 +69,7 @@ export default function MovieEditPage() {
       if (!res.ok) throw new ApiError(res.status, 'Failed to update movie');
     },
     onSuccess: (_data, updatedMovie) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('radarr') });
-      queryClient.invalidateQueries({ queryKey: queryKeys.detail('radarr', updatedMovie.id, instance) });
+      invalidateMovies(queryClient, { itemId: updatedMovie.id, instanceId: instance });
       toast.success('Movie updated');
       router.back();
     },

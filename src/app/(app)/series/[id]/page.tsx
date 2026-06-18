@@ -41,6 +41,7 @@ import type {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateSeries } from '@/lib/query-invalidation';
 import { ApiError, arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, tvSeasonKey } from '@/lib/series-query-cache';
@@ -709,7 +710,8 @@ export default function SeriesDetailPage() {
       if (updateRes.ok) {
         const updated: SonarrSeries = await updateRes.json();
         queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
-        queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+        // Monitor option also shifts episode monitored flags → refresh list + episodes.
+        invalidateSeries(queryClient, { itemId: seriesId, instanceId: instance });
         toast.success(`Monitor set to: ${MONITOR_OPTIONS.find((o) => o.value === monitorOption)?.label}`);
         setShowMonitorEdit(false);
       } else {
@@ -732,7 +734,7 @@ export default function SeriesDetailPage() {
       const command = await res.json() as { id?: number };
       toast.success('Refresh started');
       const status = command.id ? await pollCommand('sonarr', command.id, instance) : 'completed';
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      invalidateSeries(queryClient);
       await Promise.all([seriesQuery.refetch(), episodesQuery.refetch()]);
       if (status === 'completed') toast.success('Refresh complete');
       else if (status === 'timeout') toast.warning('Refresh still running');
@@ -747,7 +749,7 @@ export default function SeriesDetailPage() {
     try {
       const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
-      queryClient.invalidateQueries({ queryKey: queryKeys.library('sonarr') });
+      invalidateSeries(queryClient);
       queryClient.removeQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
       queryClient.removeQueries({ queryKey: queryKeys.episodes(series.id, instance) });
       queryClient.removeQueries({ queryKey: episodesWithFileKey(series.id, instance) });
