@@ -103,7 +103,7 @@ export default function MangaDetailPage() {
     };
   }, [detailViewKey]);
 
-  if (loading) {
+  if (loading && !detail) {
     return <><PageHeader className='-mx-2 md:-mx-6' title="Manga" /><PageSpinner /></>;
   }
 

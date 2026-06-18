@@ -101,7 +101,7 @@ export default function CharacterDetailPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [sortOpen]);
 
-  if (loading) {
+  if (loading && !detail) {
     return <><PageHeader className="-mx-2 md:-mx-6" title="Character" /><PageSpinner /></>;
   }
 

@@ -78,7 +78,7 @@ export default function DiscoverTvDetailPage() {
     return rows;
   }, [show]);
 
-  if (loading) {
+  if (loading && !show) {
     return <><PageHeader className='-mx-2 md:-mx-6' title="TV Show" /><PageSpinner /></>;
   }
 

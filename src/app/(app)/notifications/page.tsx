@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
-import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
@@ -251,6 +251,9 @@ export default function NotificationsPage() {
       return loaded < (lastPage.totalRecords ?? 0) ? allPages.length + 1 : undefined;
     },
     enabled: hasHydrated,
+    // Keep the current list on screen while a filter/search change refetches,
+    // so the page never blanks to a full-screen spinner.
+    placeholderData: keepPreviousData,
   });
   const notifications = useMemo(
     () => notificationsQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [],

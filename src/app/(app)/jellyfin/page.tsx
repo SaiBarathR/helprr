@@ -364,7 +364,12 @@ function OverviewTab() {
   // First-paint spinner: gate only on the always-on slices (admin slices are
   // disabled for members and resolve independently). gcTime keeps data warm, so
   // switching back to this tab renders instantly while revalidating.
-  if (sessionsQuery.isLoading || resumeQuery.isLoading || countsQuery.isLoading || recentQuery.isLoading) {
+  if (
+    (sessionsQuery.isLoading && !sessionsQuery.data)
+    || (resumeQuery.isLoading && !resumeQuery.data)
+    || (countsQuery.isLoading && !countsQuery.data)
+    || (recentQuery.isLoading && !recentQuery.data)
+  ) {
     return <PageSpinner />;
   }
 
@@ -751,7 +756,7 @@ function UsersTab() {
     setSelectedUser(user);
   }
 
-  if (playbackQuery.isLoading || jellyfinUsersQuery.isLoading) return <PageSpinner />;
+  if ((playbackQuery.isLoading && !playbackQuery.data) || (jellyfinUsersQuery.isLoading && !jellyfinUsersQuery.data)) return <PageSpinner />;
   if (!pluginAvailable) return <PluginNotice />;
   if (users.length === 0) return <div className="text-center py-16 text-muted-foreground"><Users className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">No user activity found</p></div>;
 

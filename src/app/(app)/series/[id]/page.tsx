@@ -762,7 +762,7 @@ export default function SeriesDetailPage() {
   }
 
   // Loading skeleton
-  if (loading) {
+  if (loading && !series) {
     return <><PageHeader title="Series" /><PageSpinner /></>;
   }
 

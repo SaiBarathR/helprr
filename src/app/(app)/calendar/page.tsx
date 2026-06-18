@@ -813,11 +813,14 @@ export default function CalendarPage() {
         </Card>
       )}
 
-      {/* Loading state */}
-      {loading && <PageSpinner />}
+      {/* Loading state — only on the true first load; a range/type change keeps
+          the previous grid up (events stay in state) while the new range loads. */}
+      {loading && events.length === 0 && <PageSpinner />}
 
-      {/* Calendar views */}
-      {!loading && (
+      {/* Calendar views — render whenever the fetch has settled (so a genuinely
+          empty range still shows its "No events" placeholder) or we already have
+          events to keep on screen during a background refetch. */}
+      {(!loading || events.length > 0) && (
         <>
           {calendarView === 'agenda' && (
             <AgendaView events={filteredEvents} />

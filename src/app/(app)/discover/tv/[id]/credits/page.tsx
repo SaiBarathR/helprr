@@ -52,7 +52,7 @@ export default function DiscoverTvCreditsPage() {
       cast={cast}
       crew={crew}
       cacheService="tmdb"
-      loading={isLoading}
+      loading={isLoading && !data}
       initialTab={initialTab}
     />
   );

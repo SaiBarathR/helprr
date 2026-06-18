@@ -54,7 +54,7 @@ export default function DiscoverMovieDetailPage() {
     return rows;
   }, [movie]);
 
-  if (loading) {
+  if (loading && !movie) {
     return <><PageHeader className='-mx-2 md:-mx-6' title="Movie" /><PageSpinner /></>;
   }
 

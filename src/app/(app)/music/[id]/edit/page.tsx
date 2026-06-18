@@ -113,7 +113,7 @@ export default function ArtistEditPage() {
     saveMutation.mutate(updated);
   }
 
-  if (loading) {
+  if (loading && !artist) {
     return <><PageHeader title="Edit Artist" /><PageSpinner /></>;
   }
 

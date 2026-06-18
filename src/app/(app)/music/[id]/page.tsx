@@ -357,7 +357,7 @@ export default function ArtistDetailPage() {
     }));
   }, [albums]);
 
-  if (loading) {
+  if (loading && !artist) {
     return <><PageHeader className="-mx-2 md:-mx-6" title="Artist" /><PageSpinner /></>;
   }
 

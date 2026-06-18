@@ -819,7 +819,7 @@ export default function MoviesPage() {
       </div>
 
       {(() => {
-        if (loading) {
+        if (loading && movies.length === 0) {
           return <PageSpinner />;
         }
 

@@ -162,7 +162,7 @@ export default function ArtistFilesPage() {
     deleteMutation.mutate(selectedFile.id);
   }
 
-  if (loading) {
+  if (loading && !artist) {
     return <><PageHeader title="Files & information" /><PageSpinner /></>;
   }
 

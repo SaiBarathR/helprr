@@ -299,7 +299,7 @@ export default function EpisodeDetailPage() {
     }
   }
 
-  if (loading) {
+  if (loading && (!series || !episode)) {
     return <><PageHeader title="Episode" /><PageSpinner /></>;
   }
 
