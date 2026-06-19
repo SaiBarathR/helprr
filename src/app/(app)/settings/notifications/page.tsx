@@ -184,13 +184,13 @@ export default function NotificationsSettingsPage() {
               </Button>
             </div>
           ) : (
-            <div className="px-4 py-3 flex flex-wrap gap-2">
+            <div className="px-4 py-3 flex flex-col sm:flex-row gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleSendTest}
                 disabled={testing}
-                className="flex-1 min-w-[140px] h-9"
+                className="w-full sm:flex-1 sm:min-w-[140px] h-9"
               >
                 {testing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -204,7 +204,7 @@ export default function NotificationsSettingsPage() {
                 size="sm"
                 onClick={handleUnsubscribe}
                 disabled={pushLoading}
-                className="flex-1 min-w-[140px] h-9 text-destructive hover:text-destructive"
+                className="w-full sm:flex-1 sm:min-w-[140px] h-9 text-destructive hover:text-destructive"
               >
                 <BellOff className="mr-2 h-4 w-4" />
                 Disable on this device
