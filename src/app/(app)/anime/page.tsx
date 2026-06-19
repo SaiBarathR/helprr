@@ -59,6 +59,15 @@ function flattenEntries(collection: AniListMediaListCollection): AniListMediaLis
   return result;
 }
 
+// The library list endpoint is cached under ['anilist','library',type,status],
+// a key shared with /anime/library. Both must cache the SAME shape (the raw
+// { collection } response); each derives its own view. Here we flatten to rail
+// entries via `select`; the library page reads `.collection` directly. Returning
+// different shapes from the two queryFns corrupts the shared cache.
+type LibraryCollectionResponse = { collection: AniListMediaListCollection };
+const selectLibraryEntries = (lib: LibraryCollectionResponse): AniListMediaListEntry[] =>
+  flattenEntries(lib.collection);
+
 function entryToRailItem(entry: AniListMediaListEntry) {
   const media = entry.media;
   const title = media.title.english || media.title.romaji || media.title.native || `#${media.id}`;
@@ -179,23 +188,23 @@ export default function AnimeHomePage() {
   const libraryEnabled = isAdmin && !!viewer?.connected;
   const watchingQuery = useQuery({
     queryKey: ['anilist', 'library', 'ANIME', 'CURRENT'],
-    queryFn: async ({ signal }): Promise<AniListMediaListEntry[]> => {
+    queryFn: async ({ signal }): Promise<LibraryCollectionResponse> => {
       const res = await fetch('/api/anilist/library?type=ANIME&status=CURRENT', { signal });
       if (!res.ok) throw new ApiError(res.status, 'library CURRENT');
-      const lib = (await res.json()) as { collection: AniListMediaListCollection };
-      return flattenEntries(lib.collection);
+      return (await res.json()) as LibraryCollectionResponse;
     },
     enabled: libraryEnabled,
+    select: selectLibraryEntries,
   });
   const planningQuery = useQuery({
     queryKey: ['anilist', 'library', 'ANIME', 'PLANNING'],
-    queryFn: async ({ signal }): Promise<AniListMediaListEntry[]> => {
+    queryFn: async ({ signal }): Promise<LibraryCollectionResponse> => {
       const res = await fetch('/api/anilist/library?type=ANIME&status=PLANNING', { signal });
       if (!res.ok) throw new ApiError(res.status, 'library PLANNING');
-      const lib = (await res.json()) as { collection: AniListMediaListCollection };
-      return flattenEntries(lib.collection);
+      return (await res.json()) as LibraryCollectionResponse;
     },
     enabled: libraryEnabled,
+    select: selectLibraryEntries,
   });
 
   const animeCarouselOrder = useUIStore((s) => s.animeCarouselOrder);

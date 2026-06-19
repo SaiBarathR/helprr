@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   getListViewState,
   setListViewState,
@@ -202,14 +202,18 @@ export default function AnimeLibraryPage() {
       return res.json() as Promise<LibraryResponse>;
     },
     enabled: hydrated && !!viewer?.connected,
-    // Keep the current tab's grid on screen while another type/status tab loads,
-    // instead of blanking to a full-screen spinner (the refreshing indicator below
-    // covers the in-flight fetch).
-    placeholderData: keepPreviousData,
+    // No keepPreviousData: switching type/status must show a loading spinner for
+    // the newly-selected tab, not the previous tab's stale grid. Already-cached
+    // tabs (within gcTime) still render instantly, so back-navigation stays snappy.
   });
   const collection = libraryQuery.data?.collection ?? null;
-  const loading = !!viewer?.connected && libraryQuery.isLoading;
-  const refreshing = libraryQuery.isFetching && !libraryQuery.isLoading;
+  // Spinner whenever the *current* tab has no data yet. isPending (no cached data
+  // for this key) — not isLoading — covers the idle/paused frames where a freshly
+  // keyed query isn't actively fetching; those previously fell through to the
+  // empty state on a tab's first visit. The empty state is now only reached once
+  // the query has settled with zero entries.
+  const loading = !!viewer?.connected && (!hydrated || libraryQuery.isPending);
+  const refreshing = libraryQuery.isFetching && !libraryQuery.isPending;
   const errorMessage = !collection && libraryQuery.isError
     ? libraryQuery.error instanceof Error
       ? libraryQuery.error.message
