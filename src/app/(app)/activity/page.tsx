@@ -26,7 +26,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import {
   Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Disc3, Scissors,
-  Clock, Filter, ArrowUpDown, ChevronRight,
+  Clock, Filter, ArrowUpDown, ChevronRight, Layers,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -112,6 +112,56 @@ function getQueueMediaHref(item: QueueItem & { source?: string }): string | null
     return `/music/${artistId}${q}`;
   }
   return null;
+}
+
+// --- Season-pack grouping ---
+
+type QueueRecord = QueueItem & { source?: string };
+
+interface QueueGroup {
+  key: string;
+  items: QueueRecord[];
+  rep: QueueRecord; // representative record: every record shares the torrent's size/status/progress
+  isPack: boolean; // more than one tracked item in the same download (e.g. a season pack)
+}
+
+/**
+ * Group queue records that belong to the same physical download. Sonarr returns
+ * one queue record per episode for a season-pack torrent, all sharing the same
+ * `downloadId`; collapsing them into a single group keeps the list readable.
+ * Records without a downloadId, and single-item downloads, stay on their own.
+ * Insertion order is preserved so the caller can sort groups by their rep.
+ */
+function groupQueueByDownload(items: QueueRecord[]): QueueGroup[] {
+  const groups = new Map<string, QueueRecord[]>();
+  const order: string[] = [];
+  for (const item of items) {
+    const key = item.downloadId
+      ? `dl-${item.source}-${item.instanceId ?? ''}-${item.downloadId}`
+      : `solo-${item.source}-${item.id}`;
+    let bucket = groups.get(key);
+    if (!bucket) {
+      bucket = [];
+      groups.set(key, bucket);
+      order.push(key);
+    }
+    bucket.push(item);
+  }
+  return order.map((key) => {
+    const bucket = groups.get(key)!;
+    return { key, items: bucket, rep: bucket[0], isPack: bucket.length > 1 };
+  });
+}
+
+/** Short SxxExx label for a queue record, falling back to the bare episode number. */
+function episodeLabel(item: QueueRecord): string {
+  const season = item.episode?.seasonNumber ?? item.seasonNumber;
+  const number = item.episode?.episodeNumber ?? item.episodeNumber;
+  if (season != null && number != null) {
+    return `S${String(season).padStart(2, '0')}E${String(number).padStart(2, '0')}`;
+  }
+  if (number != null) return `E${String(number).padStart(2, '0')}`;
+  return '';
 }
 
 // --- Tabs definition ---
@@ -477,6 +527,16 @@ function QueueTab({
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
   const [removing, setRemoving] = useState(false);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
+  // Season-pack groups start collapsed; keyed by group key (stable across polls
+  // since it derives from the download id), so an open group stays open on refetch.
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
+  const toggleExpand = (key: string) =>
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   useEffect(() => {
     // Load the configured activity refresh interval (ms); falls back to 5s.
@@ -507,20 +567,24 @@ function QueueTab({
     && (instanceFilter === 'all' || item.instanceId === instanceFilter)
   );
 
-  // Apply sort
-  const sorted = [...filtered].sort((a, b) => {
+  // Collapse multi-episode downloads (season packs) into one entry, then sort the
+  // groups by their representative record so a pack sorts as a single task.
+  const groups = groupQueueByDownload(filtered);
+  const sorted = [...groups].sort((a, b) => {
+    const ra = a.rep;
+    const rb = b.rep;
     switch (sortBy) {
       case 'title':
-        return (a.title || '').localeCompare(b.title || '');
+        return (ra.title || '').localeCompare(rb.title || '');
       case 'progress': {
-        const pA = a.size > 0 ? (a.size - a.sizeleft) / a.size : 0;
-        const pB = b.size > 0 ? (b.size - b.sizeleft) / b.size : 0;
+        const pA = ra.size > 0 ? (ra.size - ra.sizeleft) / ra.size : 0;
+        const pB = rb.size > 0 ? (rb.size - rb.sizeleft) / rb.size : 0;
         return pB - pA;
       }
       case 'timeleft':
-        return (a.timeleft || 'zz').localeCompare(b.timeleft || 'zz');
+        return (ra.timeleft || 'zz').localeCompare(rb.timeleft || 'zz');
       case 'size':
-        return b.size - a.size;
+        return rb.size - ra.size;
       default:
         return 0;
     }
@@ -568,62 +632,164 @@ function QueueTab({
   return (
     <>
       <div className="space-y-2 animate-list-in">
-        {sorted.map((item) => {
-          const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
-          const qualityName = getQueueItemQuality(item);
+        {sorted.map((group) => {
+          const { rep } = group;
+          const progress = rep.size > 0 ? ((rep.size - rep.sizeleft) / rep.size) * 100 : 0;
+          const qualityName = getQueueItemQuality(rep);
+
+          // Single-item download → the existing card, opening the detail drawer.
+          if (!group.isPack) {
+            return (
+              <button
+                key={group.key}
+                onClick={() => setSelectedItem(rep)}
+                className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{rep.title}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <Badge
+                        variant="secondary"
+                        className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
+                      >
+                        {statusLabel(rep)}
+                      </Badge>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                        {rep.source}
+                      </Badge>
+                      {qualityName && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {qualityName}
+                        </Badge>
+                      )}
+                      {typeof rep.customFormatScore === 'number' && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          CF {rep.customFormatScore}
+                        </Badge>
+                      )}
+                      {rep.indexer && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {rep.indexer}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  {rep.timeleft && (
+                    <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                      {rep.timeleft}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Progress value={progress} className="h-1.5 flex-1" />
+                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                    {progress.toFixed(0)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>Left: {formatBytes(rep.sizeleft)}</span>
+                  <span>Total: {formatBytes(rep.size)}</span>
+                </div>
+              </button>
+            );
+          }
+
+          // Season pack → one collapsible card; tapping the header toggles the
+          // per-episode list, each row opening that episode's detail drawer.
+          const open = expandedKeys.has(group.key);
+          const season = rep.seasonNumber ?? rep.episode?.seasonNumber;
+          const packTitle = rep.series?.title
+            ? `${rep.series.title}${season != null ? ` · Season ${season}` : ''}`
+            : rep.title;
+          const episodes = [...group.items].sort(
+            (a, b) =>
+              (a.episode?.episodeNumber ?? a.episodeNumber ?? 0) -
+              (b.episode?.episodeNumber ?? b.episodeNumber ?? 0)
+          );
+
           return (
-            <button
-              key={`${item.source}-${item.id}`}
-              onClick={() => setSelectedItem(item)}
-              className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">{item.title}</p>
-                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                    <Badge
-                      variant="secondary"
-                      className={`text-[10px] px-1.5 py-0 ${statusColor(item.status, item.trackedDownloadStatus)}`}
-                    >
-                      {statusLabel(item)}
-                    </Badge>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                      {item.source}
-                    </Badge>
-                    {qualityName && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        {qualityName}
+            <div key={group.key} className="rounded-xl bg-muted/30 overflow-hidden">
+              <button
+                onClick={() => toggleExpand(group.key)}
+                aria-expanded={open}
+                className="w-full text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{packTitle}</p>
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <Badge
+                        variant="secondary"
+                        className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
+                      >
+                        {statusLabel(rep)}
                       </Badge>
-                    )}
-                    {typeof item.customFormatScore === 'number' && (
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        CF {item.customFormatScore}
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
+                        <Layers className="h-2.5 w-2.5" />
+                        {group.items.length} episodes
                       </Badge>
-                    )}
-                    {item.indexer && (
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        {item.indexer}
+                        {rep.source}
                       </Badge>
+                      {qualityName && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {qualityName}
+                        </Badge>
+                      )}
+                      {rep.indexer && (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {rep.indexer}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                    {rep.timeleft && (
+                      <span className="text-[10px] text-muted-foreground">{rep.timeleft}</span>
                     )}
+                    <ChevronRight
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+                    />
                   </div>
                 </div>
-                {item.timeleft && (
-                  <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
-                    {item.timeleft}
+                <div className="flex items-center gap-2">
+                  <Progress value={progress} className="h-1.5 flex-1" />
+                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                    {progress.toFixed(0)}%
                   </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Progress value={progress} className="h-1.5 flex-1" />
-                <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                  {progress.toFixed(0)}%
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                <span>Left: {formatBytes(item.sizeleft)}</span>
-                <span>Total: {formatBytes(item.size)}</span>
-              </div>
-            </button>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span>Left: {formatBytes(rep.sizeleft)}</span>
+                  <span>Total: {formatBytes(rep.size)}</span>
+                </div>
+              </button>
+
+              {open && (
+                <div className="border-t border-border/40 divide-y divide-border/30">
+                  {episodes.map((ep) => {
+                    const label = episodeLabel(ep);
+                    return (
+                      <button
+                        key={`${ep.source}-${ep.id}`}
+                        onClick={() => setSelectedItem(ep)}
+                        className="w-full text-left px-3 py-2 flex items-center gap-2 active:bg-muted/50 transition-colors"
+                      >
+                        {label && (
+                          <span className="text-[10px] font-mono text-muted-foreground tabular-nums shrink-0 w-11">
+                            {label}
+                          </span>
+                        )}
+                        <span className="text-xs truncate flex-1">
+                          {ep.episode?.title || ep.title}
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
