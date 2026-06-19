@@ -221,6 +221,7 @@ model AppSettings {
   activityDigestMode       String  @default("off")        // "off" | "daily" | "weekly"
   activityDigestHour       Int     @default(8)            // 0-23, hour of day to fire the digest
   activityDigestDayOfWeek  Int     @default(1)            // 0=Sun..6=Sat, used when mode=weekly
+  notificationGroupingEnabled Boolean @default(true)      // collapse same-type per-poll bursts (e.g. a season pack) into one grouped notification
   animeAutoMapEnabled      Boolean  @default(true)         // nightly job that auto-maps never-mapped Sonarr anime to AniList
   animeAutoMapHour         Int      @default(0)            // 0-23 local hour the nightly drain starts (default midnight)
   animeAutoMapLastRunAt    DateTime?                       // server-managed: when the last nightly drain completed

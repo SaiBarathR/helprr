@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { Switch } from '@/components/ui/switch';
 import { hourLabel } from '@/lib/format';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
@@ -365,6 +366,28 @@ export default function NotificationsSettingsPage() {
             </Select>
           </div>
         )}
+      </GroupedSection>
+      )}
+
+      {isAdmin && (
+      <GroupedSection
+        title="Notification grouping"
+        footer="When a burst of the same event lands at once — like a season pack grabbing every episode — send one grouped notification instead of dozens. Tap it to see every item."
+      >
+        <div className="grouped-row items-start">
+          <div className="min-w-0 flex-1 pr-3">
+            <div className="text-sm font-medium">Group bursts of notifications</div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              Collapses 3 or more same-type events for one service in a single poll cycle.
+            </div>
+          </div>
+          <Switch
+            checked={settings?.notificationGroupingEnabled ?? true}
+            onCheckedChange={(v) => void update({ notificationGroupingEnabled: v })}
+            disabled={loading}
+            aria-label="Group bursts of notifications"
+          />
+        </div>
       </GroupedSection>
       )}
 
