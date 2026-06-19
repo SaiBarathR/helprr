@@ -74,38 +74,46 @@ export function WantedItemsWidget({
           style={{
             display: 'flex',
             alignItems: 'baseline',
-            gap: 6,
+            columnGap: 8,
+            rowGap: 2,
             marginTop: 2,
             flexWrap: 'wrap',
           }}
         >
-          <span
-            style={{
-              fontFamily: FONT_DISPLAY,
-              fontSize: compact ? 20 : 22,
-              color: HPR.fg,
-              fontWeight: 700,
-              lineHeight: 1,
-              letterSpacing: '-0.025em',
-            }}
-          >
-            {missing}
+          {/* Each metric is a self-contained value+label unit so it wraps as a
+              whole — the label never gets separated and clipped in tiny cells.
+              In compact sizes the count drops to the small treatment (no big
+              headline number) since the labels already name each data point. */}
+          <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+            <span
+              style={{
+                fontFamily: FONT_DISPLAY,
+                fontSize: compact ? 15 : 22,
+                color: HPR.fg,
+                fontWeight: 700,
+                lineHeight: 1,
+                letterSpacing: '-0.025em',
+              }}
+            >
+              {missing}
+            </span>
+            <span style={{ fontSize: compact ? 10 : 11, color: HPR.fgMute }}>missing</span>
           </span>
-          <span style={{ fontSize: compact ? 10 : 11, color: HPR.fgMute }}>missing</span>
           {cutoff > 0 && (
-            <>
+            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
               <span
                 style={{
                   fontFamily: FONT_DISPLAY,
-                  fontSize: 14,
+                  fontSize: compact ? 15 : 14,
                   color: HPR.amber,
-                  fontWeight: 600,
+                  fontWeight: compact ? 700 : 600,
+                  lineHeight: 1,
                 }}
               >
                 {cutoff}
               </span>
-              <span style={{ fontSize: 11, color: HPR.fgMute }}>cutoff</span>
-            </>
+              <span style={{ fontSize: compact ? 10 : 11, color: HPR.fgMute }}>cutoff</span>
+            </span>
           )}
         </div>
       </div>
