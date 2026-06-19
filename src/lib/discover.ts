@@ -180,6 +180,12 @@ function toLibraryStatus(
   };
 }
 
+// Build a series status from already-resolved library matches (e.g. via the
+// AniList↔Sonarr mapping reverse lookup) without re-running title/id matching.
+export function seriesLibraryStatusFromMatches(matches: Tagged<SonarrSeries>[]): DiscoverLibraryStatus {
+  return toLibraryStatus('series', matches);
+}
+
 export function matchMovieInLibrary(
   lookups: LibraryLookups,
   item: { tmdbId?: number; imdbId?: string | null; title: string; year: number | null }

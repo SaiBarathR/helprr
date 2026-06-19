@@ -13,8 +13,10 @@ import {
   buildLibraryLookups,
   matchMovieInLibrary,
   matchSeriesInLibrary,
+  seriesLibraryStatusFromMatches,
   type Tagged,
 } from '@/lib/discover';
+import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import type {
@@ -62,14 +64,19 @@ async function getLibraries() {
   return { movies, series };
 }
 
-function annotateAnimeItems(
+async function annotateAnimeItems(
   items: AniListListItem[],
   movies: Tagged<RadarrMovie>[],
   series: Tagged<SonarrSeries>[]
-): (AniListListItem & { library?: DiscoverLibraryStatus })[] {
+): Promise<(AniListListItem & { library?: DiscoverLibraryStatus })[]> {
   if (!movies.length && !series.length) return items;
 
   const lookups = buildLibraryLookups(movies, series);
+  // Reverse mapping (AniList entry → Sonarr series) catches season splits that
+  // title matching misses; intersect with the live library below.
+  const mappingLinks = await loadLibraryLinksForAnilistIds(items.map((item) => item.id));
+  const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
+  for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
 
   return items.map((item) => {
     if (isMovieFormat(item.format)) {
@@ -82,12 +89,18 @@ function annotateAnimeItems(
       };
     }
 
+    const matched = (mappingLinks.get(item.id) ?? [])
+      .map((link) => seriesByKey.get(`${link.sonarrInstanceId}:${link.sonarrSeriesId}`))
+      .filter((show): show is Tagged<SonarrSeries> => !!show);
+
     return {
       ...item,
-      library: matchSeriesInLibrary(lookups, {
-        title: item.title,
-        year: item.year,
-      }),
+      library: matched.length
+        ? seriesLibraryStatusFromMatches(matched)
+        : matchSeriesInLibrary(lookups, {
+            title: item.title,
+            year: item.year,
+          }),
     };
   });
 }
@@ -125,7 +138,7 @@ async function getHandler(request: NextRequest) {
 
       const result = await searchAnime(q, page, perPage);
       const { movies, series } = await getLibraries();
-      const items = annotateAnimeItems(result.media.map(normalizeAniListItem), movies, series);
+      const items = await annotateAnimeItems(result.media.map(normalizeAniListItem), movies, series);
 
       return NextResponse.json({
         mode: 'search',
@@ -192,7 +205,7 @@ async function getHandler(request: NextRequest) {
     });
 
     const { movies, series } = await getLibraries();
-    const items = annotateAnimeItems(result.media.map(normalizeAniListItem), movies, series);
+    const items = await annotateAnimeItems(result.media.map(normalizeAniListItem), movies, series);
 
     return NextResponse.json({
       mode: 'browse',

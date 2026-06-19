@@ -7,8 +7,10 @@ import {
   buildLibraryLookups,
   matchMovieInLibrary,
   matchSeriesInLibrary,
+  seriesLibraryStatusFromMatches,
   type Tagged,
 } from '@/lib/discover';
+import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import type {
   AniListAiringSchedule,
@@ -62,26 +64,41 @@ function dedupe(entries: AniListScheduleEntry[]): AniListScheduleEntry[] {
   return out;
 }
 
-function annotate(
+async function annotate(
   entries: AniListScheduleEntry[],
   movies: Tagged<RadarrMovie>[],
   series: Tagged<SonarrSeries>[]
-): (AniListScheduleEntry & { library?: DiscoverLibraryStatus })[] {
+): Promise<(AniListScheduleEntry & { library?: DiscoverLibraryStatus })[]> {
   if (!movies.length && !series.length) return entries;
 
   const lookups = buildLibraryLookups(movies, series);
+  const mappingLinks = await loadLibraryLinksForAnilistIds(entries.map((entry) => entry.media.id));
+  const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
+  for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
 
   return entries.map((entry) => {
     const m = entry.media;
-    const matched = isMovieFormat(m.format)
-      ? matchMovieInLibrary(lookups, { title: m.title, year: m.year })
-      : matchSeriesInLibrary(lookups, {
-          title: m.title,
-          titleRomaji: m.titleRomaji,
-          titleNative: m.titleNative,
-          year: m.year,
-        });
-    return { ...entry, library: matched };
+    if (isMovieFormat(m.format)) {
+      return { ...entry, library: matchMovieInLibrary(lookups, { title: m.title, year: m.year }) };
+    }
+
+    // Reverse mapping (AniList entry → Sonarr series) catches season splits that
+    // title matching misses; intersect with the live library to drop stale links.
+    const mapped = (mappingLinks.get(m.id) ?? [])
+      .map((link) => seriesByKey.get(`${link.sonarrInstanceId}:${link.sonarrSeriesId}`))
+      .filter((show): show is Tagged<SonarrSeries> => !!show);
+
+    return {
+      ...entry,
+      library: mapped.length
+        ? seriesLibraryStatusFromMatches(mapped)
+        : matchSeriesInLibrary(lookups, {
+            title: m.title,
+            titleRomaji: m.titleRomaji,
+            titleNative: m.titleNative,
+            year: m.year,
+          }),
+    };
   });
 }
 
@@ -131,7 +148,7 @@ async function getHandler(request: NextRequest) {
       .filter((s) => s.media && !s.media.isAdult)
       .map(normalizeScheduleEntry);
     const deduped = dedupe(entries);
-    const annotated = annotate(deduped, movies, series);
+    const annotated = await annotate(deduped, movies, series);
 
     return NextResponse.json(
       {
