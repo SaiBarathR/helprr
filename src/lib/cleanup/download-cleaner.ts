@@ -173,6 +173,7 @@ function evaluatePredicate(t: QBittorrentTorrent, rule: SeedingRuleShape): Downl
     rule,
     reason: buildSeedingReason(rule, t, seedH),
     seedingHours: seedH,
+    removalKind: 'seeding',
   };
 }
 
@@ -283,6 +284,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
             decisions.push({
               ...decision,
               reason: `${decision.reason} — imported (${confirmation.source} ${confirmation.eventType})`,
+              removalKind: 'imported',
             });
           }
           return;
@@ -395,36 +397,35 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
 
   // Batched notifications on real runs only.
   if (!opts.dryRun) {
-    if (succeededCount === 1) {
-      const { decision: d } = successDecisions[0];
+    if (succeededCount >= 1) {
+      const successes = successDecisions.map((s) => s.decision);
+      const importedCount = successes.filter((d) => d.removalKind === 'imported').length;
+      const { title, body } = buildRemovalNotification(successes, failedCount);
       try {
         await notifyEvent({
           eventType: 'cleanupRemoved',
-          title: 'Cleanup: seeding torrent removed',
-          body: `${d.torrent.name} — ${d.reason}`,
-          metadata: {
-            hash: d.torrent.hash.toLowerCase(),
-            cleaner: 'download',
-            cleanupRuleName: d.rule.name,
-            cleanupReason: d.reason,
-            cleanupAction: 'removedFromClient',
-          },
+          title,
+          body,
+          metadata: succeededCount === 1
+            ? {
+                hash: successes[0].torrent.hash.toLowerCase(),
+                cleaner: 'download',
+                cleanupRuleName: successes[0].rule.name,
+                cleanupReason: successes[0].reason,
+                cleanupAction: 'removedFromClient',
+                removalKind: successes[0].removalKind,
+              }
+            : {
+                cleaner: 'download',
+                succeeded: succeededCount,
+                failed: failedCount,
+                imported: importedCount,
+                seeding: succeededCount - importedCount,
+              },
           url: '/cleanup',
         });
       } catch (err) {
         logger.warn('cleanupRemoved (download) notify failed', { err: String(err) }, { scope: LOG });
-      }
-    } else if (succeededCount > 1) {
-      try {
-        await notifyEvent({
-          eventType: 'cleanupRemoved',
-          title: 'Cleanup cycle: seeding torrents removed',
-          body: `${succeededCount} torrent${succeededCount === 1 ? '' : 's'} removed by Download Cleaner${failedCount > 0 ? ` (${failedCount} failed)` : ''}.`,
-          metadata: { cleaner: 'download', succeeded: succeededCount, failed: failedCount },
-          url: '/cleanup',
-        });
-      } catch (err) {
-        logger.warn('cleanupRemoved summary (download) notify failed', { err: String(err) }, { scope: LOG });
       }
     }
 
@@ -463,6 +464,49 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     durationMs,
     succeeded: succeededCount,
     failed: failedCount,
+  };
+}
+
+function namesPreview(names: string[], max = 3): string {
+  return names.length <= max
+    ? names.join(', ')
+    : `${names.slice(0, max).join(', ')} +${names.length - max} more`;
+}
+
+// Build the cleanupRemoved notification title/body from the torrents that were
+// actually removed this cycle. The title states the dominant reason (imported
+// vs seeding-limit) so the user isn't told "seeding torrents removed" when the
+// real reason was a confirmed Sonarr/Radarr import; the body lists names.
+function buildRemovalNotification(
+  successes: DownloadDecision[],
+  failedCount: number,
+): { title: string; body: string } {
+  const imported = successes.filter((d) => d.removalKind === 'imported');
+  const seeding = successes.filter((d) => d.removalKind === 'seeding');
+  const n = successes.length;
+  const failTail = failedCount > 0 ? ` (${failedCount} failed)` : '';
+
+  if (n === 1) {
+    const d = successes[0];
+    return d.removalKind === 'imported'
+      ? { title: 'Cleanup: download removed after import', body: d.torrent.name }
+      : { title: 'Cleanup: seeding torrent removed', body: `${d.torrent.name} — ${d.reason}` };
+  }
+  if (seeding.length === 0) {
+    return {
+      title: `Cleanup: ${n} downloads removed after import`,
+      body: `${namesPreview(imported.map((d) => d.torrent.name))}${failTail}`,
+    };
+  }
+  if (imported.length === 0) {
+    return {
+      title: `Cleanup: ${n} seeding torrents removed`,
+      body: `${namesPreview(seeding.map((d) => d.torrent.name))}${failTail}`,
+    };
+  }
+  return {
+    title: `Cleanup: ${n} torrents removed`,
+    body: `${imported.length} after import, ${seeding.length} seeding — ${namesPreview(successes.map((d) => d.torrent.name))}${failTail}`,
   };
 }
 

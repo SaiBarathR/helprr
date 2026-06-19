@@ -149,6 +149,7 @@ export interface DownloadDecision {
   rule: SeedingRuleShape;
   reason: string;
   seedingHours: number;
+  removalKind: 'imported' | 'seeding';
 }
 
 export interface QueueEvaluationResult {
