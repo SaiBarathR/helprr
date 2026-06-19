@@ -41,6 +41,17 @@ function pad(n: number | undefined): string {
   return String(n ?? 0).padStart(2, '0');
 }
 
+// Interleave two ordered lists so neither source is starved by the MAX_ITEMS_PER_SECTION
+// slice in toSection — a full page of Sonarr items would otherwise push every Radarr item out.
+function interleave(a: LibraryGapItem[], b: LibraryGapItem[]): LibraryGapItem[] {
+  const out: LibraryGapItem[] = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (i < a.length) out.push(a[i]);
+    if (i < b.length) out.push(b[i]);
+  }
+  return out;
+}
+
 function emptySection(id: LibraryGapSection['id'], available: boolean, error = false): LibraryGapSection {
   return { id, count: 0, items: [], available, error };
 }
@@ -203,17 +214,25 @@ async function buildCollectionGaps(radarrInstances: RadarrInstance[]): Promise<L
 }
 
 /**
- * Overdue = monitored items past air/release date with no file (Sonarr episodes + Radarr movies),
- * fanned out over every Sonarr/Radarr instance and sourced from the same wanted/missing endpoints
- * Activity uses. Episodes belonging to a fully-missing season are deduped out (they're already
- * represented as a single Missing Seasons row), with the dedup key namespaced by instance.
+ * Splits the wanted/missing backlog into two sections:
+ *  - overdue: monitored items already released/aired but still missing a file.
+ *  - notReleased: monitored items that haven't actually released yet. Radarr's wanted/missing
+ *    includes these whenever minimum availability is "Announced", and it sorts the endpoint by
+ *    date descending — so future-dated movies otherwise sort to the top and bury real overdue rows.
+ * Both fan out over every Sonarr/Radarr instance from the same wanted/missing endpoints Activity uses.
+ * A movie counts as released only when a digital/physical date has passed (in-cinemas alone does not)
+ * or Radarr's own status is "released". Episodes belonging to a fully-missing season are deduped out
+ * (already represented as a single Missing Seasons row), with the dedup key namespaced by instance.
+ * notReleased items are non-searchable ("Soon" badge) since searching unreleased media finds nothing.
  */
 async function buildOverdue(
   sonarrInstances: SonarrInstance[],
   radarrInstances: RadarrInstance[],
   missingSeasonKeys: Set<string>
-): Promise<LibraryGapSection> {
-  if (sonarrInstances.length === 0 && radarrInstances.length === 0) return emptySection('overdue', false); // neither connected
+): Promise<{ overdue: LibraryGapSection; notReleased: LibraryGapSection }> {
+  if (sonarrInstances.length === 0 && radarrInstances.length === 0) {
+    return { overdue: emptySection('overdue', false), notReleased: emptySection('notReleased', false) }; // neither connected
+  }
 
   const [sonarrResults, radarrResults] = await Promise.all([
     Promise.all(
@@ -234,31 +253,35 @@ async function buildOverdue(
   // instance failed, surface an error state rather than "not connected".
   const anyReturned =
     sonarrResults.some((r) => r.missing !== null) || radarrResults.some((r) => r.missing !== null);
-  if (!anyReturned) return emptySection('overdue', false, true);
+  if (!anyReturned) {
+    return { overdue: emptySection('overdue', false, true), notReleased: emptySection('notReleased', false, true) };
+  }
 
-  const sonarrItems: LibraryGapItem[] = [];
-  const radarrItems: LibraryGapItem[] = [];
-  let dedupedCount = 0; // Sonarr episodes folded into a Missing Seasons row
-  let sonarrTotal = 0;
-  let radarrTotal = 0;
+  const now = Date.now();
+  const overdueSonarr: LibraryGapItem[] = [];
+  const notReleasedSonarr: LibraryGapItem[] = [];
+  const overdueRadarr: LibraryGapItem[] = [];
+  const notReleasedRadarr: LibraryGapItem[] = [];
 
   for (const { instanceId, missing } of sonarrResults) {
     if (!missing) continue;
-    sonarrTotal += missing.totalRecords ?? 0;
     const records = missing.records ?? [];
-    // Group overdue episodes by series — 20 missing episodes of one show become
-    // a single card (and a single batched EpisodeSearch) instead of 20 cards.
-    const bySeries = new Map<number, typeof records>();
+    // Group episodes by series — 20 missing episodes of one show become a single card
+    // (and a single batched EpisodeSearch) instead of 20 cards. Aired and future episodes
+    // group separately so a show can have rows in both sections.
+    const airedBySeries = new Map<number, typeof records>();
+    const futureBySeries = new Map<number, typeof records>();
     for (const ep of records) {
-      if (missingSeasonKeys.has(`${instanceId}:${ep.seriesId}:${ep.seasonNumber}`)) {
-        dedupedCount++;
-        continue;
-      }
-      const list = bySeries.get(ep.seriesId) ?? [];
+      if (missingSeasonKeys.has(`${instanceId}:${ep.seriesId}:${ep.seasonNumber}`)) continue; // already a Missing Seasons row
+      const t = ep.airDateUtc ? new Date(ep.airDateUtc).getTime() : NaN;
+      // A null/unknown air date stays in the searchable Overdue bucket (a wanted no-date
+      // episode must remain searchable); only a genuinely-future air date splits off.
+      const target = !Number.isNaN(t) && t > now ? futureBySeries : airedBySeries;
+      const list = target.get(ep.seriesId) ?? [];
       list.push(ep);
-      bySeries.set(ep.seriesId, list);
+      target.set(ep.seriesId, list);
     }
-    for (const [seriesId, eps] of bySeries) {
+    for (const [seriesId, eps] of airedBySeries) {
       const first = eps[0];
       const single = eps.length === 1 ? first : null;
       const latestDate = eps
@@ -266,7 +289,7 @@ async function buildOverdue(
         .filter((d): d is string => Boolean(d))
         .sort()
         .at(-1);
-      sonarrItems.push({
+      overdueSonarr.push({
         key: `overdue-series-${instanceId}-${seriesId}`,
         title: single
           ? `${first.series?.title ?? 'Unknown'} — S${pad(single.seasonNumber)}E${pad(single.episodeNumber)}`
@@ -280,39 +303,76 @@ async function buildOverdue(
         search: { kind: 'episodes', episodeIds: eps.map((e) => e.id), instanceId },
       });
     }
-  }
-
-  for (const { instanceId, missing } of radarrResults) {
-    if (!missing) continue;
-    radarrTotal += missing.totalRecords ?? 0;
-    for (const movie of missing.records ?? []) {
-      radarrItems.push({
-        key: `overdue-movie-${instanceId}-${movie.id}`,
-        title: movie.title,
-        subtitle: movie.year ? String(movie.year) : undefined,
-        date: movie.digitalRelease || movie.physicalRelease || movie.inCinemas || movie.added,
-        year: movie.year,
-        poster: resolvePoster(movie.images, 'radarr'),
-        href: `/movies/${movie.id}?instance=${instanceId}`,
-        search: { kind: 'movie', radarrMovieId: movie.id, instanceId },
+    for (const [seriesId, eps] of futureBySeries) {
+      const first = eps[0];
+      const single = eps.length === 1 ? first : null;
+      const earliestDate = eps
+        .map((e) => e.airDateUtc)
+        .filter((d): d is string => Boolean(d))
+        .sort()
+        .at(0); // soonest upcoming air date
+      notReleasedSonarr.push({
+        key: `notreleased-series-${instanceId}-${seriesId}`,
+        title: single
+          ? `${first.series?.title ?? 'Unknown'} — S${pad(single.seasonNumber)}E${pad(single.episodeNumber)}`
+          : first.series?.title ?? 'Unknown',
+        subtitle: single ? single.title || undefined : `${eps.length} episodes`,
+        date: earliestDate,
+        poster: resolvePoster(first.series?.images, 'sonarr'),
+        href: single
+          ? `/series/${seriesId}/season/${single.seasonNumber}/episode/${single.id}?instance=${instanceId}`
+          : `/series/${seriesId}?instance=${instanceId}`,
+        search: { kind: 'none' }, // not aired yet → nothing to search
       });
     }
   }
 
-  // Interleave the two sources so both survive the MAX_ITEMS_PER_SECTION slice in toSection;
-  // concatenating would let a full page of Sonarr episodes push every Radarr movie out of view.
-  const items: LibraryGapItem[] = [];
-  for (let i = 0; i < Math.max(sonarrItems.length, radarrItems.length); i++) {
-    if (i < sonarrItems.length) items.push(sonarrItems[i]);
-    if (i < radarrItems.length) items.push(radarrItems[i]);
+  for (const { instanceId, missing } of radarrResults) {
+    if (!missing) continue;
+    for (const movie of missing.records ?? []) {
+      const released =
+        movie.status === 'released' ||
+        (movie.digitalRelease ? new Date(movie.digitalRelease).getTime() <= now : false) ||
+        (movie.physicalRelease ? new Date(movie.physicalRelease).getTime() <= now : false);
+      if (released) {
+        overdueRadarr.push({
+          key: `overdue-movie-${instanceId}-${movie.id}`,
+          title: movie.title,
+          subtitle: movie.year ? String(movie.year) : undefined,
+          date: movie.digitalRelease || movie.physicalRelease || movie.inCinemas || movie.added,
+          year: movie.year,
+          poster: resolvePoster(movie.images, 'radarr'),
+          href: `/movies/${movie.id}?instance=${instanceId}`,
+          search: { kind: 'movie', radarrMovieId: movie.id, instanceId },
+        });
+      } else {
+        // Soonest upcoming release date; never fall back to `added` so we don't show a
+        // misleading past time ("released 2 months ago") on a not-yet-released card.
+        const upcomingDate = [movie.digitalRelease, movie.physicalRelease, movie.inCinemas]
+          .filter((d): d is string => Boolean(d))
+          .filter((d) => new Date(d).getTime() > now)
+          .sort()
+          .at(0);
+        notReleasedRadarr.push({
+          key: `notreleased-movie-${instanceId}-${movie.id}`,
+          title: movie.title,
+          subtitle: movie.year ? String(movie.year) : undefined,
+          date: upcomingDate,
+          year: movie.year,
+          poster: resolvePoster(movie.images, 'radarr'),
+          href: `/movies/${movie.id}?instance=${instanceId}`,
+          search: { kind: 'none' }, // not released yet → nothing to search
+        });
+      }
+    }
   }
 
-  // True backlog from upstream totals (across all pages and instances), minus the page-1
-  // episodes folded into Missing Seasons. May slightly overcount if a deduped season has
-  // further missing episodes beyond page 1, but never undercounts the rows actually shown.
-  const count = Math.max(0, sonarrTotal - dedupedCount) + radarrTotal;
-
-  return toSection('overdue', items, true, { count });
+  // Counts default to the unit-sum over the page-1 window (toSection). Upstream totalRecords
+  // mixes released + unreleased across all pages, so it can't be cleanly attributed to either bucket.
+  return {
+    overdue: toSection('overdue', interleave(overdueSonarr, overdueRadarr), true),
+    notReleased: toSection('notReleased', interleave(notReleasedSonarr, notReleasedRadarr), true),
+  };
 }
 
 async function getHandler(): Promise<NextResponse> {
@@ -365,7 +425,7 @@ async function getHandler(): Promise<NextResponse> {
     const sonarrAvailable = sonarrInstances.length > 0 && sonarrAnyOk;
     const sonarrError = sonarrInstances.length > 0 && !sonarrAnyOk;
 
-    const [collectionGaps, overdue] = await Promise.all([
+    const [collectionGaps, { overdue, notReleased }] = await Promise.all([
       buildCollectionGaps(radarrInstances),
       buildOverdue(sonarrInstances, radarrInstances, missingKeys),
     ]);
@@ -378,6 +438,7 @@ async function getHandler(): Promise<NextResponse> {
         toSection('newUpcoming', upcoming, sonarrAvailable, { error: sonarrError }),
         collectionGaps,
         overdue,
+        notReleased,
       ],
     };
 

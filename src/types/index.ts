@@ -884,7 +884,7 @@ export interface LibraryGapItem {
   tmdbId?: number;
 }
 
-export type LibraryGapSectionId = 'missingSeasons' | 'newUpcoming' | 'collectionGaps' | 'overdue';
+export type LibraryGapSectionId = 'missingSeasons' | 'newUpcoming' | 'collectionGaps' | 'overdue' | 'notReleased';
 
 export interface LibraryGapSection {
   id: LibraryGapSectionId;
