@@ -5,6 +5,12 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
+  // Serwist defaults this to true, injecting a `window.online → location.reload()`
+  // listener into the prod bundle. Over the Cloudflare tunnel an iOS PWA flaps
+  // online/offline (esp. when switching servers), firing repeated full reloads —
+  // the flicker/reload loop. TanStack's refetchOnReconnect already refreshes data
+  // in place, so the reload is pure churn.
+  reloadOnOnline: false,
 });
 
 const nextConfig: NextConfig = {
