@@ -71,6 +71,7 @@ import {
   User,
   Check,
 } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 
 const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' }> = {
   trending: { sort: 'trending', contentType: 'all' },
@@ -559,6 +560,7 @@ export default function DiscoverPage() {
   const discoverFilters = useUIStore((s) => s.discoverFilters);
   const setDiscoverFilters = useUIStore((s) => s.setDiscoverFilters);
 
+  const isMobile = useIsMobile();
   const [personFilter, setPersonFilter] = useState<{ id: number; name: string } | null>(null);
   const [query, setQuery] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -1396,12 +1398,15 @@ export default function DiscoverPage() {
       )}
 
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-        <SheetContent side="right" className="w-[92vw] sm:max-w-md p-0">
+        <SheetContent
+          side={isMobile ? 'bottom' : 'right'}
+          className={isMobile ? 'h-[88dvh] rounded-t-2xl p-0' : 'w-[92vw] sm:max-w-md p-0'}
+        >
           <SheetHeader>
             <SheetTitle>Advanced Filters</SheetTitle>
           </SheetHeader>
 
-          <div className="px-4 pb-4 overflow-y-auto space-y-4">
+          <div className="flex-1 min-h-0 px-4 pb-4 overflow-y-auto space-y-4">
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Sort</label>
               <div className="grid grid-cols-2 gap-2">
