@@ -88,6 +88,17 @@
     @apply border-border outline-ring/50;
   }
 
+  /* Touch devices only (phones + tablets): suppress the browser's default
+     focus outline. Navigation is by tap, not keyboard, so the system focus
+     ring around buttons, links, and fields is just visual noise. Desktop
+     keeps it for keyboard accessibility. */
+  @media (hover: none) and (pointer: coarse) {
+    *:focus,
+    *:focus-visible {
+      outline: none;
+    }
+  }
+
   body {
     background: var(--background) var(--hpr-bg-grad);
     background-attachment: fixed;
@@ -103,6 +114,24 @@
   summary,
   [tabindex]:not([tabindex="-1"]) {
     cursor: pointer;
+  }
+}
+
+/* Touch devices only (phones + tablets): strip shadcn's amber focus ring (the
+   box-shadow "glow" + amber border) on inputs, buttons, and every other
+   component. Zeroing only the --tw-ring-* vars keeps real elevation shadows
+   (e.g. shadow-xs) intact. Unlayered + !important so it beats the
+   focus-visible:ring utility classes. The amber border reset skips invalid
+   fields so their red error border still shows. Desktop keeps the ring. */
+@media (hover: none) and (pointer: coarse) {
+  *:focus-visible {
+    --tw-ring-shadow: 0 0 #0000 !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+    --tw-inset-ring-shadow: 0 0 #0000 !important;
+  }
+
+  *:focus-visible:not([aria-invalid="true"]) {
+    border-color: var(--border) !important;
   }
 }
 
