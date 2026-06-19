@@ -464,9 +464,12 @@ async function applyCleanupInTxn(
   // Replace user-defined rules with the imported set. System rules (the
   // synthetic auto-remove-imported seeding rule) are preserved — they're
   // managed by saveDownloadCleanerConfig and will be re-synced on next save.
-  // Only delete when a valid replacement array is supplied, so a missing or
-  // malformed key doesn't silently wipe existing rules.
-  if (Array.isArray(data.stallRules)) {
+  // Only delete when a NON-EMPTY replacement array is supplied: a missing or
+  // malformed key — or an explicitly empty array (`[]`, which Array.isArray
+  // also accepts) — must not silently wipe existing rules. Export always emits
+  // full arrays, so legitimate backups still replace correctly; this only
+  // closes the "clear-all-via-empty-array" footgun for hand-edited JSON.
+  if (Array.isArray(data.stallRules) && data.stallRules.length > 0) {
     await tx.stallRule.deleteMany({});
     for (const r of data.stallRules) {
       if (!r || typeof r !== 'object') continue;
@@ -492,7 +495,7 @@ async function applyCleanupInTxn(
     }
   }
 
-  if (Array.isArray(data.slowRules)) {
+  if (Array.isArray(data.slowRules) && data.slowRules.length > 0) {
     await tx.slowRule.deleteMany({});
     for (const r of data.slowRules) {
       if (!r || typeof r !== 'object') continue;
@@ -520,7 +523,7 @@ async function applyCleanupInTxn(
     }
   }
 
-  if (Array.isArray(data.seedingRules)) {
+  if (Array.isArray(data.seedingRules) && data.seedingRules.length > 0) {
     await tx.seedingRule.deleteMany({ where: { isSystem: false } });
     let restoredRuleLevelConfirmation = false;
     for (const r of data.seedingRules) {
@@ -991,12 +994,18 @@ async function applyAnimeMappingsInTxn(
       continue;
     }
     const label = typeof m.sonarrInstanceLabel === 'string' ? m.sonarrInstanceLabel.trim() : '';
-    const instanceId = (label && idByLabel.get(label)) || defaultSonarr.id;
+    // A labelled mapping must land on its named instance — never silently fall
+    // back to the default, which on a multi-instance install would attach it to
+    // the wrong Sonarr. Hard-skip when the label is present but unmatched. When
+    // the backup carries no label there's no instance to honor, so defaulting is
+    // acceptable.
     if (label && !idByLabel.has(label)) {
       skipped.push(
-        `Anime mapping "${m.seriesTitleSnapshot ?? sonarrSeriesId}" resolved to the default Sonarr instance (instance "${label}" not found).`
+        `Anime mapping "${m.seriesTitleSnapshot ?? sonarrSeriesId}" skipped: Sonarr instance "${label}" not found on this install.`
       );
+      continue;
     }
+    const instanceId = (label && idByLabel.get(label)) || defaultSonarr.id;
 
     // Coerce + dedupe entries (the @@unique([mappingId, anilistMediaId])), then
     // enforce exactly-one-primary.
@@ -1064,6 +1073,7 @@ async function applyUsersInTxn(
   tx: Prisma.TransactionClient,
   data: ExportedUsers,
   skipped: string[],
+  importerId: string,
 ): Promise<number> {
   if (!Array.isArray(data.accounts)) {
     skipped.push('Users: missing accounts array');
@@ -1092,9 +1102,28 @@ async function applyUsersInTxn(
     }
     const targetId = target?.id ?? exportedId ?? undefined;
 
-    const role = pickEnum(acc.role, USER_ROLE_VALUES, 'member');
-    const status = pickEnum(acc.status, USER_STATUS_VALUES, 'active');
-    const template = pickEnum(acc.template, USER_TEMPLATE_VALUES, role === 'admin' ? 'admin' : 'member');
+    let role = pickEnum(acc.role, USER_ROLE_VALUES, 'member');
+    let status = pickEnum(acc.status, USER_STATUS_VALUES, 'active');
+    let template = pickEnum(acc.template, USER_TEMPLATE_VALUES, role === 'admin' ? 'admin' : 'member');
+    // The bootstrap admin is the guaranteed recovery account — never let an import
+    // file demote or disable it (a hand-edited or hostile backup could otherwise lock
+    // every admin out). Force its role/status/template back to the secure defaults.
+    if (isBootstrap) {
+      role = 'admin';
+      status = 'active';
+      template = 'admin';
+    } else if (target && target.id === importerId) {
+      // The admin performing the import must not be able to lock themselves out
+      // by restoring a backup that demotes or disables their own account.
+      // Preserve their existing role/template and force status active, ignoring
+      // whatever the file says. (The bootstrap admin is already pinned above.)
+      role = target.role;
+      status = 'active';
+      template = target.template;
+      skipped.push(
+        `User "${username}": role/status preserved — an import can't demote or disable the account performing it.`
+      );
+    }
     const permissions = parsePermissions(acc.permissions);
     const displayName =
       typeof acc.displayName === 'string' && acc.displayName.trim().length > 0
@@ -1151,6 +1180,15 @@ async function applyUsersInTxn(
     if (target) {
       await tx.user.update({ where: { id: target.id }, data: baseData });
       userId = target.id;
+      // Restoring a different password hash for an existing account must not
+      // leave old cookies valid (disaster-recovery / post-compromise restore).
+      // Revoke the account's live sessions when the hash actually changes.
+      if (passwordHash && passwordHash !== target.passwordHash) {
+        await tx.session.updateMany({
+          where: { userId: target.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
     } else {
       const created = await tx.user.create({
         data: { ...(exportedId ? { id: exportedId } : {}), ...baseData },
@@ -1330,7 +1368,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       if (body.users && typeof body.users === 'object') {
-        appliedUsers = await applyUsersInTxn(tx, body.users, skipped);
+        appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId);
       }
 
       return innerAppSettings;

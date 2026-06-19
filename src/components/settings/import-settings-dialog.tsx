@@ -232,14 +232,15 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         ? parsed.availableServices.length > 0
         : selectedServices.size > 0
     );
-    // User password hashes are credentials too — trip the same confirmation.
-    const hasUserSecrets = (parsed.payload.users?.accounts ?? []).some(
-      (a) => typeof a.passwordHash === 'string' && a.passwordHash.length > 0
-    );
-    const willOverwriteUserSecrets = hasUserSecrets && (
+    // Importing user accounts overwrites role/status/permissions on matching
+    // accounts (and passwords when the file carries hashes), so trip the
+    // confirmation whenever any accounts will be applied — not only on password
+    // presence.
+    const hasUsers = (parsed.payload.users?.accounts ?? []).length > 0;
+    const willOverwriteUsers = hasUsers && (
       replaceAll ? !!parsed.payload.users : selectedUsers
     );
-    if (willOverwriteServiceSecrets || willOverwriteUserSecrets) {
+    if (willOverwriteServiceSecrets || willOverwriteUsers) {
       setPendingConfirm({ replaceAll });
       return;
     }
@@ -651,9 +652,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       <Dialog open={pendingConfirm !== null} onOpenChange={(o) => { if (!o) setPendingConfirm(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Overwrite stored credentials?</DialogTitle>
+            <DialogTitle>Overwrite credentials &amp; accounts?</DialogTitle>
             <DialogDescription>
-              This will overwrite existing credentials (service connection API keys and/or user passwords) with values from the import file. Continue?
+              This will overwrite existing data with values from the import file — service connection API keys and/or user accounts (roles, status, permissions, and any included passwords). Continue?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
