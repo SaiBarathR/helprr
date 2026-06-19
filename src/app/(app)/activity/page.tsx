@@ -526,6 +526,8 @@ function QueueTab({
   const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
   const [removing, setRemoving] = useState(false);
+  // Group key of the season pack currently being removed (spinner + disable on its trash button).
+  const [removingPackKey, setRemovingPackKey] = useState<string | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   // Season-pack groups start collapsed; keyed by group key (stable across polls
   // since it derives from the download id), so an open group stays open on refetch.
@@ -614,6 +616,29 @@ function QueueTab({
       void invalidateActivity(queryClient);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
     finally { setRemoving(false); }
+  }
+
+  async function handleRemovePack(group: QueueGroup) {
+    setRemovingPackKey(group.key);
+    const { rep } = group;
+    // Every episode record shares one torrent; a single DELETE with removeFromClient
+    // tears down the whole download, so the badge drops by the full episode count
+    // (and the attention slice by however many records were flagged).
+    const attentionCount = group.items.filter(
+      (it) => classifyQueueIssue(it.trackedDownloadState, it.trackedDownloadStatus) !== null
+    ).length;
+    try {
+      const instanceQs = rep.instanceId ? `&instanceId=${rep.instanceId}` : '';
+      const res = await fetch(`/api/activity/queue/${rep.id}?source=${rep.source || 'sonarr'}&removeFromClient=true&blocklist=false${instanceQs}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to remove');
+      }
+      toast.success(`Removed ${group.items.length} episodes from queue`);
+      adjustBadge('activity', -group.items.length, -attentionCount);
+      void invalidateActivity(queryClient);
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
+    finally { setRemovingPackKey(null); }
   }
 
   if (loading) {
@@ -710,60 +735,76 @@ function QueueTab({
 
           return (
             <div key={group.key} className="rounded-xl bg-muted/30 overflow-hidden">
-              <button
-                onClick={() => toggleExpand(group.key)}
-                aria-expanded={open}
-                className="w-full text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{packTitle}</p>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <Badge
-                        variant="secondary"
-                        className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
-                      >
-                        {statusLabel(rep)}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
-                        <Layers className="h-2.5 w-2.5" />
-                        {group.items.length} episodes
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        {rep.source}
-                      </Badge>
-                      {qualityName && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {qualityName}
+              <div className="flex items-stretch">
+                <button
+                  onClick={() => toggleExpand(group.key)}
+                  aria-expanded={open}
+                  className="min-w-0 flex-1 text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">{packTitle}</p>
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        <Badge
+                          variant="secondary"
+                          className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
+                        >
+                          {statusLabel(rep)}
                         </Badge>
-                      )}
-                      {rep.indexer && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {rep.indexer}
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
+                          <Layers className="h-2.5 w-2.5" />
+                          {group.items.length} episodes
                         </Badge>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {rep.source}
+                        </Badge>
+                        {qualityName && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {qualityName}
+                          </Badge>
+                        )}
+                        {rep.indexer && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {rep.indexer}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                      {rep.timeleft && (
+                        <span className="text-[10px] text-muted-foreground">{rep.timeleft}</span>
                       )}
+                      <ChevronRight
+                        className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+                      />
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                    {rep.timeleft && (
-                      <span className="text-[10px] text-muted-foreground">{rep.timeleft}</span>
-                    )}
-                    <ChevronRight
-                      className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
-                    />
+                  <div className="flex items-center gap-2">
+                    <Progress value={progress} className="h-1.5 flex-1" />
+                    <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                      {progress.toFixed(0)}%
+                    </span>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Progress value={progress} className="h-1.5 flex-1" />
-                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                    {progress.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>Left: {formatBytes(rep.sizeleft)}</span>
-                  <span>Total: {formatBytes(rep.size)}</span>
-                </div>
-              </button>
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                    <span>Left: {formatBytes(rep.sizeleft)}</span>
+                    <span>Total: {formatBytes(rep.size)}</span>
+                  </div>
+                </button>
+                {canManageActivity && (
+                  <button
+                    onClick={() => handleRemovePack(group)}
+                    disabled={removingPackKey === group.key}
+                    aria-label="Remove pack from queue"
+                    className="shrink-0 px-3 flex items-center justify-center border-l border-border/40 text-muted-foreground active:bg-destructive/10 active:text-destructive transition-colors disabled:opacity-50"
+                  >
+                    {removingPackKey === group.key ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
+              </div>
 
               {open && (
                 <div className="border-t border-border/40 divide-y divide-border/30">
