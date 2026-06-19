@@ -220,6 +220,42 @@ async function loadRecord(sonarrInstanceId: string, seriesId: number): Promise<M
   });
 }
 
+/** A Sonarr series an AniList entry has been mapped to (reverse of the per-series mapping). */
+export interface AnilistLibraryLink {
+  sonarrInstanceId: string;
+  sonarrSeriesId: number;
+}
+
+/**
+ * Reverse lookup: given AniList media ids, find the Sonarr series each is mapped
+ * to. This is the symmetric counterpart of the series→anime mapping and is how
+ * the anime pages know a (possibly season-split) entry is in the library —
+ * title matching alone misses sequels whose AniList title/ids don't line up with
+ * the single Sonarr series. Only matched states contribute; callers still
+ * intersect with the live library to drop stale links and to get the title slug.
+ */
+export async function loadLibraryLinksForAnilistIds(
+  anilistMediaIds: number[]
+): Promise<Map<number, AnilistLibraryLink[]>> {
+  const ids = Array.from(new Set(anilistMediaIds)).filter((id) => Number.isFinite(id) && id > 0);
+  const map = new Map<number, AnilistLibraryLink[]>();
+  if (ids.length === 0) return map;
+
+  const entries = await prisma.aniListSeriesMappingEntry.findMany({
+    where: { anilistMediaId: { in: ids } },
+    include: { mapping: { select: { sonarrInstanceId: true, sonarrSeriesId: true, state: true } } },
+  });
+
+  for (const entry of entries) {
+    // Entries only exist for matched states, but guard against degenerate rows.
+    if (entry.mapping.state !== 'AUTO_MATCH' && entry.mapping.state !== 'MANUAL_MATCH') continue;
+    const list = map.get(entry.anilistMediaId) ?? [];
+    list.push({ sonarrInstanceId: entry.mapping.sonarrInstanceId, sonarrSeriesId: entry.mapping.sonarrSeriesId });
+    map.set(entry.anilistMediaId, list);
+  }
+  return map;
+}
+
 /** One AniList entry to persist on a mapping: who linked it and its title at link time. */
 interface EntryDescriptor {
   anilistMediaId: number;

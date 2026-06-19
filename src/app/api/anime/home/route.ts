@@ -3,7 +3,8 @@ import { requireAuth } from '@/lib/auth';
 import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeHome } from '@/lib/anilist-client';
 import { normalizeAniListItem, isMovieFormat } from '@/lib/anilist-helpers';
-import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, type Tagged } from '@/lib/discover';
+import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, seriesLibraryStatusFromMatches, type Tagged } from '@/lib/discover';
+import { loadLibraryLinksForAnilistIds, type AnilistLibraryLink } from '@/lib/anilist-series-mapping';
 import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
 import type { AniListMediaSeason, AniListListItem, AniListMedia } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
@@ -25,11 +26,14 @@ async function getLibraries() {
 function annotateAnimeItems(
   items: AniListListItem[],
   movies: Tagged<RadarrMovie>[],
-  series: Tagged<SonarrSeries>[]
+  series: Tagged<SonarrSeries>[],
+  mappingLinks: Map<number, AnilistLibraryLink[]>
 ): (AniListListItem & { library?: DiscoverLibraryStatus })[] {
   if (!movies.length && !series.length) return items;
 
   const lookups = buildLibraryLookups(movies, series);
+  const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
+  for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
 
   return items.map((item) => {
     if (isMovieFormat(item.format)) {
@@ -42,12 +46,20 @@ function annotateAnimeItems(
       };
     }
 
+    // Reverse mapping (AniList entry → Sonarr series) catches season splits that
+    // title matching misses; intersect with the live library to drop stale links.
+    const matched = (mappingLinks.get(item.id) ?? [])
+      .map((link) => seriesByKey.get(`${link.sonarrInstanceId}:${link.sonarrSeriesId}`))
+      .filter((show): show is Tagged<SonarrSeries> => !!show);
+
     return {
       ...item,
-      library: matchSeriesInLibrary(lookups, {
-        title: item.title,
-        year: item.year,
-      }),
+      library: matched.length
+        ? seriesLibraryStatusFromMatches(matched)
+        : matchSeriesInLibrary(lookups, {
+            title: item.title,
+            year: item.year,
+          }),
     };
   });
 }
@@ -89,8 +101,18 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       getLibraries(),
     ]);
 
+    // One reverse-lookup query for every entry across all sections.
+    const allIds = [
+      ...result.trending,
+      ...result.season,
+      ...result.nextSeason,
+      ...result.popular,
+      ...result.top,
+    ].map((media) => media.id);
+    const mappingLinks = await loadLibraryLinksForAnilistIds(allIds);
+
     const normalizeAndAnnotate = (items: AniListMedia[]) =>
-      annotateAnimeItems(items.map(normalizeAniListItem), movies, series);
+      annotateAnimeItems(items.map(normalizeAniListItem), movies, series, mappingLinks);
 
     const currentSeason: SeasonWindow = current;
     const nextSeasonInfo: SeasonWindow = next;

@@ -9,7 +9,11 @@ import {
   buildLibraryLookups,
   matchMovieInLibrary,
   matchSeriesInLibrary,
+  seriesLibraryStatusFromMatches,
+  type Tagged,
 } from '@/lib/discover';
+import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
+import type { SonarrSeries } from '@/types';
 
 type ServiceAvailability = 'ok' | 'unavailable';
 
@@ -41,10 +45,11 @@ async function getHandler(
       return NextResponse.json({ error: 'Invalid anime ID' }, { status: 400 });
     }
 
-    const [detail, nextAiringEpisode, libraryResult] = await Promise.all([
+    const [detail, nextAiringEpisode, libraryResult, mappingLinks] = await Promise.all([
       getAnimeDetail(id),
       getAnimeNextAiringEpisode(id),
       getLibraries(),
+      loadLibraryLinksForAnilistIds([id]),
     ]);
 
     const normalized = {
@@ -53,6 +58,16 @@ async function getHandler(
     };
     const isMovie = isMovieFormat(normalized.format);
     const lookups = buildLibraryLookups(libraryResult.movies ?? [], libraryResult.series ?? []);
+
+    // Reverse mapping (AniList entry → Sonarr series) catches season splits that
+    // title matching misses; intersect with the live library to drop stale links.
+    const mappedSeries = (mappingLinks.get(id) ?? [])
+      .map((link) =>
+        (libraryResult.series ?? []).find(
+          (show) => show.instanceId === link.sonarrInstanceId && show.id === link.sonarrSeriesId
+        )
+      )
+      .filter((show): show is Tagged<SonarrSeries> => !!show);
 
     const library = isMovie
       ? (
@@ -65,15 +80,17 @@ async function getHandler(
           : null
       )
       : (
-        libraryResult.availability.sonarr === 'ok'
-          ? matchSeriesInLibrary(lookups, {
-              tvdbId: normalized.tvdbId,
-              title: normalized.title,
-              titleRomaji: normalized.titleRomaji,
-              titleNative: normalized.titleNative,
-              year: normalized.year,
-            })
-          : null
+        libraryResult.availability.sonarr !== 'ok'
+          ? null
+          : mappedSeries.length
+            ? seriesLibraryStatusFromMatches(mappedSeries)
+            : matchSeriesInLibrary(lookups, {
+                tvdbId: normalized.tvdbId,
+                title: normalized.title,
+                titleRomaji: normalized.titleRomaji,
+                titleNative: normalized.titleNative,
+                year: normalized.year,
+              })
       );
 
     return NextResponse.json({
