@@ -9,7 +9,7 @@ import Image from 'next/image';
 import { toast } from 'sonner';
 import { formatDistanceToNow, isValid } from 'date-fns';
 import {
-  Search, Loader2, Plus, Tv, Film, CalendarClock, Clock, Layers, CheckCircle2, ListChecks,
+  Search, Loader2, Plus, Tv, Film, CalendarClock, Clock, Hourglass, Layers, CheckCircle2, ListChecks,
   type LucideIcon,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,7 @@ const SECTION_META: Record<LibraryGapSectionId, { title: string; icon: LucideIco
   newUpcoming: { title: 'New & Upcoming Seasons', icon: CalendarClock, service: 'Sonarr' },
   collectionGaps: { title: 'Collection Gaps', icon: Layers, service: 'Radarr' },
   overdue: { title: 'Overdue', icon: Clock, service: 'Sonarr / Radarr' },
+  notReleased: { title: 'Not Yet Released', icon: Hourglass, service: 'Sonarr / Radarr' },
 };
 
 // Mirrors the Discover rail card breakpoints so every gap section scrolls horizontally.
