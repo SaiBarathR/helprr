@@ -55,6 +55,14 @@ function getSource(row: { metadata: unknown }): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+// A grouped notification row stands in for groupCount underlying events, so it
+// counts as its true total in the digest tallies (not as a single row).
+function getGroupCount(row: { metadata: unknown }): number {
+  if (!row.metadata || typeof row.metadata !== 'object') return 1;
+  const value = (row.metadata as Record<string, unknown>).groupCount;
+  return typeof value === 'number' && value > 0 ? value : 1;
+}
+
 function pluralize(count: number, { singular, plural }: { singular: string; plural: string }): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }
@@ -77,9 +85,10 @@ export function buildActivityDigest(options: BuildOptions): ActivityDigestResult
   const counts: Record<string, number> = {};
   const sourceCounts: Record<string, number> = {};
   for (const row of rows) {
-    counts[row.eventType] = (counts[row.eventType] ?? 0) + 1;
+    const inc = getGroupCount(row);
+    counts[row.eventType] = (counts[row.eventType] ?? 0) + inc;
     const source = getSource(row);
-    if (source) sourceCounts[source] = (sourceCounts[source] ?? 0) + 1;
+    if (source) sourceCounts[source] = (sourceCounts[source] ?? 0) + inc;
   }
 
   const eventCount = rows.length;

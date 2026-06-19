@@ -17,6 +17,11 @@ import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-look
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
+import {
+  PollNotificationCollector,
+  type NotificationEventInput,
+  type PollNotificationContext,
+} from '@/lib/notification-grouping';
 import type { QueueItem, QueueResponse, SonarrSeries, Tag } from '@/types';
 import crypto from 'crypto';
 
@@ -151,22 +156,6 @@ async function fetchAllQueueRecords(client: {
   }
   return { ...first, records, totalRecords: first.totalRecords };
 }
-
-type NotificationEventInput = {
-  eventType: string;
-  title: string;
-  body: string;
-  metadata?: Record<string, unknown>;
-  url?: string;
-  dedupeKey?: string;
-  userIds?: string[];
-  ownerUserId?: string | null;
-};
-
-type PollNotificationContext = Record<string, unknown> & {
-  service: string;
-  reason: string;
-};
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -718,6 +707,8 @@ export class PollingService {
     if (instances.length === 0) return;
 
     const n = instances.length;
+    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
+    const collector = new PollNotificationCollector();
     let badgeTotal = 0;
     let badgeAttention = 0;
 
@@ -772,7 +763,7 @@ export class PollingService {
             if (currentIssue === 'import') {
               importIssueCount++;
               const redirect = failedTabHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'importFailed',
                 title: this.instanceTitle('Manual Import Required', instanceLabel, n),
                 body: importFailureBody(item),
@@ -782,7 +773,7 @@ export class PollingService {
             } else if (currentIssue === 'download') {
               downloadFailedCount++;
               const redirect = queueHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'downloadFailed',
                 title: this.instanceTitle('Download Failed', instanceLabel, n),
                 body: downloadFailureBody(item),
@@ -791,7 +782,7 @@ export class PollingService {
               }, { service: 'sonarr', instanceId, reason: 'queue-download-failed-new', itemId: item.id });
             } else {
               const redirect = mediaHref ?? queueHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'grabbed',
                 title: this.instanceTitle('Download Started', instanceLabel, n),
                 body: item.title,
@@ -806,7 +797,7 @@ export class PollingService {
             if (currentIssue === 'import') {
               importIssueCount++;
               const redirect = failedTabHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'importFailed',
                 title: this.instanceTitle('Manual Import Required', instanceLabel, n),
                 body: importFailureBody(item),
@@ -816,7 +807,7 @@ export class PollingService {
             } else if (currentIssue === 'download') {
               downloadFailedCount++;
               const redirect = queueHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'downloadFailed',
                 title: this.instanceTitle('Download Failed', instanceLabel, n),
                 body: downloadFailureBody(item),
@@ -866,7 +857,7 @@ export class PollingService {
             };
             const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
-            await this.notifyAndLog({
+            collector.add({
               eventType: 'imported',
               title: this.instanceTitle('Episode Imported', instanceLabel, n),
               body: `${item.sourceTitle}`,
@@ -892,6 +883,11 @@ export class PollingService {
             url: '/settings',
           }, { service: 'sonarr', instanceId, reason: 'health-changed', healthCount: health.length });
         }
+
+        // Collapse same-type bursts (e.g. a season pack) into one grouped
+        // notification per (instance, eventType); below-threshold groups and
+        // singletons send individually. No-op shape when grouping is disabled.
+        await collector.flush({ enabled: groupingEnabled, notify: this.notifyAndLog.bind(this) });
 
         // Update state
         const cursor = historyCursor(history.records, state);
@@ -928,6 +924,8 @@ export class PollingService {
     if (instances.length === 0) return;
 
     const n = instances.length;
+    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
+    const collector = new PollNotificationCollector();
     let badgeTotal = 0;
     let badgeAttention = 0;
 
@@ -978,7 +976,7 @@ export class PollingService {
             if (currentIssue === 'import') {
               importIssueCount++;
               const redirect = failedTabHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'importFailed',
                 title: this.instanceTitle('Movie Manual Import Required', instanceLabel, n),
                 body: importFailureBody(item),
@@ -988,7 +986,7 @@ export class PollingService {
             } else if (currentIssue === 'download') {
               downloadFailedCount++;
               const redirect = queueHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'downloadFailed',
                 title: this.instanceTitle('Movie Download Failed', instanceLabel, n),
                 body: downloadFailureBody(item),
@@ -997,7 +995,7 @@ export class PollingService {
               }, { service: 'radarr', instanceId, reason: 'queue-download-failed-new', itemId: item.id });
             } else {
               const redirect = mediaHref ?? queueHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'grabbed',
                 title: this.instanceTitle('Movie Download Started', instanceLabel, n),
                 body: item.title,
@@ -1009,7 +1007,7 @@ export class PollingService {
             if (currentIssue === 'import') {
               importIssueCount++;
               const redirect = failedTabHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'importFailed',
                 title: this.instanceTitle('Movie Manual Import Required', instanceLabel, n),
                 body: importFailureBody(item),
@@ -1019,7 +1017,7 @@ export class PollingService {
             } else if (currentIssue === 'download') {
               downloadFailedCount++;
               const redirect = queueHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'downloadFailed',
                 title: this.instanceTitle('Movie Download Failed', instanceLabel, n),
                 body: downloadFailureBody(item),
@@ -1066,7 +1064,7 @@ export class PollingService {
             };
             const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
 
-            await this.notifyAndLog({
+            collector.add({
               eventType: 'imported',
               title: this.instanceTitle('Movie Imported', instanceLabel, n),
               body: `${item.sourceTitle}`,
@@ -1091,6 +1089,8 @@ export class PollingService {
             url: '/settings',
           }, { service: 'radarr', instanceId, reason: 'health-changed', healthCount: health.length });
         }
+
+        await collector.flush({ enabled: groupingEnabled, notify: this.notifyAndLog.bind(this) });
 
         const cursor = historyCursor(history.records, state);
         await prisma.pollingState.update({
@@ -1126,6 +1126,8 @@ export class PollingService {
     if (instances.length === 0) return;
 
     const n = instances.length;
+    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
+    const collector = new PollNotificationCollector();
     let badgeTotal = 0;
     let badgeAttention = 0;
 
@@ -1171,7 +1173,7 @@ export class PollingService {
 
           if (!prev) {
             if (currentIssue === 'import') {
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'importFailed',
                 title: this.instanceTitle('Album Manual Import Required', instanceLabel, n),
                 body: importFailureBody(item),
@@ -1179,7 +1181,7 @@ export class PollingService {
                 url: failedTabHref,
               }, { service: 'lidarr', instanceId, reason: 'queue-import-blocked-new', itemId: item.id });
             } else if (currentIssue === 'download') {
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'downloadFailed',
                 title: this.instanceTitle('Album Download Failed', instanceLabel, n),
                 body: downloadFailureBody(item),
@@ -1188,7 +1190,7 @@ export class PollingService {
               }, { service: 'lidarr', instanceId, reason: 'queue-download-failed-new', itemId: item.id });
             } else {
               const redirect = mediaHref ?? queueHref;
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'grabbed',
                 title: this.instanceTitle('Album Download Started', instanceLabel, n),
                 body: item.title,
@@ -1198,7 +1200,7 @@ export class PollingService {
             }
           } else if (prev !== 'legacy' && currentIssue !== prevIssue) {
             if (currentIssue === 'import') {
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'importFailed',
                 title: this.instanceTitle('Album Manual Import Required', instanceLabel, n),
                 body: importFailureBody(item),
@@ -1206,7 +1208,7 @@ export class PollingService {
                 url: failedTabHref,
               }, { service: 'lidarr', instanceId, reason: 'queue-import-blocked-transition', itemId: item.id });
             } else if (currentIssue === 'download') {
-              await this.notifyAndLog({
+              collector.add({
                 eventType: 'downloadFailed',
                 title: this.instanceTitle('Album Download Failed', instanceLabel, n),
                 body: downloadFailureBody(item),
@@ -1238,7 +1240,7 @@ export class PollingService {
               ...mediaFilterMeta(item, tagMap),
             };
             const redirect = getMediaHrefFromIds(metadata) ?? '/activity/history';
-            await this.notifyAndLog({
+            collector.add({
               eventType: 'imported',
               title: this.instanceTitle('Album Imported', instanceLabel, n),
               body: `${item.sourceTitle}`,
@@ -1258,6 +1260,8 @@ export class PollingService {
             url: '/settings',
           }, { service: 'lidarr', instanceId, reason: 'health-changed', healthCount: health.length });
         }
+
+        await collector.flush({ enabled: groupingEnabled, notify: this.notifyAndLog.bind(this) });
 
         const cursor = historyCursor(history.records, state);
         await prisma.pollingState.update({
@@ -1298,6 +1302,9 @@ export class PollingService {
       create: { serviceConnectionId: connection.id, lastQueueIds: [] },
     });
 
+    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
+    const collector = new PollNotificationCollector();
+
     const torrents = await client.getTorrents();
     const currentMap = new Map(torrents.map((t) => [t.hash, t]));
 
@@ -1315,7 +1322,7 @@ export class PollingService {
     for (const torrent of torrents) {
       const prev = prevMap.get(torrent.hash);
       if (!prev) {
-        await this.notifyAndLog({
+        collector.add({
           eventType: 'torrentAdded',
           title: 'Torrent Added',
           body: torrent.name,
@@ -1326,7 +1333,7 @@ export class PollingService {
 
       // Detect completed (progress went from <1 to 1)
       if (torrent.progress >= 1 && prev && prev.progress < 1) {
-        await this.notifyAndLog({
+        collector.add({
           eventType: 'torrentCompleted',
           title: 'Download Complete',
           body: torrent.name,
@@ -1339,7 +1346,7 @@ export class PollingService {
     // Detect deleted (was in previous state but gone now)
     for (const prev of prevEntries) {
       if (!currentMap.has(prev.hash)) {
-        await this.notifyAndLog({
+        collector.add({
           eventType: 'torrentDeleted',
           title: 'Torrent Removed',
           body: prev.name,
@@ -1358,6 +1365,8 @@ export class PollingService {
         (t) => t.state === 'error' || t.state === 'missingFiles' || t.state === 'stalledDL',
       ).length,
     });
+
+    await collector.flush({ enabled: groupingEnabled, notify: this.notifyAndLog.bind(this) });
 
     // Update state
     await prisma.pollingState.update({

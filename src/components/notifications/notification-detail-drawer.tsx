@@ -13,12 +13,24 @@ import { formatDistanceToNowSafe } from '@/lib/format';
 import { FONT_MONO, HPR } from '@/components/widgets/bento-primitives';
 import { EventIcon, getEventLabel, getEventHprColor } from './event-visuals';
 
+export interface GroupedNotificationItem {
+  body: string;
+  redirect?: string;
+  seasonNumber?: number;
+  episodeId?: number;
+}
+
 export interface NotificationDetailRecord {
   id: string;
   eventType: string;
   title: string;
   body: string;
-  metadata?: { source?: string } | null;
+  metadata?: {
+    source?: string;
+    grouped?: boolean;
+    groupCount?: number;
+    items?: GroupedNotificationItem[];
+  } | null;
   read: boolean;
   createdAt: string;
 }
@@ -28,6 +40,8 @@ interface Props {
   onClose: () => void;
   onGoTo?: () => void;
   canGoTo?: boolean;
+  /** Navigate to a single grouped item's deep link (closes the drawer first). */
+  onNavigateItem?: (href: string) => void;
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -54,12 +68,17 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
-export function NotificationDetailDrawer({ notification, onClose, onGoTo, canGoTo }: Props) {
+export function NotificationDetailDrawer({ notification, onClose, onGoTo, canGoTo, onNavigateItem }: Props) {
   const open = notification !== null;
   const color = notification ? getEventHprColor(notification.eventType) : HPR.fgMute;
   const label = notification ? getEventLabel(notification.eventType) : '';
   const sourceKey = notification?.metadata?.source;
   const sourceLabel = sourceKey ? (SOURCE_LABELS[sourceKey] ?? sourceKey) : null;
+  const groupedItems =
+    notification?.metadata?.grouped && Array.isArray(notification.metadata.items)
+      ? notification.metadata.items
+      : null;
+  const groupCount = notification?.metadata?.groupCount ?? groupedItems?.length ?? 0;
 
   return (
     <Drawer open={open} onOpenChange={(o) => { if (!o) onClose(); }} direction="bottom">
@@ -98,6 +117,62 @@ export function NotificationDetailDrawer({ notification, onClose, onGoTo, canGoT
             >
               {notification.body}
             </p>
+          )}
+
+          {groupedItems && groupedItems.length > 0 && (
+            <div>
+              <div
+                className="text-[10px] uppercase tracking-wide mb-1"
+                style={{ color: HPR.fgSubtle, fontFamily: FONT_MONO }}
+              >
+                {groupCount} {groupCount === 1 ? 'item' : 'items'}
+              </div>
+              <div className="space-y-0.5">
+                {groupedItems.map((item, i) => {
+                  const href = item.redirect;
+                  const seasonLabel =
+                    typeof item.seasonNumber === 'number' ? `S${item.seasonNumber}` : null;
+                  const inner = (
+                    <>
+                      <span
+                        className="inline-flex items-center justify-center rounded p-1 mt-0.5 shrink-0"
+                        style={{ background: `${color}1a`, color }}
+                      >
+                        {notification && <EventIcon type={notification.eventType} className="h-3 w-3" />}
+                      </span>
+                      <span className="min-w-0 flex-1 text-xs break-words" style={{ color: HPR.fg }}>
+                        {item.body}
+                      </span>
+                      {seasonLabel && (
+                        <span
+                          className="shrink-0 text-[10px]"
+                          style={{ color: HPR.fgMute, fontFamily: FONT_MONO }}
+                        >
+                          {seasonLabel}
+                        </span>
+                      )}
+                      {href && onNavigateItem && (
+                        <ArrowUpRight className="h-3 w-3 shrink-0" style={{ color: HPR.fgMute }} />
+                      )}
+                    </>
+                  );
+                  return href && onNavigateItem ? (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => onNavigateItem(href)}
+                      className="flex w-full items-start gap-2 py-1.5 text-left rounded transition-colors active:bg-white/5"
+                    >
+                      {inner}
+                    </button>
+                  ) : (
+                    <div key={i} className="flex items-start gap-2 py-1.5">
+                      {inner}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
 
           <div>
