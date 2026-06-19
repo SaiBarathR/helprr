@@ -103,6 +103,7 @@ async function putHandler(request: NextRequest) {
       logFailedResponseBodies,
       watchProviderRegion,
       activityDigestMode, activityDigestHour, activityDigestDayOfWeek,
+      notificationGroupingEnabled,
       animeAutoMapEnabled, animeAutoMapHour,
       anilistSectionsTtlMin, anilistBrowseTtlMin, anilistDetailTtlMin, anilistAiringTtlMin,
     } = body;
@@ -235,6 +236,16 @@ async function putHandler(request: NextRequest) {
       if ('error' in parsed) return parsed.error;
       data.activityDigestDayOfWeek = parsed.value;
     }
+    if (notificationGroupingEnabled !== undefined) {
+      // Strict check — Boolean('false') would silently flip the toggle.
+      if (typeof notificationGroupingEnabled !== 'boolean') {
+        return NextResponse.json(
+          { error: 'Notification grouping enabled must be a boolean' },
+          { status: 400 }
+        );
+      }
+      data.notificationGroupingEnabled = notificationGroupingEnabled;
+    }
     if (animeAutoMapEnabled !== undefined) {
       // Strict check — Boolean('false') would silently enable the nightly job.
       if (typeof animeAutoMapEnabled !== 'boolean') {
@@ -298,6 +309,7 @@ async function putHandler(request: NextRequest) {
         activityDigestMode: (data.activityDigestMode as string | undefined) ?? 'off',
         activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
         activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
+        notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
         animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
         animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
         anilistSectionsTtlMin: (data.anilistSectionsTtlMin as number | undefined) ?? 5,

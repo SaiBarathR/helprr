@@ -38,6 +38,7 @@ import {
   Info,
   Search,
   SlidersHorizontal,
+  Layers,
   Calendar as CalendarIcon,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -66,6 +67,9 @@ interface NotificationMetadata {
   hash?: string;
   sessionId?: string;
   sentCount?: number;
+  grouped?: boolean;
+  groupCount?: number;
+  items?: { body: string; redirect?: string; seasonNumber?: number; episodeId?: number }[];
 }
 
 interface Notification {
@@ -694,7 +698,12 @@ export default function NotificationsPage() {
                   <EventIcon type={n.eventType} className="h-4 w-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${!n.read ? 'font-semibold' : ''} truncate`}>{n.title}</p>
+                  <p className={`text-sm ${!n.read ? 'font-semibold' : ''} truncate`}>
+                    {n.metadata?.grouped && (
+                      <Layers className="inline-block h-3 w-3 mr-1 -mt-0.5 text-muted-foreground" aria-label="Grouped" />
+                    )}
+                    {n.title}
+                  </p>
                   <p className="text-xs text-muted-foreground truncate">{n.body}</p>
                 </div>
                 <span className="text-[11px] text-muted-foreground shrink-0">
@@ -740,6 +749,10 @@ export default function NotificationsPage() {
               void handleNotificationClick(n);
             }
           : undefined}
+        onNavigateItem={(href) => {
+          setDetailNotification(null);
+          router.push(href);
+        }}
       />
 
       {/* Filter drawer */}
