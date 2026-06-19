@@ -857,8 +857,53 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
     try {
       if (d.linked.source === 'sonarr') {
         const c = await getSonarrClient(d.linked.instanceId);
-        await c.searchSeries(d.linked.contentId);
-        reSearched = true;
+        const seriesId = d.linked.contentId;
+        const instanceId = d.linked.instanceId;
+        // Search exactly what was removed — never the whole series. A series
+        // search re-evaluates at both season and episode granularity and can
+        // grab a season pack AND a single episode for the same slot (the
+        // reported duplicate-grab). The removed torrent's queue records tell us
+        // the scope: a season pack lands one record per episode under the same
+        // downloadId (all collected in linkedAll), a single release lands one.
+        const records = (d.linkedAll ?? [d.linked]).filter(
+          (l) => l.source === 'sonarr' && l.instanceId === instanceId,
+        );
+        // Group removed episode ids by season. A season with >1 removed episode
+        // (or a season-level record with no episode id) is a pack → search the
+        // season; a lone episode → search just that episode.
+        const bySeason = new Map<number, Set<number>>();
+        const episodeIds = new Set<number>();
+        for (const r of records) {
+          const epId = r.queueItem.episodeId;
+          const season = r.queueItem.seasonNumber;
+          if (typeof season === 'number') {
+            const set = bySeason.get(season) ?? new Set<number>();
+            if (typeof epId === 'number') set.add(epId);
+            bySeason.set(season, set);
+          } else if (typeof epId === 'number') {
+            episodeIds.add(epId);
+          }
+        }
+        let issued = 0;
+        for (const [season, epIds] of bySeason) {
+          if (epIds.size === 1) {
+            for (const id of epIds) episodeIds.add(id);
+          } else {
+            await c.searchSeason(seriesId, season);
+            issued += 1;
+          }
+        }
+        if (episodeIds.size > 0) {
+          await c.searchEpisode([...episodeIds]);
+          issued += 1;
+        }
+        if (issued > 0) {
+          reSearched = true;
+        } else {
+          // No episode/season info on the removed records — don't fall back to
+          // a full-series search (the over-broad scope this fix avoids).
+          logger.warn('Re-search skipped: no episode/season scope on removed Sonarr queue item', { hash: hashLc, seriesId }, { scope: LOG });
+        }
       } else if (d.linked.source === 'radarr') {
         const c = await getRadarrClient(d.linked.instanceId);
         await c.searchMovie([d.linked.contentId]);

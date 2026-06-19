@@ -426,9 +426,10 @@ async function getHandler(): Promise<NextResponse> {
     let missingSeasonTotal = 0;
     let sonarrAnyOk = false;
     // TV completeness tally: owned (have) over aired+monitored episodes across monitored
-    // series — the same denominator Sonarr uses for percentOfEpisodes.
-    let tvOwned = 0;
-    let tvTotal = 0;
+    // series — the same denominator Sonarr uses for percentOfEpisodes. Keyed by tvdbId so a
+    // series shared across overlapping Sonarr instances (HD + 4K) isn't double-counted,
+    // mirroring the movie path's tmdbId dedup.
+    const tvByTvdbId = new Map<number, { owned: number; total: number }>();
 
     const sonarrSeries = await Promise.all(
       sonarrInstances.map(async ({ connection, client }) => ({
@@ -446,9 +447,22 @@ async function getHandler(): Promise<NextResponse> {
       for (const k of r.missingKeys) missingKeys.add(k);
       for (const show of series) {
         if (!show.monitored) continue;
-        tvOwned += show.statistics?.episodeFileCount ?? 0;
-        tvTotal += show.statistics?.episodeCount ?? 0;
+        const tvdbId = show.tvdbId;
+        if (typeof tvdbId !== 'number' || tvdbId <= 0) continue;
+        // Same series on two instances reports the same counts — keep the max
+        // rather than summing.
+        const prev = tvByTvdbId.get(tvdbId);
+        tvByTvdbId.set(tvdbId, {
+          owned: Math.max(prev?.owned ?? 0, show.statistics?.episodeFileCount ?? 0),
+          total: Math.max(prev?.total ?? 0, show.statistics?.episodeCount ?? 0),
+        });
       }
+    }
+    let tvOwned = 0;
+    let tvTotal = 0;
+    for (const { owned, total } of tvByTvdbId.values()) {
+      tvOwned += owned;
+      tvTotal += total;
     }
     // Available when ≥1 Sonarr instance returned data; error only when every configured
     // instance failed (so a partial result still shows the reachable instances' gaps).

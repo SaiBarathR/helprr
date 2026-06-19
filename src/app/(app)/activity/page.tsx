@@ -943,6 +943,15 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   const loading = wantedQuery.isLoading;
   const records = wantedQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [];
 
+  // Surface fetch failures instead of silently rendering "No missing items" (or
+  // stale rows under keepPreviousData). Mirrors the toast-on-error the action
+  // handlers use; errorUpdatedAt re-fires it once per distinct failure.
+  useEffect(() => {
+    if (wantedQuery.isError) {
+      toast.error('Failed to load wanted items');
+    }
+  }, [wantedQuery.isError, wantedQuery.errorUpdatedAt]);
+
   async function handleSearch(record: WantedRecord) {
     const key = `${record.source}-${record.id}`;
     setSearching(key);
@@ -980,6 +989,17 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   }
 
   if (records.length === 0) {
+    if (wantedQuery.isError) {
+      return (
+        <div className="text-center py-16 text-muted-foreground">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40 text-red-500" />
+          <p className="text-sm">Couldn&apos;t load wanted items</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => wantedQuery.refetch()}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="text-center py-16 text-muted-foreground">
         {type === 'missing' ? (

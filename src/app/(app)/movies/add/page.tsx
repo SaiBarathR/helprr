@@ -79,6 +79,13 @@ function AddMoviePageContent() {
     setInstanceId((prev) => prev ?? instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
   }, [instances]);
 
+  // Tag ids are instance-local, so clear the selection when the instance changes —
+  // otherwise a stale id from the previous instance gets POSTed. (Profile and root
+  // folder re-default from the new instance's reference data in the effects below.)
+  useEffect(() => {
+    setSelectedTags([]);
+  }, [instanceId]);
+
   // Auto-select the prefilled result once the lookup resolves.
   useEffect(() => {
     if (targetTmdbId == null || !lookupQuery.data) return;
