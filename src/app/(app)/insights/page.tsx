@@ -10,6 +10,7 @@ import { shiftDayKey } from '@/lib/insights';
 import { KpiRow } from '@/components/insights/kpi-row';
 import { ServiceHealthStrip } from '@/components/insights/service-health-strip';
 import { LibraryGrowthCard } from '@/components/insights/library-growth-card';
+import { LibraryGapsCard } from '@/components/insights/library-gaps-card';
 import { DownloadSuccessCard } from '@/components/insights/download-success-card';
 import { DownloadPipelineCard } from '@/components/insights/download-pipeline-card';
 import { StorageInsightsCard } from '@/components/insights/storage-insights-card';
@@ -76,6 +77,8 @@ export default function InsightsPage() {
   const { data: stats, loading: statsLoading } = useInsightsResource<ServicesStatsResponse>('/api/services/stats');
 
   const showLibrary = canMovies || canSeries || canMusic;
+  // Library gaps spans both libraries, so the endpoint requires read access to both.
+  const canGaps = canSeries && canMovies;
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
@@ -96,6 +99,7 @@ export default function InsightsPage() {
         <ServiceHealthStrip />
         <KpiRow stats={stats} loading={statsLoading} />
         {showLibrary && <LibraryGrowthCard range={range} />}
+        {canGaps && <LibraryGapsCard />}
         {showLibrary && <DownloadSuccessCard range={range} />}
         {showLibrary && <DownloadPipelineCard range={range} />}
         {showLibrary && <StorageInsightsCard />}

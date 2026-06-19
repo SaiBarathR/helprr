@@ -12,6 +12,7 @@ import type {
   LibraryGapItem,
   LibraryGapSection,
   LibraryGapsResponse,
+  LibraryCompleteness,
 } from '@/types';
 
 // Mirrors the 30s server-side cache TTL so the browser also collapses repeat loads.
@@ -157,8 +158,14 @@ function classifySeasons(series: SonarrSeries[] | null, instanceId: string) {
   return { missing, upcoming, missingKeys, missingSeasonTotal };
 }
 
-async function buildCollectionGaps(radarrInstances: RadarrInstance[]): Promise<LibraryGapSection> {
-  if (radarrInstances.length === 0) return emptySection('collectionGaps', false); // Radarr not connected
+// Returns the collection-gaps section plus a monitored-movie owned/total tally (deduped by
+// tmdbId across instances) — reused for the Insights completeness gauge, since this is the one
+// place the route already pulls every instance's full movie list.
+async function buildCollectionGaps(
+  radarrInstances: RadarrInstance[]
+): Promise<{ section: LibraryGapSection; movieStats: { owned: number; total: number } }> {
+  const noMovies = { owned: 0, total: 0 };
+  if (radarrInstances.length === 0) return { section: emptySection('collectionGaps', false), movieStats: noMovies }; // Radarr not connected
 
   // Pull collections + movies from every instance. "In library" is the union of all
   // reachable instances' movies, so a film owned in any instance isn't a gap. One bad
@@ -175,13 +182,27 @@ async function buildCollectionGaps(radarrInstances: RadarrInstance[]): Promise<L
 
   // Every configured instance failed both fetches → surface an error state.
   if (perInstance.every((p) => p.collections === null && p.movies === null)) {
-    return emptySection('collectionGaps', false, true);
+    return { section: emptySection('collectionGaps', false, true), movieStats: noMovies };
   }
 
+  // librarySet: every owned tmdbId (monitored or not) so an owned film is never a "gap".
+  // monitoredMovies: monitored films deduped by tmdbId for the completeness tally — owned
+  // when any reachable instance has the file.
   const librarySet = new Set<number>();
+  const monitoredMovies = new Map<number, boolean>();
   for (const p of perInstance) {
-    if (p.movies) for (const m of p.movies) if (m.tmdbId) librarySet.add(m.tmdbId);
+    if (!p.movies) continue;
+    for (const m of p.movies) {
+      if (m.tmdbId) librarySet.add(m.tmdbId);
+      if (m.monitored && m.tmdbId) {
+        monitoredMovies.set(m.tmdbId, (monitoredMovies.get(m.tmdbId) ?? false) || m.hasFile);
+      }
+    }
   }
+  const movieStats = {
+    owned: [...monitoredMovies.values()].filter(Boolean).length,
+    total: monitoredMovies.size,
+  };
 
   const seen = new Set<number>();
   const items: LibraryGapItem[] = [];
@@ -210,7 +231,7 @@ async function buildCollectionGaps(radarrInstances: RadarrInstance[]): Promise<L
     }
   }
 
-  return toSection('collectionGaps', items, true);
+  return { section: toSection('collectionGaps', items, true), movieStats };
 }
 
 /**
@@ -404,6 +425,10 @@ async function getHandler(): Promise<NextResponse> {
     const missingKeys = new Set<string>();
     let missingSeasonTotal = 0;
     let sonarrAnyOk = false;
+    // TV completeness tally: owned (have) over aired+monitored episodes across monitored
+    // series — the same denominator Sonarr uses for percentOfEpisodes.
+    let tvOwned = 0;
+    let tvTotal = 0;
 
     const sonarrSeries = await Promise.all(
       sonarrInstances.map(async ({ connection, client }) => ({
@@ -419,16 +444,34 @@ async function getHandler(): Promise<NextResponse> {
       upcoming.push(...r.upcoming);
       missingSeasonTotal += r.missingSeasonTotal;
       for (const k of r.missingKeys) missingKeys.add(k);
+      for (const show of series) {
+        if (!show.monitored) continue;
+        tvOwned += show.statistics?.episodeFileCount ?? 0;
+        tvTotal += show.statistics?.episodeCount ?? 0;
+      }
     }
     // Available when ≥1 Sonarr instance returned data; error only when every configured
     // instance failed (so a partial result still shows the reachable instances' gaps).
     const sonarrAvailable = sonarrInstances.length > 0 && sonarrAnyOk;
     const sonarrError = sonarrInstances.length > 0 && !sonarrAnyOk;
 
-    const [collectionGaps, { overdue, notReleased }] = await Promise.all([
+    const [{ section: collectionGaps, movieStats }, { overdue, notReleased }] = await Promise.all([
       buildCollectionGaps(radarrInstances),
       buildOverdue(sonarrInstances, radarrInstances, missingKeys),
     ]);
+
+    const ownedUnits = tvOwned + movieStats.owned;
+    const totalUnits = tvTotal + movieStats.total;
+    const completeness: LibraryCompleteness | undefined =
+      totalUnits > 0
+        ? {
+            percent: Math.round((ownedUnits / totalUnits) * 100),
+            ownedUnits,
+            totalUnits,
+            tv: { owned: tvOwned, total: tvTotal },
+            movies: { owned: movieStats.owned, total: movieStats.total },
+          }
+        : undefined;
 
     const response: LibraryGapsResponse = {
       sections: [
@@ -440,6 +483,7 @@ async function getHandler(): Promise<NextResponse> {
         overdue,
         notReleased,
       ],
+      completeness,
     };
 
     // Cache only fully-healthy responses so transient failures self-heal on the next load.

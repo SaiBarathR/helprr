@@ -894,8 +894,20 @@ export interface LibraryGapSection {
   error?: boolean; // true when the service is configured but the fetch failed (vs. simply not connected)
 }
 
+// Owned-vs-total across the monitored library, surfaced as the Insights completeness gauge.
+// Units mix TV episodes and movies (episodes dominate by volume); the tv/movies split keeps
+// the blended `percent` honest. Omitted when nothing monitored, so consumers must null-check.
+export interface LibraryCompleteness {
+  percent: number; // 0..100, rounded — overall
+  ownedUnits: number;
+  totalUnits: number;
+  tv: { owned: number; total: number };
+  movies: { owned: number; total: number };
+}
+
 export interface LibraryGapsResponse {
   sections: LibraryGapSection[];
+  completeness?: LibraryCompleteness; // omitted when no monitored units exist
 }
 
 // Radarr Credit
