@@ -1,5 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
-import { arrHttpAgent, arrHttpsAgent } from '@/lib/http-agents';
+import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import type {
   SonarrSeries,
   SonarrEpisode,
@@ -68,8 +68,8 @@ export class SonarrClient {
         'Content-Type': 'application/json',
       },
       timeout: 30_000,
-      httpAgent: arrHttpAgent,
-      httpsAgent: arrHttpsAgent,
+      httpAgent: keepAliveHttpAgent,
+      httpsAgent: keepAliveHttpsAgent,
     });
   }
 

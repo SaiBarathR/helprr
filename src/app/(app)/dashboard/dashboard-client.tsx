@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,7 +10,6 @@ import { WidgetGrid } from '@/components/widgets/widget-grid';
 import { WidgetGallery } from '@/components/widgets/widget-gallery';
 import { RefreshIntervalDrawer } from '@/components/widgets/refresh-interval-drawer';
 import { BentoTopBar, FloatingEdit, HPR } from '@/components/widgets/bento-primitives';
-import { buildDashboardThemeStyle } from '@/lib/dashboard-theme';
 import {
   DashboardLayoutProvider,
   useDashboardLayout,
@@ -114,16 +113,6 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
 
   const { widgets, isDirty, setWidgets } = useDashboardLayout();
 
-  const accent = useUIStore((s) => s.dashboardAccent);
-  const palette = useUIStore((s) => s.dashboardPalette);
-  const gradient = useUIStore((s) => s.dashboardGradient);
-  const font = useUIStore((s) => s.dashboardFont);
-
-  const themeStyle = useMemo(
-    () => buildDashboardThemeStyle({ accent, palette, gradient, font }),
-    [accent, palette, gradient, font],
-  );
-
   useEffect(() => {
     return () => setEditMode(false);
   }, [setEditMode]);
@@ -195,15 +184,15 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
     <div
       className="dashboard-bento"
       style={{
-        ...themeStyle,
+        // The --hpr-* theme vars are inherited from <html>: set pre-paint by the
+        // bootstrap script (root layout) and kept in sync by ThemeApplier. Not
+        // pinned inline here, so the bento doesn't override them with stale
+        // pre-hydration defaults — first paint already uses the persisted theme.
         margin: isMobile ? '-0.5rem -0.5rem -1rem' : '-1.5rem',
         padding: isMobile ? '0.5rem 0.75rem 5rem' : '1.25rem 1.75rem 3.5rem',
         minHeight: isMobile
           ? 'calc(100dvh - var(--header-height, 0px) - 4rem)'
           : '100%',
-        // Render the shell immediately. themeStyle falls back to sane store
-        // defaults pre-hydration, so first paint shows content (a brief theme
-        // snap) instead of a blank flash while the persisted store rehydrates.
       }}
     >
       {editMode && (

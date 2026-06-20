@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 
 interface SystemStatus {
   version: string;
@@ -193,6 +194,8 @@ export class ProwlarrClient {
         'Content-Type': 'application/json',
       },
       timeout: 30_000,
+      httpAgent: keepAliveHttpAgent,
+      httpsAgent: keepAliveHttpsAgent,
     });
   }
 

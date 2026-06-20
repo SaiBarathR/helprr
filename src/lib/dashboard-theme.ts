@@ -202,6 +202,29 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
   } as React.CSSProperties;
 }
 
+/**
+ * No-flash theme bootstrap.
+ *
+ * The theme lives in localStorage (zustand/persist), which the server can't
+ * read — so SSR + first paint would otherwise use the globals.css defaults and
+ * snap to the user's theme only once the store rehydrates. To avoid that,
+ * ThemeApplier persists the *already-resolved* flat `--hpr-*` map under
+ * THEME_VARS_STORAGE_KEY, and THEME_BOOTSTRAP_SCRIPT (a blocking inline script
+ * in the root layout) replays it onto <html> before React hydrates. Persisting
+ * the resolved values keeps a single source of truth (buildDashboardThemeStyle)
+ * — the script needs no palette math and can't drift from the React path.
+ */
+export const THEME_VARS_STORAGE_KEY = 'helprr-theme-vars';
+
+/**
+ * Self-contained vanilla-JS string for a blocking <script> in the document head/
+ * top-of-body. Applies the persisted resolved theme vars to <html> pre-paint;
+ * does nothing (defaults stand) when no vars are stored yet or on parse failure.
+ */
+export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var r=localStorage.getItem(${JSON.stringify(
+  THEME_VARS_STORAGE_KEY,
+)});if(!r)return;var v=JSON.parse(r);var e=document.documentElement;for(var k in v){if(v[k]!=null)e.style.setProperty(k,String(v[k]));}}catch(e){}})();`;
+
 /** Write a full set of --hpr-* variables onto `el`. */
 export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThemePrefs): void {
   if (!el) return;

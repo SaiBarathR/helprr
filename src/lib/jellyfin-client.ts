@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { getAppTimeZone, getLocalDateKey, getTimeZoneOffsetMinutes } from '@/lib/timezone';
 import type {
   JellyfinSystemInfo,
@@ -41,6 +42,8 @@ export class JellyfinClient {
         'Content-Type': 'application/json',
       },
       timeout: 30000, // 30 second timeout
+      httpAgent: keepAliveHttpAgent,
+      httpsAgent: keepAliveHttpsAgent,
     });
   }
 
