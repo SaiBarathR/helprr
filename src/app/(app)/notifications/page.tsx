@@ -48,7 +48,7 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 import { EventIcon, getEventColorClass } from '@/components/notifications/event-visuals';
-import { NotificationDetailDrawer } from '@/components/notifications/notification-detail-drawer';
+import { NotificationDetailDrawer, type GroupedNotificationItem } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
@@ -69,7 +69,7 @@ interface NotificationMetadata {
   sentCount?: number;
   grouped?: boolean;
   groupCount?: number;
-  items?: { body: string; redirect?: string; seasonNumber?: number; episodeId?: number }[];
+  items?: GroupedNotificationItem[];
 }
 
 interface Notification {
