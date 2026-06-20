@@ -1729,16 +1729,34 @@ export class PollingService {
     // timestamp so any reschedule — even same-day — produces a fresh key and
     // a fresh notification. Body-string fallback preserves dedupe for rows
     // created before the migration added dedupeKey.
-    const alreadyNotified = async (dedupeKeys: string[], body: string): Promise<boolean> => {
-      const hit = await prisma.notificationHistory.findFirst({
-        where: {
-          eventType: 'upcomingPremiere',
-          OR: [...dedupeKeys.map((dedupeKey) => ({ dedupeKey })), { dedupeKey: null, body }],
-        },
-        select: { id: true },
-      });
-      return Boolean(hit);
-    };
+    //
+    // Prefetch every recent upcomingPremiere row ONCE instead of a findFirst per
+    // calendar item per instance (the old N+1, run every poll cycle). A matching
+    // row was written when its item was last inside the notify window — at most
+    // (notifyBefore + grace) before its air time, and the furthest air time we
+    // consider is fetchEndMs — so look back that far plus a day of slack; older
+    // rows can't match a key we build this cycle. New rows always carry a
+    // dedupeKey and this cycle's keys are unique per (source, instance, item,
+    // air-time), so not seeing same-cycle inserts can't double-fire.
+    const dedupeLookbackMs =
+      (settings.upcomingNotifyBeforeMins + BEFORE_AIR_GRACE_MIN) * 60_000 +
+      FETCH_END_BUFFER_MS +
+      86_400_000;
+    const priorUpcoming = await prisma.notificationHistory.findMany({
+      where: {
+        eventType: 'upcomingPremiere',
+        createdAt: { gte: new Date(now.getTime() - dedupeLookbackMs) },
+      },
+      select: { dedupeKey: true, body: true },
+    });
+    const notifiedKeys = new Set<string>();
+    const notifiedBodies = new Set<string>();
+    for (const row of priorUpcoming) {
+      if (row.dedupeKey) notifiedKeys.add(row.dedupeKey);
+      else notifiedBodies.add(row.body);
+    }
+    const alreadyNotified = (dedupeKeys: string[], body: string): boolean =>
+      dedupeKeys.some((key) => notifiedKeys.has(key)) || notifiedBodies.has(body);
 
     const shouldFireBeforeAir = (airTimeMs: number): boolean => {
       const minsUntilAir = (airTimeMs - now.getTime()) / 60_000;
@@ -1793,7 +1811,7 @@ export class PollingService {
         const dedupeKey = `sonarr-${connection.id}-ep-${ep.id}-${airTimeMs}`;
         const legacyKey = `sonarr-ep-${ep.id}-${airTimeMs}`;
 
-        if (await alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) {
+        if (alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) {
           logger.debug('Skipping duplicate Sonarr upcoming notification', {
             seriesId: ep.seriesId,
             episodeId: ep.id,
@@ -1878,7 +1896,7 @@ export class PollingService {
           const dedupeKey = `radarr-${connection.id}-${movie.id}-${releaseType}-${releaseMs}`;
           const legacyKey = `radarr-${movie.id}-${releaseType}-${releaseMs}`;
 
-          if (await alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) {
+          if (alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) {
             logger.debug('Skipping duplicate Radarr upcoming notification', {
               movieId: movie.id,
               releaseType,
@@ -1938,7 +1956,7 @@ export class PollingService {
         const body = `${artistName ? `${artistName} — ` : ''}${album.title}`;
         const dedupeKey = `lidarr-${connection.id}-${album.id}-${releaseMs}`;
         const legacyKey = `lidarr-${album.id}-${releaseMs}`;
-        if (await alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) continue;
+        if (alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) continue;
 
         await this.notifyAndLog({
           eventType: 'upcomingPremiere',
@@ -2002,14 +2020,17 @@ export class PollingService {
         })
       : null;
 
+    // Items already in the library are all stamped notified with the same value,
+    // so collapse them into one updateMany instead of a write per item.
+    const inLibraryIds: string[] = [];
+    // Each notified item's state write has a distinct value (attempts/notifiedAt),
+    // so collect them and run the writes together after the loop rather than
+    // awaiting each inline.
+    const stateWrites: Array<Promise<unknown>> = [];
+
     for (const item of due) {
       if (lookups && isItemInLibrary(item.source, item.externalId, item.mediaType, lookups)) {
-        await prisma.watchlistItem.update({
-          where: { id: item.id },
-          data: { reminderNotifiedAt: now },
-        }).catch((error) => {
-          logger.warn('Failed to mark in-library watchlist reminder as notified', { itemId: item.id, error }, { scope: 'polling' });
-        });
+        inLibraryIds.push(item.id);
         continue;
       }
 
@@ -2039,18 +2060,30 @@ export class PollingService {
 
       const nextAttempts = item.reminderAttempts + 1;
       const giveUp = !delivered && nextAttempts >= MAX_REMINDER_ATTEMPTS;
-      await prisma.watchlistItem.update({
-        where: { id: item.id },
-        data: {
-          reminderAttempts: nextAttempts,
-          // Stamp notified on success OR after we exhaust retries — both
-          // states mean "stop trying this reminder".
-          reminderNotifiedAt: delivered || giveUp ? now : null,
-        },
+      stateWrites.push(
+        prisma.watchlistItem.update({
+          where: { id: item.id },
+          data: {
+            reminderAttempts: nextAttempts,
+            // Stamp notified on success OR after we exhaust retries — both
+            // states mean "stop trying this reminder".
+            reminderNotifiedAt: delivered || giveUp ? now : null,
+          },
+        }).catch((error) => {
+          logger.warn('Failed to update watchlist reminder state', { itemId: item.id, error }, { scope: 'polling' });
+        }),
+      );
+    }
+
+    if (inLibraryIds.length > 0) {
+      await prisma.watchlistItem.updateMany({
+        where: { id: { in: inLibraryIds } },
+        data: { reminderNotifiedAt: now },
       }).catch((error) => {
-        logger.warn('Failed to update watchlist reminder state', { itemId: item.id, error }, { scope: 'polling' });
+        logger.warn('Failed to mark in-library watchlist reminders as notified', { count: inLibraryIds.length, error }, { scope: 'polling' });
       });
     }
+    if (stateWrites.length > 0) await Promise.all(stateWrites);
   }
 
   // Prune NotificationHistory rows past the configured retention window. The

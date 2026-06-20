@@ -30,26 +30,34 @@ async function getHandler(): Promise<NextResponse> {
   };
 
   try {
-    // Sum across every Sonarr instance; mappings are scoped per instance.
-    let mapped = 0;
-    let unmatched = 0;
-    let neverMapped = 0;
-    let total = 0;
-    for (const { connection, client } of await getSonarrClients()) {
-      const anime = (await client.getSeries()).filter((s) => s.seriesType === 'anime');
-      const rows = await prisma.aniListSeriesMapping.findMany({
-        where: { sonarrInstanceId: connection.id, sonarrSeriesId: { in: anime.map((s) => s.id) } },
-        select: { sonarrSeriesId: true, state: true },
-      });
-      const stateById = new Map(rows.map((r) => [r.sonarrSeriesId, r.state]));
-      for (const s of anime) {
-        const state = stateById.get(s.id);
-        if (state === 'AUTO_MATCH' || state === 'MANUAL_MATCH') mapped += 1;
-        else if (state === 'AUTO_UNMATCHED' || state === 'MANUAL_NONE') unmatched += 1;
-        else neverMapped += 1;
-      }
-      total += anime.length;
-    }
+    // Sum across every Sonarr instance; mappings are scoped per instance. Each
+    // instance's library fetch + mapping query runs concurrently (they were
+    // previously awaited one instance at a time).
+    const perInstance = await Promise.all(
+      (await getSonarrClients()).map(async ({ connection, client }) => {
+        const anime = (await client.getSeries()).filter((s) => s.seriesType === 'anime');
+        const rows = await prisma.aniListSeriesMapping.findMany({
+          where: { sonarrInstanceId: connection.id, sonarrSeriesId: { in: anime.map((s) => s.id) } },
+          select: { sonarrSeriesId: true, state: true },
+        });
+        const stateById = new Map(rows.map((r) => [r.sonarrSeriesId, r.state]));
+        let mapped = 0;
+        let unmatched = 0;
+        let neverMapped = 0;
+        for (const s of anime) {
+          const state = stateById.get(s.id);
+          if (state === 'AUTO_MATCH' || state === 'MANUAL_MATCH') mapped += 1;
+          else if (state === 'AUTO_UNMATCHED' || state === 'MANUAL_NONE') unmatched += 1;
+          else neverMapped += 1;
+        }
+        return { mapped, unmatched, neverMapped, total: anime.length };
+      }),
+    );
+
+    const mapped = perInstance.reduce((sum, p) => sum + p.mapped, 0);
+    const unmatched = perInstance.reduce((sum, p) => sum + p.unmatched, 0);
+    const neverMapped = perInstance.reduce((sum, p) => sum + p.neverMapped, 0);
+    const total = perInstance.reduce((sum, p) => sum + p.total, 0);
 
     return NextResponse.json({ ...base, mapped, unmatched, neverMapped, total });
   } catch {

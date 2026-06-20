@@ -76,7 +76,10 @@ export function BadgeProvider({ children }: { children: React.ReactNode }) {
     refetchInterval: POLL_MS,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
-    staleTime: 0,
+    // Just under the poll interval: the 45s timer drives the refresh, so the
+    // count stays fresh without an extra cache-bypassing fetch on every mount /
+    // re-render within the window. Explicit refreshBadges() still invalidates.
+    staleTime: POLL_MS - 5_000,
   });
   const counts = data ?? EMPTY_BADGE_COUNTS;
 

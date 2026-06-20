@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import * as React from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import dynamic from 'next/dynamic';
 import type { ProwlarrStats } from '@/lib/prowlarr-client';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
@@ -116,6 +116,13 @@ export function EmptyChartState({ message }: { message: string }) {
   );
 }
 
+// Recharts is heavy (~40KB) and only renders once data is present, so load it on
+// demand (client-only) instead of bundling it into the initial dashboard chunk.
+const ProwlarrBarChart = dynamic(() => import('./prowlarr-bar-chart'), {
+  ssr: false,
+  loading: () => <EmptyChartState message="Loading…" />,
+});
+
 export interface ProwlarrChartBar {
   dataKey: string;
   color: string;
@@ -201,39 +208,7 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
         <EmptyChartState message={emptyMessage} />
       ) : (
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <ResponsiveContainer
-            width="100%"
-            height="100%"
-            initialDimension={{ width: 1, height: 1 }}
-          >
-            <BarChart data={rows} layout="vertical" margin={CHART_MARGIN}>
-              <XAxis
-                type="number"
-                tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                tickFormatter={xTickFormatter}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                width={Y_WIDTH}
-                tick={<YTick />}
-                axisLine={false}
-                tickLine={false}
-              />
-              <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
-              {bars.map((b, i) => (
-                <Bar
-                  key={b.dataKey}
-                  dataKey={b.dataKey}
-                  stackId={b.stackId}
-                  fill={b.color}
-                  radius={b.radius ?? (i === bars.length - 1 ? [0, 4, 4, 0] : undefined)}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+          <ProwlarrBarChart rows={rows} bars={bars} xTickFormatter={xTickFormatter} />
         </div>
       )}
     </div>
