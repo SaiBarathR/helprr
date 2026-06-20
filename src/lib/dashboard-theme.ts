@@ -218,12 +218,15 @@ export const THEME_VARS_STORAGE_KEY = 'helprr-theme-vars';
 
 /**
  * Self-contained vanilla-JS string for a blocking <script> in the document head/
- * top-of-body. Applies the persisted resolved theme vars to <html> pre-paint;
- * does nothing (defaults stand) when no vars are stored yet or on parse failure.
+ * top-of-body. Replays ONLY the persisted `--hpr-*` theme vars onto <html>
+ * pre-paint; does nothing (defaults stand) when no vars are stored yet, the
+ * stored value isn't an object, or parsing fails. The `--hpr-` filter keeps a
+ * corrupted/legacy localStorage payload from setting unrelated style properties
+ * on the document root.
  */
 export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var r=localStorage.getItem(${JSON.stringify(
   THEME_VARS_STORAGE_KEY,
-)});if(!r)return;var v=JSON.parse(r);var e=document.documentElement;for(var k in v){if(v[k]!=null)e.style.setProperty(k,String(v[k]));}}catch(e){}})();`;
+)});if(!r)return;var v=JSON.parse(r);if(!v||typeof v!=='object')return;var e=document.documentElement;for(var k in v){if(k.indexOf('--hpr-')===0&&v[k]!=null)e.style.setProperty(k,String(v[k]));}}catch(e){}})();`;
 
 /** Write a full set of --hpr-* variables onto `el`. */
 export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThemePrefs): void {
