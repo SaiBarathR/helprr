@@ -24,6 +24,15 @@ const QUEUE_CACHE_TTL_SECONDS = 5;
 type QueueResult = { records: QueueItem[]; totalRecords: number };
 const inflightQueue = new Map<string, Promise<QueueResult>>();
 
+// Clamp pagination so garbage/unbounded values can't blow up the cache-key
+// cardinality (one Redis entry + one in-flight slot per distinct page:pageSize)
+// or the upstream payload size. Non-numeric input falls back to the default.
+function clampInt(raw: string | null, fallback: number, min: number, max: number): number {
+  const n = parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
 async function loadQueue(page: number, pageSize: number): Promise<QueueResult> {
   // Fan out across every instance of a type; one unreachable instance must not
   // blank the rest. Tag each record with its source + instance.
@@ -99,8 +108,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') || '50', 10);
+    const page = clampInt(searchParams.get('page'), 1, 1, 1000);
+    const pageSize = clampInt(searchParams.get('pageSize'), 50, 1, 200);
 
     const result = await getQueueCached(page, pageSize);
     return NextResponse.json(result, { headers: QUEUE_CACHE_HEADERS });
