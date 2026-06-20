@@ -627,9 +627,13 @@ function QueueTab({
   async function handleRemove(id: number, source: string, instanceId?: string) {
     setRemoving(true);
     // removeFromClient=true tears down the whole torrent, so removing one record
-    // of a season pack clears every sibling record. Drop the badge by the full
-    // download's record count (and its flagged subset), not just this one item.
-    const siblings = selectedItem ? downloadSiblings(queue, selectedItem) : [];
+    // of a season pack clears every sibling record. Look the record up from the
+    // queue by the passed identifiers (not selectedItem) and drop the badge by
+    // the full download's record count (and its flagged subset).
+    const item = queue.find(
+      (q) => q.id === id && (q.source ?? 'sonarr') === source && q.instanceId === instanceId,
+    );
+    const siblings = item ? downloadSiblings(queue, item) : [];
     const { count, attention } = queueRemovalDelta(siblings);
     try {
       const instanceQs = instanceId ? `&instanceId=${instanceId}` : '';
