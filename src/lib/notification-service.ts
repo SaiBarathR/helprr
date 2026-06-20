@@ -207,8 +207,13 @@ function matchesFilters(
 
   const qualityFilter = parseFilterList(pref.qualityFilter);
   if (qualityFilter.length > 0) {
-    const quality = typeof metadata.qualityName === 'string' ? metadata.qualityName.toLowerCase() : '';
-    if (!quality || !qualityFilter.includes(quality)) return false;
+    // A grouped notification carries the union of its items' qualities in
+    // qualityNames; match if any of them (or the single qualityName) is filtered in.
+    const qualities = [
+      ...(typeof metadata.qualityName === 'string' ? [metadata.qualityName] : []),
+      ...(Array.isArray(metadata.qualityNames) ? metadata.qualityNames.map((q) => String(q)) : []),
+    ].map((q) => q.toLowerCase());
+    if (!qualities.some((q) => qualityFilter.includes(q))) return false;
   }
 
   const tagFilter = parseFilterList(pref.tagFilter);

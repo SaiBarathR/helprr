@@ -708,12 +708,14 @@ export class PollingService {
 
     const n = instances.length;
     const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
-    const collector = new PollNotificationCollector();
     let badgeTotal = 0;
     let badgeAttention = 0;
 
     for (const { connection, client } of instances) {
       const instanceId = connection.id;
+      // Per-instance so a failed instance can't bleed its buffered events into
+      // the next instance's flush (and re-fire next cycle as duplicates).
+      const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
       try {
         const state = await prisma.pollingState.upsert({
@@ -925,12 +927,14 @@ export class PollingService {
 
     const n = instances.length;
     const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
-    const collector = new PollNotificationCollector();
     let badgeTotal = 0;
     let badgeAttention = 0;
 
     for (const { connection, client } of instances) {
       const instanceId = connection.id;
+      // Per-instance so a failed instance can't bleed its buffered events into
+      // the next instance's flush (and re-fire next cycle as duplicates).
+      const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
       try {
         const state = await prisma.pollingState.upsert({
@@ -1127,12 +1131,14 @@ export class PollingService {
 
     const n = instances.length;
     const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
-    const collector = new PollNotificationCollector();
     let badgeTotal = 0;
     let badgeAttention = 0;
 
     for (const { connection, client } of instances) {
       const instanceId = connection.id;
+      // Per-instance so a failed instance can't bleed its buffered events into
+      // the next instance's flush (and re-fire next cycle as duplicates).
+      const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
       try {
         const state = await prisma.pollingState.upsert({

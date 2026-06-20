@@ -168,15 +168,17 @@ function buildGroupedNotification(group: Entry[]): {
   const instanceLabel = metaString(first.metadata, 'instanceLabel');
   if (instanceLabel) metadata.instanceLabel = instanceLabel;
 
-  // Preserve per-device quality/tag filtering for the common homogeneous burst:
-  // a single shared quality + the union of tags let notifyEvent's matchesFilters
-  // pass when an item matches the user's filter.
+  // Preserve per-device quality/tag filtering. A single shared quality is kept as
+  // qualityName (for display); qualityNames carries the union so notifyEvent's
+  // matchesFilters still passes when ANY item matches the user's filter — mirroring
+  // the tag union below, so a mixed-quality burst isn't silently suppressed.
   const qualities = new Set(
     group
       .map((e) => e.event.metadata?.qualityName)
       .filter((v): v is string => typeof v === 'string'),
   );
   if (qualities.size === 1) metadata.qualityName = [...qualities][0];
+  if (qualities.size > 0) metadata.qualityNames = [...qualities];
   const tags = new Set<string>();
   for (const e of group) {
     const t = e.event.metadata?.tags;
