@@ -183,6 +183,10 @@ model NotificationHistory {
   dedupeKey String?
 
   @@index([eventType, dedupeKey])
+  // Covers the upcomingPremiere dedupe prefetch in polling-service
+  // (eventType equality + createdAt range) so it seeks the slice instead of
+  // range-scanning createdAt and filtering eventType in memory.
+  @@index([eventType, createdAt])
   @@index([userId, createdAt])
   @@index([createdAt])
 }

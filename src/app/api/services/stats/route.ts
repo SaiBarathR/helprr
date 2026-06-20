@@ -71,8 +71,10 @@ async function collectArr<C extends StatClient>(
 
   const per = await Promise.all(
     instances.map(async ({ client }) => {
-      // Settle each read independently so one failing call (e.g. disk) doesn't
-      // drop a sibling's data — matching the old per-call resilience.
+      // Settle each read independently so one failing call doesn't drop a
+      // sibling's data. This is slightly MORE resilient than the old sequential
+      // try: a failed library count no longer suppresses the queue/disk reads,
+      // so activeDownloads can now surface even when only the count call fails.
       const [countRes, queueRes, diskRes] = await Promise.allSettled([
         getCount(client),
         client.getQueue(1, 1),
