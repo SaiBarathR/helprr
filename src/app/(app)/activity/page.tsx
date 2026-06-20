@@ -682,11 +682,17 @@ function QueueTab({
         }
       }
       toast.success(delta.count > 1 ? `Removed ${delta.count} ${packNoun(source)} from queue` : 'Removed from queue');
+      // Optimistic nudge only on full success; the badge poll reconciles a partial delete.
       adjustBadge('activity', -(delta.count || 1), -delta.attention);
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
+    finally {
+      // Always close the dialog and refetch: a pack "ignore" deletes records one by one,
+      // so a mid-loop failure can leave some already gone — the refetch reflects reality,
+      // and re-running a stale dialog would just retry the deleted records and never succeed.
+      setRemoving(false);
       setRemoveTarget(null);
       void invalidateActivity(queryClient);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
-    finally { setRemoving(false); }
+    }
   }
 
   // Representative record for the remove dialog's copy and option gating.
