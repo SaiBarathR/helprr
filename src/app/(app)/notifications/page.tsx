@@ -54,7 +54,7 @@ import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import type { HistoryItem, QueueItem } from '@/types';
 
-type NotificationSource = 'sonarr' | 'radarr' | 'qbittorrent' | 'jellyfin';
+type NotificationSource = 'sonarr' | 'radarr' | 'lidarr' | 'qbittorrent' | 'jellyfin';
 
 interface NotificationMetadata {
   source?: NotificationSource;

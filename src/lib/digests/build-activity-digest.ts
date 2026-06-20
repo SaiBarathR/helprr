@@ -84,14 +84,17 @@ export function buildActivityDigest(options: BuildOptions): ActivityDigestResult
 
   const counts: Record<string, number> = {};
   const sourceCounts: Record<string, number> = {};
+  // Count true events, not rows: a grouped row stands in for groupCount events,
+  // matching the per-type/source tallies and the body summary.
+  let eventCount = 0;
   for (const row of rows) {
     const inc = getGroupCount(row);
+    eventCount += inc;
     counts[row.eventType] = (counts[row.eventType] ?? 0) + inc;
     const source = getSource(row);
     if (source) sourceCounts[source] = (sourceCounts[source] ?? 0) + inc;
   }
 
-  const eventCount = rows.length;
   if (eventCount === 0) {
     return {
       title,

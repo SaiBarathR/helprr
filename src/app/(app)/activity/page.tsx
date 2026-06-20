@@ -164,6 +164,34 @@ function episodeLabel(item: QueueRecord): string {
   return '';
 }
 
+/** Noun for the items collapsed into a download group, by source (Lidarr ships tracks, not episodes). */
+function packNoun(source?: string): string {
+  if (source === 'lidarr') return 'tracks';
+  if (source === 'sonarr') return 'episodes';
+  return 'items';
+}
+
+/** All queue records sharing `item`'s physical download (≥1, includes item). */
+function downloadSiblings(queue: QueueRecord[], item: QueueRecord): QueueRecord[] {
+  if (!item.downloadId) return [item];
+  return queue.filter(
+    (q) =>
+      q.downloadId === item.downloadId &&
+      q.source === item.source &&
+      (q.instanceId ?? '') === (item.instanceId ?? ''),
+  );
+}
+
+/** Badge delta for removing a whole download: total = record count, attention = flagged subset. */
+function queueRemovalDelta(items: QueueRecord[]): { count: number; attention: number } {
+  return {
+    count: items.length,
+    attention: items.filter(
+      (it) => classifyQueueIssue(it.trackedDownloadState, it.trackedDownloadStatus) !== null,
+    ).length,
+  };
+}
+
 // --- Tabs definition ---
 
 type TabKey = 'queue' | 'failed' | 'missing' | 'cutoff';
@@ -598,11 +626,11 @@ function QueueTab({
 
   async function handleRemove(id: number, source: string, instanceId?: string) {
     setRemoving(true);
-    // The removed item leaves the queue (total -1) and, if it was in a
-    // failed/import-blocked state, the attention count too.
-    const wasAttention = selectedItem
-      ? classifyQueueIssue(selectedItem.trackedDownloadState, selectedItem.trackedDownloadStatus) !== null
-      : false;
+    // removeFromClient=true tears down the whole torrent, so removing one record
+    // of a season pack clears every sibling record. Drop the badge by the full
+    // download's record count (and its flagged subset), not just this one item.
+    const siblings = selectedItem ? downloadSiblings(queue, selectedItem) : [];
+    const { count, attention } = queueRemovalDelta(siblings);
     try {
       const instanceQs = instanceId ? `&instanceId=${instanceId}` : '';
       const res = await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false${instanceQs}`, { method: 'DELETE' });
@@ -610,8 +638,8 @@ function QueueTab({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to remove');
       }
-      toast.success('Removed from queue');
-      adjustBadge('activity', -1, wasAttention ? -1 : 0);
+      toast.success(count > 1 ? `Removed ${count} ${packNoun(source)} from queue` : 'Removed from queue');
+      adjustBadge('activity', -(count || 1), -attention);
       setSelectedItem(null);
       void invalidateActivity(queryClient);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
@@ -621,12 +649,10 @@ function QueueTab({
   async function handleRemovePack(group: QueueGroup) {
     setRemovingPackKey(group.key);
     const { rep } = group;
-    // Every episode record shares one torrent; a single DELETE with removeFromClient
-    // tears down the whole download, so the badge drops by the full episode count
+    // Every record shares one torrent; a single DELETE with removeFromClient
+    // tears down the whole download, so the badge drops by the full record count
     // (and the attention slice by however many records were flagged).
-    const attentionCount = group.items.filter(
-      (it) => classifyQueueIssue(it.trackedDownloadState, it.trackedDownloadStatus) !== null
-    ).length;
+    const { count, attention } = queueRemovalDelta(group.items);
     try {
       const instanceQs = rep.instanceId ? `&instanceId=${rep.instanceId}` : '';
       const res = await fetch(`/api/activity/queue/${rep.id}?source=${rep.source || 'sonarr'}&removeFromClient=true&blocklist=false${instanceQs}`, { method: 'DELETE' });
@@ -634,8 +660,8 @@ function QueueTab({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to remove');
       }
-      toast.success(`Removed ${group.items.length} episodes from queue`);
-      adjustBadge('activity', -group.items.length, -attentionCount);
+      toast.success(`Removed ${count} ${packNoun(rep.source)} from queue`);
+      adjustBadge('activity', -count, -attention);
       void invalidateActivity(queryClient);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
     finally { setRemovingPackKey(null); }
@@ -726,12 +752,22 @@ function QueueTab({
           const season = rep.seasonNumber ?? rep.episode?.seasonNumber;
           const packTitle = rep.series?.title
             ? `${rep.series.title}${season != null ? ` · Season ${season}` : ''}`
-            : rep.title;
-          const episodes = [...group.items].sort(
-            (a, b) =>
+            : rep.artist?.artistName ?? rep.album?.title ?? rep.title;
+          // Surface a blocked/failed buried record on the collapsed header — the
+          // header status only reflects rep, so without this the attention badge
+          // counts it server-side with no visible cause until the pack is expanded.
+          const hasAttention = group.items.some(
+            (it) => classifyQueueIssue(it.trackedDownloadState, it.trackedDownloadStatus) !== null,
+          );
+          const episodes = [...group.items].sort((a, b) => {
+            const sa = a.episode?.seasonNumber ?? a.seasonNumber ?? 0;
+            const sb = b.episode?.seasonNumber ?? b.seasonNumber ?? 0;
+            if (sa !== sb) return sa - sb;
+            return (
               (a.episode?.episodeNumber ?? a.episodeNumber ?? 0) -
               (b.episode?.episodeNumber ?? b.episodeNumber ?? 0)
-          );
+            );
+          });
 
           return (
             <div key={group.key} className="rounded-xl bg-muted/30 overflow-hidden">
@@ -751,9 +787,12 @@ function QueueTab({
                         >
                           {statusLabel(rep)}
                         </Badge>
+                        {hasAttention && (
+                          <AlertTriangle className="h-3 w-3 text-amber-500" aria-label="Some items need attention" />
+                        )}
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
                           <Layers className="h-2.5 w-2.5" />
-                          {group.items.length} episodes
+                          {group.items.length} {packNoun(rep.source)}
                         </Badge>
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                           {rep.source}
