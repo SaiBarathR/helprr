@@ -37,15 +37,19 @@ async function getHandler() {
   // and not comparable; users pick tags by name and matching runs per-instance).
   try {
     const seen = new Set<string>();
-    for (const { client } of await getSonarrClients()) {
-      try {
-        for (const t of await client.getTags()) {
-          if (!seen.has(t.label)) {
-            seen.add(t.label);
-            result.sonarrTags.push({ id: t.id, label: t.label });
-          }
+    // Fetch every instance's tags concurrently; an unreachable instance yields []
+    // rather than failing the union. Array order is preserved so first-seen label
+    // wins exactly as the serial version did.
+    const perInstance = await Promise.all(
+      (await getSonarrClients()).map(({ client }) => client.getTags().catch(() => [])),
+    );
+    for (const tags of perInstance) {
+      for (const t of tags) {
+        if (!seen.has(t.label)) {
+          seen.add(t.label);
+          result.sonarrTags.push({ id: t.id, label: t.label });
         }
-      } catch { /* instance unreachable */ }
+      }
     }
   } catch {
     /* Sonarr not configured */
@@ -53,15 +57,16 @@ async function getHandler() {
 
   try {
     const seen = new Set<string>();
-    for (const { client } of await getRadarrClients()) {
-      try {
-        for (const t of await client.getTags()) {
-          if (!seen.has(t.label)) {
-            seen.add(t.label);
-            result.radarrTags.push({ id: t.id, label: t.label });
-          }
+    const perInstance = await Promise.all(
+      (await getRadarrClients()).map(({ client }) => client.getTags().catch(() => [])),
+    );
+    for (const tags of perInstance) {
+      for (const t of tags) {
+        if (!seen.has(t.label)) {
+          seen.add(t.label);
+          result.radarrTags.push({ id: t.id, label: t.label });
         }
-      } catch { /* instance unreachable */ }
+      }
     }
   } catch {
     /* Radarr not configured */

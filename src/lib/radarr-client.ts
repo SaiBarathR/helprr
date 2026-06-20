@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { arrHttpAgent, arrHttpsAgent } from '@/lib/http-agents';
 import type {
   RadarrMovie,
   RadarrCollection,
@@ -69,6 +70,8 @@ export class RadarrClient {
         'Content-Type': 'application/json',
       },
       timeout: 30_000,
+      httpAgent: arrHttpAgent,
+      httpsAgent: arrHttpsAgent,
     });
   }
 

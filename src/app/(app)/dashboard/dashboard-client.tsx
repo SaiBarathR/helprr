@@ -106,7 +106,6 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
     router.refresh();
   }, [detectedDevice, initialDevice, router]);
 
-  const hasHydrated = useUIStore((s) => s.hasHydrated);
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const setEditMode = useUIStore((s) => s.setDashboardEditMode);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -202,7 +201,9 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
         minHeight: isMobile
           ? 'calc(100dvh - var(--header-height, 0px) - 4rem)'
           : '100%',
-        visibility: hasHydrated ? 'visible' : 'hidden',
+        // Render the shell immediately. themeStyle falls back to sane store
+        // defaults pre-hydration, so first paint shows content (a brief theme
+        // snap) instead of a blank flash while the persisted store rehydrates.
       }}
     >
       {editMode && (

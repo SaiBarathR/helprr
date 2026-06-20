@@ -364,6 +364,37 @@ export async function sendPushNotification(
   }
 }
 
+// Cap concurrent push sends so a burst of events across many users × devices
+// can't pile up all at once against the web-push agent's 20-socket pool
+// (webPushAgent above).
+const PUSH_FANOUT_CONCURRENCY = 10;
+
+// Promise.allSettled with a concurrency limit: runs `fn` over `items` with at
+// most `limit` in flight, preserves input order, and never rejects — every
+// result is settled, exactly like Promise.allSettled.
+async function mapSettled<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let next = 0;
+  const runWorker = async (): Promise<void> => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      try {
+        results[i] = { status: 'fulfilled', value: await fn(items[i]) };
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason };
+      }
+    }
+  };
+  const workers = Array.from({ length: Math.min(limit, items.length) }, runWorker);
+  await Promise.all(workers);
+  return results;
+}
+
 export async function notifyEvent(event: {
   eventType: string;
   title: string;
@@ -411,8 +442,7 @@ export async function notifyEvent(event: {
     : undefined;
 
   type SendOutcome = { kind: 'sent' } | { kind: 'failed' } | { kind: 'skipped' };
-  const results = await Promise.allSettled(
-    subscriptions.map(async (sub): Promise<SendOutcome> => {
+  const results = await mapSettled(subscriptions, PUSH_FANOUT_CONCURRENCY, async (sub): Promise<SendOutcome> => {
       if (requiredCap) {
         if (!sub.user || !can(sub.user, requiredCap)) return { kind: 'skipped' };
       } else if (!sub.user || sub.user.role !== 'admin') {
@@ -427,8 +457,7 @@ export async function notifyEvent(event: {
         { title: event.title, body: event.body, tag, url: targetUrl, actions, data: actionData }
       );
       return { kind: success ? 'sent' : 'failed' };
-    })
-  );
+  });
 
   let sent = 0;
   let skippedByPreference = 0;

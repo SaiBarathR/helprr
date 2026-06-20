@@ -14,11 +14,12 @@ import { SelectionCheck } from './selection-check';
 function getImageUrl(
   images: MediaImage[],
   coverType: string,
-  serviceHint?: ImageServiceHint
+  serviceHint?: ImageServiceHint,
+  opts?: { width?: number }
 ): string | null {
   const img = images.find((i) => i.coverType === coverType);
   const raw = img?.remoteUrl || img?.url || null;
-  return toCachedImageSrc(raw, serviceHint);
+  return toCachedImageSrc(raw, serviceHint, opts);
 }
 
 function formatBytes(bytes: number) {
@@ -101,7 +102,9 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
   onToggleSelect,
 }: MediaOverviewItemProps) {
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
-  const poster = getImageUrl(images, 'poster', posterHint);
+  // List thumbnails render at 80–112px CSS; 240px stays retina-crisp instead of
+  // fetching the route's 600px default.
+  const poster = getImageUrl(images, 'poster', posterHint, { width: 240 });
   const show = (field: string) => visibleFields.includes(field);
 
   const rowClass = cn(
