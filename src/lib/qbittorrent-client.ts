@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
 
 export interface TorrentFile {
@@ -75,6 +76,10 @@ export class QBittorrentClient {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       timeout: 30_000,
+      // Keep-alive socket pooling — orthogonal to the cookie auth flow below,
+      // which sets headers/cookies per request regardless of the underlying socket.
+      httpAgent: keepAliveHttpAgent,
+      httpsAgent: keepAliveHttpsAgent,
     });
   }
 

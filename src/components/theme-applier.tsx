@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useUIStore } from '@/lib/store';
-import { buildDashboardThemeStyle } from '@/lib/dashboard-theme';
+import { buildDashboardThemeStyle, THEME_VARS_STORAGE_KEY } from '@/lib/dashboard-theme';
 
 export function ThemeApplier() {
   const accent = useUIStore((s) => s.dashboardAccent);
@@ -35,6 +35,14 @@ export function ThemeApplier() {
         root.style.removeProperty(key);
       }
     });
+
+    // Persist the resolved vars so the pre-paint bootstrap script (root layout)
+    // can replay them onto <html> on the next load, avoiding the theme snap.
+    try {
+      localStorage.setItem(THEME_VARS_STORAGE_KEY, JSON.stringify(themeStyle));
+    } catch {
+      // best-effort — a full / disabled localStorage just means the next load snaps
+    }
   }, [accent, palette, gradient, font, fg, fgMute, fgSubtle, hasHydrated]);
 
   return null;
