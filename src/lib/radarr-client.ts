@@ -55,6 +55,7 @@ interface DeleteQueueOptions {
   removeFromClient?: boolean;
   blocklist?: boolean;
   changeCategory?: boolean;
+  skipRedownload?: boolean;
 }
 
 export class RadarrClient {
@@ -188,6 +189,7 @@ export class RadarrClient {
       blocklist: options.blocklist ?? false,
     };
     if (options.changeCategory) params.changeCategory = true;
+    if (options.skipRedownload) params.skipRedownload = true;
     await this.delete(`/api/v3/queue/${id}`, params);
   }
 
