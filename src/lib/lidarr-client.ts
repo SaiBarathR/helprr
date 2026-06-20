@@ -52,6 +52,7 @@ interface DeleteQueueOptions {
   removeFromClient?: boolean;
   blocklist?: boolean;
   changeCategory?: boolean;
+  skipRedownload?: boolean;
 }
 
 interface WantedResponse {
@@ -289,6 +290,7 @@ export class LidarrClient {
       blocklist: options.blocklist ?? false,
     };
     if (options.changeCategory) params.changeCategory = true;
+    if (options.skipRedownload) params.skipRedownload = true;
     await this.delete(`/api/v1/queue/${id}`, params);
   }
 

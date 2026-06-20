@@ -40,6 +40,7 @@ import { useUIStore } from '@/lib/store';
 import { type InstanceOption } from '@/components/instance-filter';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
+import { RemoveQueueDialog, type RemoveQueueOptions } from './_components/remove-queue-dialog';
 
 // --- Status helpers ---
 
@@ -170,6 +171,18 @@ function packNoun(source?: string): string {
   if (source === 'sonarr') return 'episodes';
   return 'items';
 }
+
+/** Display name of the *arr app behind a queue record, for the remove dialog's hint copy. */
+function appNameFor(source?: string): string {
+  if (source === 'radarr') return 'Radarr';
+  if (source === 'lidarr') return 'Lidarr';
+  return 'Sonarr';
+}
+
+/** What the remove dialog is acting on: a single queue record or a whole season-pack group. */
+type RemoveTarget =
+  | { kind: 'item'; item: QueueRecord }
+  | { kind: 'pack'; group: QueueGroup };
 
 /** All queue records sharing `item`'s physical download (≥1, includes item). */
 function downloadSiblings(queue: QueueRecord[], item: QueueRecord): QueueRecord[] {
@@ -554,8 +567,8 @@ function QueueTab({
   const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
   const [removing, setRemoving] = useState(false);
-  // Group key of the season pack currently being removed (spinner + disable on its trash button).
-  const [removingPackKey, setRemovingPackKey] = useState<string | null>(null);
+  // The queue record or season-pack group the remove dialog is currently confirming.
+  const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   // Season-pack groups start collapsed; keyed by group key (stable across polls
   // since it derives from the download id), so an open group stays open on refetch.
@@ -624,52 +637,60 @@ function QueueTab({
     onCountChange(sorted.length);
   }, [sorted.length, onCountChange]);
 
-  async function handleRemove(id: number, source: string, instanceId?: string) {
+  async function executeRemoval(opts: RemoveQueueOptions) {
+    const target = removeTarget;
+    if (!target) return;
+    const removeFromClient = opts.method === 'removeFromClient';
+    const changeCategory = opts.method === 'changeCategory';
+    // removeFromClient/changeCategory act on the whole torrent, so a single DELETE on the
+    // representative record clears every sibling; "ignore" only drops the record(s) we hit.
+    const teardown = removeFromClient || changeCategory;
+
+    // Records to DELETE, and the optimistic badge delta (count + flagged subset).
+    let toDelete: QueueRecord[];
+    let delta: { count: number; attention: number };
+    if (target.kind === 'pack') {
+      delta = queueRemovalDelta(target.group.items);
+      toDelete = teardown ? [target.group.rep] : target.group.items;
+    } else {
+      const item = target.item;
+      delta = teardown
+        ? queueRemovalDelta(downloadSiblings(queue, item))
+        : {
+            count: 1,
+            attention: classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus) !== null ? 1 : 0,
+          };
+      toDelete = [item];
+    }
+    const source = (target.kind === 'pack' ? target.group.rep.source : target.item.source) || 'sonarr';
+
     setRemoving(true);
-    // removeFromClient=true tears down the whole torrent, so removing one record
-    // of a season pack clears every sibling record. Look the record up from the
-    // queue by the passed identifiers (not selectedItem) and drop the badge by
-    // the full download's record count (and its flagged subset).
-    const item = queue.find(
-      (q) => q.id === id && (q.source ?? 'sonarr') === source && q.instanceId === instanceId,
-    );
-    const siblings = item ? downloadSiblings(queue, item) : [];
-    const { count, attention } = queueRemovalDelta(siblings);
     try {
-      const instanceQs = instanceId ? `&instanceId=${instanceId}` : '';
-      const res = await fetch(`/api/activity/queue/${id}?source=${source}&removeFromClient=true&blocklist=false${instanceQs}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to remove');
+      for (const rec of toDelete) {
+        const params = new URLSearchParams({
+          source: rec.source || 'sonarr',
+          removeFromClient: String(removeFromClient),
+          blocklist: String(opts.blocklist),
+        });
+        if (changeCategory) params.set('changeCategory', 'true');
+        if (opts.skipRedownload) params.set('skipRedownload', 'true');
+        if (rec.instanceId) params.set('instanceId', rec.instanceId);
+        const res = await fetch(`/api/activity/queue/${rec.id}?${params.toString()}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Failed to remove');
+        }
       }
-      toast.success(count > 1 ? `Removed ${count} ${packNoun(source)} from queue` : 'Removed from queue');
-      adjustBadge('activity', -(count || 1), -attention);
-      setSelectedItem(null);
+      toast.success(delta.count > 1 ? `Removed ${delta.count} ${packNoun(source)} from queue` : 'Removed from queue');
+      adjustBadge('activity', -(delta.count || 1), -delta.attention);
+      setRemoveTarget(null);
       void invalidateActivity(queryClient);
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
     finally { setRemoving(false); }
   }
 
-  async function handleRemovePack(group: QueueGroup) {
-    setRemovingPackKey(group.key);
-    const { rep } = group;
-    // Every record shares one torrent; a single DELETE with removeFromClient
-    // tears down the whole download, so the badge drops by the full record count
-    // (and the attention slice by however many records were flagged).
-    const { count, attention } = queueRemovalDelta(group.items);
-    try {
-      const instanceQs = rep.instanceId ? `&instanceId=${rep.instanceId}` : '';
-      const res = await fetch(`/api/activity/queue/${rep.id}?source=${rep.source || 'sonarr'}&removeFromClient=true&blocklist=false${instanceQs}`, { method: 'DELETE' });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to remove');
-      }
-      toast.success(`Removed ${count} ${packNoun(rep.source)} from queue`);
-      adjustBadge('activity', -count, -attention);
-      void invalidateActivity(queryClient);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
-    finally { setRemovingPackKey(null); }
-  }
+  // Representative record for the remove dialog's copy and option gating.
+  const removeRep = removeTarget?.kind === 'pack' ? removeTarget.group.rep : removeTarget?.item;
 
   if (loading) {
     return <PageSpinner />;
@@ -835,16 +856,11 @@ function QueueTab({
                 </button>
                 {canManageActivity && (
                   <button
-                    onClick={() => handleRemovePack(group)}
-                    disabled={removingPackKey === group.key}
+                    onClick={() => setRemoveTarget({ kind: 'pack', group })}
                     aria-label="Remove pack from queue"
-                    className="shrink-0 px-3 flex items-center justify-center border-l border-border/40 text-muted-foreground active:bg-destructive/10 active:text-destructive transition-colors disabled:opacity-50"
+                    className="shrink-0 px-3 flex items-center justify-center border-l border-border/40 text-muted-foreground active:bg-destructive/10 active:text-destructive transition-colors"
                   >
-                    {removingPackKey === group.key ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 )}
               </div>
@@ -960,14 +976,9 @@ function QueueTab({
                     <Button
                       variant="outline"
                       className="w-full border-destructive text-destructive hover:bg-destructive/10"
-                      onClick={() => handleRemove(selectedItem.id, selectedItem.source || 'sonarr', selectedItem.instanceId)}
-                      disabled={removing}
+                      onClick={() => { setRemoveTarget({ kind: 'item', item: selectedItem }); setSelectedItem(null); }}
                     >
-                      {removing ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="mr-2 h-4 w-4" />
-                      )}
+                      <Trash2 className="mr-2 h-4 w-4" />
                       Remove
                     </Button>
                   )}
@@ -1007,6 +1018,16 @@ function QueueTab({
           })()}
         </DrawerContent>
       </Drawer>
+
+      <RemoveQueueDialog
+        open={!!removeTarget}
+        onOpenChange={(o) => { if (!o) setRemoveTarget(null); }}
+        title={removeRep?.title ?? ''}
+        appName={appNameFor(removeRep?.source)}
+        canChangeCategory={!!removeRep?.downloadClientHasPostImportCategory}
+        busy={removing}
+        onConfirm={executeRemoval}
+      />
     </>
   );
 }

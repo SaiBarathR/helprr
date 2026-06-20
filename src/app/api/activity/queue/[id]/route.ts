@@ -19,6 +19,8 @@ async function deleteHandler(
     const instanceId = searchParams.get('instanceId') ?? undefined;
     const removeFromClient = searchParams.get('removeFromClient') === 'true';
     const blocklist = searchParams.get('blocklist') === 'true';
+    const changeCategory = searchParams.get('changeCategory') === 'true';
+    const skipRedownload = searchParams.get('skipRedownload') === 'true';
 
     if (!source || !['sonarr', 'radarr', 'lidarr'].includes(source)) {
       return NextResponse.json(
@@ -37,13 +39,13 @@ async function deleteHandler(
 
     if (source === 'sonarr') {
       const sonarr = await getSonarrClient(instanceId);
-      await sonarr.deleteQueueItem(queueId, { removeFromClient, blocklist });
+      await sonarr.deleteQueueItem(queueId, { removeFromClient, blocklist, changeCategory, skipRedownload });
     } else if (source === 'lidarr') {
       const lidarr = await getLidarrClient(instanceId);
-      await lidarr.deleteQueueItem(queueId, { removeFromClient, blocklist });
+      await lidarr.deleteQueueItem(queueId, { removeFromClient, blocklist, changeCategory, skipRedownload });
     } else {
       const radarr = await getRadarrClient(instanceId);
-      await radarr.deleteQueueItem(queueId, { removeFromClient, blocklist });
+      await radarr.deleteQueueItem(queueId, { removeFromClient, blocklist, changeCategory, skipRedownload });
     }
 
     return NextResponse.json({ success: true });
