@@ -1735,9 +1735,10 @@ export class PollingService {
     // row was written when its item was last inside the notify window — at most
     // (notifyBefore + grace) before its air time, and the furthest air time we
     // consider is fetchEndMs — so look back that far plus a day of slack; older
-    // rows can't match a key we build this cycle. New rows always carry a
-    // dedupeKey and this cycle's keys are unique per (source, instance, item,
-    // air-time), so not seeing same-cycle inserts can't double-fire.
+    // rows can't match a key we build this cycle. The snapshot doesn't see rows
+    // written later in this same cycle, so we also record each key as we fire it
+    // (notifiedKeys.add below) — that suppresses a duplicate calendar entry that
+    // a malformed/proxied upstream might repeat within one response.
     const dedupeLookbackMs =
       (settings.upcomingNotifyBeforeMins + BEFORE_AIR_GRACE_MIN) * 60_000 +
       FETCH_END_BUFFER_MS +
@@ -1820,6 +1821,7 @@ export class PollingService {
           continue;
         }
 
+        notifiedKeys.add(dedupeKey);
         await this.notifyAndLog({
           eventType: 'upcomingPremiere',
           title: this.instanceTitle(notificationTitle, connection.label, sonarrClients.length),
@@ -1905,6 +1907,7 @@ export class PollingService {
             continue;
           }
 
+          notifiedKeys.add(dedupeKey);
           await this.notifyAndLog({
             eventType: 'upcomingPremiere',
             title: this.instanceTitle('Upcoming Movie', connection.label, radarrClients.length),
@@ -1958,6 +1961,7 @@ export class PollingService {
         const legacyKey = `lidarr-${album.id}-${releaseMs}`;
         if (alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) continue;
 
+        notifiedKeys.add(dedupeKey);
         await this.notifyAndLog({
           eventType: 'upcomingPremiere',
           title: this.instanceTitle('Upcoming Album', connection.label, lidarrClients.length),

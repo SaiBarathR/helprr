@@ -5,6 +5,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { QueueItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+import { parsePageParams } from '@/lib/pagination';
 
 // Live download progress changes second-to-second — a tiny window only collapses bursts.
 const QUEUE_CACHE_HEADERS = {
@@ -24,16 +25,14 @@ const QUEUE_CACHE_TTL_SECONDS = 5;
 type QueueResult = { records: QueueItem[]; totalRecords: number };
 const inflightQueue = new Map<string, Promise<QueueResult>>();
 
-// Clamp pagination so garbage/unbounded values can't blow up the cache-key
-// cardinality (one Redis entry + one in-flight slot per distinct page:pageSize)
-// or the upstream payload size. Non-numeric input falls back to the default.
-function clampInt(raw: string | null, fallback: number, min: number, max: number): number {
-  const n = parseInt(raw ?? '', 10);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(Math.max(n, min), max);
-}
+async function loadQueue(page: number, pageSize: number): Promise<{ result: QueueResult; complete: boolean }> {
+  // Tracks whether every configured instance answered. A partial result (an
+  // instance was briefly unreachable, or listing connections failed) is still
+  // returned live to this caller, but must NOT be cached — otherwise the missing
+  // downloads would be served to every user for the whole TTL, even after the
+  // instance recovers. Mirrors getCachedTaggedLibrary's "cache only a complete result".
+  let complete = true;
 
-async function loadQueue(page: number, pageSize: number): Promise<QueueResult> {
   // Fan out across every instance of a type; one unreachable instance must not
   // blank the rest. Tag each record with its source + instance.
   const fanOut = async (
@@ -54,6 +53,7 @@ async function loadQueue(page: number, pageSize: number): Promise<QueueResult> {
             totalRecords: q.totalRecords,
           };
         } catch {
+          complete = false;
           return { records: [] as QueueItem[], totalRecords: 0 };
         }
       }),
@@ -64,10 +64,20 @@ async function loadQueue(page: number, pageSize: number): Promise<QueueResult> {
     };
   };
 
+  // A failure listing connections (e.g. a transient DB blip) also yields a
+  // partial aggregate, so treat it as incomplete too.
+  const listClients = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
+    try {
+      return await fn();
+    } catch {
+      complete = false;
+      return [];
+    }
+  };
   const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
-    getSonarrClients().catch(() => []),
-    getRadarrClients().catch(() => []),
-    getLidarrClients().catch(() => []),
+    listClients(getSonarrClients),
+    listClients(getRadarrClients),
+    listClients(getLidarrClients),
   ]);
 
   const [sonarr, radarr, lidarr] = await Promise.all([
@@ -77,8 +87,11 @@ async function loadQueue(page: number, pageSize: number): Promise<QueueResult> {
   ]);
 
   return {
-    records: [...sonarr.records, ...radarr.records, ...lidarr.records],
-    totalRecords: sonarr.totalRecords + radarr.totalRecords + lidarr.totalRecords,
+    result: {
+      records: [...sonarr.records, ...radarr.records, ...lidarr.records],
+      totalRecords: sonarr.totalRecords + radarr.totalRecords + lidarr.totalRecords,
+    },
+    complete,
   };
 }
 
@@ -92,8 +105,11 @@ async function getQueueCached(page: number, pageSize: number): Promise<QueueResu
   if (existing) return existing;
 
   const promise = (async () => {
-    const result = await loadQueue(page, pageSize);
-    await setCachedJson(QUEUE_CACHE_SCOPE, seed, result, QUEUE_CACHE_TTL_SECONDS);
+    const { result, complete } = await loadQueue(page, pageSize);
+    // Only cache a complete snapshot; a partial poll is served live but left
+    // uncached so a recovered instance reappears on the next request instead of
+    // being masked by a stale partial aggregate for the whole TTL.
+    if (complete) await setCachedJson(QUEUE_CACHE_SCOPE, seed, result, QUEUE_CACHE_TTL_SECONDS);
     return result;
   })().finally(() => inflightQueue.delete(seed));
   inflightQueue.set(seed, promise);
@@ -108,8 +124,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { searchParams } = new URL(request.url);
-    const page = clampInt(searchParams.get('page'), 1, 1, 1000);
-    const pageSize = clampInt(searchParams.get('pageSize'), 50, 1, 200);
+    const { page, pageSize } = parsePageParams(searchParams, { defaultSize: 50, maxSize: 200 });
 
     const result = await getQueueCached(page, pageSize);
     return NextResponse.json(result, { headers: QUEUE_CACHE_HEADERS });
