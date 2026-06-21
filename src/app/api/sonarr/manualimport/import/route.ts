@@ -4,16 +4,15 @@ import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
-import { coercePositiveInt, coercePositiveIntArray, sanitizeTitle } from '@/lib/manage-files-guard';
+import {
+  coercePositiveInt,
+  coercePositiveIntArray,
+  sanitizeTitle,
+  checkOwnership,
+  hasValidQuality,
+} from '@/lib/manage-files-guard';
 import { recordFileAudit } from '@/lib/file-audit';
 import type { ArrLanguage, ArrQualityModel, ReleaseType } from '@/types';
-
-// A QualityModel is only usable if it actually carries a quality (id or name).
-// A present-but-empty `{}` would slip past `f.quality ?? scan` and then fail the
-// *arr's NOT NULL Quality constraint, so we treat it as missing.
-function hasValidQuality(q: ArrQualityModel | undefined): q is ArrQualityModel {
-  return !!q && typeof q === 'object' && !!q.quality && (q.quality.id != null || !!q.quality.name);
-}
 
 interface ImportFile {
   path: string;
@@ -99,6 +98,19 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (stray.length) {
     return NextResponse.json(
       { error: `Path(s) not in the series folder: ${stray.map((f) => f.path).join(', ')}` },
+      { status: 400 }
+    );
+  }
+
+  // Episode-mapping guard: the path guard proves only the file's folder, not the
+  // episode mapping. Ensure every submitted episodeId belongs to THIS series so a
+  // crafted request can't re-point a file onto another series' episodes.
+  const episodes = await client.getEpisodes(seriesId);
+  const requestedEpisodeIds = [...new Set(files.flatMap((f) => f.episodeIds))];
+  const ownedEps = checkOwnership(requestedEpisodeIds, episodes);
+  if (!ownedEps.ok) {
+    return NextResponse.json(
+      { error: `Episode id(s) not in series ${seriesId}: ${ownedEps.missing.join(', ')}` },
       { status: 400 }
     );
   }

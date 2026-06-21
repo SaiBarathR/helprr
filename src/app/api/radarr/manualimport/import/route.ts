@@ -4,16 +4,9 @@ import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
-import { coercePositiveInt, sanitizeTitle } from '@/lib/manage-files-guard';
+import { coercePositiveInt, sanitizeTitle, hasValidQuality } from '@/lib/manage-files-guard';
 import { recordFileAudit } from '@/lib/file-audit';
 import type { ArrLanguage, ArrQualityModel } from '@/types';
-
-// A QualityModel is only usable if it carries a quality (id or name); a
-// present-but-empty `{}` would slip past `f.quality ?? scan` and then fail
-// Radarr's NOT NULL Quality constraint, so treat it as missing.
-function hasValidQuality(q: ArrQualityModel | undefined): q is ArrQualityModel {
-  return !!q && typeof q === 'object' && !!q.quality && (q.quality.id != null || !!q.quality.name);
-}
 
 interface ImportFile {
   path: string;

@@ -68,7 +68,6 @@ const INDEXER_FLAGS: Record<Service, { label: string; value: number }[]> = {
     { label: 'Double Upload', value: 4 }, { label: 'Internal', value: 8 },
     { label: 'Scene', value: 16 }, { label: 'Freeleech 75%', value: 32 },
     { label: 'Freeleech 25%', value: 64 }, { label: 'Nuked', value: 128 },
-    { label: 'Subtitles', value: 256 },
   ],
   radarr: [
     { label: 'Freeleech', value: 1 }, { label: 'Halfleech', value: 2 },
@@ -195,6 +194,14 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
     return false;
   }
 
+  // A file is committed via ManualImport (vs a metadata-only edit) when it's
+  // loose or, on Sonarr, an existing file whose episode mapping changed — these
+  // mirror the bucket split in commit().
+  const willImport = (f: ManualImportItem) => !fileIdOf(f) || (isSonarr && mappingChanged(f));
+  // A Sonarr import row is incomplete until it maps to ≥1 episode (e.g. after a
+  // season-only change). Used to block Import + flag the row.
+  const needsEpisode = (f: ManualImportItem) => isSonarr && willImport(f) && episodesOf(f).length === 0;
+
   function toggle(path: string) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -223,6 +230,8 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
   const selectedFiles = files.filter((f) => selected.has(f.path));
   const deletableSelected = selectedFiles.filter((f) => fileIdOf(f));
   const deletableBytes = deletableSelected.reduce((s, f) => s + (f.size ?? 0), 0);
+  // Block Import while any selected file would import but has no episode mapped.
+  const unmappedSelected = selectedFiles.some(needsEpisode);
 
   // ── Commit: two-bucket split, mirroring the *arr UI ─────────────────────────
   async function commit() {
@@ -279,6 +288,9 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
     }
 
     setSubmitting(true);
+    // The edits land before the import; if the import then fails we must NOT hide
+    // the already-applied edits behind a generic error.
+    let editsApplied = false;
     try {
       const idKey = isSonarr ? 'seriesId' : 'movieId';
       const bulkPath = isSonarr ? '/api/sonarr/episodefile' : '/api/radarr/moviefile';
@@ -290,6 +302,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
           body: JSON.stringify({ [idKey]: mediaId, mediaTitle, edits: existingEdits }),
         });
         if (!res.ok) throw new ApiError(res.status, (await res.json().catch(() => null))?.error || 'Edit failed');
+        editsApplied = true;
       }
       if (importFiles.length) {
         const res = await arrMutationFetch(instanceId, importPath, {
@@ -315,7 +328,15 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
       invalidateAfter();
       router.back();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to apply changes', { id: 'manage-commit' });
+      const msg = e instanceof Error ? e.message : 'Failed to apply changes';
+      if (editsApplied) {
+        // Edits persisted server-side; refresh so they show, and keep the user
+        // here to retry the import rather than navigating away on a half-success.
+        invalidateAfter();
+        toast.error(`Edits applied, but import failed: ${msg}`, { id: 'manage-commit' });
+      } else {
+        toast.error(msg, { id: 'manage-commit' });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -378,8 +399,8 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
         { prop: 'indexerFlags', label: 'Select Indexer Flags' },
       ];
 
-  const allSelected = files.length > 0 && selected.size === files.length;
-  const someSelected = selected.size > 0 && selected.size < files.length;
+  const allSelected = files.length > 0 && files.every((f) => selected.has(f.path));
+  const someSelected = selected.size > 0 && !allSelected;
 
   return (
     <div className="animate-content-in">
@@ -421,6 +442,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
               const checked = selected.has(f.path);
               const eps = episodesOf(f);
               const fileId = fileIdOf(f);
+              const needsEp = checked && needsEpisode(f);
               const q = qualityOf(f);
               const langs = languagesOf(f);
               const rg = releaseGroupOf(f);
@@ -460,7 +482,12 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
                     </div>
                   </button>
                   {isSonarr && (
-                    <div className="flex w-full items-center gap-2 border-t border-border/30 bg-muted/20 px-3.5 py-2.5">
+                    <div
+                      className={cn(
+                        'flex w-full items-center gap-2 border-t bg-muted/20 px-3.5 py-2.5',
+                        needsEp ? 'border border-dashed border-destructive' : 'border-border/30'
+                      )}
+                    >
                       <div className="min-w-0 flex-1 text-left">
                         {eps.length > 0 ? (
                           <div className="flex items-center gap-2">
@@ -495,7 +522,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
         <Button variant="outline" size="sm" className="flex-1" disabled={submitting || selected.size === 0} onClick={() => setBulkMenuOpen(true)}>
           <Pencil className="mr-1.5 h-4 w-4" />Select…
         </Button>
-        <Button size="sm" className="flex-1" disabled={submitting || selected.size === 0} onClick={commit}>
+        <Button size="sm" className="flex-1" disabled={submitting || selected.size === 0 || unmappedSelected} onClick={commit}>
           {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Import
         </Button>
       </div>
@@ -714,7 +741,7 @@ function ReleaseGroupPicker({ open, onClose, onSelect }: { open: boolean; onClos
         <Input value={val} onChange={(e) => setVal(e.target.value)} placeholder="Release group" autoFocus />
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => onSelect(val.trim())}>Set Release Group</Button>
+          <Button disabled={!val.trim()} onClick={() => onSelect(val.trim())}>Set Release Group</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
