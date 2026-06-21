@@ -13,6 +13,9 @@ const inst = (id?: string) => id ?? 'default';
 export const queryKeys = {
   // ── Reference data (long staleTime) ──────────────────────────────
   qualityProfiles: (svc: ArrService, id?: string) => [svc, 'qualityprofiles', inst(id)] as const,
+  qualityDefinitions: (svc: ArrService, id?: string) => [svc, 'qualitydefinitions', inst(id)] as const,
+  languages: (svc: ArrService, id?: string) => [svc, 'languages', inst(id)] as const,
+  mediaManagementConfig: (svc: ArrService, id?: string) => [svc, 'mediamanagement', inst(id)] as const,
   tags: (svc: ArrService, id?: string) => [svc, 'tags', inst(id)] as const,
   rootFolders: (svc: ArrService, id?: string) => [svc, 'rootfolders', inst(id)] as const,
   metadataProfiles: (id?: string) => ['lidarr', 'metadataprofiles', inst(id)] as const,

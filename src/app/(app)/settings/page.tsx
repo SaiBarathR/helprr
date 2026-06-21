@@ -14,6 +14,7 @@ import {
   Users,
   Link2,
   Activity,
+  FileStack,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -100,6 +101,14 @@ export default function SettingsIndexPage() {
             iconColor="text-cyan-400"
             label="Anime mappings"
             subtitle="AniList season links, bulk reset"
+          />
+          <CategoryRow
+            href="/settings/file-audit"
+            icon={FileStack}
+            iconBg="bg-amber-500/10"
+            iconColor="text-amber-400"
+            label="File operations"
+            subtitle="Audit log of manage edits, deletes, imports"
           />
         </GroupedSection>
       )}

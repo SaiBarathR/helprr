@@ -8,8 +8,12 @@ import type {
   QueueResponse,
   HistoryResponse,
   ManualImportItem,
+  EpisodeFileResource,
   QualityProfile,
+  QualityDefinition,
+  ArrLanguage,
   RootFolder,
+  MediaManagementConfig,
   DiskSpace,
   HealthCheck,
   SonarrLookupResult,
@@ -134,6 +138,49 @@ export class SonarrClient {
 
   async deleteEpisodeFile(id: number): Promise<void> {
     await this.delete(`/api/v3/episodefile/${id}`);
+  }
+
+  // Episode files — Manage Episodes
+  async getEpisodeFiles(seriesId: number): Promise<EpisodeFileResource[]> {
+    return this.get<EpisodeFileResource[]>('/api/v3/episodefile', { seriesId });
+  }
+
+  // Bulk metadata edit. Body is an array of resources keyed by id; the server
+  // applies only the non-null fields. Uses /bulk (not the legacy /editor) so
+  // indexerFlags + releaseType are supported.
+  async bulkEditEpisodeFiles(
+    resources: Partial<EpisodeFileResource>[]
+  ): Promise<EpisodeFileResource[]> {
+    return this.put<EpisodeFileResource[]>('/api/v3/episodefile/bulk', resources);
+  }
+
+  // DELETE /episodefile/bulk carries the ids in the request body.
+  async deleteEpisodeFilesBulk(episodeFileIds: number[]): Promise<void> {
+    await this.client.delete('/api/v3/episodefile/bulk', {
+      data: { episodeFileIds },
+    });
+  }
+
+  // Folder scan for Manage Episodes. filterExistingFiles=false so files already
+  // imported into the series folder still show (the whole point of "manage").
+  async scanManualImport(params: {
+    folder: string;
+    seriesId: number;
+    seasonNumber?: number;
+    filterExistingFiles?: boolean;
+  }): Promise<ManualImportItem[]> {
+    return this.get<ManualImportItem[]>('/api/v3/manualimport', {
+      folder: params.folder,
+      seriesId: params.seriesId,
+      seasonNumber: params.seasonNumber,
+      filterExistingFiles: params.filterExistingFiles ?? false,
+    });
+  }
+
+  // Re-run the import decision engine after a row edit, refreshing rejections +
+  // custom-format score. No disk changes — purely a preview recompute.
+  async reprocessManualImport(items: unknown[]): Promise<ManualImportItem[]> {
+    return this.post<ManualImportItem[]>('/api/v3/manualimport', items);
   }
 
   // Episodes
@@ -308,11 +355,13 @@ export class SonarrClient {
     return this.get<ManualImportItem[]>('/api/v3/manualimport', { downloadId });
   }
 
-  async submitManualImport(body: ManualImportItem[]): Promise<CommandResponse> {
-    return this.post<CommandResponse>('/api/v3/command', {
-      name: 'ManualImport',
-      files: body,
-    });
+  async submitManualImport(
+    body: unknown[],
+    importMode?: 'auto' | 'move' | 'copy'
+  ): Promise<CommandResponse> {
+    const payload: Record<string, unknown> = { name: 'ManualImport', files: body };
+    if (importMode) payload.importMode = importMode;
+    return this.post<CommandResponse>('/api/v3/command', payload);
   }
 
   // Lookup
@@ -327,6 +376,18 @@ export class SonarrClient {
 
   async getRootFolders(): Promise<RootFolder[]> {
     return this.get<RootFolder[]>('/api/v3/rootfolder');
+  }
+
+  async getMediaManagementConfig(): Promise<MediaManagementConfig> {
+    return this.get<MediaManagementConfig>('/api/v3/config/mediamanagement');
+  }
+
+  async getQualityDefinitions(): Promise<QualityDefinition[]> {
+    return this.get<QualityDefinition[]>('/api/v3/qualitydefinition');
+  }
+
+  async getLanguages(): Promise<ArrLanguage[]> {
+    return this.get<ArrLanguage[]>('/api/v3/language');
   }
 
   async getTags(): Promise<Tag[]> {

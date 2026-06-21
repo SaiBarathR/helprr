@@ -10,8 +10,12 @@ import type {
   HistoryItem,
   HistoryResponse,
   ManualImportItem,
+  MovieFileResource,
   QualityProfile,
+  QualityDefinition,
+  ArrLanguage,
   RootFolder,
+  MediaManagementConfig,
   DiskSpace,
   HealthCheck,
   RadarrLookupResult,
@@ -221,16 +225,60 @@ export class RadarrClient {
     return this.get<HistoryItem[]>('/api/v3/history/movie', { movieId });
   }
 
+  // Movie files — Manage Files
+  async getMovieFiles(movieId: number): Promise<MovieFileResource[]> {
+    return this.get<MovieFileResource[]>('/api/v3/moviefile', { movieId });
+  }
+
+  // Bulk metadata edit. Array of resources keyed by id; the server applies only
+  // the non-null fields. Uses /bulk (the /editor endpoint is deprecated upstream).
+  async bulkEditMovieFiles(
+    resources: Partial<MovieFileResource>[]
+  ): Promise<MovieFileResource[]> {
+    return this.put<MovieFileResource[]>('/api/v3/moviefile/bulk', resources);
+  }
+
+  // DELETE /moviefile/bulk carries the ids in the request body.
+  async deleteMovieFilesBulk(movieFileIds: number[]): Promise<void> {
+    await this.client.delete('/api/v3/moviefile/bulk', {
+      data: { movieFileIds },
+    });
+  }
+
+  // Folder scan for Manage Files. movieId WITHOUT a folder hits Radarr's
+  // dedicated "manage files" branch: imported MovieFiles + loose unmapped files
+  // in the movie folder, with no decision-engine rejections on the imported ones.
+  async scanManualImport(params: {
+    movieId: number;
+    folder?: string;
+    filterExistingFiles?: boolean;
+  }): Promise<ManualImportItem[]> {
+    const query: Record<string, unknown> = { movieId: params.movieId };
+    if (params.folder) {
+      query.folder = params.folder;
+      query.filterExistingFiles = params.filterExistingFiles ?? false;
+    }
+    return this.get<ManualImportItem[]>('/api/v3/manualimport', query);
+  }
+
+  // Re-run the import decision engine after a row edit (rejections + CF score).
+  // No disk changes.
+  async reprocessManualImport(items: unknown[]): Promise<ManualImportItem[]> {
+    return this.post<ManualImportItem[]>('/api/v3/manualimport', items);
+  }
+
   // Manual Import
   async getManualImport(downloadId: string): Promise<ManualImportItem[]> {
     return this.get<ManualImportItem[]>('/api/v3/manualimport', { downloadId });
   }
 
-  async submitManualImport(body: ManualImportItem[]): Promise<CommandResponse> {
-    return this.post<CommandResponse>('/api/v3/command', {
-      name: 'ManualImport',
-      files: body,
-    });
+  async submitManualImport(
+    body: unknown[],
+    importMode?: 'auto' | 'move' | 'copy'
+  ): Promise<CommandResponse> {
+    const payload: Record<string, unknown> = { name: 'ManualImport', files: body };
+    if (importMode) payload.importMode = importMode;
+    return this.post<CommandResponse>('/api/v3/command', payload);
   }
 
   // Lookup
@@ -289,6 +337,18 @@ export class RadarrClient {
 
   async getRootFolders(): Promise<RootFolder[]> {
     return this.get<RootFolder[]>('/api/v3/rootfolder');
+  }
+
+  async getMediaManagementConfig(): Promise<MediaManagementConfig> {
+    return this.get<MediaManagementConfig>('/api/v3/config/mediamanagement');
+  }
+
+  async getQualityDefinitions(): Promise<QualityDefinition[]> {
+    return this.get<QualityDefinition[]>('/api/v3/qualitydefinition');
+  }
+
+  async getLanguages(): Promise<ArrLanguage[]> {
+    return this.get<ArrLanguage[]>('/api/v3/language');
   }
 
   async getTags(): Promise<Tag[]> {

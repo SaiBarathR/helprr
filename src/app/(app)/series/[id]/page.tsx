@@ -28,7 +28,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight, ChevronLeft,
-  Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert,
+  Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert, FileStack,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
@@ -208,6 +208,7 @@ export default function SeriesDetailPage() {
   const canEditTags = useCan('series.editTags');
   const canChangePath = useCan('series.changePath');
   const canDeleteSeries = useCan('series.delete');
+  const canManageFiles = useCan('series.manageFiles');
   const canEditSeries = canEditMonitoring || canEditTags || canChangePath;
   // AniList mapping mutations are admin-only server-side — hide their triggers
   // from members so they don't open a drawer whose saves would 403.
@@ -1108,6 +1109,18 @@ export default function SeriesDetailPage() {
                   <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
                     <FileEdit className="h-4 w-4" />
                     Preview Rename
+                  </DropdownMenuItem>
+                )}
+                {canManageFiles && (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      router.push(
+                        `/series/${id}/manage?title=${encodeURIComponent(series.title)}${instance ? `&instance=${instance}` : ''}`
+                      )
+                    }
+                  >
+                    <FileStack className="h-4 w-4" />
+                    Manage Episodes
                   </DropdownMenuItem>
                 )}
                 {canDeleteSeries && (
