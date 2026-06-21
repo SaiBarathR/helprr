@@ -86,7 +86,7 @@ export default function FileAuditPage() {
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {r.fileCount} file{r.fileCount === 1 ? '' : 's'}
                   {fields?.length ? ` · ${fields.join(', ')}` : ''}
-                  {totalBytes ? ` · ${formatBytes(totalBytes)}` : ''}
+                  {totalBytes != null ? ` · ${formatBytes(totalBytes)}` : ''}
                   {' · by '}{r.username}
                 </p>
                 {paths?.length ? (
