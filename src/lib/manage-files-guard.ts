@@ -5,6 +5,8 @@
 // the upstream bulk endpoints do NOT scope deletes/edits by series/movie, so
 // this is what keeps a crafted request (and the audit row) honest.
 
+import type { ArrQualityModel } from '@/types';
+
 /** A positive integer, or null. */
 export function coercePositiveInt(value: unknown): number | null {
   const n = typeof value === 'number' ? value : Number(value);
@@ -48,4 +50,13 @@ export function checkOwnership<T extends { id: number }>(
     else missing.push(id);
   }
   return missing.length ? { ok: false, missing } : { ok: true, matched };
+}
+
+/**
+ * A QualityModel is only usable if it carries a quality (id or name); a
+ * present-but-empty `{}` would slip past `f.quality ?? scan` and then fail the
+ * *arr's NOT NULL Quality constraint, so treat it as missing.
+ */
+export function hasValidQuality(q: ArrQualityModel | undefined): q is ArrQualityModel {
+  return !!q && typeof q === 'object' && !!q.quality && (q.quality.id != null || !!q.quality.name);
 }
