@@ -521,3 +521,38 @@ model CleanupHistory {
   @@index([hash])
   @@index([action])
 }
+
+// ==================== File operations: audit trail ====================
+
+enum FileOperation {
+  EDIT // bulk metadata edit (quality / language / release group / flags / release type / edition)
+  DELETE // remove file(s) from disk (recycle bin or permanent, per the *arr config)
+  IMPORT // manual import of loose/unmapped files (moves + renames on disk)
+}
+
+// Accountability log for Manage Episodes / Manage Files. These operations touch
+// the user's own media on disk and are largely irreversible, so every attempt —
+// success OR failure — is recorded with the acting user. userId is a plain
+// (unlinked) string and username is denormalized so a row OUTLIVES the user it
+// references (deleting a user must never erase who deleted a file). No FK/cascade
+// on purpose — mirrors CleanupHistory.triggeredBy.
+model FileOperationAudit {
+  id           String        @id @default(cuid())
+  userId       String? // acting user id at the time (not a FK — see above)
+  username     String // denormalized actor, retained after user deletion
+  service      ServiceType // SONARR | RADARR
+  instanceId   String? // which ServiceConnection instance the op ran against
+  operation    FileOperation
+  mediaType    String // "series" | "movie"
+  mediaId      Int // Sonarr seriesId / Radarr movieId
+  mediaTitle   String
+  fileCount    Int // number of files targeted
+  details      Json? // file paths, field deltas, recycleBinConfigured, importMode, command id, per-file results
+  success      Boolean
+  errorMessage String?
+  createdAt    DateTime      @default(now())
+
+  @@index([createdAt])
+  @@index([service, mediaId])
+  @@index([userId, createdAt])
+}

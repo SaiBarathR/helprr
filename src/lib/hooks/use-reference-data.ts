@@ -3,7 +3,15 @@
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, type ArrService } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray, withInstanceQuery, ApiError } from '@/lib/query-fetch';
-import type { QualityProfile, RootFolder, Tag, LidarrMetadataProfile } from '@/types';
+import type {
+  QualityProfile,
+  QualityDefinition,
+  ArrLanguage,
+  MediaManagementConfig,
+  RootFolder,
+  Tag,
+  LidarrMetadataProfile,
+} from '@/types';
 
 // Reference data (quality profiles, tags, root folders, metadata profiles)
 // changes rarely, so it gets a long staleTime — and because the query key is
@@ -17,6 +25,51 @@ export function useQualityProfiles(service: ArrService, instanceId?: string) {
     queryFn: jsonFetcher<QualityProfile[]>(`/api/${service}/qualityprofiles`, instanceId),
     staleTime: REFERENCE_STALE,
     select: ensureArray,
+  });
+}
+
+// The catalog the bulk-edit quality picker offers. Sorted heaviest-first so the
+// list reads best→worst, matching how the *arr UIs present it.
+export function useQualityDefinitions(
+  service: ArrService,
+  instanceId?: string,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: queryKeys.qualityDefinitions(service, instanceId),
+    queryFn: jsonFetcher<QualityDefinition[]>(`/api/${service}/qualitydefinitions`, instanceId),
+    staleTime: REFERENCE_STALE,
+    enabled,
+    select: (data) =>
+      [...ensureArray(data)].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0)),
+  });
+}
+
+// Real languages only — "Any" (-1) and "Original" (-2) are stripped: they're not
+// meaningful to assign to a file, and the *arr bulk-edit endpoint rejects them.
+export function useLanguages(service: ArrService, instanceId?: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.languages(service, instanceId),
+    queryFn: jsonFetcher<ArrLanguage[]>(`/api/${service}/languages`, instanceId),
+    staleTime: REFERENCE_STALE,
+    enabled,
+    select: (data) => ensureArray(data).filter((l) => l.id !== -1 && l.id !== -2),
+  });
+}
+
+// Drives the delete-confirmation drawer's "recycle bin vs permanent" warning.
+// Short staleTime (not the long reference window) so the warning reflects a
+// recent recycle-bin config change; the route itself is no-store.
+export function useMediaManagementConfig(
+  service: ArrService,
+  instanceId?: string,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: queryKeys.mediaManagementConfig(service, instanceId),
+    queryFn: jsonFetcher<MediaManagementConfig>(`/api/${service}/config`, instanceId),
+    staleTime: 60_000,
+    enabled,
   });
 }
 

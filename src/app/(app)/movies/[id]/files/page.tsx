@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, FileStack } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useCan } from '@/components/permission-provider';
 import {
   Drawer,
   DrawerClose,
@@ -108,10 +109,12 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
 
 export default function MovieFilesPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const movieId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
+  const canManageFiles = useCan('movies.manageFiles');
 
   // Shares the detail page's cache key so navigating back to the movie is warm.
   const movieQuery = useQuery({
@@ -236,7 +239,23 @@ export default function MovieFilesPage() {
 
       <div className="space-y-6 pb-8">
         <section className="space-y-2">
-          <h2 className="text-3xl font-bold leading-tight">Files</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-3xl font-bold leading-tight">Files</h2>
+            {canManageFiles && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  router.push(
+                    `/movies/${movieId}/manage?title=${encodeURIComponent(movie.title)}${instance ? `&instance=${instance}` : ''}`
+                  )
+                }
+              >
+                <FileStack className="mr-2 h-4 w-4" />
+                Manage
+              </Button>
+            )}
+          </div>
           {movie.hasFile && movieFile ? (
             <button
               onClick={() => setFileDrawerOpen(true)}

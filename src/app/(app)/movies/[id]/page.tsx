@@ -40,6 +40,7 @@ import {
   Film,
   FileText,
   FileEdit,
+  FileStack,
   ExternalLink,
   Sparkles,
 } from 'lucide-react';
@@ -164,6 +165,7 @@ export default function MovieDetailPage() {
   const canChangePath = useCan('movies.changePath');
   const canManageActivity = useCan('activity.manage');
   const canDeleteMovie = useCan('movies.delete');
+  const canManageFiles = useCan('movies.manageFiles');
   const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
 
   // Reference data — shared (and deduped) with the list / edit pages.
@@ -564,6 +566,18 @@ export default function MovieDetailPage() {
                   <DropdownMenuItem onClick={() => setShowRenamePreview(true)}>
                     <FileEdit className="h-4 w-4" />
                     Preview Rename
+                  </DropdownMenuItem>
+                )}
+                {canManageFiles && (
+                  <DropdownMenuItem
+                    onClick={() =>
+                      router.push(
+                        `/movies/${movie.id}/manage?title=${encodeURIComponent(movie.title)}${instance ? `&instance=${instance}` : ''}`
+                      )
+                    }
+                  >
+                    <FileStack className="h-4 w-4" />
+                    Manage Files
                   </DropdownMenuItem>
                 )}
                 {canDeleteMovie && (
