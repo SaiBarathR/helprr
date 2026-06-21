@@ -154,6 +154,25 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
     if (isError) toast.error('Failed to scan for files');
   }, [isError]);
 
+  // When a re-scan drops files (Refresh, or after a delete/import), prune their
+  // now-orphaned selection/override entries so the "N of M selected" count and
+  // select-all state stay accurate. (Actions already filter by current files, so
+  // this is for display correctness + to bound the maps; no-op returns avoid
+  // re-render churn.)
+  React.useEffect(() => {
+    const paths = new Set(files.map((f) => f.path));
+    setSelected((prev) => {
+      const next = new Set([...prev].filter((p) => paths.has(p)));
+      return next.size === prev.size ? prev : next;
+    });
+    setOverrides((prev) => {
+      if ([...prev.keys()].every((p) => paths.has(p))) return prev;
+      const next = new Map<string, RowOverride>();
+      for (const [p, v] of prev) if (paths.has(p)) next.set(p, v);
+      return next;
+    });
+  }, [files]);
+
   // ── effective value getters (override wins over the scanned value) ──────────
   const ov = (f: ManualImportItem): RowOverride => overrides.get(f.path) ?? {};
   const episodesOf = (f: ManualImportItem) => ov(f).episodes ?? f.episodes ?? [];
