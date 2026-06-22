@@ -485,7 +485,9 @@ export async function getAnimeAiringSchedule(params: {
             season
             seasonYear
             episodes
+            duration
             averageScore
+            meanScore
             isAdult
             genres
             studios(isMain: true) { nodes { id name } }

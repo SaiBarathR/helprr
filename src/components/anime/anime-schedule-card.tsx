@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { Check } from 'lucide-react';
+import { Check, Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListScheduleEntry } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
@@ -35,6 +35,10 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
   const formatLabel = formatFormatLabel(media.format);
   const studio = media.studios[0] ?? null;
   const inLibrary = library?.exists ?? false;
+  const rating = media.averageScore ?? media.meanScore;
+  const hasRating = rating != null && rating > 0;
+  const totalEpisodes = media.episodes;
+  const duration = media.duration && media.duration > 0 ? media.duration : null;
 
   return (
     <Link
@@ -84,6 +88,7 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
           <div className="flex items-baseline gap-1.5 text-[11px]">
             <span className="font-mono tabular-nums text-muted-foreground">
               Ep {episode}
+              {totalEpisodes ? ` / ${totalEpisodes}` : ''}
             </span>
             <span className="text-muted-foreground/50">·</span>
             <span
@@ -91,12 +96,28 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
             >
               {formatTime(airingAt)}
             </span>
+            {duration && (
+              <>
+                <span className="text-muted-foreground/50">·</span>
+                <span className="font-mono tabular-nums text-muted-foreground">
+                  {duration}m
+                </span>
+              </>
+            )}
           </div>
-          {formatLabel && (
-            <span className="inline-flex w-fit items-center rounded-sm border border-border/40 px-1 py-px text-[9px] tracked-caps text-muted-foreground/70">
-              {formatLabel}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5">
+            {hasRating && (
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground/90">
+                <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />
+                {rating}%
+              </span>
+            )}
+            {formatLabel && (
+              <span className="inline-flex w-fit items-center rounded-sm border border-border/40 px-1 py-px text-[9px] tracked-caps text-muted-foreground/70">
+                {formatLabel}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </Link>
