@@ -956,6 +956,12 @@ export interface RadarrCollectionMovie {
   year?: number;
   images?: MediaImage[];
   monitored?: boolean;
+  // Extra fields returned by GET /api/v3/collection, consumed by the Collections view.
+  genres?: string[];
+  runtime?: number;
+  status?: string;
+  overview?: string;
+  isExisting?: boolean; // true when the movie is already in the Radarr library
 }
 
 export interface RadarrCollection {
@@ -965,6 +971,43 @@ export interface RadarrCollection {
   monitored: boolean;
   images?: MediaImage[];
   movies: RadarrCollectionMovie[];
+  // Extra fields returned by GET /api/v3/collection. Defaults Radarr applies when
+  // adding a missing movie from the collection (quality/root/availability/search).
+  overview?: string;
+  rootFolderPath?: string;
+  qualityProfileId?: number;
+  minimumAvailability?: string;
+  searchOnAdd?: boolean;
+  missingMovies?: number;
+}
+
+// ── Slim client-facing collection DTOs (returned by GET /api/radarr/collections) ──
+// The raw Radarr response is ~140 KB of full movie objects; these carry only what the
+// Collections grid + drawer render, keeping the payload small and the view fast.
+export interface CollectionMovieSummary {
+  tmdbId: number;
+  title: string;
+  year?: number;
+  poster: string | null; // remoteUrl (TMDB), proxied client-side
+  inLibrary: boolean;
+  monitored: boolean;
+  movieId?: number; // Radarr movie id when in library — enables deep-link + search
+  hasFile?: boolean; // when in library: whether a file is present
+}
+
+export interface CollectionSummary {
+  id: number;
+  title: string;
+  tmdbId?: number;
+  monitored: boolean;
+  overview?: string;
+  poster: string | null;
+  genres: string[];
+  movieCount: number;
+  missingMovies: number; // not-in-library count, from Radarr
+  movies: CollectionMovieSummary[];
+  instanceId?: string;
+  instanceLabel?: string;
 }
 
 // Library Gaps page — episode/season targets carry arrays because gaps are
@@ -986,6 +1029,7 @@ export interface LibraryGapItem {
   search: LibraryGapSearchTarget;
   collectionTitle?: string;
   tmdbId?: number;
+  collectionTmdbId?: number; // TMDB collection id — links a collection-gap card to its collection page
 }
 
 export type LibraryGapSectionId = 'missingSeasons' | 'newUpcoming' | 'collectionGaps' | 'overdue' | 'notReleased';

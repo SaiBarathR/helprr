@@ -24,6 +24,9 @@ export const queryKeys = {
   library: (svc: ArrService, o: { full?: boolean; instanceId?: string } = {}) =>
     [svc, 'library', o.full ? 'full' : 'slim', inst(o.instanceId)] as const,
 
+  // Radarr collections (movie groupings). Keyed like library lists for prefix invalidation.
+  collections: (svc: ArrService, id?: string) => [svc, 'collections', inst(id)] as const,
+
   // ── Detail items ─────────────────────────────────────────────────
   detail: (svc: ArrService, itemId: number, id?: string) =>
     [svc, 'detail', inst(id), itemId] as const,

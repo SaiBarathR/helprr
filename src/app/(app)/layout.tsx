@@ -27,9 +27,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // effect for SSR navs, and so the permission provider is seeded server-side.
   // Independent of each other, so resolve in parallel to keep one DB round-trip
   // off the critical path of every authenticated navigation.
-  const [user, seerrCount, imageCacheGeneration] = await Promise.all([
+  const [user, seerrCount, tmdbCount, imageCacheGeneration] = await Promise.all([
     getCurrentUser(),
     prisma.serviceConnection.count({ where: { type: 'SEERR' } }),
+    prisma.serviceConnection.count({ where: { type: 'TMDB' } }),
     getCacheGeneration(),
   ]);
   if (!user) {
@@ -41,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   setImageCacheGeneration(imageCacheGeneration);
 
   const seerrConfigured = seerrCount > 0;
+  const tmdbConfigured = tmdbCount > 0;
 
   const me: MePayload = {
     id: user.id,
@@ -50,6 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     template: user.template,
     capabilities: effectiveCapabilities(user),
     seerrConfigured,
+    tmdbConfigured,
     seerrUserId: user.seerrUserId,
   };
 

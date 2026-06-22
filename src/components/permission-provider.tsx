@@ -12,6 +12,8 @@ export interface MePayload {
   capabilities: Partial<Record<Capability, boolean>>;
   /** Whether a Seerr connection is configured — drives the in-app "Request" button. */
   seerrConfigured: boolean;
+  /** Whether a TMDB connection is configured — gates Discover-backed links (e.g. collection pages). */
+  tmdbConfigured: boolean;
   /** The user's linked Seerr user id (string), if any — used to default "Request As". */
   seerrUserId: string | null;
 }

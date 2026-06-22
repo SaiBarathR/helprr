@@ -222,10 +222,11 @@ async function buildCollectionGaps(
           subtitle: collection.title,
           year: part.year,
           poster: resolvePoster(part.images, 'radarr'),
-          href: `/discover/movie/${part.tmdbId}`, // TMDB detail (add via Discover) — instance-agnostic
+          href: `/discover/movie/${part.tmdbId}`, // fallback — client upgrades to the collection page when TMDB + discover access allow
           search: { kind: 'none' }, // not in Radarr → add via Discover
           collectionTitle: collection.title,
           tmdbId: part.tmdbId,
+          collectionTmdbId: collection.tmdbId, // RadarrCollection.tmdbId is optional → may be undefined
         });
       }
     }

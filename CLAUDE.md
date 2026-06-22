@@ -58,6 +58,11 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+Performance and security are important.
+Stability and instant feedback for the users using this application is also important.
+Also, the code should be easy to understand and maintain.
+
+
 ---
 
 ## What This Project Is

@@ -17,7 +17,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe } from '@/components/permission-provider';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { SelectionCheck } from '@/components/media/selection-check';
@@ -79,6 +79,14 @@ function GapCard({
   const selectable = item.search.kind !== 'none';
   const FallbackIcon = item.search.kind === 'movie' || item.tmdbId ? Film : Tv;
 
+  // A collection-gap card opens the whole collection (showing owned/missing members) rather
+  // than the single movie — but only when that page can actually load: TMDB configured + the
+  // user has Discover access. Otherwise fall back to item.href (the movie Discover page).
+  const canDiscover = useCan('discover.view');
+  const tmdbConfigured = useMe()?.tmdbConfigured ?? false;
+  const usesCollection = Boolean(tmdbConfigured && canDiscover && item.collectionTmdbId);
+  const effectiveHref = usesCollection ? `/discover/collection/${item.collectionTmdbId}` : item.href;
+
   async function handleSearch() {
     setSearching(true);
     try {
@@ -131,6 +139,16 @@ function GapCard({
       >
         {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
       </button>
+    );
+  } else if (usesCollection) {
+    // The whole card links to the collection page — decorative cue signalling that, not a nested link.
+    action = (
+      <div
+        aria-hidden="true"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-background/70 text-foreground backdrop-blur-sm"
+      >
+        <Layers className="h-3.5 w-3.5" />
+      </div>
     );
   } else if (item.tmdbId && item.href) {
     // The whole card already links to item.href (a Discover detail page where it can be added),
@@ -200,8 +218,8 @@ function GapCard({
         >
           {poster}
         </button>
-      ) : item.href && !selectionMode ? (
-        <Link href={item.href} className="block">{poster}</Link>
+      ) : effectiveHref && !selectionMode ? (
+        <Link href={effectiveHref} className="block">{poster}</Link>
       ) : (
         <div className={ringClass}>{poster}</div>
       )}

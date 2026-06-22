@@ -12,7 +12,10 @@ async function getHandler(): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   const u = auth.user;
-  const seerrConfigured = (await prisma.serviceConnection.count({ where: { type: 'SEERR' } })) > 0;
+  const [seerrCount, tmdbCount] = await Promise.all([
+    prisma.serviceConnection.count({ where: { type: 'SEERR' } }),
+    prisma.serviceConnection.count({ where: { type: 'TMDB' } }),
+  ]);
   return NextResponse.json({
     id: u.id,
     name: u.displayName,
@@ -20,7 +23,8 @@ async function getHandler(): Promise<NextResponse> {
     role: u.role,
     template: u.template,
     capabilities: effectiveCapabilities(u),
-    seerrConfigured,
+    seerrConfigured: seerrCount > 0,
+    tmdbConfigured: tmdbCount > 0,
     seerrUserId: u.seerrUserId,
   });
 }

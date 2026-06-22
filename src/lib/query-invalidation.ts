@@ -36,6 +36,13 @@ export const invalidateMovies = (qc: QueryClient, t: { itemId?: number; instance
 export const invalidateMusic = (qc: QueryClient, t: { itemId?: number; instanceId?: string } = {}) =>
   invalidateArr(qc, 'lidarr', t);
 
+// Collections derive from the movie library, so a collection action (monitor toggle,
+// add-missing) can change both. Refetch the collections list and the movie library.
+export function invalidateCollections(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ['radarr', 'collections'] });
+  qc.invalidateQueries({ queryKey: ['radarr', 'library'] });
+}
+
 // Activity: queue / history / wanted / manual-import all share the ['activity'] prefix.
 export const invalidateActivity = (qc: QueryClient) =>
   qc.invalidateQueries({ queryKey: ['activity'] });
