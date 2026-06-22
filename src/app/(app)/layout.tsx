@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
 import { AppShell } from '@/components/layout/app-shell';
+import { CommandPalette } from '@/components/search/command-palette';
 import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-redirect';
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
 import { PermissionProvider, type MePayload } from '@/components/permission-provider';
@@ -65,6 +66,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div className="flex min-h-screen bg-background">
               <StandaloneLaunchRedirect />
               <DiscoverLayoutHydrator />
+              <CommandPalette />
               <Sidebar />
               <AppShell>{children}</AppShell>
             </div>
