@@ -78,9 +78,12 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     if (typeof e.enabled !== 'boolean') {
       return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 });
     }
+    // Normalize to the trimmed value validated above so the stored diskId
+    // matches the canonical live-disk id at lookup time (and dedups correctly).
+    const id = e.diskId.trim();
     // Last entry wins per disk, so a duplicate diskId can't double-alert.
-    byId.set(e.diskId, {
-      diskId: e.diskId,
+    byId.set(id, {
+      diskId: id,
       label: typeof e.label === 'string' ? e.label : '',
       path: typeof e.path === 'string' ? e.path : '',
       minFreeGb: e.minFreeGb,
