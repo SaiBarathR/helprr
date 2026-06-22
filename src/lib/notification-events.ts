@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 export const EVENT_TYPES = [
   'grabbed', 'imported', 'downloadFailed', 'importFailed',
   'upcomingPremiere', 'healthWarning',
-  'serviceDown', 'serviceRestored',
+  'serviceDown', 'serviceRestored', 'diskLowSpace',
   'torrentAdded', 'torrentCompleted', 'torrentDeleted',
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
@@ -74,6 +74,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     label: 'Service Restored',
     description: 'When an unreachable service comes back online',
     iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
+  },
+  diskLowSpace: {
+    type: 'diskLowSpace', group: 'services',
+    label: 'Low Disk Space',
+    description: 'When a disk drops below its free-space threshold',
+    iconName: 'AlertTriangle', colorClass: 'bg-orange-500/10 text-orange-500',
   },
   torrentAdded: {
     type: 'torrentAdded', group: 'qbittorrent',
@@ -170,7 +176,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'services',
     title: 'Services',
-    types: ['serviceDown', 'serviceRestored'],
+    types: ['serviceDown', 'serviceRestored', 'diskLowSpace'],
   },
   {
     id: 'qbittorrent',

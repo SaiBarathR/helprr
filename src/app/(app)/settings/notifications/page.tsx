@@ -19,6 +19,7 @@ import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
 import { EventTypePrefs } from '@/components/notifications/event-type-prefs';
 import { QuietHoursSection } from '@/components/notifications/quiet-hours-section';
+import { DiskLowSpaceAlerts } from '@/components/settings/disk-low-space-alerts';
 import { useMe } from '@/components/permission-provider';
 
 const TIMING_OPTIONS = [
@@ -233,6 +234,8 @@ export default function NotificationsSettingsPage() {
       )}
 
       <QuietHoursSection />
+
+      {isAdmin && <DiskLowSpaceAlerts />}
 
       {isAdmin && (
       <GroupedSection title="Upcoming releases" footer="Synced across devices">
