@@ -252,6 +252,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
                     instanceId={instanceId}
                     canAdd={canAdd}
                     adding={addingTmdb.has(m.tmdbId)}
+                    bulkAdding={addAllPending}
                     onAdd={() => addMovie(m.tmdbId)}
                     onNavigate={onClose}
                   />
@@ -270,6 +271,7 @@ function CollectionMoviePoster({
   instanceId,
   canAdd,
   adding,
+  bulkAdding,
   onAdd,
   onNavigate,
 }: {
@@ -277,6 +279,7 @@ function CollectionMoviePoster({
   instanceId?: string;
   canAdd: boolean;
   adding: boolean;
+  bulkAdding: boolean;
   onAdd: () => void;
   onNavigate: () => void;
 }) {
@@ -330,11 +333,11 @@ function CollectionMoviePoster({
             <button
               type="button"
               onClick={onAdd}
-              disabled={adding}
+              disabled={adding || bulkAdding}
               aria-label={`Add ${movie.title} to Radarr`}
               className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--hpr-amber)] text-[var(--hpr-ink)] shadow transition-transform active:scale-95 disabled:opacity-70"
             >
-              {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {adding || bulkAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             </button>
           ) : (
             <span className="rounded-full bg-background/70 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
