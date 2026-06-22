@@ -46,6 +46,7 @@ const TTL_BY_EVENT: Record<string, number> = {
   healthWarning: 3600,
   serviceDown: 3600,
   serviceRestored: 3600,
+  diskLowSpace: 3600,
   upcomingPremiere: 86400,
   cleanupStrike: 60,
   cleanupRemoved: 60,

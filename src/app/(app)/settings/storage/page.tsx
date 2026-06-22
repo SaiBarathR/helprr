@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { DiskLowSpaceAlerts } from '@/components/settings/disk-low-space-alerts';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 
 interface CacheUsageStats {
@@ -23,7 +24,6 @@ interface CacheUsageStats {
   anilistEntries: number;
   apiEntries: number;
 }
-
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -298,6 +298,8 @@ export default function StorageSettingsPage() {
           </>
         )}
       </GroupedSection>
+
+      <DiskLowSpaceAlerts />
 
       <GroupedSection title="Cleanup history" footer="Server action — affects all devices">
         <div className="grouped-row">

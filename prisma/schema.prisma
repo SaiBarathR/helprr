@@ -236,6 +236,8 @@ model AppSettings {
   anilistDetailTtlMin      Int     @default(1440)          // anime/manga/staff/character/studio details
   anilistAiringTtlMin      Int     @default(10)            // next-airing + airing schedule
   qbtBandwidthSchedule     Json?                          // Bandwidth-schedule rules applied to qBittorrent global limits
+  diskThresholds           Json?                          // [{ diskId, label, path, minFreeGb, enabled }] — per-disk low-space alert config
+  diskAlertState           Json?                          // { [diskId]: { below, lastAlertAt } } — server-managed low-space alert bookkeeping
   discoverLayout           Json?                          // User-configured discover homepage layout (sections order, visibility, custom carousels)
   defaultDesktopLayoutId   String?                        // Active DashboardLayout for desktop viewport
   defaultMobileLayoutId    String?                        // Active DashboardLayout for mobile viewport

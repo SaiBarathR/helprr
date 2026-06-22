@@ -177,6 +177,7 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   healthWarning: 'notify.health',
   serviceDown: 'notify.health',
   serviceRestored: 'notify.health',
+  diskLowSpace: 'notify.health',
   torrentAdded: 'notify.torrents',
   torrentCompleted: 'notify.torrents',
   torrentDeleted: 'notify.torrents',

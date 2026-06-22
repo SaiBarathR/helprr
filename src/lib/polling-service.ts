@@ -1,5 +1,14 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
+import {
+  getAggregatedDiskSpace,
+  diskId,
+  parseDiskThresholds,
+  parseDiskAlertState,
+  diskAlertStateEqual,
+  type DiskAlertState,
+} from '@/lib/disk-space';
 import { getDefaultConnection } from '@/lib/arr-instances';
 import { SEERR_MEDIA_STATUS, SEERR_REQUEST_STATUS } from '@/types/seerr';
 import { getCachedSeerrMediaDetail, formatSeerrMediaLabel } from '@/lib/seerr-helpers';
@@ -35,6 +44,10 @@ const BEFORE_AIR_GRACE_MIN = 5;
 const FETCH_END_BUFFER_MS = 60_000;
 
 const MAX_REMINDER_ATTEMPTS = 3;
+
+// While a disk stays below its threshold, re-remind at most this often. Reset on
+// recovery, so a later drop alerts immediately rather than waiting out the window.
+const DISK_ALERT_REMINDER_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function firstStatusMessage(item: QueueItem): string | null {
   const messages = item.statusMessages;
@@ -335,6 +348,7 @@ export class PollingService {
         'pollJellyfin',
         'pollSeerr',
         'pollServiceReachability',
+        'checkDiskSpace',
         'checkUpcoming',
         'checkWatchlistReminders',
         'checkActivityDigest',
@@ -351,6 +365,7 @@ export class PollingService {
         this.pollJellyfin(),
         this.pollSeerr(),
         this.pollServiceReachability(),
+        this.checkDiskSpace(),
         this.checkUpcoming(),
         this.checkWatchlistReminders(),
         this.checkActivityDigest(),
@@ -694,6 +709,86 @@ export class PollingService {
         }
       })
     );
+  }
+
+  // Per-disk low-space alerts. Thresholds are global/admin config
+  // (AppSettings.diskThresholds); the below/above edge + last-reminder time per
+  // disk live in AppSettings.diskAlertState (aggregated, cross-connection — so
+  // PollingState, which is keyed per connection, is the wrong store). notifyEvent
+  // does NOT suppress repeats, so this state is what prevents a push every cycle.
+  private async checkDiskSpace(): Promise<void> {
+    const settings = await getOrCreateAppSettings();
+    const thresholds = parseDiskThresholds(settings.diskThresholds).filter((t) => t.enabled);
+    if (thresholds.length === 0) return; // feature unused → zero cost
+
+    let disks;
+    try {
+      disks = await getAggregatedDiskSpace();
+    } catch (error) {
+      logger.debug('Disk-space check skipped: could not read disk space', {
+        error: errorMessage(error),
+      }, { scope: 'polling' });
+      return;
+    }
+    if (disks.length === 0) return;
+
+    const diskById = new Map(disks.map((d) => [diskId(d), d]));
+    const prevState = parseDiskAlertState(settings.diskAlertState);
+    const nextState: DiskAlertState = {};
+    const nowMs = Date.now();
+    const nowIso = new Date().toISOString();
+
+    for (const threshold of thresholds) {
+      const disk = diskById.get(threshold.diskId);
+      if (!disk) continue; // thresholded disk not present this cycle — prune its state
+
+      const freeGb = disk.freeSpace / 1024 ** 3;
+      const belowNow = freeGb < threshold.minFreeGb;
+      const prev = prevState[threshold.diskId] ?? { below: false, lastAlertAt: null };
+
+      if (!belowNow) {
+        // Recovered (or never below): reset so the next drop alerts immediately.
+        nextState[threshold.diskId] = { below: false, lastAlertAt: null };
+        continue;
+      }
+
+      const lastMs = prev.lastAlertAt ? Date.parse(prev.lastAlertAt) : NaN;
+      const cooldownElapsed = !Number.isFinite(lastMs) || nowMs - lastMs >= DISK_ALERT_REMINDER_MS;
+      const shouldFire = !prev.below || cooldownElapsed;
+
+      if (shouldFire) {
+        const totalGb = disk.totalSpace / 1024 ** 3;
+        const pct = disk.totalSpace > 0 ? Math.round((disk.freeSpace / disk.totalSpace) * 100) : 0;
+        const name = disk.label || disk.path;
+        await this.notifyAndLog({
+          eventType: 'diskLowSpace',
+          title: `Low disk space: ${name}`,
+          body: `${freeGb.toFixed(0)} GB free of ${totalGb.toFixed(0)} GB (${pct}%)`,
+          url: '/settings/storage',
+          metadata: {
+            id: threshold.diskId,
+            path: disk.path,
+            label: disk.label,
+            freeSpace: disk.freeSpace,
+            totalSpace: disk.totalSpace,
+            redirect: '/settings/storage',
+          },
+        }, { service: 'disk', reason: 'low-space', diskId: threshold.diskId });
+        nextState[threshold.diskId] = { below: true, lastAlertAt: nowIso };
+      } else {
+        // Still below but within the reminder window — hold the existing timer.
+        nextState[threshold.diskId] = { below: true, lastAlertAt: prev.lastAlertAt };
+      }
+    }
+
+    // Only write when something actually changed (an alert fired, a recovery, or
+    // a stale key got pruned) — avoid a DB write every cycle when nothing moved.
+    if (!diskAlertStateEqual(prevState, nextState)) {
+      await prisma.appSettings.update({
+        where: { id: 'singleton' },
+        data: { diskAlertState: nextState as unknown as Prisma.InputJsonValue },
+      });
+    }
   }
 
   private async pollSonarr() {
