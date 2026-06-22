@@ -17,12 +17,17 @@ export function tmdbImageUrl(path: string | null | undefined, size: 'w300' | 'w5
   return `${TMDB_IMAGE_BASE}/${size}${path}`;
 }
 
-function normalizeTitleKey(title: string, year: number | null) {
-  const normalized = title
+/** Lowercase, strip punctuation/diacritics to spaces, collapse. The shared basis
+ * for both dedup keys and search text-matching so they agree on title equality. */
+export function normalizeTitle(title: string): string {
+  return title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
-  return `${normalized}::${year ?? 'na'}`;
+}
+
+export function normalizeTitleKey(title: string, year: number | null) {
+  return `${normalizeTitle(title)}::${year ?? 'na'}`;
 }
 
 function normalizeBaseTitle(title: string) {
