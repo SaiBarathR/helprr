@@ -181,6 +181,20 @@ export class RadarrClient {
     return this.get<RadarrCollection[]>('/api/v3/collection');
   }
 
+  // Bulk collection update — PUT /api/v3/collection takes a CollectionUpdateResource.
+  // Only the supplied fields are applied; we use it to toggle monitoring on one id.
+  async updateCollections(body: {
+    collectionIds: number[];
+    monitored?: boolean;
+    monitorMovies?: boolean;
+    searchOnAdd?: boolean;
+    qualityProfileId?: number;
+    rootFolderPath?: string;
+    minimumAvailability?: string;
+  }): Promise<RadarrCollection[]> {
+    return this.put<RadarrCollection[]>('/api/v3/collection', body);
+  }
+
   // Queue
   async getQueue(page: number = 1, pageSize: number = 20): Promise<QueueResponse> {
     return this.get<QueueResponse>('/api/v3/queue', {

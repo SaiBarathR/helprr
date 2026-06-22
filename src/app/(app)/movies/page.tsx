@@ -18,6 +18,7 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
 import { toast } from 'sonner';
@@ -815,7 +816,12 @@ export default function MoviesPage() {
           )}
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." historyKey="movies" />
+        <div className="flex items-center gap-2">
+          <MoviesSubNav active="library" />
+          <div className="flex-1 min-w-0">
+            <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." historyKey="movies" />
+          </div>
+        </div>
       </div>
 
       {(() => {
