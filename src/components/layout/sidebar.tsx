@@ -44,6 +44,26 @@ export function Sidebar() {
 
   const activeHref = getActiveNavHref(navItems, pathname);
 
+  const searchButton = (
+    <button
+      onClick={() => openSearch(true)}
+      className={cn(
+        'w-full relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+        sidebarCollapsed && 'justify-center px-2'
+      )}
+    >
+      <Search className="h-4 w-4 shrink-0" />
+      {!sidebarCollapsed && (
+        <>
+          <span>Search</span>
+          <kbd className="ml-auto rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            ⌘K
+          </kbd>
+        </>
+      )}
+    </button>
+  );
+
   return (
     <aside
       className={cn(
@@ -57,35 +77,14 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar py-2 space-y-1 px-2">
-        {(() => {
-          const searchButton = (
-            <button
-              onClick={() => openSearch(true)}
-              className={cn(
-                'w-full relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-                sidebarCollapsed && 'justify-center px-2'
-              )}
-            >
-              <Search className="h-4 w-4 shrink-0" />
-              {!sidebarCollapsed && (
-                <>
-                  <span>Search</span>
-                  <kbd className="ml-auto rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    ⌘K
-                  </kbd>
-                </>
-              )}
-            </button>
-          );
-          return sidebarCollapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>{searchButton}</TooltipTrigger>
-              <TooltipContent side="right">Search (⌘K)</TooltipContent>
-            </Tooltip>
-          ) : (
-            searchButton
-          );
-        })()}
+        {sidebarCollapsed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{searchButton}</TooltipTrigger>
+            <TooltipContent side="right">Search (⌘K)</TooltipContent>
+          </Tooltip>
+        ) : (
+          searchButton
+        )}
 
         {navItems.map(({ href, icon: Icon, label, badgeArea }) => {
           const slice = badgeArea ? counts[badgeArea] : undefined;
