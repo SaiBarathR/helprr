@@ -14,6 +14,14 @@ function posterOf(images: MediaImage[] | undefined): string | null {
   return img?.remoteUrl || img?.url || null;
 }
 
+// A usable, positive metadata id — or undefined. The *arr APIs report 0 (and NaN
+// from a bad parse) for "no id", and a 0 must NOT become a canonical key like
+// `tvdb:0` that falsely merges every unmapped item in dedup. String ids use a plain
+// truthy check (drops '') at each call site.
+function posId(value: number | null | undefined): number | undefined {
+  return typeof value === 'number' && value > 0 ? value : undefined;
+}
+
 export function moviesToDocs(movies: Tagged<RadarrMovie>[]): SearchDoc[] {
   return movies.map((m): SearchDoc => ({
     id: `movies:${m.instanceId}:${m.id}`,
@@ -21,7 +29,7 @@ export function moviesToDocs(movies: Tagged<RadarrMovie>[]): SearchDoc[] {
     title: m.title,
     sortTitle: normalizeTitle(m.title),
     year: m.year ?? null,
-    ids: { tmdb: m.tmdbId || undefined, imdb: m.imdbId || undefined },
+    ids: { tmdb: posId(m.tmdbId), imdb: m.imdbId || undefined },
     subtitle: m.year ? String(m.year) : undefined,
     poster: posterOf(m.images),
     posterService: 'radarr',
@@ -36,7 +44,7 @@ export function seriesToDocs(series: Tagged<SonarrSeries>[]): SearchDoc[] {
     title: s.title,
     sortTitle: normalizeTitle(s.title),
     year: s.year ?? null,
-    ids: { tvdb: s.tvdbId || undefined, tmdb: s.tmdbId || undefined, imdb: s.imdbId || undefined },
+    ids: { tvdb: posId(s.tvdbId), tmdb: posId(s.tmdbId), imdb: s.imdbId || undefined },
     subtitle: s.year ? String(s.year) : undefined,
     poster: posterOf(s.images),
     posterService: 'sonarr',
@@ -78,8 +86,8 @@ export async function watchlistToDocs(userId: string): Promise<SearchDoc[]> {
 
   return items.map((it): SearchDoc => {
     const ids: SearchDoc['ids'] = {};
-    const ext = Number.parseInt(it.externalId, 10);
-    if (Number.isFinite(ext)) {
+    const ext = posId(Number.parseInt(it.externalId, 10));
+    if (ext !== undefined) {
       if (it.source === 'TMDB') ids.tmdb = ext;
       else if (it.source === 'TVDB') ids.tvdb = ext;
       else if (it.source === 'ANILIST') ids.anilist = ext;
