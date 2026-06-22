@@ -533,7 +533,9 @@ export interface AniListAiringScheduleMedia {
   season: AniListMediaSeason | null;
   seasonYear: number | null;
   episodes: number | null;
+  duration: number | null;
   averageScore: number | null;
+  meanScore: number | null;
   isAdult: boolean;
   genres: string[];
   studios: { nodes: Array<{ id: number; name: string }> } | null;
@@ -562,7 +564,9 @@ export interface AniListScheduleEntry {
     season: AniListMediaSeason | null;
     seasonYear: number | null;
     episodes: number | null;
+    duration: number | null;
     averageScore: number | null;
+    meanScore: number | null;
     genres: string[];
     studios: string[];
     year: number | null;
