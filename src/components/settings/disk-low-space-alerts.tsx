@@ -104,7 +104,11 @@ export function DiskLowSpaceAlerts() {
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/settings/disk-thresholds');
-      if (!res.ok) return;
+      if (!res.ok) {
+        setRows([]);
+        toast.error('Failed to load low-space alerts');
+        return;
+      }
       const data = (await res.json()) as { thresholds?: ApiThreshold[]; disks?: ApiDisk[] };
       const thresholds = Array.isArray(data.thresholds) ? data.thresholds : [];
       const disks = Array.isArray(data.disks) ? data.disks : [];
@@ -139,7 +143,8 @@ export function DiskLowSpaceAlerts() {
       }
       setRows(next);
     } catch {
-      // noop
+      setRows([]);
+      toast.error('Failed to load low-space alerts');
     }
   }, []);
 
