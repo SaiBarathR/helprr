@@ -38,6 +38,7 @@ export async function setCachedJson<T>(scope: string, keySeed: string, value: T,
 // (e.g. a collection monitor toggle) so the post-mutation refetch returns fresh data
 // instead of replaying a stale entry for the rest of its TTL.
 export async function deleteCachedJson(scope: string, keySeed: string): Promise<void> {
+  if (!(await getCacheImagesEnabled())) return;
   try {
     const redis = await getRedisClient();
     const generation = await getCacheGeneration();

@@ -158,6 +158,9 @@ async function postHandler(request: NextRequest) {
     if (!Number.isFinite(tmdbId) || tmdbId <= 0) {
       return NextResponse.json({ error: 'tmdbId is required' }, { status: 400 });
     }
+    if (!Number.isFinite(collectionId) || collectionId <= 0) {
+      return NextResponse.json({ error: 'collectionId is required' }, { status: 400 });
+    }
 
     const client = await getRadarrClient(instanceId);
 
@@ -166,6 +169,11 @@ async function postHandler(request: NextRequest) {
     const cachedCollections = await getCachedJson<TaggedCollection[]>(COLLECTIONS_SCOPE, cacheKeySeed);
     const collections = cachedCollections ?? (await client.getCollections());
     const collection = collections.find((c) => c.id === collectionId);
+    // Require a real collection — never silently fall back to arbitrary defaults
+    // (first quality profile / root folder) for an unresolved collection.
+    if (!collection) {
+      return NextResponse.json({ error: 'Collection not found' }, { status: 400 });
+    }
 
     const meta = (await client.lookupMovie(`tmdb:${tmdbId}`)).find(
       (r: RadarrLookupResult) => r.tmdbId === tmdbId
@@ -174,9 +182,9 @@ async function postHandler(request: NextRequest) {
       return NextResponse.json({ error: 'Movie metadata not found on TMDB' }, { status: 404 });
     }
 
-    let qualityProfileId = collection?.qualityProfileId;
+    let qualityProfileId = collection.qualityProfileId;
     if (!qualityProfileId) qualityProfileId = (await client.getQualityProfiles())[0]?.id;
-    let rootFolderPath = collection?.rootFolderPath;
+    let rootFolderPath = collection.rootFolderPath;
     if (!rootFolderPath) rootFolderPath = (await client.getRootFolders())[0]?.path;
     if (!qualityProfileId || !rootFolderPath) {
       return NextResponse.json(
@@ -194,8 +202,8 @@ async function postHandler(request: NextRequest) {
       qualityProfileId,
       rootFolderPath,
       monitored: true,
-      minimumAvailability: collection?.minimumAvailability ?? 'released',
-      addOptions: { searchForMovie: search ?? collection?.searchOnAdd ?? true, monitor: 'movieOnly' },
+      minimumAvailability: collection.minimumAvailability ?? 'released',
+      addOptions: { searchForMovie: search ?? collection.searchOnAdd ?? true, monitor: 'movieOnly' },
     } as Partial<RadarrMovie>;
 
     const movie = await client.addMovie(payload);
@@ -230,10 +238,14 @@ async function putHandler(request: NextRequest) {
     const body = await request.json();
     const instanceId = typeof body.instanceId === 'string' ? body.instanceId : undefined;
     const collectionId = Number(body.collectionId);
-    const monitored = Boolean(body.monitored);
     if (!Number.isFinite(collectionId) || collectionId <= 0) {
       return NextResponse.json({ error: 'collectionId is required' }, { status: 400 });
     }
+    // Require an explicit boolean — don't coerce (Boolean("false") would be true).
+    if (typeof body.monitored !== 'boolean') {
+      return NextResponse.json({ error: 'monitored (boolean) is required' }, { status: 400 });
+    }
+    const monitored: boolean = body.monitored;
 
     const client = await getRadarrClient(instanceId);
     await client.updateCollections({ collectionIds: [collectionId], monitored });
