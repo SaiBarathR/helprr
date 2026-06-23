@@ -42,10 +42,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   try {
     const sp = request.nextUrl.searchParams;
 
-    // Non-admins only ever see their own Seerr requests (ignore ?requestedBy=);
-    // admins may filter by any user or see all. An unlinked member sees nothing.
+    // Approvers may filter by any user or see all (?requestedBy= omitted).
+    // Everyone else only sees their linked Seerr user's requests.
     let requestedBy: number | undefined;
-    if (auth.user.role === 'admin') {
+    if (can(auth.user, 'requests.approve')) {
       requestedBy = parseInt32(sp.get('requestedBy'), { min: 1 });
     } else {
       const own = auth.user.seerrUserId ? Number.parseInt(auth.user.seerrUserId, 10) : NaN;
@@ -59,6 +59,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       requestedBy = own;
     }
 
+    const mediaTypeRaw = sp.get('mediaType');
+    const mediaType =
+      mediaTypeRaw === 'movie' || mediaTypeRaw === 'tv' ? mediaTypeRaw : undefined;
+
     const client = await getSeerrClient();
     const data = await client.listRequests({
       take: parseInt32(sp.get('take'), { min: 1, max: MAX_PAGE_SIZE }) ?? 50,
@@ -67,6 +71,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       sort: (sp.get('sort') === 'modified' ? 'modified' : 'added') as SeerrRequestSort,
       sortDirection: (sp.get('sortDirection') === 'asc' ? 'asc' : 'desc') as SeerrSortDirection,
       requestedBy,
+      mediaType,
     });
 
     // Best-effort library lookup so we can deep-link each request into Helprr's

@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import type {
   SeerrMediaDetail,
+  SeerrMediaType,
   SeerrPaginated,
   SeerrRequest,
   SeerrRequestCount,
@@ -50,6 +51,7 @@ export interface SeerrListRequestParams {
   sort?: SeerrRequestSort;
   sortDirection?: SeerrSortDirection;
   requestedBy?: number;
+  mediaType?: SeerrMediaType;
 }
 
 export interface SeerrListUserParams {
@@ -115,6 +117,7 @@ export class SeerrClient {
       sort: params.sort ?? 'added',
       sortDirection: params.sortDirection ?? 'desc',
       ...(params.requestedBy !== undefined ? { requestedBy: params.requestedBy } : {}),
+      ...(params.mediaType ? { mediaType: params.mediaType } : {}),
     });
   }
 

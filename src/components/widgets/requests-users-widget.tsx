@@ -49,6 +49,8 @@ export interface RequestsUsersWidgetProps extends WidgetProps {
    * (no height cap). Leave off for the height-capped dashboard widget cell.
    */
   unbounded?: boolean;
+  /** Full-page only: navigate to Requests tab filtered by this user. */
+  onUserClick?: (user: SeerrUserSummary) => void;
 }
 
 export function RequestsUsersWidget({
@@ -56,6 +58,7 @@ export function RequestsUsersWidget({
   editMode = false,
   hideHeader = false,
   unbounded = false,
+  onUserClick,
 }: RequestsUsersWidgetProps) {
   const { ref, height } = useElementSize<HTMLDivElement>();
   const { visibleCount: maxItems } = useListFetchSize({
@@ -142,7 +145,24 @@ export function RequestsUsersWidget({
             return (
               <div
                 key={user.id}
-                className="flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3"
+                role={onUserClick ? 'button' : undefined}
+                tabIndex={onUserClick ? 0 : undefined}
+                className={cn(
+                  'flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3',
+                  onUserClick &&
+                    'cursor-pointer transition-colors hover:bg-[oklch(1_0_0/3%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                )}
+                onClick={onUserClick ? () => onUserClick(user) : undefined}
+                onKeyDown={
+                  onUserClick
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onUserClick(user);
+                        }
+                      }
+                    : undefined
+                }
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
                   <Users className="h-4 w-4" />
