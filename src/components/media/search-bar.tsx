@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
+import { useSearchHistoryListbox } from '@/lib/hooks/use-search-history-listbox';
 import { SearchHistoryDropdown } from './search-history-dropdown';
 
 interface SearchBarProps {
@@ -50,6 +51,15 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
     setOpen(false);
   };
 
+  const listbox = useSearchHistoryListbox({
+    items,
+    open: !!historyKey && open,
+    onSelect: select,
+    onClose: () => setOpen(false),
+  });
+
+  const showHistory = !!historyKey && open && items.length > 0;
+
   return (
     <div className="relative" ref={wrapperRef}>
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -66,6 +76,8 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
           setOpen(false);
         }}
         onKeyDown={(e) => {
+          listbox.onInputKeyDown(e);
+          if (e.defaultPrevented) return;
           if (e.key === 'Enter') {
             commit();
             setOpen(false);
@@ -73,10 +85,23 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
             setOpen(false);
           }
         }}
+        aria-expanded={showHistory}
+        aria-controls={showHistory ? listbox.listboxId : undefined}
+        aria-autocomplete="list"
+        aria-activedescendant={listbox.activeDescendantId}
         className="pl-9"
       />
       {historyKey && open && (
-        <SearchHistoryDropdown anchorRef={wrapperRef} items={items} onSelect={select} onRemove={remove} />
+        <SearchHistoryDropdown
+          anchorRef={wrapperRef}
+          items={items}
+          onSelect={select}
+          onRemove={remove}
+          highlightedIndex={listbox.highlightedIndex}
+          listboxId={listbox.listboxId}
+          getOptionId={listbox.getOptionId}
+          onHighlightIndex={listbox.setHighlightedIndex}
+        />
       )}
     </div>
   );

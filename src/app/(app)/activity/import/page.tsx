@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useRef, useState, useMemo } from 'react';
+import { Suspense, useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher, ensureArray, withInstanceQuery } from '@/lib/query-fetch';
@@ -15,8 +15,7 @@ import {
 import { toast } from 'sonner';
 import { pollCommand } from '@/lib/arr-command';
 import type { ManualImportItem, SonarrEpisode } from '@/types';
-import { useSearchHistory } from '@/lib/hooks/use-search-history';
-import { SearchHistoryDropdown } from '@/components/media/search-history-dropdown';
+import { SearchInput } from '@/components/media/search-input';
 
 // ── View modes ──────────────────────────────────────────────────────────────
 
@@ -72,9 +71,6 @@ function ManualImportContent() {
   const [view, setView] = useState<View>('files');
   const [pickerFileIndex, setPickerFileIndex] = useState<number>(0);
   const [episodeSearch, setEpisodeSearch] = useState('');
-  const [episodeSearchOpen, setEpisodeSearchOpen] = useState(false);
-  const episodeSearchRef = useRef<HTMLDivElement>(null);
-  const episodeHistory = useSearchHistory('activity-import');
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -294,49 +290,16 @@ function ManualImportContent() {
 
         {/* Search bar */}
         <div className="py-2 border-b border-border">
-          <div className="relative" ref={episodeSearchRef}>
+          <SearchInput
+            value={episodeSearch}
+            onChange={setEpisodeSearch}
+            historyKey="activity-import"
+            placeholder="Search episodes..."
+            autoFocus
+            className="w-full text-sm bg-muted/40 rounded-lg pl-9 pr-3 py-2.5 h-auto shadow-none border-0 outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-primary/40 transition-shadow"
+          >
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Search episodes..."
-              value={episodeSearch}
-              onChange={(e) => {
-                setEpisodeSearch(e.target.value);
-                setEpisodeSearchOpen(true);
-              }}
-              onFocus={() => setEpisodeSearchOpen(true)}
-              onBlur={() => {
-                if (episodeSearch.trim()) episodeHistory.add(episodeSearch.trim());
-                setEpisodeSearchOpen(false);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  if (episodeSearch.trim()) episodeHistory.add(episodeSearch.trim());
-                } else if (e.key === 'Escape') {
-                  setEpisodeSearchOpen(false);
-                }
-              }}
-              className="w-full text-sm bg-muted/40 rounded-lg pl-9 pr-3 py-2.5 outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/40 transition-shadow"
-              autoFocus
-            />
-            {episodeSearchOpen && (
-              <SearchHistoryDropdown
-                anchorRef={episodeSearchRef}
-                items={(() => {
-                  const q = episodeSearch.trim().toLowerCase();
-                  return q
-                    ? episodeHistory.recent.filter((h) => h.toLowerCase().includes(q) && h.toLowerCase() !== q)
-                    : episodeHistory.recent;
-                })()}
-                onSelect={(term) => {
-                  setEpisodeSearch(term);
-                  episodeHistory.add(term);
-                  setEpisodeSearchOpen(false);
-                }}
-                onRemove={episodeHistory.remove}
-              />
-            )}
-          </div>
+          </SearchInput>
         </div>
 
         {/* Episode list */}

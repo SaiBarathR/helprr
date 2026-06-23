@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { History, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,10 @@ interface SearchHistoryDropdownProps {
   items: string[];
   onSelect: (term: string) => void;
   onRemove: (term: string) => void;
+  highlightedIndex: number;
+  listboxId: string;
+  getOptionId: (index: number) => string;
+  onHighlightIndex?: (index: number) => void;
 }
 
 type Mode =
@@ -27,7 +31,16 @@ type Mode =
 // drawer's transform and stops a click from dismissing the layer.
 //
 // Mouse-down is prevented so clicking a row doesn't blur (and commit) the input.
-export function SearchHistoryDropdown({ anchorRef, items, onSelect, onRemove }: SearchHistoryDropdownProps) {
+export function SearchHistoryDropdown({
+  anchorRef,
+  items,
+  onSelect,
+  onRemove,
+  highlightedIndex,
+  listboxId,
+  getOptionId,
+  onHighlightIndex,
+}: SearchHistoryDropdownProps) {
   const [mode, setMode] = useState<Mode | null>(null);
 
   useLayoutEffect(() => {
@@ -52,13 +65,25 @@ export function SearchHistoryDropdown({ anchorRef, items, onSelect, onRemove }: 
     };
   }, [anchorRef, items.length]);
 
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    document.getElementById(getOptionId(highlightedIndex))?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex, getOptionId]);
+
   if (items.length === 0 || !mode) return null;
 
-  const rows = items.map((term) => (
+  const rows = items.map((term, index) => (
     <div
       key={term}
-      className="group flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+      id={getOptionId(index)}
+      role="option"
+      aria-selected={index === highlightedIndex}
+      className={cn(
+        'group flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground',
+        index === highlightedIndex && 'bg-accent text-accent-foreground'
+      )}
       onClick={() => onSelect(term)}
+      onMouseEnter={() => onHighlightIndex?.(index)}
     >
       <History className="h-4 w-4 shrink-0 text-muted-foreground" />
       <span className="flex-1 truncate">{term}</span>
@@ -83,7 +108,12 @@ export function SearchHistoryDropdown({ anchorRef, items, onSelect, onRemove }: 
 
   if (mode.kind === 'inline') {
     return (
-      <div className={cn('absolute left-0 right-0 top-full z-50 mt-1.5', listClass)} onMouseDown={(e) => e.preventDefault()}>
+      <div
+        id={listboxId}
+        role="listbox"
+        className={cn('absolute left-0 right-0 top-full z-50 mt-1.5', listClass)}
+        onMouseDown={(e) => e.preventDefault()}
+      >
         {rows}
       </div>
     );
@@ -91,6 +121,8 @@ export function SearchHistoryDropdown({ anchorRef, items, onSelect, onRemove }: 
 
   return createPortal(
     <div
+      id={listboxId}
+      role="listbox"
       style={{ position: 'fixed', top: mode.top + 6, left: mode.left, width: mode.width, zIndex: 60 }}
       className={listClass}
       onMouseDown={(e) => e.preventDefault()}

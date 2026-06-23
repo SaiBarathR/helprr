@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
+import { useSearchHistoryListbox } from '@/lib/hooks/use-search-history-listbox';
 import { SearchHistoryDropdown } from './search-history-dropdown';
 
 interface SearchInputProps extends Omit<React.ComponentProps<'input'>, 'value' | 'onChange' | 'onSubmit'> {
@@ -57,6 +58,15 @@ export function SearchInput({
     setOpen(false);
   };
 
+  const listbox = useSearchHistoryListbox({
+    items,
+    open,
+    onSelect: select,
+    onClose: () => setOpen(false),
+  });
+
+  const showHistory = open && items.length > 0;
+
   return (
     <div className={cn('relative', wrapperClassName)} ref={wrapperRef}>
       {children}
@@ -77,12 +87,29 @@ export function SearchInput({
           onBlur?.(e);
         }}
         onKeyDown={(e) => {
+          listbox.onInputKeyDown(e);
+          if (e.defaultPrevented) return;
           if (e.key === 'Enter') commit();
           else if (e.key === 'Escape') setOpen(false);
           onKeyDown?.(e);
         }}
+        aria-expanded={showHistory}
+        aria-controls={showHistory ? listbox.listboxId : undefined}
+        aria-autocomplete="list"
+        aria-activedescendant={listbox.activeDescendantId}
       />
-      {open && <SearchHistoryDropdown anchorRef={wrapperRef} items={items} onSelect={select} onRemove={remove} />}
+      {open && (
+        <SearchHistoryDropdown
+          anchorRef={wrapperRef}
+          items={items}
+          onSelect={select}
+          onRemove={remove}
+          highlightedIndex={listbox.highlightedIndex}
+          listboxId={listbox.listboxId}
+          getOptionId={listbox.getOptionId}
+          onHighlightIndex={listbox.setHighlightedIndex}
+        />
+      )}
     </div>
   );
 }
