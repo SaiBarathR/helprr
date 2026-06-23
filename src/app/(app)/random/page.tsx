@@ -1,15 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { hasCapability, useMe } from '@/components/permission-provider';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 
 type FilterType = 'any' | 'movie' | 'series';
+type WatchFilter = 'all' | 'unwatched';
 
 interface RandomPick {
   mediaType: 'movie' | 'series';
@@ -27,12 +30,24 @@ interface RandomPick {
 }
 
 export default function RandomWatchPage() {
+  const me = useMe();
+  const canFilterUnwatched = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
+
   const [type, setType] = useState<FilterType>('any');
+  const [unwatchedOnly, setUnwatchedOnly] = useState(false);
+
+  const watch: WatchFilter = canFilterUnwatched && unwatchedOnly ? 'unwatched' : 'all';
+
+  const apiUrl = useMemo(
+    () => `/api/random-watch?type=${type}&watch=${watch}`,
+    [type, watch]
+  );
+
   // Each fetch returns a fresh random pick; gcTime:0 so we never reuse a stale
-  // one. Changing `type` (new key) or refetching (manual reroll) rolls again.
+  // one. Changing filters (new key) or refetching (manual reroll) rolls again.
   const rollQuery = useQuery({
-    queryKey: ['random-watch', type],
-    queryFn: jsonFetcher<{ pick: RandomPick | null; poolSize: number }>(`/api/random-watch?type=${type}`),
+    queryKey: ['random-watch', type, watch],
+    queryFn: jsonFetcher<{ pick: RandomPick | null; poolSize: number }>(apiUrl),
     staleTime: 0,
     gcTime: 0,
   });
@@ -76,6 +91,17 @@ export default function RandomWatchPage() {
               </button>
             );
           })}
+          {canFilterUnwatched && (
+            <label className="inline-flex items-center gap-2 rounded-full bg-accent/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+              <span>Unwatched only</span>
+              <Switch
+                size="sm"
+                checked={unwatchedOnly}
+                onCheckedChange={setUnwatchedOnly}
+                aria-label="Unwatched only"
+              />
+            </label>
+          )}
           <div className="ml-auto flex items-center gap-2">
             {poolSize !== null && (
               <span className="rounded-full bg-accent/40 px-2.5 py-1 text-[11px] text-muted-foreground">
@@ -108,7 +134,9 @@ export default function RandomWatchPage() {
             <Dices className="h-10 w-10 mx-auto opacity-50" />
             <p className="text-sm">Nothing downloaded matches this filter.</p>
             <p className="text-xs">
-              Configure Sonarr/Radarr in Settings and download a few items first.
+              {watch === 'unwatched'
+                ? 'Try turning off Unwatched only, or mark something unwatched in Jellyfin.'
+                : 'Configure Sonarr/Radarr in Settings and download a few items first.'}
             </p>
           </div>
         ) : (

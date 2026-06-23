@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { getJellyfinUserContext, isJellyfinUnavailable } from '@/lib/service-helpers';
+import { fetchUserWatchStatusMap } from '@/lib/jellyfin-watch-status-map';
 import {
-  getJellyfinUserContext,
-  getRadarrClients,
-  getSonarrClients,
-  isJellyfinUnavailable,
-} from '@/lib/service-helpers';
-import { getCachedTaggedLibrary, type Tagged } from '@/lib/cache/tagged-library';
-import type { RadarrMovie, SonarrSeries } from '@/types';
-import { loadAnilistIdsBySeries } from '@/lib/anilist-series-mapping';
-import { buildWatchStatusMap } from '@/lib/jellyfin-watch-status';
-import {
-  getWatchStatusJson,
   invalidateWatchStatus,
   seriesEpisodesSeed,
   watchStatusMapSeed,
@@ -21,38 +12,13 @@ import type { WatchStatusMapResponse } from '@/types/watch-status';
 
 const EMPTY: WatchStatusMapResponse = { linked: false, items: [], keys: {} };
 
-// Reuse the same cached arr-library entries the /api/radarr and /api/sonarr list
-// routes populate (scope + seed 'all'), so a warm library serves the watch map
-// instead of an uncached full re-fetch on every map (re)build.
-async function loadCachedArrLibrary(): Promise<{ movies: Tagged<RadarrMovie>[]; series: Tagged<SonarrSeries>[] }> {
-  const [movies, series] = await Promise.all([
-    getCachedTaggedLibrary({ scope: 'radarr', cacheKeySeed: 'all', getInstances: getRadarrClients, fetchOne: (c) => c.getMovies() }),
-    getCachedTaggedLibrary({ scope: 'sonarr', cacheKeySeed: 'all', getInstances: getSonarrClients, fetchOne: (c) => c.getSeries() }),
-  ]);
-  return { movies: movies.items, series: series.items };
-}
-
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('jellyfin.view');
   if (!auth.ok) return auth.response;
 
   try {
-    const { client, connectionFingerprint, jellyfinUserId } = await getJellyfinUserContext(auth.user);
-    const seed = watchStatusMapSeed(connectionFingerprint, jellyfinUserId);
-
-    const payload = await getWatchStatusJson(seed, async () => {
-      // All four reads are independent — overlap them so a cold-cache revalidation
-      // costs max(arr+anilist, two Jellyfin scans), not their sum. (best-effort on
-      // anilist: a mapping-table hiccup only drops the anime-browse aliases.)
-      const [library, anilistBySeries, movies, series] = await Promise.all([
-        loadCachedArrLibrary(),
-        loadAnilistIdsBySeries().catch(() => new Map<string, number[]>()),
-        client.queryItems({ IncludeItemTypes: 'Movie', Recursive: true, Fields: 'ProviderIds', EnableUserData: true, EnableImages: false }),
-        client.queryItems({ IncludeItemTypes: 'Series', Recursive: true, Fields: 'ProviderIds,RecursiveItemCount', EnableUserData: true, EnableImages: false }),
-      ]);
-      return buildWatchStatusMap(library, movies.Items ?? [], series.Items ?? [], anilistBySeries);
-    });
-
+    const payload = await fetchUserWatchStatusMap(auth.user);
+    if (!payload) return NextResponse.json(EMPTY);
     return NextResponse.json({ linked: true, ...payload } satisfies WatchStatusMapResponse);
   } catch (error) {
     if (isJellyfinUnavailable(error)) return NextResponse.json(EMPTY);
