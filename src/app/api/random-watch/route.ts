@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { can } from '@/lib/permissions';
 import { getRadarrClients, getSonarrClients } from '@/lib/service-helpers';
+import { fetchUserWatchStatusMap, lookupWatchStatus } from '@/lib/jellyfin-watch-status-map';
+import { arrKey, isFullyWatched } from '@/types/watch-status';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 
 type RandomType = 'movie' | 'series' | 'any';
 const VALID_TYPES: ReadonlySet<RandomType> = new Set(['movie', 'series', 'any']);
+
+type WatchScope = 'all' | 'unwatched';
+const VALID_WATCH: ReadonlySet<WatchScope> = new Set(['all', 'unwatched']);
 
 type TaggedMovie = RadarrMovie & { instanceId: string };
 type TaggedSeries = SonarrSeries & { instanceId: string };
@@ -114,22 +120,63 @@ async function fetchSeriesPool(): Promise<TaggedSeries[]> {
   }
 }
 
+function isEligibleUnwatched(
+  watchMap: Awaited<ReturnType<typeof fetchUserWatchStatusMap>>,
+  scope: 'radarr' | 'sonarr',
+  instanceId: string,
+  id: number
+): boolean {
+  if (!watchMap) return true;
+  const status = lookupWatchStatus(watchMap, arrKey(scope, instanceId, id));
+  if (!status) return true;
+  return !isFullyWatched(status);
+}
+
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('random.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('random.view');
+  if (!auth.ok) return auth.response;
 
   const url = new URL(request.url);
   const raw = url.searchParams.get('type') ?? 'any';
   const type: RandomType = VALID_TYPES.has(raw as RandomType) ? (raw as RandomType) : 'any';
+
+  const rawWatch = url.searchParams.get('watch') ?? 'all';
+  let watch: WatchScope = VALID_WATCH.has(rawWatch as WatchScope) ? (rawWatch as WatchScope) : 'all';
+
+  const jellyfinCapable = can(auth.user, 'jellyfin.view');
+  let watchMap: Awaited<ReturnType<typeof fetchUserWatchStatusMap>> = null;
+
+  if (watch === 'unwatched') {
+    if (!jellyfinCapable) {
+      watch = 'all';
+    } else {
+      try {
+        watchMap = await fetchUserWatchStatusMap(auth.user);
+      } catch (error) {
+        console.error('Random watch: failed to load Jellyfin watch map:', error);
+        watch = 'all';
+      }
+      if (watch === 'unwatched' && !watchMap) {
+        watch = 'all';
+      }
+    }
+  }
 
   const [movies, series] = await Promise.all([
     type === 'series' ? Promise.resolve([] as TaggedMovie[]) : fetchMoviePool(),
     type === 'movie' ? Promise.resolve([] as TaggedSeries[]) : fetchSeriesPool(),
   ]);
 
-  const pool: RandomPick[] = [...movies.map(pickMovie), ...series.map(pickSeries)];
+  const filteredMovies =
+    watch === 'unwatched' && watchMap
+      ? movies.filter((m) => isEligibleUnwatched(watchMap, 'radarr', m.instanceId, m.id))
+      : movies;
+  const filteredSeries =
+    watch === 'unwatched' && watchMap
+      ? series.filter((s) => isEligibleUnwatched(watchMap, 'sonarr', s.instanceId, s.id))
+      : series;
+
+  const pool: RandomPick[] = [...filteredMovies.map(pickMovie), ...filteredSeries.map(pickSeries)];
   if (pool.length === 0) {
     return NextResponse.json({ pick: null, poolSize: 0 });
   }
