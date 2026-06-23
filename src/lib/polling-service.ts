@@ -406,6 +406,7 @@ export class PollingService {
   private currentIntervalMs: number | null = null;
   private isPolling = false;
   private pollPending = false;
+  private activePollSources = new Set<string>();
   // Epoch ms of the last NotificationHistory retention sweep. The poll loop runs
   // every ~30s but the sweep is throttled to once/day; 0 = run on first cycle.
   private lastNotificationPruneAt = 0;
@@ -429,7 +430,7 @@ export class PollingService {
   private async notifyAndLog(
     event: NotificationEventInput,
     context: PollNotificationContext
-  ): Promise<number> {
+  ): Promise<number | null> {
     try {
       const sentCount = await notifyEvent(event);
       logger.info('Polling notification processed', {
@@ -449,7 +450,7 @@ export class PollingService {
         title: event.title,
         reason: err instanceof Error ? err.message : String(err),
       }, { scope: 'polling' });
-      return 0;
+      return null;
     }
   }
 
@@ -491,20 +492,24 @@ export class PollingService {
   }
 
   private async runPollSource(source: string, fn: () => Promise<void>): Promise<void> {
-    const timeoutMs = POLL_SOURCE_TIMEOUT_MS[source] ?? 45_000;
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      logger.warn('Polling source timed out', { source, timeoutMs }, { scope: 'polling' });
-    }, timeoutMs);
-    try {
-      await fn();
-    } finally {
-      clearTimeout(timer);
-      if (timedOut) {
-        logger.warn('Polling source completed after timeout', { source, timeoutMs }, { scope: 'polling' });
-      }
+    if (this.activePollSources.has(source)) {
+      logger.warn('Polling source skipped: previous run still active', { source }, { scope: 'polling' });
+      return;
     }
+    this.activePollSources.add(source);
+    const timeoutMs = POLL_SOURCE_TIMEOUT_MS[source] ?? 45_000;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const task = fn().finally(() => {
+      this.activePollSources.delete(source);
+      if (timer) clearTimeout(timer);
+    });
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        logger.warn('Polling source timed out', { source, timeoutMs }, { scope: 'polling' });
+        reject(new Error(`Polling source timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    });
+    await Promise.race([task, timeout]);
   }
 
   private async poll(): Promise<void> {
@@ -2324,7 +2329,7 @@ export class PollingService {
       const redirect = watchlistHrefFor(item.source, item.externalId, item.mediaType) ?? '/watchlist';
       let delivered = false;
       try {
-        await this.notifyAndLog({
+        const sentCount = await this.notifyAndLog({
           eventType: 'watchlistReminder',
           title: 'Watchlist Reminder',
           body,
@@ -2338,7 +2343,7 @@ export class PollingService {
           // stamp the history row to the owner so it shows in *their* list.
           ...(item.userId ? { userIds: [item.userId], ownerUserId: item.userId } : {}),
         }, { service: 'watchlist', reason: 'reminder-due', itemId: item.id });
-        delivered = true;
+        delivered = sentCount !== null;
       } catch (error) {
         logger.warn('Watchlist reminder push failed; will retry', { itemId: item.id, attempt: item.reminderAttempts + 1, error }, { scope: 'polling' });
       }

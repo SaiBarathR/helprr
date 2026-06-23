@@ -4,9 +4,10 @@ import Image, { type ImageProps } from 'next/image';
 import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
 
-type FadeInImageProps = Omit<ImageProps, 'loading' | 'priority' | 'onLoad'> & {
+type FadeInImageProps = Omit<ImageProps, 'loading' | 'priority' | 'onLoad' | 'onError'> & {
   /** Eager-load with high fetch priority for above-the-fold posters. Never combined with lazy loading. */
   priority?: boolean;
+  onError?: ImageProps['onError'];
 };
 
 /**
@@ -17,6 +18,7 @@ export function FadeInImage({
   priority = false,
   className,
   alt,
+  onError,
   ...props
 }: FadeInImageProps) {
   const [loaded, setLoaded] = useState(false);
@@ -32,7 +34,10 @@ export function FadeInImage({
       priority={priority}
       loading={priority ? undefined : 'lazy'}
       onLoad={() => setLoaded(true)}
-      onError={() => setLoaded(true)}
+      onError={(event) => {
+        setLoaded(true);
+        onError?.(event);
+      }}
       className={cn(
         'transition-opacity duration-300',
         loaded ? 'opacity-100' : 'opacity-0',

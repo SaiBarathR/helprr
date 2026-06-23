@@ -511,6 +511,7 @@ export async function notifyEvent(event: {
     metadata.redirect = targetUrl;
   }
 
+  let historyWritten = false;
   try {
     await prisma.notificationHistory.create({
       data: {
@@ -527,6 +528,7 @@ export async function notifyEvent(event: {
         })),
       },
     });
+    historyWritten = true;
   } catch (err) {
     logger.warn('Notification history write failed', {
       eventType: event.eventType,
@@ -534,21 +536,23 @@ export async function notifyEvent(event: {
       sentCount: sent,
     }, { scope: 'notifications' });
   }
-  if (sent > 0) {
-    logger.info('Notification history written', {
-      eventType: event.eventType,
-      sentCount: sent,
-      metadata: safeNotificationMetadata(metadata),
-    }, { scope: 'notifications' });
-  } else {
-    logger.info('Notification history written with no pushes sent', {
-      eventType: event.eventType,
-      subscriptionCount: subscriptions.length,
-      attempted,
-      skippedByPreference,
-      sentCount: sent,
-      metadata: safeMetadata,
-    }, { scope: 'notifications' });
+  if (historyWritten) {
+    if (sent > 0) {
+      logger.info('Notification history written', {
+        eventType: event.eventType,
+        sentCount: sent,
+        metadata: safeNotificationMetadata(metadata),
+      }, { scope: 'notifications' });
+    } else {
+      logger.info('Notification history written with no pushes sent', {
+        eventType: event.eventType,
+        subscriptionCount: subscriptions.length,
+        attempted,
+        skippedByPreference,
+        sentCount: sent,
+        metadata: safeMetadata,
+      }, { scope: 'notifications' });
+    }
   }
 
   logger.info('Notification event completed', {
@@ -557,7 +561,7 @@ export async function notifyEvent(event: {
     skippedByPreference,
     attempted,
     sentCount: sent,
-    historyWritten: true,
+    historyWritten,
   }, { scope: 'notifications' });
 
   return sent;
