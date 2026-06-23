@@ -42,6 +42,7 @@ export async function bulkFanOut(
         if (tallies) {
           ok += tallies.ok;
           fail += tallies.fail;
+          if (tallies.fail > 0 && !firstError) firstError = 'Some items failed';
           return;
         }
       }
@@ -84,7 +85,6 @@ export function reportBulkTorrent(verb: string, ok: number, fail: number) {
 
 export async function parseSeriesSearchTallies(
   res: Response,
-  _ids: number[],
 ): Promise<{ ok: number; fail: number } | null> {
   try {
     const data = await res.json();
