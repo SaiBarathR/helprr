@@ -37,9 +37,11 @@ const MEMBER_ALLOWED: readonly Capability[] = [
   // Torrents — members get no access at all: the qBittorrent list can include
   // downloads unrelated to the media library (privacy risk), so the page,
   // widgets, API, and notifications are all admin-only.
-  // Jellyfin — view only. Server control (scan / restart / shutdown / scheduled
-  // tasks), sessions, and stats are all admin.
+  // Jellyfin — view + toggle their OWN watch state (their own JF account; benign).
+  // Server control (scan / restart / shutdown / scheduled tasks), sessions, and
+  // stats are all admin.
   'jellyfin.view',
+  'jellyfin.watchedState',
   // Activity — read-only.
   'activity.view',
   // Notifications — own history + the non-admin event channels.

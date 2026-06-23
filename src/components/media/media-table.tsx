@@ -5,6 +5,9 @@ import { Eye, EyeOff } from 'lucide-react';
 import type { MediaImage } from '@/types';
 import { cn } from '@/lib/utils';
 import { SelectionCheck } from './selection-check';
+import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
+import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
+import type { ArrScope } from '@/types/watch-status';
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return '0 B';
@@ -49,6 +52,7 @@ export function MediaTable({
   topSpacerHeight = 0,
   bottomSpacerHeight = 0,
   onNavigate,
+  watchScope,
   selectable,
   selectedKeys,
   onToggleSelect,
@@ -59,11 +63,14 @@ export function MediaTable({
   topSpacerHeight?: number;
   bottomSpacerHeight?: number;
   onNavigate?: () => void;
+  /** Jellyfin watch scope (movies/series only); each row looks up by id+instance. */
+  watchScope?: ArrScope;
   /** Selection mode: a leading checkbox column appears and row clicks toggle. */
   selectable?: boolean;
   selectedKeys?: Set<string>;
   onToggleSelect?: (row: MediaTableRow) => void;
 }) {
+  const lookup = useWatchLookup();
   const show = (field: string) => visibleFields.includes(field);
   const keyOf = (row: MediaTableRow) => `${row.instanceId ?? ''}:${row.id}`;
   const isSelected = (row: MediaTableRow) => selectedKeys?.has(keyOf(row)) ?? false;
@@ -112,6 +119,7 @@ export function MediaTable({
             )}
             {rows.map((row) => {
               const selected = isSelected(row);
+              const watchStatus = watchScope ? lookup({ scope: watchScope, instanceId: row.instanceId, arrId: row.id }) : undefined;
               const statusDot = (
                 <span
                   className={`inline-block h-2 w-2 rounded-full shrink-0 ${
@@ -168,6 +176,7 @@ export function MediaTable({
                       {row.instanceLabel && (
                         <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
                       )}
+                      <WatchStatusInline status={watchStatus} className="shrink-0" />
                     </span>
                   ) : (
                     <Link href={row.href} onClick={onNavigate} className="hover:underline flex items-center gap-2">
@@ -176,6 +185,7 @@ export function MediaTable({
                       {row.instanceLabel && (
                         <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
                       )}
+                      <WatchStatusInline status={watchStatus} className="shrink-0" />
                     </Link>
                   )}
                 </td>

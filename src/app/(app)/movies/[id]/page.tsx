@@ -70,6 +70,9 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { useCan } from '@/components/permission-provider';
+import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
+import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
+import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
 
 type RatingItem = {
   label: string;
@@ -166,6 +169,8 @@ export default function MovieDetailPage() {
   const canManageActivity = useCan('activity.manage');
   const canDeleteMovie = useCan('movies.delete');
   const canManageFiles = useCan('movies.manageFiles');
+  const lookupWatch = useWatchLookup();
+  const movieWatch = lookupWatch({ kind: 'movie', tmdbId: movie?.tmdbId, imdbId: movie?.imdbId });
   const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
 
   // Reference data — shared (and deduped) with the list / edit pages.
@@ -550,6 +555,7 @@ export default function MovieDetailPage() {
                     Open in Jellyfin
                   </DropdownMenuItem>
                 )}
+                <MarkWatchedMenuItem status={movieWatch} />
                 <DropdownMenuItem onClick={() => setShowAddWatchlist(true)}>
                   <Bookmark className="h-4 w-4" />
                   Add to Watchlist…
@@ -672,6 +678,7 @@ export default function MovieDetailPage() {
                     .filter(Boolean)
                     .join(' \u00B7 ')}
                 </p>
+                <WatchStatusInline status={movieWatch} className="mt-1.5" />
                 {ratingItems.length > 0 && (
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
                     {ratingItems.map((ri) => (
@@ -743,6 +750,7 @@ export default function MovieDetailPage() {
                   .filter(Boolean)
                   .join(' \u00B7 ')}
               </p>
+              <WatchStatusInline status={movieWatch} className="mt-1.5" />
               {ratingItems.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
                   {ratingItems.map((ri) => (

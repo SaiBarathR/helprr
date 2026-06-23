@@ -40,6 +40,10 @@ export function buildJellyfinLookupKey(generation: number, keySeed: string): str
   return `helprr:cache:jellyfin-lookup:v${generation}:${sha256Hex(keySeed)}`;
 }
 
+export function buildJellyfinWatchStatusKey(generation: number, keySeed: string): string {
+  return `helprr:cache:jellyfin-watch-status:v${generation}:${sha256Hex(keySeed)}`;
+}
+
 export function buildLibraryGapsKey(generation: number): string {
   return `helprr:cache:library-gaps:v${generation}`;
 }

@@ -8,6 +8,7 @@ import { PermissionProvider, type MePayload } from '@/components/permission-prov
 import { QueryProvider } from '@/components/query-provider';
 import { BadgeProvider } from '@/components/layout/badge-provider';
 import { RequestedMediaProvider } from '@/components/seerr/requested-media-provider';
+import { WatchStatusProvider } from '@/components/jellyfin/watch-status-provider';
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
@@ -28,10 +29,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // effect for SSR navs, and so the permission provider is seeded server-side.
   // Independent of each other, so resolve in parallel to keep one DB round-trip
   // off the critical path of every authenticated navigation.
-  const [user, seerrCount, tmdbCount, imageCacheGeneration] = await Promise.all([
+  const [user, seerrCount, tmdbCount, jellyfinCount, imageCacheGeneration] = await Promise.all([
     getCurrentUser(),
     prisma.serviceConnection.count({ where: { type: 'SEERR' } }),
     prisma.serviceConnection.count({ where: { type: 'TMDB' } }),
+    prisma.serviceConnection.count({ where: { type: 'JELLYFIN' } }),
     getCacheGeneration(),
   ]);
   if (!user) {
@@ -44,6 +46,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const seerrConfigured = seerrCount > 0;
   const tmdbConfigured = tmdbCount > 0;
+  // Admins fall back to the connection's configured user, so "configured" ⇒
+  // "linked" for them; members need their own jellyfinUserId.
+  const jellyfinLinked = jellyfinCount > 0 && (user.role === 'admin' || Boolean(user.jellyfinUserId));
 
   const me: MePayload = {
     id: user.id,
@@ -55,6 +60,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     seerrConfigured,
     tmdbConfigured,
     seerrUserId: user.seerrUserId,
+    jellyfinLinked,
   };
 
   return (
@@ -62,7 +68,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <PermissionProvider value={me}>
         <ImageCacheGenerationInit value={imageCacheGeneration} />
         <RequestedMediaProvider>
-          <BadgeProvider>
+          <WatchStatusProvider>
+            <BadgeProvider>
             <div className="flex min-h-screen bg-background">
               <StandaloneLaunchRedirect />
               <DiscoverLayoutHydrator />
@@ -70,7 +77,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <Sidebar />
               <AppShell>{children}</AppShell>
             </div>
-          </BadgeProvider>
+            </BadgeProvider>
+          </WatchStatusProvider>
         </RequestedMediaProvider>
       </PermissionProvider>
     </QueryProvider>

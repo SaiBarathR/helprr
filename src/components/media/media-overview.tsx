@@ -10,6 +10,8 @@ import type { MediaImage } from '@/types';
 import type { PosterSize } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { SelectionCheck } from './selection-check';
+import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
+import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
 
 function getImageUrl(
   images: MediaImage[],
@@ -65,6 +67,8 @@ export interface MediaOverviewItemProps {
   status?: string;
   /** Instance label shown only when >1 instance of the type is connected. */
   instanceLabel?: string;
+  /** Jellyfin watch-status lookup (movies/series only); resolved in-component. */
+  watchLookup?: WatchLookupQuery;
   onNavigate?: () => void;
   /** Selection mode: clicking the row toggles selection instead of navigating. */
   selectable?: boolean;
@@ -96,11 +100,14 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
   trackProgress,
   genres,
   instanceLabel,
+  watchLookup,
   onNavigate,
   selectable,
   selected,
   onToggleSelect,
 }: MediaOverviewItemProps) {
+  const lookup = useWatchLookup();
+  const watchStatus = watchLookup ? lookup(watchLookup) : undefined;
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
   // List thumbnails render at 80–112px CSS; 240px stays retina-crisp instead of
   // fetching the route's 600px default.
@@ -161,6 +168,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
 
         {/* Badges row */}
         <div className="flex flex-wrap gap-1.5">
+          <WatchStatusInline status={watchStatus} />
           {show('qualityProfile') && qualityProfile && (
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{qualityProfile}</Badge>
           )}
@@ -231,4 +239,4 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
       {body}
     </Link>
   );
-}, (p, n) => shallowEqualExcept(p, n, ['onNavigate', 'onToggleSelect']));
+}, (p, n) => shallowEqualExcept(p, n, ['onNavigate', 'onToggleSelect', 'watchLookup']));

@@ -30,6 +30,9 @@ import { handleAuthError } from '@/lib/query-client';
 import { patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
 import { useCan } from '@/components/permission-provider';
+import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
+import { EpisodeWatchIndicator } from '@/components/jellyfin/watch-status-indicator';
+import { episodeKey } from '@/types/watch-status';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -86,6 +89,7 @@ export default function SeasonDetailPage() {
     staleTime: 30 * 60_000,
   });
   const tmdbSeason = tmdbSeasonQuery.data ?? null;
+  const { episodes: episodeWatch } = useSeriesEpisodeWatch({ tvdbId: series?.tvdbId, tmdbId: series?.tmdbId, imdbId: series?.imdbId });
 
   useEffect(() => {
     if (seriesQuery.isError || allEpisodesQuery.isError) toast.error('Failed to load season data');
@@ -434,6 +438,7 @@ export default function SeasonDetailPage() {
                       MISSING
                     </Badge>
                   ) : null}
+                  <EpisodeWatchIndicator status={episodeWatch[episodeKey(seasonNumber, ep.episodeNumber)]} />
                   {(ep.airDateUtc || ep.airDate) && (
                     <span className="text-xs text-muted-foreground">
                       {ep.airDateUtc

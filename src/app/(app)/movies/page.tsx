@@ -881,6 +881,7 @@ export default function MoviesPage() {
                     type="movie"
                     href={hrefForMovie(movie)}
                     visibleFields={visibleFields}
+                    watchLookup={{ scope: 'radarr', instanceId: movie.instanceId, arrId: movie.id }}
                     rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
                     instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
@@ -923,6 +924,7 @@ export default function MoviesPage() {
                   status={movie.status}
                   visibleFields={visibleFields}
                   posterSize={posterSize}
+                  watchLookup={{ scope: 'radarr', instanceId: movie.instanceId, arrId: movie.id }}
                   qualityProfile={movie.qualityProfileName}
                   studio={movie.studio}
                   certification={movie.certification}
@@ -958,6 +960,7 @@ export default function MoviesPage() {
             <div ref={contentRef}>
               <MediaTable
                 type="movie"
+                watchScope="radarr"
                 visibleFields={visibleFields}
                 rows={visibleRows}
                 topSpacerHeight={topSpacerHeight}
