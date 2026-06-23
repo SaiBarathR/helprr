@@ -32,7 +32,10 @@ import {
   SEERR_MEDIA_STATUS,
   SEERR_REQUEST_STATUS,
   type EnrichedSeerrRequest,
+  type SeerrMediaType,
   type SeerrRequestFilter,
+  type SeerrRequestSort,
+  type SeerrSortDirection,
 } from '@/types/seerr';
 
 const ROW_HEIGHT = 64;
@@ -45,6 +48,12 @@ const GRID_CLASS = 'grid grid-cols-1 gap-2 sm:gap-2.5 lg:grid-cols-2 2xl:grid-co
 
 export interface RequestsListWidgetProps extends WidgetProps {
   filter?: SeerrRequestFilter;
+  /** Seerr user id; forwarded as ?requestedBy= (approver API only). */
+  requestedBy?: number | null;
+  /** Empty = all types. When one type is set, forwarded as ?mediaType= server-side. */
+  typeFilter?: SeerrMediaType[];
+  sort?: SeerrRequestSort;
+  sortDirection?: SeerrSortDirection;
   pageSize?: number;
   hideHeader?: boolean;
   /**
@@ -63,15 +72,25 @@ interface ListResponse {
 async function fetchRequestsPage(
   filter: SeerrRequestFilter,
   take: number,
-  skip: number
+  skip: number,
+  requestedBy: number | null | undefined,
+  sort: SeerrRequestSort,
+  sortDirection: SeerrSortDirection,
+  mediaType?: SeerrMediaType,
 ): Promise<ListResponse> {
   const params = new URLSearchParams({
     take: String(take),
     skip: String(skip),
     filter,
-    sort: 'added',
-    sortDirection: 'desc',
+    sort,
+    sortDirection,
   });
+  if (requestedBy != null) {
+    params.set('requestedBy', String(requestedBy));
+  }
+  if (mediaType) {
+    params.set('mediaType', mediaType);
+  }
   const res = await fetch(`/api/seerr/requests?${params.toString()}`);
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -118,11 +137,16 @@ export function RequestsListWidget({
   refreshInterval,
   editMode = false,
   filter: filterProp,
+  requestedBy = null,
+  typeFilter = [],
+  sort = 'added',
+  sortDirection = 'desc',
   pageSize,
   hideHeader = false,
   unbounded = false,
 }: RequestsListWidgetProps) {
   const filter: SeerrRequestFilter = filterProp ?? 'pending';
+  const serverMediaType = typeFilter.length === 1 ? typeFilter[0] : undefined;
   const externalUrls = useExternalUrls();
   const jellyfinExternal = externalUrls?.JELLYFIN ? externalUrls.JELLYFIN.replace(/\/+$/, '') : null;
   const seerrExternal = externalUrls?.SEERR ? externalUrls.SEERR.replace(/\/+$/, '') : null;
@@ -140,12 +164,15 @@ export function RequestsListWidget({
   // First page goes through useWidgetData so the cache + interval refresh
   // story keeps working for dashboard widget mode. Extra pages live in
   // component state below.
-  const fetchFn = useCallback(() => fetchRequestsPage(filter, take, 0), [filter, take]);
+  const fetchFn = useCallback(
+    () => fetchRequestsPage(filter, take, 0, requestedBy, sort, sortDirection, serverMediaType),
+    [filter, take, requestedBy, sort, sortDirection, serverMediaType],
+  );
   const { data, loading, error, refresh } = useWidgetData<ListResponse>({
     fetchFn,
     refreshInterval,
     enabled: !editMode,
-    cacheKey: `seerr-requests-${filter}-${take}`,
+    cacheKey: `seerr-requests-${filter}-${requestedBy ?? 'all'}-${serverMediaType ?? 'all'}-${sort}-${sortDirection}-${take}`,
   });
 
   const [extraPages, setExtraPages] = useState<EnrichedSeerrRequest[]>([]);
@@ -163,7 +190,7 @@ export function RequestsListWidget({
     setExtraPages([]);
     setExhausted(false);
     skipRef.current = 0;
-  }, [filter, take]);
+  }, [filter, take, requestedBy, sort, sortDirection, serverMediaType]);
 
   const firstPageItems = useMemo<EnrichedSeerrRequest[]>(
     () => data?.results ?? [],
@@ -176,6 +203,12 @@ export function RequestsListWidget({
     const dedupedExtras = extraPages.filter((r) => !seen.has(r.id));
     return [...firstPageItems, ...dedupedExtras];
   }, [firstPageItems, extraPages, unbounded]);
+
+  const typeFilteredItems = useMemo(() => {
+    if (typeFilter.length <= 1) return items;
+    const allowed = new Set(typeFilter);
+    return items.filter((r) => allowed.has(r.type));
+  }, [items, typeFilter]);
 
   const totalResults = data?.pageInfo?.results ?? 0;
   const hasMore = unbounded && !exhausted && items.length < totalResults;
@@ -197,7 +230,15 @@ export function RequestsListWidget({
 
     setLoadingMore(true);
     try {
-      const next = await fetchRequestsPage(filter, take, skip);
+      const next = await fetchRequestsPage(
+        filter,
+        take,
+        skip,
+        requestedBy,
+        sort,
+        sortDirection,
+        serverMediaType,
+      );
       let appended = 0;
       setExtraPages((prev) => {
         const seen = new Set<number>();
@@ -221,7 +262,7 @@ export function RequestsListWidget({
     } finally {
       setLoadingMore(false);
     }
-  }, [unbounded, loadingMore, exhausted, data, filter, take, firstPageItems]);
+  }, [unbounded, loadingMore, exhausted, data, filter, take, requestedBy, sort, sortDirection, serverMediaType, firstPageItems]);
 
   // IntersectionObserver on a sentinel at the bottom of the list — fires
   // loadMore the moment the user scrolls within `LOAD_MORE_ROOT_MARGIN` of it.
@@ -386,7 +427,26 @@ export function RequestsListWidget({
     );
   }
 
-  const visibleItems = unbounded ? items : items.slice(0, maxItems);
+  if (typeFilteredItems.length === 0) {
+    return (
+      <div ref={ref} className={shellClass}>
+        {header}
+        {pendingNode}
+        {unbounded ? (
+          <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
+            <Inbox className="h-6 w-6 opacity-50" />
+            <p className="text-sm">No matching requests</p>
+          </div>
+        ) : (
+          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-muted-foreground">
+            No matching requests
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const visibleItems = unbounded ? typeFilteredItems : typeFilteredItems.slice(0, maxItems);
 
   return (
     <div ref={ref} className={shellClass}>
@@ -601,7 +661,7 @@ export function RequestsListWidget({
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading more…
               </>
             ) : (
-              <span>Scroll for more · {items.length}/{totalResults}</span>
+              <span>Scroll for more · {typeFilteredItems.length}/{totalResults}</span>
             )}
           </div>
         ) : null}

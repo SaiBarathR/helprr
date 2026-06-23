@@ -128,6 +128,11 @@ export type RequestsFilterPreference =
   | 'unavailable'
   | 'failed';
 
+/** Empty = all types. Values match Seerr request `type` field. */
+export type RequestsTypeFilterPreference = ('movie' | 'tv')[];
+export type RequestsSortPreference = 'added' | 'modified';
+export type RequestsSortDirectionPreference = 'asc' | 'desc';
+
 export interface NotificationsFiltersState {
   search: string;
   eventTypes: string[];
@@ -210,7 +215,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 30;
+export const STORE_VERSION = 33;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -353,6 +358,16 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 30) {
     state.searchHistory = {};
   }
+  if (version < 31) {
+    state.requestsUserFilter = null;
+  }
+  if (version < 32) {
+    state.requestsTypeFilter = [];
+  }
+  if (version < 33) {
+    state.requestsSort = 'added';
+    state.requestsSortDirection = 'desc';
+  }
   return state;
 }
 
@@ -454,6 +469,16 @@ interface UIState {
   setRequestsTab: (tab: RequestsTabPreference) => void;
   requestsFilter: RequestsFilterPreference;
   setRequestsFilter: (filter: RequestsFilterPreference) => void;
+  /** Seerr user id to filter requests by; null = all users (admin-only UI). */
+  requestsUserFilter: number | null;
+  setRequestsUserFilter: (userId: number | null) => void;
+  /** Empty = all types. Single-type selection uses ?mediaType= server-side. */
+  requestsTypeFilter: RequestsTypeFilterPreference;
+  setRequestsTypeFilter: (filter: RequestsTypeFilterPreference) => void;
+  requestsSort: RequestsSortPreference;
+  setRequestsSort: (sort: RequestsSortPreference) => void;
+  requestsSortDirection: RequestsSortDirectionPreference;
+  setRequestsSortDirection: (dir: RequestsSortDirectionPreference) => void;
   // Notifications filters
   notificationsFilters: NotificationsFiltersState;
   setNotificationsSearch: (search: string) => void;
@@ -567,6 +592,10 @@ const PERSISTED_KEYS = [
   'activityInstanceFilter',
   'requestsTab',
   'requestsFilter',
+  'requestsUserFilter',
+  'requestsTypeFilter',
+  'requestsSort',
+  'requestsSortDirection',
   'notificationsFilters',
   'cleanupHistoryFilters',
   'insightsDateFrom',
@@ -741,6 +770,14 @@ export const useUIStore = create<UIState>()(
       setRequestsTab: (tab) => set({ requestsTab: tab }),
       requestsFilter: 'pending',
       setRequestsFilter: (filter) => set({ requestsFilter: filter }),
+      requestsUserFilter: null,
+      setRequestsUserFilter: (userId) => set({ requestsUserFilter: userId }),
+      requestsTypeFilter: [],
+      setRequestsTypeFilter: (filter) => set({ requestsTypeFilter: filter }),
+      requestsSort: 'added',
+      setRequestsSort: (sort) => set({ requestsSort: sort }),
+      requestsSortDirection: 'desc',
+      setRequestsSortDirection: (dir) => set({ requestsSortDirection: dir }),
       // Notifications filters
       notificationsFilters: cloneNotificationsFilters(DEFAULT_NOTIFICATIONS_FILTERS),
       setNotificationsSearch: (search) =>

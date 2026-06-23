@@ -6,42 +6,44 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
-import { useUIStore, type RequestsFilterPreference } from '@/lib/store';
+import { useUIStore } from '@/lib/store';
+import { useCan } from '@/components/permission-provider';
+import { RequestsFilterMenu } from '@/components/seerr/requests-filter-menu';
+import { RequestsSortMenu } from '@/components/seerr/requests-sort-menu';
 import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
 import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
-import type { SeerrRequestCount } from '@/types/seerr';
+import type { SeerrRequestCount, SeerrUserSummary } from '@/types/seerr';
 
 const TABS = [
   { key: 'requests' as const, label: 'Requests' },
   { key: 'users' as const, label: 'Users' },
 ];
 
-const FILTERS: { value: RequestsFilterPreference; label: string }[] = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'processing', label: 'Processing' },
-  { value: 'available', label: 'Available' },
-  { value: 'unavailable', label: 'Unavailable' },
-  { value: 'failed', label: 'Failed' },
-  { value: 'all', label: 'All' },
-];
-
 export default function RequestsPage() {
   const externalUrls = useExternalUrls();
   const seerrUrl = externalUrls?.SEERR;
+  const canApprove = useCan('requests.approve');
 
   const tab = useUIStore((s) => s.requestsTab);
   const setTab = useUIStore((s) => s.setRequestsTab);
   const filter = useUIStore((s) => s.requestsFilter);
   const setFilter = useUIStore((s) => s.setRequestsFilter);
+  const requestsUserFilter = useUIStore((s) => s.requestsUserFilter);
+  const setRequestsUserFilter = useUIStore((s) => s.setRequestsUserFilter);
+  const requestsTypeFilter = useUIStore((s) => s.requestsTypeFilter);
+  const setRequestsTypeFilter = useUIStore((s) => s.setRequestsTypeFilter);
+  const requestsSort = useUIStore((s) => s.requestsSort);
+  const setRequestsSort = useUIStore((s) => s.setRequestsSort);
+  const requestsSortDirection = useUIStore((s) => s.requestsSortDirection);
+  const setRequestsSortDirection = useUIStore((s) => s.setRequestsSortDirection);
+
+  const handleUserClick = (user: SeerrUserSummary) => {
+    setRequestsUserFilter(user.id);
+    setTab('requests');
+  };
+
+  const typeFilterKey = requestsTypeFilter.length ? requestsTypeFilter.join(',') : 'all';
 
   const [refreshTick, setRefreshTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,10 +55,8 @@ export default function RequestsPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    // Bump the key so the active widget remounts and refetches in parallel.
     setRefreshTick((n) => n + 1);
     try {
-      // Tie the spinner to the real count refetch so the badge can't re-enable stale.
       await countsQuery.refetch();
     } finally {
       setRefreshing(false);
@@ -94,18 +94,23 @@ export default function RequestsPage() {
         </div>
 
         {tab === 'requests' ? (
-          <Select value={filter} onValueChange={(v) => setFilter(v as RequestsFilterPreference)}>
-            <SelectTrigger className="h-8 w-[120px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {FILTERS.map((f) => (
-                <SelectItem key={f.value} value={f.value} className="text-xs">
-                  {f.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            <RequestsFilterMenu
+              statusFilter={filter}
+              onStatusFilterChange={setFilter}
+              typeFilter={requestsTypeFilter}
+              onTypeFilterChange={setRequestsTypeFilter}
+              userFilter={requestsUserFilter}
+              onUserFilterChange={setRequestsUserFilter}
+              showUserSection={canApprove}
+            />
+            <RequestsSortMenu
+              sort={requestsSort}
+              onSortChange={setRequestsSort}
+              sortDirection={requestsSortDirection}
+              onSortDirectionChange={setRequestsSortDirection}
+            />
+          </>
         ) : null}
 
         <div className="ml-auto flex items-center">
@@ -149,16 +154,28 @@ export default function RequestsPage() {
         </div>
       </div>
 
-      <div key={`${tab}-${refreshTick}`} className="pt-2">
+      <div
+        key={`${tab}-${requestsUserFilter ?? 'all'}-${typeFilterKey}-${requestsSort}-${requestsSortDirection}-${refreshTick}`}
+        className="pt-2"
+      >
         {tab === 'requests' ? (
           <RequestsListWidget
             refreshInterval={30_000}
             filter={filter}
+            requestedBy={canApprove ? requestsUserFilter : null}
+            typeFilter={requestsTypeFilter}
+            sort={requestsSort}
+            sortDirection={requestsSortDirection}
             hideHeader
             unbounded
           />
         ) : (
-          <RequestsUsersWidget refreshInterval={60_000} hideHeader unbounded />
+          <RequestsUsersWidget
+            refreshInterval={60_000}
+            hideHeader
+            unbounded
+            onUserClick={canApprove ? handleUserClick : undefined}
+          />
         )}
       </div>
     </div>
