@@ -38,11 +38,17 @@ async function postHandler(request: NextRequest) {
           // Fan out in bounded batches so selecting a large library doesn't fire
           // hundreds of concurrent searches at the Sonarr instance at once.
           const ids = seriesIds as number[];
-          const searched: unknown[] = [];
+          let ok = 0;
+          let fail = 0;
           for (let i = 0; i < ids.length; i += 5) {
-            searched.push(...(await Promise.all(ids.slice(i, i + 5).map((id) => client.searchSeries(id)))));
+            const batch = ids.slice(i, i + 5);
+            const settled = await Promise.allSettled(batch.map((id) => client.searchSeries(id)));
+            for (const outcome of settled) {
+              if (outcome.status === 'fulfilled') ok++;
+              else fail++;
+            }
           }
-          result = searched;
+          result = { ok, fail };
         } else {
           if (!Number.isInteger(body.seriesId) || (body.seriesId as number) <= 0) {
             return NextResponse.json(

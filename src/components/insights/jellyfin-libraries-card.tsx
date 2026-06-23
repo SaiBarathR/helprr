@@ -24,7 +24,7 @@ function avgEpisodesPerSeries(lib: JellyfinLibrarySummary): string | null {
   if (lib.type !== 'tvshows') return null;
   const series = lib.metrics.find((m) => m.label === 'Series')?.value ?? 0;
   const episodes = lib.metrics.find((m) => m.label === 'Episodes')?.value ?? 0;
-  if (series <= 0 || episodes <= 0) return null;
+  if (!Number.isFinite(series) || !Number.isFinite(episodes) || series <= 0 || episodes <= 0) return null;
   return `~${(episodes / series).toFixed(1)} eps/series`;
 }
 
@@ -70,7 +70,7 @@ function LibraryRow({ lib, max, total }: { lib: JellyfinLibrarySummary; max: num
           {lib.itemCount.toLocaleString()}
         </div>
         <div className="text-[10px]" style={{ color: HPR.fgSubtle }}>
-          {sharePct}% of items
+          {total > 0 ? `${sharePct}% of items` : '—'}
         </div>
       </div>
     </div>
@@ -95,8 +95,8 @@ export function JellyfinLibrariesCard() {
     >
       {loading && !data ? (
         <PanelLoading height={160} />
-      ) : libraries.length === 0 ? (
-        <PanelEmpty message="No Jellyfin libraries found." height={120} />
+      ) : libraries.length === 0 || (data?.totalItems ?? 0) === 0 ? (
+        <PanelEmpty message="No Jellyfin library items found." height={120} />
       ) : (
         <div className="divide-y divide-border/50">
           {libraries.map((lib) => (

@@ -1,10 +1,10 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { Star, Film, Tv, Check } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverItem } from '@/types';
+import { FadeInImage } from '@/components/media/fade-in-image';
 
 interface DiscoverMediaRailProps {
   title: string;
@@ -18,7 +18,7 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
     <div>
       <h2 className="text-base font-semibold mb-2">{title}</h2>
       <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide animate-rail-in">
-        {items.map((item) => {
+        {items.map((item, i) => {
           const posterSrc = item.posterPath
             ? toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath
             : null;
@@ -31,11 +31,12 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
             >
               <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
                 {posterSrc ? (
-                  <Image
+                  <FadeInImage
                     src={posterSrc}
                     alt={item.title}
                     fill
                     sizes="(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px"
+                    priority={i < 4}
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                     unoptimized={isProtectedApiImageSrc(posterSrc)}
                   />

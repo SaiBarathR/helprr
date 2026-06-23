@@ -20,7 +20,6 @@ import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
-import { toast } from 'sonner';
 import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
@@ -28,21 +27,14 @@ import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
-import { handleAuthError } from '@/lib/query-client';
+import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import type { LidarrArtistListItem } from '@/types';
 import type { MediaViewMode } from '@/lib/store';
 
 // Stable empty reference so memo deps don't churn before the query resolves.
 const EMPTY_ARTISTS: LidarrArtistListItem[] = [];
-
-// Toast summary shared by every bulk action ("Monitoring 5 artists", "Deleted 2 artists, 1 failed").
-function reportBulk(verb: string, ok: number, fail: number) {
-  const word = ok === 1 ? 'artist' : 'artists';
-  if (fail) toast.error(`${verb} ${ok} ${word}, ${fail} failed`);
-  else toast.success(`${verb} ${ok} ${word}`);
-}
 
 const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
   posters: [
@@ -441,65 +433,51 @@ export default function MusicPage() {
   }, [selectedKeys, artistByKey]);
 
   const fanOut = useCallback(async (
-    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>
-  ) => {
-    let ok = 0;
-    let fail = 0;
-    await Promise.all([...groupSelectedByInstance()].map(async ([instanceId, ids]) => {
-      try {
-        const res = await run(instanceId, ids);
-        if (res.status === 401) handleAuthError(new ApiError(401, 'Session expired'));
-        if (res.ok) ok += ids.length;
-        else fail += ids.length;
-      } catch (e) {
-        handleAuthError(e);
-        fail += ids.length;
-      }
-    }));
-    return { ok, fail };
-  }, [groupSelectedByInstance]);
+    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>,
+    opts?: Parameters<typeof bulkFanOut>[2],
+  ) => bulkFanOut(groupSelectedByInstance(), run, opts), [groupSelectedByInstance]);
 
   const handleMonitor = useCallback(async (monitored: boolean) => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, monitored }),
       }));
-    reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail);
+    reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     await refetchArtists();
-    exit();
+    if (fail === 0) exit();
   }, [fanOut, refetchArtists, exit]);
 
   const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
       }));
-    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail);
+    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     await refetchArtists();
-    exit();
+    if (fail === 0) exit();
   }, [fanOut, refetchArtists, exit]);
 
   const handleBulkSearch = useCallback(async () => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/lidarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'ArtistSearch', artistIds: ids }),
       }));
-    reportBulk('Searching', ok, fail);
-    exit();
+    reportBulk('Searching', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
+    if (fail === 0) exit();
   }, [fanOut, exit]);
 
   const handleDelete = useCallback(async (deleteFiles: boolean) => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, deleteFiles }),
       }));
-    reportBulk('Deleted', ok, fail);
+    reportBulk('Deleted', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     await refetchArtists();
-    exit();
+    if (fail === 0) exit();
   }, [fanOut, refetchArtists, exit]);
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
@@ -602,7 +580,7 @@ export default function MusicPage() {
       : `${filter.length} filters`;
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Name';
 
-  function renderOverviewItem(artist: LidarrArtistListItem, fields: string[]) {
+  function renderOverviewItem(artist: LidarrArtistListItem, fields: string[], globalIndex?: number) {
     return (
       <MediaOverviewItem
         key={`${artist.instanceId ?? ''}:${artist.id}`}
@@ -626,6 +604,7 @@ export default function MusicPage() {
         genres={artist.genres}
         instanceLabel={multiInstance ? artist.instanceLabel : undefined}
         onNavigate={handleNavigateToDetail}
+        imagePriority={globalIndex !== undefined && globalIndex < 6}
         selectable={selectionMode}
         selected={selectedKeys.has(keyOf(artist))}
         onToggleSelect={() => toggle(keyOf(artist))}
@@ -844,7 +823,7 @@ export default function MusicPage() {
             <div ref={contentRef}>
               {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
               <div className={posterGridClass}>
-                {visibleArtists.map((artist) => (
+                {visibleArtists.map((artist, i) => (
                   <MediaCard
                     key={`${artist.instanceId ?? ''}:${artist.id}`}
                     title={artist.artistName}
@@ -859,6 +838,7 @@ export default function MusicPage() {
                     rating={artist.ratings?.value}
                     instanceLabel={multiInstance ? artist.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
+                    imagePriority={startIndex + i < Math.min(posterColumns * 2, 4)}
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(artist))}
                     onToggleSelect={() => toggle(keyOf(artist))}
@@ -885,7 +865,7 @@ export default function MusicPage() {
           return (
             <div ref={contentRef} className="space-y-2">
               {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-              {visibleArtists.map((artist) => renderOverviewItem(artist, visibleFields))}
+              {visibleArtists.map((artist, i) => renderOverviewItem(artist, visibleFields, startIndex + i))}
               {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
             </div>
           );
@@ -933,7 +913,7 @@ export default function MusicPage() {
         return (
           <div ref={contentRef} className="space-y-2">
             {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-            {visibleArtists.map((artist) => renderOverviewItem(artist, mobileOverviewFields))}
+            {visibleArtists.map((artist, i) => renderOverviewItem(artist, mobileOverviewFields, startIndex + i))}
             {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
           </div>
         );

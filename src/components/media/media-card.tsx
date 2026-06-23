@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { Film, Tv, Disc3, Star } from 'lucide-react';
 import { memo, type ReactNode } from 'react';
 import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { cn, shallowEqualExcept } from '@/lib/utils';
+import { FadeInImage } from './fade-in-image';
 import { SelectionCheck } from './selection-check';
 import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
 import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';
@@ -28,6 +28,8 @@ interface MediaCardProps {
   cornerAction?: ReactNode;
   /** Jellyfin watch-status lookup (movies/series only); resolved in-component. */
   watchLookup?: WatchLookupQuery;
+  /** Eager-load above-the-fold poster (first few grid items). */
+  imagePriority?: boolean;
   /** Selection mode: clicking the card toggles selection instead of navigating. */
   selectable?: boolean;
   selected?: boolean;
@@ -59,6 +61,7 @@ export const MediaCard = memo(function MediaCard({
   onNavigate,
   cornerAction,
   watchLookup,
+  imagePriority,
   selectable,
   selected,
   onToggleSelect,
@@ -79,11 +82,12 @@ export const MediaCard = memo(function MediaCard({
       )}
     >
       {poster ? (
-            <Image
+            <FadeInImage
               src={poster}
               alt={title}
               fill
               sizes="(max-width: 640px) 33vw, (max-width: 1024px) 20vw, 16vw"
+              priority={imagePriority}
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               unoptimized={isProtectedApiImageSrc(poster)}
             />

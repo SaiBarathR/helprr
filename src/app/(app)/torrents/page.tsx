@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { reportBulkTorrent } from '@/lib/bulk-fan-out';
 import { useQuery } from '@tanstack/react-query';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
 import {
@@ -707,7 +708,12 @@ export default function TorrentsPage() {
     };
   }, [selectedTorrents.size, loading, error, torrents.length, search]);
 
-  const torrentAction = useCallback(async (hash: string, action: string, extra?: Record<string, unknown>): Promise<boolean> => {
+  const torrentAction = useCallback(async (
+    hash: string,
+    action: string,
+    extra?: Record<string, unknown>,
+    opts?: { silent?: boolean },
+  ): Promise<boolean> => {
     try {
       const res = await fetch(`/api/qbittorrent/${hash}`, {
         method: 'POST',
@@ -718,37 +724,53 @@ export default function TorrentsPage() {
         const data = await res.json();
         throw new Error(data.error || 'Action failed');
       }
-      const successMessage: Record<string, string> = {
-        start: 'Started',
-        stop: 'Stopped',
-        forceStart: 'Force started',
-        delete: 'Deleted',
-        recheck: 'Rechecking',
-        reannounce: 'Reannounced',
-        setDownloadLimit: 'Download limit set',
-        setUploadLimit: 'Upload limit set',
-        toggleSequentialDownload: 'Sequential download toggled',
-        toggleFirstLastPiecePrio: 'First/last piece priority toggled',
-        setCategory: 'Category set',
-        setAutoManagement: 'Auto management toggled',
-        rename: 'Renamed',
-      };
-      toast.success(successMessage[action] ?? 'Action successful');
+      if (!opts?.silent) {
+        const successMessage: Record<string, string> = {
+          start: 'Started',
+          stop: 'Stopped',
+          forceStart: 'Force started',
+          delete: 'Deleted',
+          recheck: 'Rechecking',
+          reannounce: 'Reannounced',
+          setDownloadLimit: 'Download limit set',
+          setUploadLimit: 'Upload limit set',
+          toggleSequentialDownload: 'Sequential download toggled',
+          toggleFirstLastPiecePrio: 'First/last piece priority toggled',
+          setCategory: 'Category set',
+          setAutoManagement: 'Auto management toggled',
+          rename: 'Renamed',
+        };
+        toast.success(successMessage[action] ?? 'Action successful');
+      }
       setTimeout(() => {
         void refetchSummary();
       }, 500);
       return true;
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Action failed');
+      if (!opts?.silent) toast.error(err instanceof Error ? err.message : 'Action failed');
       return false;
     }
   }, [refetchSummary]);
 
   const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>) => {
     if (selectedTorrents.size === 0) return;
+    const count = selectedTorrents.size;
     const hashes = Array.from(selectedTorrents).join('|');
-    await torrentAction(hashes, action, extra);
-    setSelectedTorrents(new Set());
+    const successMessage: Record<string, string> = {
+      start: 'Started',
+      stop: 'Stopped',
+      forceStart: 'Force started',
+      setDownloadLimit: 'Set download limit for',
+      setUploadLimit: 'Set upload limit for',
+    };
+    const verb = successMessage[action] ?? 'Updated';
+    const ok = await torrentAction(hashes, action, extra, { silent: true });
+    if (ok) {
+      reportBulkTorrent(verb, count, 0);
+      setSelectedTorrents(new Set());
+    } else {
+      reportBulkTorrent(verb, 0, count);
+    }
   }, [selectedTorrents, torrentAction]);
 
   const handleDelete = useCallback(async () => {

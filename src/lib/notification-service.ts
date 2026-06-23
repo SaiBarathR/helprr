@@ -14,6 +14,9 @@ let vapidMissingLogged = false;
 
 const PUSH_TIMEOUT_MS = 10_000;
 const CONSECUTIVE_FAILURE_LIMIT = 10;
+const RETRIABLE_STREAK_DELETE = 25;
+const RETRIABLE_BACKOFF_BASE_MS = 5 * 60 * 1000;
+const RETRIABLE_BACKOFF_MAX_MS = 6 * 60 * 60 * 1000;
 // Concurrent notifyEvent() calls can both fail against the same dead endpoint
 // inside one polling cycle. Without a window, both `increment: 1` updates land
 // and the row reaches CONSECUTIVE_FAILURE_LIMIT faster than the threshold
@@ -84,6 +87,32 @@ function isImmediateDeletion(statusCode?: number): boolean {
 
 function hashEndpoint(endpoint: string): string {
   return createHash('sha256').update(endpoint).digest('hex').slice(0, 16);
+}
+
+// Retriable upstream failures don't increment consecutiveFailures (transient outages
+// shouldn't prune devices), but we still track streak in-memory for backoff timing.
+const retriableStreakByEndpoint = new Map<string, number>();
+
+function pushBackoffMs(failures: number): number {
+  if (failures <= 0) return 0;
+  return Math.min(
+    RETRIABLE_BACKOFF_MAX_MS,
+    RETRIABLE_BACKOFF_BASE_MS * Math.pow(2, Math.min(failures - 1, 10)),
+  );
+}
+
+function shouldDeferPush(sub: {
+  endpoint: string;
+  consecutiveFailures: number;
+  lastFailedAt: Date | null;
+  lastSucceededAt: Date | null;
+}): boolean {
+  const endpointHash = hashEndpoint(sub.endpoint);
+  const retriableStreak = retriableStreakByEndpoint.get(endpointHash) ?? 0;
+  const failures = Math.max(sub.consecutiveFailures, retriableStreak);
+  if (failures <= 0 || !sub.lastFailedAt) return false;
+  if (sub.lastSucceededAt && sub.lastSucceededAt >= sub.lastFailedAt) return false;
+  return Date.now() - sub.lastFailedAt.getTime() < pushBackoffMs(failures);
 }
 
 export function buildTag(eventType: string, metadata: Record<string, unknown> | undefined): string {
@@ -301,6 +330,7 @@ export async function sendPushNotification(
       where: { endpoint: subscription.endpoint },
       data: { consecutiveFailures: 0, lastSucceededAt: new Date() },
     }).catch(() => {});
+    retriableStreakByEndpoint.delete(endpointHash);
     return true;
   } catch (error: unknown) {
     const errObj = error as Record<string, unknown> & Partial<Error>;
@@ -321,6 +351,7 @@ export async function sendPushNotification(
       await prisma.pushSubscription.delete({
         where: { endpoint: subscription.endpoint },
       }).catch(() => {});
+      retriableStreakByEndpoint.delete(endpointHash);
       logger.info('Deleted stale push subscription (gone)', {
         endpointHash,
         statusCode,
@@ -348,6 +379,7 @@ export async function sendPushNotification(
           await prisma.pushSubscription.delete({
             where: { endpoint: subscription.endpoint },
           }).catch(() => {});
+          retriableStreakByEndpoint.delete(endpointHash);
           logger.info('Deleted stale push subscription (consecutive failures)', {
             endpointHash,
             consecutiveFailures: updated.consecutiveFailures,
@@ -359,6 +391,23 @@ export async function sendPushNotification(
           where: { endpoint: subscription.endpoint },
           data: { lastFailedAt: new Date() },
         }).catch(() => {});
+      }
+    } else {
+      const streak = (retriableStreakByEndpoint.get(endpointHash) ?? 0) + 1;
+      retriableStreakByEndpoint.set(endpointHash, streak);
+      await prisma.pushSubscription.update({
+        where: { endpoint: subscription.endpoint },
+        data: { lastFailedAt: new Date() },
+      }).catch(() => {});
+      if (streak >= RETRIABLE_STREAK_DELETE) {
+        await prisma.pushSubscription.delete({
+          where: { endpoint: subscription.endpoint },
+        }).catch(() => {});
+        retriableStreakByEndpoint.delete(endpointHash);
+        logger.info('Deleted stale push subscription (retriable streak)', {
+          endpointHash,
+          streak,
+        }, { scope: 'notifications' });
       }
     }
     return false;
@@ -444,6 +493,7 @@ export async function notifyEvent(event: {
 
   type SendOutcome = { kind: 'sent' } | { kind: 'failed' } | { kind: 'skipped' };
   const results = await mapSettled(subscriptions, PUSH_FANOUT_CONCURRENCY, async (sub): Promise<SendOutcome> => {
+      if (shouldDeferPush(sub)) return { kind: 'skipped' };
       if (requiredCap) {
         if (!sub.user || !can(sub.user, requiredCap)) return { kind: 'skipped' };
       } else if (!sub.user || sub.user.role !== 'admin') {
@@ -486,21 +536,29 @@ export async function notifyEvent(event: {
     metadata.redirect = targetUrl;
   }
 
-  await prisma.notificationHistory.create({
-    data: {
+  try {
+    await prisma.notificationHistory.create({
+      data: {
+        eventType: event.eventType,
+        userId: event.ownerUserId ?? null,
+        title: event.title,
+        body: event.body,
+        dedupeKey: event.dedupeKey ?? null,
+        metadata: JSON.parse(JSON.stringify({
+          ...metadata,
+          sentCount: sent,
+          attempted,
+          skippedByPreference,
+        })),
+      },
+    });
+  } catch (err) {
+    logger.warn('Notification history write failed', {
       eventType: event.eventType,
-      userId: event.ownerUserId ?? null,
-      title: event.title,
-      body: event.body,
-      dedupeKey: event.dedupeKey ?? null,
-      metadata: JSON.parse(JSON.stringify({
-        ...metadata,
-        sentCount: sent,
-        attempted,
-        skippedByPreference,
-      })),
-    },
-  });
+      reason: err instanceof Error ? err.message : String(err),
+      sentCount: sent,
+    }, { scope: 'notifications' });
+  }
   if (sent > 0) {
     logger.info('Notification history written', {
       eventType: event.eventType,

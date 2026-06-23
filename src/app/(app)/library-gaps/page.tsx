@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import Link from 'next/link';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { toast } from 'sonner';
 import { formatDistanceToNow, isValid } from 'date-fns';
 import {
@@ -17,6 +17,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
+import { reportBulk } from '@/lib/bulk-fan-out';
 import { useCan, useMe } from '@/components/permission-provider';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
@@ -65,12 +66,14 @@ async function postCommand(url: string, body: Record<string, unknown>) {
 function GapCard({
   item,
   layout = 'rail',
+  imagePriority,
   selectionMode,
   selected,
   onToggleSelect,
 }: {
   item: LibraryGapItem;
   layout?: 'rail' | 'grid';
+  imagePriority?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
@@ -177,11 +180,12 @@ function GapCard({
   const poster = (
     <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-border/40 bg-muted/60">
       {item.poster ? (
-        <Image
+        <FadeInImage
           src={item.poster}
           alt={item.title}
           fill
           sizes="(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px"
+          priority={imagePriority}
           className="object-cover transition-transform duration-300 group-hover:scale-105"
           unoptimized={isProtectedApiImageSrc(item.poster)}
         />
@@ -281,11 +285,12 @@ function GapSectionView({
       </div>
       {section.available && (
         <div className={expanded ? EXPANDED_GRID : RAIL_ROW}>
-          {section.items.map((item) => (
+          {section.items.map((item, i) => (
             <GapCard
               key={item.key}
               item={item}
               layout={expanded ? 'grid' : 'rail'}
+              imagePriority={i < 4}
               selectionMode={selectionMode}
               selected={selectedKeys?.has(item.key)}
               onToggleSelect={() => onToggle?.(item.key)}
@@ -369,9 +374,10 @@ export default function LibraryGapsPage() {
       seasons.length;
     const results = await Promise.allSettled(calls);
     const failed = results.filter((r) => r.status === 'rejected').length;
-    if (failed) toast.error('Some searches failed');
+    const ok = calls.length - failed;
+    if (failed) reportBulk('Search started for', ok, failed, { noun: 'batch', pluralNoun: 'batches' });
     else toast.success(`Search started for ${total} item${total === 1 ? '' : 's'}`);
-    exit();
+    if (failed === 0) exit();
   }, [selectedKeys, searchableByKey, exit]);
 
   if (loading) return <PageSpinner />;

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Image from 'next/image';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
@@ -469,14 +470,14 @@ function OverviewTab() {
       {resumeItems.length > 0 && (
         <div>
           <SectionHeader title="Continue Watching" />
-          <Carousel>{resumeItems.map((item) => <PosterCard key={item.Id} item={item} showProgress jellyfinUrl={jellyfinUrl} />)}</Carousel>
+          <Carousel>{resumeItems.map((item, i) => <PosterCard key={item.Id} item={item} showProgress jellyfinUrl={jellyfinUrl} imagePriority={i < 4} />)}</Carousel>
         </div>
       )}
 
       {recentlyAdded.length > 0 && (
         <div>
           <SectionHeader title="Recently Added" />
-          <Carousel>{recentlyAdded.map((item) => <PosterCard key={item.Id} item={item} jellyfinUrl={jellyfinUrl} />)}</Carousel>
+          <Carousel>{recentlyAdded.map((item, i) => <PosterCard key={item.Id} item={item} jellyfinUrl={jellyfinUrl} imagePriority={i < 4} />)}</Carousel>
         </div>
       )}
 
@@ -499,7 +500,7 @@ function OverviewTab() {
   );
 }
 
-function PosterCard({ item, showProgress, jellyfinUrl }: { item: JellyfinItem; showProgress?: boolean; jellyfinUrl?: string }) {
+function PosterCard({ item, showProgress, jellyfinUrl, imagePriority }: { item: JellyfinItem; showProgress?: boolean; jellyfinUrl?: string; imagePriority?: boolean }) {
   const progress = item.UserData?.PlayedPercentage ?? 0;
   const imageId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
   const hasImage = item.ImageTags?.Primary || (item.Type === 'Episode' && item.SeriesId);
@@ -510,7 +511,7 @@ function PosterCard({ item, showProgress, jellyfinUrl }: { item: JellyfinItem; s
   const content = (
     <>
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-1.5 shadow-sm">
-        {hasImage ? <Image src={posterSrc} alt={item.Name} fill sizes="110px" className="object-cover" unoptimized={isProtectedApiImageSrc(posterSrc)} /> : (
+        {hasImage ? <FadeInImage src={posterSrc} alt={item.Name} fill sizes="110px" priority={imagePriority} className="object-cover" unoptimized={isProtectedApiImageSrc(posterSrc)} /> : (
           <div className="w-full h-full flex items-center justify-center"><MonitorPlay className="h-6 w-6 text-muted-foreground/20" /></div>
         )}
         <div className="absolute top-1.5 left-1.5">

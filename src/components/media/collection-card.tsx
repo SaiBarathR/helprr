@@ -1,21 +1,23 @@
 'use client';
 
-import Image from 'next/image';
 import { memo } from 'react';
 import { Layers, Check, Bookmark } from 'lucide-react';
 import type { CollectionSummary } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
+import { FadeInImage } from './fade-in-image';
 
 interface CollectionCardProps {
   collection: CollectionSummary;
   multiInstance?: boolean;
+  imagePriority?: boolean;
   onOpen: () => void;
 }
 
 export const CollectionCard = memo(function CollectionCard({
   collection,
   multiInstance,
+  imagePriority,
   onOpen,
 }: CollectionCardProps) {
   const poster = toCachedImageSrc(collection.poster, 'tmdb', { width: 360 });
@@ -25,11 +27,12 @@ export const CollectionCard = memo(function CollectionCard({
     <button type="button" onClick={onOpen} className="group block w-full text-left">
       <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted shadow-sm">
         {poster ? (
-          <Image
+          <FadeInImage
             src={poster}
             alt={collection.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
+            priority={imagePriority}
             className="object-cover transition-transform duration-300 group-hover:scale-105"
             unoptimized={isProtectedApiImageSrc(poster)}
           />

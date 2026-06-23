@@ -1,7 +1,7 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
 import { ChevronRight, Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -48,7 +48,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
         )}
       </div>
       <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in">
-        {items.map((item) => {
+        {items.map((item, i) => {
           const imgSrc = item.coverImage
             ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
             : null;
@@ -74,11 +74,12 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
             >
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
                 {imgSrc ? (
-                  <Image
+                  <FadeInImage
                     src={imgSrc}
                     alt={item.title}
                     fill
                     sizes={imgSize}
+                    priority={i < 4}
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                     unoptimized={isProtectedApiImageSrc(imgSrc)}
                   />

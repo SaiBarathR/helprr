@@ -135,7 +135,9 @@ export function LibraryGapsCard() {
                   {splitRows.map(([label, s]) => (
                     <React.Fragment key={label}>
                       <span style={{ color: HPR.fgMute }}>{label}</span>
-                      <span className="tabular-nums text-right" style={{ color: HPR.fg }}>{pct(s)}%</span>
+                      <span className="tabular-nums text-right" style={{ color: HPR.fg }}>
+                        {pct(s) != null ? `${pct(s)}%` : '—'}
+                      </span>
                     </React.Fragment>
                   ))}
                 </div>
@@ -160,8 +162,7 @@ export function LibraryGapsCard() {
   );
 }
 
-// Per-domain completeness for the split rows; 0 total (service absent) reads as 100% so it
-// never shows a misleading 0%. Callers filter out absent services before rendering.
-function pct({ owned, total }: { owned: number; total: number }): number {
-  return total > 0 ? Math.round((owned / total) * 100) : 100;
+// Per-domain completeness for the split rows. Callers filter out absent services before rendering.
+function pct({ owned, total }: { owned: number; total: number }): number | null {
+  return total > 0 ? Math.round((owned / total) * 100) : null;
 }

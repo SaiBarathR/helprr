@@ -198,6 +198,7 @@ model PollingState {
   lastQueueIds        Json              @default("[]")
   lastHistoryDate     DateTime?
   lastHistoryId       Int?              // max history id at lastHistoryDate; tie-breaks same-timestamp records
+  lastHistorySeenIds  Json              @default("[]") // ids seen at lastHistoryDate; caps same-ts burst gaps
   lastHealthHash      String?
   lastReachable       Boolean?          // null = not yet probed; used for service up/down transition alerts
   updatedAt           DateTime          @updatedAt
