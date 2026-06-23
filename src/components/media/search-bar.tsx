@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
 import { useSearchHistoryListbox } from '@/lib/hooks/use-search-history-listbox';
 import { SearchHistoryDropdown } from './search-history-dropdown';
@@ -13,23 +13,33 @@ interface SearchBarProps {
   placeholder?: string;
   /** When set, recent searches are remembered and shown under the bar on focus. */
   historyKey?: string;
+  /** Debounce before `onChange` fires. Lower it for instant in-memory filtering. */
+  debounceMs?: number;
+  /** Parent-driven spinner (e.g. a network search still in flight). */
+  pending?: boolean;
 }
 
-export function SearchBar({ value, onChange, placeholder = 'Search...', historyKey }: SearchBarProps) {
+export function SearchBar({ value, onChange, placeholder = 'Search...', historyKey, debounceMs = 700, pending = false }: SearchBarProps) {
   const [internal, setInternal] = useState(value);
   const [open, setOpen] = useState(false);
+  const [debouncing, setDebouncing] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { recent, add, remove } = useSearchHistory(historyKey ?? '');
 
   useEffect(() => {
     if (internal === '') {
+      setDebouncing(false);
       onChange('');
       return;
     }
 
-    const timer = setTimeout(() => onChange(internal), 700);
+    setDebouncing(true);
+    const timer = setTimeout(() => {
+      setDebouncing(false);
+      onChange(internal);
+    }, debounceMs);
     return () => clearTimeout(timer);
-  }, [internal, onChange]);
+  }, [internal, onChange, debounceMs]);
 
   useEffect(() => {
     setInternal(value);
@@ -89,8 +99,11 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
         aria-controls={showHistory ? listbox.listboxId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={listbox.activeDescendantId}
-        className="pl-9"
+        className="pl-9 pr-9"
       />
+      {(debouncing || pending) && (
+        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+      )}
       {historyKey && open && (
         <SearchHistoryDropdown
           anchorRef={wrapperRef}

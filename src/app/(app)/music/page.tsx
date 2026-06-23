@@ -18,6 +18,7 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
 import { useCan } from '@/components/permission-provider';
@@ -614,6 +615,7 @@ export default function MusicPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
+      <PullToRefresh onRefresh={() => refetchArtists()} disabled={selectionMode} />
       <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -774,7 +776,7 @@ export default function MusicPage() {
           )}
         </div>
 
-        <SearchBar value={search} onChange={handleSearch} placeholder="Search artists..." historyKey="music" />
+        <SearchBar value={search} onChange={handleSearch} placeholder="Search artists..." historyKey="music" debounceMs={250} />
       </div>
 
       {(() => {

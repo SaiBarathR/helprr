@@ -7,6 +7,7 @@ import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/media/search-input';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -1648,6 +1649,7 @@ export default function ProwlarrPage() {
 
   return (
     <div className="space-y-4 animate-content-in">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['prowlarr'] })} />
       {/* Action buttons */}
       <div className="flex items-center gap-2 flex-wrap">
         <Button

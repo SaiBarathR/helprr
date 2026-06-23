@@ -49,6 +49,10 @@ const MAX_REMINDER_ATTEMPTS = 3;
 // recovery, so a later drop alerts immediately rather than waiting out the window.
 const DISK_ALERT_REMINDER_MS = 6 * 60 * 60 * 1000; // 6 hours
 
+// How long daily disk-usage snapshots are kept (the trend only needs ~7 days,
+// but a longer tail makes the growth-rate fit more stable + survives gaps).
+const DISK_SNAPSHOT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
 function firstStatusMessage(item: QueueItem): string | null {
   const messages = item.statusMessages;
   if (!messages || messages.length === 0) return null;
@@ -199,6 +203,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   pollSeerr: 45_000,
   pollServiceReachability: 15_000,
   checkDiskSpace: 30_000,
+  snapshotDiskUsage: 30_000,
   checkUpcoming: 45_000,
   checkWatchlistReminders: 30_000,
   checkActivityDigest: 30_000,
@@ -530,6 +535,7 @@ export class PollingService {
         'pollSeerr',
         'pollServiceReachability',
         'checkDiskSpace',
+        'snapshotDiskUsage',
         'checkUpcoming',
         'checkWatchlistReminders',
         'checkActivityDigest',
@@ -547,6 +553,7 @@ export class PollingService {
         this.runPollSource('pollSeerr', () => this.pollSeerr()),
         this.runPollSource('pollServiceReachability', () => this.pollServiceReachability()),
         this.runPollSource('checkDiskSpace', () => this.checkDiskSpace()),
+        this.runPollSource('snapshotDiskUsage', () => this.snapshotDiskUsage()),
         this.runPollSource('checkUpcoming', () => this.checkUpcoming()),
         this.runPollSource('checkWatchlistReminders', () => this.checkWatchlistReminders()),
         this.runPollSource('checkActivityDigest', () => this.checkActivityDigest()),
@@ -974,6 +981,48 @@ export class PollingService {
         data: { diskAlertState: nextState as unknown as Prisma.InputJsonValue },
       });
     }
+  }
+
+  // Daily disk-usage history powering the storage widget's trend + days-until-full.
+  // Runs every cycle but persists at most one row per disk per local day, so the
+  // 30s poll cost is one cheap "captured today?" read once a snapshot exists.
+  // Independent of checkDiskSpace (which early-returns when no thresholds are set).
+  private async snapshotDiskUsage(): Promise<void> {
+    let disks;
+    try {
+      disks = await getAggregatedDiskSpace();
+    } catch (error) {
+      logger.debug('Disk-usage snapshot skipped: could not read disk space', {
+        error: errorMessage(error),
+      }, { scope: 'polling' });
+      return;
+    }
+    if (disks.length === 0) return;
+
+    const settings = await getOrCreateAppSettings();
+    const dayStart = startOfLocalDay(new Date(), settings.timeZone);
+
+    const todays = await prisma.diskUsageSnapshot.findMany({
+      where: { capturedAt: { gte: dayStart } },
+      select: { diskId: true },
+    });
+    const capturedToday = new Set(todays.map((row) => row.diskId));
+
+    const pending = disks.filter((disk) => !capturedToday.has(diskId(disk)));
+    if (pending.length > 0) {
+      await prisma.diskUsageSnapshot.createMany({
+        data: pending.map((disk) => ({
+          diskId: diskId(disk),
+          label: disk.label || null,
+          path: disk.path,
+          totalSpace: BigInt(Math.round(disk.totalSpace)),
+          freeSpace: BigInt(Math.round(disk.freeSpace)),
+        })),
+      });
+    }
+
+    const cutoff = new Date(Date.now() - DISK_SNAPSHOT_RETENTION_MS);
+    await prisma.diskUsageSnapshot.deleteMany({ where: { capturedAt: { lt: cutoff } } });
   }
 
   private async pollSonarr() {

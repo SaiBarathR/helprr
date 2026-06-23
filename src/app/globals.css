@@ -105,6 +105,8 @@
     color: var(--foreground);
     -webkit-tap-highlight-color: transparent;
     overflow-x: clip;
+    /* Keep custom pull-to-refresh from being pre-empted by host browser chrome. */
+    overscroll-behavior-y: contain;
   }
 
   button,
