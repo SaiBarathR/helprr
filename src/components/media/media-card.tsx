@@ -8,6 +8,8 @@ import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { cn, shallowEqualExcept } from '@/lib/utils';
 import { SelectionCheck } from './selection-check';
+import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
+import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';
 
 interface MediaCardProps {
   title: string;
@@ -24,6 +26,8 @@ interface MediaCardProps {
   instanceLabel?: string;
   onNavigate?: () => void;
   cornerAction?: ReactNode;
+  /** Jellyfin watch-status lookup (movies/series only); resolved in-component. */
+  watchLookup?: WatchLookupQuery;
   /** Selection mode: clicking the card toggles selection instead of navigating. */
   selectable?: boolean;
   selected?: boolean;
@@ -54,10 +58,13 @@ export const MediaCard = memo(function MediaCard({
   instanceLabel,
   onNavigate,
   cornerAction,
+  watchLookup,
   selectable,
   selected,
   onToggleSelect,
 }: MediaCardProps) {
+  const lookup = useWatchLookup();
+  const watchStatus = watchLookup ? lookup(watchLookup) : undefined;
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
   // Grid posters render at ~120–180px CSS; 360px keeps them retina-crisp while
   // the server transcodes once per (url, width) variant.
@@ -118,6 +125,8 @@ export const MediaCard = memo(function MediaCard({
       {show('monitored') && monitored === false && (
         <div className="absolute inset-0 bg-background/40" />
       )}
+      {/* Jellyfin watch status — hidden in selection mode to avoid the top-left check clash */}
+      {!selectable && <PosterWatchOverlay status={watchStatus} />}
     </div>
   );
 
@@ -150,6 +159,6 @@ export const MediaCard = memo(function MediaCard({
       ) : null}
     </div>
   );
-}, (p, n) => shallowEqualExcept(p, n, ['onNavigate', 'onToggleSelect', 'cornerAction']));
+}, (p, n) => shallowEqualExcept(p, n, ['onNavigate', 'onToggleSelect', 'cornerAction', 'watchLookup']));
 
 export { getImageUrl };

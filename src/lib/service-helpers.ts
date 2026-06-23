@@ -148,6 +148,17 @@ export class JellyfinNotLinkedError extends Error {
 }
 
 /**
+ * A benign "Jellyfin can't serve this user right now" condition — not configured,
+ * not linked, or no resolvable user — that routes turn into an empty response
+ * instead of a 500. Single source so the matched strings can't drift per route.
+ */
+export function isJellyfinUnavailable(error: unknown): boolean {
+  if (error instanceof JellyfinNotLinkedError) return true;
+  const message = (error as { message?: string })?.message ?? '';
+  return message.includes('not configured') || message.includes('missing');
+}
+
+/**
  * Jellyfin client scoped to a specific Helprr user. Uses the admin API key (which
  * can read any user's user-scoped endpoints) but the *member's* jellyfinUserId, so
  * a member sees their own resume/history — never the admin's. Admins fall back to
@@ -157,6 +168,17 @@ export class JellyfinNotLinkedError extends Error {
 export async function getJellyfinClientForUser(
   user: Pick<User, 'role' | 'jellyfinUserId'>
 ): Promise<JellyfinClient> {
+  return (await getJellyfinUserContext(user)).client;
+}
+
+/**
+ * Like {@link getJellyfinClientForUser} but also returns the resolved Jellyfin
+ * user id and the connection fingerprint — what per-user caches (watch status)
+ * key on, so a read and its post-write invalidation hit the exact same key.
+ */
+export async function getJellyfinUserContext(
+  user: Pick<User, 'role' | 'jellyfinUserId'>
+): Promise<{ client: JellyfinClient; connectionFingerprint: string; jellyfinUserId: string }> {
   const connection = await prisma.serviceConnection.findFirst({ where: { type: 'JELLYFIN' } });
   if (!connection) {
     throw new Error('Jellyfin is not configured. Please add a Jellyfin connection in Settings.');
@@ -168,7 +190,11 @@ export async function getJellyfinClientForUser(
     throw new JellyfinNotLinkedError();
   }
 
-  return new JellyfinClient(connection.url, connection.apiKey, userId);
+  return {
+    client: new JellyfinClient(connection.url, connection.apiKey, userId),
+    connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
+    jellyfinUserId: userId,
+  };
 }
 
 export async function getSeerrClient(): Promise<SeerrClient> {

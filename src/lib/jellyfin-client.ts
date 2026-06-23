@@ -7,6 +7,7 @@ import type {
   JellyfinVirtualFolder,
   JellyfinItem,
   JellyfinItemsResponse,
+  JellyfinUserData,
   JellyfinSession,
   JellyfinItemCounts,
   JellyfinSearchResult,
@@ -193,6 +194,41 @@ export class JellyfinClient {
       UserId: this.requireUserId(),
       ...params,
     });
+  }
+
+  /**
+   * Every episode of a series (across seasons) with the caller's watch state.
+   * ParentIndexNumber = season, IndexNumber = episode — the keys we match on
+   * (episodes rarely carry provider ids). UserData carries Played / progress.
+   */
+  async getSeriesEpisodes(seriesId: string): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Episodes`, {
+      userId: this.requireUserId(),
+      Fields: 'ProviderIds',
+      EnableUserData: true,
+      EnableImages: false,
+    });
+  }
+
+  /**
+   * Mark an item played for the scoped user. Uses POST /UserPlayedItems/{id}
+   * (the legacy /Users/{userId}/PlayedItems route is obsolete since JF 10.9 and
+   * can 200 without persisting). userId is passed explicitly because Helprr
+   * authenticates with the admin token but acts on the member's account.
+   * Marking a Series cascades to its episodes server-side.
+   */
+  async markPlayed(itemId: string): Promise<JellyfinUserData> {
+    const res = await this.client.post<JellyfinUserData>(`/UserPlayedItems/${itemId}`, null, {
+      params: { userId: this.requireUserId() },
+    });
+    return res.data;
+  }
+
+  async markUnplayed(itemId: string): Promise<JellyfinUserData> {
+    const res = await this.client.delete<JellyfinUserData>(`/UserPlayedItems/${itemId}`, {
+      params: { userId: this.requireUserId() },
+    });
+    return res.data;
   }
 
   async getRecentlyAdded(params: { limit?: number; parentId?: string } = {}): Promise<JellyfinItem[]> {

@@ -17,7 +17,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
-  ExternalLink, Star,
+  ExternalLink, Star, Check, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -29,6 +29,9 @@ import { arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { useCan } from '@/components/permission-provider';
+import { useWatchStatus } from '@/components/jellyfin/watch-status-provider';
+import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
+import { episodeKey } from '@/types/watch-status';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -217,6 +220,13 @@ export default function EpisodeDetailPage() {
   });
   const tmdbEpisode = tmdbSeasonQuery.data?.episodes.find((e) => e.episodeNumber === episodeNumber) ?? null;
 
+  // Jellyfin watch state for this episode (shared per-series cache).
+  const { episodes: episodeWatch, jellyfinSeriesId } = useSeriesEpisodeWatch({
+    tvdbId: series?.tvdbId, tmdbId: series?.tmdbId, imdbId: series?.imdbId,
+  });
+  const { setWatched, canWrite: canSetWatched, isWriting } = useWatchStatus();
+  const epWatch = episode ? episodeWatch[episodeKey(episode.seasonNumber, episode.episodeNumber)] : undefined;
+
   useEffect(() => {
     if (seriesQuery.isError || episodesQuery.isError) toast.error('Failed to load episode data');
   }, [seriesQuery.isError, episodesQuery.isError]);
@@ -377,6 +387,22 @@ export default function EpisodeDetailPage() {
                     </a>
                   </DropdownMenuItem>
                 )}
+                {canSetWatched && epWatch && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={isWriting}
+                      onClick={() => setWatched({
+                        jellyfinItemId: epWatch.jellyfinItemId,
+                        played: !epWatch.played,
+                        seriesId: jellyfinSeriesId ?? undefined,
+                      })}
+                    >
+                      {epWatch.played ? <RotateCcw className="mr-2 h-4 w-4" /> : <Check className="mr-2 h-4 w-4" />}
+                      {epWatch.played ? 'Mark as unwatched' : 'Mark as watched'}
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleAutomaticSearch} disabled={!!actionLoading}>
                   <Search className="mr-2 h-4 w-4" />
@@ -425,6 +451,13 @@ export default function EpisodeDetailPage() {
         ) : (
           <Badge variant="secondary">UNMONITORED</Badge>
         )}
+        {epWatch?.played ? (
+          <Badge className="gap-1 bg-[var(--hpr-amber)]/20 text-[var(--hpr-amber)]">
+            <Check className="h-3 w-3" strokeWidth={3} />WATCHED
+          </Badge>
+        ) : epWatch && epWatch.playedPercentage > 0 ? (
+          <Badge variant="secondary" className="text-[var(--hpr-amber)]">{epWatch.playedPercentage}% WATCHED</Badge>
+        ) : null}
         {tmdbEpisode && tmdbEpisode.voteAverage > 0 && (
           <span className="inline-flex items-center gap-1 text-sm">
             <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />

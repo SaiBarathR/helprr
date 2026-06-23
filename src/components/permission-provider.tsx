@@ -16,6 +16,12 @@ export interface MePayload {
   tmdbConfigured: boolean;
   /** The user's linked Seerr user id (string), if any — used to default "Request As". */
   seerrUserId: string | null;
+  /**
+   * Whether this user resolves to a Jellyfin account (admin → connection user;
+   * member → their linked jellyfinUserId). Gates the watch-status overlay fetch
+   * so unlinked users never fire a guaranteed-empty request.
+   */
+  jellyfinLinked: boolean;
 }
 
 const PermissionContext = createContext<MePayload | null>(null);

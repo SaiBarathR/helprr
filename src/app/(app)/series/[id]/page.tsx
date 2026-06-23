@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
@@ -28,7 +28,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
   Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight, ChevronLeft,
-  Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert, FileStack,
+  Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert, FileStack, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format, parse } from 'date-fns';
@@ -66,6 +66,11 @@ import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 import { useCan, useMe } from '@/components/permission-provider';
+import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
+import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
+import { EpisodeWatchIndicator } from '@/components/jellyfin/watch-status-indicator';
+import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
+import { episodeKey, type EpisodeWatchStatus } from '@/types/watch-status';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -284,6 +289,22 @@ export default function SeriesDetailPage() {
     staleTime: 30 * 60_000,
   });
   const tmdbData = tmdbQuery.data ?? null;
+
+  // Jellyfin watch status — series aggregate (shared map) + per-episode map (shared hook).
+  const lookupWatch = useWatchLookup();
+  const seriesWatch = lookupWatch({ kind: 'series', tvdbId: series?.tvdbId, tmdbId: series?.tmdbId, imdbId: series?.imdbId });
+  const { episodes: episodeWatch } = useSeriesEpisodeWatch({ tvdbId: series?.tvdbId, tmdbId: series?.tmdbId, imdbId: series?.imdbId });
+  // Bucket watched episodes by season once (keys are `S{season}E{episode}`),
+  // so each season header is an O(1) lookup instead of re-scanning the whole map.
+  const watchedBySeason = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const [key, ep] of Object.entries(episodeWatch)) {
+      if (!ep.played) continue;
+      const match = /^S(\d+)E/.exec(key);
+      if (match) counts[Number(match[1])] = (counts[Number(match[1])] ?? 0) + 1;
+    }
+    return counts;
+  }, [episodeWatch]);
 
   const getCurrentScrollY = useCallback(() => {
     const content = contentScrollRef.current;
@@ -1088,6 +1109,7 @@ export default function SeriesDetailPage() {
                     Open in Jellyfin
                   </DropdownMenuItem>
                 )}
+                <MarkWatchedMenuItem status={seriesWatch} />
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => setShowAddWatchlist(true)}>
                   <Bookmark className="h-4 w-4" />
@@ -1486,6 +1508,11 @@ export default function SeriesDetailPage() {
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
                           <span className="text-sm text-muted-foreground">{fileCount}/{total}</span>
+                          {(watchedBySeason[sn] ?? 0) > 0 && (
+                            <span className="inline-flex items-center gap-0.5 text-xs font-medium text-[var(--hpr-amber)]" title={`${watchedBySeason[sn]} watched`}>
+                              <Check className="h-3 w-3" strokeWidth={3} />{watchedBySeason[sn]}
+                            </span>
+                          )}
                         </div>
                         {tmdbSeason && tmdbSeason.voteAverage > 0 && (
                           <div className="flex items-center gap-1 mt-0.5">
@@ -1530,6 +1557,7 @@ export default function SeriesDetailPage() {
                       seasonEps={seasonEps}
                       seriesRouteId={String(id)}
                       instance={instance}
+                      episodeWatch={episodeWatch}
                     />
                   )}
                 </div>
@@ -2066,12 +2094,14 @@ function ExpandedSeasonEpisodes({
   seasonEps,
   seriesRouteId,
   instance,
+  episodeWatch,
 }: {
   tmdbId: number;
   seasonNumber: number;
   seasonEps: SonarrEpisode[];
   seriesRouteId: string;
   instance?: string;
+  episodeWatch: Record<string, EpisodeWatchStatus>;
 }) {
   const { data: epData, isError: epError } = useQuery({
     queryKey: tvSeasonKey(tmdbId, seasonNumber),
@@ -2108,6 +2138,9 @@ function ExpandedSeasonEpisodes({
                   {sonarrEp?.hasFile && (
                     <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="Downloaded" />
                   )}
+                  <span className="ml-auto shrink-0 pl-2">
+                    <EpisodeWatchIndicator status={episodeWatch[episodeKey(seasonNumber, ep.episodeNumber)]} />
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                   {ep.airDate && <span>{format(new Date(ep.airDate), 'MMM d, yyyy')}</span>}

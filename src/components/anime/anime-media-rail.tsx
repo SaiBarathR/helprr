@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { ChevronRight, Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
+import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';
 import type { AniListMediaFormat, AniListMediaType } from '@/types/anilist';
 
 interface MediaItem {
@@ -28,6 +30,7 @@ interface AnimeMediaRailProps {
 }
 
 export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: AnimeMediaRailProps) {
+  const lookup = useWatchLookup();
   if (!items.length) return null;
 
   const cardWidth = size === 'large' ? 'w-[140px]' : 'w-[110px]';
@@ -90,6 +93,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
                     {item.averageScore}%
                   </Badge>
                 )}
+                <PosterWatchOverlay status={lookup({ anilistId: item.id })} />
               </div>
               <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{item.title}</p>
               <div className="flex items-center gap-1 text-[11px] text-muted-foreground">

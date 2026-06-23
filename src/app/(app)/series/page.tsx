@@ -800,6 +800,7 @@ export default function SeriesPage() {
                     type="series"
                     href={hrefForSeries(s)}
                     visibleFields={visibleFields}
+                    watchLookup={{ scope: 'sonarr', instanceId: s.instanceId, arrId: s.id }}
                     rating={s.ratings?.value}
                     instanceLabel={multiInstance ? s.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
@@ -841,6 +842,7 @@ export default function SeriesPage() {
                   status={s.status}
                   visibleFields={visibleFields}
                   posterSize={posterSize}
+                  watchLookup={{ scope: 'sonarr', instanceId: s.instanceId, arrId: s.id }}
                   qualityProfile={s.qualityProfileName}
                   network={s.network}
                   overview={s.overview}
@@ -876,6 +878,7 @@ export default function SeriesPage() {
             <div ref={contentRef}>
               <MediaTable
                 type="series"
+                watchScope="sonarr"
                 visibleFields={visibleFields}
                 rows={visibleRows}
                 topSpacerHeight={topSpacerHeight}

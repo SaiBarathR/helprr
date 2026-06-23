@@ -71,6 +71,8 @@ export interface JellyfinUserData {
   IsFavorite: boolean;
   Played: boolean;
   PlayedPercentage?: number;
+  /** Unwatched leaf episodes — only present on Series/Season items (PlayedPercentage is null there). */
+  UnplayedItemCount?: number;
 }
 
 export interface JellyfinMediaStream {
@@ -115,6 +117,8 @@ export interface JellyfinItem {
   MediaType?: string;
   MediaStreams?: JellyfinMediaStream[];
   Container?: string;
+  /** Total leaf episode count on a Series (with Fields=RecursiveItemCount) — the denominator for watched-progress. */
+  RecursiveItemCount?: number;
 }
 
 export interface JellyfinItemsResponse {

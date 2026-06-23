@@ -256,6 +256,28 @@ export async function loadLibraryLinksForAnilistIds(
   return map;
 }
 
+/**
+ * Forward lookup: every matched Sonarr series → the AniList media ids linked to
+ * it, keyed `${sonarrInstanceId}:${sonarrSeriesId}`. The watch-status map uses
+ * this to alias a series' Jellyfin status under `anilist:<id>` so the AniList
+ * browse rails/library (which only hold AniList ids) can show watch state.
+ */
+export async function loadAnilistIdsBySeries(): Promise<Map<string, number[]>> {
+  const entries = await prisma.aniListSeriesMappingEntry.findMany({
+    where: { mapping: { state: { in: ['AUTO_MATCH', 'MANUAL_MATCH'] } } },
+    include: { mapping: { select: { sonarrInstanceId: true, sonarrSeriesId: true } } },
+  });
+
+  const map = new Map<string, number[]>();
+  for (const entry of entries) {
+    const key = `${entry.mapping.sonarrInstanceId}:${entry.mapping.sonarrSeriesId}`;
+    const list = map.get(key) ?? [];
+    list.push(entry.anilistMediaId);
+    map.set(key, list);
+  }
+  return map;
+}
+
 /** One AniList entry to persist on a mapping: who linked it and its title at link time. */
 interface EntryDescriptor {
   anilistMediaId: number;
