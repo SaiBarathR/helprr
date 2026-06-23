@@ -81,12 +81,13 @@ export function JellyfinLibrariesCard() {
   const { data, loading } = useInsightsResource<JellyfinLibrariesResponse>('/api/insights/jellyfin-libraries');
   const libraries = data?.libraries ?? [];
   const max = libraries.reduce((m, lib) => Math.max(m, lib.itemCount), 0);
+  const hasLibraryItems = libraries.length > 0 && (data?.totalItems ?? 0) > 0;
 
   return (
     <Panel
       title="Jellyfin libraries"
       right={
-        data && libraries.length > 0 ? (
+        data && hasLibraryItems ? (
           <span style={{ fontFamily: 'var(--hpr-font-mono)' }}>
             {libraries.length} libs · {data.totalItems.toLocaleString()} items
           </span>
@@ -95,7 +96,7 @@ export function JellyfinLibrariesCard() {
     >
       {loading && !data ? (
         <PanelLoading height={160} />
-      ) : libraries.length === 0 || (data?.totalItems ?? 0) === 0 ? (
+      ) : !hasLibraryItems ? (
         <PanelEmpty message="No Jellyfin library items found." height={120} />
       ) : (
         <div className="divide-y divide-border/50">

@@ -5,7 +5,7 @@ import { Layers, Check, Bookmark } from 'lucide-react';
 import type { CollectionSummary } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
-import { FadeInImage } from './fade-in-image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 
 interface CollectionCardProps {
   collection: CollectionSummary;

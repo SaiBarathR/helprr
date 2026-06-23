@@ -6,7 +6,7 @@ import { memo, type ReactNode } from 'react';
 import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { cn, shallowEqualExcept } from '@/lib/utils';
-import { FadeInImage } from './fade-in-image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { SelectionCheck } from './selection-check';
 import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
 import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';

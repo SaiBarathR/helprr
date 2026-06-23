@@ -234,11 +234,13 @@ function GapCard({
 
 function GapSectionView({
   section,
+  priorityKeys,
   selectionMode,
   selectedKeys,
   onToggle,
 }: {
   section: LibraryGapSection;
+  priorityKeys?: Set<string>;
   selectionMode?: boolean;
   selectedKeys?: Set<string>;
   onToggle?: (key: string) => void;
@@ -285,12 +287,12 @@ function GapSectionView({
       </div>
       {section.available && (
         <div className={expanded ? EXPANDED_GRID : RAIL_ROW}>
-          {section.items.map((item, i) => (
+          {section.items.map((item) => (
             <GapCard
               key={item.key}
               item={item}
               layout={expanded ? 'grid' : 'rail'}
-              imagePriority={i < 4}
+              imagePriority={priorityKeys?.has(item.key)}
               selectionMode={selectionMode}
               selected={selectedKeys?.has(item.key)}
               onToggleSelect={() => onToggle?.(item.key)}
@@ -326,6 +328,18 @@ export default function LibraryGapsPage() {
   );
 
   const allSelected = searchableItems.length > 0 && searchableItems.every((i) => selectedKeys.has(i.key));
+  const priorityGapKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (!data) return keys;
+    for (const section of data.sections) {
+      if (!section.available || section.count === 0) continue;
+      for (const item of section.items) {
+        if (keys.size >= 4) return keys;
+        keys.add(item.key);
+      }
+    }
+    return keys;
+  }, [data]);
   const toggleSelectAll = useCallback(() => {
     if (allSelected) clear();
     else selectMany(searchableItems.map((i) => i.key));
@@ -375,7 +389,8 @@ export default function LibraryGapsPage() {
     const results = await Promise.allSettled(calls);
     const failed = results.filter((r) => r.status === 'rejected').length;
     const ok = calls.length - failed;
-    if (failed) reportBulk('Search started for', ok, failed, { noun: 'batch', pluralNoun: 'batches' });
+    if (failed && ok === 0) toast.error(`Search failed for ${failed} batch${failed === 1 ? '' : 'es'}`);
+    else if (failed) reportBulk('Search started for', ok, failed, { noun: 'batch', pluralNoun: 'batches' });
     else toast.success(`Search started for ${total} item${total === 1 ? '' : 's'}`);
     if (failed === 0) exit();
   }, [selectedKeys, searchableByKey, exit]);
@@ -424,6 +439,7 @@ export default function LibraryGapsPage() {
             <GapSectionView
               key={section.id}
               section={section}
+              priorityKeys={priorityGapKeys}
               selectionMode={selectionMode}
               selectedKeys={selectedKeys}
               onToggle={toggle}

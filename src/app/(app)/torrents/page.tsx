@@ -80,19 +80,19 @@ import { useBadgeActions } from '@/components/layout/badge-provider';
 const TORRENT_ROW_HEIGHT = 160;
 
 const TORRENT_ACTION_MESSAGES: Record<string, { single: string; bulk?: string }> = {
-  start: { single: 'Started' },
-  stop: { single: 'Stopped' },
-  forceStart: { single: 'Force started' },
-  delete: { single: 'Deleted' },
-  recheck: { single: 'Rechecking' },
-  reannounce: { single: 'Reannounced' },
+  start: { single: 'Started', bulk: 'start' },
+  stop: { single: 'Stopped', bulk: 'stop' },
+  forceStart: { single: 'Force started', bulk: 'force start' },
+  delete: { single: 'Deleted', bulk: 'delete' },
+  recheck: { single: 'Rechecking', bulk: 'recheck' },
+  reannounce: { single: 'Reannounced', bulk: 'reannounce' },
   setDownloadLimit: { single: 'Download limit set', bulk: 'Set download limit for' },
   setUploadLimit: { single: 'Upload limit set', bulk: 'Set upload limit for' },
-  toggleSequentialDownload: { single: 'Sequential download toggled' },
-  toggleFirstLastPiecePrio: { single: 'First/last piece priority toggled' },
-  setCategory: { single: 'Category set' },
-  setAutoManagement: { single: 'Auto management toggled' },
-  rename: { single: 'Renamed' },
+  toggleSequentialDownload: { single: 'Sequential download toggled', bulk: 'toggle sequential download for' },
+  toggleFirstLastPiecePrio: { single: 'First/last piece priority toggled', bulk: 'toggle first/last piece priority for' },
+  setCategory: { single: 'Category set', bulk: 'set category for' },
+  setAutoManagement: { single: 'Auto management toggled', bulk: 'toggle auto management for' },
+  rename: { single: 'Renamed', bulk: 'rename' },
 };
 
 function torrentActionMessage(action: string, mode: 'single' | 'bulk'): string {
@@ -737,10 +737,10 @@ export default function TorrentsPage() {
     opts?: { silent?: boolean },
   ): Promise<boolean> => {
     try {
-      const res = await fetch(`/api/qbittorrent/${hash}`, {
+      const res = await fetch('/api/qbittorrent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...extra }),
+        body: JSON.stringify({ hash, action, ...extra }),
       });
       if (!res.ok) {
         const data = await res.json();

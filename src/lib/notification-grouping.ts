@@ -43,7 +43,7 @@ export interface GroupedItem {
   episodeId?: number;
 }
 
-type NotifyFn = (event: NotificationEventInput, context: PollNotificationContext) => Promise<number>;
+type NotifyFn = (event: NotificationEventInput, context: PollNotificationContext) => Promise<number | null>;
 
 interface Entry {
   event: NotificationEventInput;

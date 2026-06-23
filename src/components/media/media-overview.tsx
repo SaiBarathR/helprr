@@ -8,7 +8,7 @@ import { cn, shallowEqualExcept } from '@/lib/utils';
 import type { MediaImage } from '@/types';
 import type { PosterSize } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
-import { FadeInImage } from './fade-in-image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { SelectionCheck } from './selection-check';
 import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
