@@ -13,6 +13,7 @@ import { RequestsFilterMenu } from '@/components/seerr/requests-filter-menu';
 import { RequestsSortMenu } from '@/components/seerr/requests-sort-menu';
 import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
 import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import type { SeerrRequestCount, SeerrUserSummary } from '@/types/seerr';
 
 const TABS = [
@@ -69,6 +70,7 @@ export default function RequestsPage() {
 
   return (
     <div className="animate-content-in">
+      <PullToRefresh onRefresh={handleRefresh} />
       <div
         className="sticky z-30 -mx-2 flex items-center gap-1.5 bg-background/95 px-2 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6"
         style={{ top: 'var(--header-height, 0px)' }}

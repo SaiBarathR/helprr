@@ -204,6 +204,23 @@ model PollingState {
   updatedAt           DateTime          @updatedAt
 }
 
+// Daily disk-usage samples powering the storage widget's growth trend +
+// "days until full" estimate. Keyed by the canonical diskId() identity so a
+// disk's history survives label/path drift. The sampler writes at most one row
+// per disk per local day and prunes rows older than the retention window.
+model DiskUsageSnapshot {
+  id         String   @id @default(cuid())
+  diskId     String
+  label      String?
+  path       String
+  totalSpace BigInt
+  freeSpace  BigInt
+  capturedAt DateTime @default(now())
+
+  @@index([diskId, capturedAt])
+  @@index([capturedAt])
+}
+
 model AppSettings {
   id                       String  @id @default("singleton")
   pollingIntervalSecs      Int     @default(30)

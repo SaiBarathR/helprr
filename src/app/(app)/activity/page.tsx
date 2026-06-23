@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import {
   Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Disc3, Scissors,
@@ -383,6 +384,7 @@ export default function ActivityPage() {
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
+      <PullToRefresh onRefresh={handleRefreshActivity} />
       <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         {/* Top bar */}
         <div className="flex items-center justify-between pt-2 pb-2 w-full">

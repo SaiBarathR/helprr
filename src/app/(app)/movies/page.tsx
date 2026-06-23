@@ -18,6 +18,7 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
@@ -634,6 +635,7 @@ export default function MoviesPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
+      <PullToRefresh onRefresh={() => refetchMovies()} disabled={selectionMode} />
       <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
         <div className="flex items-center gap-2">
           <DropdownMenu>
@@ -797,7 +799,7 @@ export default function MoviesPage() {
         <div className="flex items-center gap-2">
           <MoviesSubNav active="library" />
           <div className="flex-1 min-w-0">
-            <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." historyKey="movies" />
+            <SearchBar value={search} onChange={handleSearch} placeholder="Search movies..." historyKey="movies" debounceMs={250} />
           </div>
         </div>
       </div>

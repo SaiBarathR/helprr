@@ -6,6 +6,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Image from 'next/image';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -130,6 +131,7 @@ const MAX_DAYS = 18250;
 // ─── Main Page ───
 
 export default function JellyfinPage() {
+  const pageQueryClient = useQueryClient();
   const [tab, setTab] = useState<TabKey>('overview');
   // Users (sessions) and Stats are admin analytics; members keep Overview and
   // their own per-user History.
@@ -147,6 +149,7 @@ export default function JellyfinPage() {
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
+      <PullToRefresh onRefresh={() => pageQueryClient.invalidateQueries({ queryKey: ['jellyfin'] })} />
       <div className="sticky z-30 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
           {visibleTabs.map((t) => (
