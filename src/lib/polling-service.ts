@@ -53,6 +53,10 @@ const DISK_ALERT_REMINDER_MS = 6 * 60 * 60 * 1000; // 6 hours
 // but a longer tail makes the growth-rate fit more stable + survives gaps).
 const DISK_SNAPSHOT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
+function localDateOnly(input: Date, timeZone: string): Date {
+  return new Date(`${getLocalDateKey(input, timeZone)}T00:00:00.000Z`);
+}
+
 function firstStatusMessage(item: QueueItem): string | null {
   const messages = item.statusMessages;
   if (!messages || messages.length === 0) return null;
@@ -526,41 +530,30 @@ export class PollingService {
     this.isPolling = true;
     try {
       const startedAt = performance.now();
-      const pollSources = [
-        'pollSonarr',
-        'pollRadarr',
-        'pollLidarr',
-        'pollQBittorrent',
-        'pollJellyfin',
-        'pollSeerr',
-        'pollServiceReachability',
-        'checkDiskSpace',
-        'snapshotDiskUsage',
-        'checkUpcoming',
-        'checkWatchlistReminders',
-        'checkActivityDigest',
-        'applyBandwidthSchedule',
-        'checkNotificationRetention',
-        'checkAnimeAutoMap',
-      ] as const;
+      const pollTasks: Array<{ source: string; run: () => Promise<void> }> = [
+        { source: 'pollSonarr', run: () => this.runPollSource('pollSonarr', () => this.pollSonarr()) },
+        { source: 'pollRadarr', run: () => this.runPollSource('pollRadarr', () => this.pollRadarr()) },
+        { source: 'pollLidarr', run: () => this.runPollSource('pollLidarr', () => this.pollLidarr()) },
+        { source: 'pollQBittorrent', run: () => this.runPollSource('pollQBittorrent', () => this.pollQBittorrent()) },
+        { source: 'pollJellyfin', run: () => this.runPollSource('pollJellyfin', () => this.pollJellyfin()) },
+        { source: 'pollSeerr', run: () => this.runPollSource('pollSeerr', () => this.pollSeerr()) },
+        { source: 'pollServiceReachability', run: () => this.runPollSource('pollServiceReachability', () => this.pollServiceReachability()) },
+        { source: 'checkDiskSpace', run: () => this.runPollSource('checkDiskSpace', () => this.checkDiskSpace()) },
+      ];
+      if (await this.shouldSnapshotDiskUsage()) {
+        pollTasks.push({ source: 'snapshotDiskUsage', run: () => this.runPollSource('snapshotDiskUsage', () => this.snapshotDiskUsage()) });
+      }
+      pollTasks.push(
+        { source: 'checkUpcoming', run: () => this.runPollSource('checkUpcoming', () => this.checkUpcoming()) },
+        { source: 'checkWatchlistReminders', run: () => this.runPollSource('checkWatchlistReminders', () => this.checkWatchlistReminders()) },
+        { source: 'checkActivityDigest', run: () => this.runPollSource('checkActivityDigest', () => this.checkActivityDigest()) },
+        { source: 'applyBandwidthSchedule', run: () => this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()) },
+        { source: 'checkNotificationRetention', run: () => this.runPollSource('checkNotificationRetention', () => this.checkNotificationRetention()) },
+        { source: 'checkAnimeAutoMap', run: () => this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()) },
+      );
+      const pollSources = pollTasks.map((task) => task.source);
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
-      const results = await Promise.allSettled([
-        this.runPollSource('pollSonarr', () => this.pollSonarr()),
-        this.runPollSource('pollRadarr', () => this.pollRadarr()),
-        this.runPollSource('pollLidarr', () => this.pollLidarr()),
-        this.runPollSource('pollQBittorrent', () => this.pollQBittorrent()),
-        this.runPollSource('pollJellyfin', () => this.pollJellyfin()),
-        this.runPollSource('pollSeerr', () => this.pollSeerr()),
-        this.runPollSource('pollServiceReachability', () => this.pollServiceReachability()),
-        this.runPollSource('checkDiskSpace', () => this.checkDiskSpace()),
-        this.runPollSource('snapshotDiskUsage', () => this.snapshotDiskUsage()),
-        this.runPollSource('checkUpcoming', () => this.checkUpcoming()),
-        this.runPollSource('checkWatchlistReminders', () => this.checkWatchlistReminders()),
-        this.runPollSource('checkActivityDigest', () => this.checkActivityDigest()),
-        this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()),
-        this.runPollSource('checkNotificationRetention', () => this.checkNotificationRetention()),
-        this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()),
-      ]);
+      const results = await Promise.allSettled(pollTasks.map((task) => task.run()));
 
       const rejected = results.flatMap((result, index) => {
         if (result.status !== 'rejected') return [];
@@ -983,11 +976,21 @@ export class PollingService {
     }
   }
 
+  private async shouldSnapshotDiskUsage(): Promise<boolean> {
+    const settings = await getOrCreateAppSettings();
+    const capturedDate = localDateOnly(new Date(), settings.timeZone);
+    const existing = await prisma.diskUsageSnapshot.findFirst({
+      where: { capturedDate },
+      select: { id: true },
+    });
+    return existing === null;
+  }
+
   // Daily disk-usage history powering the storage widget's trend + days-until-full.
-  // Runs every cycle but persists at most one row per disk per local day, so the
-  // 30s poll cost is one cheap "captured today?" read once a snapshot exists.
+  // The poll cycle gates this before external disk API calls once today's snapshot exists.
   // Independent of checkDiskSpace (which early-returns when no thresholds are set).
   private async snapshotDiskUsage(): Promise<void> {
+    const now = new Date();
     let disks;
     try {
       disks = await getAggregatedDiskSpace();
@@ -1000,10 +1003,10 @@ export class PollingService {
     if (disks.length === 0) return;
 
     const settings = await getOrCreateAppSettings();
-    const dayStart = startOfLocalDay(new Date(), settings.timeZone);
+    const capturedDate = localDateOnly(now, settings.timeZone);
 
     const todays = await prisma.diskUsageSnapshot.findMany({
-      where: { capturedAt: { gte: dayStart } },
+      where: { capturedDate },
       select: { diskId: true },
     });
     const capturedToday = new Set(todays.map((row) => row.diskId));
@@ -1017,12 +1020,15 @@ export class PollingService {
           path: disk.path,
           totalSpace: BigInt(Math.round(disk.totalSpace)),
           freeSpace: BigInt(Math.round(disk.freeSpace)),
+          capturedAt: now,
+          capturedDate,
         })),
+        skipDuplicates: true,
       });
-    }
 
-    const cutoff = new Date(Date.now() - DISK_SNAPSHOT_RETENTION_MS);
-    await prisma.diskUsageSnapshot.deleteMany({ where: { capturedAt: { lt: cutoff } } });
+      const cutoff = new Date(Date.now() - DISK_SNAPSHOT_RETENTION_MS);
+      await prisma.diskUsageSnapshot.deleteMany({ where: { capturedAt: { lt: cutoff } } });
+    }
   }
 
   private async pollSonarr() {

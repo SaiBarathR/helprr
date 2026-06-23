@@ -33,7 +33,7 @@ function bytesPerDay(points: Point[]): number {
   return (n * sumXY - sumX * sumY) / denom;
 }
 
-async function getHandler() {
+async function getHandler(): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
   const { user } = auth;

@@ -1,5 +1,6 @@
 'use client';
 
+import type { RefObject } from 'react';
 import { Loader2 } from 'lucide-react';
 import { usePullToRefresh } from '@/lib/hooks/use-pull-to-refresh';
 
@@ -8,15 +9,17 @@ interface PullToRefreshProps {
   onRefresh: () => unknown | Promise<unknown>;
   /** Skip the gesture (e.g. during bulk-selection). */
   disabled?: boolean;
+  /** Optional scroll container that must be at the top before refresh can trigger. */
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 }
 
 /**
- * Window-level pull-to-refresh indicator for document-scrolled pages. Renders a
- * fixed spinner that follows the finger and spins while refreshing. Drop one
- * instance near the top of a page; it owns no layout space.
+ * Pull-to-refresh indicator for document-scrolled pages, or a provided scroll
+ * container. Renders a fixed spinner that follows the finger and spins while
+ * refreshing. Drop one instance near the top of a page; it owns no layout space.
  */
-export function PullToRefresh({ onRefresh, disabled = false }: PullToRefreshProps) {
-  const { distance, progress, refreshing } = usePullToRefresh({ onRefresh, disabled });
+export function PullToRefresh({ onRefresh, disabled = false, scrollContainerRef }: PullToRefreshProps) {
+  const { distance, progress, refreshing } = usePullToRefresh({ onRefresh, disabled, scrollContainerRef });
 
   const visible = refreshing || distance > 0;
   if (!visible) return null;
