@@ -21,7 +21,6 @@ import { SearchBar } from '@/components/media/search-bar';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
-import { toast } from 'sonner';
 import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
@@ -29,8 +28,8 @@ import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
-import { handleAuthError } from '@/lib/query-client';
+import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import type { RadarrMovieListItem } from '@/types';
 
@@ -101,13 +100,6 @@ const sortOptions = [
   { value: 'originalLanguage', label: 'Original Language' },
   { value: 'tags', label: 'Tags' },
 ] as const;
-
-// Toast summary shared by every bulk action ("Monitoring 5 movies", "Deleted 2 movies, 1 failed").
-function reportBulk(verb: string, ok: number, fail: number) {
-  const word = ok === 1 ? 'movie' : 'movies';
-  if (fail) toast.error(`${verb} ${ok} ${word}, ${fail} failed`);
-  else toast.success(`${verb} ${ok} ${word}`);
-}
 
 function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large') {
   if (posterSize === 'small') {
@@ -493,65 +485,51 @@ export default function MoviesPage() {
   }, [selectedKeys, movieByKey]);
 
   const fanOut = useCallback(async (
-    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>
-  ) => {
-    let ok = 0;
-    let fail = 0;
-    await Promise.all([...groupSelectedByInstance()].map(async ([instanceId, ids]) => {
-      try {
-        const res = await run(instanceId, ids);
-        if (res.status === 401) handleAuthError(new ApiError(401, 'Session expired'));
-        if (res.ok) ok += ids.length;
-        else fail += ids.length;
-      } catch (e) {
-        handleAuthError(e);
-        fail += ids.length;
-      }
-    }));
-    return { ok, fail };
-  }, [groupSelectedByInstance]);
+    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>,
+    opts?: Parameters<typeof bulkFanOut>[2],
+  ) => bulkFanOut(groupSelectedByInstance(), run, opts), [groupSelectedByInstance]);
 
   const handleMonitor = useCallback(async (monitored: boolean) => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, monitored }),
       }));
-    reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail);
+    reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     await refetchMovies();
-    exit();
+    if (fail === 0) exit();
   }, [fanOut, refetchMovies, exit]);
 
   const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
       }));
-    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail);
+    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     await refetchMovies();
-    exit();
+    if (fail === 0) exit();
   }, [fanOut, refetchMovies, exit]);
 
   const handleBulkSearch = useCallback(async () => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/radarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'MoviesSearch', movieIds: ids }),
       }));
-    reportBulk('Searching', ok, fail);
-    exit();
+    reportBulk('Searching', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
+    if (fail === 0) exit();
   }, [fanOut, exit]);
 
   const handleDelete = useCallback(async (deleteFiles: boolean) => {
-    const { ok, fail } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, deleteFiles }),
       }));
-    reportBulk('Deleted', ok, fail);
+    reportBulk('Deleted', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     await refetchMovies();
-    exit();
+    if (fail === 0) exit();
   }, [fanOut, refetchMovies, exit]);
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
@@ -870,7 +848,7 @@ export default function MoviesPage() {
             <div ref={contentRef}>
               {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
               <div className={posterGridClass}>
-                {visibleMovies.map((movie) => (
+                {visibleMovies.map((movie, i) => (
                   <MediaCard
                     key={`${movie.instanceId ?? ''}:${movie.id}`}
                     title={movie.title}
@@ -885,6 +863,7 @@ export default function MoviesPage() {
                     rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
                     instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                     onNavigate={handleNavigateToDetail}
+                    imagePriority={startIndex + i < Math.min(posterColumns * 2, 4)}
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(movie))}
                     onToggleSelect={() => toggle(keyOf(movie))}
@@ -911,7 +890,7 @@ export default function MoviesPage() {
           return (
             <div ref={contentRef} className="space-y-2">
               {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-              {visibleMovies.map((movie) => (
+              {visibleMovies.map((movie, i) => (
                 <MediaOverviewItem
                   key={`${movie.instanceId ?? ''}:${movie.id}`}
                   title={movie.title}
@@ -935,6 +914,7 @@ export default function MoviesPage() {
                   genres={movie.genres}
                   instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                   onNavigate={handleNavigateToDetail}
+                  imagePriority={startIndex + i < 6}
                   selectable={selectionMode}
                   selected={selectedKeys.has(keyOf(movie))}
                   onToggleSelect={() => toggle(keyOf(movie))}
@@ -988,7 +968,7 @@ export default function MoviesPage() {
         return (
           <div ref={contentRef} className="space-y-2">
             {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-            {visibleMovies.map((movie) => (
+            {visibleMovies.map((movie, i) => (
               <MediaOverviewItem
                 key={`${movie.instanceId ?? ''}:${movie.id}`}
                 title={movie.title}
@@ -1012,6 +992,7 @@ export default function MoviesPage() {
                 genres={movie.genres}
                 instanceLabel={multiInstance ? movie.instanceLabel : undefined}
                 onNavigate={handleNavigateToDetail}
+                imagePriority={startIndex + i < 6}
                 selectable={selectionMode}
                 selected={selectedKeys.has(keyOf(movie))}
                 onToggleSelect={() => toggle(keyOf(movie))}

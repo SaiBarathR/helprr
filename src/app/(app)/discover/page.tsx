@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
-import Image from 'next/image';
 import Link from 'next/link';
+import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Badge } from '@/components/ui/badge';
@@ -325,10 +326,12 @@ function MediaPoster({
   item,
   onClick,
   variant = 'rail',
+  imagePriority,
 }: {
   item: DiscoverItem;
   onClick: (item: DiscoverItem) => void;
   variant?: 'rail' | 'grid';
+  imagePriority?: boolean;
 }) {
   const isGrid = variant === 'grid';
   const posterSrc = item.posterPath
@@ -347,11 +350,12 @@ function MediaPoster({
       >
         <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
           {posterSrc ? (
-            <Image
+            <FadeInImage
               src={posterSrc}
               alt={item.title}
               fill
               sizes={isGrid ? '(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px' : '(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px'}
+              priority={imagePriority}
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               unoptimized={isProtectedApiImageSrc(posterSrc)}
             />
@@ -1378,8 +1382,14 @@ export default function DiscoverPage() {
           ) : (
             <>
               <div className={gridClassName}>
-                {items.map((item) => (
-                  <MediaPoster key={`${item.mediaType}-${item.tmdbId}`} item={item} onClick={handleOpenItem} variant="grid" />
+                {items.map((item, i) => (
+                  <MediaPoster
+                    key={`${item.mediaType}-${item.tmdbId}`}
+                    item={item}
+                    onClick={handleOpenItem}
+                    variant="grid"
+                    imagePriority={i < 4}
+                  />
                 ))}
               </div>
 

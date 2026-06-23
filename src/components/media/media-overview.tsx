@@ -2,13 +2,13 @@
 
 import { memo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Film, Tv, Disc3, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn, shallowEqualExcept } from '@/lib/utils';
 import type { MediaImage } from '@/types';
 import type { PosterSize } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
+import { FadeInImage } from './fade-in-image';
 import { SelectionCheck } from './selection-check';
 import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
@@ -70,6 +70,8 @@ export interface MediaOverviewItemProps {
   /** Jellyfin watch-status lookup (movies/series only); resolved in-component. */
   watchLookup?: WatchLookupQuery;
   onNavigate?: () => void;
+  /** Eager-load above-the-fold poster thumbnail. */
+  imagePriority?: boolean;
   /** Selection mode: clicking the row toggles selection instead of navigating. */
   selectable?: boolean;
   selected?: boolean;
@@ -101,6 +103,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
   genres,
   instanceLabel,
   watchLookup,
+  imagePriority,
   onNavigate,
   selectable,
   selected,
@@ -132,11 +135,12 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
       {show('images') ? (
         <div className={cn('relative shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-muted', posterSizeClasses[posterSize])}>
           {poster ? (
-            <Image
+            <FadeInImage
               src={poster}
               alt={title}
               fill
               sizes="(max-width: 640px) 80px, 112px"
+              priority={imagePriority}
               className="object-cover"
               unoptimized={isProtectedApiImageSrc(poster)}
             />

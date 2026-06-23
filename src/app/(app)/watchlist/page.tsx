@@ -16,8 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import Image from 'next/image';
 import Link from 'next/link';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/media/search-input';
@@ -686,8 +686,13 @@ export default function WatchlistPage() {
               <div ref={contentRef}>
                 {topSpacer > 0 && <div style={{ height: topSpacer }} />}
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-                  {visible.map((item) => (
-                    <WatchlistCard key={item.id} item={item} onRemove={() => setRemoveTarget(item)} />
+                  {visible.map((item, i) => (
+                    <WatchlistCard
+                      key={item.id}
+                      item={item}
+                      imagePriority={startIndex + i < Math.min(columns * 2, 4)}
+                      onRemove={() => setRemoveTarget(item)}
+                    />
                   ))}
                 </div>
                 {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}
@@ -739,9 +744,11 @@ export default function WatchlistPage() {
 
 function WatchlistCard({
   item,
+  imagePriority,
   onRemove,
 }: {
   item: WatchlistItem;
+  imagePriority?: boolean;
   onRemove: () => void;
 }) {
   const canEdit = useCan('watchlist.edit');
@@ -762,11 +769,12 @@ function WatchlistCard({
   const content = (
     <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted">
       {poster ? (
-        <Image
+        <FadeInImage
           src={poster}
           alt={item.title}
           fill
           sizes="(max-width: 640px) 33vw, 20vw"
+          priority={imagePriority}
           className="object-cover"
           unoptimized={isProtectedApiImageSrc(poster)}
         />

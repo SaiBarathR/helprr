@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateSeries } from '@/lib/query-invalidation';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -475,7 +476,7 @@ function AddSeriesPageContent() {
                     <PageSpinner />
                   </div>
                 )
-              : results.map((r) => (
+              : results.map((r, i) => (
                   <button
                     key={r.tvdbId}
                     onClick={() => setSelected(r)}
@@ -483,11 +484,12 @@ function AddSeriesPageContent() {
                   >
                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                       {posterUrl(r.images as { coverType: string; remoteUrl: string }[]) ? (
-                        <Image
+                        <FadeInImage
                           src={posterUrl(r.images as { coverType: string; remoteUrl: string }[])!}
                           alt=""
                           fill
                           sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, (max-width: 1024px) 20vw, 16vw"
+                          priority={i < 4}
                           className="object-cover group-hover:scale-105 transition-transform"
                           unoptimized={isProtectedApiImageSrc(posterUrl(r.images as { coverType: string; remoteUrl: string }[])!)}
                         />

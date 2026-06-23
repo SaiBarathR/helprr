@@ -9,6 +9,8 @@
 // 'grabbed'), so per-device preference, quiet-hours, and capability gates all still
 // apply unchanged.
 
+import { logger } from '@/lib/logger';
+
 // Minimum same-key events in one cycle before we collapse them. 1–2 send individually.
 export const GROUP_THRESHOLD = 3;
 
@@ -225,11 +227,27 @@ export class PollNotificationCollector {
     for (const group of groups.values()) {
       if (!opts.enabled || group.length < GROUP_THRESHOLD) {
         for (const entry of group) {
-          await opts.notify(entry.event, entry.context);
+          try {
+            await opts.notify(entry.event, entry.context);
+          } catch (err) {
+            logger.warn('Grouped notification failed', {
+              eventType: entry.event.eventType,
+              groupKey: entry.groupKey,
+              reason: err instanceof Error ? err.message : String(err),
+            }, { scope: 'notifications' });
+          }
         }
       } else {
         const grouped = buildGroupedNotification(group);
-        await opts.notify(grouped.event, grouped.context);
+        try {
+          await opts.notify(grouped.event, grouped.context);
+        } catch (err) {
+          logger.warn('Grouped notification failed', {
+            eventType: grouped.event.eventType,
+            groupKey: group[0]?.groupKey,
+            reason: err instanceof Error ? err.message : String(err),
+          }, { scope: 'notifications' });
+        }
       }
     }
   }

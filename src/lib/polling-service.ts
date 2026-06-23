@@ -21,6 +21,7 @@ import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/bu
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger } from '@/lib/logger';
+import { withTimeout } from '@/lib/search/with-timeout';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { classifyQueueIssue } from '@/lib/queue-state';
@@ -183,38 +184,172 @@ function toNumber(value: unknown): number | undefined {
   return undefined;
 }
 
-// (lastHistoryDate, lastHistoryId) is a keyset cursor over *arr history. The
-// date alone misses records that share the boundary timestamp across two polls
-// (e.g. a season-pack import committing while a poll runs), while a plain `>=`
-// would re-notify the newest record every cycle — so records at exactly the
-// cursor date tie-break on the auto-increment history id.
+// (lastHistoryDate, lastHistoryId, lastHistorySeenIds) is a keyset cursor over *arr
+// history. Paginate until the cursor boundary is reached so bursts at a shared
+// timestamp or >50 rows per cycle cannot be skipped.
+const HISTORY_PAGE_SIZE = 50;
+const HISTORY_MAX_PAGES = 20;
+const HISTORY_SEEN_ID_CAP = 500;
+
+const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
+  pollSonarr: 60_000,
+  pollRadarr: 60_000,
+  pollLidarr: 60_000,
+  pollQBittorrent: 45_000,
+  pollJellyfin: 15_000,
+  pollSeerr: 45_000,
+  pollServiceReachability: 15_000,
+  checkDiskSpace: 30_000,
+  checkUpcoming: 45_000,
+  checkWatchlistReminders: 30_000,
+  checkActivityDigest: 30_000,
+  applyBandwidthSchedule: 15_000,
+  checkNotificationRetention: 15_000,
+  checkAnimeAutoMap: 15_000,
+};
+
+type HistoryCursorState = {
+  lastHistoryDate: Date | null;
+  lastHistoryId: number | null;
+  lastHistorySeenIds: number[];
+};
+
+function parseSeenIds(raw: unknown): number[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+}
+
+function historyCursorFromState(state: {
+  lastHistoryDate: Date | null;
+  lastHistoryId: number | null;
+  lastHistorySeenIds?: unknown;
+}): HistoryCursorState {
+  return {
+    lastHistoryDate: state.lastHistoryDate,
+    lastHistoryId: state.lastHistoryId,
+    lastHistorySeenIds: parseSeenIds(state.lastHistorySeenIds),
+  };
+}
+
 function filterNewHistory<T extends { id: number; date: string }>(
   records: T[],
-  lastDate: Date | null,
-  lastId: number | null,
+  cursor: HistoryCursorState,
 ): T[] {
-  if (!lastDate) return [];
-  const lastTime = lastDate.getTime();
+  if (!cursor.lastHistoryDate) return [];
+  const lastTime = cursor.lastHistoryDate.getTime();
+  const seen = new Set(cursor.lastHistorySeenIds);
   return records.filter((r) => {
     const time = new Date(r.date).getTime();
-    if (time !== lastTime) return time > lastTime;
-    return lastId !== null && r.id > lastId;
+    if (time > lastTime) return true;
+    if (time < lastTime) return false;
+    if (seen.has(r.id)) return false;
+    return cursor.lastHistoryId === null || r.id > cursor.lastHistoryId;
   });
 }
 
-/** Next cursor: newest record's date plus the max id among records at that date. */
-function historyCursor(
-  records: { id: number; date: string }[],
-  state: { lastHistoryDate: Date | null; lastHistoryId: number | null },
-): { lastHistoryDate: Date | null; lastHistoryId: number | null } {
-  const newestDate = records[0]?.date ? new Date(records[0].date) : null;
-  if (!newestDate) return { lastHistoryDate: state.lastHistoryDate, lastHistoryId: state.lastHistoryId };
-  const newestTime = newestDate.getTime();
-  let maxId: number | null = null;
-  for (const r of records) {
-    if (new Date(r.date).getTime() === newestTime && (maxId === null || r.id > maxId)) maxId = r.id;
+async function fetchNewHistoryPages<T extends { id: number; date: string }>(
+  client: {
+    getHistory: (
+      page: number,
+      pageSize: number,
+      sortKey: string,
+      sortDir: string,
+    ) => Promise<{ records: T[] }>;
+  },
+  cursor: HistoryCursorState,
+): Promise<{ allFetched: T[]; newRecords: T[] }> {
+  const allFetched: T[] = [];
+  for (let page = 1; page <= HISTORY_MAX_PAGES; page++) {
+    const batch = await client.getHistory(page, HISTORY_PAGE_SIZE, 'date', 'descending');
+    if (batch.records.length === 0) break;
+    allFetched.push(...batch.records);
+
+    if (!cursor.lastHistoryDate) break;
+
+    const oldest = batch.records[batch.records.length - 1];
+    const oldestTime = new Date(oldest.date).getTime();
+    const cursorTime = cursor.lastHistoryDate.getTime();
+
+    if (oldestTime < cursorTime) break;
+
+    if (oldestTime === cursorTime) {
+      const seen = new Set(cursor.lastHistorySeenIds);
+      const pageFullyKnown = batch.records.every((r) => {
+        const t = new Date(r.date).getTime();
+        if (t > cursorTime) return false;
+        if (t < cursorTime) return true;
+        return seen.has(r.id) || (cursor.lastHistoryId !== null && r.id <= cursor.lastHistoryId);
+      });
+      if (pageFullyKnown) break;
+    }
   }
-  return { lastHistoryDate: newestDate, lastHistoryId: maxId };
+  return { allFetched, newRecords: filterNewHistory(allFetched, cursor) };
+}
+
+function advanceHistoryCursor(
+  processed: { id: number; date: string }[],
+  allFetched: { id: number; date: string }[],
+  prev: HistoryCursorState,
+): { lastHistoryDate: Date | null; lastHistoryId: number | null; lastHistorySeenIds: number[] } {
+  if (!prev.lastHistoryDate && allFetched.length > 0 && processed.length === 0) {
+    const newestDate = new Date(allFetched[0].date);
+    const newestTime = newestDate.getTime();
+    let maxId: number | null = null;
+    const idsAtDate: number[] = [];
+    for (const r of allFetched) {
+      if (new Date(r.date).getTime() !== newestTime) break;
+      idsAtDate.push(r.id);
+      if (maxId === null || r.id > maxId) maxId = r.id;
+    }
+    return {
+      lastHistoryDate: newestDate,
+      lastHistoryId: maxId,
+      lastHistorySeenIds: idsAtDate.sort((a, b) => a - b).slice(-HISTORY_SEEN_ID_CAP),
+    };
+  }
+
+  if (processed.length === 0) {
+    return {
+      lastHistoryDate: prev.lastHistoryDate,
+      lastHistoryId: prev.lastHistoryId,
+      lastHistorySeenIds: prev.lastHistorySeenIds,
+    };
+  }
+
+  let nextDate = prev.lastHistoryDate;
+  let nextId = prev.lastHistoryId;
+  for (const r of processed) {
+    const d = new Date(r.date);
+    if (!nextDate) {
+      nextDate = d;
+      nextId = r.id;
+      continue;
+    }
+    const dt = d.getTime();
+    const nt = nextDate.getTime();
+    if (dt > nt || (dt === nt && (nextId === null || r.id > nextId))) {
+      nextDate = d;
+      nextId = r.id;
+    }
+  }
+
+  if (!nextDate) {
+    return {
+      lastHistoryDate: prev.lastHistoryDate,
+      lastHistoryId: prev.lastHistoryId,
+      lastHistorySeenIds: prev.lastHistorySeenIds,
+    };
+  }
+
+  const boundaryTime = nextDate.getTime();
+  const idsAtBoundary = allFetched
+    .filter((r) => new Date(r.date).getTime() === boundaryTime)
+    .map((r) => r.id);
+  return {
+    lastHistoryDate: nextDate,
+    lastHistoryId: nextId,
+    lastHistorySeenIds: [...new Set(idsAtBoundary)].sort((a, b) => a - b).slice(-HISTORY_SEEN_ID_CAP),
+  };
 }
 
 function getMediaHrefFromIds(args: {
@@ -258,6 +393,7 @@ export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
   private isPolling = false;
+  private pollPending = false;
   // Epoch ms of the last NotificationHistory retention sweep. The poll loop runs
   // every ~30s but the sweep is throttled to once/day; 0 = run on first cycle.
   private lastNotificationPruneAt = 0;
@@ -282,17 +418,27 @@ export class PollingService {
     event: NotificationEventInput,
     context: PollNotificationContext
   ): Promise<number> {
-    const sentCount = await notifyEvent(event);
-    logger.info('Polling notification processed', {
-      ...context,
-      eventType: event.eventType,
-      title: event.title,
-      body: event.body,
-      url: event.url,
-      metadata: event.metadata,
-      sentCount,
-    }, { scope: 'polling' });
-    return sentCount;
+    try {
+      const sentCount = await notifyEvent(event);
+      logger.info('Polling notification processed', {
+        ...context,
+        eventType: event.eventType,
+        title: event.title,
+        body: event.body,
+        url: event.url,
+        metadata: event.metadata,
+        sentCount,
+      }, { scope: 'polling' });
+      return sentCount;
+    } catch (err) {
+      logger.warn('Polling notification failed', {
+        ...context,
+        eventType: event.eventType,
+        title: event.title,
+        reason: err instanceof Error ? err.message : String(err),
+      }, { scope: 'polling' });
+      return 0;
+    }
   }
 
   /** Prefix a notification title with the instance label only when >1 instance of the type is connected. */
@@ -332,8 +478,21 @@ export class PollingService {
     }
   }
 
+  private async runPollSource(source: string, fn: () => Promise<void>): Promise<void> {
+    const timeoutMs = POLL_SOURCE_TIMEOUT_MS[source] ?? 45_000;
+    const result = await withTimeout(
+      fn().then(() => 'ok' as const),
+      timeoutMs,
+      'timeout' as const,
+    );
+    if (result === 'timeout') {
+      logger.warn('Polling source timed out', { source, timeoutMs }, { scope: 'polling' });
+    }
+  }
+
   private async poll(): Promise<void> {
     if (this.isPolling) {
+      this.pollPending = true;
       logger.warn('Polling cycle skipped: previous cycle still running', {}, { scope: 'polling' });
       return;
     }
@@ -358,20 +517,20 @@ export class PollingService {
       ] as const;
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled([
-        this.pollSonarr(),
-        this.pollRadarr(),
-        this.pollLidarr(),
-        this.pollQBittorrent(),
-        this.pollJellyfin(),
-        this.pollSeerr(),
-        this.pollServiceReachability(),
-        this.checkDiskSpace(),
-        this.checkUpcoming(),
-        this.checkWatchlistReminders(),
-        this.checkActivityDigest(),
-        this.applyBandwidthSchedule(),
-        this.checkNotificationRetention(),
-        this.checkAnimeAutoMap(),
+        this.runPollSource('pollSonarr', () => this.pollSonarr()),
+        this.runPollSource('pollRadarr', () => this.pollRadarr()),
+        this.runPollSource('pollLidarr', () => this.pollLidarr()),
+        this.runPollSource('pollQBittorrent', () => this.pollQBittorrent()),
+        this.runPollSource('pollJellyfin', () => this.pollJellyfin()),
+        this.runPollSource('pollSeerr', () => this.pollSeerr()),
+        this.runPollSource('pollServiceReachability', () => this.pollServiceReachability()),
+        this.runPollSource('checkDiskSpace', () => this.checkDiskSpace()),
+        this.runPollSource('checkUpcoming', () => this.checkUpcoming()),
+        this.runPollSource('checkWatchlistReminders', () => this.checkWatchlistReminders()),
+        this.runPollSource('checkActivityDigest', () => this.checkActivityDigest()),
+        this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()),
+        this.runPollSource('checkNotificationRetention', () => this.checkNotificationRetention()),
+        this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()),
       ]);
 
       const rejected = results.flatMap((result, index) => {
@@ -395,6 +554,10 @@ export class PollingService {
       logger.error('Polling cycle failed', e, { scope: 'polling' });
     } finally {
       this.isPolling = false;
+      if (this.pollPending) {
+        this.pollPending = false;
+        void this.poll();
+      }
     }
   }
 
@@ -931,11 +1094,11 @@ export class PollingService {
         ).length;
 
         // History polling
-        const history = await client.getHistory(1, 50, 'date', 'descending');
-        const newHistory = filterNewHistory(history.records, state.lastHistoryDate, state.lastHistoryId);
+        const historyCursorState = historyCursorFromState(state);
+        const { allFetched: historyRecords, newRecords: newHistory } = await fetchNewHistoryPages(client, historyCursorState);
         logger.debug('Sonarr history polled', {
           instanceId,
-          historyCount: history.records.length,
+          historyCount: historyRecords.length,
           lastHistoryDate: state.lastHistoryDate,
           newHistoryCount: newHistory.length,
         }, { scope: 'polling' });
@@ -987,12 +1150,14 @@ export class PollingService {
         await collector.flush({ enabled: groupingEnabled, notify: this.notifyAndLog.bind(this) });
 
         // Update state
-        const cursor = historyCursor(history.records, state);
+        const cursor = advanceHistoryCursor(newHistory, historyRecords, historyCursorState);
         await prisma.pollingState.update({
           where: { serviceConnectionId: instanceId },
           data: {
             lastQueueIds: currentSnapshots as unknown as object,
-            ...cursor,
+            lastHistoryDate: cursor.lastHistoryDate,
+            lastHistoryId: cursor.lastHistoryId,
+            lastHistorySeenIds: cursor.lastHistorySeenIds,
             lastHealthHash: healthHash,
           },
         });
@@ -1142,11 +1307,11 @@ export class PollingService {
           (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
         ).length;
 
-        const history = await client.getHistory(1, 50, 'date', 'descending');
-        const newHistory = filterNewHistory(history.records, state.lastHistoryDate, state.lastHistoryId);
+        const historyCursorState = historyCursorFromState(state);
+        const { allFetched: historyRecords, newRecords: newHistory } = await fetchNewHistoryPages(client, historyCursorState);
         logger.debug('Radarr history polled', {
           instanceId,
-          historyCount: history.records.length,
+          historyCount: historyRecords.length,
           lastHistoryDate: state.lastHistoryDate,
           newHistoryCount: newHistory.length,
         }, { scope: 'polling' });
@@ -1191,12 +1356,14 @@ export class PollingService {
 
         await collector.flush({ enabled: groupingEnabled, notify: this.notifyAndLog.bind(this) });
 
-        const cursor = historyCursor(history.records, state);
+        const cursor = advanceHistoryCursor(newHistory, historyRecords, historyCursorState);
         await prisma.pollingState.update({
           where: { serviceConnectionId: instanceId },
           data: {
             lastQueueIds: currentSnapshots as unknown as object,
-            ...cursor,
+            lastHistoryDate: cursor.lastHistoryDate,
+            lastHistoryId: cursor.lastHistoryId,
+            lastHistorySeenIds: cursor.lastHistorySeenIds,
             lastHealthHash: healthHash,
           },
         });
@@ -1326,8 +1493,8 @@ export class PollingService {
           (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
         ).length;
 
-        const history = await client.getHistory(1, 50, 'date', 'descending');
-        const newHistory = filterNewHistory(history.records, state.lastHistoryDate, state.lastHistoryId);
+        const historyCursorState = historyCursorFromState(state);
+        const { allFetched: historyRecords, newRecords: newHistory } = await fetchNewHistoryPages(client, historyCursorState);
 
         for (const item of newHistory) {
           if (item.eventType === 'downloadImported' || item.eventType === 'trackFileImported') {
@@ -1364,12 +1531,14 @@ export class PollingService {
 
         await collector.flush({ enabled: groupingEnabled, notify: this.notifyAndLog.bind(this) });
 
-        const cursor = historyCursor(history.records, state);
+        const cursor = advanceHistoryCursor(newHistory, historyRecords, historyCursorState);
         await prisma.pollingState.update({
           where: { serviceConnectionId: instanceId },
           data: {
             lastQueueIds: currentSnapshots as unknown as object,
-            ...cursor,
+            lastHistoryDate: cursor.lastHistoryDate,
+            lastHistoryId: cursor.lastHistoryId,
+            lastHistorySeenIds: cursor.lastHistorySeenIds,
             lastHealthHash: healthHash,
           },
         });

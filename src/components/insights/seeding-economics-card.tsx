@@ -45,7 +45,7 @@ export function SeedingEconomicsCard() {
                       <div className="flex items-baseline justify-between gap-2 text-xs">
                         <span className="truncate" style={{ color: HPR.fg }}>{t.name}</span>
                         <span className="shrink-0 tabular-nums" style={{ color: HPR.fgMute }}>
-                          {formatBytes(t.uploaded)} · {t.ratio.toFixed(2)}x
+                          {formatBytes(t.uploaded)} · {Number.isFinite(t.ratio) ? `${t.ratio.toFixed(2)}x` : '—'}
                         </span>
                       </div>
                       <div className="h-1 rounded-full overflow-hidden" style={{ background: mix(HPR.green, 12) }}>

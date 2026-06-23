@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { useSearchParams } from 'next/navigation';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Check, X, Loader2, Film, Tv, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -115,13 +115,13 @@ export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?
           >
             <div className="flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-muted text-muted-foreground">
               {r.posterUrl ? (
-                <Image
+                <FadeInImage
                   src={r.posterUrl}
                   alt=""
                   width={40}
                   height={56}
                   unoptimized
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 <Icon className="h-4 w-4" />

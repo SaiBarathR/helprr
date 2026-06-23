@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, Sparkles, Star, Clock, BookOpen, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -505,10 +506,11 @@ export default function AnimeLibraryPage() {
       ) : (
         <>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 pt-2">
-            {visibleEntries.map((entry) => (
+            {visibleEntries.map((entry, i) => (
               <LibraryEntryCard
                 key={entry.id}
                 entry={entry}
+                imagePriority={i < 4}
                 onNavigate={() => persistTabView(renderedCount, window.scrollY)}
               />
             ))}
@@ -544,9 +546,11 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 
 function LibraryEntryCard({
   entry,
+  imagePriority,
   onNavigate,
 }: {
   entry: AniListMediaListEntry;
+  imagePriority?: boolean;
   onNavigate?: () => void;
 }) {
   const media = entry.media;
@@ -563,11 +567,12 @@ function LibraryEntryCard({
     <Link href={detailHref} className="group" onClick={onNavigate}>
       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-sm group-hover:shadow-md transition-shadow">
         {imgSrc ? (
-          <Image
+          <FadeInImage
             src={imgSrc}
             alt={title}
             fill
             sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, 16vw"
+            priority={imagePriority}
             className="object-cover transition-transform duration-300 group-hover:scale-105"
             unoptimized={isProtectedApiImageSrc(imgSrc)}
           />

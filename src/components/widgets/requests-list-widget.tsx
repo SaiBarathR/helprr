@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import {
   MoreHorizontal, Check, X, RefreshCw, Trash2, Film, Tv, Loader2,
   ExternalLink, MonitorPlay, Inbox, Pencil,
@@ -502,7 +502,7 @@ export function RequestsListWidget({
                 )}
               >
                 {poster ? (
-                  <Image
+                  <FadeInImage
                     src={poster}
                     alt=""
                     fill

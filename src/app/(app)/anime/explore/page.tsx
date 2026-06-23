@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import Image from 'next/image';
 import Link from 'next/link';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { Button } from '@/components/ui/button';
@@ -474,11 +474,12 @@ export default function AnimePage() {
             <p className="text-center text-muted-foreground py-12">No results found</p>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-              {items.map((item) => (
+              {items.map((item, i) => (
                 <AnimeCard
                   key={item.id}
                   item={item}
                   grid
+                  imagePriority={i < 4}
                   onNavigate={() => {
                     setListViewState(EXPLORE_CACHE_KEY, {
                       scrollY: window.scrollY,
@@ -733,10 +734,12 @@ export default function AnimePage() {
 function AnimeCard({
   item,
   grid,
+  imagePriority,
   onNavigate,
 }: {
   item: AnimeItemWithLibrary;
   grid?: boolean;
+  imagePriority?: boolean;
   onNavigate?: () => void;
 }) {
   const imgSrc = item.coverImage
@@ -752,11 +755,12 @@ function AnimeCard({
       >
         <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-sm group-hover:shadow-md transition-shadow">
           {imgSrc ? (
-            <Image
+            <FadeInImage
               src={imgSrc}
               alt={item.title}
               fill
               sizes={grid ? '(max-width: 640px) 33vw, (max-width: 768px) 25vw, 16vw' : '110px'}
+              priority={imagePriority}
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               unoptimized={isProtectedApiImageSrc(imgSrc)}
             />
