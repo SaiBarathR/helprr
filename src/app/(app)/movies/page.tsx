@@ -1001,6 +1001,7 @@ export default function MoviesPage() {
                 status={movie.status}
                 visibleFields={mobileOverviewFields}
                 posterSize={posterSize}
+                watchLookup={{ scope: 'radarr', instanceId: movie.instanceId, arrId: movie.id }}
                 qualityProfile={movie.qualityProfileName}
                 studio={movie.studio}
                 certification={movie.certification}

@@ -70,7 +70,7 @@ export interface JellyfinUserData {
   PlayCount: number;
   IsFavorite: boolean;
   Played: boolean;
-  PlayedPercentage?: number;
+  PlayedPercentage?: number | null;
   /** Unwatched leaf episodes — only present on Series/Season items (PlayedPercentage is null there). */
   UnplayedItemCount?: number;
 }

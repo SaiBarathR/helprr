@@ -918,6 +918,7 @@ export default function SeriesPage() {
                 status={s.status}
                 visibleFields={mobileOverviewFields}
                 posterSize={posterSize}
+                watchLookup={{ scope: 'sonarr', instanceId: s.instanceId, arrId: s.id }}
                 qualityProfile={s.qualityProfileName}
                 network={s.network}
                 overview={s.overview}
