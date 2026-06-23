@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "start": "next start -p 3050",
     "db:migrate": "npx prisma migrate dev",
-    "db:push": "npx prisma db push",
+    "db:fixups": "npx prisma db execute --file prisma/manual-fixups.sql --schema prisma/schema.prisma",
+    "db:push": "npm run db:fixups && npx prisma db push",
     "db:generate": "npx prisma generate",
     "lint": "eslint"
   },

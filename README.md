@@ -108,6 +108,10 @@ npm run db:generate
 npm run db:push
 ```
 
+`npm run db:push` first runs `prisma/manual-fixups.sql`, then runs
+`prisma db push`. The fixups are idempotent and handle schema transitions that
+Prisma cannot safely infer on existing databases.
+
 5) Run the dev server
 
 ```bash
@@ -144,7 +148,8 @@ docker compose up --build
 Notes:
 
 - The image build expects `NEXT_PUBLIC_VAPID_PUBLIC_KEY` to be available as a build arg.
-- The container entrypoint runs `npx prisma db push --skip-generate` before starting Next.js.
+- The container entrypoint runs `prisma/manual-fixups.sql`, then
+  `npx prisma db push --skip-generate --accept-data-loss`, before starting Next.js.
 
 ## Generating VAPID keys (for push notifications)
 
@@ -174,6 +179,7 @@ npm run build
 npm run start
 
 npm run db:generate
+npm run db:fixups
 npm run db:push
 npm run db:migrate
 

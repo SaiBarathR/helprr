@@ -40,6 +40,75 @@ BEGIN
   END IF;
 END$$;
 
+-- ─── DiskUsageSnapshot daily uniqueness migration ───────────────────────────
+-- Storage trends now enforce one snapshot per disk per local day with
+-- @@unique([diskId, capturedDate]). Existing databases may already have several
+-- capturedAt rows for the same disk/day, and Prisma cannot decide which row to
+-- keep while creating the unique index.
+--
+-- Plan:
+--   1. Add capturedDate as a nullable DATE when the table already exists.
+--   2. Backfill it from capturedAt using AppSettings.timeZone (UTC fallback).
+--   3. Keep the newest row per (diskId, capturedDate), deleting older duplicates.
+--   4. Let the following `prisma db push` enforce NOT NULL/defaults/unique index.
+--
+-- No-op on fresh DBs, and no-op after the unique index exists.
+DO $$
+DECLARE
+  app_tz TEXT := 'UTC';
+  has_daily_unique BOOLEAN := false;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'DiskUsageSnapshot'
+  ) THEN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'AppSettings'
+    ) THEN
+      SELECT COALESCE(
+        (SELECT NULLIF("timeZone", '') FROM "AppSettings" WHERE id = 'singleton' LIMIT 1),
+        'UTC'
+      ) INTO app_tz;
+    END IF;
+
+    ALTER TABLE "DiskUsageSnapshot" ADD COLUMN IF NOT EXISTS "capturedDate" DATE;
+
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_schema = tc.constraint_schema
+       AND kcu.constraint_name = tc.constraint_name
+       AND kcu.table_schema = tc.table_schema
+       AND kcu.table_name = tc.table_name
+      WHERE tc.table_schema = 'public'
+        AND tc.table_name = 'DiskUsageSnapshot'
+        AND tc.constraint_type = 'UNIQUE'
+      GROUP BY tc.constraint_name
+      HAVING array_agg(kcu.column_name::text ORDER BY kcu.ordinal_position) = ARRAY['diskId', 'capturedDate']
+    ) INTO has_daily_unique;
+
+    IF NOT has_daily_unique THEN
+      UPDATE "DiskUsageSnapshot"
+      SET "capturedDate" = ("capturedAt" AT TIME ZONE 'UTC' AT TIME ZONE app_tz)::date;
+
+      WITH ranked AS (
+        SELECT
+          id,
+          row_number() OVER (
+            PARTITION BY "diskId", "capturedDate"
+            ORDER BY "capturedAt" DESC, id DESC
+          ) AS rn
+        FROM "DiskUsageSnapshot"
+      )
+      DELETE FROM "DiskUsageSnapshot" s
+      USING ranked r
+      WHERE s.id = r.id AND r.rn > 1;
+    END IF;
+  END IF;
+END$$;
+
 -- ─── ServiceConnection multi-instance migration ──────────────────────────────
 -- The multi-instance feature added ServiceConnection.label (NOT NULL) and
 -- isDefault, and replaced the old `type @unique` with @@unique([type, label]).
