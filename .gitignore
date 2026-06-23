@@ -11,6 +11,7 @@
 !.yarn/versions
 .playwright-mcp
 .pw-scratch
+.cursor
 
 # testing
 /coverage
