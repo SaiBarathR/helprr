@@ -8,6 +8,22 @@ import type { ImageServiceHint } from '@/lib/image';
 
 export type SearchModule = 'series' | 'movies' | 'music' | 'watchlist';
 
+/** Phase 2 scoped search providers (modifier targets). */
+export type SearchProviderId =
+  | 'tmdb'
+  | 'anilist'
+  | 'requests'
+  | 'torrents'
+  | 'prowlarr'
+  | 'activity'
+  | 'notifications'
+  | 'series'
+  | 'movies'
+  | 'music'
+  | 'watchlist';
+
+export type SearchProviderCost = 'local' | 'service' | 'remote';
+
 /** A normalized, scoreable record for one library item in one module/instance. */
 export interface SearchDoc {
   /** Stable per (module, instance, item): `${module}:${instanceId}:${itemId}`. */
@@ -52,6 +68,37 @@ export interface SearchResponse {
   degraded: SearchModule[];
 }
 
+/** One row from a scoped provider search (Phase 2). */
+export interface SearchProviderResult {
+  id: string;
+  title: string;
+  subtitle?: string;
+  year: number | null;
+  poster: string | null;
+  posterService?: ImageServiceHint;
+  route: string;
+  provider: SearchProviderId;
+  badge?: string;
+  score?: number;
+}
+
+export interface SearchProviderRateLimit {
+  retryAfterSeconds: number;
+  retryAt: string | null;
+}
+
+export interface SearchProviderResponse {
+  results: SearchProviderResult[];
+  searched: SearchProviderId[];
+  degraded: SearchProviderId[];
+  rateLimited?: SearchProviderRateLimit;
+  meta?: {
+    scopeLabel: string;
+    cost: SearchProviderCost;
+    remote?: boolean;
+  };
+}
+
 /** Module → the `*.view` capability that gates it. No dedicated `search.view` cap:
  * a user searches exactly the modules they can already see. */
 export const SEARCH_MODULE_CAPABILITY: Record<SearchModule, Capability> = {
@@ -63,3 +110,15 @@ export const SEARCH_MODULE_CAPABILITY: Record<SearchModule, Capability> = {
 
 /** Priority order: drives result grouping and which module owns the primary route. */
 export const SEARCH_MODULE_ORDER: SearchModule[] = ['series', 'movies', 'music', 'watchlist'];
+
+/** Maps local library modules to their provider id (scoped modifier target). */
+export const SEARCH_MODULE_TO_PROVIDER: Record<SearchModule, SearchProviderId> = {
+  series: 'series',
+  movies: 'movies',
+  music: 'music',
+  watchlist: 'watchlist',
+};
+
+export function isSearchModuleProvider(id: SearchProviderId): id is SearchModule {
+  return (SEARCH_MODULE_ORDER as string[]).includes(id);
+}
