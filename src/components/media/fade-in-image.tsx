@@ -1,7 +1,7 @@
 'use client';
 
 import Image, { type ImageProps } from 'next/image';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 type FadeInImageProps = Omit<ImageProps, 'loading' | 'priority' | 'onLoad'> & {
@@ -20,14 +20,19 @@ export function FadeInImage({
   ...props
 }: FadeInImageProps) {
   const [loaded, setLoaded] = useState(false);
+  const imageRef = useCallback((node: HTMLImageElement | null) => {
+    if (node?.complete) setLoaded(true);
+  }, []);
 
   return (
     <Image
       {...props}
+      ref={imageRef}
       alt={alt}
       priority={priority}
       loading={priority ? undefined : 'lazy'}
       onLoad={() => setLoaded(true)}
+      onError={() => setLoaded(true)}
       className={cn(
         'transition-opacity duration-300',
         loaded ? 'opacity-100' : 'opacity-0',

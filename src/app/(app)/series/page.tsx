@@ -96,8 +96,6 @@ const sortOptions = [
   { value: 'tags', label: 'Tags' },
 ] as const;
 
-// Toast summary shared by every bulk action ("series" is invariant in the plural).
-
 function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large') {
   if (posterSize === 'small') {
     if (width >= 1280) return 8;

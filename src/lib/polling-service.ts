@@ -21,7 +21,6 @@ import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/bu
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger } from '@/lib/logger';
-import { withTimeout } from '@/lib/search/with-timeout';
 import { watchlistHrefFor } from '@/lib/watchlist-helpers';
 import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
 import { classifyQueueIssue } from '@/lib/queue-state';
@@ -259,6 +258,7 @@ async function fetchNewHistoryPages<T extends { id: number; date: string }>(
   cursor: HistoryCursorState,
 ): Promise<{ allFetched: T[]; newRecords: T[] }> {
   const allFetched: T[] = [];
+  let capped = false;
   for (let page = 1; page <= HISTORY_MAX_PAGES; page++) {
     const batch = await client.getHistory(page, HISTORY_PAGE_SIZE, 'date', 'descending');
     if (batch.records.length === 0) break;
@@ -282,6 +282,18 @@ async function fetchNewHistoryPages<T extends { id: number; date: string }>(
       });
       if (pageFullyKnown) break;
     }
+
+    if (page === HISTORY_MAX_PAGES) capped = true;
+  }
+
+  if (capped) {
+    logger.warn('History pagination capped before reaching cursor', {
+      collected: allFetched.length,
+      pageSize: HISTORY_PAGE_SIZE,
+      maxPages: HISTORY_MAX_PAGES,
+      lastHistoryDate: cursor.lastHistoryDate,
+      lastHistoryId: cursor.lastHistoryId,
+    }, { scope: 'polling' });
   }
   return { allFetched, newRecords: filterNewHistory(allFetched, cursor) };
 }
@@ -480,13 +492,18 @@ export class PollingService {
 
   private async runPollSource(source: string, fn: () => Promise<void>): Promise<void> {
     const timeoutMs = POLL_SOURCE_TIMEOUT_MS[source] ?? 45_000;
-    const result = await withTimeout(
-      fn().then(() => 'ok' as const),
-      timeoutMs,
-      'timeout' as const,
-    );
-    if (result === 'timeout') {
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
       logger.warn('Polling source timed out', { source, timeoutMs }, { scope: 'polling' });
+    }, timeoutMs);
+    try {
+      await fn();
+    } finally {
+      clearTimeout(timer);
+      if (timedOut) {
+        logger.warn('Polling source completed after timeout', { source, timeoutMs }, { scope: 'polling' });
+      }
     }
   }
 

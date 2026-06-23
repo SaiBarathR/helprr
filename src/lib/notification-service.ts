@@ -14,7 +14,6 @@ let vapidMissingLogged = false;
 
 const PUSH_TIMEOUT_MS = 10_000;
 const CONSECUTIVE_FAILURE_LIMIT = 10;
-const RETRIABLE_STREAK_DELETE = 25;
 const RETRIABLE_BACKOFF_BASE_MS = 5 * 60 * 1000;
 const RETRIABLE_BACKOFF_MAX_MS = 6 * 60 * 60 * 1000;
 // Concurrent notifyEvent() calls can both fail against the same dead endpoint
@@ -69,8 +68,8 @@ function ttlForTag(tag: string | undefined): number {
 
 function isRetriableUpstream(statusCode?: number): boolean {
   // Treat status-less errors (network / DNS / connection reset / timeout) as
-  // retriable — a transient outage shouldn't poison the failure counter and
-  // prune live devices in 10 polls.
+  // retriable. They still enter the durable backoff counter, so retries are
+  // spread out instead of hammering a slow or dead endpoint every cycle.
   if (statusCode === undefined) return true;
   return (
     statusCode === 429 ||
@@ -89,10 +88,6 @@ function hashEndpoint(endpoint: string): string {
   return createHash('sha256').update(endpoint).digest('hex').slice(0, 16);
 }
 
-// Retriable upstream failures don't increment consecutiveFailures (transient outages
-// shouldn't prune devices), but we still track streak in-memory for backoff timing.
-const retriableStreakByEndpoint = new Map<string, number>();
-
 function pushBackoffMs(failures: number): number {
   if (failures <= 0) return 0;
   return Math.min(
@@ -107,12 +102,9 @@ function shouldDeferPush(sub: {
   lastFailedAt: Date | null;
   lastSucceededAt: Date | null;
 }): boolean {
-  const endpointHash = hashEndpoint(sub.endpoint);
-  const retriableStreak = retriableStreakByEndpoint.get(endpointHash) ?? 0;
-  const failures = Math.max(sub.consecutiveFailures, retriableStreak);
-  if (failures <= 0 || !sub.lastFailedAt) return false;
+  if (sub.consecutiveFailures <= 0 || !sub.lastFailedAt) return false;
   if (sub.lastSucceededAt && sub.lastSucceededAt >= sub.lastFailedAt) return false;
-  return Date.now() - sub.lastFailedAt.getTime() < pushBackoffMs(failures);
+  return Date.now() - sub.lastFailedAt.getTime() < pushBackoffMs(sub.consecutiveFailures);
 }
 
 export function buildTag(eventType: string, metadata: Record<string, unknown> | undefined): string {
@@ -330,7 +322,6 @@ export async function sendPushNotification(
       where: { endpoint: subscription.endpoint },
       data: { consecutiveFailures: 0, lastSucceededAt: new Date() },
     }).catch(() => {});
-    retriableStreakByEndpoint.delete(endpointHash);
     return true;
   } catch (error: unknown) {
     const errObj = error as Record<string, unknown> & Partial<Error>;
@@ -351,16 +342,17 @@ export async function sendPushNotification(
       await prisma.pushSubscription.delete({
         where: { endpoint: subscription.endpoint },
       }).catch(() => {});
-      retriableStreakByEndpoint.delete(endpointHash);
       logger.info('Deleted stale push subscription (gone)', {
         endpointHash,
         statusCode,
       }, { scope: 'notifications' });
-    } else if (!isRetriableUpstream(statusCode)) {
+    } else {
+      const retriable = isRetriableUpstream(statusCode);
       // Atomic increment: only bump consecutiveFailures if lastFailedAt is null
       // or older than the debounce window. Two concurrent failures against the
       // same dead endpoint can't both increment because the second updateMany
-      // sees lastFailedAt within the window and matches zero rows.
+      // sees lastFailedAt within the window and matches zero rows. Backoff gates
+      // future attempts, so the delete threshold is spread over time.
       const cutoff = new Date(Date.now() - FAILURE_INCREMENT_DEBOUNCE_MS);
       const incrementResult = await prisma.pushSubscription.updateMany({
         where: {
@@ -379,10 +371,10 @@ export async function sendPushNotification(
           await prisma.pushSubscription.delete({
             where: { endpoint: subscription.endpoint },
           }).catch(() => {});
-          retriableStreakByEndpoint.delete(endpointHash);
           logger.info('Deleted stale push subscription (consecutive failures)', {
             endpointHash,
             consecutiveFailures: updated.consecutiveFailures,
+            retriable,
           }, { scope: 'notifications' });
         }
       } else {
@@ -391,23 +383,6 @@ export async function sendPushNotification(
           where: { endpoint: subscription.endpoint },
           data: { lastFailedAt: new Date() },
         }).catch(() => {});
-      }
-    } else {
-      const streak = (retriableStreakByEndpoint.get(endpointHash) ?? 0) + 1;
-      retriableStreakByEndpoint.set(endpointHash, streak);
-      await prisma.pushSubscription.update({
-        where: { endpoint: subscription.endpoint },
-        data: { lastFailedAt: new Date() },
-      }).catch(() => {});
-      if (streak >= RETRIABLE_STREAK_DELETE) {
-        await prisma.pushSubscription.delete({
-          where: { endpoint: subscription.endpoint },
-        }).catch(() => {});
-        retriableStreakByEndpoint.delete(endpointHash);
-        logger.info('Deleted stale push subscription (retriable streak)', {
-          endpointHash,
-          streak,
-        }, { scope: 'notifications' });
       }
     }
     return false;

@@ -79,6 +79,28 @@ import { useBadgeActions } from '@/components/layout/badge-provider';
 
 const TORRENT_ROW_HEIGHT = 160;
 
+const TORRENT_ACTION_MESSAGES: Record<string, { single: string; bulk?: string }> = {
+  start: { single: 'Started' },
+  stop: { single: 'Stopped' },
+  forceStart: { single: 'Force started' },
+  delete: { single: 'Deleted' },
+  recheck: { single: 'Rechecking' },
+  reannounce: { single: 'Reannounced' },
+  setDownloadLimit: { single: 'Download limit set', bulk: 'Set download limit for' },
+  setUploadLimit: { single: 'Upload limit set', bulk: 'Set upload limit for' },
+  toggleSequentialDownload: { single: 'Sequential download toggled' },
+  toggleFirstLastPiecePrio: { single: 'First/last piece priority toggled' },
+  setCategory: { single: 'Category set' },
+  setAutoManagement: { single: 'Auto management toggled' },
+  rename: { single: 'Renamed' },
+};
+
+function torrentActionMessage(action: string, mode: 'single' | 'bulk'): string {
+  const message = TORRENT_ACTION_MESSAGES[action];
+  if (!message) return mode === 'bulk' ? 'Updated' : 'Action successful';
+  return mode === 'bulk' ? message.bulk ?? message.single : message.single;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -725,22 +747,7 @@ export default function TorrentsPage() {
         throw new Error(data.error || 'Action failed');
       }
       if (!opts?.silent) {
-        const successMessage: Record<string, string> = {
-          start: 'Started',
-          stop: 'Stopped',
-          forceStart: 'Force started',
-          delete: 'Deleted',
-          recheck: 'Rechecking',
-          reannounce: 'Reannounced',
-          setDownloadLimit: 'Download limit set',
-          setUploadLimit: 'Upload limit set',
-          toggleSequentialDownload: 'Sequential download toggled',
-          toggleFirstLastPiecePrio: 'First/last piece priority toggled',
-          setCategory: 'Category set',
-          setAutoManagement: 'Auto management toggled',
-          rename: 'Renamed',
-        };
-        toast.success(successMessage[action] ?? 'Action successful');
+        toast.success(torrentActionMessage(action, 'single'));
       }
       setTimeout(() => {
         void refetchSummary();
@@ -756,14 +763,7 @@ export default function TorrentsPage() {
     if (selectedTorrents.size === 0) return;
     const count = selectedTorrents.size;
     const hashes = Array.from(selectedTorrents).join('|');
-    const successMessage: Record<string, string> = {
-      start: 'Started',
-      stop: 'Stopped',
-      forceStart: 'Force started',
-      setDownloadLimit: 'Set download limit for',
-      setUploadLimit: 'Set upload limit for',
-    };
-    const verb = successMessage[action] ?? 'Updated';
+    const verb = torrentActionMessage(action, 'bulk');
     const ok = await torrentAction(hashes, action, extra, { silent: true });
     if (ok) {
       reportBulkTorrent(verb, count, 0);
