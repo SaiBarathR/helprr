@@ -88,9 +88,10 @@ export function SearchInput({
         }}
         onKeyDown={(e) => {
           listbox.onInputKeyDown(e);
-          if (e.defaultPrevented) return;
-          if (e.key === 'Enter') commit();
-          else if (e.key === 'Escape') setOpen(false);
+          if (!e.defaultPrevented) {
+            if (e.key === 'Enter') commit();
+            else if (e.key === 'Escape') setOpen(false);
+          }
           onKeyDown?.(e);
         }}
         aria-expanded={showHistory}
