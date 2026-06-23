@@ -155,7 +155,7 @@ export class JellyfinNotLinkedError extends Error {
 export function isJellyfinUnavailable(error: unknown): boolean {
   if (error instanceof JellyfinNotLinkedError) return true;
   const message = (error as { message?: string })?.message ?? '';
-  return message.includes('not configured') || message.includes('missing');
+  return message.includes('not configured') || message.includes('context is missing');
 }
 
 /**

@@ -76,6 +76,9 @@ function toMap(data: WatchStatusMapResponse): Map<string, WatchStatus> {
 // Apply an optimistic toggle to the RAW cached response (select re-derives the
 // Map). A Series toggle fills/empties the episode count; a Movie toggle the %.
 function applyOptimistic(prev: WatchStatusMapResponse, args: SetWatchedArgs): WatchStatusMapResponse {
+  // Episode toggles carry an id that's never in the map's items — skip the
+  // whole-array rebuild (and the consumer re-render it would trigger) on a miss.
+  if (!prev.items.some((status) => status.jellyfinItemId === args.jellyfinItemId)) return prev;
   const items = prev.items.map((status): WatchStatus => {
     if (status.jellyfinItemId !== args.jellyfinItemId) return status;
     if (status.kind === 'movie') {
