@@ -64,10 +64,9 @@ export const searchActivity: ProviderHandler = async ({ query, limit }) => {
     }),
   ]);
 
-  rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
   const results: SearchProviderResult[] = rows
     .filter((row) => matchLocalQuery(query, row.title, row.subtitle))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, limit)
     .map((row) => ({
       id: row.id,
