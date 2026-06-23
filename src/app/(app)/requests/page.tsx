@@ -65,6 +65,8 @@ export default function RequestsPage() {
 
   const pendingBadge = useMemo(() => counts?.pending ?? 0, [counts]);
 
+  const effectiveUserFilter = canApprove ? requestsUserFilter : null;
+
   return (
     <div className="animate-content-in">
       <div
@@ -100,7 +102,7 @@ export default function RequestsPage() {
               onStatusFilterChange={setFilter}
               typeFilter={requestsTypeFilter}
               onTypeFilterChange={setRequestsTypeFilter}
-              userFilter={requestsUserFilter}
+              userFilter={effectiveUserFilter}
               onUserFilterChange={setRequestsUserFilter}
               showUserSection={canApprove}
             />
@@ -155,14 +157,14 @@ export default function RequestsPage() {
       </div>
 
       <div
-        key={`${tab}-${requestsUserFilter ?? 'all'}-${typeFilterKey}-${requestsSort}-${requestsSortDirection}-${refreshTick}`}
+        key={`${tab}-${effectiveUserFilter ?? 'all'}-${typeFilterKey}-${requestsSort}-${requestsSortDirection}-${refreshTick}`}
         className="pt-2"
       >
         {tab === 'requests' ? (
           <RequestsListWidget
             refreshInterval={30_000}
             filter={filter}
-            requestedBy={canApprove ? requestsUserFilter : null}
+            requestedBy={effectiveUserFilter}
             typeFilter={requestsTypeFilter}
             sort={requestsSort}
             sortDirection={requestsSortDirection}
