@@ -21,7 +21,7 @@ export const searchNotifications: ProviderHandler = async ({ user, query, limit 
   const results: SearchProviderResult[] = records.map((r) => ({
     id: `notification:${r.id}`,
     title: r.title,
-    subtitle: r.body.slice(0, 120) || undefined,
+    subtitle: r.body?.slice(0, 120) || undefined,
     year: null,
     poster: null,
     route: '/notifications',

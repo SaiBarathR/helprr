@@ -26,8 +26,12 @@ export const searchRequests: ProviderHandler = async ({ user, query, limit }) =>
     requestedBy,
   });
 
+  const cheapMatches = data.results.filter((req) =>
+    matchLocalQuery(query, req.type, String(req.status), tmdbIdLabel(req.media?.tmdbId))
+  );
+
   const enriched = await Promise.all(
-    data.results.map(async (req) => {
+    cheapMatches.map(async (req) => {
       const tmdbId = req.media?.tmdbId;
       if (!tmdbId) {
         return { req, title: null as string | null, year: null as number | null, poster: null as string | null };

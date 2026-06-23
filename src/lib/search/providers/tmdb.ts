@@ -4,6 +4,24 @@ import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { ProviderHandler } from '@/lib/search/providers/types';
 import type { SearchProviderResult } from '@/lib/search/types';
 
+const LIBRARY_CACHE_TTL_MS = 3 * 60 * 1000;
+
+let libraryCache:
+  | {
+      expiresAt: number;
+      data: Awaited<ReturnType<typeof loadTaggedLibrary>>;
+    }
+  | null = null;
+
+async function getCachedTaggedLibrary(): Promise<Awaited<ReturnType<typeof loadTaggedLibrary>>> {
+  const now = Date.now();
+  if (libraryCache && libraryCache.expiresAt > now) return libraryCache.data;
+
+  const data = await loadTaggedLibrary();
+  libraryCache = { data, expiresAt: now + LIBRARY_CACHE_TTL_MS };
+  return data;
+}
+
 export const searchTmdb: ProviderHandler = async ({ query, limit }) => {
   try {
     const tmdb = await getTMDBClient();
@@ -14,7 +32,7 @@ export const searchTmdb: ProviderHandler = async ({ query, limit }) => {
       .filter((item): item is NonNullable<typeof item> => item != null)
       .slice(0, limit);
 
-    const { movies, series } = await loadTaggedLibrary();
+    const { movies, series } = await getCachedTaggedLibrary();
     items = annotateDiscoverItems(items, movies, series);
 
     const results: SearchProviderResult[] = items.map((item) => {
