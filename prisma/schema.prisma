@@ -209,14 +209,16 @@ model PollingState {
 // disk's history survives label/path drift. The sampler writes at most one row
 // per disk per local day and prunes rows older than the retention window.
 model DiskUsageSnapshot {
-  id         String   @id @default(cuid())
-  diskId     String
-  label      String?
-  path       String
-  totalSpace BigInt
-  freeSpace  BigInt
-  capturedAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  diskId       String
+  label        String?
+  path         String
+  totalSpace   BigInt
+  freeSpace    BigInt
+  capturedAt   DateTime @default(now())
+  capturedDate DateTime @default(now()) @db.Date
 
+  @@unique([diskId, capturedDate])
   @@index([diskId, capturedAt])
   @@index([capturedAt])
 }

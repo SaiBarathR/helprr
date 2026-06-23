@@ -291,6 +291,7 @@ export default function ActivityPage() {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   // arr instances for the per-instance filter (shown only when >1 instance).
   const { data: instanceOptions = [] } = useQuery({
@@ -384,7 +385,7 @@ export default function ActivityPage() {
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
-      <PullToRefresh onRefresh={handleRefreshActivity} />
+      <PullToRefresh onRefresh={handleRefreshActivity} scrollContainerRef={contentScrollRef} />
       <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
         {/* Top bar */}
         <div className="flex items-center justify-between pt-2 pb-2 w-full">
@@ -524,7 +525,7 @@ export default function ActivityPage() {
       )}
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={contentScrollRef} className="flex-1 overflow-y-auto">
         {tab === 'queue' && (
           <QueueTab
             sortBy={sortBy}

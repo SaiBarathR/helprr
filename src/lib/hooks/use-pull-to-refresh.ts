@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 
 interface UsePullToRefreshOptions {
   /** Called when the gesture passes the threshold. The indicator spins until the returned promise settles. */
@@ -11,6 +11,8 @@ interface UsePullToRefreshOptions {
   threshold?: number;
   /** Maximum resisted pull distance (px) the indicator travels. */
   maxDistance?: number;
+  /** Scroll container that must be at the top before the gesture can refresh. */
+  scrollContainerRef?: RefObject<HTMLElement | null>;
 }
 
 interface UsePullToRefreshResult {
@@ -29,51 +31,57 @@ const DEFAULT_MAX = 96;
 const ENGAGE_SLOP = 6;
 
 /**
- * Window-level pull-to-refresh for document-scrolled pages. Engages only when
- * the window is at the top and the gesture starts as a downward drag, on
- * coarse-pointer (touch) devices only.
+ * Pull-to-refresh for document-scrolled pages, or a provided scroll container.
+ * Engages only when the target is at the top and the gesture starts as a
+ * downward drag, on coarse-pointer (touch) devices only.
  */
 export function usePullToRefresh({
   onRefresh,
   disabled = false,
   threshold = DEFAULT_THRESHOLD,
   maxDistance = DEFAULT_MAX,
+  scrollContainerRef,
 }: UsePullToRefreshOptions): UsePullToRefreshResult {
   const [distance, setDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Latest values mirrored into refs so the (stably-bound) window listeners read
-  // fresh values without re-subscribing every render. Synced in an effect — never
-  // mutate refs during render.
+  // Latest values mirrored into refs so the stably-bound touch listeners read
+  // fresh values without re-subscribing every render.
   const onRefreshRef = useRef(onRefresh);
   const disabledRef = useRef(disabled);
   const refreshingRef = useRef(refreshing);
   const startYRef = useRef<number | null>(null);
   const engagedRef = useRef(false);
   // touchend reads the latest distance without re-binding listeners on each move.
-  const distanceRef = useRef(distance);
+  const distanceRef = useRef(0);
 
   useEffect(() => {
     onRefreshRef.current = onRefresh;
     disabledRef.current = disabled;
     refreshingRef.current = refreshing;
-    distanceRef.current = distance;
-  });
+  }, [onRefresh, disabled, refreshing]);
+
+  const setPullDistance = useCallback((nextDistance: number) => {
+    distanceRef.current = nextDistance;
+    setDistance(nextDistance);
+  }, []);
 
   const reset = useCallback(() => {
     startYRef.current = null;
     engagedRef.current = false;
-    setDistance(0);
-  }, []);
+    setPullDistance(0);
+  }, [setPullDistance]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (!window.matchMedia?.('(pointer: coarse)').matches) return;
 
+    const getScrollTop = () => scrollContainerRef?.current?.scrollTop ?? window.scrollY;
+
     const onTouchStart = (e: TouchEvent) => {
       if (disabledRef.current || refreshingRef.current) return;
       if (e.touches.length !== 1) return;
-      if (window.scrollY > 0) return;
+      if (getScrollTop() > 0) return;
       startYRef.current = e.touches[0].clientY;
       engagedRef.current = false;
     };
@@ -81,13 +89,13 @@ export function usePullToRefresh({
     const onTouchMove = (e: TouchEvent) => {
       if (startYRef.current === null) return;
       // A late scroll (e.g. content grew) cancels the pull.
-      if (window.scrollY > 0) {
+      if (getScrollTop() > 0) {
         reset();
         return;
       }
       const delta = e.touches[0].clientY - startYRef.current;
       if (delta <= 0) {
-        if (engagedRef.current) setDistance(0);
+        if (engagedRef.current) setPullDistance(0);
         engagedRef.current = false;
         return;
       }
@@ -97,7 +105,7 @@ export function usePullToRefresh({
       if (e.cancelable) e.preventDefault();
       // Diminishing resistance: easy to start, hard to overshoot.
       const resisted = Math.min(maxDistance, delta * 0.5);
-      setDistance(resisted);
+      setPullDistance(resisted);
     };
 
     const onTouchEnd = () => {
@@ -106,16 +114,16 @@ export function usePullToRefresh({
       startYRef.current = null;
       engagedRef.current = false;
       if (!shouldRefresh) {
-        setDistance(0);
+        setPullDistance(0);
         return;
       }
       setRefreshing(true);
-      setDistance(threshold);
+      setPullDistance(threshold);
       Promise.resolve(onRefreshRef.current())
         .catch(() => {})
         .finally(() => {
           setRefreshing(false);
-          setDistance(0);
+          setPullDistance(0);
         });
     };
 
@@ -130,7 +138,7 @@ export function usePullToRefresh({
       window.removeEventListener('touchend', onTouchEnd);
       window.removeEventListener('touchcancel', reset);
     };
-  }, [maxDistance, threshold, reset]);
+  }, [maxDistance, threshold, reset, scrollContainerRef, setPullDistance]);
 
   return {
     distance,

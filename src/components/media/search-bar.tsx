@@ -15,11 +15,9 @@ interface SearchBarProps {
   historyKey?: string;
   /** Debounce before `onChange` fires. Lower it for instant in-memory filtering. */
   debounceMs?: number;
-  /** Parent-driven spinner (e.g. a network search still in flight). */
-  pending?: boolean;
 }
 
-export function SearchBar({ value, onChange, placeholder = 'Search...', historyKey, debounceMs = 700, pending = false }: SearchBarProps) {
+export function SearchBar({ value, onChange, placeholder = 'Search...', historyKey, debounceMs = 700 }: SearchBarProps) {
   const [internal, setInternal] = useState(value);
   const [open, setOpen] = useState(false);
   const [debouncing, setDebouncing] = useState(false);
@@ -101,7 +99,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
         aria-activedescendant={listbox.activeDescendantId}
         className="pl-9 pr-9"
       />
-      {(debouncing || pending) && (
+      {debouncing && (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
       )}
       {historyKey && open && (
