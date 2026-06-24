@@ -122,4 +122,32 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ ok, fail: opFail });
 }
 
+async function deleteHandler(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireUserCapability('watchlist.edit');
+  if (!auth.ok) return auth.response;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Invalid body' }, { status: 400 });
+  }
+  const ids = parseIds((body as Record<string, unknown>).ids);
+  if (!ids) {
+    return NextResponse.json({ error: 'ids must be a non-empty array of strings' }, { status: 400 });
+  }
+
+  // Scope by owner so a member can't delete another user's items by guessing ids.
+  const result = await prisma.watchlistItem.deleteMany({
+    where: { userId: auth.user.id, id: { in: ids } },
+  });
+
+  return NextResponse.json({ ok: result.count, fail: ids.length - result.count });
+}
+
 export const PATCH = withApiLogging(patchHandler, 'api/watchlist/bulk', { logBodies: false });
+export const DELETE = withApiLogging(deleteHandler, 'api/watchlist/bulk', { logBodies: false });

@@ -6,11 +6,14 @@ import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowUpDown,
+  Bell,
   Bookmark,
   Filter,
   ListChecks,
   Loader2,
   MoreHorizontal,
+  MoreVertical,
+  RefreshCw,
   Search,
   Settings,
   Trash2,
@@ -48,7 +51,9 @@ import { useCan } from '@/components/permission-provider';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { reportBulk } from '@/lib/bulk-fan-out';
 import { invalidateWatchlistTagCache } from '@/components/watchlist/watchlist-add-dialog';
-import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { cn } from '@/lib/utils';
 
 type MediaType = 'movie' | 'series' | 'anime';
@@ -152,17 +157,29 @@ function debounce<T extends (...args: never[]) => void>(fn: T, ms: number) {
   };
 }
 
-// Column count must mirror the grid's Tailwind breakpoints exactly
-// (grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6) so the virtualizer's
-// row math lines up with how the grid actually wraps cards.
-function getColumns(width: number): number {
-  if (width >= 1024) return 6; // lg
-  if (width >= 768) return 5; // md
-  if (width >= 640) return 4; // sm
-  return 3;
+// The grid mirrors the discover page's responsive auto-fill minmax + gaps so cards
+// grow to fill available width instead of cramming into fixed columns. These helpers
+// reproduce that CSS math in JS so the window virtualizer's row geometry stays in sync
+// with how the browser actually wraps the cards.
+function gridMetrics(viewportWidth: number): { minCard: number; gap: number } {
+  let minCard = 122; // base
+  let gap = 10; // gap-2.5
+  if (viewportWidth >= 640) {
+    minCard = 138; // sm
+    gap = 14; // gap-3.5
+  }
+  if (viewportWidth >= 768) gap = 16; // md (gap-4)
+  if (viewportWidth >= 1024) minCard = 154; // lg
+  if (viewportWidth >= 1280) minCard = 168; // xl
+  return { minCard, gap };
 }
 
-const GRID_GAP = 12; // gap-3
+// For `repeat(auto-fill, minmax(min, 1fr))` the browser fits as many columns as
+// satisfy n*min + (n-1)*gap <= width, i.e. floor((width + gap) / (min + gap)).
+function columnsForWidth(containerWidth: number, minCard: number, gap: number): number {
+  if (containerWidth <= 0) return 1;
+  return Math.max(1, Math.floor((containerWidth + gap) / (minCard + gap)));
+}
 
 export default function WatchlistPage() {
   const canEdit = useCan('watchlist.edit');
@@ -238,6 +255,14 @@ export default function WatchlistPage() {
     select: ensureArray,
   });
   const tags = useMemo(() => tagsQuery.data ?? [], [tagsQuery.data]);
+
+  // Refetch both the items and the tag counts. Drives the toolbar refresh button
+  // and the pull-to-refresh gesture.
+  const refreshData = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['watchlist'] }),
+    [queryClient]
+  );
+  const { refreshing, refresh } = useRefreshAction(refreshData);
 
   const debouncedApply = useMemo(
     () =>
@@ -411,6 +436,42 @@ export default function WatchlistPage() {
     [filteredIds, selectedKeys, queryClient, exit]
   );
 
+  const handleBulkRemove = useCallback(async () => {
+    const ids = filteredIds.filter((id) => selectedKeys.has(id));
+    if (ids.length === 0) return;
+
+    let res: Response;
+    try {
+      res = await fetch('/api/watchlist/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+    } catch (err) {
+      console.error('[Watchlist] bulk remove network error:', err);
+      toast.error('Failed to remove (network error)');
+      return;
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast.error(typeof err?.error === 'string' ? err.error : 'Failed to remove items');
+      return;
+    }
+
+    const data = (await res.json()) as { ok: number; fail: number };
+    reportBulk('Removed', data.ok, data.fail, { noun: 'item' });
+    // Drop the removed items from every cached items variant so they can't
+    // reappear when switching filters before the refetch lands.
+    const removed = new Set(ids);
+    queryClient.setQueriesData<WatchlistItem[]>(
+      { queryKey: ['watchlist', 'items'] },
+      (prev) => (prev ? prev.filter((i) => !removed.has(i.id)) : prev),
+    );
+    queryClient.invalidateQueries({ queryKey: ['watchlist', 'tags'] });
+    if (data.fail === 0) exit();
+  }, [filteredIds, selectedKeys, queryClient, exit]);
+
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
     onResize();
@@ -439,12 +500,15 @@ export default function WatchlistPage() {
     };
   }, [filtered, tags]);
 
-  const columns = getColumns(viewportWidth);
+  const { minCard, gap } = gridMetrics(viewportWidth);
+  // Before the grid is measured, estimate from the viewport so the first paint
+  // isn't a single column; the ResizeObserver corrects it with the real width.
+  const columns = columnsForWidth(containerWidth > 0 ? containerWidth : viewportWidth, minCard, gap);
   const rowHeight = useMemo(() => {
     if (containerWidth <= 0) return 240;
-    const cardWidth = Math.max(1, (containerWidth - GRID_GAP * (columns - 1)) / columns);
-    return cardWidth * 1.5 + GRID_GAP; // aspect-[2/3] poster + row gap
-  }, [containerWidth, columns]);
+    const cardWidth = Math.max(1, (containerWidth - gap * (columns - 1)) / columns);
+    return cardWidth * 1.5 + gap; // aspect-[2/3] poster + row gap
+  }, [containerWidth, columns, gap]);
   const rowCount = filtered ? Math.ceil(filtered.length / columns) : 0;
   const gridVirtualizer = useWindowVirtualizer({
     count: rowCount,
@@ -465,6 +529,7 @@ export default function WatchlistPage() {
 
   return (
     <div className="animate-content-in pb-12">
+      <PullToRefresh onRefresh={refreshData} disabled={selectionMode} />
       <div
         className="sticky z-30 -mx-2 space-y-2 bg-background/95 px-2 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6"
         style={{ top: 'var(--header-height, 0px)' }}
@@ -638,6 +703,16 @@ export default function WatchlistPage() {
               : `${filteredCount} of ${totalCount}`}
           </div>
 
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={refreshing}
+            className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
+            aria-label="Refresh watchlist"
+          >
+            <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+
           {canEdit && (
             <button
               type="button"
@@ -769,7 +844,7 @@ export default function WatchlistPage() {
             return (
               <div ref={contentRef}>
                 {topSpacer > 0 && <div style={{ height: topSpacer }} />}
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(122px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(138px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(154px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-2.5 sm:gap-3.5 md:gap-4">
                   {visible.map((item, i) => (
                     <WatchlistCard
                       key={item.id}
@@ -838,6 +913,11 @@ export default function WatchlistPage() {
             canTag
             canSearch={false}
             onSearch={async () => {}}
+            canDelete
+            onDelete={() => handleBulkRemove()}
+            deleteFilesOption={false}
+            deleteVerb="Remove"
+            deleteDescription="Removes the selected items from your watchlist. Your media library is not affected."
             allowReplace
             tags={tags.map((t) => ({ id: 0, label: t.name }))}
             onApplyTags={handleApplyTags}
@@ -866,6 +946,7 @@ function WatchlistCard({
 }) {
   const canEdit = useCan('watchlist.edit');
   const canSchedule = useCan('scheduledAlerts.edit');
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const poster = item.posterUrl
     ? (toCachedImageSrc(
         item.posterUrl,
@@ -880,7 +961,7 @@ function WatchlistCard({
           : undefined
       ) ?? item.posterUrl)
     : null;
-  const posterInner = (
+  const posterCore = (
     <div
       className={cn(
         'relative aspect-[2/3] rounded-xl overflow-hidden bg-muted',
@@ -892,7 +973,7 @@ function WatchlistCard({
           src={poster}
           alt={item.title}
           fill
-          sizes="(max-width: 640px) 33vw, 20vw"
+          sizes="(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px"
           priority={imagePriority}
           className="object-cover"
           unoptimized={isProtectedApiImageSrc(poster)}
@@ -933,39 +1014,6 @@ function WatchlistCard({
           )}
         </div>
       )}
-      {!selectable && (canSchedule || canEdit) && (
-        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1.5">
-          {canSchedule && (
-            <ScheduledAlertButton
-              draft={{
-                source: item.source,
-                externalId: item.externalId,
-                mediaType: item.mediaType,
-                title: item.title,
-                year: item.year,
-                posterUrl: item.posterUrl,
-                overview: item.overview,
-                rating: item.rating,
-                href: item.href,
-              }}
-            />
-          )}
-          {canEdit && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onRemove();
-              }}
-              aria-label="Remove from watchlist"
-              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 
@@ -979,7 +1027,7 @@ function WatchlistCard({
           aria-label={`${selected ? 'Deselect' : 'Select'} ${item.title}`}
           className="block w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {posterInner}
+          {posterCore}
         </button>
         <div className="absolute top-1.5 left-1.5 z-10 pointer-events-none">
           <SelectionCheck selected={Boolean(selected)} />
@@ -988,12 +1036,95 @@ function WatchlistCard({
     );
   }
 
-  return item.href ? (
-    <Link href={item.href} className="group block">
-      {posterInner}
-    </Link>
-  ) : (
-    <div className="block">{posterInner}</div>
+  // The action controls live as a SIBLING of the <Link>, not inside it. Radix
+  // portals the menu/dialog to <body>, but React events still bubble through the
+  // React tree — so if these were descendants of the Link, every click inside the
+  // menu or dialog would bubble to the Link's onClick and navigate to the detail
+  // page. Kept as a sibling overlay, their clicks never reach the Link.
+  const actions = (canSchedule || canEdit) && (
+    <div className="absolute top-1.5 left-1.5 z-10">
+      {/* Mobile: one compact menu so the small poster isn't crowded with icons. */}
+      <div className="md:hidden">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Item actions"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44">
+            {canSchedule && (
+              <DropdownMenuItem onClick={() => setScheduleOpen(true)}>
+                <Bell className="mr-2 h-4 w-4" />
+                Schedule alert
+              </DropdownMenuItem>
+            )}
+            {canEdit && (
+              <DropdownMenuItem variant="destructive" onClick={() => onRemove()}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remove
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {/* Desktop: individual icons on the poster, as before. */}
+      <div className="hidden md:flex items-center gap-1.5">
+        {canSchedule && (
+          <button
+            type="button"
+            onClick={() => setScheduleOpen(true)}
+            aria-label="Schedule alert"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 transition-colors"
+          >
+            <Bell className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => onRemove()}
+            aria-label="Remove from watchlist"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="group relative">
+      {item.href ? (
+        <Link href={item.href} className="block">
+          {posterCore}
+        </Link>
+      ) : (
+        <div className="block">{posterCore}</div>
+      )}
+      {actions}
+      {canSchedule && (
+        <ScheduledAlertDialog
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          draft={{
+            source: item.source,
+            externalId: item.externalId,
+            mediaType: item.mediaType,
+            title: item.title,
+            year: item.year,
+            posterUrl: item.posterUrl,
+            overview: item.overview,
+            rating: item.rating,
+            href: item.href,
+          }}
+        />
+      )}
+    </div>
   );
 }
 

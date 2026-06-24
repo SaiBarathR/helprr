@@ -50,6 +50,12 @@ interface BulkActionBarProps {
   itemNoun?: string;
   /** When true, show a Merge / Replace toggle above add/remove in the tag popover. */
   allowReplace?: boolean;
+  /** Show the "Also delete files from disk" checkbox in the delete dialog. Default true (library pages). */
+  deleteFilesOption?: boolean;
+  /** Verb for the delete action button + dialog (e.g. "Remove" for the watchlist). Default "Delete". */
+  deleteVerb?: string;
+  /** Override the delete dialog description. */
+  deleteDescription?: string;
 }
 
 function TagPickMark({ checked }: { checked: boolean }) {
@@ -120,6 +126,9 @@ export function BulkActionBar({
   onDelete,
   itemNoun = 'item',
   allowReplace = false,
+  deleteFilesOption = true,
+  deleteVerb = 'Delete',
+  deleteDescription,
 }: BulkActionBarProps) {
   const navAtBottom = useUIStore((s) => s.navPosition === 'bottom');
   const [busy, setBusy] = useState<string | null>(null);
@@ -412,7 +421,7 @@ export function BulkActionBar({
             {variant === 'full' && canDelete && onDelete && (
               <BarButton
                 icon={Trash2}
-                label="Delete"
+                label={deleteVerb}
                 destructive
                 disabled={disabled}
                 onClick={() => {
@@ -429,18 +438,21 @@ export function BulkActionBar({
         <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete {count} {plural}?</AlertDialogTitle>
+              <AlertDialogTitle>{deleteVerb} {count} {plural}?</AlertDialogTitle>
               <AlertDialogDescription>
-                This removes {count === 1 ? 'it' : 'them'} from your library. This cannot be undone.
+                {deleteDescription ??
+                  `This removes ${count === 1 ? 'it' : 'them'} from your library. This cannot be undone.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={deleteFiles}
-                onCheckedChange={(v) => setDeleteFiles(v === true)}
-              />
-              Also delete files from disk
-            </label>
+            {deleteFilesOption && (
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={deleteFiles}
+                  onCheckedChange={(v) => setDeleteFiles(v === true)}
+                />
+                Also delete files from disk
+              </label>
+            )}
             <AlertDialogFooter>
               <AlertDialogCancel disabled={busy === 'delete'}>Cancel</AlertDialogCancel>
               <AlertDialogAction
@@ -455,7 +467,7 @@ export function BulkActionBar({
                 }}
               >
                 {busy === 'delete' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Delete
+                {deleteVerb}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
