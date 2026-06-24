@@ -12,6 +12,7 @@ import {
   Filter,
   MoreHorizontal,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   X,
@@ -22,6 +23,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/media/search-input';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Drawer,
@@ -128,6 +131,8 @@ export default function ScheduledAlertsPage() {
   const loading = listQuery.isLoading;
   const hasMore = listQuery.hasNextPage;
 
+  const { refreshing, refresh } = useRefreshAction(() => listQuery.refetch());
+
   const hasActiveFilters =
     statusFilter !== 'active' || modeFilter !== 'all' || mediaTypeFilter !== 'all';
 
@@ -182,12 +187,22 @@ export default function ScheduledAlertsPage() {
 
   return (
     <div className="space-y-3 animate-content-in pb-12">
+      <PullToRefresh onRefresh={() => listQuery.refetch()} />
       <PageHeader
         showBack
         onBack={() => router.push('/notifications')}
         title="Scheduled Alerts"
         rightContent={
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary disabled:opacity-60 disabled:cursor-default"
+              aria-label="Refresh alerts"
+            >
+              <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
             <button
               type="button"
               onClick={() => setFilterDrawerOpen(true)}
