@@ -1,6 +1,7 @@
 'use client';
 
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { sleep } from '@/lib/utils';
 
 interface UsePullToRefreshOptions {
   /** Called when the gesture passes the threshold. The indicator spins until the returned promise settles. */
@@ -29,6 +30,9 @@ const DEFAULT_MAX = 96;
 // Past this raw finger travel we treat the gesture as a pull and start
 // resisting/own the touch — below it, brief jitters stay as normal taps/scrolls.
 const ENGAGE_SLOP = 6;
+// Keep the spinner up at least this long so a fast/cached refresh still reads as
+// "refreshing" instead of an imperceptible flash. Shared with the refresh-button hook.
+export const REFRESH_MIN_MS = 600;
 
 /**
  * Pull-to-refresh for document-scrolled pages, or a provided scroll container.
@@ -119,7 +123,9 @@ export function usePullToRefresh({
       }
       setRefreshing(true);
       setPullDistance(threshold);
-      Promise.resolve(onRefreshRef.current())
+      // Hold the spinner until both the refresh settles and the minimum has
+      // elapsed, so fast refreshes stay visible and slow ones aren't cut short.
+      Promise.all([Promise.resolve(onRefreshRef.current()), sleep(REFRESH_MIN_MS)])
         .catch(() => {})
         .finally(() => {
           setRefreshing(false);

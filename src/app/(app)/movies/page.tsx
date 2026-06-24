@@ -19,6 +19,7 @@ import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
@@ -192,7 +193,6 @@ export default function MoviesPage() {
   const {
     data: moviesData,
     isLoading: loading,
-    isFetching,
     isError,
     refetch: refetchMovies,
   } = useQuery({
@@ -211,7 +211,7 @@ export default function MoviesPage() {
     [movies]
   );
   const tags = useUnionTags('radarr', selectionMode ? instanceIds : []);
-  const refreshing = isFetching && !loading;
+  const { refreshing, refresh } = useRefreshAction(refetchMovies);
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
@@ -774,9 +774,9 @@ export default function MoviesPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => refetchMovies()}
+                onClick={refresh}
                 disabled={refreshing}
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
                 aria-label="Refresh Movies"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
