@@ -455,7 +455,12 @@ export default function MusicPage() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
       }));
-    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
+    reportBulk(
+      mode === 'add' ? 'Tagged' : mode === 'remove' ? 'Untagged' : 'Replaced tags on',
+      ok,
+      fail,
+      { noun: 'artist', pluralNoun: 'artists', reason: firstError }
+    );
     await refetchArtists();
     if (fail === 0) exit();
   }, [fanOut, refetchArtists, exit]);

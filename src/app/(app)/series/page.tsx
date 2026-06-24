@@ -435,7 +435,12 @@ export default function SeriesPage() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
       }));
-    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
+    reportBulk(
+      mode === 'add' ? 'Tagged' : mode === 'remove' ? 'Untagged' : 'Replaced tags on',
+      ok,
+      fail,
+      { noun: 'series', pluralNoun: 'series', reason: firstError }
+    );
     await refetchSeries();
     if (fail === 0) exit();
   }, [fanOut, refetchSeries, exit]);

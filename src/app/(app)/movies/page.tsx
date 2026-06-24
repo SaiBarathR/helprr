@@ -507,7 +507,12 @@ export default function MoviesPage() {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
       }));
-    reportBulk(mode === 'add' ? 'Tagged' : 'Untagged', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
+    reportBulk(
+      mode === 'add' ? 'Tagged' : mode === 'remove' ? 'Untagged' : 'Replaced tags on',
+      ok,
+      fail,
+      { noun: 'movie', pluralNoun: 'movies', reason: firstError }
+    );
     await refetchMovies();
     if (fail === 0) exit();
   }, [fanOut, refetchMovies, exit]);

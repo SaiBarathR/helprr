@@ -368,7 +368,7 @@ export default function WatchlistPage() {
 
   const handleApplyTags = useCallback(
     async (labels: string[], mode: 'add' | 'remove' | 'replace') => {
-      const ids = [...selectedKeys];
+      const ids = filteredIds.filter((id) => selectedKeys.has(id));
       if (ids.length === 0) return;
 
       let res: Response;
@@ -398,7 +398,7 @@ export default function WatchlistPage() {
       await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
       if (data.fail === 0) exit();
     },
-    [selectedKeys, queryClient, exit]
+    [filteredIds, selectedKeys, queryClient, exit]
   );
 
   useEffect(() => {
@@ -951,7 +951,7 @@ function WatchlistCard({
         >
           {posterInner}
         </button>
-        <div className="absolute top-1.5 left-1.5 z-10">
+        <div className="absolute top-1.5 left-1.5 z-10 pointer-events-none">
           <SelectionCheck selected={Boolean(selected)} />
         </div>
       </div>

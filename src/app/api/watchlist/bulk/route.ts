@@ -133,4 +133,4 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ ok: ownedIds.size, fail });
 }
 
-export const PATCH = withApiLogging(patchHandler, 'api/watchlist/bulk');
+export const PATCH = withApiLogging(patchHandler, 'api/watchlist/bulk', { logBodies: false });

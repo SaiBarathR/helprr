@@ -277,6 +277,7 @@ export function BulkActionBar({
                           key={strategy}
                           type="button"
                           onClick={() => setTagStrategy(strategy)}
+                          aria-pressed={tagStrategy === strategy}
                           className={cn(
                             'rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors',
                             tagStrategy === strategy
@@ -297,6 +298,7 @@ export function BulkActionBar({
                           key={mode}
                           type="button"
                           onClick={() => setTagMode(mode)}
+                          aria-pressed={tagMode === mode}
                           className={cn(
                             'rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors',
                             tagMode === mode ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
