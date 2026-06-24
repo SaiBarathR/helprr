@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaCard } from '@/components/media/media-card';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { MediaOverviewItem } from '@/components/media/media-overview';
 import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
@@ -926,6 +927,26 @@ export default function MoviesPage() {
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(movie))}
                     onToggleSelect={() => toggle(keyOf(movie))}
+                    cornerAction={
+                      <ScheduledAlertButton
+                        draft={{
+                          source: 'RADARR',
+                          externalId: String(movie.id),
+                          mediaType: 'movie',
+                          title: movie.title,
+                          year: movie.year,
+                          posterUrl:
+                            movie.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+                            movie.images?.find((i) => i.coverType === 'poster')?.url ??
+                            null,
+                          overview: movie.overview ?? null,
+                          instanceId: movie.instanceId ?? null,
+                          href: hrefForMovie(movie),
+                          releaseDate:
+                            movie.digitalRelease ?? movie.inCinemas ?? movie.physicalRelease ?? null,
+                        }}
+                      />
+                    }
                   />
                 ))}
               </div>

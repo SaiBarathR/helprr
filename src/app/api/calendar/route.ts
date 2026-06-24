@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireCapability, requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+import {
+  fetchScheduledCalendarEvents,
+  mergeCalendarWithScheduled,
+} from '@/lib/scheduled-alerts/calendar';
 import type {
   CalendarEvent,
   MovieReleaseType,
@@ -30,6 +34,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const days = searchParams.get('days');
     const fullDay = searchParams.get('fullDay') === 'true';
     const type = searchParams.get('type');
+    const includeScheduled = searchParams.get('includeScheduled') === 'true';
+
+    const authUser = includeScheduled ? await requireUser() : null;
+    if (includeScheduled && !authUser?.ok) return authUser!.response;
 
     if (start) {
       const parsed = new Date(start);
@@ -53,7 +61,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const settings = explicitWindow ? null : await getOrCreateAppSettings();
     const anchorKey = settings ? getLocalDateKey(new Date(), settings.timeZone) : '';
     const cacheKeySeed = `${start ?? ''}|${end ?? ''}|${days ?? ''}|${fullDay}|${anchorKey}`;
-    const cachedEvents = await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed);
+    const cachedEvents = !includeScheduled
+      ? await getCachedJson<CalendarEvent[]>('calendar', cacheKeySeed)
+      : null;
     if (cachedEvents) {
       const filtered =
         type && type !== 'all' ? cachedEvents.filter((e) => e.type === type) : cachedEvents;
@@ -231,10 +241,22 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     // Filter by type if specified
-    const filtered =
+    let filtered =
       type && type !== 'all'
         ? events.filter((e) => e.type === type)
         : events;
+
+    if (includeScheduled && authUser?.ok) {
+      const scheduled = await fetchScheduledCalendarEvents({
+        userId: authUser.user.id,
+        start: new Date(start!),
+        end: new Date(end!),
+      });
+      filtered = mergeCalendarWithScheduled(filtered, scheduled);
+      if (type && type !== 'all') {
+        filtered = filtered.filter((e) => e.type === type || e.origin === 'scheduled');
+      }
+    }
 
     return NextResponse.json(filtered, { headers: CALENDAR_CACHE_HEADERS });
   } catch (error) {

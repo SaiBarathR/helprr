@@ -42,6 +42,7 @@ import {
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { LanguageRegionCombobox } from '@/components/ui/language-region-combobox';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { tmdbImageUrl } from '@/lib/discover';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -384,6 +385,7 @@ function MediaPoster({
             <Check className="h-3 w-3 text-foreground" />
           </div>
         ) : (
+          <>
           <WatchlistButton
             draft={{
               source: 'TMDB',
@@ -399,6 +401,23 @@ function MediaPoster({
             variant="icon"
             className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
           />
+          <ScheduledAlertButton
+            draft={{
+              source: 'TMDB',
+              externalId: String(item.tmdbId),
+              mediaType: item.mediaType === 'movie' ? 'movie' : 'series',
+              title: item.title,
+              year: item.year ?? null,
+              posterUrl: tmdbImageUrl(item.posterPath, 'w500'),
+              overview: item.overview ?? null,
+              rating: typeof item.rating === 'number' ? item.rating * 10 : null,
+              releaseDate: item.releaseDate ?? null,
+              href: item.mediaType === 'movie' ? `/discover/movie/${item.tmdbId}` : `/discover/tv/${item.tmdbId}`,
+            }}
+            variant="icon"
+            className="h-5 w-5"
+          />
+          </>
         )}
       </div>
     </div>

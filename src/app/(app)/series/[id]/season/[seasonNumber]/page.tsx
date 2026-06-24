@@ -15,8 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
+import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
-  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
+  Bell, Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -55,6 +56,7 @@ export default function SeasonDetailPage() {
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
+  const [showScheduleAlert, setShowScheduleAlert] = useState(false);
 
   const canEditMonitoring = useCan('series.editMonitoring');
   const canDeleteSeries = useCan('series.delete');
@@ -312,6 +314,10 @@ export default function SeasonDetailPage() {
                   <Search className="mr-2 h-4 w-4" />
                   Automatic Search
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                  <Bell className="mr-2 h-4 w-4" />
+                  Schedule alert…
+                </DropdownMenuItem>
                 {canDeleteSeries && (
                   <>
                     <DropdownMenuSeparator />
@@ -497,6 +503,27 @@ export default function SeasonDetailPage() {
         service="sonarr"
         searchParams={{ seriesId: series.id, seasonNumber }}
         showSeasonPackFilter
+      />
+
+      <ScheduledAlertDialog
+        open={showScheduleAlert}
+        onOpenChange={setShowScheduleAlert}
+        draft={{
+          source: 'SONARR',
+          externalId: String(series.id),
+          mediaType: 'series',
+          title: series.title,
+          subtitle: seasonTitle,
+          posterUrl:
+            series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+            series.images?.find((i) => i.coverType === 'poster')?.url ??
+            null,
+          overview: series.overview ?? null,
+          instanceId: instance ?? null,
+          href: `/series/${series.id}/season/${seasonNumber}${instance ? `?instance=${instance}` : ''}`,
+          releaseDate: episodes[0]?.airDateUtc ?? null,
+          seasonNumber,
+        }}
       />
 
       {/* Delete/Unmonitor Confirmation Drawer */}

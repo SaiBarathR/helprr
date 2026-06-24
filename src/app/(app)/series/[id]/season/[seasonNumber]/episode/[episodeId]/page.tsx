@@ -15,8 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
+import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
-  Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
+  Bell, Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
   ExternalLink, Star, Check, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -170,6 +171,7 @@ export default function EpisodeDetailPage() {
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
+  const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
 
@@ -408,6 +410,10 @@ export default function EpisodeDetailPage() {
                   <Search className="mr-2 h-4 w-4" />
                   Automatic Search
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                  <Bell className="mr-2 h-4 w-4" />
+                  Schedule alert…
+                </DropdownMenuItem>
                 {episode.hasFile && canDeleteSeries && (
                   <>
                     <DropdownMenuSeparator />
@@ -438,7 +444,7 @@ export default function EpisodeDetailPage() {
             priority
             unoptimized
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-t from-background/80 to-transparent" />
         </div>
       )}
 
@@ -452,11 +458,11 @@ export default function EpisodeDetailPage() {
           <Badge variant="secondary">UNMONITORED</Badge>
         )}
         {epWatch?.played ? (
-          <Badge className="gap-1 bg-[var(--hpr-amber)]/20 text-[var(--hpr-amber)]">
+          <Badge className="gap-1 bg-(--hpr-amber)/20 text-(--hpr-amber)">
             <Check className="h-3 w-3" strokeWidth={3} />WATCHED
           </Badge>
         ) : epWatch && epWatch.playedPercentage > 0 ? (
-          <Badge variant="secondary" className="text-[var(--hpr-amber)]">{epWatch.playedPercentage}% WATCHED</Badge>
+          <Badge variant="secondary" className="text-(--hpr-amber)">{epWatch.playedPercentage}% WATCHED</Badge>
         ) : null}
         {tmdbEpisode && tmdbEpisode.voteAverage > 0 && (
           <span className="inline-flex items-center gap-1 text-sm">
@@ -663,6 +669,28 @@ export default function EpisodeDetailPage() {
         title={`${series.title} - ${epCode} - ${episode.title || 'TBA'}`}
         service="sonarr"
         searchParams={{ episodeId }}
+      />
+
+      <ScheduledAlertDialog
+        open={showScheduleAlert}
+        onOpenChange={setShowScheduleAlert}
+        draft={{
+          source: 'SONARR',
+          externalId: String(series.id),
+          mediaType: 'series',
+          title: series.title,
+          subtitle: `${epCode} - ${episode.title || 'TBA'}`,
+          posterUrl:
+            series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+            series.images?.find((i) => i.coverType === 'poster')?.url ??
+            null,
+          overview: series.overview ?? null,
+          instanceId: instance ?? null,
+          href: `/series/${series.id}/season/${seasonNumber}/episode/${episode.id}${instance ? `?instance=${instance}` : ''}`,
+          releaseDate: episode.airDateUtc ?? null,
+          seasonNumber,
+          episodeId: episode.id,
+        }}
       />
 
       {/* History Detail Drawer */}

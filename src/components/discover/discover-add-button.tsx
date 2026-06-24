@@ -7,6 +7,7 @@ import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
 import { OpenInInstances } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { tmdbImageUrl } from '@/lib/discover';
 
 interface DiscoverAddButtonProps {
@@ -78,6 +79,9 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
           variant="icon"
           className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
         />
+        {hasCapability(me, 'scheduledAlerts.edit') && (
+          <ScheduledAlertButton draft={watchlistDraft} variant="icon" className="h-7 w-7" />
+        )}
         <OpenInInstances
           type={type}
           instances={instances}
@@ -98,6 +102,9 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
         variant="icon"
         className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/25 backdrop-blur-md text-foreground hover:bg-background/70"
       />
+      {hasCapability(me, 'scheduledAlerts.edit') && (
+        <ScheduledAlertButton draft={watchlistDraft} variant="icon" className="h-7 w-7" />
+      )}
       {canAddDirectly && (
         <Link href={href} className={pillClass}>
           <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />

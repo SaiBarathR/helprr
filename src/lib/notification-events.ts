@@ -8,6 +8,7 @@ export const EVENT_TYPES = [
   'jellyfinPlaybackStart',
   'cleanupStrike', 'cleanupRemoved', 'cleanupFailed',
   'watchlistReminder',
+  'scheduledAlert',
   'requestCreated', 'requestApproved', 'requestAvailable',
   'requestDeclined', 'requestFailed',
   'activityDigest',
@@ -15,7 +16,7 @@ export const EVENT_TYPES = [
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'requests' | 'digests';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -129,6 +130,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'A watchlist item reached its reminder date',
     iconName: 'Bell', colorClass: 'bg-amber-500/10 text-amber-400',
   },
+  scheduledAlert: {
+    type: 'scheduledAlert', group: 'scheduled',
+    label: 'Scheduled Alert',
+    description: 'A user-scheduled release or custom reminder',
+    iconName: 'Bell', colorClass: 'bg-violet-500/10 text-violet-400',
+  },
   requestCreated: {
     type: 'requestCreated', group: 'requests',
     label: 'New Request',
@@ -197,6 +204,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'watchlist',
     title: 'Watchlist',
     types: ['watchlistReminder'],
+  },
+  {
+    id: 'scheduled',
+    title: 'Scheduled Alerts',
+    types: ['scheduledAlert'],
   },
   {
     id: 'requests',

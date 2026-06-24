@@ -29,6 +29,8 @@ const MEMBER_ALLOWED: readonly Capability[] = [
   'music.view',
   'watchlist.view',
   'watchlist.edit',
+  'scheduledAlerts.view',
+  'scheduledAlerts.edit',
   'random.view',
   'calendar.view',
   // Requests — view + create their own; approval stays with admins.
@@ -49,6 +51,7 @@ const MEMBER_ALLOWED: readonly Capability[] = [
   'notify.media',
   'notify.jellyfin',
   'notify.watchlist',
+  'notify.scheduled',
   'notify.requests',
   'notify.digests',
   // Settings — personal-facing pages only; global/infra settings are admin.

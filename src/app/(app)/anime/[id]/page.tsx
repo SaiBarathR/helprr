@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
 import { AnimeAddButton } from '@/components/anime/anime-add-button';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { AnimeCharacterRail } from '@/components/anime/anime-character-rail';
 import { AnimeRelationsSection } from '@/components/anime/anime-relations-section';
@@ -460,6 +461,26 @@ export default function AnimeDetailPage() {
               }}
               variant="icon"
               className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
+            />
+            <ScheduledAlertButton
+              draft={{
+                source: 'ANILIST',
+                externalId: String(detail.id),
+                mediaType: 'anime',
+                title: detail.title,
+                year: detail.seasonYear ?? detail.startDate?.year ?? null,
+                posterUrl: detail.coverImage ?? null,
+                overview: detail.description ?? null,
+                rating: detail.averageScore ?? null,
+                releaseDate: detail.nextAiringEpisode?.airingAt
+                  ? new Date(detail.nextAiringEpisode.airingAt * 1000).toISOString()
+                  : detail.startDate?.year
+                    ? `${detail.startDate.year}-${String(detail.startDate.month ?? 1).padStart(2, '0')}-${String(detail.startDate.day ?? 1).padStart(2, '0')}`
+                    : null,
+                href: `/anime/${detail.id}`,
+              }}
+              variant="icon"
+              className="h-7 w-7"
             />
           </>
         }

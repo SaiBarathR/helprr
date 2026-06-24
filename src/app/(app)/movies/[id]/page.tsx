@@ -30,6 +30,7 @@ import {
 import {
   Bookmark,
   BookmarkCheck,
+  Bell,
   MoreHorizontal,
   Search,
   RefreshCw,
@@ -69,6 +70,7 @@ import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
+import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { useCan } from '@/components/permission-provider';
 import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
@@ -148,6 +150,7 @@ export default function MovieDetailPage() {
   const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
+  const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   const externalUrls = useExternalUrls();
   const radarrExternalUrl = useExternalUrlResolver()('RADARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
@@ -559,6 +562,10 @@ export default function MovieDetailPage() {
                 <DropdownMenuItem onClick={() => setShowAddWatchlist(true)}>
                   <Bookmark className="h-4 w-4" />
                   Add to Watchlist…
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                  <Bell className="h-4 w-4" />
+                  Schedule alert…
                 </DropdownMenuItem>
                 {canEditMovie && (
                   <DropdownMenuItem
@@ -980,6 +987,26 @@ export default function MovieDetailPage() {
             movie.images?.find((i) => i.coverType === 'poster')?.url ??
             null,
           overview: movie.overview ?? null,
+        }}
+      />
+
+      <ScheduledAlertDialog
+        open={showScheduleAlert}
+        onOpenChange={setShowScheduleAlert}
+        draft={{
+          source: 'RADARR',
+          externalId: String(movie.id),
+          mediaType: 'movie',
+          title: movie.title,
+          year: movie.year ?? null,
+          posterUrl:
+            movie.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+            movie.images?.find((i) => i.coverType === 'poster')?.url ??
+            null,
+          overview: movie.overview ?? null,
+          instanceId: instance ?? null,
+          href: `/movies/${movie.id}${instance ? `?instance=${instance}` : ''}`,
+          releaseDate: movie.digitalRelease ?? movie.inCinemas ?? movie.physicalRelease ?? null,
         }}
       />
 

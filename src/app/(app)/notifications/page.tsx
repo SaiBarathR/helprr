@@ -40,6 +40,7 @@ import {
   SlidersHorizontal,
   Layers,
   Calendar as CalendarIcon,
+  CalendarClock,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -567,6 +568,13 @@ export default function NotificationsPage() {
         title="History"
         rightContent={
           <div className="flex items-center gap-1">
+            <Link
+              href="/notifications/scheduled"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+              aria-label="Scheduled alerts"
+            >
+              <CalendarClock className="h-5 w-5" />
+            </Link>
             <button
               type="button"
               onClick={() => setFilterDrawerOpen(true)}

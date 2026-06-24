@@ -22,9 +22,11 @@ import {
   Film,
   Disc3,
   Bookmark,
+  Bell,
   Eye,
   EyeOff,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -36,6 +38,8 @@ import {
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
 import { InstanceFilter, deriveInstances } from '@/components/instance-filter';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 import type { CalendarEvent } from '@/types';
 
 /** Detail-page link for a calendar event, by media type. Carries the owning
@@ -45,6 +49,42 @@ function eventHref(event: CalendarEvent): string {
   if (event.type === 'episode') return `/series/${event.seriesId}${q}`;
   if (event.type === 'album') return `/music/album/${event.albumId}${q}`;
   return `/movies/${event.movieId}${q}`;
+}
+
+function posterFromEvent(event: CalendarEvent): string | null {
+  const img = event.images?.find((i) => i.coverType === 'poster');
+  return img?.remoteUrl ?? img?.url ?? null;
+}
+
+function scheduleDraftFromEvent(event: CalendarEvent): ScheduledAlertDraft | null {
+  const q = event.instanceId ? `?instance=${event.instanceId}` : '';
+  if (event.type === 'episode' && event.seriesId) {
+    return {
+      source: 'SONARR',
+      externalId: String(event.seriesId),
+      mediaType: 'series',
+      title: event.title,
+      subtitle: event.subtitle,
+      posterUrl: posterFromEvent(event),
+      instanceId: event.instanceId ?? null,
+      href: `/series/${event.seriesId}${q}`,
+      releaseDate: event.date,
+    };
+  }
+  if (event.type === 'movie' && event.movieId) {
+    return {
+      source: 'RADARR',
+      externalId: String(event.movieId),
+      mediaType: 'movie',
+      title: event.title,
+      subtitle: event.subtitle,
+      posterUrl: posterFromEvent(event),
+      instanceId: event.instanceId ?? null,
+      href: `/movies/${event.movieId}${q}`,
+      releaseDate: event.date,
+    };
+  }
+  return null;
 }
 
 /**
@@ -62,11 +102,15 @@ function CompactFilters({
   setTypeFilter,
   monitoredOnly,
   setMonitoredOnly,
+  showScheduled,
+  setShowScheduled,
 }: {
   typeFilter: 'all' | 'episode' | 'movie' | 'album';
   setTypeFilter: (v: 'all' | 'episode' | 'movie' | 'album') => void;
   monitoredOnly: boolean;
   setMonitoredOnly: (v: boolean) => void;
+  showScheduled: boolean;
+  setShowScheduled: (v: boolean) => void;
 }) {
   return (
     <div className="flex items-center gap-1">
@@ -129,6 +173,19 @@ function CompactFilters({
           <EyeOff className="h-3.5 w-3.5" />
         )}
       </button>
+
+      <div className="w-px h-4 bg-border/50 mx-0.5" />
+
+      <button
+        onClick={() => setShowScheduled(!showScheduled)}
+        className={`p-1.5 rounded-md transition-colors ${showScheduled
+          ? 'bg-violet-500/15 text-violet-400'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+          }`}
+        title={showScheduled ? 'Showing scheduled alerts' : 'Hiding scheduled alerts'}
+      >
+        <Bell className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -175,18 +232,20 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
           const isFirstOfDay = idx === 0;
           const href = eventHref(event);
           const eventDate = new Date(event.date);
+          const scheduleDraft =
+            event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
 
           return (
-            <Link
+            <div
               key={event.id}
-              href={href}
               data-agenda-date={isFirstOfDay ? dateKey : undefined}
-              className="block active:bg-muted/30"
+              className="flex items-start gap-1 border-b border-border/30"
             >
-              <div
-                className={`flex items-start gap-4 py-3 px-1 border-b border-border/30 ${!event.monitored ? 'opacity-50' : ''
-                  } ${event.hasFile ? 'opacity-60' : ''}`}
-              >
+              <Link href={href} className="flex flex-1 min-w-0 active:bg-muted/30">
+                <div
+                  className={`flex items-start gap-4 py-3 px-1 w-full ${!event.monitored ? 'opacity-50' : ''
+                    } ${event.hasFile ? 'opacity-60' : ''}`}
+                >
                 {/* Date column - only show for first event of the day */}
                 <div className="w-10 shrink-0 text-center">
                   {isFirstOfDay && (
@@ -234,6 +293,11 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
                   <div className="flex items-center gap-1.5 mt-0.5 pl-[18px]">
                     {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
                     {event.finaleType && <FinaleBadge type={event.finaleType} />}
+                    {(event.origin === 'scheduled' || event.scheduleLabel) && (
+                      <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
+                        Scheduled
+                      </Badge>
+                    )}
                     <p className="text-xs text-muted-foreground truncate min-w-0">
                       {event.subtitle}
                     </p>
@@ -245,7 +309,13 @@ function AgendaView({ events }: { events: CalendarEvent[] }) {
                   <Bookmark className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
                 )}
               </div>
-            </Link>
+              </Link>
+              {scheduleDraft && (
+                <div className="shrink-0 pt-3 pr-1">
+                  <ScheduledAlertButton draft={scheduleDraft} />
+                </div>
+              )}
+            </div>
           );
         });
       })}
@@ -338,7 +408,9 @@ function MonthView({
                           } ${accent} ${!event.monitored ? 'opacity-50' : ''} ${event.hasFile ? 'line-through decoration-1' : ''
                           }`}
                       >
-                        {event.type === 'episode' ? (
+                        {event.origin === 'scheduled' || event.scheduleLabel ? (
+                          <Bell className="h-2 w-2 shrink-0" />
+                        ) : event.type === 'episode' ? (
                           <Tv className="h-2 w-2 shrink-0" />
                         ) : event.type === 'album' ? (
                           <Disc3 className="h-2 w-2 shrink-0" />
@@ -452,6 +524,11 @@ function WeekView({
                             </p>
                             {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
                             {event.finaleType && <FinaleBadge type={event.finaleType} />}
+                            {(event.origin === 'scheduled' || event.scheduleLabel) && (
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
+                                Scheduled
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground truncate">
                             {event.subtitle}
@@ -529,6 +606,8 @@ export default function CalendarPage() {
   const setMonitoredOnly = useUIStore((s) => s.setCalendarMonitoredOnly);
   const instanceFilter = useUIStore((s) => s.calendarInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setCalendarInstanceFilter);
+  const showScheduled = useUIStore((s) => s.calendarShowScheduled);
+  const setShowScheduled = useUIStore((s) => s.setCalendarShowScheduled);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isMobile, setIsMobile] = useState(false);
@@ -613,6 +692,7 @@ export default function CalendarPage() {
     start,
     end,
     type: typeFilter !== 'all' ? typeFilter : undefined,
+    includeScheduled: showScheduled,
   });
 
   // Instances present in the loaded events (drives the instance-filter dropdown).
@@ -630,8 +710,9 @@ export default function CalendarPage() {
     let list = events;
     if (monitoredOnly) list = list.filter((e) => e.monitored);
     if (instanceFilter !== 'all') list = list.filter((e) => e.instanceId === instanceFilter);
+    if (!showScheduled) list = list.filter((e) => e.origin !== 'scheduled' && !e.scheduleLabel);
     return list;
-  }, [events, monitoredOnly, instanceFilter]);
+  }, [events, monitoredOnly, instanceFilter, showScheduled]);
 
   const agendaTargetDateKey = useMemo(() => {
     if (filteredEvents.length === 0) return undefined;
@@ -740,7 +821,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
+      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80 md:-mx-6 md:px-6 space-y-2" style={{ top: 'var(--header-height, 0px)' }}>
         {/* Top bar: title + view tabs */}
         <div className="flex items-center justify-between md:hidden">
           <ViewTabs
@@ -755,6 +836,8 @@ export default function CalendarPage() {
               setTypeFilter={setTypeFilter}
               monitoredOnly={monitoredOnly}
               setMonitoredOnly={setMonitoredOnly}
+              showScheduled={showScheduled}
+              setShowScheduled={setShowScheduled}
             />
           </div>
         </div>
@@ -798,6 +881,8 @@ export default function CalendarPage() {
               setTypeFilter={setTypeFilter}
               monitoredOnly={monitoredOnly}
               setMonitoredOnly={setMonitoredOnly}
+              showScheduled={showScheduled}
+              setShowScheduled={setShowScheduled}
             />
           </div>
 

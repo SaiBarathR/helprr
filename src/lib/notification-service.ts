@@ -53,6 +53,7 @@ const TTL_BY_EVENT: Record<string, number> = {
   cleanupStrike: 60,
   cleanupRemoved: 60,
   watchlistReminder: 86400,
+  scheduledAlert: 86400,
   requestCreated: 60,
   requestApproved: 60,
   requestAvailable: 300,
@@ -165,6 +166,11 @@ export function safeNotificationMetadata(metadata: Record<string, unknown> | und
     'cleanupReason',
     'cleanupAction',
     'cleanupStrikeType',
+    'scheduledAlertId',
+    'scheduledOccurrenceId',
+    'mediaType',
+    'releaseKind',
+    'releaseAt',
   ];
   return Object.fromEntries(
     safeKeys

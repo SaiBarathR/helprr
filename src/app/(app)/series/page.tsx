@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaCard } from '@/components/media/media-card';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { MediaOverviewItem } from '@/components/media/media-overview';
 import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
@@ -849,6 +850,25 @@ export default function SeriesPage() {
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(s))}
                     onToggleSelect={() => toggle(keyOf(s))}
+                    cornerAction={
+                      <ScheduledAlertButton
+                        draft={{
+                          source: 'SONARR',
+                          externalId: String(s.id),
+                          mediaType: 'series',
+                          title: s.title,
+                          year: s.year,
+                          posterUrl:
+                            s.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+                            s.images?.find((i) => i.coverType === 'poster')?.url ??
+                            null,
+                          overview: s.overview ?? null,
+                          instanceId: s.instanceId ?? null,
+                          href: hrefForSeries(s),
+                          releaseDate: s.nextAiring ?? null,
+                        }}
+                      />
+                    }
                   />
                 ))}
               </div>
