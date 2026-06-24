@@ -57,9 +57,9 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   mediaViews: [
     'mediaView',
     'moviesView', 'moviesPosterSize', 'moviesSort', 'moviesSearch',
-    'moviesSortDirection', 'moviesFilter', 'moviesVisibleFields',
+    'moviesSortDirection', 'moviesFilter', 'moviesInstanceFilter', 'moviesWatchFilter', 'moviesVisibleFields',
     'seriesView', 'seriesPosterSize', 'seriesSort', 'seriesSearch',
-    'seriesSortDirection', 'seriesFilter', 'seriesVisibleFields',
+    'seriesSortDirection', 'seriesFilter', 'seriesInstanceFilter', 'seriesWatchFilter', 'seriesVisibleFields',
     'musicView', 'musicPosterSize', 'musicSort', 'musicSearch',
     'musicSortDirection', 'musicFilter', 'musicVisibleFields',
   ],

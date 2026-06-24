@@ -56,6 +56,7 @@ interface WatchActionsValue {
 // flight — which flips `isWriting` — doesn't churn the lookup value and re-render
 // every grid card that only reads watch state.
 const WatchLookupContext = createContext<WatchLookupFn>(() => undefined);
+const WatchMapReadyContext = createContext(true);
 const WatchActionsContext = createContext<WatchActionsValue>({
   setWatched: () => {},
   canWrite: false,
@@ -99,7 +100,7 @@ export function WatchStatusProvider({ children }: { children: React.ReactNode })
   const canWrite = hasCapability(me, 'jellyfin.watchedState');
   const queryClient = useQueryClient();
 
-  const { data: map } = useQuery({
+  const { data: map, isSuccess: mapLoaded } = useQuery({
     queryKey: WATCH_MAP_KEY,
     queryFn: jsonFetcher<WatchStatusMapResponse>('/api/jellyfin/watch-status'),
     enabled,
@@ -107,6 +108,8 @@ export function WatchStatusProvider({ children }: { children: React.ReactNode })
     // In-session navigation reuses the map; aligned with the server's 10m SWR.
     staleTime: 5 * 60_000,
   });
+
+  const mapReady = !enabled || mapLoaded;
 
   const mutation = useMutation({
     mutationFn: async (args: SetWatchedArgs) => {
@@ -202,15 +205,22 @@ export function WatchStatusProvider({ children }: { children: React.ReactNode })
   );
 
   return (
-    <WatchLookupContext.Provider value={lookup}>
-      <WatchActionsContext.Provider value={actions}>{children}</WatchActionsContext.Provider>
-    </WatchLookupContext.Provider>
+    <WatchMapReadyContext.Provider value={mapReady}>
+      <WatchLookupContext.Provider value={lookup}>
+        <WatchActionsContext.Provider value={actions}>{children}</WatchActionsContext.Provider>
+      </WatchLookupContext.Provider>
+    </WatchMapReadyContext.Provider>
   );
 }
 
 /** Read the current user's Jellyfin watch status. Stable across writes; returns undefined outside the provider. */
 export function useWatchLookup(): WatchLookupFn {
   return useContext(WatchLookupContext);
+}
+
+/** False while the watch map is still loading for a Jellyfin-linked user. */
+export function useWatchMapReady(): boolean {
+  return useContext(WatchMapReadyContext);
 }
 
 /** Toggle watch status / read write-capability + in-flight state. Inert no-op outside the provider. */

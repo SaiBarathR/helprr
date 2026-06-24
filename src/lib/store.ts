@@ -133,6 +133,9 @@ export type RequestsTypeFilterPreference = ('movie' | 'tv')[];
 export type RequestsSortPreference = 'added' | 'modified';
 export type RequestsSortDirectionPreference = 'asc' | 'desc';
 
+/** Jellyfin watch filter for movies/series list pages. */
+export type MediaWatchFilterPreference = 'all' | 'watched' | 'unwatched';
+
 export interface NotificationsFiltersState {
   search: string;
   eventTypes: string[];
@@ -215,7 +218,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 33;
+export const STORE_VERSION = 34;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -368,6 +371,10 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     state.requestsSort = 'added';
     state.requestsSortDirection = 'desc';
   }
+  if (version < 34) {
+    state.moviesWatchFilter = 'all';
+    state.seriesWatchFilter = 'all';
+  }
   return state;
 }
 
@@ -395,6 +402,8 @@ interface UIState {
   setMoviesFilter: (filter: string[]) => void;
   moviesInstanceFilter: string;
   setMoviesInstanceFilter: (id: string) => void;
+  moviesWatchFilter: MediaWatchFilterPreference;
+  setMoviesWatchFilter: (filter: MediaWatchFilterPreference) => void;
   moviesVisibleFields: VisibleFieldsByMode;
   setMoviesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Series preferences
@@ -412,6 +421,8 @@ interface UIState {
   setSeriesFilter: (filter: string[]) => void;
   seriesInstanceFilter: string;
   setSeriesInstanceFilter: (id: string) => void;
+  seriesWatchFilter: MediaWatchFilterPreference;
+  setSeriesWatchFilter: (filter: MediaWatchFilterPreference) => void;
   seriesVisibleFields: VisibleFieldsByMode;
   setSeriesVisibleFields: (mode: MediaViewMode, fields: string[]) => void;
   // Music preferences (artist-centric)
@@ -560,6 +571,7 @@ const PERSISTED_KEYS = [
   'moviesSortDirection',
   'moviesFilter',
   'moviesInstanceFilter',
+  'moviesWatchFilter',
   'moviesVisibleFields',
   'seriesView',
   'seriesPosterSize',
@@ -568,6 +580,7 @@ const PERSISTED_KEYS = [
   'seriesSortDirection',
   'seriesFilter',
   'seriesInstanceFilter',
+  'seriesWatchFilter',
   'seriesVisibleFields',
   'musicView',
   'musicPosterSize',
@@ -693,6 +706,8 @@ export const useUIStore = create<UIState>()(
       setMoviesFilter: (filter) => set({ moviesFilter: filter }),
       moviesInstanceFilter: 'all',
       setMoviesInstanceFilter: (id) => set({ moviesInstanceFilter: id }),
+      moviesWatchFilter: 'all',
+      setMoviesWatchFilter: (filter) => set({ moviesWatchFilter: filter }),
       moviesVisibleFields: { ...DEFAULT_MOVIES_FIELDS },
       setMoviesVisibleFields: (mode, fields) => set((state) => ({
         moviesVisibleFields: { ...state.moviesVisibleFields, [mode]: fields },
@@ -712,6 +727,8 @@ export const useUIStore = create<UIState>()(
       setSeriesFilter: (filter) => set({ seriesFilter: filter }),
       seriesInstanceFilter: 'all',
       setSeriesInstanceFilter: (id) => set({ seriesInstanceFilter: id }),
+      seriesWatchFilter: 'all',
+      setSeriesWatchFilter: (filter) => set({ seriesWatchFilter: filter }),
       seriesVisibleFields: { ...DEFAULT_SERIES_FIELDS },
       setSeriesVisibleFields: (mode, fields) => set((state) => ({
         seriesVisibleFields: { ...state.seriesVisibleFields, [mode]: fields },
