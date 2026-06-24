@@ -6,10 +6,11 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
+import { AnimeSearchOverlay } from '@/components/anime/anime-search-overlay';
 import { HeroCarousel } from '@/components/hero-carousel';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { Search, Star, Sparkles, CalendarClock } from 'lucide-react';
+import { Star, Sparkles, CalendarClock, LayoutGrid } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useUIStore } from '@/lib/store';
 import { useMe } from '@/components/permission-provider';
@@ -160,6 +161,9 @@ export default function AnimeHomePage() {
   const [perPage] = useState(() =>
     typeof window !== 'undefined' ? getHomePerPageFromWidth(window.innerWidth) : 10,
   );
+  // Hide the right-side action pills while the search field is focused so the
+  // bar can use the full row width.
+  const [searchExpanded, setSearchExpanded] = useState(false);
   // AniList is a single shared operator account; its list (My Library, Continue
   // Watching, Plan to Watch) is admin-only — members never see it.
   const me = useMe();
@@ -306,32 +310,38 @@ export default function AnimeHomePage() {
 
   return (
     <div className="flex flex-col animate-content-in">
-      {/* Search Link — always visible */}
+      {/* Search bar (in-place live search) + Browse — always visible */}
       <div className="flex items-center justify-between gap-2 mb-5">
-        <Link
-          href="/anime/explore"
-          className="flex-1 flex items-center gap-2 bg-muted/50 border border-border/50 text-muted-foreground rounded-full px-4 py-2 text-sm hover:bg-muted transition-colors"
-        >
-          <Search className="h-4 w-4" />
-          <span>Search or browse anime...</span>
-        </Link>
-        <Link
-          href="/anime/schedule"
-          className="shrink-0 flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-amber-500/25 transition-colors"
-          aria-label="Anime weekly schedule"
-        >
-          <CalendarClock className="h-4 w-4" />
-          <span className="hidden sm:inline">Schedule</span>
-        </Link>
-        {viewer?.connected && (
-          <Link
-            href="/anime/library"
-            className="shrink-0 flex items-center gap-1.5 bg-pink-500/15 border border-pink-500/30 text-pink-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-pink-500/25 transition-colors"
-            aria-label="My AniList library"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span className="hidden sm:inline">My Library</span>
-          </Link>
+        <AnimeSearchOverlay onExpandedChange={setSearchExpanded} />
+        {!searchExpanded && (
+          <>
+            <Link
+              href="/anime/explore"
+              className="shrink-0 flex items-center gap-1.5 bg-muted/50 border border-border/50 text-muted-foreground rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-muted transition-colors"
+              aria-label="Browse anime"
+            >
+              <LayoutGrid className="h-4 w-4" />
+              <span className="hidden sm:inline">Browse</span>
+            </Link>
+            <Link
+              href="/anime/schedule"
+              className="shrink-0 flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-amber-500/25 transition-colors"
+              aria-label="Anime weekly schedule"
+            >
+              <CalendarClock className="h-4 w-4" />
+              <span className="hidden sm:inline">Schedule</span>
+            </Link>
+            {viewer?.connected && (
+              <Link
+                href="/anime/library"
+                className="shrink-0 flex items-center gap-1.5 bg-pink-500/15 border border-pink-500/30 text-pink-300 rounded-full px-3 sm:px-4 py-2 text-sm hover:bg-pink-500/25 transition-colors"
+                aria-label="My AniList library"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span className="hidden sm:inline">My Library</span>
+              </Link>
+            )}
+          </>
         )}
       </div>
 
