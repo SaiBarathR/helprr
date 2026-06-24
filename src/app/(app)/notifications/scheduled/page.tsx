@@ -325,9 +325,16 @@ export default function ScheduledAlertsPage() {
                       key={alert.id}
                       className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/40 p-3"
                     >
-                      <div className="size-12 shrink-0 rounded-md overflow-hidden bg-muted">
+                      <div className="relative size-12 shrink-0 rounded-md overflow-hidden bg-muted">
                         {poster ? (
-                          <FadeInImage src={poster} alt="" className="size-full object-cover" />
+                          <FadeInImage
+                            src={poster}
+                            alt=""
+                            fill
+                            sizes="48px"
+                            className="object-cover"
+                            unoptimized={isProtectedApiImageSrc(poster)}
+                          />
                         ) : (
                           <div className="size-full flex items-center justify-center">
                             <Bell className="h-4 w-4 text-muted-foreground" />

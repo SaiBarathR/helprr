@@ -43,7 +43,6 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { LanguageRegionCombobox } from '@/components/ui/language-region-combobox';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
-import { tmdbImageUrl } from '@/lib/discover';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
@@ -393,7 +392,7 @@ function MediaPoster({
               mediaType: item.mediaType === 'movie' ? 'movie' : 'series',
               title: item.title,
               year: item.year ?? null,
-              posterUrl: tmdbImageUrl(item.posterPath, 'w500'),
+              posterUrl: item.posterPath,
               overview: item.overview ?? null,
               rating: typeof item.rating === 'number' ? item.rating * 10 : null,
               releaseDate: item.releaseDate ?? null,
@@ -408,7 +407,7 @@ function MediaPoster({
               mediaType: item.mediaType === 'movie' ? 'movie' : 'series',
               title: item.title,
               year: item.year ?? null,
-              posterUrl: tmdbImageUrl(item.posterPath, 'w500'),
+              posterUrl: item.posterPath,
               overview: item.overview ?? null,
               rating: typeof item.rating === 'number' ? item.rating * 10 : null,
               releaseDate: item.releaseDate ?? null,

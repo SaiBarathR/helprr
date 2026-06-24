@@ -8,7 +8,6 @@ import { RequestMediaButton } from '@/components/discover/request-media-button';
 import { OpenInInstances } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
-import { tmdbImageUrl } from '@/lib/discover';
 
 interface DiscoverAddButtonProps {
   detail: DiscoverDetail;
@@ -56,7 +55,7 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
     mediaType: (detail.mediaType === 'movie' ? 'movie' : 'series') as 'movie' | 'series',
     title: detail.title,
     year: detail.year ?? null,
-    posterUrl: tmdbImageUrl(detail.posterPath, 'w500'),
+    posterUrl: detail.posterPath,
     overview: detail.overview ?? null,
     rating: typeof detail.rating === 'number' ? detail.rating * 10 : null,
     releaseDate: detail.releaseDate ?? null,
