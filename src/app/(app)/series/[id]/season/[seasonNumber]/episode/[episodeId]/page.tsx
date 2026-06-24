@@ -178,6 +178,7 @@ export default function EpisodeDetailPage() {
   const canDeleteSeries = useCan('series.delete');
   const canManageActivity = useCan('activity.manage');
   const canEditMonitoring = useCan('series.editMonitoring');
+  const canScheduleAlert = useCan('scheduledAlerts.edit');
   const queryClient = useQueryClient();
 
   // Series shares queryKeys.detail; the episode comes from the with-file list
@@ -410,10 +411,12 @@ export default function EpisodeDetailPage() {
                   <Search className="mr-2 h-4 w-4" />
                   Automatic Search
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                  <Bell className="mr-2 h-4 w-4" />
-                  Schedule alert…
-                </DropdownMenuItem>
+                {canScheduleAlert && (
+                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                    <Bell className="mr-2 h-4 w-4" />
+                    Schedule alert…
+                  </DropdownMenuItem>
+                )}
                 {episode.hasFile && canDeleteSeries && (
                   <>
                     <DropdownMenuSeparator />
@@ -671,27 +674,29 @@ export default function EpisodeDetailPage() {
         searchParams={{ episodeId }}
       />
 
-      <ScheduledAlertDialog
-        open={showScheduleAlert}
-        onOpenChange={setShowScheduleAlert}
-        draft={{
-          source: 'SONARR',
-          externalId: String(series.id),
-          mediaType: 'series',
-          title: series.title,
-          subtitle: `${epCode} - ${episode.title || 'TBA'}`,
-          posterUrl:
-            series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
-            series.images?.find((i) => i.coverType === 'poster')?.url ??
-            null,
-          overview: series.overview ?? null,
-          instanceId: instance ?? null,
-          href: `/series/${series.id}/season/${seasonNumber}/episode/${episode.id}${instance ? `?instance=${instance}` : ''}`,
-          releaseDate: episode.airDateUtc ?? null,
-          seasonNumber,
-          episodeId: episode.id,
-        }}
-      />
+      {canScheduleAlert && (
+        <ScheduledAlertDialog
+          open={showScheduleAlert}
+          onOpenChange={setShowScheduleAlert}
+          draft={{
+            source: 'SONARR',
+            externalId: String(series.id),
+            mediaType: 'series',
+            title: series.title,
+            subtitle: `${epCode} - ${episode.title || 'TBA'}`,
+            posterUrl:
+              series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+              series.images?.find((i) => i.coverType === 'poster')?.url ??
+              null,
+            overview: series.overview ?? null,
+            instanceId: instance ?? null,
+            href: `/series/${series.id}/season/${seasonNumber}/episode/${episode.id}${instance ? `?instance=${instance}` : ''}`,
+            releaseDate: episode.airDateUtc ?? null,
+            seasonNumber,
+            episodeId: episode.id,
+          }}
+        />
+      )}
 
       {/* History Detail Drawer */}
       <Drawer open={!!selectedHistoryItem} onOpenChange={(v) => { if (!v) setSelectedHistoryItem(null); }}>

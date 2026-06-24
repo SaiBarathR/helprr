@@ -3,7 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { prisma } from '@/lib/db';
-import { getDefaultTimeZone, normalizeDraft, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
+import { getDefaultTimeZone, isAlertScope, normalizeDraft, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
 import { previewScheduledAlert } from '@/lib/scheduled-alerts/resolver';
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -26,17 +26,24 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     typeof body.timeZone === 'string' ? body.timeZone : userSettings?.timeZone ?? settings.timeZone,
   );
 
+  const scopeRaw = typeof body.scope === 'string' ? body.scope : undefined;
+  if (scopeRaw !== undefined && !isAlertScope(scopeRaw)) {
+    return NextResponse.json({ error: 'Invalid scope' }, { status: 400 });
+  }
+
+  const offsetRaw =
+    typeof body.offsetMinutes === 'number' && Number.isFinite(body.offsetMinutes)
+      ? Math.max(0, Math.min(10_080, Math.round(body.offsetMinutes)))
+      : undefined;
+
   const preview = await previewScheduledAlert(draft, {
     scheduleMode:
       body.scheduleMode === 'absolute' || body.scheduleMode === 'release_relative'
         ? body.scheduleMode
         : undefined,
-    scope: typeof body.scope === 'string' ? body.scope : undefined,
+    scope: scopeRaw,
     releaseTypes: parseReleaseTypes(body.releaseTypes),
-    offsetMinutes:
-      typeof body.offsetMinutes === 'number' && Number.isFinite(body.offsetMinutes)
-        ? body.offsetMinutes
-        : undefined,
+    offsetMinutes: offsetRaw,
     timeZone,
     seasonNumber: draft.seasonNumber,
     episodeId: draft.episodeId,

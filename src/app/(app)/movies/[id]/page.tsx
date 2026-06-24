@@ -172,6 +172,7 @@ export default function MovieDetailPage() {
   const canManageActivity = useCan('activity.manage');
   const canDeleteMovie = useCan('movies.delete');
   const canManageFiles = useCan('movies.manageFiles');
+  const canScheduleAlert = useCan('scheduledAlerts.edit');
   const lookupWatch = useWatchLookup();
   const movieWatch = lookupWatch({ kind: 'movie', tmdbId: movie?.tmdbId, imdbId: movie?.imdbId });
   const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
@@ -563,10 +564,12 @@ export default function MovieDetailPage() {
                   <Bookmark className="h-4 w-4" />
                   Add to Watchlist…
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                  <Bell className="h-4 w-4" />
-                  Schedule alert…
-                </DropdownMenuItem>
+                {canScheduleAlert && (
+                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                    <Bell className="h-4 w-4" />
+                    Schedule alert…
+                  </DropdownMenuItem>
+                )}
                 {canEditMovie && (
                   <DropdownMenuItem
                     onClick={() => router.push(`/movies/${movie.id}/edit${instance ? `?instance=${instance}` : ''}`)}
@@ -990,25 +993,27 @@ export default function MovieDetailPage() {
         }}
       />
 
-      <ScheduledAlertDialog
-        open={showScheduleAlert}
-        onOpenChange={setShowScheduleAlert}
-        draft={{
-          source: 'RADARR',
-          externalId: String(movie.id),
-          mediaType: 'movie',
-          title: movie.title,
-          year: movie.year ?? null,
-          posterUrl:
-            movie.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
-            movie.images?.find((i) => i.coverType === 'poster')?.url ??
-            null,
-          overview: movie.overview ?? null,
-          instanceId: instance ?? null,
-          href: `/movies/${movie.id}${instance ? `?instance=${instance}` : ''}`,
-          releaseDate: movie.digitalRelease ?? movie.inCinemas ?? movie.physicalRelease ?? null,
-        }}
-      />
+      {canScheduleAlert && (
+        <ScheduledAlertDialog
+          open={showScheduleAlert}
+          onOpenChange={setShowScheduleAlert}
+          draft={{
+            source: 'RADARR',
+            externalId: String(movie.id),
+            mediaType: 'movie',
+            title: movie.title,
+            year: movie.year ?? null,
+            posterUrl:
+              movie.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+              movie.images?.find((i) => i.coverType === 'poster')?.url ??
+              null,
+            overview: movie.overview ?? null,
+            instanceId: instance ?? null,
+            href: `/movies/${movie.id}${instance ? `?instance=${instance}` : ''}`,
+            releaseDate: movie.digitalRelease ?? movie.inCinemas ?? movie.physicalRelease ?? null,
+          }}
+        />
+      )}
 
       {/* Delete Drawer (bottom sheet) */}
       <Drawer open={showDelete} onOpenChange={setShowDelete}>

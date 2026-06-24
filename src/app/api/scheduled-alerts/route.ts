@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, ScheduledAlert } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
@@ -10,7 +10,6 @@ import {
   resolveHref,
 } from '@/lib/scheduled-alerts/helpers';
 import { resolveAlertOccurrences } from '@/lib/scheduled-alerts/resolver';
-import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
 
@@ -81,32 +80,43 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   const where = buildListWhere(auth.user.id, params);
 
-  const alerts = await prisma.scheduledAlert.findMany({
-    where,
-    include: {
-      occurrences: includeOccurrences
-        ? { orderBy: { notifyAt: 'asc' } }
-        : {
-            where: { status: 'pending', notifyAt: { gte: new Date() } },
-            orderBy: { notifyAt: 'asc' },
-            take: 5,
-          },
-    },
-    orderBy: sort === 'title' ? { title: 'asc' } : sort === 'created' ? { createdAt: 'desc' } : { updatedAt: 'desc' },
-    skip: (page - 1) * pageSize,
-    take: pageSize,
-  });
+  const occurrenceInclude = includeOccurrences
+    ? { orderBy: { notifyAt: 'asc' as const } }
+    : {
+        where: { status: 'pending', notifyAt: { gte: new Date() } },
+        orderBy: { notifyAt: 'asc' as const },
+        take: 5,
+      };
 
-  let records = alerts.map((a) => serializeAlert(a, a.occurrences));
+  let records;
+  let totalRecords: number;
+
   if (sort === 'nextNotify') {
-    records = records.sort((a, b) => {
-      const ta = a.nextOccurrence ? new Date(a.nextOccurrence.notifyAt).getTime() : Infinity;
-      const tb = b.nextOccurrence ? new Date(b.nextOccurrence.notifyAt).getTime() : Infinity;
-      return ta - tb;
+    const allAlerts = await prisma.scheduledAlert.findMany({
+      where,
+      include: { occurrences: occurrenceInclude },
     });
+    totalRecords = allAlerts.length;
+    const serialized = allAlerts.map((a) => serializeAlert(a, a.occurrences));
+    records = serialized
+      .sort((a, b) => {
+        const ta = a.nextOccurrence ? new Date(a.nextOccurrence.notifyAt).getTime() : Infinity;
+        const tb = b.nextOccurrence ? new Date(b.nextOccurrence.notifyAt).getTime() : Infinity;
+        return ta - tb;
+      })
+      .slice((page - 1) * pageSize, page * pageSize);
+  } else {
+    const alerts = await prisma.scheduledAlert.findMany({
+      where,
+      include: { occurrences: occurrenceInclude },
+      orderBy: sort === 'title' ? { title: 'asc' } : sort === 'created' ? { createdAt: 'desc' } : { updatedAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    records = alerts.map((a) => serializeAlert(a, a.occurrences));
+    totalRecords = await prisma.scheduledAlert.count({ where });
   }
 
-  const totalRecords = await prisma.scheduledAlert.count({ where });
   return NextResponse.json({ page, pageSize, totalRecords, records });
 }
 
@@ -132,43 +142,103 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (draft.seasonNumber != null) metadata.seasonNumber = draft.seasonNumber;
   if (draft.episodeId != null) metadata.episodeId = draft.episodeId;
 
-  const alert = await prisma.scheduledAlert.create({
-    data: {
-      userId: auth.user.id,
-      source: draft.source,
-      externalId: draft.externalId,
-      mediaType: draft.mediaType,
-      instanceId: draft.instanceId ?? null,
-      title: draft.title,
-      subtitle: draft.subtitle ?? null,
-      posterUrl: draft.posterUrl ?? null,
-      href: resolveHref(draft),
-      scheduleMode,
-      scope,
-      releaseTypes,
-      offsetMinutes,
-      timeZone,
-      metadata: metadata as Prisma.InputJsonValue,
-    },
-  });
+  const candidates =
+    scheduleMode === 'absolute'
+      ? []
+      : await resolveAlertOccurrences({
+          id: 'preview',
+          userId: auth.user.id,
+          source: draft.source,
+          externalId: draft.externalId,
+          mediaType: draft.mediaType,
+          instanceId: draft.instanceId ?? null,
+          title: draft.title,
+          subtitle: draft.subtitle ?? null,
+          posterUrl: draft.posterUrl ?? null,
+          href: resolveHref(draft),
+          scheduleMode,
+          scope,
+          releaseTypes: releaseTypes as Prisma.JsonValue,
+          offsetMinutes,
+          timeZone,
+          status: 'active',
+          metadata: metadata as Prisma.InputJsonValue,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          cancelledAt: null,
+        } as ScheduledAlert);
 
-  if (scheduleMode === 'absolute' && absoluteNotifyAt) {
-    const notifyAt = new Date(absoluteNotifyAt);
-    await prisma.scheduledAlertOccurrence.create({
+  const alert = await prisma.$transaction(async (tx) => {
+    const created = await tx.scheduledAlert.create({
       data: {
-        alertId: alert.id,
-        releaseAt: notifyAt,
-        notifyAt,
-        releaseKind: 'custom',
-        targetKey: `custom:${draft.source}:${draft.externalId}`,
+        userId: auth.user.id,
+        source: draft.source,
+        externalId: draft.externalId,
+        mediaType: draft.mediaType,
+        instanceId: draft.instanceId ?? null,
         title: draft.title,
-        body: draft.subtitle ?? draft.title,
+        subtitle: draft.subtitle ?? null,
+        posterUrl: draft.posterUrl ?? null,
+        href: resolveHref(draft),
+        scheduleMode,
+        scope,
+        releaseTypes,
+        offsetMinutes,
+        timeZone,
+        metadata: metadata as Prisma.InputJsonValue,
       },
     });
-  } else {
-    const candidates = await resolveAlertOccurrences(alert);
-    await upsertOccurrencesForAlert(alert, candidates);
-  }
+
+    if (scheduleMode === 'absolute' && absoluteNotifyAt) {
+      const notifyAt = new Date(absoluteNotifyAt);
+      await tx.scheduledAlertOccurrence.create({
+        data: {
+          alertId: created.id,
+          releaseAt: notifyAt,
+          notifyAt,
+          releaseKind: 'custom',
+          targetKey: `custom:${draft.source}:${draft.externalId}`,
+          title: draft.title,
+          body: draft.subtitle ?? draft.title,
+        },
+      });
+    } else if (candidates.length > 0) {
+      const now = new Date();
+      const horizon = new Date();
+      horizon.setDate(horizon.getDate() + 90);
+      for (const c of candidates) {
+        if (c.notifyAt < now || c.notifyAt > horizon) continue;
+        await tx.scheduledAlertOccurrence.upsert({
+          where: {
+            alertId_targetKey_notifyAt: {
+              alertId: created.id,
+              targetKey: c.targetKey,
+              notifyAt: c.notifyAt,
+            },
+          },
+          create: {
+            alertId: created.id,
+            releaseAt: c.releaseAt,
+            notifyAt: c.notifyAt,
+            releaseKind: c.releaseKind,
+            targetKey: c.targetKey,
+            title: c.title,
+            body: c.body,
+            metadata: (c.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+            status: 'pending',
+          },
+          update: {
+            releaseAt: c.releaseAt,
+            title: c.title,
+            body: c.body,
+            metadata: (c.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+          },
+        });
+      }
+    }
+
+    return created;
+  });
 
   const full = await prisma.scheduledAlert.findUnique({
     where: { id: alert.id },

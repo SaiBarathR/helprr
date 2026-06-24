@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScheduledAlertSummary } from '@/components/scheduled-alerts/scheduled-alert-summary';
 import type { ScheduledAlertDraft, ReleaseKind } from '@/lib/scheduled-alerts/types';
-import { RELEASE_KIND_LABELS } from '@/lib/scheduled-alerts/constants';
+import { RELEASE_KIND_LABELS, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
 
@@ -69,7 +69,7 @@ export function ScheduledAlertDialog({
   allowTitleEdit = false,
 }: Props) {
   const [scheduleMode, setScheduleMode] = useState<'absolute' | 'release_relative'>('release_relative');
-  const [releaseTypes, setReleaseTypes] = useState<ReleaseKind[]>(['digital']);
+  const [releaseTypes, setReleaseTypes] = useState<ReleaseKind[]>(['episode']);
   const [offsetMinutes, setOffsetMinutes] = useState(60);
   const [absoluteValue, setAbsoluteValue] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -85,26 +85,27 @@ export function ScheduledAlertDialog({
 
   useEffect(() => {
     if (!open || !draft) return;
+    setTitleValue(draft.title);
+    setPreviewCount(0);
+
     if (initialScheduleMode) {
-      window.setTimeout(() => {
-        setTitleValue(draft.title);
-        setScheduleMode(initialScheduleMode);
-        setReleaseTypes(initialReleaseTypes ?? []);
-        setOffsetMinutes(initialOffsetMinutes ?? 60);
-        setAbsoluteValue(toDatetimeLocalValue(initialAbsoluteNotifyAt));
-        setPreviewCount(0);
-      }, 0);
+      setScheduleMode(initialScheduleMode);
+      setReleaseTypes(initialReleaseTypes ?? []);
+      setOffsetMinutes(initialOffsetMinutes ?? 60);
+      setAbsoluteValue(toDatetimeLocalValue(initialAbsoluteNotifyAt));
       return;
     }
+
+    const controller = new AbortController();
     void fetch('/api/scheduled-alerts/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ draft }),
+      signal: controller.signal,
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { defaults?: PreviewDefaults; candidates?: unknown[] } | null) => {
-        if (!data?.defaults) return;
-        setTitleValue(draft.title);
+        if (controller.signal.aborted || !data?.defaults) return;
         setScheduleMode(data.defaults.scheduleMode);
         setReleaseTypes(data.defaults.releaseTypes);
         setOffsetMinutes(data.defaults.offsetMinutes);
@@ -112,6 +113,8 @@ export function ScheduledAlertDialog({
         setPreviewCount(data.candidates?.length ?? 0);
       })
       .catch(() => {});
+
+    return () => controller.abort();
   }, [
     open,
     draft,
@@ -173,16 +176,7 @@ export function ScheduledAlertDialog({
     }
     const body: Record<string, unknown> = {
       scheduleMode,
-      scope:
-        draft.mediaType === 'movie'
-          ? 'movie'
-          : draft.mediaType === 'anime'
-            ? 'anime'
-            : draft.seasonNumber != null
-              ? 'season'
-              : draft.episodeId != null
-                ? 'episode'
-                : 'series',
+      scope: defaultScopeForDraft(draft),
       releaseTypes,
       offsetMinutes,
       absoluteNotifyAt,

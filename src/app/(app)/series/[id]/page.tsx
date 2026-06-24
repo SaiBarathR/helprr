@@ -216,6 +216,7 @@ export default function SeriesDetailPage() {
   const canChangePath = useCan('series.changePath');
   const canDeleteSeries = useCan('series.delete');
   const canManageFiles = useCan('series.manageFiles');
+  const canScheduleAlert = useCan('scheduledAlerts.edit');
   const canEditSeries = canEditMonitoring || canEditTags || canChangePath;
   // AniList mapping mutations are admin-only server-side — hide their triggers
   // from members so they don't open a drawer whose saves would 403.
@@ -919,6 +920,8 @@ export default function SeriesDetailPage() {
   const lastAired = formatDateValue(series.lastAired);
   const previousAiring = formatDateValue(series.previousAiring, true);
   const releaseDate = formatDateValue(tmdbData?.releaseDate ?? series.releaseDate ?? null) ?? animeStartDate;
+  const alertReleaseDate =
+    tmdbData?.releaseDate ?? series.releaseDate ?? series.firstAired ?? null;
   const originCountry = tmdbData?.originCountry?.filter(Boolean)?.join(', ') || null;
   const showType = tmdbData?.showType ?? (isAnimeSeries && animeDetail?.format ? animeDetail.format.replace(/_/g, ' ') : null);
   const runtimeValue = series.runtime > 0 ? `${series.runtime} min` : null;
@@ -1117,10 +1120,12 @@ export default function SeriesDetailPage() {
                   <Bookmark className="h-4 w-4" />
                   Add to Watchlist…
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
-                  <Bell className="h-4 w-4" />
-                  Schedule alert…
-                </DropdownMenuItem>
+                {canScheduleAlert && (
+                  <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                    <Bell className="h-4 w-4" />
+                    Schedule alert…
+                  </DropdownMenuItem>
+                )}
                 {canEditMonitoring && (
                   <DropdownMenuItem onClick={() => setShowMonitorEdit(true)}>
                     <Eye className="h-4 w-4" />
@@ -2014,25 +2019,27 @@ export default function SeriesDetailPage() {
         }}
       />
 
-      <ScheduledAlertDialog
-        open={showScheduleAlert}
-        onOpenChange={setShowScheduleAlert}
-        draft={{
-          source: 'SONARR',
-          externalId: String(series.id),
-          mediaType: 'series',
-          title: series.title,
-          year: series.year ?? null,
-          posterUrl:
-            series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
-            series.images?.find((i) => i.coverType === 'poster')?.url ??
-            null,
-          overview: series.overview ?? null,
-          instanceId: instance ?? null,
-          href: `/series/${series.id}${instance ? `?instance=${instance}` : ''}`,
-          releaseDate: series.firstAired ?? null,
-        }}
-      />
+      {canScheduleAlert && (
+        <ScheduledAlertDialog
+          open={showScheduleAlert}
+          onOpenChange={setShowScheduleAlert}
+          draft={{
+            source: 'SONARR',
+            externalId: String(series.id),
+            mediaType: 'series',
+            title: series.title,
+            year: series.year ?? null,
+            posterUrl:
+              series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+              series.images?.find((i) => i.coverType === 'poster')?.url ??
+              null,
+            overview: series.overview ?? null,
+            instanceId: instance ?? null,
+            href: `/series/${series.id}${instance ? `?instance=${instance}` : ''}`,
+            releaseDate: alertReleaseDate,
+          }}
+        />
+      )}
 
       {/* Monitor edit drawer */}
       <Drawer open={showMonitorEdit} onOpenChange={setShowMonitorEdit}>

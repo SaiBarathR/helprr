@@ -907,6 +907,7 @@ export interface CalendarEvent {
   releaseKind?: string;
   scheduleLabel?: string;
   notifyAt?: string;
+  href?: string;
 }
 
 // App Types

@@ -1,4 +1,4 @@
-import type { AlertScope, ReleaseKind, ScheduleMode } from '@/lib/scheduled-alerts/types';
+import type { AlertScope, ReleaseKind, ScheduleMode, ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 
 export const SCHEDULE_MODES: ScheduleMode[] = ['absolute', 'release_relative'];
 export const ALERT_SCOPES: AlertScope[] = ['movie', 'series', 'season', 'episode', 'anime'];
@@ -24,9 +24,17 @@ export function defaultScopeForMediaType(mediaType: string): AlertScope {
   return 'series';
 }
 
+export function defaultScopeForDraft(draft: Pick<ScheduledAlertDraft, 'mediaType' | 'seasonNumber' | 'episodeId'>): AlertScope {
+  if (draft.mediaType === 'movie') return 'movie';
+  if (draft.mediaType === 'anime') return 'anime';
+  if (draft.episodeId != null) return 'episode';
+  if (draft.seasonNumber != null) return 'season';
+  return 'series';
+}
+
 export function defaultReleaseTypes(scope: AlertScope, mediaType: string): ReleaseKind[] {
   if (mediaType === 'movie') return ['digital'];
-  if (mediaType === 'anime') return ['airing'];
+  if (mediaType === 'anime' || scope === 'anime') return ['airing'];
   return ['episode'];
 }
 
