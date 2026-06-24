@@ -23,8 +23,10 @@ import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe, hasCapability } from '@/components/permission-provider';
+import { useWatchLookup, useWatchMapReady } from '@/components/jellyfin/watch-status-provider';
 import { useUIStore } from '@/lib/store';
+import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
@@ -179,6 +181,10 @@ function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, p
  * @returns The Movies page JSX element.
  */
 export default function MoviesPage() {
+  const me = useMe();
+  const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
+  const watchLookup = useWatchLookup();
+  const watchMapReady = useWatchMapReady();
   // Members can't add directly to Radarr — they request via Seerr from a detail page.
   const canAddMovies = useCan('movies.add');
   const canMonitor = useCan('movies.editMonitoring');
@@ -231,6 +237,8 @@ export default function MoviesPage() {
   const setFilter = useUIStore((s) => s.setMoviesFilter);
   const instanceFilter = useUIStore((s) => s.moviesInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setMoviesInstanceFilter);
+  const watchFilter = useUIStore((s) => s.moviesWatchFilter);
+  const setWatchFilter = useUIStore((s) => s.setMoviesWatchFilter);
   const visibleFieldsByMode = useUIStore((s) => s.moviesVisibleFields);
   const setVisibleFieldsForMode = useUIStore((s) => s.setMoviesVisibleFields);
   const search = useUIStore((s) => s.moviesSearch);
@@ -282,7 +290,7 @@ export default function MoviesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, movies.length, search, filter, isDesktop]);
+  }, [viewMode, posterSize, loading, movies.length, search, filter, watchFilter, isDesktop]);
 
   useEffect(() => {
     if (loading || hasRestoredScrollRef.current) return;
@@ -380,6 +388,12 @@ export default function MoviesPage() {
       list = list.filter((movie) => movie.instanceId === instanceFilter);
     }
 
+    if (canFilterByWatchStatus && watchMapReady && watchFilter !== 'all') {
+      list = list.filter((movie) =>
+        matchesWatchFilter(watchFilter, watchLookup, 'radarr', movie.instanceId, movie.id)
+      );
+    }
+
     list = [...list].sort((a, b) => {
       let result = 0;
 
@@ -461,7 +475,7 @@ export default function MoviesPage() {
     });
 
     return list;
-  }, [movies, search, sort, sortDir, filter, instanceFilter]);
+  }, [movies, search, sort, sortDir, filter, instanceFilter, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
 
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((m) => selectedKeys.has(keyOf(m)));
@@ -631,11 +645,22 @@ export default function MoviesPage() {
     scrollMargin: contentOffsetTop,
   });
 
-  const activeFilterLabel = filter.length === 0
-    ? 'All'
-    : filter.length === 1
-      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
-      : `${filter.length} filters`;
+  const activeFilterLabel = useMemo(() => {
+    const arrLabel = filter.length === 0
+      ? null
+      : filter.length === 1
+        ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
+        : `${filter.length} filters`;
+    const watchLabel = canFilterByWatchStatus && watchFilter === 'watched'
+      ? 'Watched'
+      : canFilterByWatchStatus && watchFilter === 'unwatched'
+        ? 'Not watched'
+        : null;
+    if (arrLabel && watchLabel) return `${arrLabel}, ${watchLabel}`;
+    if (arrLabel) return arrLabel;
+    if (watchLabel) return watchLabel;
+    return 'All';
+  }, [filter, watchFilter, canFilterByWatchStatus]);
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
@@ -676,6 +701,33 @@ export default function MoviesPage() {
                   {opt.label}
                 </DropdownMenuCheckboxItem>
               ))}
+              {canFilterByWatchStatus && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Watch status</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={watchFilter === 'all'}
+                    onCheckedChange={() => setWatchFilter('all')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    All
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={watchFilter === 'watched'}
+                    onCheckedChange={() => setWatchFilter('watched')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    Watched
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={watchFilter === 'unwatched'}
+                    onCheckedChange={() => setWatchFilter('unwatched')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    Not watched
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
               {multiInstance && (
                 <>
                   <DropdownMenuSeparator />

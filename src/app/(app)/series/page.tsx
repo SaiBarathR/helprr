@@ -22,8 +22,10 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe, hasCapability } from '@/components/permission-provider';
+import { useWatchLookup, useWatchMapReady } from '@/components/jellyfin/watch-status-provider';
 import { useUIStore } from '@/lib/store';
+import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
@@ -128,6 +130,10 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
  * @returns The page's JSX element that displays and manages Sonarr series.
  */
 export default function SeriesPage() {
+  const me = useMe();
+  const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
+  const watchLookup = useWatchLookup();
+  const watchMapReady = useWatchMapReady();
   // Members can't add directly to Sonarr — they request via Seerr from a detail page.
   const canAddSeries = useCan('series.add');
   const canMonitor = useCan('series.editMonitoring');
@@ -180,6 +186,8 @@ export default function SeriesPage() {
   const setFilter = useUIStore((s) => s.setSeriesFilter);
   const instanceFilter = useUIStore((s) => s.seriesInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setSeriesInstanceFilter);
+  const watchFilter = useUIStore((s) => s.seriesWatchFilter);
+  const setWatchFilter = useUIStore((s) => s.setSeriesWatchFilter);
   const visibleFieldsByMode = useUIStore((s) => s.seriesVisibleFields);
   const setVisibleFieldsForMode = useUIStore((s) => s.setSeriesVisibleFields);
   const search = useUIStore((s) => s.seriesSearch);
@@ -230,7 +238,7 @@ export default function SeriesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, series.length, search, filter]);
+  }, [viewMode, posterSize, loading, series.length, search, filter, watchFilter]);
 
   useEffect(() => {
     if (loading || hasRestoredScrollRef.current) return;
@@ -320,6 +328,12 @@ export default function SeriesPage() {
       list = list.filter((s) => s.instanceId === instanceFilter);
     }
 
+    if (canFilterByWatchStatus && watchMapReady && watchFilter !== 'all') {
+      list = list.filter((s) =>
+        matchesWatchFilter(watchFilter, watchLookup, 'sonarr', s.instanceId, s.id)
+      );
+    }
+
     list = [...list].sort((a, b) => {
       let result = 0;
 
@@ -389,7 +403,7 @@ export default function SeriesPage() {
     });
 
     return list;
-  }, [series, search, sort, sortDir, filter, instanceFilter]);
+  }, [series, search, sort, sortDir, filter, instanceFilter, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
 
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((s) => selectedKeys.has(keyOf(s)));
@@ -559,11 +573,22 @@ export default function SeriesPage() {
     scrollMargin: contentOffsetTop,
   });
 
-  const activeFilterLabel = filter.length === 0
-    ? 'All'
-    : filter.length === 1
-      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
-      : `${filter.length} filters`;
+  const activeFilterLabel = useMemo(() => {
+    const arrLabel = filter.length === 0
+      ? null
+      : filter.length === 1
+        ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
+        : `${filter.length} filters`;
+    const watchLabel = canFilterByWatchStatus && watchFilter === 'watched'
+      ? 'Watched'
+      : canFilterByWatchStatus && watchFilter === 'unwatched'
+        ? 'Not watched'
+        : null;
+    if (arrLabel && watchLabel) return `${arrLabel}, ${watchLabel}`;
+    if (arrLabel) return arrLabel;
+    if (watchLabel) return watchLabel;
+    return 'All';
+  }, [filter, watchFilter, canFilterByWatchStatus]);
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
@@ -604,6 +629,33 @@ export default function SeriesPage() {
                   {opt.label}
                 </DropdownMenuCheckboxItem>
               ))}
+              {canFilterByWatchStatus && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Watch status</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={watchFilter === 'all'}
+                    onCheckedChange={() => setWatchFilter('all')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    All
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={watchFilter === 'watched'}
+                    onCheckedChange={() => setWatchFilter('watched')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    Watched
+                  </DropdownMenuCheckboxItem>
+                  <DropdownMenuCheckboxItem
+                    checked={watchFilter === 'unwatched'}
+                    onCheckedChange={() => setWatchFilter('unwatched')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    Not watched
+                  </DropdownMenuCheckboxItem>
+                </>
+              )}
               {multiInstance && (
                 <>
                   <DropdownMenuSeparator />
