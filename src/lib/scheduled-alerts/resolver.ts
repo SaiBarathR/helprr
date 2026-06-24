@@ -1,4 +1,8 @@
 import type { ScheduledAlert } from '@prisma/client';
+import type { RadarrClient } from '@/lib/radarr-client';
+import type { RadarrCalendarEntry } from '@/types';
+import type { SonarrClient } from '@/lib/sonarr-client';
+import type { SonarrCalendarEntry } from '@/types';
 import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { DEFAULT_HORIZON_DAYS } from '@/lib/scheduled-alerts/constants';
@@ -7,12 +11,24 @@ import type {
   OccurrenceCandidate,
   PreviewResult,
   ReleaseKind,
+  ResolveResult,
   ScheduledAlertDraft,
   ScheduledAlertMetadata,
 } from '@/lib/scheduled-alerts/types';
 import { defaultReleaseTypes, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { getAppTimeZone, startOfLocalDay } from '@/lib/timezone';
 import type { MovieReleaseType } from '@/types';
+
+type SourceOutcome = 'not_needed' | 'success' | 'failure';
+
+export interface ResolverContext {
+  radarrCalendars: Map<string, Promise<RadarrCalendarEntry[]>>;
+  sonarrCalendars: Map<string, Promise<SonarrCalendarEntry[]>>;
+}
+
+export function createResolverContext(): ResolverContext {
+  return { radarrCalendars: new Map(), sonarrCalendars: new Map() };
+}
 
 function horizonEnd(days = DEFAULT_HORIZON_DAYS): Date {
   const end = new Date();
@@ -41,6 +57,70 @@ function candidate(
   metadata?: Record<string, unknown>,
 ): OccurrenceCandidate {
   return { targetKey, releaseKind, releaseAt, notifyAt, title, body, metadata };
+}
+
+function needsRadarr(draft: ScheduledAlertDraft): boolean {
+  return draft.source === 'RADARR' || (draft.mediaType === 'movie' && draft.source === 'SONARR');
+}
+
+function needsSonarr(draft: ScheduledAlertDraft): boolean {
+  return draft.mediaType === 'series' || draft.source === 'SONARR';
+}
+
+function needsAnilist(draft: ScheduledAlertDraft, releaseTypes: ReleaseKind[]): boolean {
+  return (draft.mediaType === 'anime' || draft.source === 'ANILIST') && releaseTypes.includes('airing');
+}
+
+function computeResolved(
+  outcomes: { radarr: SourceOutcome; sonarr: SourceOutcome; anilist: SourceOutcome },
+  draft: ScheduledAlertDraft,
+  releaseTypes: ReleaseKind[],
+  candidates: OccurrenceCandidate[],
+): boolean {
+  const remoteFailed =
+    (needsRadarr(draft) && outcomes.radarr === 'failure') ||
+    (needsSonarr(draft) && outcomes.sonarr === 'failure') ||
+    (needsAnilist(draft, releaseTypes) && outcomes.anilist === 'failure');
+  if (!remoteFailed) return true;
+  return candidates.length > 0;
+}
+
+async function getRadarrCalendarCached(
+  ctx: ResolverContext | undefined,
+  connectionId: string,
+  client: RadarrClient,
+  startIso: string,
+  endIso: string,
+) {
+  const key = `${connectionId}:${startIso}:${endIso}`;
+  if (ctx) {
+    let cached = ctx.radarrCalendars.get(key);
+    if (!cached) {
+      cached = client.getCalendar(startIso, endIso);
+      ctx.radarrCalendars.set(key, cached);
+    }
+    return cached;
+  }
+  return client.getCalendar(startIso, endIso);
+}
+
+async function getSonarrCalendarCached(
+  ctx: ResolverContext | undefined,
+  connectionId: string,
+  client: SonarrClient,
+  startIso: string,
+  endIso: string,
+) {
+  const key = `${connectionId}:${startIso}:${endIso}`;
+  if (ctx) {
+    let cached = ctx.sonarrCalendars.get(key);
+    if (!cached) {
+      cached = client.getCalendar(startIso, endIso);
+      ctx.sonarrCalendars.set(key, cached);
+    }
+    return cached;
+  }
+  return client.getCalendar(startIso, endIso);
 }
 
 export async function previewScheduledAlert(
@@ -82,19 +162,21 @@ export async function previewScheduledAlert(
             draft.subtitle ?? draft.title,
           ),
         ]
-      : await resolveReleaseCandidates(
-          {
-            ...draft,
-            seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
-            episodeId: opts.episodeId ?? draft.episodeId,
-          },
-          {
-            scope,
-            releaseTypes,
-            offsetMinutes,
-            timeZone,
-          },
-        );
+      : (
+          await resolveReleaseCandidates(
+            {
+              ...draft,
+              seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
+              episodeId: opts.episodeId ?? draft.episodeId,
+            },
+            {
+              scope,
+              releaseTypes,
+              offsetMinutes,
+              timeZone,
+            },
+          )
+        ).candidates;
 
   return {
     defaults: {
@@ -116,7 +198,8 @@ async function resolveReleaseCandidates(
     offsetMinutes: number;
     timeZone: string;
   },
-): Promise<OccurrenceCandidate[]> {
+  ctx?: ResolverContext,
+): Promise<ResolveResult> {
   const notifyStart = new Date();
   const notifyEnd = horizonEnd();
   const offsetMs = opts.offsetMinutes * 60_000;
@@ -126,93 +209,120 @@ async function resolveReleaseCandidates(
   const endIso = lookupEnd.toISOString();
   const out: OccurrenceCandidate[] = [];
 
+  const outcomes: { radarr: SourceOutcome; sonarr: SourceOutcome; anilist: SourceOutcome } = {
+    radarr: needsRadarr(draft) ? 'failure' : 'not_needed',
+    sonarr: needsSonarr(draft) ? 'failure' : 'not_needed',
+    anilist: needsAnilist(draft, opts.releaseTypes) ? 'failure' : 'not_needed',
+  };
+
   function withinNotifyHorizon(notifyAt: Date): boolean {
     return notifyAt >= notifyStart && notifyAt <= notifyEnd;
   }
 
-  if (draft.source === 'RADARR' || (draft.mediaType === 'movie' && draft.source === 'SONARR')) {
+  if (needsRadarr(draft)) {
     const clients = await getRadarrClients().catch(() => []);
-    for (const { connection, client } of clients) {
-      if (draft.instanceId && connection.id !== draft.instanceId) continue;
-      try {
-        const movieId = Number.parseInt(draft.externalId, 10);
-        let movie = null;
-        if (Number.isFinite(movieId)) {
-          movie = await client.getMovieById(movieId).catch(() => null);
+    const applicable = clients.filter(
+      ({ connection }) => !draft.instanceId || connection.id === draft.instanceId,
+    );
+    if (applicable.length === 0) {
+      outcomes.radarr = 'failure';
+    } else {
+      let succeeded = false;
+      for (const { connection, client } of applicable) {
+        try {
+          const movieId = Number.parseInt(draft.externalId, 10);
+          let movie = null;
+          if (Number.isFinite(movieId)) {
+            movie = await client.getMovieById(movieId).catch(() => null);
+          }
+          if (!movie) {
+            const cal = await getRadarrCalendarCached(ctx, connection.id, client, startIso, endIso);
+            movie = cal.find((m: { id: number }) => String(m.id) === draft.externalId) ?? null;
+          }
+          if (!movie) {
+            succeeded = true;
+            continue;
+          }
+          succeeded = true;
+          const releases: Array<[ReleaseKind, string | undefined]> = [];
+          if (opts.releaseTypes.includes('cinema')) releases.push(['cinema', movie.inCinemas]);
+          if (opts.releaseTypes.includes('digital')) releases.push(['digital', movie.digitalRelease]);
+          if (opts.releaseTypes.includes('physical')) releases.push(['physical', movie.physicalRelease]);
+          if (releases.length === 0 && movie.digitalRelease) releases.push(['digital', movie.digitalRelease]);
+          for (const [kind, dateStr] of releases) {
+            if (!dateStr) continue;
+            const releaseAt = dateOnlyAtLocalNine(dateStr, opts.timeZone);
+            const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+            if (!withinNotifyHorizon(notifyAt)) continue;
+            out.push(
+              candidate(
+                `radarr:${connection.id}:${movie.id}:${kind}`,
+                kind,
+                releaseAt,
+                notifyAt,
+                movie.title,
+                `${movie.year ?? ''} · ${kind} release`.trim(),
+                { movieId: movie.id, instanceId: connection.id, releaseType: kind as MovieReleaseType },
+              ),
+            );
+          }
+        } catch {
+          // try next instance
         }
-        if (!movie) {
-          const cal = await client.getCalendar(startIso, endIso);
-          movie = cal.find((m) => String(m.id) === draft.externalId) ?? null;
-        }
-        if (!movie) continue;
-        const releases: Array<[ReleaseKind, string | undefined]> = [];
-        if (opts.releaseTypes.includes('cinema')) releases.push(['cinema', movie.inCinemas]);
-        if (opts.releaseTypes.includes('digital')) releases.push(['digital', movie.digitalRelease]);
-        if (opts.releaseTypes.includes('physical')) releases.push(['physical', movie.physicalRelease]);
-        if (releases.length === 0 && movie.digitalRelease) releases.push(['digital', movie.digitalRelease]);
-        for (const [kind, dateStr] of releases) {
-          if (!dateStr) continue;
-          const releaseAt = dateOnlyAtLocalNine(dateStr, opts.timeZone);
-          const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
-          if (!withinNotifyHorizon(notifyAt)) continue;
-          out.push(
-            candidate(
-              `radarr:${connection.id}:${movie.id}:${kind}`,
-              kind,
-              releaseAt,
-              notifyAt,
-              movie.title,
-              `${movie.year ?? ''} · ${kind} release`.trim(),
-              { movieId: movie.id, instanceId: connection.id, releaseType: kind as MovieReleaseType },
-            ),
-          );
-        }
-      } catch {
-        // skip instance
       }
+      if (succeeded) outcomes.radarr = 'success';
     }
   }
 
-  if (draft.mediaType === 'series' || draft.source === 'SONARR') {
+  if (needsSonarr(draft)) {
     const clients = await getSonarrClients().catch(() => []);
-    for (const { connection, client } of clients) {
-      if (draft.instanceId && connection.id !== draft.instanceId) continue;
-      try {
-        const cal = await client.getCalendar(startIso, endIso);
-        for (const ep of cal) {
-          if (String(ep.seriesId) !== draft.externalId) continue;
-          if (opts.scope === 'season' && draft.seasonNumber != null && ep.seasonNumber !== draft.seasonNumber) {
-            continue;
+    const applicable = clients.filter(
+      ({ connection }) => !draft.instanceId || connection.id === draft.instanceId,
+    );
+    if (applicable.length === 0) {
+      outcomes.sonarr = 'failure';
+    } else {
+      let succeeded = false;
+      for (const { connection, client } of applicable) {
+        try {
+          const cal = await getSonarrCalendarCached(ctx, connection.id, client, startIso, endIso);
+          succeeded = true;
+          for (const ep of cal) {
+            if (String(ep.seriesId) !== draft.externalId) continue;
+            if (opts.scope === 'season' && draft.seasonNumber != null && ep.seasonNumber !== draft.seasonNumber) {
+              continue;
+            }
+            if (opts.scope === 'episode' && draft.episodeId != null && ep.id !== draft.episodeId) {
+              continue;
+            }
+            if (!opts.releaseTypes.includes('episode') && opts.scope !== 'episode') continue;
+            const releaseAt = new Date(ep.airDateUtc);
+            if (!Number.isFinite(releaseAt.getTime())) continue;
+            const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+            if (!withinNotifyHorizon(notifyAt)) continue;
+            const subtitle = `S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
+            out.push(
+              candidate(
+                `sonarr:${connection.id}:${ep.id}`,
+                'episode',
+                releaseAt,
+                notifyAt,
+                ep.series.title,
+                subtitle,
+                {
+                  seriesId: ep.seriesId,
+                  seasonNumber: ep.seasonNumber,
+                  episodeId: ep.id,
+                  instanceId: connection.id,
+                },
+              ),
+            );
           }
-          if (opts.scope === 'episode' && draft.episodeId != null && ep.id !== draft.episodeId) {
-            continue;
-          }
-          if (!opts.releaseTypes.includes('episode') && opts.scope !== 'episode') continue;
-          const releaseAt = new Date(ep.airDateUtc);
-          if (!Number.isFinite(releaseAt.getTime())) continue;
-          const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
-          if (!withinNotifyHorizon(notifyAt)) continue;
-          const subtitle = `S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
-          out.push(
-            candidate(
-              `sonarr:${connection.id}:${ep.id}`,
-              'episode',
-              releaseAt,
-              notifyAt,
-              ep.series.title,
-              subtitle,
-              {
-                seriesId: ep.seriesId,
-                seasonNumber: ep.seasonNumber,
-                episodeId: ep.id,
-                instanceId: connection.id,
-              },
-            ),
-          );
+        } catch {
+          // try next instance
         }
-      } catch {
-        // skip
       }
+      if (succeeded) outcomes.sonarr = 'success';
     }
   }
 
@@ -221,6 +331,7 @@ async function resolveReleaseCandidates(
     if (Number.isFinite(animeId) && opts.releaseTypes.includes('airing')) {
       try {
         const next = await getAnimeNextAiringEpisode(animeId);
+        outcomes.anilist = 'success';
         if (next) {
           const releaseAt = new Date(next.airingAt * 1000);
           const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
@@ -239,7 +350,7 @@ async function resolveReleaseCandidates(
           }
         }
       } catch {
-        // skip
+        outcomes.anilist = 'failure';
       }
     }
     if (draft.releaseDate && out.length === 0) {
@@ -278,11 +389,19 @@ async function resolveReleaseCandidates(
   }
 
   out.sort((a, b) => a.notifyAt.getTime() - b.notifyAt.getTime());
-  return out;
+  return {
+    candidates: out,
+    resolved: computeResolved(outcomes, draft, opts.releaseTypes, out),
+  };
 }
 
-export async function resolveAlertOccurrences(alert: ScheduledAlert): Promise<OccurrenceCandidate[]> {
-  if (alert.scheduleMode === 'absolute') return [];
+export async function resolveAlertOccurrencesResult(
+  alert: ScheduledAlert,
+  ctx?: ResolverContext,
+): Promise<ResolveResult> {
+  if (alert.scheduleMode === 'absolute') {
+    return { candidates: [], resolved: true };
+  }
 
   const metadata = (alert.metadata ?? {}) as ScheduledAlertMetadata;
   const releaseTypes = Array.isArray(alert.releaseTypes)
@@ -302,10 +421,23 @@ export async function resolveAlertOccurrences(alert: ScheduledAlert): Promise<Oc
     episodeId: metadata.episodeId ?? null,
   };
 
-  return resolveReleaseCandidates(draft, {
-    scope: alert.scope,
-    releaseTypes: releaseTypes.length ? releaseTypes : defaultReleaseTypes(alert.scope as never, alert.mediaType),
-    offsetMinutes: alert.offsetMinutes,
-    timeZone: alert.timeZone,
-  });
+  return resolveReleaseCandidates(
+    draft,
+    {
+      scope: alert.scope,
+      releaseTypes: releaseTypes.length ? releaseTypes : defaultReleaseTypes(alert.scope as never, alert.mediaType),
+      offsetMinutes: alert.offsetMinutes,
+      timeZone: alert.timeZone,
+    },
+    ctx,
+  );
+}
+
+/** @deprecated Prefer resolveAlertOccurrencesResult when stale cleanup depends on resolution status. */
+export async function resolveAlertOccurrences(
+  alert: ScheduledAlert,
+  ctx?: ResolverContext,
+): Promise<OccurrenceCandidate[]> {
+  const result = await resolveAlertOccurrencesResult(alert, ctx);
+  return result.candidates;
 }

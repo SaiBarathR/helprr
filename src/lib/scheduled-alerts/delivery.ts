@@ -3,15 +3,18 @@ import { logger } from '@/lib/logger';
 import { notifyEvent } from '@/lib/notification-service';
 import { MAX_REMINDER_ATTEMPTS } from '@/lib/scheduled-alerts/constants';
 import { resolveHref } from '@/lib/scheduled-alerts/helpers';
-import { resolveAlertOccurrences } from '@/lib/scheduled-alerts/resolver';
+import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import type { OccurrenceCandidate } from '@/lib/scheduled-alerts/types';
 import type { ScheduledAlert, Prisma } from '@prisma/client';
+
+type DbClient = Prisma.TransactionClient | typeof prisma;
 
 export async function upsertOccurrencesForAlert(
   alert: ScheduledAlert,
   candidates: OccurrenceCandidate[],
-  opts: { resolved?: boolean } = {},
+  opts: { resolved?: boolean; db?: DbClient } = {},
 ): Promise<void> {
+  const db = opts.db ?? prisma;
   const now = new Date();
   const horizon = new Date();
   horizon.setDate(horizon.getDate() + 90);
@@ -24,7 +27,7 @@ export async function upsertOccurrencesForAlert(
 
   for (const c of candidates) {
     if (c.notifyAt < now || c.notifyAt > horizon) continue;
-    await prisma.scheduledAlertOccurrence.upsert({
+    await db.scheduledAlertOccurrence.upsert({
       where: {
         alertId_targetKey_notifyAt: {
           alertId: alert.id,
@@ -48,12 +51,16 @@ export async function upsertOccurrencesForAlert(
         title: c.title,
         body: c.body,
         metadata: (c.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+        // Restore stale-cancelled rows on automated refresh/create/update paths.
+        // User-cancelled rows with the same key may also be restored (accepted tradeoff).
+        status: 'pending',
+        cancelledAt: null,
       },
     });
   }
 
   if (opts.resolved) {
-    const pending = await prisma.scheduledAlertOccurrence.findMany({
+    const pending = await db.scheduledAlertOccurrence.findMany({
       where: { alertId: alert.id, status: 'pending', notifyAt: { gte: now } },
     });
     const staleIds =
@@ -63,7 +70,7 @@ export async function upsertOccurrencesForAlert(
             .filter((o) => !validKeys.has(`${o.targetKey}|${o.notifyAt.toISOString()}`))
             .map((o) => o.id);
     if (staleIds.length > 0) {
-      await prisma.scheduledAlertOccurrence.updateMany({
+      await db.scheduledAlertOccurrence.updateMany({
         where: { id: { in: staleIds } },
         data: { status: 'cancelled', cancelledAt: now },
       });
@@ -79,10 +86,11 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
   });
   if (alerts.length === 0) return;
 
+  const ctx = createResolverContext();
   for (const alert of alerts) {
     try {
-      const candidates = await resolveAlertOccurrences(alert);
-      await upsertOccurrencesForAlert(alert, candidates, { resolved: true });
+      const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
+      await upsertOccurrencesForAlert(alert, candidates, { resolved });
       await prisma.scheduledAlert.update({
         where: { id: alert.id },
         data: { updatedAt: new Date() },

@@ -9,7 +9,8 @@ import {
   parseCreateInput,
   resolveHref,
 } from '@/lib/scheduled-alerts/helpers';
-import { resolveAlertOccurrences } from '@/lib/scheduled-alerts/resolver';
+import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
+import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
 
@@ -142,31 +143,33 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (draft.seasonNumber != null) metadata.seasonNumber = draft.seasonNumber;
   if (draft.episodeId != null) metadata.episodeId = draft.episodeId;
 
-  const candidates =
+  const previewAlert = {
+    id: 'preview',
+    userId: auth.user.id,
+    source: draft.source,
+    externalId: draft.externalId,
+    mediaType: draft.mediaType,
+    instanceId: draft.instanceId ?? null,
+    title: draft.title,
+    subtitle: draft.subtitle ?? null,
+    posterUrl: draft.posterUrl ?? null,
+    href: resolveHref(draft),
+    scheduleMode,
+    scope,
+    releaseTypes: releaseTypes as Prisma.JsonValue,
+    offsetMinutes: offsetMinutes ?? 60,
+    timeZone: timeZone ?? fallbackTz,
+    status: 'active',
+    metadata: metadata as Prisma.InputJsonValue,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    cancelledAt: null,
+  } as ScheduledAlert;
+
+  const resolveResult =
     scheduleMode === 'absolute'
-      ? []
-      : await resolveAlertOccurrences({
-          id: 'preview',
-          userId: auth.user.id,
-          source: draft.source,
-          externalId: draft.externalId,
-          mediaType: draft.mediaType,
-          instanceId: draft.instanceId ?? null,
-          title: draft.title,
-          subtitle: draft.subtitle ?? null,
-          posterUrl: draft.posterUrl ?? null,
-          href: resolveHref(draft),
-          scheduleMode,
-          scope,
-          releaseTypes: releaseTypes as Prisma.JsonValue,
-          offsetMinutes,
-          timeZone,
-          status: 'active',
-          metadata: metadata as Prisma.InputJsonValue,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          cancelledAt: null,
-        } as ScheduledAlert);
+      ? { candidates: [], resolved: true }
+      : await resolveAlertOccurrencesResult(previewAlert);
 
   const alert = await prisma.$transaction(async (tx) => {
     const created = await tx.scheduledAlert.create({
@@ -202,39 +205,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
           body: draft.subtitle ?? draft.title,
         },
       });
-    } else if (candidates.length > 0) {
-      const now = new Date();
-      const horizon = new Date();
-      horizon.setDate(horizon.getDate() + 90);
-      for (const c of candidates) {
-        if (c.notifyAt < now || c.notifyAt > horizon) continue;
-        await tx.scheduledAlertOccurrence.upsert({
-          where: {
-            alertId_targetKey_notifyAt: {
-              alertId: created.id,
-              targetKey: c.targetKey,
-              notifyAt: c.notifyAt,
-            },
-          },
-          create: {
-            alertId: created.id,
-            releaseAt: c.releaseAt,
-            notifyAt: c.notifyAt,
-            releaseKind: c.releaseKind,
-            targetKey: c.targetKey,
-            title: c.title,
-            body: c.body,
-            metadata: (c.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-            status: 'pending',
-          },
-          update: {
-            releaseAt: c.releaseAt,
-            title: c.title,
-            body: c.body,
-            metadata: (c.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
-          },
-        });
-      }
+    } else if (scheduleMode === 'release_relative') {
+      await upsertOccurrencesForAlert(created, resolveResult.candidates, {
+        resolved: resolveResult.resolved,
+        db: tx,
+      });
     }
 
     return created;
