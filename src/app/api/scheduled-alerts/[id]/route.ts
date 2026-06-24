@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseReleaseTypes, isAlertScope, isScheduleMode } from '@/lib/scheduled-alerts/helpers';
-import { resolveAlertOccurrences } from '@/lib/scheduled-alerts/resolver';
+import { resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import { serializeAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ScheduledAlertMetadata } from '@/lib/scheduled-alerts/types';
@@ -106,8 +106,8 @@ async function patchHandler(
   });
 
   if (alert.scheduleMode === 'release_relative') {
-    const candidates = await resolveAlertOccurrences(alert);
-    await upsertOccurrencesForAlert(alert, candidates, { resolved: true });
+    const { candidates, resolved } = await resolveAlertOccurrencesResult(alert);
+    await upsertOccurrencesForAlert(alert, candidates, { resolved });
   }
 
   const full = await prisma.scheduledAlert.findUnique({

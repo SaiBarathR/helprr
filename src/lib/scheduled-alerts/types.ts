@@ -63,3 +63,9 @@ export interface PreviewResult {
   };
   candidates: OccurrenceCandidate[];
 }
+
+export interface ResolveResult {
+  candidates: OccurrenceCandidate[];
+  /** False when a required remote source failed and no fallback candidates were produced. */
+  resolved: boolean;
+}
