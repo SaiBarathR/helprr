@@ -234,7 +234,6 @@ export default function AnimeHomePage() {
             title="Continue Watching"
             items={watchingItems}
             viewAllHref="/anime/library?status=CURRENT"
-            size="large"
           />
         );
       case 'planToWatch':
@@ -254,7 +253,6 @@ export default function AnimeHomePage() {
             title="Trending Now"
             items={trendingItems}
             viewAllHref="/anime/explore?sort=trending"
-            size="large"
           />
         );
       case 'popularThisSeason':
@@ -268,7 +266,6 @@ export default function AnimeHomePage() {
                 ? `/anime/explore?sort=seasonal&season=${currentSeason.season}&year=${currentSeason.year}`
                 : '/anime/explore?sort=seasonal'
             }
-            size="large"
           />
         );
       case 'upcomingNextSeason':

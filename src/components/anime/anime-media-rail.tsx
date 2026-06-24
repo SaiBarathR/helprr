@@ -27,15 +27,11 @@ interface AnimeMediaRailProps {
   title: string;
   items: MediaItem[];
   viewAllHref?: string;
-  size?: 'default' | 'large';
 }
 
-export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: AnimeMediaRailProps) {
+export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProps) {
   const lookup = useWatchLookup();
   if (!items.length) return null;
-
-  const cardWidth = size === 'large' ? 'w-[140px]' : 'w-[110px]';
-  const imgSize = size === 'large' ? '140px' : '110px';
 
   return (
     <div className='px-2'>
@@ -68,7 +64,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
           }
 
           return (
-            <div key={item.id} className={`relative shrink-0 ${cardWidth} group snap-start`}>
+            <div key={item.id} className="relative shrink-0 min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] group snap-start">
               {!isManga && (
                 <div className="absolute top-1 left-1 z-10">
                   <ScheduledAlertButton
@@ -90,7 +86,7 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
                       src={imgSrc}
                       alt={item.title}
                       fill
-                      sizes={imgSize}
+                      sizes="(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px"
                       priority={i < 4}
                       className="object-cover transition-transform duration-300 group-hover:scale-105"
                       unoptimized={isProtectedApiImageSrc(imgSrc)}
