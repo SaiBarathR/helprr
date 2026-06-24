@@ -933,36 +933,38 @@ function WatchlistCard({
           )}
         </div>
       )}
-      {canSchedule && !selectable && (
-        <div className="absolute top-1.5 left-1.5 z-10">
-          <ScheduledAlertButton
-            draft={{
-              source: item.source,
-              externalId: item.externalId,
-              mediaType: item.mediaType,
-              title: item.title,
-              year: item.year,
-              posterUrl: item.posterUrl,
-              overview: item.overview,
-              rating: item.rating,
-              href: item.href,
-            }}
-          />
+      {!selectable && (canSchedule || canEdit) && (
+        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1.5">
+          {canSchedule && (
+            <ScheduledAlertButton
+              draft={{
+                source: item.source,
+                externalId: item.externalId,
+                mediaType: item.mediaType,
+                title: item.title,
+                year: item.year,
+                posterUrl: item.posterUrl,
+                overview: item.overview,
+                rating: item.rating,
+                href: item.href,
+              }}
+            />
+          )}
+          {canEdit && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRemove();
+              }}
+              aria-label="Remove from watchlist"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
         </div>
-      )}
-      {canEdit && !selectable && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onRemove();
-          }}
-          aria-label="Remove from watchlist"
-          className="absolute top-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
       )}
     </div>
   );

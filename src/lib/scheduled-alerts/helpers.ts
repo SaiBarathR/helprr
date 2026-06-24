@@ -13,7 +13,7 @@ import type {
   ScheduleMode,
   ScheduledAlertDraft,
 } from '@/lib/scheduled-alerts/types';
-import { ALERT_SCOPES, RELEASE_KINDS, SCHEDULE_MODES } from '@/lib/scheduled-alerts/constants';
+import { ALERT_SCOPES, DEFAULT_OFFSET_MINUTES, RELEASE_KINDS, SCHEDULE_MODES, defaultReleaseTypes, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 
 const MAX_TITLE_LEN = 200;
 const MAX_POSTER_URL_LEN = 500;
@@ -116,17 +116,26 @@ export function parseCreateInput(body: Record<string, unknown>, fallbackTz: stri
   const draft = normalizeDraft((body.draft as Record<string, unknown>) ?? body);
   if (!draft) return { error: 'Invalid media draft' };
 
-  const scheduleMode = typeof body.scheduleMode === 'string' ? body.scheduleMode : 'release_relative';
+  const scheduleMode =
+    typeof body.scheduleMode === 'string'
+      ? body.scheduleMode
+      : draft.releaseDate
+        ? 'release_relative'
+        : 'absolute';
   if (!isScheduleMode(scheduleMode)) return { error: 'Invalid scheduleMode' };
 
-  const scope = typeof body.scope === 'string' ? body.scope : draft.mediaType === 'movie' ? 'movie' : draft.mediaType === 'anime' ? 'anime' : 'series';
-  if (!isAlertScope(scope)) return { error: 'Invalid scope' };
+  const scope =
+    typeof body.scope === 'string' && isAlertScope(body.scope)
+      ? body.scope
+      : defaultScopeForDraft(draft);
 
-  const releaseTypes = parseReleaseTypes(body.releaseTypes);
+  const parsedReleaseTypes = parseReleaseTypes(body.releaseTypes);
+  const releaseTypes =
+    parsedReleaseTypes.length > 0 ? parsedReleaseTypes : defaultReleaseTypes(scope, draft.mediaType);
   const offsetMinutes =
     typeof body.offsetMinutes === 'number' && Number.isFinite(body.offsetMinutes)
       ? Math.max(0, Math.min(10_080, Math.round(body.offsetMinutes)))
-      : 60;
+      : DEFAULT_OFFSET_MINUTES;
 
   const timeZone =
     typeof body.timeZone === 'string' && body.timeZone.trim() ? body.timeZone.trim() : fallbackTz;

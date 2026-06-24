@@ -254,7 +254,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       });
       filtered = mergeCalendarWithScheduled(filtered, scheduled);
       if (type && type !== 'all') {
-        filtered = filtered.filter((e) => e.type === type || e.origin === 'scheduled');
+        filtered = filtered.filter((e) => e.type === type);
       }
     }
 

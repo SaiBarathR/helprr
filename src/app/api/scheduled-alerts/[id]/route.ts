@@ -31,6 +31,26 @@ async function patchHandler(
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
+  const nextScheduleMode =
+    typeof body.scheduleMode === 'string' && isScheduleMode(body.scheduleMode)
+      ? body.scheduleMode
+      : existing.scheduleMode;
+
+  let absoluteNotifyAt: Date | null = null;
+  if (nextScheduleMode === 'absolute') {
+    const raw = body.absoluteNotifyAt;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return NextResponse.json({ error: 'absoluteNotifyAt is required' }, { status: 400 });
+    }
+    absoluteNotifyAt = new Date(raw);
+    if (!Number.isFinite(absoluteNotifyAt.getTime())) {
+      return NextResponse.json({ error: 'Invalid absoluteNotifyAt' }, { status: 400 });
+    }
+    if (absoluteNotifyAt.getTime() < Date.now() - 60_000) {
+      return NextResponse.json({ error: 'Reminder must be in the future' }, { status: 400 });
+    }
+  }
+
   const data: Prisma.ScheduledAlertUpdateInput = {};
   if (typeof body.title === 'string' && body.title.trim()) data.title = body.title.trim().slice(0, 200);
   if (typeof body.scheduleMode === 'string' && isScheduleMode(body.scheduleMode)) {
@@ -54,36 +74,40 @@ async function patchHandler(
     data.metadata = metadata as Prisma.InputJsonValue;
   }
 
-  const alert = await prisma.scheduledAlert.update({ where: { id }, data });
-  const modeChanged = existing.scheduleMode !== alert.scheduleMode;
+  const modeChanged = existing.scheduleMode !== nextScheduleMode;
 
-  if (typeof body.absoluteNotifyAt === 'string' && alert.scheduleMode === 'absolute') {
-    const notifyAt = new Date(body.absoluteNotifyAt);
-    if (!Number.isFinite(notifyAt.getTime())) {
-      return NextResponse.json({ error: 'Invalid absoluteNotifyAt' }, { status: 400 });
-    }
-    await prisma.scheduledAlertOccurrence.deleteMany({
-      where: { alertId: id, status: 'pending' },
-    });
-    await prisma.scheduledAlertOccurrence.create({
-      data: {
-        alertId: id,
-        releaseAt: notifyAt,
-        notifyAt,
-        releaseKind: 'custom',
-        targetKey: `custom:${alert.source}:${alert.externalId}`,
-        title: alert.title,
-        body: alert.subtitle ?? alert.title,
-      },
-    });
-  } else if (alert.scheduleMode === 'release_relative') {
-    if (modeChanged) {
-      await prisma.scheduledAlertOccurrence.deleteMany({
+  const alert = await prisma.$transaction(async (tx) => {
+    const updated = await tx.scheduledAlert.update({ where: { id }, data });
+
+    if (nextScheduleMode === 'absolute' && absoluteNotifyAt) {
+      await tx.scheduledAlertOccurrence.deleteMany({
         where: { alertId: id, status: 'pending' },
       });
+      await tx.scheduledAlertOccurrence.create({
+        data: {
+          alertId: id,
+          releaseAt: absoluteNotifyAt,
+          notifyAt: absoluteNotifyAt,
+          releaseKind: 'custom',
+          targetKey: `custom:${updated.source}:${updated.externalId}`,
+          title: updated.title,
+          body: updated.subtitle ?? updated.title,
+        },
+      });
+    } else if (updated.scheduleMode === 'release_relative') {
+      if (modeChanged) {
+        await tx.scheduledAlertOccurrence.deleteMany({
+          where: { alertId: id, status: 'pending' },
+        });
+      }
     }
+
+    return updated;
+  });
+
+  if (alert.scheduleMode === 'release_relative') {
     const candidates = await resolveAlertOccurrences(alert);
-    await upsertOccurrencesForAlert(alert, candidates);
+    await upsertOccurrencesForAlert(alert, candidates, { resolved: true });
   }
 
   const full = await prisma.scheduledAlert.findUnique({

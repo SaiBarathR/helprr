@@ -45,10 +45,12 @@ import type { CalendarEvent } from '@/types';
 /** Detail-page link for a calendar event, by media type. Carries the owning
  * instance so a non-default-instance item opens the correct instance. */
 function eventHref(event: CalendarEvent): string {
+  if (event.href) return event.href;
   const q = event.instanceId ? `?instance=${event.instanceId}` : '';
-  if (event.type === 'episode') return `/series/${event.seriesId}${q}`;
-  if (event.type === 'album') return `/music/album/${event.albumId}${q}`;
-  return `/movies/${event.movieId}${q}`;
+  if (event.type === 'episode' && event.seriesId != null) return `/series/${event.seriesId}${q}`;
+  if (event.type === 'album' && event.albumId != null) return `/music/album/${event.albumId}${q}`;
+  if (event.movieId != null) return `/movies/${event.movieId}${q}`;
+  return '/notifications/scheduled';
 }
 
 function posterFromEvent(event: CalendarEvent): string | null {

@@ -12,9 +12,23 @@ async function deleteHandler(
 
   const { id, occurrenceId } = await params;
   const occ = await prisma.scheduledAlertOccurrence.findFirst({
-    where: { id: occurrenceId, alertId: id, alert: { userId: auth.user.id } },
+    where: {
+      id: occurrenceId,
+      alertId: id,
+      status: 'pending',
+      alert: { userId: auth.user.id },
+    },
   });
-  if (!occ) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  if (!occ) {
+    const exists = await prisma.scheduledAlertOccurrence.findFirst({
+      where: { id: occurrenceId, alertId: id, alert: { userId: auth.user.id } },
+      select: { id: true },
+    });
+    if (exists) {
+      return NextResponse.json({ error: 'Occurrence is no longer cancellable' }, { status: 409 });
+    }
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
 
   await prisma.scheduledAlertOccurrence.update({
     where: { id: occurrenceId },

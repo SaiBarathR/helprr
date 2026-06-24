@@ -10,6 +10,7 @@ import type { ScheduledAlert, Prisma } from '@prisma/client';
 export async function upsertOccurrencesForAlert(
   alert: ScheduledAlert,
   candidates: OccurrenceCandidate[],
+  opts: { resolved?: boolean } = {},
 ): Promise<void> {
   const now = new Date();
   const horizon = new Date();
@@ -51,13 +52,16 @@ export async function upsertOccurrencesForAlert(
     });
   }
 
-  if (validKeys.size > 0) {
+  if (opts.resolved) {
     const pending = await prisma.scheduledAlertOccurrence.findMany({
       where: { alertId: alert.id, status: 'pending', notifyAt: { gte: now } },
     });
-    const staleIds = pending
-      .filter((o) => !validKeys.has(`${o.targetKey}|${o.notifyAt.toISOString()}`))
-      .map((o) => o.id);
+    const staleIds =
+      validKeys.size === 0
+        ? pending.map((o) => o.id)
+        : pending
+            .filter((o) => !validKeys.has(`${o.targetKey}|${o.notifyAt.toISOString()}`))
+            .map((o) => o.id);
     if (staleIds.length > 0) {
       await prisma.scheduledAlertOccurrence.updateMany({
         where: { id: { in: staleIds } },
@@ -78,7 +82,7 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
   for (const alert of alerts) {
     try {
       const candidates = await resolveAlertOccurrences(alert);
-      await upsertOccurrencesForAlert(alert, candidates);
+      await upsertOccurrencesForAlert(alert, candidates, { resolved: true });
       await prisma.scheduledAlert.update({
         where: { id: alert.id },
         data: { updatedAt: new Date() },

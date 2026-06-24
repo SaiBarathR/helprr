@@ -10,7 +10,7 @@ import type {
   ScheduledAlertDraft,
   ScheduledAlertMetadata,
 } from '@/lib/scheduled-alerts/types';
-import { defaultReleaseTypes, defaultScopeForMediaType } from '@/lib/scheduled-alerts/constants';
+import { defaultReleaseTypes, defaultScopeForDraft } from '@/lib/scheduled-alerts/constants';
 import { getAppTimeZone, startOfLocalDay } from '@/lib/timezone';
 import type { MovieReleaseType } from '@/types';
 
@@ -56,7 +56,13 @@ export async function previewScheduledAlert(
   } = {},
 ): Promise<PreviewResult> {
   const timeZone = opts.timeZone ?? getAppTimeZone();
-  const scope = (opts.scope as PreviewResult['defaults']['scope']) ?? defaultScopeForMediaType(draft.mediaType);
+  const scope = (opts.scope && ['movie', 'series', 'season', 'episode', 'anime'].includes(opts.scope)
+    ? opts.scope
+    : defaultScopeForDraft({
+        mediaType: draft.mediaType,
+        seasonNumber: opts.seasonNumber ?? draft.seasonNumber,
+        episodeId: opts.episodeId ?? draft.episodeId,
+      })) as PreviewResult['defaults']['scope'];
   const releaseTypes = opts.releaseTypes?.length
     ? opts.releaseTypes
     : defaultReleaseTypes(scope, draft.mediaType);
@@ -111,11 +117,18 @@ async function resolveReleaseCandidates(
     timeZone: string;
   },
 ): Promise<OccurrenceCandidate[]> {
-  const start = new Date();
-  const end = horizonEnd();
-  const startIso = start.toISOString();
-  const endIso = end.toISOString();
+  const notifyStart = new Date();
+  const notifyEnd = horizonEnd();
+  const offsetMs = opts.offsetMinutes * 60_000;
+  const lookupStart = new Date(notifyStart.getTime() + Math.min(0, offsetMs));
+  const lookupEnd = new Date(notifyEnd.getTime() + Math.max(0, offsetMs));
+  const startIso = lookupStart.toISOString();
+  const endIso = lookupEnd.toISOString();
   const out: OccurrenceCandidate[] = [];
+
+  function withinNotifyHorizon(notifyAt: Date): boolean {
+    return notifyAt >= notifyStart && notifyAt <= notifyEnd;
+  }
 
   if (draft.source === 'RADARR' || (draft.mediaType === 'movie' && draft.source === 'SONARR')) {
     const clients = await getRadarrClients().catch(() => []);
@@ -140,8 +153,8 @@ async function resolveReleaseCandidates(
         for (const [kind, dateStr] of releases) {
           if (!dateStr) continue;
           const releaseAt = dateOnlyAtLocalNine(dateStr, opts.timeZone);
-          if (releaseAt < start || releaseAt > end) continue;
           const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+          if (!withinNotifyHorizon(notifyAt)) continue;
           out.push(
             candidate(
               `radarr:${connection.id}:${movie.id}:${kind}`,
@@ -176,8 +189,9 @@ async function resolveReleaseCandidates(
           }
           if (!opts.releaseTypes.includes('episode') && opts.scope !== 'episode') continue;
           const releaseAt = new Date(ep.airDateUtc);
-          if (!Number.isFinite(releaseAt.getTime()) || releaseAt < start || releaseAt > end) continue;
+          if (!Number.isFinite(releaseAt.getTime())) continue;
           const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+          if (!withinNotifyHorizon(notifyAt)) continue;
           const subtitle = `S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title}`;
           out.push(
             candidate(
@@ -209,8 +223,8 @@ async function resolveReleaseCandidates(
         const next = await getAnimeNextAiringEpisode(animeId);
         if (next) {
           const releaseAt = new Date(next.airingAt * 1000);
-          if (releaseAt >= start && releaseAt <= end) {
-            const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+          const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+          if (withinNotifyHorizon(notifyAt)) {
             out.push(
               candidate(
                 `anilist:${animeId}:ep${next.episode}`,
@@ -230,8 +244,8 @@ async function resolveReleaseCandidates(
     }
     if (draft.releaseDate && out.length === 0) {
       const releaseAt = dateOnlyAtLocalNine(draft.releaseDate, opts.timeZone);
-      if (releaseAt >= start && releaseAt <= end) {
-        const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+      const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+      if (withinNotifyHorizon(notifyAt)) {
         out.push(
           candidate(
             `anilist:${draft.externalId}:release`,
@@ -248,8 +262,8 @@ async function resolveReleaseCandidates(
 
   if (out.length === 0 && draft.releaseDate) {
     const releaseAt = dateOnlyAtLocalNine(draft.releaseDate, opts.timeZone);
-    if (releaseAt >= start && releaseAt <= end) {
-      const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+    const notifyAt = applyOffset(releaseAt, opts.offsetMinutes);
+    if (withinNotifyHorizon(notifyAt)) {
       out.push(
         candidate(
           `tmdb:${draft.externalId}:release`,

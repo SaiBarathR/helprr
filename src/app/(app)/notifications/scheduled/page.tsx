@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpDown,
   Bell,
@@ -101,7 +101,7 @@ export default function ScheduledAlertsPage() {
   );
 
   const listUrl = useMemo(() => {
-    const params = new URLSearchParams({ pageSize: '100', sort, includeOccurrences: 'true' });
+    const params = new URLSearchParams({ pageSize: '50', sort, includeOccurrences: 'true' });
     if (debouncedSearch.trim()) params.set('q', debouncedSearch.trim());
     if (statusFilter !== 'all') params.set('status', statusFilter);
     if (modeFilter !== 'all') params.set('scheduleMode', modeFilter);
@@ -109,16 +109,24 @@ export default function ScheduledAlertsPage() {
     return `/api/scheduled-alerts?${params.toString()}`;
   }, [debouncedSearch, sort, statusFilter, modeFilter, mediaTypeFilter]);
 
-  const listQuery = useQuery({
-    queryKey,
-    queryFn: jsonFetcher<ListResponse>(listUrl),
+  const listQuery = useInfiniteQuery({
+    queryKey: [...queryKey, listUrl],
+    queryFn: async ({ pageParam }) => {
+      const url = `${listUrl}&page=${pageParam}`;
+      return jsonFetcher<ListResponse>(url)();
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page * lastPage.pageSize < lastPage.totalRecords ? lastPage.page + 1 : undefined,
   });
 
   const records = useMemo(
-    () => listQuery.data?.records ?? [],
-    [listQuery.data?.records],
+    () => listQuery.data?.pages.flatMap((page) => page.records) ?? [],
+    [listQuery.data?.pages],
   );
+  const totalRecords = listQuery.data?.pages[0]?.totalRecords ?? 0;
   const loading = listQuery.isLoading;
+  const hasMore = listQuery.hasNextPage;
 
   const hasActiveFilters =
     statusFilter !== 'active' || modeFilter !== 'all' || mediaTypeFilter !== 'all';
@@ -259,12 +267,20 @@ export default function ScheduledAlertsPage() {
           </DropdownMenuContent>
         </DropdownMenu>
         <Badge variant="secondary" className="text-xs">
-          {listQuery.data?.totalRecords ?? 0} alert{(listQuery.data?.totalRecords ?? 0) === 1 ? '' : 's'}
+          {totalRecords} alert{totalRecords === 1 ? '' : 's'}
         </Badge>
       </div>
 
       {loading ? (
         <PageSpinner />
+      ) : listQuery.isError ? (
+        <div className="text-center py-12 text-muted-foreground">
+          <CalendarClock className="h-8 w-8 mx-auto mb-2 opacity-50" />
+          <p>Failed to load scheduled alerts</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => void listQuery.refetch()}>
+            Retry
+          </Button>
+        </div>
       ) : records.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <CalendarClock className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -379,6 +395,18 @@ export default function ScheduledAlertsPage() {
               </div>
             </div>
           ))}
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={listQuery.isFetchingNextPage}
+                onClick={() => void listQuery.fetchNextPage()}
+              >
+                {listQuery.isFetchingNextPage ? 'Loading…' : 'Load more alerts'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

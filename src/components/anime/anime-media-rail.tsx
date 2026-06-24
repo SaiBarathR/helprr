@@ -68,54 +68,52 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
           }
 
           return (
-            <Link
-              key={item.id}
-              href={href}
-              className={`shrink-0 ${cardWidth} group snap-start`}
-            >
-              <div className="relative aspect-2/3 rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
-                {imgSrc ? (
-                  <FadeInImage
-                    src={imgSrc}
-                    alt={item.title}
-                    fill
-                    sizes={imgSize}
-                    priority={i < 4}
-                    className="object-cover transition-transform duration-300 group-hover:scale-105"
-                    unoptimized={isProtectedApiImageSrc(imgSrc)}
+            <div key={item.id} className={`relative shrink-0 ${cardWidth} group snap-start`}>
+              {!isManga && (
+                <div className="absolute top-1 left-1 z-10">
+                  <ScheduledAlertButton
+                    draft={{
+                      source: 'ANILIST',
+                      externalId: String(item.id),
+                      mediaType: 'anime',
+                      title: item.title,
+                      posterUrl: item.coverImage,
+                      href: `/anime/${item.id}`,
+                    }}
                   />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
-                    {item.title}
-                  </div>
-                )}
-                {item.averageScore != null && item.averageScore > 0 && (
-                  <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
-                    <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
-                    {item.averageScore}%
-                  </Badge>
-                )}
-                {!isManga && (
-                  <div className="absolute top-1 left-1 z-10">
-                    <ScheduledAlertButton
-                      draft={{
-                        source: 'ANILIST',
-                        externalId: String(item.id),
-                        mediaType: 'anime',
-                        title: item.title,
-                        posterUrl: item.coverImage,
-                        href: `/anime/${item.id}`,
-                      }}
+                </div>
+              )}
+              <Link href={href} className="block">
+                <div className="relative aspect-2/3 rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
+                  {imgSrc ? (
+                    <FadeInImage
+                      src={imgSrc}
+                      alt={item.title}
+                      fill
+                      sizes={imgSize}
+                      priority={i < 4}
+                      className="object-cover transition-transform duration-300 group-hover:scale-105"
+                      unoptimized={isProtectedApiImageSrc(imgSrc)}
                     />
-                  </div>
-                )}
-                <PosterWatchOverlay status={lookup({ anilistId: item.id })} />
-              </div>
-              <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{item.title}</p>
-              <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                {metadata.join(' · ')}
-              </div>
-            </Link>
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
+                      {item.title}
+                    </div>
+                  )}
+                  {item.averageScore != null && item.averageScore > 0 && (
+                    <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
+                      <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
+                      {item.averageScore}%
+                    </Badge>
+                  )}
+                  <PosterWatchOverlay status={lookup({ anilistId: item.id })} />
+                </div>
+                <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{item.title}</p>
+                <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  {metadata.join(' · ')}
+                </div>
+              </Link>
+            </div>
           );
         })}
       </div>
