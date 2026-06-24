@@ -136,6 +136,15 @@ export type RequestsSortDirectionPreference = 'asc' | 'desc';
 /** Jellyfin watch filter for movies/series list pages. */
 export type MediaWatchFilterPreference = 'all' | 'watched' | 'unwatched';
 
+const WATCH_FILTER_PERSISTED_KEYS: ReadonlySet<string> = new Set([
+  'moviesWatchFilter',
+  'seriesWatchFilter',
+]);
+
+function isMediaWatchFilterPreference(value: unknown): value is MediaWatchFilterPreference {
+  return value === 'all' || value === 'watched' || value === 'unwatched';
+}
+
 export interface NotificationsFiltersState {
   search: string;
   eventTypes: string[];
@@ -373,6 +382,12 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   }
   if (version < 34) {
     state.moviesWatchFilter = 'all';
+    state.seriesWatchFilter = 'all';
+  }
+  if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
+    state.moviesWatchFilter = 'all';
+  }
+  if (!isMediaWatchFilterPreference(state.seriesWatchFilter)) {
     state.seriesWatchFilter = 'all';
   }
   return state;
@@ -950,6 +965,11 @@ export const useUIStore = create<UIState>()(
             }
             if (key === 'searchHistory') {
               if (!isSearchHistoryMap(value)) continue;
+              next[key] = value;
+              continue;
+            }
+            if (WATCH_FILTER_PERSISTED_KEYS.has(key)) {
+              if (!isMediaWatchFilterPreference(value)) continue;
               next[key] = value;
               continue;
             }
