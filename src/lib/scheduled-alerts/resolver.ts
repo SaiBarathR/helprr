@@ -21,19 +21,48 @@ import type { MovieReleaseType } from '@/types';
 
 type SourceOutcome = 'not_needed' | 'success' | 'failure';
 
+const MAX_OFFSET_MINUTES = 10_080;
+
 export interface ResolverContext {
+  notifyStart: Date;
+  notifyEnd: Date;
+  calendarStartIso: string;
+  calendarEndIso: string;
   radarrCalendars: Map<string, Promise<RadarrCalendarEntry[]>>;
   sonarrCalendars: Map<string, Promise<SonarrCalendarEntry[]>>;
 }
 
-export function createResolverContext(): ResolverContext {
-  return { radarrCalendars: new Map(), sonarrCalendars: new Map() };
+export function createResolverContext(opts: { maxOffsetMinutes?: number } = {}): ResolverContext {
+  const notifyStart = new Date();
+  const notifyEnd = horizonEnd(DEFAULT_HORIZON_DAYS, notifyStart);
+  const lookupWindow = releaseLookupWindow(
+    notifyStart,
+    notifyEnd,
+    Math.max(0, Math.min(MAX_OFFSET_MINUTES, Math.round(opts.maxOffsetMinutes ?? MAX_OFFSET_MINUTES))),
+  );
+
+  return {
+    notifyStart,
+    notifyEnd,
+    calendarStartIso: lookupWindow.start.toISOString(),
+    calendarEndIso: lookupWindow.end.toISOString(),
+    radarrCalendars: new Map(),
+    sonarrCalendars: new Map(),
+  };
 }
 
-function horizonEnd(days = DEFAULT_HORIZON_DAYS): Date {
-  const end = new Date();
+function horizonEnd(days = DEFAULT_HORIZON_DAYS, from = new Date()): Date {
+  const end = new Date(from);
   end.setDate(end.getDate() + days);
   return end;
+}
+
+function releaseLookupWindow(notifyStart: Date, notifyEnd: Date, offsetMinutes: number) {
+  const offsetMs = offsetMinutes * 60_000;
+  return {
+    start: new Date(notifyStart.getTime() + Math.min(0, offsetMs)),
+    end: new Date(notifyEnd.getTime() + Math.max(0, offsetMs)),
+  };
 }
 
 function dateOnlyAtLocalNine(isoDate: string, timeZone: string): Date {
@@ -200,13 +229,11 @@ async function resolveReleaseCandidates(
   },
   ctx?: ResolverContext,
 ): Promise<ResolveResult> {
-  const notifyStart = new Date();
-  const notifyEnd = horizonEnd();
-  const offsetMs = opts.offsetMinutes * 60_000;
-  const lookupStart = new Date(notifyStart.getTime() + Math.min(0, offsetMs));
-  const lookupEnd = new Date(notifyEnd.getTime() + Math.max(0, offsetMs));
-  const startIso = lookupStart.toISOString();
-  const endIso = lookupEnd.toISOString();
+  const notifyStart = ctx?.notifyStart ?? new Date();
+  const notifyEnd = ctx?.notifyEnd ?? horizonEnd(DEFAULT_HORIZON_DAYS, notifyStart);
+  const lookupWindow = releaseLookupWindow(notifyStart, notifyEnd, opts.offsetMinutes);
+  const startIso = ctx?.calendarStartIso ?? lookupWindow.start.toISOString();
+  const endIso = ctx?.calendarEndIso ?? lookupWindow.end.toISOString();
   const out: OccurrenceCandidate[] = [];
 
   const outcomes: { radarr: SourceOutcome; sonarr: SourceOutcome; anilist: SourceOutcome } = {

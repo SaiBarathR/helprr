@@ -86,7 +86,9 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
   });
   if (alerts.length === 0) return;
 
-  const ctx = createResolverContext();
+  const ctx = createResolverContext({
+    maxOffsetMinutes: Math.max(...alerts.map((alert) => alert.offsetMinutes)),
+  });
   for (const alert of alerts) {
     try {
       const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
