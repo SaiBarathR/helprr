@@ -1426,6 +1426,12 @@ export default function SeriesDetailPage() {
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Status</span>
             <span className="text-sm capitalize">{series.status}</span>
           </div>
+          {series.statistics && series.statistics.sizeOnDisk > 0 && (
+            <div className="flex py-2 border-b border-border/30">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Size</span>
+              <span className="text-sm">{formatBytes(series.statistics.sizeOnDisk)}</span>
+            </div>
+          )}
           {series.network && (
             <div className="flex py-2 border-b border-border/30">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Network</span>

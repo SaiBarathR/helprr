@@ -424,6 +424,10 @@ export default function MovieDetailPage() {
     value: movie.status.charAt(0).toUpperCase() + movie.status.slice(1),
   });
 
+  if (movieFileSize > 0) {
+    metadataRows.push({ label: 'SIZE', value: formatBytes(movieFileSize) });
+  }
+
   if (movie.studio) {
     metadataRows.push({ label: 'STUDIO', value: movie.studio });
   }
@@ -457,7 +461,6 @@ export default function MovieDetailPage() {
     },
     ...(movie.certification ? [{ label: 'Certification', value: movie.certification }] : []),
     ...(movie.runtime > 0 ? [{ label: 'Runtime', value: `${movie.runtime} min` }] : []),
-    ...(movieFileSize > 0 ? [{ label: 'File Size', value: formatBytes(movieFileSize) }] : []),
     ...(movieTags.length > 0
       ? [{ label: 'Tags', value: movieTags.map((t) => t.label).join(', ') }]
       : []),
@@ -704,7 +707,7 @@ export default function MovieDetailPage() {
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <p className="mt-3 md:px-4 px-1 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
             )}
           </div>
         ) : (
