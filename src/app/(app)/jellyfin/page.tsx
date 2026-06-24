@@ -7,6 +7,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import Image from 'next/image';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
@@ -1613,7 +1614,7 @@ function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
 
 function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask[]; onRefresh?: () => Promise<void> }) {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const { refreshing, refresh } = useRefreshAction(() => onRefresh?.());
   const [busyTasks, setBusyTasks] = useState<Set<string>>(new Set());
 
   const handleTaskAction = useCallback(async (taskId: string, action: 'start' | 'stop') => {
@@ -1685,10 +1686,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
             size="icon"
             className="h-7 w-7"
             disabled={refreshing}
-            onClick={async () => {
-              setRefreshing(true);
-              try { await onRefresh(); } finally { setRefreshing(false); }
-            }}
+            onClick={refresh}
           >
             {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           </Button>

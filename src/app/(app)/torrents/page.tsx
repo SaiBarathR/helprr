@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/media/search-input';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
@@ -655,7 +656,7 @@ export default function TorrentsPage() {
   // The query is disabled until the store hydrates, so isLoading stays false in
   // that gap — treat it as loading to avoid a brief "No torrents found" flash.
   const loading = !hasHydrated || summaryQuery.isLoading;
-  const refreshing = summaryQuery.isFetching && !summaryQuery.isLoading;
+  const { refreshing, refresh } = useRefreshAction(refetchSummary);
   const error = summaryQuery.isError
     ? summaryQuery.error instanceof Error
       ? summaryQuery.error.message
@@ -1018,10 +1019,9 @@ export default function TorrentsPage() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                onClick={() => {
-                  void refetchSummary();
-                }}
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
+                onClick={refresh}
+                disabled={refreshing}
                 aria-label="Refresh"
               >
                 <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />

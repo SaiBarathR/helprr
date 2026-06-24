@@ -14,6 +14,7 @@ import { RequestsSortMenu } from '@/components/seerr/requests-sort-menu';
 import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
 import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import type { SeerrRequestCount, SeerrUserSummary } from '@/types/seerr';
 
 const TABS = [
@@ -47,22 +48,16 @@ export default function RequestsPage() {
   const typeFilterKey = requestsTypeFilter.length ? requestsTypeFilter.join(',') : 'all';
 
   const [refreshTick, setRefreshTick] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
   const countsQuery = useQuery({
     queryKey: ['seerr', 'requests', 'count'],
     queryFn: jsonFetcher<SeerrRequestCount>('/api/seerr/requests/count'),
   });
   const counts = countsQuery.data ?? null;
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
+  const { refreshing, refresh: handleRefresh } = useRefreshAction(async () => {
     setRefreshTick((n) => n + 1);
-    try {
-      await countsQuery.refetch();
-    } finally {
-      setRefreshing(false);
-    }
-  };
+    await countsQuery.refetch();
+  });
 
   const pendingBadge = useMemo(() => counts?.pending ?? 0, [counts]);
 

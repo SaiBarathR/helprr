@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import {
   Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Disc3, Scissors,
@@ -289,7 +290,6 @@ export default function ActivityPage() {
     const t = searchParams.get('tab');
     return t && isTabKey(t) ? t : 'queue';
   });
-  const [refreshing, setRefreshing] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -357,8 +357,7 @@ export default function ActivityPage() {
    * While running, the component's refreshing state is set to true; it resets to false when finished.
    * On success (when the requests complete or settle) a success toast is shown; on error a failure toast is shown.
    */
-  async function handleRefreshActivity() {
-    setRefreshing(true);
+  const { refreshing, refresh: handleRefreshActivity } = useRefreshAction(async () => {
     try {
       const body = JSON.stringify({ name: 'RefreshMonitoredDownloads' });
       const headers = { 'Content-Type': 'application/json' };
@@ -378,10 +377,8 @@ export default function ActivityPage() {
       }
     } catch {
       toast.error('Failed to refresh activity');
-    } finally {
-      setRefreshing(false);
     }
-  }
+  });
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">

@@ -5,6 +5,9 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Resolves after `ms` milliseconds. */
+export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /**
  * Shallow props comparison for React.memo that skips the given keys (typically
  * callback props that are recreated every render). Returns true when all other
