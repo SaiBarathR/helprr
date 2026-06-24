@@ -96,9 +96,14 @@ export const MediaCard = memo(function MediaCard({
               {type === 'movie' ? <Film className="h-10 w-10" /> : type === 'artist' ? <Disc3 className="h-10 w-10" /> : <Tv className="h-10 w-10" />}
             </div>
           )}
+          {(show('title') || show('year') || instanceLabel) && (
           <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />
+          )}
+          {(show('title') || show('year') || instanceLabel) && (
           <div className="absolute bottom-0 left-0 right-0 p-2">
-            <p className="text-xs font-semibold text-foreground truncate leading-tight">{title}</p>
+            {show('title') && (
+              <p className="text-xs font-semibold text-foreground truncate leading-tight">{title}</p>
+            )}
             {(show('year') || instanceLabel) && (
               <p className="text-[10px] text-foreground/70 truncate">
                 {show('year') && year}
@@ -108,6 +113,7 @@ export const MediaCard = memo(function MediaCard({
               </p>
             )}
           </div>
+          )}
           {/* Rating badge - top right */}
           {show('rating') && rating !== undefined && rating > 0 && (
             <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-background/60 rounded px-1 py-0.5">
@@ -130,7 +136,7 @@ export const MediaCard = memo(function MediaCard({
         <div className="absolute inset-0 bg-background/40" />
       )}
       {/* Jellyfin watch status — hidden in selection mode to avoid the top-left check clash */}
-      {!selectable && <PosterWatchOverlay status={watchStatus} />}
+      {!selectable && show('watchStatus') && <PosterWatchOverlay status={watchStatus} />}
     </div>
   );
 

@@ -71,7 +71,7 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
       {canAddDirectly && (
         <Link href={href} className={pillClass}>
           <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-          <span className="tracking-widest">Add to {service}</span>
+          <span className="tracking-widest">{service}</span>
         </Link>
       )}
       {canRequest && tmdbId != null && (

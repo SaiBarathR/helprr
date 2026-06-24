@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { MediaCard } from '@/components/media/media-card';
-import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { MediaOverviewItem } from '@/components/media/media-overview';
 import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
@@ -45,11 +44,14 @@ const EMPTY_MOVIES: RadarrMovieListItem[] = [];
 
 const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
   posters: [
+    { value: 'title', label: 'Title' },
     { value: 'year', label: 'Year' },
     { value: 'rating', label: 'Rating' },
     { value: 'monitored', label: 'Monitored' },
+    { value: 'watchStatus', label: 'Watch Status' },
   ],
   overview: [
+    { value: 'title', label: 'Title' },
     { value: 'qualityProfile', label: 'Quality Profile' },
     { value: 'rating', label: 'Rating' },
     { value: 'studio', label: 'Studio' },
@@ -58,16 +60,19 @@ const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: strin
     { value: 'runtime', label: 'Runtime' },
     { value: 'monitored', label: 'Monitored' },
     { value: 'year', label: 'Year' },
+    { value: 'watchStatus', label: 'Watch Status' },
     { value: 'genres', label: 'Genres' },
     { value: 'overview', label: 'Overview' },
     { value: 'images', label: 'Poster' },
   ],
   table: [
     { value: 'monitored', label: 'Monitored' },
+    { value: 'title', label: 'Title' },
     { value: 'year', label: 'Year' },
     { value: 'qualityProfile', label: 'Quality Profile' },
     { value: 'studio', label: 'Studio' },
     { value: 'rating', label: 'Rating' },
+    { value: 'watchStatus', label: 'Watch Status' },
     { value: 'sizeOnDisk', label: 'Size on Disk' },
   ],
 };
@@ -927,26 +932,6 @@ export default function MoviesPage() {
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(movie))}
                     onToggleSelect={() => toggle(keyOf(movie))}
-                    cornerAction={
-                      <ScheduledAlertButton
-                        draft={{
-                          source: 'RADARR',
-                          externalId: String(movie.id),
-                          mediaType: 'movie',
-                          title: movie.title,
-                          year: movie.year,
-                          posterUrl:
-                            movie.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
-                            movie.images?.find((i) => i.coverType === 'poster')?.url ??
-                            null,
-                          overview: movie.overview ?? null,
-                          instanceId: movie.instanceId ?? null,
-                          href: hrefForMovie(movie),
-                          releaseDate:
-                            movie.digitalRelease ?? movie.inCinemas ?? movie.physicalRelease ?? null,
-                        }}
-                      />
-                    }
                   />
                 ))}
               </div>
