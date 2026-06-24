@@ -501,7 +501,7 @@ export default function MoviesPage() {
     if (fail === 0) exit();
   }, [fanOut, refetchMovies, exit]);
 
-  const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove') => {
+  const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove' | 'replace') => {
     const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Eye, EyeOff, Tags, Search, Trash2, X, Loader2, Plus, CheckCheck,
+  Eye, EyeOff, Tags, Search, Trash2, X, Loader2, Plus, CheckCheck, Check,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,6 +27,8 @@ export interface BulkTag {
   label: string;
 }
 
+export type BulkTagApplyMode = 'add' | 'remove' | 'replace';
+
 interface BulkActionBarProps {
   count: number;
   allSelected: boolean;
@@ -41,11 +43,29 @@ interface BulkActionBarProps {
   /** Existing tags shown as suggestions; applying resolves by label server-side. */
   tags?: BulkTag[];
   onMonitor?: (monitored: boolean) => Promise<void>;
-  onApplyTags?: (tagLabels: string[], mode: 'add' | 'remove') => Promise<void>;
+  onApplyTags?: (tagLabels: string[], mode: BulkTagApplyMode) => Promise<void>;
   onSearch: () => Promise<void>;
   onDelete?: (deleteFiles: boolean) => Promise<void>;
   /** Singular noun for the affected items, e.g. "movie" — used in the delete prompt. */
   itemNoun?: string;
+  /** When true, show a Merge / Replace toggle above add/remove in the tag popover. */
+  allowReplace?: boolean;
+}
+
+function TagPickMark({ checked }: { checked: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'flex size-4 shrink-0 items-center justify-center rounded-[4px] border shadow-xs',
+        checked
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-input bg-background'
+      )}
+    >
+      {checked && <Check className="size-3" strokeWidth={3} />}
+    </span>
+  );
 }
 
 function BarButton({
@@ -99,21 +119,27 @@ export function BulkActionBar({
   onSearch,
   onDelete,
   itemNoun = 'item',
+  allowReplace = false,
 }: BulkActionBarProps) {
   const navAtBottom = useUIStore((s) => s.navPosition === 'bottom');
   const [busy, setBusy] = useState<string | null>(null);
 
   // Tag popover state — picked entries are labels (resolved to ids server-side).
   const [tagOpen, setTagOpen] = useState(false);
+  const [tagStrategy, setTagStrategy] = useState<'merge' | 'replace'>('merge');
   const [tagMode, setTagMode] = useState<'add' | 'remove'>('add');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [newLabel, setNewLabel] = useState('');
+
+  const isReplace = allowReplace && tagStrategy === 'replace';
 
   // Clear staged labels when the popover closes so reopening starts fresh.
   useEffect(() => {
     if (!tagOpen) {
       setPicked(new Set());
       setNewLabel('');
+      setTagStrategy('merge');
+      setTagMode('add');
     }
   }, [tagOpen]);
 
@@ -160,8 +186,9 @@ export function BulkActionBar({
 
   async function handleApplyTags() {
     if (picked.size === 0 || !onApplyTags) return;
+    const mode = isReplace ? 'replace' : tagMode;
     await run('tags', async () => {
-      await onApplyTags([...picked], tagMode);
+      await onApplyTags([...picked], mode);
     });
     setTagOpen(false);
   }
@@ -243,21 +270,43 @@ export function BulkActionBar({
                   </button>
                 </PopoverTrigger>
                 <PopoverContent side="top" align="center" className="w-72 p-3">
-                  <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-muted p-0.5">
-                    {(['add', 'remove'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setTagMode(mode)}
-                        className={cn(
-                          'rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors',
-                          tagMode === mode ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                        )}
-                      >
-                        {mode} tags
-                      </button>
-                    ))}
-                  </div>
+                  {allowReplace && (
+                    <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-muted p-0.5">
+                      {(['merge', 'replace'] as const).map((strategy) => (
+                        <button
+                          key={strategy}
+                          type="button"
+                          onClick={() => setTagStrategy(strategy)}
+                          className={cn(
+                            'rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors',
+                            tagStrategy === strategy
+                              ? 'bg-background shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {strategy}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {!isReplace && (
+                    <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-muted p-0.5">
+                      {(['add', 'remove'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setTagMode(mode)}
+                          className={cn(
+                            'rounded-md px-2 py-1 text-xs font-medium capitalize transition-colors',
+                            tagMode === mode ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          {mode} tags
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="max-h-44 space-y-1 overflow-y-auto">
                     {tags.length === 0 && extraLabels.length === 0 ? (
@@ -271,9 +320,10 @@ export function BulkActionBar({
                             key={`new:${label}`}
                             type="button"
                             onClick={() => togglePicked(label)}
+                            aria-pressed
                             className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm bg-primary/10 text-primary transition-colors"
                           >
-                            <Checkbox checked className="pointer-events-none" />
+                            <TagPickMark checked />
                             <span className="truncate">{label}</span>
                             <span className="ml-auto text-[10px] uppercase opacity-70">new</span>
                           </button>
@@ -285,12 +335,13 @@ export function BulkActionBar({
                             key={tag.label}
                             type="button"
                             onClick={() => togglePicked(tag.label)}
+                            aria-pressed={picked.has(tag.label)}
                             className={cn(
                               'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
                               picked.has(tag.label) ? 'bg-primary/10 text-primary' : 'hover:bg-accent'
                             )}
                           >
-                            <Checkbox checked={picked.has(tag.label)} className="pointer-events-none" />
+                            <TagPickMark checked={picked.has(tag.label)} />
                             <span className="truncate">{tag.label}</span>
                           </button>
                         ))}
@@ -298,7 +349,7 @@ export function BulkActionBar({
                     )}
                   </div>
 
-                  {tagMode === 'add' && (
+                  {(tagMode === 'add' || isReplace) && (
                     <div className="mt-2 flex items-center gap-1.5 border-t pt-2">
                       <input
                         value={newLabel}
@@ -330,7 +381,12 @@ export function BulkActionBar({
                     disabled={picked.size === 0 || busy !== null}
                     className={cn(buttonVariants({ size: 'sm' }), 'mt-2 w-full')}
                   >
-                    {tagMode === 'add' ? 'Add' : 'Remove'} {picked.size > 0 ? `${picked.size} ` : ''}tag{picked.size === 1 ? '' : 's'}
+                    {isReplace
+                      ? 'Replace'
+                      : tagMode === 'add'
+                        ? 'Add'
+                        : 'Remove'}{' '}
+                    {picked.size > 0 ? `${picked.size} ` : ''}tag{picked.size === 1 ? '' : 's'}
                   </button>
                 </PopoverContent>
               </Popover>
