@@ -163,7 +163,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
               <EyeOff className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             )
           )}
-          <h3 className="text-sm font-medium truncate">{title}</h3>
+          {show('title') && <h3 className="text-sm font-medium truncate">{title}</h3>}
           {show('year') && <span className="text-xs text-muted-foreground shrink-0">({year})</span>}
           {instanceLabel && (
             <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{instanceLabel}</span>
@@ -172,7 +172,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
 
         {/* Badges row */}
         <div className="flex flex-wrap gap-1.5">
-          <WatchStatusInline status={watchStatus} />
+          {show('watchStatus') && <WatchStatusInline status={watchStatus} />}
           {show('qualityProfile') && qualityProfile && (
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{qualityProfile}</Badge>
           )}

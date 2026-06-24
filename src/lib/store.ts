@@ -42,15 +42,15 @@ export interface DiscoverFiltersState {
 }
 
 const DEFAULT_MOVIES_FIELDS: VisibleFieldsByMode = {
-  posters: ['year', 'rating', 'monitored'],
-  overview: ['qualityProfile', 'rating', 'studio', 'certification', 'sizeOnDisk', 'runtime', 'monitored', 'year', 'genres', 'overview', 'images'],
-  table: ['monitored', 'year', 'qualityProfile', 'studio', 'rating', 'sizeOnDisk'],
+  posters: ['title', 'year', 'rating', 'monitored', 'watchStatus'],
+  overview: ['title', 'qualityProfile', 'rating', 'studio', 'certification', 'sizeOnDisk', 'runtime', 'monitored', 'year', 'watchStatus', 'genres', 'overview', 'images'],
+  table: ['monitored', 'title', 'year', 'qualityProfile', 'studio', 'rating', 'watchStatus', 'sizeOnDisk'],
 };
 
 const DEFAULT_SERIES_FIELDS: VisibleFieldsByMode = {
-  posters: ['year', 'rating', 'monitored'],
-  overview: ['qualityProfile', 'rating', 'network', 'sizeOnDisk', 'runtime', 'monitored', 'year', 'episodeProgress', 'genres', 'overview', 'images'],
-  table: ['monitored', 'year', 'qualityProfile', 'network', 'episodeProgress', 'rating', 'sizeOnDisk'],
+  posters: ['title', 'year', 'rating', 'monitored', 'watchStatus'],
+  overview: ['title', 'qualityProfile', 'rating', 'network', 'sizeOnDisk', 'runtime', 'monitored', 'year', 'episodeProgress', 'watchStatus', 'genres', 'overview', 'images'],
+  table: ['monitored', 'title', 'year', 'qualityProfile', 'network', 'episodeProgress', 'rating', 'watchStatus', 'sizeOnDisk'],
 };
 
 const DEFAULT_MUSIC_FIELDS: VisibleFieldsByMode = {
@@ -227,7 +227,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 35;
+export const STORE_VERSION = 37;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -386,6 +386,28 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   }
   if (version < 35) {
     state.calendarShowScheduled = true;
+  }
+  if (version < 36) {
+    for (const key of ['moviesVisibleFields', 'seriesVisibleFields'] as const) {
+      const fields = state[key];
+      if (!isVisibleFieldsByMode(fields)) continue;
+      state[key] = {
+        posters: fields.posters.includes('watchStatus') ? fields.posters : [...fields.posters, 'watchStatus'],
+        overview: fields.overview.includes('watchStatus') ? fields.overview : [...fields.overview, 'watchStatus'],
+        table: fields.table.includes('watchStatus') ? fields.table : [...fields.table, 'watchStatus'],
+      };
+    }
+  }
+  if (version < 37) {
+    for (const key of ['moviesVisibleFields', 'seriesVisibleFields'] as const) {
+      const fields = state[key];
+      if (!isVisibleFieldsByMode(fields)) continue;
+      state[key] = {
+        posters: fields.posters.includes('title') ? fields.posters : ['title', ...fields.posters],
+        overview: fields.overview.includes('title') ? fields.overview : ['title', ...fields.overview],
+        table: fields.table.includes('title') ? fields.table : [...fields.table.slice(0, 1), 'title', ...fields.table.slice(1)],
+      };
+    }
   }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';

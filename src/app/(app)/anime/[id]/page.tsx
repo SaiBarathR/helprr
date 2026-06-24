@@ -434,7 +434,7 @@ export default function AnimeDetailPage() {
         seasonYear={detail.seasonYear}
         studios={detail.studios}
         bannerAction={
-          <>
+          <div className="flex gap-1.5 items-center">
             <AnimeAddButton
               title={detail.title}
               format={detail.format}
@@ -482,7 +482,7 @@ export default function AnimeDetailPage() {
               variant="icon"
               className="h-7 w-7"
             />
-          </>
+          </div>
         }
         nextAiringSeconds={formatCountdown(nextAiringSeconds ?? 0)}
         nextAiringEpisode={detail.nextAiringEpisode}
@@ -538,9 +538,8 @@ export default function AnimeDetailPage() {
                 ? 'Map to Sonarr series'
                 : sonarrMappings.length === 0
                   ? 'Not mapped'
-                  : `Mapped · ${sonarrMappings[0].seriesTitle}${
-                      sonarrMappings.length > 1 ? ` +${sonarrMappings.length - 1}` : ''
-                    }`}
+                  : `Mapped · ${sonarrMappings[0].seriesTitle}${sonarrMappings.length > 1 ? ` +${sonarrMappings.length - 1}` : ''
+                  }`}
               {sonarrMappings && sonarrMappings.length > 0 && (
                 sonarrMappings[0].state === 'MANUAL_MATCH' ? (
                   <Badge className="bg-green-600/90 text-foreground text-[10px] px-1.5 py-0">Manual</Badge>

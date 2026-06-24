@@ -98,7 +98,7 @@ export function MediaTable({
             <tr className="border-b border-border/50 text-xs text-muted-foreground">
               {selectable && <th className="w-9 px-3 py-2"></th>}
               {show('monitored') && <th className="w-8 px-3 py-2"></th>}
-              <th className="text-left px-3 py-2 font-medium">Title</th>
+              <th className="text-left px-3 py-2 font-medium">{show('title') ? 'Title' : ''}</th>
               {show('year') && <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Year</th>}
               {show('artistType') && type === 'artist' && <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Type</th>}
               {show('qualityProfile') && <th className="text-left px-3 py-2 font-medium hidden md:table-cell">Quality</th>}
@@ -172,20 +172,20 @@ export function MediaTable({
                   {selectable ? (
                     <span className="flex items-center gap-2">
                       {statusDot}
-                      <span className="truncate">{row.title}</span>
+                      {show('title') && <span className="truncate">{row.title}</span>}
                       {row.instanceLabel && (
                         <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
                       )}
-                      <WatchStatusInline status={watchStatus} className="shrink-0" />
+                      {show('watchStatus') && <WatchStatusInline status={watchStatus} className="shrink-0" />}
                     </span>
                   ) : (
-                    <Link href={row.href} onClick={onNavigate} className="hover:underline flex items-center gap-2">
+                    <Link href={row.href} onClick={onNavigate} className="hover:underline flex items-center gap-2" aria-label={show('title') ? undefined : row.title}>
                       {statusDot}
-                      <span className="truncate">{row.title}</span>
+                      {show('title') && <span className="truncate">{row.title}</span>}
                       {row.instanceLabel && (
                         <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{row.instanceLabel}</span>
                       )}
-                      <WatchStatusInline status={watchStatus} className="shrink-0" />
+                      {show('watchStatus') && <WatchStatusInline status={watchStatus} className="shrink-0" />}
                     </Link>
                   )}
                 </td>

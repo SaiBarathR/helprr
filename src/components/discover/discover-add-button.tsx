@@ -96,29 +96,33 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
     'inline-flex items-center gap-1.5 rounded-full bg-background/25 backdrop-blur-md text-foreground px-2 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors disabled:opacity-60';
 
   return (
-    <div className="absolute top-1 right-1 md:top-2 md:right-2 hero-meta-fade flex items-center gap-1.5">
-      <WatchlistButton
-        draft={watchlistDraft}
-        variant="icon"
-        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/25 backdrop-blur-md text-foreground hover:bg-background/70"
-      />
-      {hasCapability(me, 'scheduledAlerts.edit') && (
-        <ScheduledAlertButton draft={watchlistDraft} variant="icon" className="h-7 w-7" />
-      )}
-      {canAddDirectly && (
-        <Link href={href} className={pillClass}>
-          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-          <span className="tracking-widest">Add to {service}</span>
-        </Link>
-      )}
-      {canRequest && (
-        <RequestMediaButton
-          tmdbId={detail.tmdbId}
-          mediaType={seerrMediaType}
-          title={detail.title}
-          className={pillClass}
+    <div className="absolute top-1 right-1 md:top-2 md:right-2 hero-meta-fade flex flex-col items-end gap-1.5 md:flex-row md:items-center">
+      <div className="flex items-center gap-1.5">
+        {canAddDirectly && (
+          <Link href={href} className={pillClass}>
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            <span className="tracking-widest">{service}</span>
+          </Link>
+        )}
+        {canRequest && (
+          <RequestMediaButton
+            tmdbId={detail.tmdbId}
+            mediaType={seerrMediaType}
+            title={detail.title}
+            className={pillClass}
+          />
+        )}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <WatchlistButton
+          draft={watchlistDraft}
+          variant="icon"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/25 backdrop-blur-md text-foreground hover:bg-background/70"
         />
-      )}
+        {hasCapability(me, 'scheduledAlerts.edit') && (
+          <ScheduledAlertButton draft={watchlistDraft} variant="icon" className="h-7 w-7" />
+        )}
+      </div>
     </div>
   );
 }
