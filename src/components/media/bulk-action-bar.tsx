@@ -143,6 +143,11 @@ export function BulkActionBar({
     }
   }, [tagOpen]);
 
+  useEffect(() => {
+    setPicked(new Set());
+    setNewLabel('');
+  }, [tagStrategy]);
+
   // Delete dialog state
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);

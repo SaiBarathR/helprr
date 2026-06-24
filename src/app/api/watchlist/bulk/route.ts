@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { ensureTagIds, normalizeTagName } from '@/lib/watchlist-helpers';
+import { ensureTagIds, lookupTagIds } from '@/lib/watchlist-helpers';
 
 type ApplyTags = 'add' | 'remove' | 'replace';
+
+const BULK_CHUNK_SIZE = 50;
 
 function parseTagNames(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
@@ -45,22 +48,13 @@ function parseBody(
   return { ids, tags, applyTags: b.applyTags };
 }
 
-async function resolveExistingTagIds(userId: string, rawNames: string[]): Promise<string[]> {
-  const cleaned = Array.from(
-    new Set(
-      rawNames
-        .map((t) => normalizeTagName(t))
-        .filter((t) => t.length > 0 && t.length <= 50)
-    )
-  );
-  if (cleaned.length === 0) return [];
-
-  const existing = await prisma.watchlistTag.findMany({
-    where: { userId, name: { in: cleaned } },
-    select: { id: true, name: true },
-  });
-  const byName = new Map(existing.map((t) => [t.name, t.id]));
-  return cleaned.map((n) => byName.get(n)).filter((id): id is string => Boolean(id));
+function tagUpdateData(
+  applyTags: ApplyTags,
+  tagConnect: { id: string }[]
+): Prisma.WatchlistItemUpdateInput {
+  if (applyTags === 'add') return { tags: { connect: tagConnect } };
+  if (applyTags === 'remove') return { tags: { disconnect: tagConnect } };
+  return { tags: { set: tagConnect } };
 }
 
 async function patchHandler(request: NextRequest): Promise<NextResponse> {
@@ -95,42 +89,37 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
 
   const tagIds =
     applyTags === 'remove'
-      ? await resolveExistingTagIds(userId, tags)
+      ? await lookupTagIds(userId, tags)
       : await ensureTagIds(userId, tags);
 
   if (tagIds.length === 0) {
+    if (applyTags === 'remove') {
+      return NextResponse.json({ ok: ownedIds.size, fail });
+    }
     return NextResponse.json({ ok: 0, fail: ids.length });
   }
 
   const tagConnect = tagIds.map((id) => ({ id }));
+  const updateData = tagUpdateData(applyTags, tagConnect);
+  const ownedIdList = [...ownedIds];
 
-  try {
-    await prisma.$transaction(
-      [...ownedIds].map((id) => {
-        if (applyTags === 'add') {
-          return prisma.watchlistItem.update({
-            where: { id },
-            data: { tags: { connect: tagConnect } },
-          });
-        }
-        if (applyTags === 'remove') {
-          return prisma.watchlistItem.update({
-            where: { id },
-            data: { tags: { disconnect: tagConnect } },
-          });
-        }
-        return prisma.watchlistItem.update({
-          where: { id },
-          data: { tags: { set: tagConnect } },
-        });
-      })
-    );
-  } catch (err) {
-    console.error('[Watchlist] bulk tag update failed:', err);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  let ok = 0;
+  let opFail = fail;
+
+  for (let i = 0; i < ownedIdList.length; i += BULK_CHUNK_SIZE) {
+    const chunk = ownedIdList.slice(i, i + BULK_CHUNK_SIZE);
+    try {
+      await prisma.$transaction(
+        chunk.map((id) => prisma.watchlistItem.update({ where: { id }, data: updateData }))
+      );
+      ok += chunk.length;
+    } catch (err) {
+      console.error('[Watchlist] bulk tag chunk failed:', err);
+      opFail += chunk.length;
+    }
   }
 
-  return NextResponse.json({ ok: ownedIds.size, fail });
+  return NextResponse.json({ ok, fail: opFail });
 }
 
 export const PATCH = withApiLogging(patchHandler, 'api/watchlist/bulk', { logBodies: false });
