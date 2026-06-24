@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { Check, Star } from 'lucide-react';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListScheduleEntry } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
@@ -41,12 +42,13 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
   const duration = media.duration && media.duration > 0 ? media.duration : null;
 
   return (
-    <Link
-      href={`/anime/${media.id}`}
-      className={`group relative flex gap-3 rounded-lg border border-border/40 bg-card/40 p-2 transition-all hover:border-amber-500/40 hover:bg-card/70 ${
-        past ? 'opacity-70 hover:opacity-100' : ''
-      }`}
-    >
+    <div className="relative">
+      <Link
+        href={`/anime/${media.id}`}
+        className={`group relative flex gap-3 rounded-lg border border-border/40 bg-card/40 p-2 transition-all hover:border-amber-500/40 hover:bg-card/70 ${
+          past ? 'opacity-70 hover:opacity-100' : ''
+        }`}
+      >
       <div className="relative aspect-[4/5] w-16 sm:w-[72px] shrink-0 overflow-hidden rounded-md bg-muted">
         {cover ? (
           <Image
@@ -120,6 +122,20 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
           </div>
         </div>
       </div>
-    </Link>
+      </Link>
+      <div className="absolute top-2 right-2 z-10">
+        <ScheduledAlertButton
+          draft={{
+            source: 'ANILIST',
+            externalId: String(media.id),
+            mediaType: 'anime',
+            title: media.title,
+            posterUrl: media.coverImage,
+            href: `/anime/${media.id}`,
+            releaseDate: new Date(airingAt * 1000).toISOString(),
+          }}
+        />
+      </div>
+    </div>
   );
 }

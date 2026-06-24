@@ -53,6 +53,7 @@ model User {
   dashboardLayouts DashboardLayout[]
   aniListLink    UserAniListLink?
   settings       UserSettings?
+  scheduledAlerts ScheduledAlert[]
 
   @@index([jellyfinUserId])
   @@index([status])
@@ -131,6 +132,60 @@ model WatchlistTag {
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+// User-defined scheduled alert rules (custom date/time or release-relative).
+model ScheduledAlert {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source        String   // TMDB | TVDB | ANILIST | SONARR | RADARR
+  externalId    String
+  mediaType     String   // movie | series | anime
+  instanceId    String?
+  title         String
+  subtitle      String?
+  posterUrl     String?
+  href          String?
+  scheduleMode  String   // absolute | release_relative
+  scope         String   // movie | series | season | episode | anime
+  releaseTypes  Json     @default("[]") // cinema | digital | physical | episode | season, etc.
+  offsetMinutes Int      @default(0)
+  timeZone      String   @default("UTC")
+  status        String   @default("active") // active | cancelled
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  cancelledAt   DateTime?
+  occurrences   ScheduledAlertOccurrence[]
+
+  @@index([userId, status, createdAt])
+  @@index([userId, source, externalId, mediaType])
+}
+
+// Concrete alert instances generated from a ScheduledAlert rule.
+model ScheduledAlertOccurrence {
+  id           String         @id @default(cuid())
+  alertId      String
+  alert        ScheduledAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  releaseAt    DateTime?
+  notifyAt     DateTime
+  releaseKind  String         // custom | cinema | digital | physical | episode | season | airing
+  targetKey    String
+  title        String
+  body         String?
+  metadata     Json?
+  status       String         @default("pending") // pending | sent | failed | cancelled
+  attempts     Int            @default(0)
+  lastAttemptAt DateTime?
+  sentAt       DateTime?
+  cancelledAt  DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([alertId, targetKey, notifyAt])
+  @@index([status, notifyAt])
+  @@index([alertId, status, notifyAt])
 }
 
 model PushSubscription {

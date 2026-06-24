@@ -5,6 +5,7 @@ interface UseCalendarParams {
   start: Date;
   end: Date;
   type?: string;
+  includeScheduled?: boolean;
 }
 
 interface UseCalendarReturn {
@@ -14,7 +15,7 @@ interface UseCalendarReturn {
   refetch: () => void;
 }
 
-export function useCalendar({ start, end, type }: UseCalendarParams): UseCalendarReturn {
+export function useCalendar({ start, end, type, includeScheduled }: UseCalendarParams): UseCalendarReturn {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,9 @@ export function useCalendar({ start, end, type }: UseCalendarParams): UseCalenda
       if (type && type !== 'all') {
         params.set('type', type);
       }
+      if (includeScheduled) {
+        params.set('includeScheduled', 'true');
+      }
 
       const res = await fetch(`/api/calendar?${params.toString()}`, { signal });
 
@@ -52,7 +56,7 @@ export function useCalendar({ start, end, type }: UseCalendarParams): UseCalenda
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [startISO, endISO, type]);
+  }, [startISO, endISO, type, includeScheduled]);
 
   useEffect(() => {
     const controller = new AbortController();

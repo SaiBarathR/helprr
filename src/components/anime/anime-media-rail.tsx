@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { ChevronRight, Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
@@ -70,9 +71,9 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
             <Link
               key={item.id}
               href={href}
-              className={`flex-shrink-0 ${cardWidth} group snap-start`}
+              className={`shrink-0 ${cardWidth} group snap-start`}
             >
-              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
+              <div className="relative aspect-2/3 rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
                 {imgSrc ? (
                   <FadeInImage
                     src={imgSrc}
@@ -93,6 +94,20 @@ export function AnimeMediaRail({ title, items, viewAllHref, size = 'default' }: 
                     <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
                     {item.averageScore}%
                   </Badge>
+                )}
+                {!isManga && (
+                  <div className="absolute top-1 left-1 z-10">
+                    <ScheduledAlertButton
+                      draft={{
+                        source: 'ANILIST',
+                        externalId: String(item.id),
+                        mediaType: 'anime',
+                        title: item.title,
+                        posterUrl: item.coverImage,
+                        href: `/anime/${item.id}`,
+                      }}
+                    />
+                  </div>
                 )}
                 <PosterWatchOverlay status={lookup({ anilistId: item.id })} />
               </div>

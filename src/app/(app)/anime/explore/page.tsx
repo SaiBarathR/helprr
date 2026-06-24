@@ -27,6 +27,7 @@ import {
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
   getListViewState,
   setListViewState,
@@ -800,7 +801,7 @@ function AnimeCard({
         </div>
       </Link>
       {!item.library?.exists && (
-        <div className="absolute top-1 left-1 z-10">
+        <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
           <WatchlistButton
             draft={{
               source: 'ANILIST',
@@ -815,6 +816,19 @@ function AnimeCard({
             }}
             variant="icon"
             className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
+          />
+          <ScheduledAlertButton
+            draft={{
+              source: 'ANILIST',
+              externalId: String(item.id),
+              mediaType: 'anime',
+              title: item.title,
+              year: item.year ?? item.seasonYear ?? null,
+              posterUrl: item.coverImage ?? null,
+              href: `/anime/${item.id}`,
+            }}
+            variant="icon"
+            className="h-5 w-5"
           />
         </div>
       )}

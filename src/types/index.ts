@@ -900,6 +900,13 @@ export interface CalendarEvent {
   images: MediaImage[];
   releaseType?: MovieReleaseType;
   finaleType?: EpisodeFinaleType;
+  /** `service` = Sonarr/Radarr/Lidarr; `scheduled` = user alert overlay */
+  origin?: 'service' | 'scheduled';
+  scheduledAlertId?: string;
+  scheduledOccurrenceId?: string;
+  releaseKind?: string;
+  scheduleLabel?: string;
+  notifyAt?: string;
 }
 
 // App Types

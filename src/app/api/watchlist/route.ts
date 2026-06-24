@@ -24,27 +24,11 @@ interface PostBody {
   overview?: unknown;
   rating?: unknown;
   tags?: unknown;
-  reminderAt?: unknown;
 }
-
-const REMINDER_INVALID = Symbol('reminderInvalid');
-type ReminderResult = Date | null | undefined | typeof REMINDER_INVALID;
 
 const MAX_TITLE_LEN = 200;
 const MAX_POSTER_URL_LEN = 500;
 const MAX_OVERVIEW_LEN = 2000;
-
-function parseReminderAt(raw: unknown): ReminderResult {
-  if (raw === undefined) return undefined; // no change
-  if (raw === null || raw === '') return null; // explicit clear
-  if (typeof raw !== 'string' && !(raw instanceof Date)) return REMINDER_INVALID;
-  const d = raw instanceof Date ? raw : new Date(raw);
-  if (!Number.isFinite(d.getTime())) return REMINDER_INVALID;
-  // Reject obviously-stale reminders so a wrong-year typo doesn't immediately
-  // fire a push on the next poll cycle.
-  if (d.getTime() < Date.now()) return REMINDER_INVALID;
-  return d;
-}
 
 function validatePosterUrl(raw: string): string | null {
   if (raw.length > MAX_POSTER_URL_LEN) return null;
@@ -180,11 +164,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         ? Math.max(0, Math.min(100, body.rating))
         : null;
   const tags = Array.isArray(body.tags) ? body.tags.filter((t): t is string => typeof t === 'string') : null;
-  const reminderResult = parseReminderAt(body.reminderAt);
-  if (reminderResult === REMINDER_INVALID) {
-    return NextResponse.json({ error: 'Invalid reminderAt' }, { status: 400 });
-  }
-  const reminderAt: Date | null | undefined = reminderResult;
 
   const userId = auth.user.id;
   const tagIds = tags ? await ensureTagIds(userId, tags) : null;
@@ -207,7 +186,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       posterUrl: posterUrl ?? null,
       overview: overview ?? null,
       rating: rating ?? null,
-      reminderAt: reminderAt instanceof Date ? reminderAt : null,
       tags: tagIds ? { connect: tagIds.map((id) => ({ id })) } : undefined,
     },
     update: {
@@ -216,11 +194,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       ...(posterUrl !== undefined ? { posterUrl } : {}),
       ...(overview !== undefined ? { overview } : {}),
       ...(rating !== undefined ? { rating } : {}),
-      // Setting a new reminderAt resets notified+attempts so the poller treats
-      // it as a fresh pending reminder. Clearing also resets both.
-      ...(reminderAt !== undefined
-        ? { reminderAt, reminderNotifiedAt: null, reminderAttempts: 0 }
-        : {}),
       ...(tagIds ? { tags: { set: tagIds.map((id) => ({ id })) } } : {}),
     },
     include: { tags: true },

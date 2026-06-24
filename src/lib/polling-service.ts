@@ -21,8 +21,7 @@ import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/bu
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger } from '@/lib/logger';
-import { watchlistHrefFor } from '@/lib/watchlist-helpers';
-import { getLibraryLookups, isItemInLibrary } from '@/lib/watchlist-library-lookup';
+import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/scheduled-alerts/delivery';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
@@ -42,8 +41,6 @@ const BEFORE_AIR_GRACE_MIN = 5;
 // Extra calendar fetch padding past notifyBeforeMins so an item near the upper
 // edge isn't excluded by clock skew between us and Sonarr/Radarr.
 const FETCH_END_BUFFER_MS = 60_000;
-
-const MAX_REMINDER_ATTEMPTS = 3;
 
 // While a disk stays below its threshold, re-remind at most this often. Reset on
 // recovery, so a later drop alerts immediately rather than waiting out the window.
@@ -209,7 +206,8 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   checkDiskSpace: 30_000,
   snapshotDiskUsage: 30_000,
   checkUpcoming: 45_000,
-  checkWatchlistReminders: 30_000,
+  refreshScheduledAlertOccurrences: 60_000,
+  checkScheduledAlerts: 30_000,
   checkActivityDigest: 30_000,
   applyBandwidthSchedule: 15_000,
   checkNotificationRetention: 15_000,
@@ -545,7 +543,8 @@ export class PollingService {
       }
       pollTasks.push(
         { source: 'checkUpcoming', run: () => this.runPollSource('checkUpcoming', () => this.checkUpcoming()) },
-        { source: 'checkWatchlistReminders', run: () => this.runPollSource('checkWatchlistReminders', () => this.checkWatchlistReminders()) },
+        { source: 'refreshScheduledAlertOccurrences', run: () => this.runPollSource('refreshScheduledAlertOccurrences', () => refreshScheduledAlertOccurrences()) },
+        { source: 'checkScheduledAlerts', run: () => this.runPollSource('checkScheduledAlerts', () => checkScheduledAlerts()) },
         { source: 'checkActivityDigest', run: () => this.runPollSource('checkActivityDigest', () => this.checkActivityDigest()) },
         { source: 'applyBandwidthSchedule', run: () => this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()) },
         { source: 'checkNotificationRetention', run: () => this.runPollSource('checkNotificationRetention', () => this.checkNotificationRetention()) },
@@ -2328,107 +2327,6 @@ export class PollingService {
       logger.warn('Lidarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
-  }
-
-  private async checkWatchlistReminders(): Promise<void> {
-    const now = new Date();
-    const due = await prisma.watchlistItem.findMany({
-      where: {
-        reminderAt: { lte: now },
-        reminderNotifiedAt: null,
-        reminderAttempts: { lt: MAX_REMINDER_ATTEMPTS },
-      },
-      take: 50,
-    });
-    if (due.length === 0) return;
-    logger.debug('Watchlist reminders due', { count: due.length }, { scope: 'polling' });
-
-    // If any due items might resolve into Sonarr/Radarr, fetch the lookups
-    // once so we can silently mark already-downloaded items as notified —
-    // pinging the user about something they've already added is noise.
-    const needsLookup = due.some(
-      (i) =>
-        (i.source === 'TMDB' && i.mediaType === 'movie') ||
-        (i.source === 'TMDB' && i.mediaType === 'series') ||
-        (i.source === 'TVDB' && i.mediaType === 'series') ||
-        i.source === 'SONARR' ||
-        i.source === 'RADARR'
-    );
-    const lookups = needsLookup
-      ? await getLibraryLookups({
-          tmdbMovie: due.some((i) => i.source === 'TMDB' && i.mediaType === 'movie'),
-          tvdbSeries: due.some((i) => i.source === 'TVDB' && i.mediaType === 'series'),
-          tmdbSeries: due.some((i) => i.source === 'TMDB' && i.mediaType === 'series'),
-        }).catch((error) => {
-          logger.warn('Watchlist reminder library lookup failed; sending reminders without library skip', { error }, { scope: 'polling' });
-          return null;
-        })
-      : null;
-
-    // Items already in the library are all stamped notified with the same value,
-    // so collapse them into one updateMany instead of a write per item.
-    const inLibraryIds: string[] = [];
-    // Each notified item's state write has a distinct value (attempts/notifiedAt),
-    // so collect them and run the writes together after the loop rather than
-    // awaiting each inline.
-    const stateWrites: Array<Promise<unknown>> = [];
-
-    for (const item of due) {
-      if (lookups && isItemInLibrary(item.source, item.externalId, item.mediaType, lookups)) {
-        inLibraryIds.push(item.id);
-        continue;
-      }
-
-      const yearSuffix = item.year ? ` (${item.year})` : '';
-      const body = `${item.title}${yearSuffix}`;
-      const redirect = watchlistHrefFor(item.source, item.externalId, item.mediaType) ?? '/watchlist';
-      let delivered = false;
-      try {
-        const sentCount = await this.notifyAndLog({
-          eventType: 'watchlistReminder',
-          title: 'Watchlist Reminder',
-          body,
-          metadata: {
-            source: 'watchlist',
-            id: item.id,
-            redirect,
-          },
-          url: redirect,
-          // A watchlist reminder is personal: only ping the owner's devices and
-          // stamp the history row to the owner so it shows in *their* list.
-          ...(item.userId ? { userIds: [item.userId], ownerUserId: item.userId } : {}),
-        }, { service: 'watchlist', reason: 'reminder-due', itemId: item.id });
-        delivered = sentCount !== null;
-      } catch (error) {
-        logger.warn('Watchlist reminder push failed; will retry', { itemId: item.id, attempt: item.reminderAttempts + 1, error }, { scope: 'polling' });
-      }
-
-      const nextAttempts = item.reminderAttempts + 1;
-      const giveUp = !delivered && nextAttempts >= MAX_REMINDER_ATTEMPTS;
-      stateWrites.push(
-        prisma.watchlistItem.update({
-          where: { id: item.id },
-          data: {
-            reminderAttempts: nextAttempts,
-            // Stamp notified on success OR after we exhaust retries — both
-            // states mean "stop trying this reminder".
-            reminderNotifiedAt: delivered || giveUp ? now : null,
-          },
-        }).catch((error) => {
-          logger.warn('Failed to update watchlist reminder state', { itemId: item.id, error }, { scope: 'polling' });
-        }),
-      );
-    }
-
-    if (inLibraryIds.length > 0) {
-      await prisma.watchlistItem.updateMany({
-        where: { id: { in: inLibraryIds } },
-        data: { reminderNotifiedAt: now },
-      }).catch((error) => {
-        logger.warn('Failed to mark in-library watchlist reminders as notified', { count: inLibraryIds.length, error }, { scope: 'polling' });
-      });
-    }
-    if (stateWrites.length > 0) await Promise.all(stateWrites);
   }
 
   // Prune NotificationHistory rows past the configured retention window. The

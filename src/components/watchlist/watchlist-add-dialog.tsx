@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
-import { Bell, Loader2, Plus, X } from 'lucide-react';
+import { Loader2, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -26,40 +26,7 @@ export interface WatchlistDraft {
   posterUrl?: string | null;
   overview?: string | null;
   rating?: number | null;
-  /**
-   * ISO date string for the media's release/air date. Used as the default
-   * value when the user toggles "Remind me on release".
-   */
   releaseDate?: string | null;
-}
-
-// <input type="datetime-local"> wants `YYYY-MM-DDTHH:mm` in local time.
-function toDatetimeLocalValue(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function defaultReminderLocal(releaseDate: string | null | undefined): string {
-  // Only a calendar date — schedule the reminder for 9am local on that day so
-  // it doesn't land at midnight UTC (likely the night before, locally).
-  if (!releaseDate) {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    return toDatetimeLocalValue(tomorrow.toISOString());
-  }
-  const d = new Date(releaseDate);
-  if (!Number.isFinite(d.getTime())) return '';
-  // If only a date (YYYY-MM-DD), it parses to UTC midnight. Set local 9am instead.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(releaseDate)) {
-    const [y, m, day] = releaseDate.split('-').map(Number);
-    const local = new Date(y, m - 1, day, 9, 0, 0, 0);
-    return toDatetimeLocalValue(local.toISOString());
-  }
-  return toDatetimeLocalValue(releaseDate);
 }
 
 interface KnownTag {
@@ -114,8 +81,6 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
   const [selected, setSelected] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [knownTags, setKnownTags] = useState<KnownTag[]>([]);
-  const [reminderEnabled, setReminderEnabled] = useState(false);
-  const [reminderValue, setReminderValue] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -124,8 +89,6 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
     const initial = Array.from(new Set((initialTags ?? []).map(normalizeTagName).filter(Boolean)));
     setSelected(initial);
     setTagInput('');
-    setReminderEnabled(initial.includes('reminder'));
-    setReminderValue(defaultReminderLocal(draft.releaseDate));
     void fetchKnownTags().then(setKnownTags);
   }, [open, draft, initialTags]);
 
@@ -168,8 +131,7 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
       return res.json() as Promise<{ created: boolean }>;
     },
     onSuccess: (data) => {
-      const reminderMsg = reminderEnabled ? ' · reminder set' : '';
-      toast.success((data.created ? 'Added to watchlist' : 'Watchlist updated') + reminderMsg);
+      toast.success(data.created ? 'Added to watchlist' : 'Watchlist updated');
       // New tags may have been created by ensureTagIds on the server; drop
       // the cache so the next dialog open sees them.
       invalidateWatchlistTagCache();
@@ -192,26 +154,6 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
       titleRef.current?.focus();
       return;
     }
-    let reminderAt: string | null | undefined = undefined;
-    if (reminderEnabled) {
-      if (!reminderValue) {
-        toast.error('Pick a reminder date');
-        return;
-      }
-      const d = new Date(reminderValue);
-      if (!Number.isFinite(d.getTime())) {
-        toast.error('Invalid reminder date');
-        return;
-      }
-      if (d.getTime() < Date.now() - 60_000) {
-        toast.error('Reminder must be in the future');
-        return;
-      }
-      reminderAt = d.toISOString();
-    } else {
-      // Explicitly clear any prior reminder so the dialog can be used to remove one.
-      reminderAt = null;
-    }
     const pending = tagInput.trim();
     const tagsToSend = pending ? [...selected, normalizeTagName(pending)] : selected;
     saveMutation.mutate({
@@ -224,7 +166,6 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
       overview: draft.overview ?? null,
       rating: draft.rating ?? null,
       tags: tagsToSend,
-      reminderAt,
     });
   }
 
@@ -302,33 +243,6 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
                   </button>
                 ))}
               </div>
-            )}
-          </div>
-
-          <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={reminderEnabled}
-                onChange={(e) => setReminderEnabled(e.target.checked)}
-                disabled={saving}
-                className="h-4 w-4 accent-primary"
-              />
-              <Bell className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="text-sm font-medium">Remind me on release</span>
-            </label>
-            {reminderEnabled && (
-              <>
-                <Input
-                  type="datetime-local"
-                  value={reminderValue}
-                  onChange={(e) => setReminderValue(e.target.value)}
-                  disabled={saving}
-                />
-                <p className="text-[11px] text-muted-foreground">
-                  We&apos;ll send a push notification on this date.
-                </p>
-              </>
             )}
           </div>
         </div>

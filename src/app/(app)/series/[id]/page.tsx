@@ -26,7 +26,7 @@ import { getImageUrl } from '@/components/media/media-card';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import {
-  Bookmark, MoreHorizontal, RefreshCw, Search, ExternalLink,
+  Bookmark, Bell, MoreHorizontal, RefreshCw, Search, ExternalLink,
   Pencil, Trash2, Loader2, Tv, Heart, Eye, Star, ChevronDown, ChevronUp, ChevronRight, ChevronLeft,
   Trophy, TrendingUp, FileEdit, Sparkles, TriangleAlert, FileStack, Check,
 } from 'lucide-react';
@@ -64,6 +64,7 @@ import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helper
 import { seasonTabLabel } from '@/lib/anilist-title-match';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
+import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 import { useCan, useMe } from '@/components/permission-provider';
 import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
@@ -205,6 +206,7 @@ export default function SeriesDetailPage() {
   // Season chip expanded to its full name (mobile has no hover), keyed by anilistMediaId.
   const [expandedAnimeTabId, setExpandedAnimeTabId] = useState<number | null>(null);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
+  const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
   const [animeNowMs, setAnimeNowMs] = useState(() => Date.now());
 
@@ -1115,6 +1117,10 @@ export default function SeriesDetailPage() {
                   <Bookmark className="h-4 w-4" />
                   Add to Watchlist…
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowScheduleAlert(true)}>
+                  <Bell className="h-4 w-4" />
+                  Schedule alert…
+                </DropdownMenuItem>
                 {canEditMonitoring && (
                   <DropdownMenuItem onClick={() => setShowMonitorEdit(true)}>
                     <Eye className="h-4 w-4" />
@@ -2005,6 +2011,26 @@ export default function SeriesDetailPage() {
             series.images?.find((i) => i.coverType === 'poster')?.url ??
             null,
           overview: series.overview ?? null,
+        }}
+      />
+
+      <ScheduledAlertDialog
+        open={showScheduleAlert}
+        onOpenChange={setShowScheduleAlert}
+        draft={{
+          source: 'SONARR',
+          externalId: String(series.id),
+          mediaType: 'series',
+          title: series.title,
+          year: series.year ?? null,
+          posterUrl:
+            series.images?.find((i) => i.coverType === 'poster')?.remoteUrl ??
+            series.images?.find((i) => i.coverType === 'poster')?.url ??
+            null,
+          overview: series.overview ?? null,
+          instanceId: instance ?? null,
+          href: `/series/${series.id}${instance ? `?instance=${instance}` : ''}`,
+          releaseDate: series.firstAired ?? null,
         }}
       />
 

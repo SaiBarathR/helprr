@@ -48,6 +48,7 @@ import { useCan } from '@/components/permission-provider';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { reportBulk } from '@/lib/bulk-fan-out';
 import { invalidateWatchlistTagCache } from '@/components/watchlist/watchlist-add-dialog';
+import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { cn } from '@/lib/utils';
 
 type MediaType = 'movie' | 'series' | 'anime';
@@ -864,6 +865,7 @@ function WatchlistCard({
   onRemove: () => void;
 }) {
   const canEdit = useCan('watchlist.edit');
+  const canSchedule = useCan('scheduledAlerts.edit');
   const poster = item.posterUrl
     ? (toCachedImageSrc(
         item.posterUrl,
@@ -931,6 +933,23 @@ function WatchlistCard({
           )}
         </div>
       )}
+      {canSchedule && !selectable && (
+        <div className="absolute top-1.5 left-1.5 z-10">
+          <ScheduledAlertButton
+            draft={{
+              source: item.source,
+              externalId: item.externalId,
+              mediaType: item.mediaType,
+              title: item.title,
+              year: item.year,
+              posterUrl: item.posterUrl,
+              overview: item.overview,
+              rating: item.rating,
+              href: item.href,
+            }}
+          />
+        </div>
+      )}
       {canEdit && !selectable && (
         <button
           type="button"
@@ -940,7 +959,7 @@ function WatchlistCard({
             onRemove();
           }}
           aria-label="Remove from watchlist"
-          className="absolute top-1.5 left-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
+          className="absolute top-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
         >
           <Trash2 className="h-3 w-3" />
         </button>
