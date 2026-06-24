@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
@@ -8,6 +8,7 @@ import {
   ArrowUpDown,
   Bookmark,
   Filter,
+  ListChecks,
   Loader2,
   MoreHorizontal,
   Search,
@@ -18,6 +19,8 @@ import {
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { FadeInImage } from '@/components/media/fade-in-image';
+import { BulkActionBar } from '@/components/media/bulk-action-bar';
+import { SelectionCheck } from '@/components/media/selection-check';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/media/search-input';
@@ -42,6 +45,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useCan } from '@/components/permission-provider';
+import { useBulkSelection } from '@/lib/use-bulk-selection';
+import { reportBulk } from '@/lib/bulk-fan-out';
+import { invalidateWatchlistTagCache } from '@/components/watchlist/watchlist-add-dialog';
+import { cn } from '@/lib/utils';
 
 type MediaType = 'movie' | 'series' | 'anime';
 type Source = 'TMDB' | 'TVDB' | 'ANILIST' | 'SONARR' | 'RADARR';
@@ -159,6 +166,16 @@ const GRID_GAP = 12; // gap-3
 export default function WatchlistPage() {
   const canEdit = useCan('watchlist.edit');
   const queryClient = useQueryClient();
+  const {
+    selectionMode,
+    selectedKeys,
+    count: selectedCount,
+    toggle,
+    selectMany,
+    deselectMany,
+    enter,
+    exit,
+  } = useBulkSelection();
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [activeTagId, setActiveTagId] = useState<string | null>(null);
@@ -340,6 +357,49 @@ export default function WatchlistPage() {
     };
     return [...list].sort(cmp);
   }, [items, view]);
+
+  const filteredIds = useMemo(() => (filtered ?? []).map((i) => i.id), [filtered]);
+  const allFilteredSelected =
+    filteredIds.length > 0 && filteredIds.every((id) => selectedKeys.has(id));
+  const toggleSelectAll = useCallback(() => {
+    if (allFilteredSelected) deselectMany(filteredIds);
+    else selectMany(filteredIds);
+  }, [allFilteredSelected, deselectMany, selectMany, filteredIds]);
+
+  const handleApplyTags = useCallback(
+    async (labels: string[], mode: 'add' | 'remove' | 'replace') => {
+      const ids = [...selectedKeys];
+      if (ids.length === 0) return;
+
+      let res: Response;
+      try {
+        res = await fetch('/api/watchlist/bulk', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
+        });
+      } catch (err) {
+        console.error('[Watchlist] bulk tag network error:', err);
+        toast.error('Failed to update tags (network error)');
+        return;
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(typeof err?.error === 'string' ? err.error : 'Failed to update tags');
+        return;
+      }
+
+      const data = (await res.json()) as { ok: number; fail: number };
+      const verb =
+        mode === 'replace' ? 'Replaced tags on' : mode === 'add' ? 'Tagged' : 'Untagged';
+      reportBulk(verb, data.ok, data.fail, { noun: 'item' });
+      invalidateWatchlistTagCache();
+      await queryClient.invalidateQueries({ queryKey: ['watchlist'] });
+      if (data.fail === 0) exit();
+    },
+    [selectedKeys, queryClient, exit]
+  );
 
   useEffect(() => {
     const onResize = () => setViewportWidth(window.innerWidth);
@@ -569,6 +629,20 @@ export default function WatchlistPage() {
           </div>
 
           {canEdit && (
+            <button
+              type="button"
+              onClick={() => (selectionMode ? exit() : enter())}
+              className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
+                selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
+              }`}
+              aria-label={selectionMode ? 'Exit selection' : 'Select items'}
+              aria-pressed={selectionMode}
+            >
+              <ListChecks className="h-5 w-5" />
+            </button>
+          )}
+
+          {canEdit && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -691,6 +765,9 @@ export default function WatchlistPage() {
                       key={item.id}
                       item={item}
                       imagePriority={startIndex + i < Math.min(columns * 2, 4)}
+                      selectable={selectionMode}
+                      selected={selectedKeys.has(item.id)}
+                      onToggleSelect={() => toggle(item.id)}
                       onRemove={() => setRemoveTarget(item)}
                     />
                   ))}
@@ -738,6 +815,26 @@ export default function WatchlistPage() {
         }}
         tags={tags}
       />
+
+      {selectionMode && canEdit && (
+        <>
+          <div aria-hidden className="h-24" />
+          <BulkActionBar
+            count={selectedCount}
+            allSelected={allFilteredSelected}
+            onToggleSelectAll={toggleSelectAll}
+            onCancel={exit}
+            variant="full"
+            canTag
+            canSearch={false}
+            onSearch={async () => {}}
+            allowReplace
+            tags={tags.map((t) => ({ id: 0, label: t.name }))}
+            onApplyTags={handleApplyTags}
+            itemNoun="item"
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -745,10 +842,16 @@ export default function WatchlistPage() {
 function WatchlistCard({
   item,
   imagePriority,
+  selectable,
+  selected,
+  onToggleSelect,
   onRemove,
 }: {
   item: WatchlistItem;
   imagePriority?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
   onRemove: () => void;
 }) {
   const canEdit = useCan('watchlist.edit');
@@ -766,8 +869,13 @@ function WatchlistCard({
           : undefined
       ) ?? item.posterUrl)
     : null;
-  const content = (
-    <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted">
+  const posterInner = (
+    <div
+      className={cn(
+        'relative aspect-[2/3] rounded-xl overflow-hidden bg-muted',
+        selectable && selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
+      )}
+    >
       {poster ? (
         <FadeInImage
           src={poster}
@@ -814,7 +922,7 @@ function WatchlistCard({
           )}
         </div>
       )}
-      {canEdit && (
+      {canEdit && !selectable && (
         <button
           type="button"
           onClick={(e) => {
@@ -830,12 +938,32 @@ function WatchlistCard({
       )}
     </div>
   );
+
+  if (selectable) {
+    return (
+      <div className="group relative">
+        <button
+          type="button"
+          onClick={onToggleSelect}
+          aria-pressed={Boolean(selected)}
+          aria-label={`${selected ? 'Deselect' : 'Select'} ${item.title}`}
+          className="block w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {posterInner}
+        </button>
+        <div className="absolute top-1.5 left-1.5 z-10">
+          <SelectionCheck selected={Boolean(selected)} />
+        </div>
+      </div>
+    );
+  }
+
   return item.href ? (
     <Link href={item.href} className="group block">
-      {content}
+      {posterInner}
     </Link>
   ) : (
-    <div className="block">{content}</div>
+    <div className="block">{posterInner}</div>
   );
 }
 
