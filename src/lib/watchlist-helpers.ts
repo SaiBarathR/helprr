@@ -26,6 +26,53 @@ export function normalizeTagName(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function cleanTagNames(rawNames: string[]): string[] {
+  return Array.from(
+    new Set(
+      rawNames
+        .map((t) => normalizeTagName(t))
+        .filter((t) => t.length > 0 && t.length <= 50)
+    )
+  );
+}
+
+async function tagIdsByName(userId: string, names: string[]): Promise<Map<string, string>> {
+  if (names.length === 0) return new Map();
+  const existing = await prisma.watchlistTag.findMany({
+    where: { userId, name: { in: names } },
+    select: { id: true, name: true },
+  });
+  return new Map(existing.map((t) => [t.name, t.id]));
+}
+
+/** Resolve tag names to existing ids for a user (no creates). */
+export async function lookupTagIds(userId: string, rawNames: string[]): Promise<string[]> {
+  const cleaned = cleanTagNames(rawNames);
+  if (cleaned.length === 0) return [];
+  const byName = await tagIdsByName(userId, cleaned);
+  return cleaned.map((n) => byName.get(n)).filter((id): id is string => Boolean(id));
+}
+
+/** Resolve tag names to ids for a specific user, creating any that are missing.
+ *  Tags are per-user, so lookups and creates are always scoped to `userId`. */
+export async function ensureTagIds(userId: string, rawNames: string[]): Promise<string[]> {
+  const cleaned = cleanTagNames(rawNames);
+  if (cleaned.length === 0) return [];
+
+  const byName = await tagIdsByName(userId, cleaned);
+  const toCreate = cleaned.filter((n) => !byName.has(n));
+  if (toCreate.length > 0) {
+    await prisma.watchlistTag.createMany({
+      data: toCreate.map((name) => ({ userId, name, color: pickTagColor(name) })),
+      skipDuplicates: true,
+    });
+    const fresh = await tagIdsByName(userId, toCreate);
+    for (const [name, id] of fresh) byName.set(name, id);
+  }
+
+  return cleaned.map((n) => byName.get(n)).filter((id): id is string => Boolean(id));
+}
+
 export const VALID_SOURCES = ['TMDB', 'TVDB', 'ANILIST', 'SONARR', 'RADARR'] as const;
 export type WatchlistSource = (typeof VALID_SOURCES)[number];
 
@@ -52,37 +99,4 @@ export function watchlistHrefFor(
   if (source === 'TMDB' && mediaType === 'series') return `/discover/tv/${externalId}`;
   if (source === 'TVDB' && mediaType === 'series') return null;
   return null;
-}
-
-/** Resolve tag names to ids for a specific user, creating any that are missing.
- *  Tags are per-user, so lookups and creates are always scoped to `userId`. */
-export async function ensureTagIds(userId: string, rawNames: string[]): Promise<string[]> {
-  const cleaned = Array.from(
-    new Set(
-      rawNames
-        .map((t) => normalizeTagName(t))
-        .filter((t) => t.length > 0 && t.length <= 50)
-    )
-  );
-  if (cleaned.length === 0) return [];
-
-  const existing = await prisma.watchlistTag.findMany({
-    where: { userId, name: { in: cleaned } },
-    select: { id: true, name: true },
-  });
-  const byName = new Map(existing.map((t) => [t.name, t.id]));
-  const toCreate = cleaned.filter((n) => !byName.has(n));
-  if (toCreate.length > 0) {
-    await prisma.watchlistTag.createMany({
-      data: toCreate.map((name) => ({ userId, name, color: pickTagColor(name) })),
-      skipDuplicates: true,
-    });
-    const fresh = await prisma.watchlistTag.findMany({
-      where: { userId, name: { in: toCreate } },
-      select: { id: true, name: true },
-    });
-    for (const t of fresh) byName.set(t.name, t.id);
-  }
-
-  return cleaned.map((n) => byName.get(n)).filter((id): id is string => Boolean(id));
 }

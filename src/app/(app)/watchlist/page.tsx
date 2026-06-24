@@ -169,7 +169,6 @@ export default function WatchlistPage() {
   const {
     selectionMode,
     selectedKeys,
-    count: selectedCount,
     toggle,
     selectMany,
     deselectMany,
@@ -359,8 +358,18 @@ export default function WatchlistPage() {
   }, [items, view]);
 
   const filteredIds = useMemo(() => (filtered ?? []).map((i) => i.id), [filtered]);
+  const actionableSelectedCount = useMemo(
+    () => filteredIds.filter((id) => selectedKeys.has(id)).length,
+    [filteredIds, selectedKeys]
+  );
   const allFilteredSelected =
     filteredIds.length > 0 && filteredIds.every((id) => selectedKeys.has(id));
+
+  useEffect(() => {
+    if (!selectionMode) return;
+    const offScreen = [...selectedKeys].filter((id) => !filteredIds.includes(id));
+    if (offScreen.length > 0) deselectMany(offScreen);
+  }, [selectionMode, filteredIds, selectedKeys, deselectMany]);
   const toggleSelectAll = useCallback(() => {
     if (allFilteredSelected) deselectMany(filteredIds);
     else selectMany(filteredIds);
@@ -820,7 +829,7 @@ export default function WatchlistPage() {
         <>
           <div aria-hidden className="h-24" />
           <BulkActionBar
-            count={selectedCount}
+            count={actionableSelectedCount}
             allSelected={allFilteredSelected}
             onToggleSelectAll={toggleSelectAll}
             onCancel={exit}
