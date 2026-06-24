@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
-import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { ChevronRight, Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
@@ -65,20 +64,6 @@ export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProp
 
           return (
             <div key={item.id} className="relative shrink-0 min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] group snap-start">
-              {!isManga && (
-                <div className="absolute top-1 left-1 z-10">
-                  <ScheduledAlertButton
-                    draft={{
-                      source: 'ANILIST',
-                      externalId: String(item.id),
-                      mediaType: 'anime',
-                      title: item.title,
-                      posterUrl: item.coverImage,
-                      href: `/anime/${item.id}`,
-                    }}
-                  />
-                </div>
-              )}
               <Link href={href} className="block">
                 <div className="relative aspect-2/3 rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
                   {imgSrc ? (
