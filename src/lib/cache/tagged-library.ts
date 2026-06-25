@@ -75,11 +75,32 @@ export async function getCachedTaggedLibrary<C, T extends object>(opts: {
   return { items, cached: false, available: anyOk };
 }
 
-// Bust the cached library for a service after a mutation so the next read repopulates from
-// upstream instead of replaying a stale entry for the rest of its TTL. Drops the instance's
-// own seed AND the 'all' aggregate, because a per-instance write also changes the combined
-// list — mirroring the `instanceId ?? 'all'` seed convention the library routes write under.
+// Maps each *arr library scope to its global-search index module (see search/index-builder.ts).
+const SEARCH_MODULE_BY_SCOPE: Record<string, string> = {
+  radarr: 'movies',
+  sonarr: 'series',
+  lidarr: 'music',
+};
+
+// Bust every cache derived from a service's raw library after a mutation: the library list
+// itself, its global-search index module, and (Radarr only) the collections view — so none
+// of them replays a deleted/added item for the rest of its TTL. Drops the instance's own seed
+// AND the 'all' aggregate, because a per-instance write also changes the combined list —
+// mirroring the `instanceId ?? 'all'` seed convention the library routes write under.
 export async function invalidateTaggedLibrary(scope: string, instanceId?: string): Promise<void> {
-  const seeds = new Set([instanceId ?? 'all', 'all']);
-  await Promise.all([...seeds].map((seed) => deleteCachedJson(scope, seed)));
+  const seeds = [...new Set([instanceId ?? 'all', 'all'])];
+  const ops: Promise<void>[] = seeds.map((seed) => deleteCachedJson(scope, seed));
+
+  // Global search serves a pre-built per-module index; a deleted item stays findable until it
+  // is dropped (scope 'searchindex' / module from search/index-builder.ts).
+  const searchModule = SEARCH_MODULE_BY_SCOPE[scope];
+  if (searchModule) ops.push(deleteCachedJson('searchindex', searchModule));
+
+  // Radarr collections derive from the movie library (membership + missing counts). Keep
+  // 'radarr-collections' in sync with COLLECTIONS_SCOPE in api/radarr/collections/route.ts.
+  if (scope === 'radarr') {
+    for (const seed of seeds) ops.push(deleteCachedJson('radarr-collections', seed));
+  }
+
+  await Promise.all(ops);
 }
