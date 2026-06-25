@@ -69,7 +69,7 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
   return (
     <div className="flex items-center gap-1.5">
       {canAddDirectly && (
-        <Link href={href} className={pillClass}>
+        <Link href={href} className={pillClass} aria-label={`Add to ${service}`}>
           <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
           <span className="tracking-widest">{service}</span>
         </Link>

@@ -153,7 +153,12 @@ export const MediaCard = memo(function MediaCard({
           {posterInner}
         </button>
       ) : (
-        <Link href={href} onClick={onNavigate} className="block">
+        <Link
+          href={href}
+          onClick={onNavigate}
+          className="block"
+          aria-label={show('title') ? undefined : title}
+        >
           {posterInner}
         </Link>
       )}

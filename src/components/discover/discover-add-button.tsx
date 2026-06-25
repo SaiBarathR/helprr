@@ -98,7 +98,7 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
     <div className="absolute top-1 right-1 md:top-2 md:right-2 hero-meta-fade flex flex-col items-end gap-1.5 md:flex-row md:items-center">
       <div className="flex items-center gap-1.5">
         {canAddDirectly && (
-          <Link href={href} className={pillClass}>
+          <Link href={href} className={pillClass} aria-label={`Add to ${service}`}>
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
             <span className="tracking-widest">{service}</span>
           </Link>
