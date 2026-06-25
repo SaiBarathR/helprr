@@ -6,11 +6,14 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { LidarrArtist, LidarrArtistListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
 
 const LIDARR_CACHE_HEADERS = {
-  'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+  // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
+  // and can't be busted by a mutation (here or on another device), so max-age would keep
+  // serving a deleted/added artist until it expires. The server answers fast from Redis.
+  'Cache-Control': 'private, no-cache',
   // Partition the private cache by session cookie so a capability-gated response can't be
   // replayed from the browser cache to a different (or logged-out) user within the TTL.
   'Vary': 'Cookie',
@@ -120,6 +123,7 @@ async function postHandler(request: Request) {
     const instanceId = typeof body.instanceId === 'string' ? body.instanceId : undefined;
     const client = await getLidarrClient(instanceId);
     const result = await client.addArtist(body);
+    await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
     console.error('Failed to add artist:', error);
