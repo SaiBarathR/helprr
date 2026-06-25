@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
+import { RadarrClient } from '@/lib/radarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
@@ -36,18 +37,18 @@ async function postHandler(request: NextRequest) {
     const label = typeof body?.label === 'string' ? body.label.trim() : '';
     if (!label) return NextResponse.json({ error: 'label is required' }, { status: 400 });
 
-    const client = await getRadarrClient(instanceId);
+    // Resolve the connection once so we can reuse its id for cache invalidation without a
+    // second lookup — and so the only throwing call (the DB resolve) runs before any write.
+    const conn = await resolveConnection('RADARR', instanceId);
+    const client = new RadarrClient(conn.url, conn.apiKey);
     // Dedup case-insensitively (mirrors resolveTagIds in bulk-editor.ts) so we never
     // create a duplicate and always hand back a real {id,label}.
     const existing = await client.getTags();
     const match = existing.find((t) => t.label.toLowerCase() === label.toLowerCase());
     const tag = match ?? (await client.createTag(label));
-    // A newly created tag isn't in the cached label map yet — drop it so the list re-resolves
-    // the tag's name instead of rendering a blank chip until the 120s TTL expires.
-    if (!match) {
-      const conn = await resolveConnection('RADARR', instanceId);
-      await invalidateReferenceLabels('radarr', conn.id);
-    }
+    // A newly created tag isn't in the cached label map yet — drop it (best-effort) so the
+    // list re-resolves the name instead of rendering a blank chip until the 120s TTL expires.
+    if (!match) await invalidateReferenceLabels('radarr', conn.id);
     return NextResponse.json(tag);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create tag';

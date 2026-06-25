@@ -68,29 +68,32 @@ interface TaggableClient {
 /**
  * Resolve tag labels to this instance's numeric tag ids. On 'add'/'replace' a label
  * with no match is created; on 'remove' an unknown label is simply skipped (no point
- * creating a tag only to remove it). Matching is case-insensitive.
+ * creating a tag only to remove it). Matching is case-insensitive. `createdAny` lets the
+ * caller invalidate the reference-label cache only when a brand-new tag was actually made.
  */
 export async function resolveTagIds(
   client: TaggableClient,
   labels: string[],
   mode: ApplyTags
-): Promise<number[]> {
+): Promise<{ ids: number[]; createdAny: boolean }> {
   const existing = await client.getTags();
   const byLabel = new Map(existing.map((t) => [t.label.toLowerCase(), t.id]));
   const ids: number[] = [];
+  let createdAny = false;
   for (const label of labels) {
     const found = byLabel.get(label.toLowerCase());
     if (found !== undefined) {
       ids.push(found);
     } else if (mode !== 'remove') {
       const created = await client.createTag(label);
+      createdAny = true;
       ids.push(created.id);
       // Record it so a later case-variant of the same new label in this batch
       // (e.g. "foo" then "Foo") reuses the id instead of creating a duplicate tag.
       byLabel.set(label.toLowerCase(), created.id);
     }
   }
-  return ids;
+  return { ids, createdAny };
 }
 
 export function parseBulkDeleteBody(

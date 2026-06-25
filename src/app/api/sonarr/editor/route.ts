@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
+import { SonarrClient } from '@/lib/sonarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
@@ -26,23 +27,23 @@ async function putHandler(request: NextRequest) {
     if (guardError) return guardError;
 
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
-    const client = await getSonarrClient(instanceId);
-    const tagIds = parsed.tags
+    // Resolve the connection once so we can reuse its id for cache invalidation without a
+    // second lookup — and so the only throwing call (the DB resolve) runs before any write.
+    const conn = await resolveConnection('SONARR', instanceId);
+    const client = new SonarrClient(conn.url, conn.apiKey);
+    const tagResult = parsed.tags
       ? await resolveTagIds(client, parsed.tags, parsed.applyTags ?? 'add')
       : undefined;
     const result = await client.seriesEditor({
       seriesIds: parsed.ids,
       monitored: parsed.monitored,
-      tags: tagIds,
+      tags: tagResult?.ids,
       applyTags: parsed.applyTags,
     });
     await invalidateTaggedLibrary('sonarr', instanceId);
-    // A bulk 'add'/'replace' can create new tags (resolveTagIds) — drop the label cache so
-    // the new tag's name resolves on the next list read instead of rendering a blank chip.
-    if (parsed.tags && parsed.applyTags !== 'remove') {
-      const conn = await resolveConnection('SONARR', instanceId);
-      await invalidateReferenceLabels('sonarr', conn.id);
-    }
+    // Only drop the label cache when a brand-new tag was actually created — otherwise the next
+    // list read would refetch reference data for nothing.
+    if (tagResult?.createdAny) await invalidateReferenceLabels('sonarr', conn.id);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update series';
