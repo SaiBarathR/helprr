@@ -461,15 +461,20 @@ export default function WatchlistPage() {
 
     const data = (await res.json()) as { ok: number; fail: number };
     reportBulk('Removed', data.ok, data.fail, { noun: 'item' });
-    // Drop the removed items from every cached items variant so they can't
-    // reappear when switching filters before the refetch lands.
+    // Optimistically drop the removed items from every cached items variant so
+    // they can't reappear when switching filters before the refetch lands.
     const removed = new Set(ids);
     queryClient.setQueriesData<WatchlistItem[]>(
       { queryKey: ['watchlist', 'items'] },
       (prev) => (prev ? prev.filter((i) => !removed.has(i.id)) : prev),
     );
+    // Reconcile with the server: invalidate items too (not just tags) so any that
+    // failed to delete reappear instead of staying hidden by the optimistic drop.
+    queryClient.invalidateQueries({ queryKey: ['watchlist', 'items'] });
     queryClient.invalidateQueries({ queryKey: ['watchlist', 'tags'] });
-    if (data.fail === 0) exit();
+    // Always leave selection mode so the bulk bar never lingers over a now-empty
+    // or stale selection; failures surface via the toast above.
+    exit();
   }, [filteredIds, selectedKeys, queryClient, exit]);
 
   useEffect(() => {
@@ -529,7 +534,7 @@ export default function WatchlistPage() {
 
   return (
     <div className="animate-content-in pb-12">
-      <PullToRefresh onRefresh={refreshData} disabled={selectionMode} />
+      <PullToRefresh onRefresh={refresh} disabled={selectionMode} />
       <div
         className="sticky z-30 -mx-2 space-y-2 bg-background/95 px-2 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6"
         style={{ top: 'var(--header-height, 0px)' }}

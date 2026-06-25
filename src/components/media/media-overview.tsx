@@ -239,7 +239,12 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
   }
 
   return (
-    <Link href={href} onClick={onNavigate} className={rowClass}>
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={rowClass}
+      aria-label={show('title') ? undefined : title}
+    >
       {body}
     </Link>
   );

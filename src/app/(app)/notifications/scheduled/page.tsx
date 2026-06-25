@@ -187,7 +187,7 @@ export default function ScheduledAlertsPage() {
 
   return (
     <div className="space-y-3 animate-content-in pb-12">
-      <PullToRefresh onRefresh={() => listQuery.refetch()} />
+      <PullToRefresh onRefresh={refresh} />
       <PageHeader
         showBack
         onBack={() => router.push('/notifications')}
