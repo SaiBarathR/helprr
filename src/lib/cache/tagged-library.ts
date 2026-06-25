@@ -1,4 +1,4 @@
-import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+import { getCachedJson, setCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
 
 // Shared get-or-fetch for a tagged *arr library (Sonarr series / Radarr movies /
 // Lidarr artists). One entry per (scope, instance) is reused by both the library
@@ -73,4 +73,13 @@ export async function getCachedTaggedLibrary<C, T extends object>(opts: {
     await setCachedJson(opts.scope, opts.cacheKeySeed, items, opts.ttlSeconds ?? DEFAULT_TTL_SECONDS);
   }
   return { items, cached: false, available: anyOk };
+}
+
+// Bust the cached library for a service after a mutation so the next read repopulates from
+// upstream instead of replaying a stale entry for the rest of its TTL. Drops the instance's
+// own seed AND the 'all' aggregate, because a per-instance write also changes the combined
+// list — mirroring the `instanceId ?? 'all'` seed convention the library routes write under.
+export async function invalidateTaggedLibrary(scope: string, instanceId?: string): Promise<void> {
+  const seeds = new Set([instanceId ?? 'all', 'all']);
+  await Promise.all([...seeds].map((seed) => deleteCachedJson(scope, seed)));
 }

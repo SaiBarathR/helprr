@@ -3,6 +3,7 @@ import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
 import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } from '@/lib/bulk-editor';
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Bulk monitor/tag across many series via Sonarr's native /series/editor endpoint.
@@ -33,6 +34,7 @@ async function putHandler(request: NextRequest) {
       tags: tagIds,
       applyTags: parsed.applyTags,
     });
+    await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update series';
@@ -55,6 +57,7 @@ async function deleteHandler(request: NextRequest) {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
     await client.deleteSeriesBulk(parsed.ids, parsed.deleteFiles);
+    await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete series';

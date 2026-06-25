@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffSeriesEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler(
@@ -68,6 +69,7 @@ async function putHandler(
     }
 
     const result = await client.updateSeries(body, moveFiles);
+    await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update series';
@@ -91,6 +93,7 @@ async function deleteHandler(
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
     await client.deleteSeries(Number(id), deleteFiles);
+    await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete series';

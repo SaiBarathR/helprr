@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffMovieEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
@@ -80,6 +81,7 @@ async function putHandler(
     }
 
     const result = await client.updateMovie(body, moveFiles);
+    await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update movie';
@@ -105,6 +107,7 @@ async function deleteHandler(
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getRadarrClient(instanceId);
     await client.deleteMovie(parsed.value, deleteFiles);
+    await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete movie';
