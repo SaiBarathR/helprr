@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
+import { resolveConnection } from '@/lib/arr-instances';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
 import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } from '@/lib/bulk-editor';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
+import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Bulk monitor/tag across many series via Sonarr's native /series/editor endpoint.
@@ -35,6 +37,12 @@ async function putHandler(request: NextRequest) {
       applyTags: parsed.applyTags,
     });
     await invalidateTaggedLibrary('sonarr', instanceId);
+    // A bulk 'add'/'replace' can create new tags (resolveTagIds) — drop the label cache so
+    // the new tag's name resolves on the next list read instead of rendering a blank chip.
+    if (parsed.tags && parsed.applyTags !== 'remove') {
+      const conn = await resolveConnection('SONARR', instanceId);
+      await invalidateReferenceLabels('sonarr', conn.id);
+    }
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to update series';

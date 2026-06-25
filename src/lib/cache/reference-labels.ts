@@ -1,4 +1,4 @@
-import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+import { getCachedJson, setCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
 import type { ResolvedLabels } from '@/types';
 
 // Per-instance lookups for resolving an *arr item's instance-local reference IDs
@@ -80,6 +80,15 @@ export async function getInstanceLabelMaps(
     ]),
   );
   return new Map(entries);
+}
+
+/**
+ * Drop a connection's cached reference-label maps after a tag is created (tag/profile change)
+ * so the next list read re-resolves the new tag's name instead of rendering a blank chip for
+ * the rest of the TTL. Keyed by connection id — the same key getInstanceLabelMaps writes under.
+ */
+export async function invalidateReferenceLabels(scope: string, connectionId: string): Promise<void> {
+  await deleteCachedJson(`${scope}-labels`, connectionId);
 }
 
 /** Resolve one item's instance-local reference IDs to display names against its own instance. */

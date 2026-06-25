@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
+import { resolveConnection } from '@/lib/arr-instances';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
+import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
@@ -40,6 +42,12 @@ async function postHandler(request: NextRequest) {
     const existing = await client.getTags();
     const match = existing.find((t) => t.label.toLowerCase() === label.toLowerCase());
     const tag = match ?? (await client.createTag(label));
+    // A newly created tag isn't in the cached label map yet — drop it so the list re-resolves
+    // the tag's name instead of rendering a blank chip until the 120s TTL expires.
+    if (!match) {
+      const conn = await resolveConnection('RADARR', instanceId);
+      await invalidateReferenceLabels('radarr', conn.id);
+    }
     return NextResponse.json(tag);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to create tag';

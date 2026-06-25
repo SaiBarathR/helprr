@@ -5,7 +5,7 @@ import { RadarrClient } from '@/lib/radarr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
 import type {
   CollectionMovieSummary,
@@ -19,7 +19,10 @@ import type {
 const COLLECTIONS_SCOPE = 'radarr-collections';
 
 const COLLECTIONS_CACHE_HEADERS = {
-  'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
+  // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
+  // and can't be busted by a mutation (here or on another device), so max-age would keep
+  // showing a removed movie / stale missing-count until it expires. Served fast from Redis.
+  'Cache-Control': 'private, no-cache',
   // Partition the private cache by session cookie so a capability-gated response can't be
   // replayed from the browser cache to a different (or logged-out) user within the TTL.
   'Vary': 'Cookie',
@@ -208,14 +211,9 @@ async function postHandler(request: NextRequest) {
 
     const movie = await client.addMovie(payload);
 
-    // Adding a movie changes both the library and the collection's missing count — drop
-    // both caches so the next read reflects it instead of replaying a stale entry.
-    await Promise.all([
-      deleteCachedJson(COLLECTIONS_SCOPE, cacheKeySeed),
-      deleteCachedJson(COLLECTIONS_SCOPE, 'all'),
-      deleteCachedJson('radarr', cacheKeySeed),
-      deleteCachedJson('radarr', 'all'),
-    ]);
+    // Adding a movie changes the library, its search index, and the collection's missing
+    // count — invalidateTaggedLibrary drops the library + search + collections caches together.
+    await invalidateTaggedLibrary('radarr', instanceId);
 
     logApiDuration('/api/radarr/collections', startedAt, { method: 'POST' });
     return NextResponse.json(movie);
