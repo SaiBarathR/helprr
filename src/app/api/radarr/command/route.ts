@@ -15,6 +15,8 @@ async function postHandler(request: NextRequest) {
     const client = await getRadarrClient(instanceId);
 
     let result;
+    // Data-mutating commands routed here must also be listed in MUTATING_COMMANDS
+    // (lib/cache/tagged-library.ts), or their completion won't drop the Redis caches.
     switch (body.name) {
       case 'MoviesSearch':
         result = await client.searchMovie(body.movieIds);

@@ -32,6 +32,8 @@ async function postHandler(request: NextRequest) {
     const client = await getLidarrClient(instanceId);
 
     let result;
+    // Data-mutating commands routed here must also be listed in MUTATING_COMMANDS
+    // (lib/cache/tagged-library.ts), or their completion won't drop the Redis caches.
     switch (body.name) {
       case 'ArtistSearch': {
         // Bulk callers send `artistIds` (fanned out one search per id, since Lidarr

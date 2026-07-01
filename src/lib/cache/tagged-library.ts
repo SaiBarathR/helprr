@@ -86,8 +86,9 @@ const SEARCH_MODULE_BY_SCOPE: Record<string, string> = {
 // POST returns immediately while the work happens seconds later, so invalidating at
 // POST time is useless — the next GET would just re-cache pre-refresh data. Instead
 // the command STATUS routes (/api/{svc}/command/[id], polled by pollCommand until a
-// terminal status) call this on every poll: the first poll that observes `completed`
-// for a data-mutating command drops the derived caches. Searches are excluded — their
+// terminal status) call this on every poll: any poll that observes `completed` for a
+// data-mutating command drops the derived caches — in practice once per command, since
+// pollCommand stops at the first terminal status. Searches are excluded — their
 // completion only queues grabs; the library changes later via the *arr's own import.
 const MUTATING_COMMANDS = new Set([
   'RefreshMovie',
@@ -115,19 +116,25 @@ export async function invalidateOnCommandComplete(
 // AND the 'all' aggregate, because a per-instance write also changes the combined list —
 // mirroring the `instanceId ?? 'all'` seed convention the library routes write under.
 export async function invalidateTaggedLibrary(scope: string, instanceId?: string): Promise<void> {
-  const seeds = [...new Set([instanceId ?? 'all', 'all'])];
-  const ops: Promise<void>[] = seeds.map((seed) => deleteCachedJson(scope, seed));
+  try {
+    const seeds = [...new Set([instanceId ?? 'all', 'all'])];
+    const ops: Promise<void>[] = seeds.map((seed) => deleteCachedJson(scope, seed));
 
-  // Global search serves a pre-built per-module index; a deleted item stays findable until it
-  // is dropped (scope 'searchindex' / module from search/index-builder.ts).
-  const searchModule = SEARCH_MODULE_BY_SCOPE[scope];
-  if (searchModule) ops.push(deleteCachedJson('searchindex', searchModule));
+    // Global search serves a pre-built per-module index; a deleted item stays findable until it
+    // is dropped (scope 'searchindex' / module from search/index-builder.ts).
+    const searchModule = SEARCH_MODULE_BY_SCOPE[scope];
+    if (searchModule) ops.push(deleteCachedJson('searchindex', searchModule));
 
-  // Radarr collections derive from the movie library (membership + missing counts). Keep
-  // 'radarr-collections' in sync with COLLECTIONS_SCOPE in api/radarr/collections/route.ts.
-  if (scope === 'radarr') {
-    for (const seed of seeds) ops.push(deleteCachedJson('radarr-collections', seed));
+    // Radarr collections derive from the movie library (membership + missing counts). Keep
+    // 'radarr-collections' in sync with COLLECTIONS_SCOPE in api/radarr/collections/route.ts.
+    if (scope === 'radarr') {
+      for (const seed of seeds) ops.push(deleteCachedJson('radarr-collections', seed));
+    }
+
+    await Promise.all(ops);
+  } catch {
+    // Cache busting is best-effort: a mutation that already succeeded upstream must never
+    // turn into a 500 because Redis hiccuped. Leaf helpers already swallow their own
+    // errors; this guarantees the no-throw contract here instead of relying on them.
   }
-
-  await Promise.all(ops);
 }
