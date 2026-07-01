@@ -48,14 +48,15 @@ import {
   Database,
   Info,
 } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  ResponsiveContainer,
-} from 'recharts';
+import dynamic from 'next/dynamic';
+import { Skeleton } from '@/components/ui/skeleton';
+
+// Recharts is heavy and only the Stats tab renders charts, so load the chart
+// module on demand (client-only) instead of bundling it into the page chunk.
+const StatsBarChart = dynamic(() => import('./stats-bar-chart'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-40 w-full rounded-lg" />,
+});
 import {
   getProwlarrIndexerStatusId,
   isProwlarrTestAllResponse,
@@ -795,57 +796,6 @@ function fmtNum(n: number): string {
   return String(n);
 }
 
-/**
- * Renders a custom chart tooltip showing a header label and a list of entries with colored indicators and formatted values.
- *
- * Displays nothing when `active` is false or `payload` is empty.
- *
- * @param active - Whether the tooltip should be shown.
- * @param payload - Array of tooltip entries. Each entry should include `name` (label), `value` (numeric value), and `color` (hex or CSS color) — values are formatted as milliseconds, percentages, or compact numbers depending on the entry name.
- * @param label - Header text shown at the top of the tooltip.
- * @returns The tooltip JSX element, or `null` when not active or when there is no payload.
- */
-function ChartTooltipContent({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-border bg-background/95 backdrop-blur-sm px-3 py-2 text-xs shadow-xl">
-      <p className="font-semibold mb-1.5 text-foreground truncate max-w-[200px]">{label}</p>
-      {payload.map((entry: { name: string; value: number; color: string }, i: number) => (
-        <div key={i} className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: entry.color }} />
-          <span className="text-muted-foreground">{entry.name}:</span>
-          <span className="font-medium text-foreground tabular-nums">
-            {entry.name === 'Response' || entry.name === 'ms'
-              ? formatMs(entry.value)
-              : entry.name.includes('%')
-                ? `${entry.value}%`
-                : fmtNum(entry.value)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Render a Y-axis tick label for charts, truncating labels longer than 16 characters.
- *
- * @param x - X coordinate where the label should be rendered.
- * @param y - Y coordinate where the label should be rendered.
- * @param payload - Tick payload object; the label is taken from `payload.value`.
- * @returns An SVG `text` element containing the tick label truncated to 16 characters with an ellipsis when needed.
- */
-function YTick({ x, y, payload }: any) {
-  const text = String(payload?.value ?? '');
-  const maxLen = 16;
-  const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text;
-  return (
-    <text x={x} y={y} dy={4} textAnchor="end" fill="var(--hpr-fgMute)" fontSize={10}>
-      {display}
-    </text>
-  );
-}
-
 interface StatCardProps {
   label: string;
   value: string;
@@ -875,10 +825,6 @@ function StatCard({ label, value, icon, iconBg }: StatCardProps) {
     </div>
   );
 }
-
-const BAR_H = 34;
-const Y_WIDTH = 108;
-const CHART_MARGIN = { top: 2, right: 12, left: 0, bottom: 2 };
 
 /**
  * Render the Stats tab showing Prowlarr metrics, controls, and visualizations.
@@ -1024,27 +970,12 @@ function StatsTab() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Response Time</p>
               </div>
               <div className="px-2 pb-3">
-                <ResponsiveContainer width="100%" height={Math.max(180, responseData.length * BAR_H)}>
-                  <BarChart data={responseData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                      tickFormatter={(v) => `${v}ms`}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={Y_WIDTH}
-                      tick={<YTick />}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
-                    <Bar dataKey="Response" fill="var(--hpr-cyan)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <StatsBarChart
+                  data={responseData}
+                  minHeight={180}
+                  xTickFormatter={(v) => `${v}ms`}
+                  bars={[{ dataKey: 'Response', fill: 'var(--hpr-cyan)', radius: [0, 4, 4, 0] }]}
+                />
               </div>
             </div>
           )}
@@ -1056,27 +987,12 @@ function StatsTab() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Failure Rate</p>
               </div>
               <div className="px-2 pb-3">
-                <ResponsiveContainer width="100%" height={Math.max(120, failureData.length * BAR_H)}>
-                  <BarChart data={failureData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                      tickFormatter={(v) => `${v}%`}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={Y_WIDTH}
-                      tick={<YTick />}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
-                    <Bar dataKey="Failure %" fill="var(--hpr-rose)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <StatsBarChart
+                  data={failureData}
+                  minHeight={120}
+                  xTickFormatter={(v) => `${v}%`}
+                  bars={[{ dataKey: 'Failure %', fill: 'var(--hpr-rose)', radius: [0, 4, 4, 0] }]}
+                />
               </div>
             </div>
           )}
@@ -1100,29 +1016,12 @@ function StatsTab() {
                 </div>
               </div>
               <div className="px-2 pb-3">
-                <ResponsiveContainer width="100%" height={Math.max(180, queriesData.length * BAR_H)}>
-                  <BarChart data={queriesData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                      tickFormatter={fmtNum}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={Y_WIDTH}
-                      tick={<YTick />}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
-                    <Bar dataKey="Search" stackId="q" fill="var(--hpr-violet)" />
-                    <Bar dataKey="RSS" stackId="q" fill="var(--hpr-amber)" />
-                    <Bar dataKey="Auth" stackId="q" fill="var(--hpr-rose)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <StatsBarChart
+                  data={queriesData}
+                  minHeight={180}
+                  xTickFormatter={fmtNum}
+                  bars={[{ dataKey: 'Search', stackId: 'q', fill: 'var(--hpr-violet)' }, { dataKey: 'RSS', stackId: 'q', fill: 'var(--hpr-amber)' }, { dataKey: 'Auth', stackId: 'q', fill: 'var(--hpr-rose)', radius: [0, 4, 4, 0] }]}
+                />
               </div>
             </div>
           )}
@@ -1134,27 +1033,12 @@ function StatsTab() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Grabs by Indexer</p>
               </div>
               <div className="px-2 pb-3">
-                <ResponsiveContainer width="100%" height={Math.max(120, grabsData.length * BAR_H)}>
-                  <BarChart data={grabsData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                      tickFormatter={fmtNum}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={Y_WIDTH}
-                      tick={<YTick />}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
-                    <Bar dataKey="Grabs" fill="var(--hpr-green)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <StatsBarChart
+                  data={grabsData}
+                  minHeight={120}
+                  xTickFormatter={fmtNum}
+                  bars={[{ dataKey: 'Grabs', fill: 'var(--hpr-green)', radius: [0, 4, 4, 0] }]}
+                />
               </div>
             </div>
           )}
@@ -1166,27 +1050,12 @@ function StatsTab() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">User Agent — Queries</p>
               </div>
               <div className="px-2 pb-3">
-                <ResponsiveContainer width="100%" height={Math.max(160, uaQueryData.length * BAR_H)}>
-                  <BarChart data={uaQueryData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                      tickFormatter={fmtNum}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={Y_WIDTH}
-                      tick={<YTick />}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
-                    <Bar dataKey="Queries" fill="var(--hpr-violet)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <StatsBarChart
+                  data={uaQueryData}
+                  minHeight={160}
+                  xTickFormatter={fmtNum}
+                  bars={[{ dataKey: 'Queries', fill: 'var(--hpr-violet)', radius: [0, 4, 4, 0] }]}
+                />
               </div>
             </div>
           )}
@@ -1198,27 +1067,12 @@ function StatsTab() {
                 <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">User Agent — Grabs</p>
               </div>
               <div className="px-2 pb-3">
-                <ResponsiveContainer width="100%" height={Math.max(160, uaGrabData.length * BAR_H)}>
-                  <BarChart data={uaGrabData} layout="vertical" margin={CHART_MARGIN} barSize={12}>
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                      tickFormatter={fmtNum}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={Y_WIDTH}
-                      tick={<YTick />}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <RechartsTooltip content={<ChartTooltipContent />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
-                    <Bar dataKey="Grabs" fill="var(--hpr-green)" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <StatsBarChart
+                  data={uaGrabData}
+                  minHeight={160}
+                  xTickFormatter={fmtNum}
+                  bars={[{ dataKey: 'Grabs', fill: 'var(--hpr-green)', radius: [0, 4, 4, 0] }]}
+                />
               </div>
             </div>
           )}

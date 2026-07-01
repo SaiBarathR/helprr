@@ -32,3 +32,15 @@ export async function setCachedLibraryGaps(response: LibraryGapsResponse): Promi
     // noop — caching is best-effort
   }
 }
+
+// Gaps derive from the library, so invalidateTaggedLibrary drops this alongside
+// the library entry — a deleted/added item shouldn't replay in gaps for the TTL.
+export async function deleteCachedLibraryGaps(): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    const generation = await getCacheGeneration();
+    await redis.del(buildLibraryGapsKey(generation));
+  } catch {
+    // noop — busting is best-effort; the short TTL is the backstop
+  }
+}

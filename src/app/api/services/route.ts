@@ -4,7 +4,7 @@ import { JellyfinClient } from '@/lib/jellyfin-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
-import { ensureDefaultForType, isArrType } from '@/lib/arr-instances';
+import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 
 function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
@@ -232,6 +232,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     await ensureDefaultForType(type);
+    clearConnectionMemo();
 
     return NextResponse.json({
       ...connection,

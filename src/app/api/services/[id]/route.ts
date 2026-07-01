@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { ensureDefaultForType, setDefaultConnection } from '@/lib/arr-instances';
+import { clearConnectionMemo, ensureDefaultForType, setDefaultConnection } from '@/lib/arr-instances';
 import { maskApiKey } from '@/lib/service-connection-secrets';
 
 async function deleteHandler(_request: NextRequest, ctx: { params: Promise<{ id: string }> }): Promise<NextResponse> {
@@ -17,6 +17,7 @@ async function deleteHandler(_request: NextRequest, ctx: { params: Promise<{ id:
 
   await prisma.serviceConnection.delete({ where: { id } }); // PollingState cascades
   await ensureDefaultForType(existing.type); // promote a sibling if we removed the default
+  clearConnectionMemo();
   return NextResponse.json({ ok: true });
 }
 
@@ -51,6 +52,7 @@ async function patchHandler(request: NextRequest, ctx: { params: Promise<{ id: s
     }
   }
 
+  clearConnectionMemo();
   const updated = await prisma.serviceConnection.findUnique({ where: { id } });
   return NextResponse.json({ ...updated, apiKey: updated ? maskApiKey(updated.apiKey) : null });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { clearConnectionMemo } from '@/lib/arr-instances';
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -35,6 +36,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
       where: { id: id.trim() },
       data: { externalUrl },
     });
+    clearConnectionMemo();
     return NextResponse.json({ id: updated.id, type: updated.type, externalUrl: updated.externalUrl });
   } catch (error) {
     console.error('Failed to update external URL:', error);

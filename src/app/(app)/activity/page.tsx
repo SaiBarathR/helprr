@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { PageSpinner } from '@/components/ui/page-spinner';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import {
   Drawer,
   DrawerContent,
@@ -646,25 +646,42 @@ function QueueTab({
     // representative record clears every sibling; "ignore" only drops the record(s) we hit.
     const teardown = removeFromClient || changeCategory;
 
-    // Records to DELETE, and the optimistic badge delta (count + flagged subset).
+    // Records to DELETE, the rows to drop optimistically (teardown clears every
+    // sibling server-side, so the UI should drop them all too), and the badge delta.
     let toDelete: QueueRecord[];
+    let uiRemove: QueueRecord[];
     let delta: { count: number; attention: number };
     if (target.kind === 'pack') {
       delta = queueRemovalDelta(target.group.items);
       toDelete = teardown ? [target.group.rep] : target.group.items;
+      uiRemove = target.group.items;
     } else {
       const item = target.item;
+      const siblings = teardown ? downloadSiblings(queue, item) : [item];
       delta = teardown
-        ? queueRemovalDelta(downloadSiblings(queue, item))
+        ? queueRemovalDelta(siblings)
         : {
             count: 1,
             attention: classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus) !== null ? 1 : 0,
           };
       toDelete = [item];
+      uiRemove = siblings;
     }
     const source = (target.kind === 'pack' ? target.group.rep.source : target.item.source) || 'sonarr';
 
     setRemoving(true);
+    // Optimistically drop the rows so removal feels instant: stop a racing poll
+    // from clobbering the patch, snapshot for rollback, then patch the raw
+    // { records } cache shape (the query's `select` derives the array from it).
+    await queryClient.cancelQueries({ queryKey: ['activity', 'queue'] });
+    const snapshot = queryClient.getQueryData<{ records?: (QueueItem & { source?: string })[] }>(['activity', 'queue']);
+    if (snapshot?.records) {
+      const removeIds = new Set(uiRemove.map((rec) => rec.id));
+      queryClient.setQueryData(['activity', 'queue'], {
+        ...snapshot,
+        records: snapshot.records.filter((rec) => !removeIds.has(rec.id)),
+      });
+    }
     try {
       for (const rec of toDelete) {
         const params = new URLSearchParams({
@@ -684,7 +701,11 @@ function QueueTab({
       toast.success(delta.count > 1 ? `Removed ${delta.count} ${packNoun(source)} from queue` : 'Removed from queue');
       // Optimistic nudge only on full success; the badge poll reconciles a partial delete.
       adjustBadge('activity', -(delta.count || 1), -delta.attention);
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Failed to remove'); }
+    } catch (e) {
+      // Roll back the optimistic drop; the finally-refetch reconciles a partial delete.
+      if (snapshot) queryClient.setQueryData(['activity', 'queue'], snapshot);
+      toast.error(e instanceof Error ? e.message : 'Failed to remove');
+    }
     finally {
       // Always close the dialog and refetch: a pack "ignore" deletes records one by one,
       // so a mid-loop failure can leave some already gone — the refetch reflects reality,
@@ -699,7 +720,7 @@ function QueueTab({
   const removeRep = removeTarget?.kind === 'pack' ? removeTarget.group.rep : removeTarget?.item;
 
   if (loading) {
-    return <PageSpinner />;
+    return <ListSkeleton />;
   }
 
   if (sorted.length === 0) {
@@ -713,6 +734,13 @@ function QueueTab({
 
   return (
     <>
+      {/* A failed background poll shouldn't blank a still-populated queue; show
+          a small inline banner instead and keep the last-good records rendered. */}
+      {queueQuery.isError && queue.length > 0 && (
+        <div className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-center text-xs text-destructive">
+          Live updates paused — retrying…
+        </div>
+      )}
       <div className="space-y-2 animate-list-in">
         {sorted.map((group) => {
           const { rep } = group;
@@ -1118,7 +1146,7 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
   }
 
   if (loading) {
-    return <PageSpinner />;
+    return <ListSkeleton />;
   }
 
   if (queue.length === 0) {
@@ -1262,7 +1290,7 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   }
 
   if (loading) {
-    return <PageSpinner />;
+    return <ListSkeleton />;
   }
 
   if (records.length === 0) {

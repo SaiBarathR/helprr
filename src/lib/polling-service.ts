@@ -24,6 +24,8 @@ import { logger } from '@/lib/logger';
 import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/scheduled-alerts/delivery';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
+import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getQueueCached, QUEUE_DEFAULT_PAGE, QUEUE_DEFAULT_PAGE_SIZE } from '@/lib/activity-queue';
 import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
 import {
   PollNotificationCollector,
@@ -212,6 +214,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   applyBandwidthSchedule: 15_000,
   checkNotificationRetention: 15_000,
   checkAnimeAutoMap: 15_000,
+  warmCaches: 60_000,
 };
 
 type HistoryCursorState = {
@@ -549,6 +552,7 @@ export class PollingService {
         { source: 'applyBandwidthSchedule', run: () => this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()) },
         { source: 'checkNotificationRetention', run: () => this.runPollSource('checkNotificationRetention', () => this.checkNotificationRetention()) },
         { source: 'checkAnimeAutoMap', run: () => this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()) },
+        { source: 'warmCaches', run: () => this.runPollSource('warmCaches', () => this.warmCaches()) },
       );
       const pollSources = pollTasks.map((task) => task.source);
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
@@ -803,6 +807,34 @@ export class PollingService {
       this.animeMapRun = null;
       this.animeMapWake = null;
     }
+  }
+
+  // Keep the hot read caches warm so a user opening the app hits Redis instead
+  // of a live *arr fan-out. These are the exact loaders (scope + seed) the
+  // /api/{sonarr,radarr,lidarr} library routes and /api/activity/queue use, so
+  // a warm entry serves them directly; when already warm each is one Redis GET.
+  private async warmCaches(): Promise<void> {
+    await Promise.all([
+      getCachedTaggedLibrary({
+        scope: 'sonarr',
+        cacheKeySeed: 'all',
+        getInstances: getSonarrClients,
+        fetchOne: (c) => c.getSeries(),
+      }),
+      getCachedTaggedLibrary({
+        scope: 'radarr',
+        cacheKeySeed: 'all',
+        getInstances: getRadarrClients,
+        fetchOne: (c) => c.getMovies(),
+      }),
+      getCachedTaggedLibrary({
+        scope: 'lidarr',
+        cacheKeySeed: 'all',
+        getInstances: getLidarrClients,
+        fetchOne: (c) => c.getArtists(),
+      }),
+      getQueueCached(QUEUE_DEFAULT_PAGE, QUEUE_DEFAULT_PAGE_SIZE),
+    ]);
   }
 
   // Daily anime auto-map scheduling gate. The run itself lives on a detached
@@ -1203,6 +1235,13 @@ export class PollingService {
           }
         }
 
+        // A new import means the library changed: bust the cached library here
+        // so freshness doesn't depend on a browser polling the command status
+        // to completion. warmCaches re-populates fresh data next cycle.
+        if (newHistory.some((item) => item.eventType === 'downloadFolderImported' || item.eventType === 'episodeFileImported')) {
+          await invalidateTaggedLibrary('sonarr', instanceId);
+        }
+
         // Health check
         const health = await client.getHealth();
         const healthHash = crypto.createHash('md5').update(JSON.stringify(health)).digest('hex');
@@ -1414,6 +1453,13 @@ export class PollingService {
           }
         }
 
+        // A new import means the library changed: bust the cached library here
+        // so freshness doesn't depend on a browser polling the command status
+        // to completion. warmCaches re-populates fresh data next cycle.
+        if (newHistory.some((item) => item.eventType === 'downloadFolderImported' || item.eventType === 'movieFileImported')) {
+          await invalidateTaggedLibrary('radarr', instanceId);
+        }
+
         const health = await client.getHealth();
         const healthHash = crypto.createHash('md5').update(JSON.stringify(health)).digest('hex');
         logger.debug('Radarr health polled', {
@@ -1592,6 +1638,13 @@ export class PollingService {
               url: redirect,
             }, { service: 'lidarr', instanceId, reason: 'history-imported', historyId: item.id });
           }
+        }
+
+        // A new import means the library changed: bust the cached library here
+        // so freshness doesn't depend on a browser polling the command status
+        // to completion. warmCaches re-populates fresh data next cycle.
+        if (newHistory.some((item) => item.eventType === 'downloadImported' || item.eventType === 'trackFileImported')) {
+          await invalidateTaggedLibrary('lidarr', instanceId);
         }
 
         const health = await client.getHealth();

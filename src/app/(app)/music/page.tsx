@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
-import { PageSpinner } from '@/components/ui/page-spinner';
+import { MediaGridSkeleton } from '@/components/ui/media-grid-skeleton';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   DropdownMenu,
@@ -786,7 +786,7 @@ export default function MusicPage() {
 
       {(() => {
         if (loading && artists.length === 0) {
-          return <PageSpinner />;
+          return <MediaGridSkeleton />;
         }
 
         if (filtered.length === 0) {

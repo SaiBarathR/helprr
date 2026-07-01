@@ -70,6 +70,27 @@ const runtimeCaching: RuntimeCaching[] =
           }),
         },
         {
+          // Proxied poster/artwork images. CacheFirst: the URL carries a
+          // ?v=<imageCacheGeneration> stamp (src/lib/image.ts), so an admin purge
+          // changes every URL and stale entries age out via LRU — no revalidation
+          // needed per load. This is what makes posters instant (and available
+          // offline) on a cold PWA start instead of a re-download over mobile data.
+          // Auth-gated content, so the cache is user-scoped and cleared on logout.
+          matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && pathname.startsWith('/api/image'),
+          method: 'GET',
+          handler: new CacheFirst({
+            cacheName: 'api-images',
+            plugins: [
+              new CacheableResponsePlugin({ statuses: [200] }),
+              new ExpirationPlugin({
+                maxEntries: 300,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+                maxAgeFrom: 'last-used',
+              }),
+            ],
+          }),
+        },
+        {
           // Everything else under /api stays network-only (mutations are POST/DELETE
           // and excluded by method anyway; this is the catch-all for non-allowlisted reads).
           matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && pathname.startsWith('/api/'),
@@ -447,7 +468,8 @@ self.addEventListener('unhandledrejection', (event) => {
 // Clear user-scoped caches on logout so the next person to sign in on this
 // installed PWA never sees the previous user's cached shell or read data. Asset
 // caches (static/image/font) are user-agnostic and intentionally kept.
-const USER_SCOPED_CACHES = ['pages', 'api-readonly'];
+// api-images holds auth-gated posters, so it's user-scoped too.
+const USER_SCOPED_CACHES = ['pages', 'api-readonly', 'api-images'];
 self.addEventListener('message', (event) => {
   if ((event.data as { type?: string } | undefined)?.type === 'helprr-clear-user-caches') {
     event.waitUntil(

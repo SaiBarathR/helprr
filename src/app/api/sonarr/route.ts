@@ -8,6 +8,7 @@ import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
+import { etagJson } from '@/lib/etag-json';
 
 const SONARR_CACHE_HEADERS = {
   // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
@@ -88,20 +89,21 @@ async function getHandler(request: NextRequest) {
 
     logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: tagged.length, cached: !!cached });
     if (full) {
-      return NextResponse.json(tagged, { headers: SONARR_CACHE_HEADERS });
+      return etagJson(request, tagged, SONARR_CACHE_HEADERS);
     }
 
     // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
     // series from a non-default Sonarr isn't mislabelled by the default instance's lookup.
     const labelMaps = await getInstanceLabelMaps('sonarr', await resolveInstances());
-    return NextResponse.json(
+    return etagJson(
+      request,
       tagged.map((s) => ({
         ...toListItem(s),
         instanceId: s.instanceId,
         instanceLabel: s.instanceLabel,
         ...labelsFor(labelMaps, s.instanceId, { qualityProfileId: s.qualityProfileId, tags: s.tags }),
       })),
-      { headers: SONARR_CACHE_HEADERS }
+      SONARR_CACHE_HEADERS
     );
   } catch (error) {
     logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true });

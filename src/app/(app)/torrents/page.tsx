@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 import {
   Play,
   Pause,
@@ -150,6 +151,8 @@ function getStateBadge(state: string) {
     stalledUP: { label: 'Seeding', variant: 'secondary' },
     pausedDL: { label: 'Paused', variant: 'outline' },
     pausedUP: { label: 'Paused', variant: 'outline' },
+    stoppedDL: { label: 'Stopped', variant: 'outline' },
+    stoppedUP: { label: 'Stopped', variant: 'outline' },
     queuedDL: { label: 'Queued', variant: 'secondary' },
     queuedUP: { label: 'Queued', variant: 'secondary' },
     checkingDL: { label: 'Checking', variant: 'secondary' },
@@ -290,6 +293,30 @@ function mergeTorrents(prev: QBittorrentTorrent[], next: QBittorrentTorrent[]): 
 
   return changed ? merged : prev;
 }
+
+// Optimistic row patches applied to the touched rows before the POST resolves.
+// qBittorrent applies start/stop ASYNCHRONOUSLY: a poll landing right after the
+// POST can still report the pre-action state, so state patches are additionally
+// held as pending overrides (see the merge effect) until a poll confirms the
+// state actually changed — otherwise the reconcile would revert the row.
+const OPTIMISTIC_ROW_PATCHES: Record<
+  string,
+  (t: QBittorrentTorrent, extra?: Record<string, unknown>) => QBittorrentTorrent
+> = {
+  start: (t) => ({ ...t, state: t.progress >= 1 ? 'uploading' : 'downloading' }),
+  resume: (t) => ({ ...t, state: t.progress >= 1 ? 'uploading' : 'downloading' }),
+  forceStart: (t) => ({ ...t, state: t.progress >= 1 ? 'forcedUP' : 'forcedDL' }),
+  stop: (t) => ({ ...t, state: t.progress >= 1 ? 'stoppedUP' : 'stoppedDL', dlspeed: 0, upspeed: 0 }),
+  pause: (t) => ({ ...t, state: t.progress >= 1 ? 'pausedUP' : 'pausedDL', dlspeed: 0, upspeed: 0 }),
+  setCategory: (t, extra) => ({ ...t, category: String(extra?.category ?? '') }),
+  rename: (t, extra) => ({ ...t, name: String(extra?.name ?? t.name) }),
+};
+
+// How long an optimistic state override may outlive polls that still report the
+// pre-action state before we give up and accept the server's answer.
+const OPTIMISTIC_STATE_TTL_MS = 10_000;
+
+type PendingStateOverride = { state: string; prevState: string; until: number };
 
 // --- SpeedLimitInput component ---
 
@@ -643,11 +670,37 @@ export default function TorrentsPage() {
   });
   const refetchSummary = summaryQuery.refetch;
 
+  // Optimistic state overrides awaiting server confirmation, keyed by hash.
+  // qBittorrent applies start/stop asynchronously, so a poll can still report
+  // the pre-action state right after an action; while an override is pending
+  // (and unexpired) such a poll must not revert the row.
+  const pendingStateRef = useRef(new Map<string, PendingStateOverride>());
+
   // Merge new data into local state so polls preserve UI ordering/identity
   // (mergeTorrents reconciles by hash instead of replacing the list wholesale).
   useEffect(() => {
     if (summaryQuery.data) {
-      setTorrents((prev) => mergeTorrents(prev, summaryQuery.data.torrents));
+      setTorrents((prev) => {
+        let merged = mergeTorrents(prev, summaryQuery.data.torrents);
+        const pending = pendingStateRef.current;
+        if (pending.size > 0) {
+          const now = Date.now();
+          merged = merged.map((t) => {
+            const override = pending.get(t.hash);
+            if (!override) return t;
+            if (t.state !== override.prevState || now > override.until) {
+              // Confirmed (state moved off the pre-action value) or expired.
+              pending.delete(t.hash);
+              return t;
+            }
+            return { ...t, state: override.state };
+          });
+          for (const hash of pending.keys()) {
+            if (!merged.some((t) => t.hash === hash)) pending.delete(hash);
+          }
+        }
+        return merged;
+      });
       setTransferInfo(summaryQuery.data.transferInfo);
       setSpeedLimitsMode(summaryQuery.data.speedLimitsMode ?? 0);
     }
@@ -732,12 +785,41 @@ export default function TorrentsPage() {
     };
   }, [selectedTorrents.size, loading, error, torrents.length, search]);
 
+  // Mirror of `torrents` so torrentAction can snapshot for optimistic rollback
+  // without adding the list to its deps (which would churn row callbacks every poll).
+  const torrentsRef = useRef(torrents);
+  torrentsRef.current = torrents;
+
   const torrentAction = useCallback(async (
     hash: string,
     action: string,
     extra?: Record<string, unknown>,
     opts?: { silent?: boolean },
   ): Promise<boolean> => {
+    // Optimistically patch the touched rows so the UI reacts instantly; state
+    // changes are also registered as pending overrides so a poll that races the
+    // action (qBittorrent applies start/stop asynchronously) can't revert them.
+    const patchRow = OPTIMISTIC_ROW_PATCHES[action];
+    const hashes = new Set(hash.split('|'));
+    let snapshot: QBittorrentTorrent[] | null = null;
+    if (patchRow || action === 'delete') {
+      snapshot = torrentsRef.current;
+      if (action !== 'delete') {
+        const until = Date.now() + OPTIMISTIC_STATE_TTL_MS;
+        for (const t of snapshot) {
+          if (!hashes.has(t.hash)) continue;
+          const next = patchRow!(t, extra);
+          if (next.state !== t.state) {
+            pendingStateRef.current.set(t.hash, { state: next.state, prevState: t.state, until });
+          }
+        }
+      }
+      setTorrents((prev) =>
+        action === 'delete'
+          ? prev.filter((t) => !hashes.has(t.hash))
+          : prev.map((t) => (hashes.has(t.hash) ? patchRow!(t, extra) : t)),
+      );
+    }
     try {
       const res = await fetch('/api/qbittorrent', {
         method: 'POST',
@@ -756,6 +838,10 @@ export default function TorrentsPage() {
       }, 500);
       return true;
     } catch (err) {
+      if (snapshot) {
+        for (const h of hashes) pendingStateRef.current.delete(h);
+        setTorrents(snapshot);
+      }
       if (!opts?.silent) toast.error(err instanceof Error ? err.message : 'Action failed');
       return false;
     }
@@ -861,6 +947,8 @@ export default function TorrentsPage() {
   }, [renameDrawer.hash, renameValue, torrentAction]);
 
   const toggleAltSpeedMode = useCallback(async () => {
+    // Optimistic flip; reverted on failure, reconciled by the delayed refetch.
+    setSpeedLimitsMode((m) => (m === 1 ? 0 : 1));
     try {
       const res = await fetch('/api/qbittorrent/transfer/limits', {
         method: 'POST',
@@ -871,6 +959,7 @@ export default function TorrentsPage() {
       toast.success('Alternative speed mode toggled');
       setTimeout(() => void refetchSummary(), 300);
     } catch {
+      setSpeedLimitsMode((m) => (m === 1 ? 0 : 1));
       toast.error('Failed to toggle speed mode');
     }
   }, [refetchSummary]);
@@ -1185,9 +1274,7 @@ export default function TorrentsPage() {
       )}
 
       {loading && torrents.length === 0 ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+        <ListSkeleton />
       ) : error && torrents.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           <p>{error}</p>
