@@ -6,6 +6,7 @@ import type { Capability } from '@/lib/capabilities';
 import { MagnetParseError, parseMagnetInfoHash } from '@/lib/magnet';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
@@ -202,6 +203,7 @@ async function postHandler(request: NextRequest) {
         savepath: savepath || undefined,
         paused,
       });
+      await bumpQbitCacheVersion();
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file' });
       return NextResponse.json({ success: true });
     }
@@ -226,6 +228,8 @@ async function postHandler(request: NextRequest) {
     if (body.action !== undefined) {
       const actionResponse = await runTorrentAction(client, body);
       if (actionResponse) return actionResponse;
+      // Bust the summary cache so the client's reconcile refetch sees post-action state.
+      await bumpQbitCacheVersion();
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'action', action: body.action });
       return NextResponse.json({ success: true });
     }
@@ -304,6 +308,7 @@ async function postHandler(request: NextRequest) {
       );
     }
 
+    await bumpQbitCacheVersion();
     logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet' });
     return NextResponse.json({ success: true, hash: normalizedHash });
   } catch (error) {

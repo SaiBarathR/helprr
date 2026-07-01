@@ -1,4 +1,5 @@
 import { getCachedJson, setCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
+import { deleteCachedLibraryGaps } from '@/lib/cache/library-gaps-cache';
 
 // Shared get-or-fetch for a tagged *arr library (Sonarr series / Radarr movies /
 // Lidarr artists). One entry per (scope, instance) is reused by both the library
@@ -130,6 +131,10 @@ export async function invalidateTaggedLibrary(scope: string, instanceId?: string
     if (scope === 'radarr') {
       for (const seed of seeds) ops.push(deleteCachedJson('radarr-collections', seed));
     }
+
+    // Library gaps aggregate across the *arr libraries; drop them so a mutated
+    // library doesn't replay its pre-mutation gaps for the rest of the TTL.
+    ops.push(deleteCachedLibraryGaps());
 
     await Promise.all(ops);
   } catch {

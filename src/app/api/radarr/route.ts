@@ -8,6 +8,7 @@ import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
+import { etagJson } from '@/lib/etag-json';
 
 const RADARR_CACHE_HEADERS = {
   // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
@@ -91,19 +92,20 @@ async function getHandler(request: NextRequest) {
       movieCount: tagged.length,
       cached: !!cached,
     });
-    if (full) return NextResponse.json(tagged, { headers: RADARR_CACHE_HEADERS });
+    if (full) return etagJson(request, tagged, RADARR_CACHE_HEADERS);
 
     // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
     // movie from a non-default Radarr isn't mislabelled by the default instance's lookup.
     const labelMaps = await getInstanceLabelMaps('radarr', await resolveInstances());
-    return NextResponse.json(
+    return etagJson(
+      request,
       tagged.map((m) => ({
         ...toListItem(m),
         instanceId: m.instanceId,
         instanceLabel: m.instanceLabel,
         ...labelsFor(labelMaps, m.instanceId, { qualityProfileId: m.qualityProfileId, tags: m.tags }),
       })),
-      { headers: RADARR_CACHE_HEADERS }
+      RADARR_CACHE_HEADERS
     );
   } catch (error) {
     logApiDuration('/api/radarr', startedAt, { method: 'GET', failed: true });

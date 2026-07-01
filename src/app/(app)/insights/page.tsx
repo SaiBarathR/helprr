@@ -9,13 +9,31 @@ import { useInsightsResource, toDateKey, type InsightsRange } from '@/components
 import { shiftDayKey } from '@/lib/insights';
 import { KpiRow } from '@/components/insights/kpi-row';
 import { ServiceHealthStrip } from '@/components/insights/service-health-strip';
-import { LibraryGrowthCard } from '@/components/insights/library-growth-card';
+import dynamic from 'next/dynamic';
+import { Skeleton } from '@/components/ui/skeleton';
 import { LibraryGapsCard } from '@/components/insights/library-gaps-card';
-import { DownloadSuccessCard } from '@/components/insights/download-success-card';
-import { DownloadPipelineCard } from '@/components/insights/download-pipeline-card';
 import { StorageInsightsCard } from '@/components/insights/storage-insights-card';
 import { SeedingEconomicsCard } from '@/components/insights/seeding-economics-card';
-import { TopIndexersCard } from '@/components/insights/top-indexers-card';
+
+// These four cards pull in recharts (heavy); load them on demand (client-only)
+// so the chart lib stays out of the insights page's initial chunk.
+const chartCardSkeleton = () => <Skeleton className="h-64 w-full rounded-xl" />;
+const LibraryGrowthCard = dynamic(
+  () => import('@/components/insights/library-growth-card').then((m) => m.LibraryGrowthCard),
+  { ssr: false, loading: chartCardSkeleton },
+);
+const DownloadSuccessCard = dynamic(
+  () => import('@/components/insights/download-success-card').then((m) => m.DownloadSuccessCard),
+  { ssr: false, loading: chartCardSkeleton },
+);
+const DownloadPipelineCard = dynamic(
+  () => import('@/components/insights/download-pipeline-card').then((m) => m.DownloadPipelineCard),
+  { ssr: false, loading: chartCardSkeleton },
+);
+const TopIndexersCard = dynamic(
+  () => import('@/components/insights/top-indexers-card').then((m) => m.TopIndexersCard),
+  { ssr: false, loading: chartCardSkeleton },
+);
 import { WatchStatsSection } from '@/components/insights/watch-stats-section';
 import { JellyfinLibrariesCard } from '@/components/insights/jellyfin-libraries-card';
 import type { ServicesStatsResponse } from '@/types/service-stats';

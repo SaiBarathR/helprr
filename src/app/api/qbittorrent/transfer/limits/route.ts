@@ -3,6 +3,7 @@ import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 
 async function getHandler() {
   const authError = await requireAuth();
@@ -58,6 +59,8 @@ async function postHandler(request: NextRequest) {
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
 
+    // Bust the summary cache so the client's reconcile refetch sees the new mode/limits.
+    await bumpQbitCacheVersion();
     logApiDuration('/api/qbittorrent/transfer/limits', startedAt, { method: 'POST', action });
     return NextResponse.json({ success: true });
   } catch (error) {

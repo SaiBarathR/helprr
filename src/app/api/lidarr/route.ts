@@ -8,6 +8,7 @@ import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
+import { etagJson } from '@/lib/etag-json';
 
 const LIDARR_CACHE_HEADERS = {
   // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
@@ -87,12 +88,13 @@ async function getHandler(request: NextRequest) {
     });
 
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', full, artistCount: tagged.length, cached: !!cached });
-    if (full) return NextResponse.json(tagged, { headers: LIDARR_CACHE_HEADERS });
+    if (full) return etagJson(request, tagged, LIDARR_CACHE_HEADERS);
 
     // Resolve quality-profile / metadata-profile / tag IDs to names against each item's OWN
     // instance, so an artist from a non-default Lidarr isn't mislabelled by the default lookup.
     const labelMaps = await getInstanceLabelMaps('lidarr', await resolveInstances());
-    return NextResponse.json(
+    return etagJson(
+      request,
       tagged.map((a) => ({
         ...toListItem(a),
         instanceId: a.instanceId,
@@ -103,7 +105,7 @@ async function getHandler(request: NextRequest) {
           tags: a.tags,
         }),
       })),
-      { headers: LIDARR_CACHE_HEADERS },
+      LIDARR_CACHE_HEADERS,
     );
   } catch (error) {
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true });

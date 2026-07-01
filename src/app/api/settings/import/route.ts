@@ -13,7 +13,7 @@ import { configureApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { EVENT_TYPES } from '@/lib/notification-events';
 import { isServiceType } from '@/lib/service-connection-secrets';
-import { isArrType, ensureDefaultForType } from '@/lib/arr-instances';
+import { isArrType, ensureDefaultForType, clearConnectionMemo } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { parsePermissions } from '@/lib/permissions';
@@ -1463,6 +1463,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         console.warn('Failed to ensure default instance after import', err);
       }
     }
+    clearConnectionMemo();
   }
 
   const result: ImportResult = {

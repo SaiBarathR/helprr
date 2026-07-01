@@ -112,19 +112,33 @@ export function setCachedAnilistTtlSettings(value: AnilistTtlSettings): void {
   cachedAnilistTtlsAt = Date.now();
 }
 
+// In-process memo (same window as the images flag): the generation is read on
+// every cached read/write, so this trims one Redis round-trip from each. It only
+// changes via bumpCacheGeneration (admin purge), which updates the memo directly;
+// ≤5s of old-generation reads on OTHER instances after a purge is acceptable.
+let cachedGeneration: number | null = null;
+let cachedGenerationAt = 0;
+
 export async function getCacheGeneration(): Promise<number> {
+  const now = Date.now();
+  if (cachedGeneration !== null && now - cachedGenerationAt <= CACHE_IMAGES_SETTINGS_TTL_MS) {
+    return cachedGeneration;
+  }
   try {
     const redis = await getRedisClient();
-    const existing = parseGeneration(await redis.get(CACHE_GENERATION_KEY));
-    if (existing) return existing;
+    let generation = parseGeneration(await redis.get(CACHE_GENERATION_KEY));
 
-    const initialized = await redis.set(CACHE_GENERATION_KEY, '1', { NX: true });
-    if (initialized === 'OK') return 1;
+    if (!generation) {
+      const initialized = await redis.set(CACHE_GENERATION_KEY, '1', { NX: true });
+      generation = initialized === 'OK' ? 1 : (parseGeneration(await redis.get(CACHE_GENERATION_KEY)) ?? 1);
+    }
 
-    const afterInit = parseGeneration(await redis.get(CACHE_GENERATION_KEY));
-    return afterInit ?? 1;
+    cachedGeneration = generation;
+    cachedGenerationAt = now;
+    return generation;
   } catch {
-    return 1;
+    // Don't stamp the memo on failure: keep last-known if present, retry next call.
+    return cachedGeneration ?? 1;
   }
 }
 
@@ -132,7 +146,10 @@ export async function bumpCacheGeneration(): Promise<number> {
   try {
     const redis = await getRedisClient();
     const next = await redis.incr(CACHE_GENERATION_KEY);
-    return Number.isFinite(next) && next > 0 ? next : 1;
+    const generation = Number.isFinite(next) && next > 0 ? next : 1;
+    cachedGeneration = generation;
+    cachedGenerationAt = Date.now();
+    return generation;
   } catch {
     return 1;
   }
