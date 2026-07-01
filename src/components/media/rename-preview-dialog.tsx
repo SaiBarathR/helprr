@@ -167,11 +167,20 @@ export function RenamePreviewDialog({
       onOpenChange(false);
       // RenameFiles is async on the *arr side: wait for it to finish, then refetch
       // everything that still shows the old paths. Polling the command status route
-      // also drops the server-side library cache on completion.
+      // also drops the server-side library cache on completion. Invalidate on every
+      // outcome — refetching just shows the server's actual state either way.
       const invalidate = () =>
         INVALIDATE_BY_SERVICE[service](queryClient, { itemId: mediaId, instanceId });
-      if (command.id) void pollCommand(service, command.id, instanceId).then(invalidate);
-      else invalidate();
+      if (command.id) {
+        void pollCommand(service, command.id, instanceId).then((status) => {
+          invalidate();
+          if (status === 'failed' || status === 'aborted' || status === 'error') {
+            toast.error('Rename failed on the server');
+          }
+        });
+      } else {
+        invalidate();
+      }
     },
     onError: () => toast.error('Failed to rename files'),
   });

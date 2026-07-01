@@ -17,6 +17,8 @@ async function postHandler(request: NextRequest) {
     const client = await getSonarrClient(instanceId);
 
     let result;
+    // Data-mutating commands routed here must also be listed in MUTATING_COMMANDS
+    // (lib/cache/tagged-library.ts), or their completion won't drop the Redis caches.
     switch (body.name) {
       case 'EpisodeSearch':
         result = await client.searchEpisode(body.episodeIds);
