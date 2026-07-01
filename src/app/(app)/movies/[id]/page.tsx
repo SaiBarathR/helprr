@@ -977,6 +977,7 @@ export default function MovieDetailPage() {
         service="radarr"
         mediaId={movie.id}
         mediaTitle={movie.title}
+        instanceId={instance}
       />
 
       <WatchlistAddDialog

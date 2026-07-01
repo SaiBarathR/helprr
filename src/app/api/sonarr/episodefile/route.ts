@@ -10,6 +10,7 @@ import {
   checkOwnership,
 } from '@/lib/manage-files-guard';
 import { recordFileAudit } from '@/lib/file-audit';
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { EpisodeFileEdit, EpisodeFileResource } from '@/types';
 
 // ── GET /api/sonarr/episodefile?seriesId= ───────────────────────────────────
@@ -133,6 +134,8 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   });
 
   if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  // File metadata feeds the cached library rows (per-episode quality rollups).
+  await invalidateTaggedLibrary('sonarr', instanceId);
   return NextResponse.json(result);
 }
 
@@ -207,6 +210,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   });
 
   if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  // Deleting files changes the series statistics (episodeFileCount, sizeOnDisk).
+  await invalidateTaggedLibrary('sonarr', instanceId);
   return NextResponse.json({ success: true, deleted: ids.length });
 }
 

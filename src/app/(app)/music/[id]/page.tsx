@@ -697,6 +697,7 @@ export default function ArtistDetailPage() {
         service="lidarr"
         mediaId={artist.id}
         mediaTitle={artist.artistName}
+        instanceId={instance}
       />
 
       <Drawer open={showDelete} onOpenChange={setShowDelete}>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 
 async function deleteHandler(
   request: NextRequest,
@@ -22,6 +23,8 @@ async function deleteHandler(
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
     await client.deleteTrackFile(trackFileId);
+    // Deleting a file changes the artist statistics in the cached library list.
+    await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to delete track file';

@@ -10,6 +10,7 @@ import {
   checkOwnership,
 } from '@/lib/manage-files-guard';
 import { recordFileAudit } from '@/lib/file-audit';
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { MovieFileEdit, MovieFileResource } from '@/types';
 
 // ── GET /api/radarr/moviefile?movieId= ──────────────────────────────────────
@@ -128,6 +129,8 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   });
 
   if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  // File metadata (quality/languages/…) is embedded in the cached library rows.
+  await invalidateTaggedLibrary('radarr', instanceId);
   return NextResponse.json(result);
 }
 
@@ -198,6 +201,8 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   });
 
   if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  // Deleting files flips the movie's hasFile in the cached library list.
+  await invalidateTaggedLibrary('radarr', instanceId);
   return NextResponse.json({ success: true, deleted: ids.length });
 }
 

@@ -82,6 +82,33 @@ const SEARCH_MODULE_BY_SCOPE: Record<string, string> = {
   lidarr: 'music',
 };
 
+// *arr commands (refresh / rename / manual import) mutate data ASYNCHRONOUSLY: the
+// POST returns immediately while the work happens seconds later, so invalidating at
+// POST time is useless — the next GET would just re-cache pre-refresh data. Instead
+// the command STATUS routes (/api/{svc}/command/[id], polled by pollCommand until a
+// terminal status) call this on every poll: the first poll that observes `completed`
+// for a data-mutating command drops the derived caches. Searches are excluded — their
+// completion only queues grabs; the library changes later via the *arr's own import.
+const MUTATING_COMMANDS = new Set([
+  'RefreshMovie',
+  'RefreshSeries',
+  'RefreshArtist',
+  'RenameFiles',
+  'RenameSeries',
+  'ManualImport',
+  'RefreshMonitoredDownloads',
+]);
+
+export async function invalidateOnCommandComplete(
+  scope: string,
+  command: { name?: string; status?: string },
+  instanceId?: string
+): Promise<void> {
+  if (command.status === 'completed' && command.name && MUTATING_COMMANDS.has(command.name)) {
+    await invalidateTaggedLibrary(scope, instanceId);
+  }
+}
+
 // Bust every cache derived from a service's raw library after a mutation: the library list
 // itself, its global-search index module, and (Radarr only) the collections view — so none
 // of them replays a deleted/added item for the rest of its TTL. Drops the instance's own seed

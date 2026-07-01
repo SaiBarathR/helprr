@@ -2118,6 +2118,7 @@ export default function SeriesDetailPage() {
         service="sonarr"
         mediaId={series.id}
         mediaTitle={series.title}
+        instanceId={instance}
       />
     </div>
   );

@@ -30,8 +30,13 @@ declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 // must-be-fresh). Live, second-to-second reads (`/api/activity/queue`,
 // `/api/qbittorrent/*`) are intentionally *not* listed — they fall through to the
 // catch-all NetworkOnly below so a cached copy can never show removed downloads.
+// Under the *arr prefixes, action-sensitive/transient subpaths (command status
+// polls, rename previews, manual-import scans, interactive-search releases,
+// lookups, file lists, per-item history/wanted) are carved out via the negative
+// lookahead: their answers change the moment an action lands, so a ≤5-min-old
+// cached body is exactly the stale data this allowlist must never serve.
 const READONLY_API_NETWORK_FIRST =
-  /^\/api\/(?:sonarr|radarr|lidarr|calendar|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:history|wanted))(?:\/.*)?$/;
+  /^\/api\/(?:(?:sonarr|radarr|lidarr)(?!\/(?:command|rename|manualimport|release|lookup|moviefile|episodefile|trackfile|history|wanted)\b)|calendar|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:history|wanted))(?:\/.*)?$/;
 
 const runtimeCaching: RuntimeCaching[] =
   process.env.NODE_ENV !== 'production'
@@ -51,7 +56,9 @@ const runtimeCaching: RuntimeCaching[] =
           method: 'GET',
           handler: new NetworkFirst({
             cacheName: 'api-readonly',
-            networkTimeoutSeconds: 3,
+            // 10s, not 3: a healthy but slow *arr (large library fetch) regularly
+            // exceeds 3s, which would silently swap in a ≤5-min-old cached body.
+            networkTimeoutSeconds: 10,
             plugins: [
               new CacheableResponsePlugin({ statuses: [200] }),
               new ExpirationPlugin({
