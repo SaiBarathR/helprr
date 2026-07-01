@@ -18,6 +18,8 @@ function invalidateArr(
   t: { itemId?: number; instanceId?: string } = {},
 ) {
   qc.invalidateQueries({ queryKey: [svc, 'library'] }); // the list (slim + full, all instances)
+  qc.invalidateQueries({ queryKey: [svc, 'rename'] }); // rename previews derive from the files
+  qc.invalidateQueries({ queryKey: [svc, 'history'] }); // per-item history on the files pages
   if (t.itemId != null) {
     // the detail
     qc.invalidateQueries({ queryKey: queryKeys.detail(svc, t.itemId, t.instanceId) });
@@ -25,6 +27,9 @@ function invalidateArr(
     if (svc === 'sonarr') {
       qc.invalidateQueries({ queryKey: ['sonarr', 'episodes'] }); // slim + withfile variants
       qc.invalidateQueries({ queryKey: queryKeys.anime(t.itemId, t.instanceId) });
+    }
+    if (svc === 'lidarr') {
+      qc.invalidateQueries({ queryKey: ['lidarr', 'albums'] }); // per-artist album lists
     }
   }
 }

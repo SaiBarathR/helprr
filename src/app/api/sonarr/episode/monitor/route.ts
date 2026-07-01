@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 
 async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
@@ -29,6 +30,9 @@ async function putHandler(request: NextRequest) {
     const client = await getSonarrClient(instanceId);
     // Sonarr's /episode/monitor endpoint accepts all IDs in one call.
     const results = await client.setEpisodesMonitored(episodeIds, monitored);
+
+    // Monitoring flips the series statistics (episodeCount) in the cached library list.
+    await invalidateTaggedLibrary('sonarr', instanceId);
 
     return NextResponse.json(results);
   } catch (error) {

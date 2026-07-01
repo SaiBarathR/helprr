@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ApiError, arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
+import { pollCommand } from '@/lib/arr-command';
+import { invalidateMovies, invalidateMusic, invalidateSeries } from '@/lib/query-invalidation';
 import {
   Dialog,
   DialogContent,
@@ -33,7 +35,14 @@ interface RenamePreviewDialogProps {
   service: RenameService;
   mediaId: number;
   mediaTitle: string;
+  instanceId?: string;
 }
+
+const INVALIDATE_BY_SERVICE = {
+  sonarr: invalidateSeries,
+  radarr: invalidateMovies,
+  lidarr: invalidateMusic,
+} as const;
 
 function pad(n: number) {
   return String(n).padStart(2, '0');
@@ -74,39 +83,49 @@ export function RenamePreviewDialog({
   service,
   mediaId,
   mediaTitle,
+  instanceId,
 }: RenamePreviewDialogProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const queryClient = useQueryClient();
 
   const queryParam = service === 'sonarr' ? 'seriesId' : service === 'lidarr' ? 'artistId' : 'movieId';
   const {
     data: rows = [],
-    isLoading: loading,
+    isFetching: loading,
     isError,
     isSuccess,
   } = useQuery({
-    queryKey: [service, 'rename', mediaId],
+    queryKey: [service, 'rename', instanceId ?? 'default', mediaId],
     queryFn: jsonFetcher<SonarrRenamePreview[] | RadarrRenamePreview[] | LidarrRenamePreview[]>(
       `/api/${service}/rename?${queryParam}=${mediaId}`,
+      instanceId,
     ),
     enabled: open,
+    // Rename candidates change the moment a refresh/rescan/rename lands on the
+    // *arr side, so a reopened dialog must refetch instead of replaying a cached
+    // "nothing to rename". `loading` is isFetching (not isLoading) for the same
+    // reason: never flash the previous open's stale rows while refetching.
+    staleTime: 0,
     select: (data) => toRows(service, data),
   });
 
   // Default every previewed file to selected once the preview resolves — but only
-  // once per open. Keying this on the data timestamp would re-run on a background
-  // refetch (e.g. reconnect) and silently re-select files the user just deselected.
+  // once per open, and only from FRESH data (isSuccess alone is instantly true
+  // when cached rows exist, which would seed the selection from stale file ids).
+  // Keying this on the data timestamp would re-run on a background refetch
+  // (e.g. reconnect) and silently re-select files the user just deselected.
   const seededRef = useRef(false);
   useEffect(() => {
     if (!open) {
       seededRef.current = false;
       return;
     }
-    if (isSuccess && !seededRef.current) {
+    if (isSuccess && !loading && !seededRef.current) {
       seededRef.current = true;
       setSelected(new Set(rows.map((r) => r.fileId)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isSuccess]);
+  }, [open, isSuccess, loading]);
 
   useEffect(() => {
     if (isError) toast.error('Failed to load rename preview');
@@ -135,16 +154,24 @@ export function RenamePreviewDialog({
           : service === 'lidarr'
             ? { name: 'RenameFiles', artistId: mediaId, files: fileIds }
             : { name: 'RenameFiles', movieId: mediaId, files: fileIds };
-      const res = await fetch(`/api/${service}/command`, {
+      const res = await arrMutationFetch(instanceId, `/api/${service}/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new ApiError(res.status, await res.text());
+      return (await res.json()) as { id?: number };
     },
-    onSuccess: (_data, fileIds) => {
+    onSuccess: (command, fileIds) => {
       toast.success(`Renaming ${fileIds.length} file${fileIds.length === 1 ? '' : 's'}`);
       onOpenChange(false);
+      // RenameFiles is async on the *arr side: wait for it to finish, then refetch
+      // everything that still shows the old paths. Polling the command status route
+      // also drops the server-side library cache on completion.
+      const invalidate = () =>
+        INVALIDATE_BY_SERVICE[service](queryClient, { itemId: mediaId, instanceId });
+      if (command.id) void pollCommand(service, command.id, instanceId).then(invalidate);
+      else invalidate();
     },
     onError: () => toast.error('Failed to rename files'),
   });

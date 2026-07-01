@@ -6,7 +6,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
-import { getCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
+import { getCachedJson } from '@/lib/cache/json-cache';
 import type {
   CollectionMovieSummary,
   CollectionSummary,
@@ -248,10 +248,9 @@ async function putHandler(request: NextRequest) {
     const client = await getRadarrClient(instanceId);
     await client.updateCollections({ collectionIds: [collectionId], monitored });
 
-    await Promise.all([
-      deleteCachedJson(COLLECTIONS_SCOPE, instanceId ?? 'all'),
-      deleteCachedJson(COLLECTIONS_SCOPE, 'all'),
-    ]);
+    // Toggling monitoring can cascade to the collection's movies on the Radarr side,
+    // so drop the movie library (+ search index) along with the collections cache.
+    await invalidateTaggedLibrary('radarr', instanceId);
 
     logApiDuration('/api/radarr/collections', startedAt, { method: 'PUT' });
     return NextResponse.json({ ok: true, collectionId, monitored });

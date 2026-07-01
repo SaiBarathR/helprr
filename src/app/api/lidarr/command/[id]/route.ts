@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { invalidateOnCommandComplete } from '@/lib/cache/tagged-library';
 
 async function getHandler(
   request: NextRequest,
@@ -21,6 +22,7 @@ async function getHandler(
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
     const result = await client.getCommand(commandId);
+    await invalidateOnCommandComplete('lidarr', result, instanceId);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch command';
