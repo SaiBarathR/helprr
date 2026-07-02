@@ -7,7 +7,7 @@ import { AnimeCarouselSettings } from '@/components/settings/anime-carousel-sett
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
-import { Compass } from 'lucide-react';
+import { Compass, Paintbrush } from 'lucide-react';
 
 export default function AppearanceSettingsPage() {
   return (
@@ -32,6 +32,17 @@ export default function AppearanceSettingsPage() {
       <div className="px-4 pb-2 text-[11px] uppercase tracking-[0.08em] text-muted-foreground/80">
         This device only — won&apos;t sync to other phones or browsers
       </div>
+      <GroupedSection title="Theme">
+        <CategoryRow
+          href="/settings/appearance/theme"
+          icon={Paintbrush}
+          iconBg="bg-cyan-500/10"
+          iconColor="text-cyan-400"
+          label="Theme"
+          subtitle="Accent color, palette, gradient, text, and font"
+        />
+      </GroupedSection>
+
       <NavOrderSettings />
       <AnimeCarouselSettings />
 

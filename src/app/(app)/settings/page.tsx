@@ -177,7 +177,7 @@ export default function SettingsIndexPage() {
           iconBg="bg-fuchsia-500/10"
           iconColor="text-fuchsia-400"
           label="Appearance & Layout"
-          subtitle="Navigation, carousels, install"
+          subtitle="Theme, navigation, carousels, install"
         />
       </GroupedSection>
 
