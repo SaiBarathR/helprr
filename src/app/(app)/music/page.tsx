@@ -786,7 +786,7 @@ export default function MusicPage() {
 
       {(() => {
         if (loading && artists.length === 0) {
-          return <MediaGridSkeleton />;
+          return <MediaGridSkeleton gridClassName={posterGridClass} />;
         }
 
         if (filtered.length === 0) {

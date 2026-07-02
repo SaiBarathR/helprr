@@ -2,25 +2,44 @@ import type { ServiceConnection } from '@prisma/client';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import type { QueueItem } from '@/types';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+import { getRedisClient } from '@/lib/redis';
 
 // The queue is identical for every authorized user (it's the global *arr queue,
 // not user-scoped), so a short server cache + in-flight dedupe collapses the
 // 5–10 concurrent multi-user fan-outs in any few-second window into one upstream
-// hit. Shared between /api/activity/queue (which gates per request before the
-// cache is read) and the polling service's cache warmer.
-export const QUEUE_CACHE_SCOPE = 'activity-queue';
+// hit. /api/activity/queue gates per request before the cache is read.
+const QUEUE_CACHE_SCOPE = 'activity-queue';
 const QUEUE_CACHE_TTL_SECONDS = 5;
 
-// Default page params the activity page requests (parsePageParams defaults).
-export const QUEUE_DEFAULT_PAGE = 1;
-export const QUEUE_DEFAULT_PAGE_SIZE = 50;
+// Version stamp folded into the cache seed. Bumped on queue-item removal so
+// every cached page (any page/pageSize combination) AND any in-flight load
+// keyed to the old seed become unreachable at once — a plain key delete covers
+// only one seed and can be silently undone by an in-flight fan-out completing
+// after the delete.
+const QUEUE_CACHE_VERSION_KEY = 'helprr:cache:queue:ver';
+
+async function getQueueCacheVersion(): Promise<number> {
+  try {
+    const redis = await getRedisClient();
+    const value = await redis.get(QUEUE_CACHE_VERSION_KEY);
+    const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export async function bumpQueueCacheVersion(): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    await redis.incr(QUEUE_CACHE_VERSION_KEY);
+  } catch {
+    // Best-effort: the 5s TTL is the backstop.
+  }
+}
 
 export type QueueResult = { records: QueueItem[]; totalRecords: number };
 const inflightQueue = new Map<string, Promise<QueueResult>>();
-
-export function queueCacheSeed(page: number, pageSize: number): string {
-  return `${page}:${pageSize}`;
-}
 
 async function loadQueue(page: number, pageSize: number): Promise<{ result: QueueResult; complete: boolean }> {
   // Tracks whether every configured instance answered. A partial result (an
@@ -93,7 +112,8 @@ async function loadQueue(page: number, pageSize: number): Promise<{ result: Queu
 }
 
 export async function getQueueCached(page: number, pageSize: number): Promise<QueueResult> {
-  const seed = queueCacheSeed(page, pageSize);
+  const version = await getQueueCacheVersion();
+  const seed = `${version}:${page}:${pageSize}`;
   const cached = await getCachedJson<QueueResult>(QUEUE_CACHE_SCOPE, seed);
   if (cached) return cached;
 

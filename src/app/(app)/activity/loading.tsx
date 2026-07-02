@@ -1,5 +1,5 @@
-import { PageSpinner } from '@/components/ui/page-spinner';
+import { ListSkeleton } from '@/components/ui/list-skeleton';
 
 export default function Loading() {
-  return <PageSpinner />;
+  return <ListSkeleton />;
 }

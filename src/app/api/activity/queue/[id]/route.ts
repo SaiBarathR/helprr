@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { deleteCachedJson } from '@/lib/cache/json-cache';
-import { QUEUE_CACHE_SCOPE, QUEUE_DEFAULT_PAGE, QUEUE_DEFAULT_PAGE_SIZE, queueCacheSeed } from '@/lib/activity-queue';
+import { bumpQueueCacheVersion } from '@/lib/activity-queue';
 
 async function deleteHandler(
   request: NextRequest,
@@ -50,9 +49,9 @@ async function deleteHandler(
       await radarr.deleteQueueItem(queueId, { removeFromClient, blocklist, changeCategory, skipRedownload });
     }
 
-    // Bust the queue cache (the default page the activity page reads) so the
-    // client's reconcile refetch can't resurrect the removed row for the TTL.
-    await deleteCachedJson(QUEUE_CACHE_SCOPE, queueCacheSeed(QUEUE_DEFAULT_PAGE, QUEUE_DEFAULT_PAGE_SIZE));
+    // Bump the queue cache version: every cached page seed and any in-flight
+    // load become unreachable, so no refetch can resurrect the removed row.
+    await bumpQueueCacheVersion();
 
     return NextResponse.json({ success: true });
   } catch (error) {

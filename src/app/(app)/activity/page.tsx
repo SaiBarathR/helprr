@@ -676,10 +676,14 @@ function QueueTab({
     await queryClient.cancelQueries({ queryKey: ['activity', 'queue'] });
     const snapshot = queryClient.getQueryData<{ records?: (QueueItem & { source?: string })[] }>(['activity', 'queue']);
     if (snapshot?.records) {
-      const removeIds = new Set(uiRemove.map((rec) => rec.id));
+      // Queue ids are only unique per *arr instance, so scope the identity by
+      // source + instance too — a bare id could drop an unrelated record.
+      const recordKey = (rec: { source?: string; instanceId?: string; id: number }) =>
+        `${rec.source ?? ''}|${rec.instanceId ?? ''}|${rec.id}`;
+      const removeIds = new Set(uiRemove.map(recordKey));
       queryClient.setQueryData(['activity', 'queue'], {
         ...snapshot,
-        records: snapshot.records.filter((rec) => !removeIds.has(rec.id)),
+        records: snapshot.records.filter((rec) => !removeIds.has(recordKey(rec))),
       });
     }
     try {

@@ -38,7 +38,9 @@ export async function listConnections(type: ServiceType): Promise<ServiceConnect
     where: { type },
     orderBy: [{ isDefault: 'desc' }, { label: 'asc' }],
   });
-  memoSet(key, rows);
+  // Only memoize hits (matching getDefaultConnection): a memoized empty list
+  // would hide a just-added connection for the TTL if a clear was missed.
+  if (rows.length > 0) memoSet(key, rows);
   return rows;
 }
 
