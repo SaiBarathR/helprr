@@ -360,6 +360,13 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
  */
 export const THEME_VARS_STORAGE_KEY = 'helprr-theme-vars';
 
+/** zustand/persist storage key for UI prefs (store.ts uses this constant).
+ *  The boot script checks it to tell a brand-new user (no prefs at all —
+ *  gets the Liquid Glass default) apart from an existing user whose resolved
+ *  theme-vars cache is merely missing (keep the CSS defaults; ThemeApplier
+ *  restores their custom theme after hydration). */
+export const UI_PREFS_STORAGE_KEY = 'helprr-ui-prefs';
+
 /**
  * Persisted payload shapes. Glass off: the legacy flat var map. Glass on: a
  * dual-map payload (resolved vars for BOTH schemes) discriminated by the
@@ -387,9 +394,14 @@ export type PersistedThemeVars =
  * <html>, and sync the theme-color meta. Legacy flat payloads (and payloads
  * written by this script's v1) take the plain-replay path unchanged.
  *
- * v3: first visits (no stored payload) boot straight into the app default —
- * Liquid Glass following the system scheme — via a default payload embedded
- * at build time, so new users never see the pre-glass fallback paint.
+ * v3: TRUE first visits (neither the theme-vars cache nor the persisted UI
+ * prefs exist) boot straight into the app default — Liquid Glass following
+ * the system scheme — via a payload embedded at build time, so new users
+ * never see the pre-glass fallback paint. An existing user whose theme-vars
+ * cache is missing (upgrade from a pre-cache version, partial storage loss)
+ * still has UI prefs, so the script no-ops instead of forcing glass over
+ * their saved custom theme; ThemeApplier repopulates the cache after
+ * hydration.
  */
 const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
   __glass: {
@@ -403,7 +415,9 @@ const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
 
 export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var r=localStorage.getItem(${JSON.stringify(
   THEME_VARS_STORAGE_KEY,
-)});var v=r?JSON.parse(r):${DEFAULT_BOOT_PAYLOAD};if(!v||typeof v!=='object')return;var e=document.documentElement,g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}}catch(e){}})();`;
+)});var v;if(r){v=JSON.parse(r);}else{if(localStorage.getItem(${JSON.stringify(
+  UI_PREFS_STORAGE_KEY,
+)}))return;v=${DEFAULT_BOOT_PAYLOAD};}if(!v||typeof v!=='object')return;var e=document.documentElement,g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}}catch(e){}})();`;
 
 /** Write a full set of --hpr-* variables onto `el`. */
 export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThemePrefs): void {

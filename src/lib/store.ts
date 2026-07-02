@@ -17,6 +17,7 @@ import {
   DEFAULT_GLASS_INTENSITY,
   DEFAULT_GLASS_MODE,
   DEFAULT_LIQUID_GLASS,
+  UI_PREFS_STORAGE_KEY,
   type DashboardAccent,
   type DashboardFont,
   type DashboardGradient,
@@ -1071,7 +1072,7 @@ export const useUIStore = create<UIState>()(
         }),
     }),
     {
-      name: 'helprr-ui-prefs',
+      name: UI_PREFS_STORAGE_KEY,
       // Bump STORE_VERSION whenever new persisted fields are added
       version: STORE_VERSION,
       onRehydrateStorage: () => (state) => {
