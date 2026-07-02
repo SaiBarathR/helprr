@@ -191,6 +191,14 @@
   padding-top: var(--main-pad-top);
 }
 
+/* Full-bleed margins only — for bars that manage their own positioning
+   (e.g. bottom-anchored action bars, which must NOT inherit the
+   top-sticky contract of .page-toolbar). */
+.page-bleed {
+  margin-inline: calc(-1 * var(--main-pad-x));
+  padding-inline: var(--main-pad-x);
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: instant;
