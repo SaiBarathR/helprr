@@ -200,7 +200,7 @@ export default function LoggingSettingsPage() {
 
       <GroupedSection title="File rotation" footer="Synced across devices">
         <fieldset disabled={!logEnabled} className={!logEnabled ? 'opacity-50' : undefined}>
-          <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+          <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
             <Label htmlFor="log-max-file-mb" className="text-xs text-muted-foreground">Rotate at (MB)</Label>
             <Input
               id="log-max-file-mb"

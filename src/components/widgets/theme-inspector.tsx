@@ -12,7 +12,9 @@ import {
   type DashboardFont,
   type DashboardGradient,
   type DashboardPalette,
+  type GlassMode,
 } from '@/lib/dashboard-theme';
+import { Switch } from '@/components/ui/switch';
 import { AMBER_RING, Eyebrow, FONT_MONO, HPR, mix } from './bento-primitives';
 
 interface ThemeInspectorProps {
@@ -23,6 +25,11 @@ const ACCENT_IDS: DashboardAccent[] = ['amber', 'crimson', 'cyan', 'violet', 'fo
 const PALETTE_IDS: DashboardPalette[] = ['warm', 'slate', 'pure', 'cream'];
 const GRADIENT_IDS: DashboardGradient[] = ['glow', 'frame', 'none'];
 const FONT_IDS: DashboardFont[] = ['system', 'helvetica', 'charter', 'jetbrains'];
+const GLASS_MODES: Array<{ id: GlassMode; label: string }> = [
+  { id: 'light', label: 'Light' },
+  { id: 'dark', label: 'Dark' },
+  { id: 'system', label: 'System' },
+];
 
 export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
   const accent = useUIStore((s) => s.dashboardAccent);
@@ -40,6 +47,14 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
   const setFg = useUIStore((s) => s.setDashboardFg);
   const setFgMute = useUIStore((s) => s.setDashboardFgMute);
   const setFgSubtle = useUIStore((s) => s.setDashboardFgSubtle);
+
+  const liquidGlass = useUIStore((s) => s.liquidGlass);
+  const glassMode = useUIStore((s) => s.glassMode);
+  const glassIntensity = useUIStore((s) => s.glassIntensity);
+  const setLiquidGlass = useUIStore((s) => s.setLiquidGlass);
+  const setGlassMode = useUIStore((s) => s.setGlassMode);
+  const setGlassIntensity = useUIStore((s) => s.setGlassIntensity);
+  const resetDashboardTheme = useUIStore((s) => s.resetDashboardTheme);
 
   const paletteDefaults = resolveForegroundTones({ accent, palette, gradient, font });
 
@@ -76,7 +91,112 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
         THEME · LIVE
       </div>
 
-      <InspectorBlock label="Accent" sub="custom or preset color">
+      {/* Liquid Glass master switch — when on, everything below is disabled
+          (values preserved) and the app follows Apple's system palette. */}
+      <div
+        style={{
+          gridColumn: '1 / -1',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: mobile ? 10 : 16,
+          paddingBottom: mobile ? 10 : 12,
+          borderBottom: `1px solid ${HPR.hairline}`,
+        }}
+      >
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <Switch
+            checked={liquidGlass}
+            onCheckedChange={setLiquidGlass}
+            aria-label="Liquid Glass"
+          />
+          <span>
+            <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: HPR.fg }}>
+              Liquid Glass
+            </span>
+            <span style={{ display: 'block', fontSize: 9, color: HPR.fgSubtle }}>
+              Apple system materials · custom theme preserved
+            </span>
+          </span>
+        </label>
+
+        {liquidGlass && (
+          <>
+            <div style={{ display: 'flex', gap: 4 }} role="group" aria-label="Appearance mode">
+              {GLASS_MODES.map(({ id, label }) => {
+                const selected = id === glassMode;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setGlassMode(id)}
+                    style={{
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      borderRadius: 5,
+                      border: selected ? `1px solid ${HPR.amber}` : `1px solid ${HPR.hairline}`,
+                      background: selected ? mix(HPR.amber, 8) : HPR.ink,
+                      color: selected ? HPR.fg : HPR.fgMute,
+                      fontWeight: selected ? 600 : 400,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                flex: 1,
+                minWidth: mobile ? '100%' : 220,
+                maxWidth: 360,
+              }}
+            >
+              <span style={{ fontSize: 9, fontFamily: FONT_MONO, color: HPR.fgSubtle }}>
+                CLEAR
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={glassIntensity}
+                onChange={(e) => setGlassIntensity(Number(e.target.value))}
+                aria-label="Glass intensity"
+                style={{ flex: 1, minWidth: 0, accentColor: 'var(--hpr-amber)' }}
+              />
+              <span style={{ fontSize: 9, fontFamily: FONT_MONO, color: HPR.fgSubtle }}>
+                FROSTED
+              </span>
+            </div>
+          </>
+        )}
+
+        <button
+          type="button"
+          onClick={resetDashboardTheme}
+          title="Reset the entire theme to defaults (Liquid Glass · System)"
+          style={{
+            marginLeft: 'auto',
+            padding: '4px 10px',
+            fontSize: 11,
+            borderRadius: 5,
+            border: `1px solid ${HPR.hairline}`,
+            background: 'transparent',
+            color: HPR.fgMute,
+            cursor: 'pointer',
+          }}
+        >
+          ↺ Reset
+        </button>
+      </div>
+
+      <InspectorBlock label="Accent" sub="custom or preset color" disabled={liquidGlass}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {ACCENT_IDS.map((id) => {
@@ -206,7 +326,7 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
         </div>
       </InspectorBlock>
 
-      <InspectorBlock label="Palette" sub="atmosphere base tone">
+      <InspectorBlock label="Palette" sub="atmosphere base tone" disabled={liquidGlass}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {PALETTE_IDS.map((id) => {
             const meta = PALETTES[id];
@@ -338,7 +458,7 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
         </div>
       </InspectorBlock>
 
-      <InspectorBlock label="Gradient" sub="page atmosphere">
+      <InspectorBlock label="Gradient" sub="page atmosphere" disabled={liquidGlass}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {GRADIENT_IDS.map((id) => {
             const meta = GRADIENTS[id];
@@ -380,7 +500,7 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
         </div>
       </InspectorBlock>
 
-      <InspectorBlock label="Text" sub="primary / muted / subtle">
+      <InspectorBlock label="Text" sub="primary / muted / subtle" disabled={liquidGlass}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <TextTonePicker
             label="Primary"
@@ -403,7 +523,7 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
         </div>
       </InspectorBlock>
 
-      <InspectorBlock label="Font" sub="system stack default">
+      <InspectorBlock label="Font" sub="system stack default" disabled={liquidGlass}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {FONT_IDS.map((id) => {
             const meta = FONTS[id];
@@ -464,19 +584,32 @@ export function ThemeInspector({ mobile = false }: ThemeInspectorProps) {
 function InspectorBlock({
   label,
   sub,
+  disabled = false,
   children,
 }: {
   label: string;
   sub?: string;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <div style={{ minWidth: 0 }}>
+    <div
+      aria-disabled={disabled}
+      style={{
+        minWidth: 0,
+        opacity: disabled ? 0.4 : 1,
+        pointerEvents: disabled ? 'none' : 'auto',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8 }}>
         <Eyebrow style={{ color: HPR.fg, letterSpacing: '0.12em' }}>{label}</Eyebrow>
         {sub && <span style={{ fontSize: 9, color: HPR.fgSubtle }}>{sub}</span>}
       </div>
-      {children}
+      {/* fieldset[disabled] truly disables nested buttons/inputs (keyboard + AT);
+          pointer-events above covers the transparent color-picker overlays. */}
+      <fieldset disabled={disabled} style={{ border: 'none', margin: 0, padding: 0, minWidth: 0 }}>
+        {children}
+      </fieldset>
     </div>
   );
 }

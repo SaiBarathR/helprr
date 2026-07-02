@@ -101,8 +101,7 @@ export default function InsightsPage() {
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
       <div
-        className="sticky z-30 px-2 pb-3 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-3"
-        style={{ top: 'var(--header-height, 0px)' }}
+        className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-3"
       >
         <div className="min-w-0">
           <h1 className="text-xl font-bold leading-tight">Insights</h1>

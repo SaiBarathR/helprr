@@ -93,6 +93,9 @@ export function BentoCell({
         </div>
       ) : (
         <div
+          // Liquid Glass hook: html[data-glass] [data-bento-cell] in globals.css
+          // overrides this inline background with the translucent glass fill.
+          data-bento-cell=""
           style={{
             position: 'relative',
             background: cardBg,

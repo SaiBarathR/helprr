@@ -65,12 +65,12 @@ export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
         ref={ref}
         data-index={dataIndex}
         style={style}
-        className="absolute top-0 left-0 w-full border-b border-[oklch(1_0_0/6%)]"
+        className="absolute top-0 left-0 w-full border-b border-foreground/[0.06]"
       >
         <button
           type="button"
           onClick={onToggle}
-          className="block w-full px-4 py-3 text-left active:bg-white/5 hover:bg-white/[0.02] transition-colors"
+          className="block w-full px-4 py-3 text-left active:bg-foreground/5 hover:bg-white/[0.02] transition-colors"
         >
           <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">

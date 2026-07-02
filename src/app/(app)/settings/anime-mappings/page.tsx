@@ -242,7 +242,7 @@ export default function AnimeMappingsPage() {
       <GroupedSection>
         <Link
           href="/settings/anime-mappings/mapping-list"
-          className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+          className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
         >
           <div className="min-w-0">
             <span className="text-sm font-medium">Mapping list</span>

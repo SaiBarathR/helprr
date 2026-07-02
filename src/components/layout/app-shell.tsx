@@ -20,10 +20,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {!isBottom && <BottomNav />}
       <main
         className={cn(
-          'flex-1 px-2 md:p-6 [overflow-x:clip]',
-          isBottom ? 'pt-2 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-4' : 'pt-2 pb-4'
+          'app-main flex-1 [overflow-x:clip]',
+          isBottom ? 'pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-4' : 'pb-4'
         )}
-        style={isBottom ? { paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0.5rem))' } : undefined}
       >
         <PushReenableBanner />
         {children}

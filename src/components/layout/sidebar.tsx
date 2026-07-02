@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Clapperboard, PanelLeftClose, PanelLeft, Loader2, Search } from 'lucide-react';
+import { PanelLeftClose, PanelLeft, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useUIStore } from '@/lib/store';
@@ -67,16 +67,11 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        'hidden md:flex flex-col border-r border-border bg-card h-screen sticky top-0 transition-all duration-200',
+        'hidden md:flex flex-col border-r border-border bg-card app-chrome-bar h-screen sticky top-0 transition-all duration-200',
         sidebarCollapsed ? 'w-16' : 'w-56'
       )}
     >
-      <div className={cn('flex items-center gap-2 px-4 h-14 border-b border-border', sidebarCollapsed && 'justify-center px-2')}>
-        <Clapperboard className="h-6 w-6 text-primary shrink-0" />
-        {!sidebarCollapsed && <span className="font-semibold text-lg">Helprr</span>}
-      </div>
-
-      <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar py-2 space-y-1 px-2">
+      <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar pt-3 pb-2 space-y-1 px-2">
         {sidebarCollapsed ? (
           <Tooltip>
             <TooltipTrigger asChild>{searchButton}</TooltipTrigger>

@@ -2072,7 +2072,7 @@ export default function SeriesDetailPage() {
                   <button
                     key={option.value}
                     onClick={() => setMonitorOption(option.value)}
-                    className={`grouped-row w-full text-left active:bg-white/5 transition-colors ${monitorOption === option.value ? 'text-primary' : ''
+                    className={`grouped-row w-full text-left active:bg-foreground/5 transition-colors ${monitorOption === option.value ? 'text-primary' : ''
                       }`}
                   >
                     <span className="text-sm">{option.label}</span>

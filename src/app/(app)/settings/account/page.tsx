@@ -68,7 +68,7 @@ export default function AccountSettingsPage() {
           type="button"
           onClick={handleSignOut}
           disabled={signingOut}
-          className="grouped-row w-full text-left active:bg-white/5 transition-colors disabled:opacity-50"
+          className="grouped-row w-full text-left active:bg-foreground/5 transition-colors disabled:opacity-50"
         >
           <div className="flex items-center gap-3">
             <span className="h-2.5 w-2.5 rounded-full bg-red-500" />

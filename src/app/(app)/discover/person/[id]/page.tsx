@@ -413,7 +413,7 @@ export default function PersonDetailPage() {
                   {showSortMenu && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setShowSortMenu(false)} />
-                      <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                      <div className="app-glass-overlay absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
                         {SORT_OPTIONS.map((opt) => (
                           <button
                             key={opt.key}

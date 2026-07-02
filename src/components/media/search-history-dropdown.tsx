@@ -104,7 +104,7 @@ export function SearchHistoryDropdown({
     </div>
   ));
 
-  const listClass = 'max-h-64 overflow-y-auto rounded-md border bg-popover py-1 text-popover-foreground shadow-lg';
+  const listClass = 'app-glass-overlay max-h-64 overflow-y-auto rounded-md border bg-popover py-1 text-popover-foreground shadow-lg';
 
   if (mode.kind === 'inline') {
     return (

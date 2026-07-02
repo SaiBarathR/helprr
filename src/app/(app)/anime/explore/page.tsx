@@ -415,7 +415,7 @@ export default function AnimePage() {
       </Link>
 
       {/* Sticky search + sort/filter toolbar */}
-      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1" style={{ top: 'var(--header-height, 0px)' }}>
+      <div className="page-toolbar pt-1 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1">
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}

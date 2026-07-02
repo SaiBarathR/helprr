@@ -35,6 +35,7 @@ export function AnimeSearchOverlay({
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [expanded, setExpanded] = useState(false);
   const [panelTop, setPanelTop] = useState(0);
+  const [panelLeft, setPanelLeft] = useState(0);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -73,11 +74,15 @@ export function AnimeSearchOverlay({
   );
 
   // Anchor the panel just under the search field, kept in sync on scroll/resize.
+  // Left edge tracks the <main> content area so the fixed panel never covers
+  // the desktop sidebar (mobile has no sidebar, so main starts at 0 there).
   useLayoutEffect(() => {
     if (!expanded) return;
     const update = () => {
       const r = wrapperRef.current?.getBoundingClientRect();
       if (r) setPanelTop(r.bottom);
+      const main = wrapperRef.current?.closest('main');
+      setPanelLeft(main ? Math.max(0, main.getBoundingClientRect().left) : 0);
     };
     update();
     window.addEventListener('scroll', update, true);
@@ -187,7 +192,7 @@ export function AnimeSearchOverlay({
         createPortal(
           <div
             ref={panelRef}
-            style={{ position: 'fixed', top: panelTop, left: 0, right: 0, bottom: 0, zIndex: 40 }}
+            style={{ position: 'fixed', top: panelTop, left: panelLeft, right: 0, bottom: 0, zIndex: 40 }}
             className="overflow-y-auto bg-background"
             aria-label="Anime search results"
           >

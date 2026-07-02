@@ -18,7 +18,7 @@ interface CategoryRowProps {
 export function CategoryRow({
   href,
   icon: Icon,
-  iconBg = 'bg-[oklch(1_0_0/6%)]',
+  iconBg = 'bg-foreground/[0.06]',
   iconColor = 'text-foreground/80',
   label,
   subtitle,
@@ -29,7 +29,7 @@ export function CategoryRow({
     <Link
       href={href}
       className={cn(
-        'grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors',
+        'grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors',
         className,
       )}
     >

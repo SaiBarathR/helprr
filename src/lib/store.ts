@@ -14,10 +14,14 @@ import {
 } from '@/lib/discover-layout-config';
 import {
   DEFAULT_DASHBOARD_THEME,
+  DEFAULT_GLASS_INTENSITY,
+  DEFAULT_GLASS_MODE,
+  DEFAULT_LIQUID_GLASS,
   type DashboardAccent,
   type DashboardFont,
   type DashboardGradient,
   type DashboardPalette,
+  type GlassMode,
 } from '@/lib/dashboard-theme';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
@@ -227,7 +231,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 37;
+export const STORE_VERSION = 38;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -409,6 +413,13 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
       };
     }
   }
+  if (version < 38) {
+    // Existing users keep their current (custom) look; Liquid Glass is the
+    // default only for NEW users (store initial values, no persisted state).
+    state.liquidGlass = false;
+    state.glassMode = DEFAULT_GLASS_MODE;
+    state.glassIntensity = DEFAULT_GLASS_INTENSITY;
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -589,6 +600,14 @@ interface UIState {
   setDashboardFgMute: (c: string | undefined) => void;
   setDashboardFgSubtle: (c: string | undefined) => void;
   resetDashboardTheme: () => void;
+  // Liquid Glass mode (Apple system materials). Enabling it never touches the
+  // dashboard* prefs above — they stay stored and are restored on toggle-off.
+  liquidGlass: boolean;
+  glassMode: GlassMode;
+  glassIntensity: number;
+  setLiquidGlass: (on: boolean) => void;
+  setGlassMode: (m: GlassMode) => void;
+  setGlassIntensity: (n: number) => void;
   // Discover layout (server-side, cached locally for dashboard widget catalog)
   discoverLayout: DiscoverLayoutConfig | null;
   setDiscoverLayout: (config: DiscoverLayoutConfig | null) => void;
@@ -674,6 +693,9 @@ const PERSISTED_KEYS = [
   'dashboardFg',
   'dashboardFgMute',
   'dashboardFgSubtle',
+  'liquidGlass',
+  'glassMode',
+  'glassIntensity',
   'searchHistory',
 ] as const satisfies readonly (keyof UIState)[];
 
@@ -959,7 +981,18 @@ export const useUIStore = create<UIState>()(
           dashboardFg: undefined,
           dashboardFgMute: undefined,
           dashboardFgSubtle: undefined,
+          liquidGlass: DEFAULT_LIQUID_GLASS,
+          glassMode: DEFAULT_GLASS_MODE,
+          glassIntensity: DEFAULT_GLASS_INTENSITY,
         }),
+      // Liquid Glass
+      liquidGlass: DEFAULT_LIQUID_GLASS,
+      glassMode: DEFAULT_GLASS_MODE,
+      glassIntensity: DEFAULT_GLASS_INTENSITY,
+      setLiquidGlass: (on) => set({ liquidGlass: on }),
+      setGlassMode: (m) => set({ glassMode: m }),
+      setGlassIntensity: (n) =>
+        set({ glassIntensity: Math.min(100, Math.max(0, Math.round(n))) }),
       // Discover layout cache
       discoverLayout: null,
       setDiscoverLayout: (config) =>
@@ -1001,6 +1034,21 @@ export const useUIStore = create<UIState>()(
             if (WATCH_FILTER_PERSISTED_KEYS.has(key)) {
               if (!isMediaWatchFilterPreference(value)) continue;
               next[key] = value;
+              continue;
+            }
+            if (key === 'liquidGlass') {
+              if (typeof value !== 'boolean') continue;
+              next[key] = value;
+              continue;
+            }
+            if (key === 'glassMode') {
+              if (value !== 'light' && value !== 'dark' && value !== 'system') continue;
+              next[key] = value;
+              continue;
+            }
+            if (key === 'glassIntensity') {
+              if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+              next[key] = Math.min(100, Math.max(0, Math.round(value)));
               continue;
             }
             if (ARRAY_PERSISTED_KEYS.has(key) && !Array.isArray(value)) continue;

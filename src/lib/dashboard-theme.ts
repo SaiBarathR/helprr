@@ -157,6 +157,150 @@ export const FONTS: Record<
   },
 };
 
+export type GlassMode = 'light' | 'dark' | 'system';
+export type GlassScheme = 'light' | 'dark';
+
+export const DEFAULT_GLASS_MODE: GlassMode = 'system';
+export const DEFAULT_GLASS_INTENSITY = 60;
+/** Liquid Glass (following the system light/dark scheme) is the app default
+ *  for new users; existing users keep whatever theme they already had. */
+export const DEFAULT_LIQUID_GLASS = true;
+
+/**
+ * Apple system palettes for Liquid Glass mode (iOS systemBackground /
+ * label / separator conventions). The accent slot stays `--hpr-amber`
+ * because --primary/--ring alias it in globals.css.
+ */
+export const GLASS_PALETTES: Record<GlassScheme, PaletteTokens> = {
+  light: {
+    ink: '#F2F2F7',
+    inkSoft: '#F2F2F7',
+    surface: '#FFFFFF',
+    surfaceHi: '#E5E5EA',
+    hairline: 'rgba(60,60,67,0.12)',
+    hairline2: 'rgba(60,60,67,0.29)',
+    fg: '#000000',
+    fgMute: 'rgba(60,60,67,0.60)',
+    fgSubtle: 'rgba(60,60,67,0.30)',
+  },
+  dark: {
+    ink: '#000000',
+    inkSoft: '#000000',
+    surface: '#1C1C1E',
+    surfaceHi: '#2C2C2E',
+    hairline: 'rgba(84,84,88,0.35)',
+    hairline2: 'rgba(84,84,88,0.60)',
+    fg: '#FFFFFF',
+    fgMute: 'rgba(235,235,245,0.60)',
+    fgSubtle: 'rgba(235,235,245,0.30)',
+  },
+};
+
+export const GLASS_TINT: Record<GlassScheme, string> = {
+  light: '#007AFF',
+  dark: '#0A84FF',
+};
+
+/** iOS system colors for the chart/status vars that are otherwise static in globals.css. */
+const GLASS_CHART_COLORS: Record<GlassScheme, Record<string, string>> = {
+  light: {
+    '--hpr-green': '#34C759',
+    '--hpr-rose': '#FF3B30',
+    '--hpr-blue': '#007AFF',
+    '--hpr-purple': '#AF52DE',
+    '--hpr-violet': '#5856D6',
+    '--hpr-cyan': '#32ADE6',
+    '--hpr-pink': '#FF2D55',
+  },
+  dark: {
+    '--hpr-green': '#30D158',
+    '--hpr-rose': '#FF453A',
+    '--hpr-blue': '#0A84FF',
+    '--hpr-purple': '#BF5AF2',
+    '--hpr-violet': '#5E5CE6',
+    '--hpr-cyan': '#64D2FF',
+    '--hpr-pink': '#FF375F',
+  },
+};
+
+/** Page background color per scheme, for the <meta name="theme-color"> tag. */
+export function glassThemeColor(scheme: GlassScheme): string {
+  return scheme === 'dark' ? '#000000' : '#F2F2F7';
+}
+
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/**
+ * Glass material vars from intensity 0-100. Anchored on Apple's UIBlurEffect
+ * regular material (~blur 30px + saturate 180%): 0 = fully transparent,
+ * 100 = fully frosted. Values stay in vars so CSS fallbacks
+ * (prefers-reduced-transparency / no backdrop-filter support) can ignore them.
+ */
+function glassMaterialVars(scheme: GlassScheme, intensity: number): Record<string, string> {
+  const t = Math.min(100, Math.max(0, intensity)) / 100;
+  const light = scheme === 'light';
+  const bgBase = light ? '242,242,247' : '28,28,30';
+  const fillBase = light ? '255,255,255' : '28,28,30';
+
+  return {
+    '--hpr-glass-blur': `${Math.round(36 * t)}px`,
+    '--hpr-glass-saturate': String(round3(1 + 0.8 * t)),
+    '--hpr-glass-bg': `rgba(${bgBase},${round3(0.85 * t)})`,
+    '--hpr-glass-bg-strong': `rgba(${bgBase},${round3(Math.max(0.55, 0.85 * t))})`,
+    '--hpr-glass-fill': `rgba(${fillBase},${round3(0.45 + 0.5 * t)})`,
+    '--hpr-glass-border': light
+      ? `rgba(60,60,67,${round3(0.1 + 0.12 * t)})`
+      : `rgba(255,255,255,${round3(0.06 + 0.1 * t)})`,
+    '--hpr-glass-highlight': light
+      ? `rgba(255,255,255,${round3(0.45 + 0.3 * t)})`
+      : `rgba(255,255,255,${round3(0.04 + 0.08 * t)})`,
+    '--hpr-glass-wallpaper': light
+      ? 'radial-gradient(ellipse 90% 60% at 50% -10%, rgba(0,122,255,0.07), transparent 60%)'
+      : 'radial-gradient(ellipse 90% 60% at 50% -10%, rgba(10,132,255,0.10), transparent 60%)',
+  };
+}
+
+/**
+ * Flat --hpr-* var map for Liquid Glass mode. Ignores all custom theme prefs
+ * (accent/palette/gradient/text/font) by design — Apple system palette, blue
+ * tint, system font stack, no page gradient.
+ */
+export function buildGlassThemeStyle(scheme: GlassScheme, intensity: number): Record<string, string> {
+  const palette = GLASS_PALETTES[scheme];
+  const font = FONTS.system;
+
+  return {
+    '--hpr-ink': palette.ink,
+    '--hpr-inkSoft': palette.inkSoft,
+    '--hpr-surface': palette.surface,
+    '--hpr-surfaceHi': palette.surfaceHi,
+    '--hpr-hairline': palette.hairline,
+    '--hpr-hairline2': palette.hairline2,
+    '--hpr-fg': palette.fg,
+    '--hpr-fgMute': palette.fgMute,
+    '--hpr-fgSubtle': palette.fgSubtle,
+    '--hpr-amber': GLASS_TINT[scheme],
+    '--hpr-font-body': font.body,
+    '--hpr-font-display': font.display,
+    '--hpr-font-mono': font.mono,
+    '--hpr-bg-grad': 'none',
+    ...GLASS_CHART_COLORS[scheme],
+    ...glassMaterialVars(scheme, intensity),
+  };
+}
+
+/**
+ * Every var either builder can emit. ThemeApplier sweeps keys absent from the
+ * active style so toggling glass off restores the globals.css defaults
+ * (chart colors) and drops the glass material vars without a reload.
+ */
+export const THEME_VAR_KEYS: readonly string[] = Array.from(
+  new Set([
+    ...Object.keys(buildDashboardThemeStyle(DEFAULT_DASHBOARD_THEME)),
+    ...Object.keys(buildGlassThemeStyle('dark', DEFAULT_GLASS_INTENSITY)),
+  ]),
+);
+
 /** Resolve theme prefs into concrete token values (palette + per-tone overrides). */
 function resolveThemeTokens(prefs: DashboardThemePrefs) {
   const accent = prefs.accent in ACCENT_COLORS
@@ -217,16 +361,49 @@ export function buildDashboardThemeStyle(prefs: DashboardThemePrefs): React.CSSP
 export const THEME_VARS_STORAGE_KEY = 'helprr-theme-vars';
 
 /**
+ * Persisted payload shapes. Glass off: the legacy flat var map. Glass on: a
+ * dual-map payload (resolved vars for BOTH schemes) discriminated by the
+ * reserved `__glass` key, so the bootstrap script can follow `system` mode via
+ * matchMedia at boot with no palette math and no flash.
+ */
+export type PersistedThemeVars =
+  | Record<string, string>
+  | {
+      __glass: { scheme: GlassMode; tcLight: string; tcDark: string };
+      __light: Record<string, string>;
+      __dark: Record<string, string>;
+    };
+
+/**
  * Self-contained vanilla-JS string for a blocking <script> in the document head/
  * top-of-body. Replays ONLY the persisted `--hpr-*` theme vars onto <html>
  * pre-paint; does nothing (defaults stand) when no vars are stored yet, the
  * stored value isn't an object, or parsing fails. The `--hpr-` filter keeps a
  * corrupted/legacy localStorage payload from setting unrelated style properties
  * on the document root.
+ *
+ * v2: when the payload carries `__glass`, resolve the scheme (matchMedia for
+ * `system`), replay that scheme's var map, set data-glass/data-glass-scheme on
+ * <html>, and sync the theme-color meta. Legacy flat payloads (and payloads
+ * written by this script's v1) take the plain-replay path unchanged.
+ *
+ * v3: first visits (no stored payload) boot straight into the app default —
+ * Liquid Glass following the system scheme — via a default payload embedded
+ * at build time, so new users never see the pre-glass fallback paint.
  */
+const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
+  __glass: {
+    scheme: DEFAULT_GLASS_MODE,
+    tcLight: glassThemeColor('light'),
+    tcDark: glassThemeColor('dark'),
+  },
+  __light: buildGlassThemeStyle('light', DEFAULT_GLASS_INTENSITY),
+  __dark: buildGlassThemeStyle('dark', DEFAULT_GLASS_INTENSITY),
+});
+
 export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var r=localStorage.getItem(${JSON.stringify(
   THEME_VARS_STORAGE_KEY,
-)});if(!r)return;var v=JSON.parse(r);if(!v||typeof v!=='object')return;var e=document.documentElement;for(var k in v){if(k.indexOf('--hpr-')===0&&v[k]!=null)e.style.setProperty(k,String(v[k]));}}catch(e){}})();`;
+)});var v=r?JSON.parse(r):${DEFAULT_BOOT_PAYLOAD};if(!v||typeof v!=='object')return;var e=document.documentElement,g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}}catch(e){}})();`;
 
 /** Write a full set of --hpr-* variables onto `el`. */
 export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThemePrefs): void {

@@ -67,8 +67,7 @@ export default function RequestsPage() {
     <div className="animate-content-in">
       <PullToRefresh onRefresh={handleRefresh} />
       <div
-        className="sticky z-30 -mx-2 flex items-center gap-1.5 bg-background/95 px-2 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6"
-        style={{ top: 'var(--header-height, 0px)' }}
+        className="page-toolbar page-toolbar-flush flex items-center gap-1.5 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
         <div className="flex flex-1 items-center gap-0.5 rounded-lg bg-muted/50 p-0.5 sm:flex-none">
           {TABS.map((t) => (

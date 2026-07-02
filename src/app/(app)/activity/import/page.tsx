@@ -310,7 +310,7 @@ function ManualImportContent() {
             filteredSeasons.map(([season, episodes]) => (
               <div key={season}>
                 {/* Season header */}
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border/50">
+                <div className="sticky top-0 z-10 app-chrome-bar bg-background/95 backdrop-blur-sm py-2 border-b border-border/50">
                   <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                     {season === 0 ? 'Specials' : `Season ${season}`}
                   </span>
@@ -477,7 +477,7 @@ function ManualImportContent() {
       {/* Bottom action bar */}
       {!loading && files.length > 0 && (
         <div
-          className="fixed md:sticky left-0 right-0 bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 md:z-30 border-t border-border bg-background/95 backdrop-blur-sm px-4 py-3"
+          className="fixed md:sticky left-0 right-0 bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 md:z-30 border-t border-border app-chrome-bar bg-background/95 backdrop-blur-sm px-4 py-3"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
         >
           <Button

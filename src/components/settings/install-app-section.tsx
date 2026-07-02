@@ -63,7 +63,7 @@ export function InstallAppSection() {
         <div className="grouped-section-content">
           <button
             onClick={handleInstallTap}
-            className="grouped-row w-full active:bg-white/5 transition-colors"
+            className="grouped-row w-full active:bg-foreground/5 transition-colors"
             style={{ borderBottom: 'none' }}
           >
             <div className="flex flex-col items-start">

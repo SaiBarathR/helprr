@@ -19,7 +19,7 @@ function ProviderGroup({ label, entries }: { label: string; entries: DiscoverWat
           return (
             <div
               key={p.providerId}
-              className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted/40 border border-[oklch(1_0_0/8%)]"
+              className="relative w-10 h-10 rounded-lg overflow-hidden bg-muted/40 border border-foreground/[0.08]"
               title={p.providerName}
             >
               {logoSrc && (

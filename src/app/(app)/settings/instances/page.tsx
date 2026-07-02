@@ -65,7 +65,7 @@ export default function InstancesIndexPage() {
               <Link
                 key={inst.id}
                 href={`/settings/instances/${config.slug}?instance=${inst.id}`}
-                className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+                className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span className={`flex h-8 w-8 items-center justify-center rounded-md shrink-0 ${config.iconBg} ${config.iconColor}`}>
@@ -86,7 +86,7 @@ export default function InstancesIndexPage() {
             ))}
             <Link
               href={`/settings/instances/${config.slug}?instance=new`}
-              className="grouped-row text-[var(--hpr-amber)] hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+              className="grouped-row text-[var(--hpr-amber)] hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
             >
               <span className="text-[14px]">+ Add {config.label} instance</span>
             </Link>
@@ -105,7 +105,7 @@ export default function InstancesIndexPage() {
             <Link
               key={config.type}
               href={`/settings/instances/${config.slug}`}
-              className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+              className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 <span className={`flex h-8 w-8 items-center justify-center rounded-md shrink-0 ${config.iconBg} ${config.iconColor}`}>

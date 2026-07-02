@@ -41,7 +41,7 @@ export function AnimeScheduleWeekNav({
 }: AnimeScheduleWeekNavProps) {
   return (
     <div
-      className="sticky z-30 -mx-2 px-2 md:-mx-6 md:px-6 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border/40"
+      className="page-toolbar py-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border/40"
       style={{ top: 'var(--header-height, 0px)' }}
     >
       <div className="flex items-center gap-2">

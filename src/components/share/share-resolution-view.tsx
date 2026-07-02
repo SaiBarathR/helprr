@@ -70,7 +70,7 @@ export function ShareResolutionView({ resolved, input }: ShareResolutionViewProp
           </div>
           <Link
             href="/discover"
-            className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+            className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
           >
             <span className="text-sm">Open Discover</span>
             <ExternalLink className="h-4 w-4 text-muted-foreground" />
@@ -86,7 +86,7 @@ function QueryFallback({ query }: { query: string }) {
     <GroupedSection>
       <Link
         href={`/discover?q=${encodeURIComponent(query)}`}
-        className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+        className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
       >
         <span className="text-sm">Search Discover for &ldquo;{query}&rdquo;</span>
         <Search className="h-4 w-4 text-muted-foreground" />
@@ -159,7 +159,7 @@ function SingleHit({ hit }: { hit: ResolvedTmdbHit }) {
   }
 
   return (
-    <div className="mx-4 mb-4 rounded-lg border border-[oklch(1_0_0/8%)] bg-[oklch(1_0_0/2%)] p-4">
+    <div className="mx-4 mb-4 rounded-lg border border-foreground/[0.08] bg-foreground/[0.02] p-4">
       <div className="flex gap-3">
         {hit.posterPath ? (
           <div className="relative w-20 h-30 shrink-0 rounded-md overflow-hidden bg-muted">

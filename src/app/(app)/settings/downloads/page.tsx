@@ -260,7 +260,7 @@ function RuleCard({ rule, isActive, onChange, onRemove }: RuleCardProps) {
   const endStr = fmtTime(rule.endHour, rule.endMinute);
 
   return (
-    <div className="mx-4 rounded-lg border border-[oklch(1_0_0/7%)] bg-[oklch(1_0_0/2%)] px-4 py-4 space-y-4">
+    <div className="mx-4 rounded-lg border border-foreground/[0.07] bg-foreground/[0.02] px-4 py-4 space-y-4">
       <div className="flex items-center gap-3">
         <Input
           value={rule.name}
@@ -301,7 +301,7 @@ function RuleCard({ rule, isActive, onChange, onRemove }: RuleCardProps) {
                 className={`h-9 w-9 rounded-md text-xs font-mono transition-colors border ${
                   active
                     ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                    : 'bg-transparent text-muted-foreground border-[oklch(1_0_0/8%)] hover:border-[oklch(1_0_0/16%)]'
+                    : 'bg-transparent text-muted-foreground border-foreground/[0.08] hover:border-foreground/[0.16]'
                 }`}
                 aria-pressed={active}
               >

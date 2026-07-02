@@ -114,7 +114,7 @@ export function RefreshIntervalDrawer({
               No widgets in this layout yet.
             </p>
           ) : (
-            <ul className="divide-y divide-[oklch(1_0_0/6%)] rounded-lg border border-[oklch(1_0_0/8%)] bg-[oklch(1_0_0/2%)]">
+            <ul className="divide-y divide-foreground/[0.06] rounded-lg border border-foreground/[0.08] bg-foreground/[0.02]">
               {widgets.map((inst) => {
                 const def = getWidgetDefinition(inst.widgetId, discoverLayout);
                 const current = inst.refreshIntervalSecs;

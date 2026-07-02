@@ -25,7 +25,7 @@ export function Header() {
   const title = routeTitles[pathname];
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm pt-[env(safe-area-inset-top)] md:hidden">
+    <header className="sticky top-0 z-40 border-b border-border app-chrome-bar bg-background/95 backdrop-blur-sm pt-[env(safe-area-inset-top)] md:hidden">
       <div className="flex items-center h-11 px-4">
         {/* Mobile: show page title for top-level pages */}
         {isTopLevel && title ? (
