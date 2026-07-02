@@ -73,10 +73,12 @@ export default function AddTorrentPage() {
   // Review step: set once the torrent is added stopped and files can be picked.
   const [reviewHash, setReviewHash] = useState<string | null>(null);
 
-  // File selection review needs torrents.manage (file priorities + start); without
-  // it, fall back to the previous direct-add behavior.
+  // File selection review needs torrents.manage (file priorities + start) AND
+  // torrents.delete (Cancel removes the added-stopped torrent). Without both,
+  // only the previous direct-add behavior is offered.
   const canManage = useCan('torrents.manage');
   const canDelete = useCan('torrents.delete');
+  const canReview = canManage && canDelete;
 
   const categoriesQuery = useQuery({
     queryKey: ['qbittorrent', 'categories'],
@@ -129,8 +131,16 @@ export default function AddTorrentPage() {
       return data;
     },
     onSuccess: (data, { review }) => {
-      if (review && data.hash) {
-        setReviewHash(data.hash);
+      if (review) {
+        if (data.hash) {
+          setReviewHash(data.hash);
+          return;
+        }
+        // The torrent was added (stopped) but the API returned no hash, so the
+        // file-selection step can't run — say so instead of pretending the
+        // direct add path was taken.
+        toast.warning('Torrent added stopped, but file selection was unavailable');
+        router.push('/torrents');
         return;
       }
       toast.success('Torrent added');
@@ -165,7 +175,6 @@ export default function AddTorrentPage() {
         hash={reviewHash}
         displayName={displayName}
         startTorrent={startTorrent}
-        canDelete={canDelete}
         stopOnMetadata={addMode === 'magnet'}
       />
     );
@@ -275,7 +284,7 @@ export default function AddTorrentPage() {
         </div>
 
         <div className="space-y-2 pt-2">
-          {canManage && (
+          {canReview && (
             <Button
               onClick={() => handleAddTorrent(true)}
               disabled={adding}
@@ -293,7 +302,7 @@ export default function AddTorrentPage() {
           )}
           <div className="flex gap-2">
             <Button
-              variant={canManage ? 'outline' : 'default'}
+              variant={canReview ? 'outline' : 'default'}
               onClick={() => handleAddTorrent(false)}
               disabled={adding}
               className="flex-1"
@@ -326,13 +335,11 @@ function ReviewStep({
   hash,
   displayName,
   startTorrent,
-  canDelete,
   stopOnMetadata,
 }: {
   hash: string;
   displayName: string;
   startTorrent: boolean;
-  canDelete: boolean;
   stopOnMetadata: boolean;
 }) {
   const router = useRouter();
@@ -355,18 +362,22 @@ function ReviewStep({
 
   // Magnets fetch metadata while running (stopped torrents can't). qBittorrent
   // 4.6+ auto-stops via stopCondition=MetadataReceived; this covers older
-  // versions by stopping as soon as the file list first appears.
+  // versions by stopping as soon as the file list first appears. The request
+  // promise is kept so confirm can await it — otherwise a late-landing stop
+  // could re-stop a torrent the user just started.
   const stopPendingRef = useRef(stopOnMetadata);
+  const stopRequestRef = useRef<Promise<void> | null>(null);
   useEffect(() => {
     if (!hasMetadata || !stopPendingRef.current) return;
     stopPendingRef.current = false;
-    fetch(`/api/qbittorrent/${hash}`, {
+    stopRequestRef.current = fetch(`/api/qbittorrent/${hash}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'stop' }),
-    }).catch(() => {
-      // Best effort — if it keeps running, confirm still applies priorities.
-    });
+    }).then(
+      () => undefined,
+      () => undefined, // best effort — confirm still applies priorities
+    );
   }, [hasMetadata, hash]);
 
   const defaultExpandedDirs = useMemo(() => {
@@ -418,6 +429,8 @@ function ReviewStep({
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
+      // Let the fallback stop settle first so it can't land after our start.
+      if (stopRequestRef.current) await stopRequestRef.current;
       if (excluded.size > 0) {
         const res = await fetch(`/api/qbittorrent/${hash}/files/priority`, {
           method: 'POST',
@@ -453,7 +466,6 @@ function ReviewStep({
 
   const cancelMutation = useMutation({
     mutationFn: async () => {
-      if (!canDelete) return;
       const res = await fetch(`/api/qbittorrent/${hash}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -465,7 +477,7 @@ function ReviewStep({
       }
     },
     onSuccess: () => {
-      toast.success(canDelete ? 'Torrent removed' : 'Torrent kept stopped');
+      toast.success('Torrent removed');
       router.push('/torrents');
     },
     onError: (err) => {
