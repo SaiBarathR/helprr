@@ -219,7 +219,7 @@ export default function NotificationsSettingsPage() {
       <GroupedSection>
         <Link
           href="/settings/notifications/devices"
-          className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+          className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
         >
           <div className="text-sm font-medium">Devices</div>
           <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">

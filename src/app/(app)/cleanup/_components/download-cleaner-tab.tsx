@@ -456,7 +456,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
           <div className="max-w-screen-2xl mx-auto px-4 pb-4">
             <div
               className={
-                'pointer-events-auto flex items-center justify-end gap-2 rounded-md border bg-card/95 backdrop-blur px-3 py-2 shadow-lg transition-opacity ' +
+                'app-chrome-bar pointer-events-auto flex items-center justify-end gap-2 rounded-md border bg-card/95 backdrop-blur px-3 py-2 shadow-lg transition-opacity ' +
                 (isDirty ? 'opacity-100' : 'opacity-0 pointer-events-none')
               }
             >

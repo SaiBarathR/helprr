@@ -473,7 +473,7 @@ export default function AnimeLibraryPage() {
       </div>
 
       {/* Status tabs */}
-      <div className="sticky z-30 -mx-2 px-2 pt-1 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
+      <div className="page-toolbar pt-1 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex gap-2 overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => {
             const active = status === tab.value;

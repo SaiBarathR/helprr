@@ -108,7 +108,6 @@ export function TokenInput({
     <div
       className={cn(
         'flex flex-wrap items-center gap-1.5 rounded-md border border-input bg-transparent dark:bg-input/30 px-2 py-1.5 min-h-9 text-sm shadow-xs transition-[color,box-shadow]',
-        'focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]',
         ariaInvalid && 'aria-invalid:border-destructive border-destructive ring-destructive/20',
         disabled && 'pointer-events-none opacity-50',
         className,

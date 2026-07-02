@@ -78,7 +78,7 @@ function FileList({
           onClose();
         }}
         className={cn(
-          'flex w-full items-center justify-between gap-3 border-b border-[oklch(1_0_0/6%)] px-4 py-3 text-left hover:bg-accent/40 transition-colors',
+          'flex w-full items-center justify-between gap-3 border-b border-foreground/[0.06] px-4 py-3 text-left hover:bg-accent/40 transition-colors',
           selectedFile === 'all' && 'bg-accent/30'
         )}
       >
@@ -106,7 +106,7 @@ function FileList({
             <div
               key={file.name}
               className={cn(
-                'flex items-center gap-2 border-b border-[oklch(1_0_0/6%)] px-4 py-3 last:border-b-0',
+                'flex items-center gap-2 border-b border-foreground/[0.06] px-4 py-3 last:border-b-0',
                 isSelected && 'bg-accent/30'
               )}
             >

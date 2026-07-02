@@ -23,8 +23,8 @@ export default function ThemeSettingsPage() {
       <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Theme</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Accent color, palette, gradient, text tones, and font. Changes apply
-          live across the whole app.
+          Liquid Glass or a custom look — accent color, palette, gradient, text
+          tones, and font. Changes apply live across the whole app.
         </p>
       </div>
 

@@ -392,7 +392,7 @@ export default function MovieDetailPage() {
   }
 
   if (loading && !movie) {
-    return <><PageHeader className='-mx-2 md:-mx-6' title="Movie" /><PageSpinner /></>;
+    return <><PageHeader title="Movie" /><PageSpinner /></>;
   }
 
   if (!movie) {
@@ -486,7 +486,6 @@ export default function MovieDetailPage() {
       {/* Header */}
       <PageHeader
         title={movie.title}
-        className='-mx-2 md:-mx-6'
         rightContent={
           <>
             {/* Bookmark / Monitored toggle */}

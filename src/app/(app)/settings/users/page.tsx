@@ -135,7 +135,7 @@ export default function UsersAdminPage() {
           {users?.map((u) => (
             <button
               key={u.id}
-              className="grouped-row w-full text-left hover:bg-[oklch(1_0_0/3%)] transition-colors"
+              className="grouped-row w-full text-left hover:bg-foreground/[0.03] transition-colors"
               onClick={() => setEditing(u)}
             >
               <div className="min-w-0">

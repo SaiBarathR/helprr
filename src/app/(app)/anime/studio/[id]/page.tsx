@@ -104,13 +104,13 @@ export default function StudioDetailPage() {
   }, [sortOpen]);
 
   if (loading && !detail) {
-    return <><PageHeader className="-mx-2 md:-mx-6" title="Studio" /><PageSpinner /></>;
+    return <><PageHeader title="Studio" /><PageSpinner /></>;
   }
 
   if (error || !detail) {
     return (
       <div>
-        <PageHeader className="-mx-2 md:-mx-6" title="Error" />
+        <PageHeader title="Error" />
         <div className="p-4 text-center text-muted-foreground">{error || 'Failed to load'}</div>
       </div>
     );
@@ -137,7 +137,7 @@ export default function StudioDetailPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader className="-mx-2 md:-mx-6" title={detail.name} />
+      <PageHeader title={detail.name} />
 
       {/* Studio Header */}
       <div className="mt-2">
@@ -164,7 +164,7 @@ export default function StudioDetailPage() {
             <ChevronDown className="h-3 w-3" />
           </button>
           {sortOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-xl z-50 py-1 min-w-[140px]">
+            <div className="app-glass-overlay absolute right-0 top-full mt-1 bg-popover border border-border rounded-lg shadow-xl z-50 py-1 min-w-[140px]">
               {SORT_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}

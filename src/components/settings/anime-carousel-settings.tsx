@@ -57,7 +57,7 @@ function SortableCarouselItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-[oklch(1_0_0/6%)] last:border-b-0 ${
+      className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-foreground/[0.06] last:border-b-0 ${
         isDragging ? 'z-50 bg-card shadow-lg rounded-lg opacity-90' : ''
       } ${isDisabled ? 'opacity-40' : ''}`}
     >

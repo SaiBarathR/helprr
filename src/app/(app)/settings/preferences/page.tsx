@@ -124,7 +124,7 @@ export default function PreferencesPage() {
       </div>
 
       <GroupedSection title="General" footer="Synced across devices">
-        <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+        <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
           <Label className="text-xs text-muted-foreground">Timezone</Label>
           <Input
             placeholder={settings?.envTimeZone ?? 'UTC'}
@@ -226,7 +226,7 @@ export default function PreferencesPage() {
       <GroupedSection title="Widgets" footer="Synced across devices">
         <Link
           href="/settings/dashboard-refresh"
-          className="grouped-row hover:bg-[oklch(1_0_0/3%)] active:bg-white/5 transition-colors"
+          className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
         >
           <span className="text-sm">Dashboard widget refresh</span>
           <span className="flex items-center gap-1 text-sm text-muted-foreground">

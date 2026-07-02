@@ -161,7 +161,7 @@ export function NotificationDetailDrawer({ notification, onClose, onGoTo, canGoT
                       key={i}
                       type="button"
                       onClick={() => onNavigateItem(href)}
-                      className="flex w-full items-start gap-2 py-1.5 text-left rounded transition-colors active:bg-white/5"
+                      className="flex w-full items-start gap-2 py-1.5 text-left rounded transition-colors active:bg-foreground/5"
                     >
                       {inner}
                     </button>

@@ -150,7 +150,7 @@ export function RequestsUsersWidget({
                 className={cn(
                   'flex items-center gap-3 rounded-xl border border-border/60 bg-card p-3',
                   onUserClick &&
-                    'cursor-pointer transition-colors hover:bg-[oklch(1_0_0/3%)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'cursor-pointer transition-colors hover:bg-foreground/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 )}
                 onClick={onUserClick ? () => onUserClick(user) : undefined}
                 onKeyDown={

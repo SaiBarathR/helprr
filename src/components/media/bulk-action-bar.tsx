@@ -230,7 +230,7 @@ export function BulkActionBar({
             : 'bottom-[calc(env(safe-area-inset-bottom)+0.5rem)]'
         )}
       >
-        <div className="mx-auto flex max-w-3xl items-center gap-1 rounded-xl border bg-background/95 p-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex max-w-3xl items-center gap-1 rounded-xl border app-chrome-bar bg-background/95 p-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <button
             type="button"
             onClick={onCancel}

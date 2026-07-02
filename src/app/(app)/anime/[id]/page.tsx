@@ -244,13 +244,13 @@ export default function AnimeDetailPage() {
     : null;
 
   if (loading && !detail) {
-    return <><PageHeader className='-mx-2 md:-mx-6' title="Anime" /><PageSpinner /></>;
+    return <><PageHeader title="Anime" /><PageSpinner /></>;
   }
 
   if (error || !detail) {
     return (
       <div>
-        <PageHeader className='-mx-2 md:-mx-6' title="Error" />
+        <PageHeader title="Error" />
         <div className="p-4 text-center text-muted-foreground">
           {error || 'Failed to load anime details'}
         </div>
@@ -420,7 +420,7 @@ export default function AnimeDetailPage() {
 
   return (
     <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
-      <PageHeader className='-mx-2 md:-mx-6' title={detail.title} />
+      <PageHeader title={detail.title} />
       {/* Hero */}
       <AnimeHero
         title={detail.title}

@@ -58,7 +58,7 @@ export function BottomNav() {
 
   return (
     <nav className={cn(
-      'md:hidden z-50 border-border bg-background/95 backdrop-blur-sm',
+      'md:hidden z-50 border-border app-chrome-bar bg-background/95 backdrop-blur-sm',
       isBottom
         ? 'fixed bottom-0 left-0 right-0 border-t pb-[env(safe-area-inset-bottom)]'
         : 'sticky top-0 border-b pt-[env(safe-area-inset-top)]'

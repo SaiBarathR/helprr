@@ -162,7 +162,7 @@ export function AnilistConnectionCard() {
         <button
           type="button"
           onClick={() => setExpanded((prev) => !prev)}
-          className="grouped-row w-full active:bg-white/5 transition-colors"
+          className="grouped-row w-full active:bg-foreground/5 transition-colors"
           style={!expanded ? { borderBottom: 'none' } : undefined}
         >
           <div className="flex items-center gap-3 min-w-0">
@@ -193,7 +193,7 @@ export function AnilistConnectionCard() {
         </button>
 
         {expanded && (
-          <div className="px-4 pb-4 pt-2 space-y-3 border-b border-[oklch(1_0_0/6%)] last:border-b-0">
+          <div className="px-4 pb-4 pt-2 space-y-3 border-b border-foreground/[0.06] last:border-b-0">
             {isConnected && viewer?.user ? (
               <div className="space-y-3">
                 <div className="rounded-lg bg-card/40 border border-border/40 p-3">

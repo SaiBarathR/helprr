@@ -19,10 +19,9 @@ export function PageHeader({ title, subtitle, showBack = true, onBack, rightCont
   return (
     <header
       className={cn(
-        'sticky z-40 bg-background/80 backdrop-blur-lg',
+        'page-toolbar page-toolbar-flush app-chrome-bar bg-background/80 backdrop-blur-lg',
         className
       )}
-      style={{ top: 'var(--header-height, 0px)' }}
     >
       <div className="flex items-center h-11 px-1">
         {/* Left: back button */}

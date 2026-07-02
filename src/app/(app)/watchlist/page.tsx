@@ -536,8 +536,7 @@ export default function WatchlistPage() {
     <div className="animate-content-in pb-12">
       <PullToRefresh onRefresh={refresh} disabled={selectionMode} />
       <div
-        className="sticky z-30 -mx-2 space-y-2 bg-background/95 px-2 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:-mx-6 md:px-6"
-        style={{ top: 'var(--header-height, 0px)' }}
+        className="page-toolbar page-toolbar-flush space-y-2 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

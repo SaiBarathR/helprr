@@ -417,7 +417,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
 
       {files.length > 0 && (
         <div
-          className="sticky z-30 -mx-2 flex items-center gap-3 border-b border-border bg-background/95 px-4 py-2 backdrop-blur-sm md:-mx-6 md:px-6"
+          className="page-toolbar flex items-center gap-3 border-b border-border app-chrome-bar bg-background/95 py-2 backdrop-blur-sm"
           style={{ top: 'calc(var(--header-height, 0px) + 2.75rem)' }}
         >
           <Checkbox
@@ -510,7 +510,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
       {/* Bottom action bar — always visible; actions enable once files are selected */}
       <div
         className={cn(
-          'sticky z-30 -mx-2 flex items-center gap-2 border-t border-border bg-background/95 px-3 py-3 backdrop-blur-sm md:-mx-6 md:px-6',
+          'page-toolbar flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 py-3 backdrop-blur-sm',
           navPosition === 'bottom' ? 'bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0' : 'bottom-0'
         )}
       >
@@ -636,14 +636,14 @@ function EpisodePicker({ episodes, initial, onCancel, onConfirm }: {
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input autoFocus value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter episodes by title or number"
-            className="w-full rounded-lg bg-muted/40 py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary/40" />
+            className="w-full rounded-lg bg-muted/40 py-2.5 pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground" />
         </div>
       </div>
       <div className="pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         {filtered.map(([season, eps]) => (
           <div key={season}>
             <div
-              className="sticky z-10 border-b border-border/50 bg-background/95 py-2 backdrop-blur-sm"
+              className="sticky z-10 border-b border-border/50 app-chrome-bar bg-background/95 py-2 backdrop-blur-sm"
               style={{ top: 'calc(var(--header-height, 0px) + 2.75rem)' }}
             >
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

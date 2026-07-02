@@ -296,7 +296,7 @@ export default function DashboardRefreshSettingsPage() {
             return (
               <div
                 key={layout.id}
-                className="rounded-lg border border-[oklch(1_0_0/8%)] bg-[oklch(1_0_0/2%)]"
+                className="rounded-lg border border-foreground/[0.08] bg-foreground/[0.02]"
               >
                 <button
                   type="button"
@@ -309,7 +309,7 @@ export default function DashboardRefreshSettingsPage() {
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{layout.name}</span>
                       {isDefault && (
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground border border-[oklch(1_0_0/12%)] rounded px-1.5 py-0.5">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground border border-foreground/[0.12] rounded px-1.5 py-0.5">
                           {role}
                         </span>
                       )}
@@ -331,14 +331,14 @@ export default function DashboardRefreshSettingsPage() {
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-[oklch(1_0_0/6%)]">
+                  <div className="border-t border-foreground/[0.06]">
                     {layout.widgets.length === 0 ? (
                       <div className="px-4 py-6 text-sm text-muted-foreground text-center">
                         No widgets in this layout.
                       </div>
                     ) : (
                       <>
-                        <div className="px-4 py-2 flex justify-end border-b border-[oklch(1_0_0/6%)]">
+                        <div className="px-4 py-2 flex justify-end border-b border-foreground/[0.06]">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -348,7 +348,7 @@ export default function DashboardRefreshSettingsPage() {
                             Reset all to defaults
                           </Button>
                         </div>
-                        <ul className="divide-y divide-[oklch(1_0_0/6%)]">
+                        <ul className="divide-y divide-foreground/[0.06]">
                           {layout.widgets.map((inst) => {
                             const def = getWidgetDefinition(inst.widgetId, discoverLayout);
                             const draft = drafts[layout.id]?.[inst.id] ?? '';
@@ -429,7 +429,7 @@ export default function DashboardRefreshSettingsPage() {
       )}
 
       {dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[oklch(1_0_0/8%)] bg-background/95 backdrop-blur px-4 py-3">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-foreground/[0.08] app-chrome-bar bg-background/95 backdrop-blur px-4 py-3">
           <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
             <span className="text-sm text-muted-foreground">
               You have unsaved changes

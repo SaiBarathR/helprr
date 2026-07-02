@@ -227,7 +227,7 @@ export default function AlbumDetailPage() {
   }, [tracks]);
 
   if (loading && !album) {
-    return <><PageHeader className="-mx-2 md:-mx-6" title="Album" /><PageSpinner /></>;
+    return <><PageHeader title="Album" /><PageSpinner /></>;
   }
 
   if (!album) {
@@ -261,7 +261,6 @@ export default function AlbumDetailPage() {
       <PageHeader
         title={album.title}
         subtitle={artistName}
-        className="-mx-2 md:-mx-6"
         rightContent={
           <>
             {canEditMonitoring && (

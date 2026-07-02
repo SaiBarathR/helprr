@@ -358,7 +358,7 @@ export default function ArtistDetailPage() {
   }, [albums]);
 
   if (loading && !artist) {
-    return <><PageHeader className="-mx-2 md:-mx-6" title="Artist" /><PageSpinner /></>;
+    return <><PageHeader title="Artist" /><PageSpinner /></>;
   }
 
   if (!artist) {
@@ -393,7 +393,6 @@ export default function ArtistDetailPage() {
     <>
       <PageHeader
         title={artist.artistName}
-        className="-mx-2 md:-mx-6"
         rightContent={
           <>
             {canEditMonitoring && (

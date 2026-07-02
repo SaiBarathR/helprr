@@ -22,11 +22,10 @@ export default function CleanupPage() {
   }, []);
 
   return (
-    <div className="px-4 py-6 max-w-screen-2xl mx-auto animate-content-in">
+    <div className="pb-6 max-w-screen-2xl mx-auto animate-content-in">
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <div
-          className="sticky z-30 -mx-4 mb-4 bg-background/95 px-4 pt-1 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
-          style={{ top: 'var(--header-height, 0px)' }}
+          className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
           <TabsList className="w-full no-scrollbar overflow-x-auto">
           <TabsTrigger value="dashboard" className="flex-1 min-w-0">Dashboard</TabsTrigger>

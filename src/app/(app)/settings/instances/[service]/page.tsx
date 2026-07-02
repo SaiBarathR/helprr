@@ -409,7 +409,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
         footer="Synced across devices · Validate with Test before saving"
       >
         {isMultiInstance && (
-          <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+          <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
             <Label className="text-xs text-muted-foreground">Name</Label>
             <Input
               placeholder="e.g. 4K, Anime, Main"
@@ -420,7 +420,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           </div>
         )}
 
-        <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+        <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
           <Label className="text-xs text-muted-foreground">URL</Label>
           <Input
             placeholder={config.placeholder}
@@ -439,7 +439,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
 
         {isQbt ? (
           <>
-            <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+            <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
               <Label className="text-xs text-muted-foreground">Username</Label>
               <Input
                 placeholder="admin"
@@ -448,7 +448,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 className="h-10"
               />
             </div>
-            <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+            <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
               <Label className="text-xs text-muted-foreground">Password</Label>
               <Input
                 type="password"
@@ -461,7 +461,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           </>
         ) : (
           <>
-            <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+            <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
               <Label className="text-xs text-muted-foreground">
                 {isJellyfin ? 'API Key (Admin)' : 'API Key'}
               </Label>
@@ -481,7 +481,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               />
             </div>
             {isJellyfin && (
-              <div className="px-4 py-3 border-b border-[oklch(1_0_0/6%)] space-y-1.5">
+              <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Primary Default User</Label>
                 <Select
                   value={username ?? ''}

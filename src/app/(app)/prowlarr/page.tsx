@@ -194,7 +194,7 @@ function BlockedStatusTrigger({ status }: { status: ProwlarrIndexerStatus }) {
           side="top"
           align="start"
           sideOffset={8}
-          className="hidden md:block max-w-80 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
+          className="app-glass-overlay hidden md:block max-w-80 rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg"
         >
           <BlockedStatusDetails status={status} />
         </TooltipContent>
@@ -1561,7 +1561,7 @@ export default function ProwlarrPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="indexers">
-        <div className="sticky z-30 -mx-4 px-4 pb-2 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
+        <div className="page-toolbar pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TabsList className="w-full">
             <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
             <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>

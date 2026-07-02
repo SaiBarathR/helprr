@@ -383,7 +383,7 @@ export default function ActivityPage() {
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
       <PullToRefresh onRefresh={handleRefreshActivity} scrollContainerRef={contentScrollRef} />
-      <div className="sticky z-30 flex items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80" style={{ top: 'var(--header-height, 0px)' }}>
+      <div className="page-toolbar page-toolbar-flush flex items-center app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Top bar */}
         <div className="flex items-center justify-between pt-2 pb-2 w-full">
           <div className="flex items-center gap-1">

@@ -34,7 +34,7 @@ export default function BackupSettingsPage() {
         <button
           type="button"
           onClick={() => setExportOpen(true)}
-          className="grouped-row w-full text-left active:bg-white/5 transition-colors"
+          className="grouped-row w-full text-left active:bg-foreground/5 transition-colors"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-yellow-500/10 text-yellow-400">
@@ -50,7 +50,7 @@ export default function BackupSettingsPage() {
         <button
           type="button"
           onClick={() => setImportOpen(true)}
-          className="grouped-row w-full text-left active:bg-white/5 transition-colors"
+          className="grouped-row w-full text-left active:bg-foreground/5 transition-colors"
         >
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-sky-500/10 text-sky-400">
