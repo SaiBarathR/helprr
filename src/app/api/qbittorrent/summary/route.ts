@@ -81,7 +81,9 @@ async function getHandler(request: NextRequest) {
     const reverse = searchParams.get('reverse') === 'true' ? true : undefined;
 
     const version = await getQbitCacheVersion();
-    const seed = `${version}:${filter ?? ''}:${category ?? ''}:${sort ?? ''}:${reverse ? '1' : '0'}`;
+    // JSON-serialized tuple, not a ':'-joined string: category names may
+    // contain ':' and would make joined seeds ambiguous across combinations.
+    const seed = JSON.stringify([version, filter ?? '', category ?? '', sort ?? '', reverse === true]);
     const { payload, cached } = await getSummaryCached(seed, filter, category, sort, reverse);
 
     logApiDuration('/api/qbittorrent/summary', startedAt, {

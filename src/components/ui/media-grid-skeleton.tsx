@@ -5,16 +5,19 @@ const DEFAULT_GRID_CLASS = 'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:gr
 
 // Poster-shaped placeholder grid shown while a media library loads. Pass the
 // page's computed poster grid class so the real cards mount without layout
-// shift regardless of the user's poster-size preference.
+// shift regardless of the user's poster-size preference. Announced once as a
+// polite status; the shimmer placeholders themselves are decorative.
 export function MediaGridSkeleton({ count = 18, gridClassName }: { count?: number; gridClassName?: string }) {
   return (
-    <div className={gridClassName ?? DEFAULT_GRID_CLASS}>
-      {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="space-y-1.5">
-          <Skeleton className="aspect-[2/3] w-full rounded-lg" />
-          <Skeleton className="h-3 w-3/4" />
-        </div>
-      ))}
+    <div role="status" aria-live="polite" aria-label="Loading library">
+      <div className={gridClassName ?? DEFAULT_GRID_CLASS} aria-hidden="true">
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className="space-y-1.5">
+            <Skeleton className="aspect-[2/3] w-full rounded-lg" />
+            <Skeleton className="h-3 w-3/4" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -25,8 +28,8 @@ export function MediaGridSkeleton({ count = 18, gridClassName }: { count?: numbe
 export function MediaLibraryLoading() {
   return (
     <div className="space-y-3">
-      <Skeleton className="h-11 w-full rounded-lg" />
-      <Skeleton className="h-11 w-full rounded-lg" />
+      <Skeleton className="h-11 w-full rounded-lg" aria-hidden="true" />
+      <Skeleton className="h-11 w-full rounded-lg" aria-hidden="true" />
       <MediaGridSkeleton />
     </div>
   );

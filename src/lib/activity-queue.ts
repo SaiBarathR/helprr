@@ -23,9 +23,11 @@ async function getQueueCacheVersion(): Promise<number> {
     const redis = await getRedisClient();
     const value = await redis.get(QUEUE_CACHE_VERSION_KEY);
     const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+    // Missing key defaults to 0, matching INCR's create-at-1 semantics: the
+    // FIRST bump must change the seed (defaulting to 1 would make it a no-op).
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   } catch {
-    return 1;
+    return 0;
   }
 }
 
