@@ -232,7 +232,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 38;
+export const STORE_VERSION = 39;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -421,6 +421,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     state.glassMode = DEFAULT_GLASS_MODE;
     state.glassIntensity = DEFAULT_GLASS_INTENSITY;
   }
+  if (version < 39) {
+    state.calendarShowImages = true;
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -566,6 +569,8 @@ interface UIState {
   setCalendarInstanceFilter: (id: string) => void;
   calendarShowScheduled: boolean;
   setCalendarShowScheduled: (v: boolean) => void;
+  calendarShowImages: boolean;
+  setCalendarShowImages: (v: boolean) => void;
   // Navigation preferences
   navPosition: 'top' | 'bottom';
   setNavPosition: (position: 'top' | 'bottom') => void;
@@ -679,6 +684,7 @@ const PERSISTED_KEYS = [
   'calendarMonitoredOnly',
   'calendarInstanceFilter',
   'calendarShowScheduled',
+  'calendarShowImages',
   'navPosition',
   'navOrder',
   'disabledNavItems',
@@ -903,6 +909,8 @@ export const useUIStore = create<UIState>()(
       setCalendarInstanceFilter: (id) => set({ calendarInstanceFilter: id }),
       calendarShowScheduled: true,
       setCalendarShowScheduled: (v) => set({ calendarShowScheduled: v }),
+      calendarShowImages: true,
+      setCalendarShowImages: (v) => set({ calendarShowImages: v }),
       // Navigation
       navPosition: 'top',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),

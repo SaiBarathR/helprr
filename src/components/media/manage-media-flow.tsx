@@ -510,7 +510,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
       {/* Bottom action bar — always visible; actions enable once files are selected */}
       <div
         className={cn(
-          'page-toolbar flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 py-3 backdrop-blur-sm',
+          'page-bleed sticky z-30 flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 py-3 backdrop-blur-sm',
           navPosition === 'bottom' ? 'bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0' : 'bottom-0'
         )}
       >
