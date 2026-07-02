@@ -11,6 +11,8 @@ import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
+// Real .torrent files top out around a few MB; bound the buffer we parse.
+const MAX_TORRENT_FILE_BYTES = 25 * 1024 * 1024;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -194,6 +196,9 @@ async function postHandler(request: NextRequest) {
       const file = formData.get('file') as File | null;
       if (!file) {
         return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      }
+      if (file.size > MAX_TORRENT_FILE_BYTES) {
+        return NextResponse.json({ error: 'Torrent file is too large' }, { status: 400 });
       }
       const buffer = new Uint8Array(await file.arrayBuffer());
       const category = formData.get('category') as string | null;

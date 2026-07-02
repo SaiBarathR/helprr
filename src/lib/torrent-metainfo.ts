@@ -24,7 +24,7 @@ function asciiSlice(buf: Uint8Array, start: number, end: number): string {
   return out;
 }
 
-function decodeString(buf: Uint8Array, pos: number): { text: string; bytes: Uint8Array; end: number } {
+function decodeString(buf: Uint8Array, pos: number): { bytes: Uint8Array; end: number } {
   let colon = pos;
   while (colon < buf.length && buf[colon] !== 0x3a /* : */) {
     if (buf[colon] < 0x30 || buf[colon] > 0x39) fail('Invalid string length in torrent file');
@@ -36,8 +36,13 @@ function decodeString(buf: Uint8Array, pos: number): { text: string; bytes: Uint
   const start = colon + 1;
   const end = start + length;
   if (end > buf.length) fail('Truncated string in torrent file');
-  const bytes = buf.subarray(start, end);
-  return { text: asciiSlice(buf, start, end), bytes, end };
+  return { bytes: buf.subarray(start, end), end };
+}
+
+// Dictionary keys need string form; values (e.g. multi-MB `pieces`) stay as bytes.
+function decodeKey(buf: Uint8Array, pos: number): { text: string; end: number } {
+  const { bytes, end } = decodeString(buf, pos);
+  return { text: asciiSlice(bytes, 0, bytes.length), end };
 }
 
 function decodeValue(buf: Uint8Array, pos: number, depth: number): { value: BencodeValue; end: number } {
@@ -70,7 +75,7 @@ function decodeValue(buf: Uint8Array, pos: number, depth: number): { value: Benc
     const dict: BencodeDict = {};
     let cur = pos + 1;
     while (cur < buf.length && buf[cur] !== 0x65 /* e */) {
-      const key = decodeString(buf, cur);
+      const key = decodeKey(buf, cur);
       const val = decodeValue(buf, key.end, depth + 1);
       dict[key.text] = val.value;
       cur = val.end;
@@ -99,7 +104,7 @@ export function parseTorrentInfoHash(buffer: Uint8Array): string {
 
   let cur = 1;
   while (cur < buffer.length && buffer[cur] !== 0x65 /* e */) {
-    const key = decodeString(buffer, cur);
+    const key = decodeKey(buffer, cur);
     const valueStart = key.end;
     const result = decodeValue(buffer, valueStart, 0);
 
