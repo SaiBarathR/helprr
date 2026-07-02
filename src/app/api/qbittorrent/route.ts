@@ -4,6 +4,7 @@ import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import type { Capability } from '@/lib/capabilities';
 import { MagnetParseError, parseMagnetInfoHash } from '@/lib/magnet';
+import { TorrentParseError, parseTorrentInfoHash } from '@/lib/torrent-metainfo';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
@@ -198,14 +199,42 @@ async function postHandler(request: NextRequest) {
       const category = formData.get('category') as string | null;
       const savepath = formData.get('savepath') as string | null;
       const paused = formData.get('paused') === 'true';
+
+      let fileHash: string;
+      try {
+        fileHash = parseTorrentInfoHash(buffer);
+      } catch (error) {
+        if (error instanceof TorrentParseError) {
+          logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
+          return NextResponse.json({ error: error.message }, { status: 400 });
+        }
+        throw error;
+      }
+
+      const existingFile = await client.getTorrents(undefined, undefined, undefined, undefined, fileHash);
+      if (existingFile.length > 0) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', duplicate: true });
+        return NextResponse.json({ error: 'Torrent already exists' }, { status: 409 });
+      }
+
       await client.addTorrentFile(buffer, file.name, {
         category: category || undefined,
         savepath: savepath || undefined,
         paused,
       });
+
+      const fileConfirmed = await waitForTorrentHash(client, fileHash);
+      if (!fileConfirmed) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', verifyTimeout: true });
+        return NextResponse.json(
+          { error: 'qBittorrent did not confirm the torrent within 5 seconds' },
+          { status: 502 }
+        );
+      }
+
       await bumpQbitCacheVersion();
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file' });
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, hash: fileHash });
     }
 
     let rawBody: unknown;
@@ -271,11 +300,15 @@ async function postHandler(request: NextRequest) {
     const category = isNonEmptyString(body.category) ? body.category.trim() : undefined;
     const savepath = isNonEmptyString(body.savepath) ? body.savepath.trim() : undefined;
     const paused = typeof body.paused === 'boolean' ? body.paused : undefined;
+    const stopCondition = body.stopCondition === 'MetadataReceived' || body.stopCondition === 'FilesChecked'
+      ? body.stopCondition
+      : undefined;
 
     const addResponseRaw = await client.addMagnet(urls.trim(), {
       category,
       savepath,
       paused,
+      stopCondition,
     });
     const addResponse = normalizeAddResponse(addResponseRaw);
     if (isExplicitAddFailure(addResponse)) {
