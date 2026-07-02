@@ -792,7 +792,7 @@ export default function SeriesPage() {
 
       {(() => {
         if (loading && series.length === 0) {
-          return <MediaGridSkeleton />;
+          return <MediaGridSkeleton gridClassName={posterGridClass} />;
         }
 
         if (filtered.length === 0) {

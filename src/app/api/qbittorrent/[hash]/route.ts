@@ -4,6 +4,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import type { Capability } from '@/lib/capabilities';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 
 // Per-action capability: delete is the most destructive, bandwidth-limit changes
 // are their own grant, everything else is general torrent management.
@@ -110,6 +111,8 @@ async function postHandler(
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
 
+    // Bust the summary cache so post-action refetches see post-action state.
+    await bumpQbitCacheVersion();
     logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action });
     return NextResponse.json({ success: true });
   } catch (error) {

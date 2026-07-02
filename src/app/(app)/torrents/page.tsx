@@ -295,10 +295,10 @@ function mergeTorrents(prev: QBittorrentTorrent[], next: QBittorrentTorrent[]): 
 }
 
 // Optimistic row patches applied to the touched rows before the POST resolves.
-// qBittorrent applies start/stop ASYNCHRONOUSLY: a poll landing right after the
-// POST can still report the pre-action state, so state patches are additionally
-// held as pending overrides (see the merge effect) until a poll confirms the
-// state actually changed — otherwise the reconcile would revert the row.
+// qBittorrent applies actions ASYNCHRONOUSLY: a poll landing right after the
+// POST can still report the pre-action data, so each patch's key field is also
+// held as a pending override (see the merge effect) until a poll confirms the
+// value actually changed — otherwise the reconcile would revert the row.
 const OPTIMISTIC_ROW_PATCHES: Record<
   string,
   (t: QBittorrentTorrent, extra?: Record<string, unknown>) => QBittorrentTorrent
@@ -312,11 +312,27 @@ const OPTIMISTIC_ROW_PATCHES: Record<
   rename: (t, extra) => ({ ...t, name: String(extra?.name ?? t.name) }),
 };
 
-// How long an optimistic state override may outlive polls that still report the
-// pre-action state before we give up and accept the server's answer.
+// The field each action's override guards (the one the reconcile must not revert).
+const OPTIMISTIC_OVERRIDE_FIELD: Record<string, 'state' | 'name' | 'category'> = {
+  start: 'state',
+  resume: 'state',
+  forceStart: 'state',
+  stop: 'state',
+  pause: 'state',
+  setCategory: 'category',
+  rename: 'name',
+};
+
+// How long an optimistic override (or delete tombstone) may outlive polls that
+// still report the pre-action data before we give up and accept the server.
 const OPTIMISTIC_STATE_TTL_MS = 10_000;
 
-type PendingStateOverride = { state: string; prevState: string; until: number };
+type PendingFieldOverride = {
+  field: 'state' | 'name' | 'category';
+  value: string;
+  prev: string;
+  until: number;
+};
 
 // --- SpeedLimitInput component ---
 
@@ -670,39 +686,70 @@ export default function TorrentsPage() {
   });
   const refetchSummary = summaryQuery.refetch;
 
-  // Optimistic state overrides awaiting server confirmation, keyed by hash.
-  // qBittorrent applies start/stop asynchronously, so a poll can still report
-  // the pre-action state right after an action; while an override is pending
-  // (and unexpired) such a poll must not revert the row.
-  const pendingStateRef = useRef(new Map<string, PendingStateOverride>());
+  // Optimistic overrides awaiting server confirmation, keyed by hash.
+  // qBittorrent applies actions asynchronously, so a poll can still report the
+  // pre-action data right after an action; while an override is pending (and
+  // unexpired) such a poll must not revert the row. Deletes get tombstones
+  // (hash → expiry) that suppress re-insertion until the server stops
+  // reporting the torrent.
+  const pendingFieldRef = useRef(new Map<string, PendingFieldOverride>());
+  const pendingDeleteRef = useRef(new Map<string, number>());
+  // Optimistic alt-speed-mode flip awaiting confirmation (same idea, one value).
+  const pendingSpeedModeRef = useRef<{ value: number; prev: number; until: number } | null>(null);
+
+  // Mirror of `torrents` so the merge effect and torrentAction can read the
+  // committed list without adding it to deps (which would churn row callbacks).
+  const torrentsRef = useRef(torrents);
+  torrentsRef.current = torrents;
 
   // Merge new data into local state so polls preserve UI ordering/identity
   // (mergeTorrents reconciles by hash instead of replacing the list wholesale).
+  // Reconciliation of pending overrides happens HERE, outside the setTorrents
+  // updater: updaters must stay pure (they can re-run), and deleting overrides
+  // inside one could clear them before the state is actually committed.
   useEffect(() => {
-    if (summaryQuery.data) {
-      setTorrents((prev) => {
-        let merged = mergeTorrents(prev, summaryQuery.data.torrents);
-        const pending = pendingStateRef.current;
-        if (pending.size > 0) {
-          const now = Date.now();
-          merged = merged.map((t) => {
-            const override = pending.get(t.hash);
-            if (!override) return t;
-            if (t.state !== override.prevState || now > override.until) {
-              // Confirmed (state moved off the pre-action value) or expired.
-              pending.delete(t.hash);
-              return t;
-            }
-            return { ...t, state: override.state };
-          });
-          for (const hash of pending.keys()) {
-            if (!merged.some((t) => t.hash === hash)) pending.delete(hash);
-          }
+    const data = summaryQuery.data;
+    if (!data) return;
+    const now = Date.now();
+    let merged = mergeTorrents(torrentsRef.current, data.torrents);
+
+    const tombstones = pendingDeleteRef.current;
+    if (tombstones.size > 0) {
+      const serverHashes = new Set(data.torrents.map((t) => t.hash));
+      for (const [hash, until] of tombstones) {
+        // Confirmed (server no longer reports it) or expired.
+        if (!serverHashes.has(hash) || now > until) tombstones.delete(hash);
+      }
+      if (tombstones.size > 0) merged = merged.filter((t) => !tombstones.has(t.hash));
+    }
+
+    const pending = pendingFieldRef.current;
+    if (pending.size > 0) {
+      merged = merged.map((t) => {
+        const override = pending.get(t.hash);
+        if (!override) return t;
+        if (t[override.field] !== override.prev || now > override.until) {
+          // Confirmed (field moved off the pre-action value) or expired.
+          pending.delete(t.hash);
+          return t;
         }
-        return merged;
+        return { ...t, [override.field]: override.value };
       });
-      setTransferInfo(summaryQuery.data.transferInfo);
-      setSpeedLimitsMode(summaryQuery.data.speedLimitsMode ?? 0);
+      for (const hash of pending.keys()) {
+        if (!merged.some((t) => t.hash === hash)) pending.delete(hash);
+      }
+    }
+
+    setTorrents(merged);
+    setTransferInfo(data.transferInfo);
+
+    const serverMode = data.speedLimitsMode ?? 0;
+    const modeOverride = pendingSpeedModeRef.current;
+    if (modeOverride && serverMode === modeOverride.prev && now <= modeOverride.until) {
+      setSpeedLimitsMode(modeOverride.value);
+    } else {
+      pendingSpeedModeRef.current = null;
+      setSpeedLimitsMode(serverMode);
     }
   }, [summaryQuery.data]);
 
@@ -785,32 +832,32 @@ export default function TorrentsPage() {
     };
   }, [selectedTorrents.size, loading, error, torrents.length, search]);
 
-  // Mirror of `torrents` so torrentAction can snapshot for optimistic rollback
-  // without adding the list to its deps (which would churn row callbacks every poll).
-  const torrentsRef = useRef(torrents);
-  torrentsRef.current = torrents;
-
   const torrentAction = useCallback(async (
     hash: string,
     action: string,
     extra?: Record<string, unknown>,
     opts?: { silent?: boolean },
   ): Promise<boolean> => {
-    // Optimistically patch the touched rows so the UI reacts instantly; state
-    // changes are also registered as pending overrides so a poll that races the
-    // action (qBittorrent applies start/stop asynchronously) can't revert them.
+    // Optimistically patch the touched rows so the UI reacts instantly; the
+    // patched field is also registered as a pending override (deletes as
+    // tombstones) so a poll racing the action can't revert the rows.
     const patchRow = OPTIMISTIC_ROW_PATCHES[action];
     const hashes = new Set(hash.split('|'));
     let snapshot: QBittorrentTorrent[] | null = null;
     if (patchRow || action === 'delete') {
       snapshot = torrentsRef.current;
-      if (action !== 'delete') {
-        const until = Date.now() + OPTIMISTIC_STATE_TTL_MS;
-        for (const t of snapshot) {
-          if (!hashes.has(t.hash)) continue;
-          const next = patchRow!(t, extra);
-          if (next.state !== t.state) {
-            pendingStateRef.current.set(t.hash, { state: next.state, prevState: t.state, until });
+      const until = Date.now() + OPTIMISTIC_STATE_TTL_MS;
+      if (action === 'delete') {
+        for (const h of hashes) pendingDeleteRef.current.set(h, until);
+      } else {
+        const field = OPTIMISTIC_OVERRIDE_FIELD[action];
+        if (field) {
+          for (const t of snapshot) {
+            if (!hashes.has(t.hash)) continue;
+            const next = patchRow!(t, extra);
+            if (next[field] !== t[field]) {
+              pendingFieldRef.current.set(t.hash, { field, value: next[field], prev: t[field], until });
+            }
           }
         }
       }
@@ -838,9 +885,24 @@ export default function TorrentsPage() {
       }, 500);
       return true;
     } catch (err) {
+      // Roll back only the touched rows: a wholesale snapshot restore would
+      // clobber poll updates and other optimistic actions that landed in flight.
       if (snapshot) {
-        for (const h of hashes) pendingStateRef.current.delete(h);
-        setTorrents(snapshot);
+        const snapByHash = new Map(snapshot.map((t) => [t.hash, t]));
+        if (action === 'delete') {
+          for (const h of hashes) pendingDeleteRef.current.delete(h);
+          setTorrents((prev) => {
+            const have = new Set(prev.map((t) => t.hash));
+            const restored = snapshot!.filter((t) => hashes.has(t.hash) && !have.has(t.hash));
+            // Order doesn't matter: the visible list is re-sorted by sortKey.
+            return restored.length > 0 ? [...prev, ...restored] : prev;
+          });
+        } else {
+          for (const h of hashes) pendingFieldRef.current.delete(h);
+          setTorrents((prev) =>
+            prev.map((t) => (hashes.has(t.hash) && snapByHash.has(t.hash) ? snapByHash.get(t.hash)! : t)),
+          );
+        }
       }
       if (!opts?.silent) toast.error(err instanceof Error ? err.message : 'Action failed');
       return false;
@@ -947,8 +1009,13 @@ export default function TorrentsPage() {
   }, [renameDrawer.hash, renameValue, torrentAction]);
 
   const toggleAltSpeedMode = useCallback(async () => {
-    // Optimistic flip; reverted on failure, reconciled by the delayed refetch.
-    setSpeedLimitsMode((m) => (m === 1 ? 0 : 1));
+    // Optimistic flip with a pending override so a racing poll can't bounce the
+    // toggle; the captured pre-action value (not a blind re-flip, which could
+    // land on the wrong side after a poll repaint) is restored on failure.
+    const prev = speedLimitsMode;
+    const next = prev === 1 ? 0 : 1;
+    pendingSpeedModeRef.current = { value: next, prev, until: Date.now() + OPTIMISTIC_STATE_TTL_MS };
+    setSpeedLimitsMode(next);
     try {
       const res = await fetch('/api/qbittorrent/transfer/limits', {
         method: 'POST',
@@ -959,10 +1026,11 @@ export default function TorrentsPage() {
       toast.success('Alternative speed mode toggled');
       setTimeout(() => void refetchSummary(), 300);
     } catch {
-      setSpeedLimitsMode((m) => (m === 1 ? 0 : 1));
+      pendingSpeedModeRef.current = null;
+      setSpeedLimitsMode(prev);
       toast.error('Failed to toggle speed mode');
     }
-  }, [refetchSummary]);
+  }, [refetchSummary, speedLimitsMode]);
 
   const filteredTorrents = useMemo(() => {
     const q = search.trim().toLowerCase();

@@ -49,6 +49,7 @@ import {
   Info,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
 import { Skeleton } from '@/components/ui/skeleton';
 
 // Recharts is heavy and only the Stats tab renders charts, so load the chart
@@ -70,17 +71,6 @@ import {
   type ProwlarrStats,
   type ProwlarrUserAgentStat,
 } from '@/lib/prowlarr-client';
-
-/**
- * Format a duration given in milliseconds into a compact human-readable string.
- *
- * @param ms - Duration in milliseconds
- * @returns A string formatted as milliseconds (e.g. `123ms`) for values less than 1000, or seconds with one decimal place (e.g. `1.2s`) for 1000 ms or more
- */
-function formatMs(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
 
 /**
  * Format an ISO date-time string into a locale-aware date and time representation.
@@ -783,18 +773,6 @@ const DATE_RANGES: { label: string; value: DateRange }[] = [
   { label: '90d', value: '90d' },
   { label: 'All', value: 'all' },
 ];
-
-/**
- * Formats a number into a compact, human-readable string using `K` and `M` suffixes.
- *
- * @param n - The number to format
- * @returns The formatted string: values >= 1,000 use one decimal and a `K` suffix (e.g., `1.2K`), values >= 1,000,000 use one decimal and an `M` suffix (e.g., `1.2M`), otherwise the integer as a string
- */
-function fmtNum(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
 
 interface StatCardProps {
   label: string;

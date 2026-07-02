@@ -4,9 +4,12 @@ import { withApiLogging } from '@/lib/api-logger';
 import { getQueueCached } from '@/lib/activity-queue';
 import { parsePageParams } from '@/lib/pagination';
 
-// Live download progress changes second-to-second — a tiny window only collapses bursts.
+// no-cache (not max-age): a browser HTTP cache can't be busted by the queue
+// version bump on removal, so it would serve a pre-delete body to the reconcile
+// refetch and flash removed rows back. The server-side Redis window (5s) still
+// collapses poll bursts.
 const QUEUE_CACHE_HEADERS = {
-  'Cache-Control': 'private, max-age=5, stale-while-revalidate=10',
+  'Cache-Control': 'private, no-cache',
   // Partition the private cache by session cookie so a capability-gated response can't be
   // replayed from the browser cache to a different (or logged-out) user within the TTL.
   'Vary': 'Cookie',

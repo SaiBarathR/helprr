@@ -83,7 +83,7 @@ const runtimeCaching: RuntimeCaching[] =
             plugins: [
               new CacheableResponsePlugin({ statuses: [200] }),
               new ExpirationPlugin({
-                maxEntries: 300,
+                maxEntries: 500,
                 maxAgeSeconds: 7 * 24 * 60 * 60,
                 maxAgeFrom: 'last-used',
               }),

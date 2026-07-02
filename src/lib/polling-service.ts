@@ -25,7 +25,6 @@ import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/sc
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
-import { getQueueCached, QUEUE_DEFAULT_PAGE, QUEUE_DEFAULT_PAGE_SIZE } from '@/lib/activity-queue';
 import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
 import {
   PollNotificationCollector,
@@ -552,11 +551,17 @@ export class PollingService {
         { source: 'applyBandwidthSchedule', run: () => this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()) },
         { source: 'checkNotificationRetention', run: () => this.runPollSource('checkNotificationRetention', () => this.checkNotificationRetention()) },
         { source: 'checkAnimeAutoMap', run: () => this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()) },
-        { source: 'warmCaches', run: () => this.runPollSource('warmCaches', () => this.warmCaches()) },
       );
       const pollSources = pollTasks.map((task) => task.source);
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
       const results = await Promise.allSettled(pollTasks.map((task) => task.run()));
+
+      // Warm AFTER the polls: pollSonarr/Radarr/Lidarr invalidate the library
+      // cache when they observe an import, and a warm fetch racing them could
+      // write a pre-import snapshot back over that invalidation for the TTL.
+      await this.runPollSource('warmCaches', () => this.warmCaches()).catch((e) => {
+        logger.error('Cache warming failed', e, { scope: 'polling' });
+      });
 
       const rejected = results.flatMap((result, index) => {
         if (result.status !== 'rejected') return [];
@@ -809,10 +814,12 @@ export class PollingService {
     }
   }
 
-  // Keep the hot read caches warm so a user opening the app hits Redis instead
-  // of a live *arr fan-out. These are the exact loaders (scope + seed) the
-  // /api/{sonarr,radarr,lidarr} library routes and /api/activity/queue use, so
-  // a warm entry serves them directly; when already warm each is one Redis GET.
+  // Keep the hot library caches warm so a user opening the app hits Redis
+  // instead of a live *arr fan-out. These are the exact loaders (scope + seed)
+  // the /api/{sonarr,radarr,lidarr} library routes use, so a warm entry serves
+  // them directly; when already warm each is one Redis GET. The activity queue
+  // is deliberately NOT warmed: its 5s TTL expires long before the next 30s
+  // cycle, so warming it would cost a full fan-out for a mostly-dead entry.
   private async warmCaches(): Promise<void> {
     await Promise.all([
       getCachedTaggedLibrary({
@@ -833,7 +840,6 @@ export class PollingService {
         getInstances: getLidarrClients,
         fetchOne: (c) => c.getArtists(),
       }),
-      getQueueCached(QUEUE_DEFAULT_PAGE, QUEUE_DEFAULT_PAGE_SIZE),
     ]);
   }
 

@@ -12,8 +12,10 @@ import { getQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 // that multi-client fan-out into one upstream hit per window (mirrors
 // api/activity/queue). The version stamp in the seed is bumped on mutations so
 // the client's fast post-action reconcile never reads a pre-action snapshot.
+// no-cache (not max-age): a browser HTTP cache can't be busted by the version
+// bump, so it would happily serve a pre-action body to the reconcile refetch.
 const SUMMARY_CACHE_HEADERS = {
-  'Cache-Control': 'private, max-age=2',
+  'Cache-Control': 'private, no-cache',
   'Vary': 'Cookie',
 } as const;
 const SUMMARY_CACHE_SCOPE = 'qbittorrent-summary';
