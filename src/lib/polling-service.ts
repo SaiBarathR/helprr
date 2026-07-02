@@ -821,26 +821,19 @@ export class PollingService {
   // is deliberately NOT warmed: its 5s TTL expires long before the next 30s
   // cycle, so warming it would cost a full fan-out for a mostly-dead entry.
   private async warmCaches(): Promise<void> {
-    await Promise.all([
-      getCachedTaggedLibrary({
-        scope: 'sonarr',
-        cacheKeySeed: 'all',
-        getInstances: getSonarrClients,
-        fetchOne: (c) => c.getSeries(),
-      }),
-      getCachedTaggedLibrary({
-        scope: 'radarr',
-        cacheKeySeed: 'all',
-        getInstances: getRadarrClients,
-        fetchOne: (c) => c.getMovies(),
-      }),
-      getCachedTaggedLibrary({
-        scope: 'lidarr',
-        cacheKeySeed: 'all',
-        getInstances: getLidarrClients,
-        fetchOne: (c) => c.getArtists(),
-      }),
-    ]);
+    // allSettled + per-scope logging: one failing scope must not abort or mask
+    // the other warmups.
+    const warms = [
+      { scope: 'sonarr', run: () => getCachedTaggedLibrary({ scope: 'sonarr', cacheKeySeed: 'all', getInstances: getSonarrClients, fetchOne: (c) => c.getSeries() }) },
+      { scope: 'radarr', run: () => getCachedTaggedLibrary({ scope: 'radarr', cacheKeySeed: 'all', getInstances: getRadarrClients, fetchOne: (c) => c.getMovies() }) },
+      { scope: 'lidarr', run: () => getCachedTaggedLibrary({ scope: 'lidarr', cacheKeySeed: 'all', getInstances: getLidarrClients, fetchOne: (c) => c.getArtists() }) },
+    ] as const;
+    const results = await Promise.allSettled(warms.map((w) => w.run()));
+    results.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        logger.warn('Cache warm failed', { scope: warms[i].scope, reason: errorMessage(result.reason) }, { scope: 'polling' });
+      }
+    });
   }
 
   // Daily anime auto-map scheduling gate. The run itself lives on a detached

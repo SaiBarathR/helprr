@@ -6,8 +6,8 @@ import { parsePageParams } from '@/lib/pagination';
 
 // no-cache (not max-age): a browser HTTP cache can't be busted by the queue
 // version bump on removal, so it would serve a pre-delete body to the reconcile
-// refetch and flash removed rows back. The server-side Redis window (5s) still
-// collapses poll bursts.
+// refetch and flash removed rows back. The server-side Redis window
+// (QUEUE_CACHE_TTL_SECONDS in lib/activity-queue.ts) still collapses poll bursts.
 const QUEUE_CACHE_HEADERS = {
   'Cache-Control': 'private, no-cache',
   // Partition the private cache by session cookie so a capability-gated response can't be
