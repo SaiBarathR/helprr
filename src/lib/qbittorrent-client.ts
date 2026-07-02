@@ -276,12 +276,18 @@ export class QBittorrentClient {
     await this.post('/api/v2/torrents/filePrio', params.toString());
   }
 
-  async addMagnet(urls: string, options?: { category?: string; savepath?: string; paused?: boolean }): Promise<string> {
+  async addMagnet(urls: string, options?: { category?: string; savepath?: string; paused?: boolean; stopCondition?: 'MetadataReceived' | 'FilesChecked' }): Promise<string> {
     const params = new URLSearchParams();
     params.append('urls', urls);
     if (options?.category) params.append('category', options.category);
     if (options?.savepath) params.append('savepath', options.savepath);
-    if (options?.paused !== undefined) params.append('paused', String(options.paused));
+    // Auto-stop after metadata fetch (qBittorrent 4.6+; ignored by older versions).
+    if (options?.stopCondition) params.append('stopCondition', options.stopCondition);
+    if (options?.paused !== undefined) {
+      // qBittorrent 5 renamed the param to "stopped"; send both, unknown params are ignored.
+      params.append('paused', String(options.paused));
+      params.append('stopped', String(options.paused));
+    }
     return this.post<string>('/api/v2/torrents/add', params.toString());
   }
 
@@ -293,7 +299,11 @@ export class QBittorrentClient {
     formData.append('torrents', blob, filename);
     if (options?.category) formData.append('category', options.category);
     if (options?.savepath) formData.append('savepath', options.savepath);
-    if (options?.paused !== undefined) formData.append('paused', String(options.paused));
+    if (options?.paused !== undefined) {
+      // qBittorrent 5 renamed the param to "stopped"; send both, unknown params are ignored.
+      formData.append('paused', String(options.paused));
+      formData.append('stopped', String(options.paused));
+    }
     await this.postMultipart('/api/v2/torrents/add', formData);
   }
 
