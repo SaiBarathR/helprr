@@ -1270,6 +1270,27 @@ export default function SeriesDetailPage() {
                 unoptimized
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              {/* Watchlist + schedule alert icons — top right, mirrors discover hero */}
+              <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="Add to watchlist"
+                  onClick={() => setShowAddWatchlist(true)}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                >
+                  <Bookmark className="h-3.5 w-3.5" />
+                </button>
+                {canScheduleAlert && (
+                  <button
+                    type="button"
+                    aria-label="Schedule alert"
+                    onClick={() => setShowScheduleAlert(true)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                  >
+                    <Bell className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
             <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
               <div className="w-[100px] shrink-0">
@@ -1288,18 +1309,6 @@ export default function SeriesDetailPage() {
                       <Tv className="h-8 w-8" />
                     </div>
                   )}
-                  <button
-                    type="button"
-                    aria-label="Add to watchlist"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowAddWatchlist(true);
-                    }}
-                    className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
-                  >
-                    <Bookmark className="h-3.5 w-3.5" />
-                  </button>
                 </div>
               </div>
               <div className="flex-1 min-w-0 pt-[60px]">
