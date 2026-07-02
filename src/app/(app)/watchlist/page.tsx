@@ -743,11 +743,7 @@ export default function WatchlistPage() {
               {hasActiveFilters && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() =>
-                      setView((v) => ({ ...v, type: 'all', sources: [], libraryOnly: 'all' }))
-                    }
-                  >
+                  <DropdownMenuItem onClick={resetFilters}>
                     Reset filters
                   </DropdownMenuItem>
                 </>

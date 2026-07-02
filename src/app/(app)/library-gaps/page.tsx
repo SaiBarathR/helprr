@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -288,14 +288,13 @@ export default function LibraryGapsPage() {
     return withGaps.find((s) => s.id === activeId) ?? withGaps[0] ?? null;
   }, [data, activeId]);
 
-  const selectTab = useCallback(
-    (id: LibraryGapSectionId) => {
-      setActiveId(id);
-      // Selection is scoped to the visible section — leave it on tab switch.
-      exit();
-    },
-    [exit]
-  );
+  // Selection is scoped to the visible section — drop it whenever the active
+  // section changes, whether from a tile click or the auto-fallback after a
+  // refetch empties the current one.
+  const activeSectionId = activeSection?.id ?? null;
+  useEffect(() => {
+    exit();
+  }, [activeSectionId, exit]);
 
   // The searchable gaps in the active section — drive select-all and "Search all".
   const searchableItems = useMemo(
@@ -415,11 +414,21 @@ export default function LibraryGapsPage() {
               key={section.id}
               section={section}
               active={activeSection?.id === section.id}
-              onSelect={() => selectTab(section.id)}
+              onSelect={() => setActiveId(section.id)}
             />
           ))}
         </div>
       </div>
+
+      {/* Not allComplete (an unavailable service keeps that false) yet nothing
+          selectable — every connected service reports zero gaps. */}
+      {!activeSection && (
+        <div className="py-16 text-center text-muted-foreground">
+          <CheckCircle2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
+          <p className="text-sm">No gaps in the connected services</p>
+          <p className="text-xs">Sections marked unavailable couldn&apos;t be checked.</p>
+        </div>
+      )}
 
       {activeSection && activeMeta && (
         <section className="space-y-2.5 animate-rail-in" key={activeSection.id}>

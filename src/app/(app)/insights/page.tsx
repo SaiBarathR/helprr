@@ -139,7 +139,7 @@ export default function InsightsPage() {
 
       <div className="flex-1 overflow-y-auto px-2 pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-2 px-2">
+          <div role="tablist" className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-2 px-2">
             {tabs.map((id) => {
               const meta = TAB_META[id];
               const Icon = meta.icon;
@@ -148,8 +148,9 @@ export default function InsightsPage() {
                 <button
                   key={id}
                   type="button"
+                  role="tab"
                   onClick={() => setTab(id)}
-                  aria-pressed={active}
+                  aria-selected={active}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 transition-colors ${
                     active
                       ? 'bg-primary/20 text-primary border border-primary/40'
@@ -164,6 +165,14 @@ export default function InsightsPage() {
           </div>
         )}
 
+        {/* Health + KPIs live in the Library tab; when that tab isn't permitted
+            (or no tab is), surface them standalone so they're never lost. */}
+        {!tabs.includes('library') && (
+          <div className="space-y-4">
+            <ServiceHealthStrip />
+            <KpiRow stats={stats} loading={statsLoading} />
+          </div>
+        )}
         {activeTab === 'library' && (
           <div className="space-y-4 animate-content-in">
             <ServiceHealthStrip />
@@ -189,13 +198,6 @@ export default function InsightsPage() {
         {activeTab === 'watching' && (
           <div className="space-y-4 animate-content-in">
             <WatchStatsSection range={range} />
-          </div>
-        )}
-        {/* No permitted tab at all — still surface service health + counts. */}
-        {tabs.length === 0 && (
-          <div className="space-y-4">
-            <ServiceHealthStrip />
-            <KpiRow stats={stats} loading={statsLoading} />
           </div>
         )}
       </div>
