@@ -461,7 +461,7 @@ function AgendaView({ events, showImages }: { events: CalendarEvent[]; showImage
  * release/finale badges, monitored and download state. Tap/click still
  * navigates to the detail page, so touch behavior is unchanged.
  */
-function MonthEventItem({ event }: { event: CalendarEvent }) {
+function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImages: boolean }) {
   const [open, setOpen] = useState(false);
   const openTimer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(openTimer.current), []);
@@ -522,7 +522,8 @@ function MonthEventItem({ event }: { event: CalendarEvent }) {
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="flex gap-3">
-          {poster && (
+          {showImages && poster && (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={poster}
               alt=""
@@ -855,7 +856,7 @@ function MonthView({
                 {/* Desktop: readable chips; overflow selects the day instead of dead-ending. */}
                 <div className="hidden md:block space-y-0.5 mt-0.5">
                   {dayEvents.slice(0, 3).map((event) => (
-                    <MonthEventItem key={event.id} event={event} />
+                    <MonthEventItem key={event.id} event={event} showImages={showImages} />
                   ))}
                   {overflow > 0 && (
                     <button
