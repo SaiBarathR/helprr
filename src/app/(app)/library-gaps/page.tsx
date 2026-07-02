@@ -38,21 +38,10 @@ const SECTION_META: Record<LibraryGapSectionId, { title: string; icon: LucideIco
   notReleased: { title: 'Not Yet Released', icon: Hourglass, service: 'Sonarr / Radarr' },
 };
 
-// Mirrors the Discover rail card breakpoints so every gap section scrolls horizontally.
-const RAIL_CARD =
-  'min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px]';
-
-// Expanded section layout — wraps every loaded card into a poster grid
-// (mirrors the movies/series library grid breakpoints).
-const EXPANDED_GRID =
+// One focused poster grid for the active category (mirrors the movies/series
+// library grid breakpoints).
+const SECTION_GRID =
   'grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5';
-
-// Collapsed layout — a single horizontally-scrolling rail.
-const RAIL_ROW =
-  '-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide animate-rail-in md:-mx-6 md:px-6';
-
-// Rails get unwieldy past roughly one screen of cards — offer "Show all" then.
-const EXPAND_THRESHOLD = 6;
 
 async function postCommand(url: string, body: Record<string, unknown>) {
   const res = await fetch(url, {
@@ -65,14 +54,12 @@ async function postCommand(url: string, body: Record<string, unknown>) {
 
 function GapCard({
   item,
-  layout = 'rail',
   imagePriority,
   selectionMode,
   selected,
   onToggleSelect,
 }: {
   item: LibraryGapItem;
-  layout?: 'rail' | 'grid';
   imagePriority?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
@@ -207,8 +194,7 @@ function GapCard({
   return (
     <div
       className={cn(
-        'group relative',
-        layout === 'rail' ? cn('shrink-0', RAIL_CARD) : 'w-full',
+        'group relative w-full',
         selectionMode && !selectable && 'opacity-40'
       )}
     >
@@ -232,75 +218,50 @@ function GapCard({
   );
 }
 
-function GapSectionView({
+function SectionTile({
   section,
-  priorityKeys,
-  selectionMode,
-  selectedKeys,
-  onToggle,
+  active,
+  onSelect,
 }: {
   section: LibraryGapSection;
-  priorityKeys?: Set<string>;
-  selectionMode?: boolean;
-  selectedKeys?: Set<string>;
-  onToggle?: (key: string) => void;
+  active: boolean;
+  onSelect: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const meta = SECTION_META[section.id];
   const Icon = meta.icon;
-
-  // Omit available-but-empty sections to keep the page focused.
-  if (section.available && section.count === 0) return null;
-
-  // How many seasons/episodes/movies the shown cards actually cover — when the
-  // server truncated the section, the badge total exceeds this.
-  const shownUnits = section.items.reduce((n, item) => n + searchUnits(item), 0);
-  const truncated = section.available && section.count > shownUnits;
-  const canExpand = section.items.length > EXPAND_THRESHOLD;
+  const empty = section.available && section.count === 0;
+  const disabled = !section.available || empty;
 
   return (
-    <section className="space-y-2">
-      <div className="flex items-center gap-2 px-0.5">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <h2 className="text-base font-semibold">{meta.title}</h2>
-        {section.available ? (
-          <Badge variant="secondary" className="text-[10px]">{section.count}</Badge>
-        ) : section.error ? (
-          <Badge variant="outline" className="text-[10px]">{meta.service} unavailable</Badge>
-        ) : (
-          <Badge variant="outline" className="text-[10px]">{meta.service} not connected</Badge>
-        )}
-        {truncated && (
-          <span className="text-[11px] text-muted-foreground">showing first {shownUnits} of {section.count}</span>
-        )}
-        {canExpand && (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            className="ml-auto shrink-0 text-xs font-medium text-primary hover:underline"
-          >
-            {/* When the server truncated the section, expanding still can't reveal
-                everything — so don't promise "all", just toggle the grid layout. */}
-            {expanded ? 'Collapse' : truncated ? 'Expand' : `Show all (${section.items.length})`}
-          </button>
-        )}
-      </div>
-      {section.available && (
-        <div className={expanded ? EXPANDED_GRID : RAIL_ROW}>
-          {section.items.map((item) => (
-            <GapCard
-              key={item.key}
-              item={item}
-              layout={expanded ? 'grid' : 'rail'}
-              imagePriority={priorityKeys?.has(item.key)}
-              selectionMode={selectionMode}
-              selected={selectedKeys?.has(item.key)}
-              onToggleSelect={() => onToggle?.(item.key)}
-            />
-          ))}
-        </div>
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={disabled}
+      aria-pressed={active}
+      className={cn(
+        'min-w-[8.5rem] shrink-0 rounded-xl border bg-card p-3 text-left transition-colors',
+        active ? 'border-primary/60 bg-primary/10' : 'hover:bg-accent/40',
+        disabled && 'opacity-45'
       )}
-    </section>
+    >
+      <div className="flex items-center gap-1.5">
+        <Icon className={cn('h-3.5 w-3.5', active ? 'text-primary' : 'text-muted-foreground')} />
+        <span
+          className="text-lg font-semibold tabular-nums leading-none"
+          style={{ fontFamily: 'var(--hpr-font-display)' }}
+        >
+          {section.available ? section.count : '—'}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground leading-tight">
+        {meta.title}
+      </p>
+      {!section.available && (
+        <p className="text-[10px] text-muted-foreground/70">
+          {section.error ? `${meta.service} unavailable` : `${meta.service} not connected`}
+        </p>
+      )}
+    </button>
   );
 }
 
@@ -316,11 +277,30 @@ export default function LibraryGapsPage() {
   const {
     selectionMode, selectedKeys, count, toggle, selectMany, clear, enter, exit,
   } = useBulkSelection();
+  const [activeId, setActiveId] = useState<LibraryGapSectionId | null>(null);
+  const [searchingAll, setSearchingAll] = useState(false);
 
-  // Every searchable gap across all sections — drives "select all" and key lookup.
+  // Resolve the active section: the picked tile if it still has gaps, else the
+  // first section that does.
+  const activeSection = useMemo(() => {
+    if (!data) return null;
+    const withGaps = data.sections.filter((s) => s.available && s.count > 0);
+    return withGaps.find((s) => s.id === activeId) ?? withGaps[0] ?? null;
+  }, [data, activeId]);
+
+  const selectTab = useCallback(
+    (id: LibraryGapSectionId) => {
+      setActiveId(id);
+      // Selection is scoped to the visible section — leave it on tab switch.
+      exit();
+    },
+    [exit]
+  );
+
+  // The searchable gaps in the active section — drive select-all and "Search all".
   const searchableItems = useMemo(
-    () => (data ? data.sections.flatMap((s) => (s.available ? s.items.filter((i) => i.search.kind !== 'none') : [])) : []),
-    [data]
+    () => (activeSection ? activeSection.items.filter((i) => i.search.kind !== 'none') : []),
+    [activeSection]
   );
   const searchableByKey = useMemo(
     () => new Map(searchableItems.map((i) => [i.key, i])),
@@ -328,33 +308,20 @@ export default function LibraryGapsPage() {
   );
 
   const allSelected = searchableItems.length > 0 && searchableItems.every((i) => selectedKeys.has(i.key));
-  const priorityGapKeys = useMemo(() => {
-    const keys = new Set<string>();
-    if (!data) return keys;
-    for (const section of data.sections) {
-      if (!section.available || section.count === 0) continue;
-      for (const item of section.items) {
-        if (keys.size >= 4) return keys;
-        keys.add(item.key);
-      }
-    }
-    return keys;
-  }, [data]);
   const toggleSelectAll = useCallback(() => {
     if (allSelected) clear();
     else selectMany(searchableItems.map((i) => i.key));
   }, [allSelected, clear, selectMany, searchableItems]);
 
-  // Fan out the selection by service/instance/kind: episodes and movies batch into
+  // Fan out searches by service/instance/kind: episodes and movies batch into
   // a single array command per instance; seasons have no batch form, so one each.
-  const handleBulkSearch = useCallback(async () => {
+  const searchItems = useCallback(async (items: LibraryGapItem[]) => {
     const episodesByInstance = new Map<string, number[]>();
     const moviesByInstance = new Map<string, number[]>();
     const seasons: { instanceId: string; seriesId: number; seasonNumber: number }[] = [];
 
-    for (const key of selectedKeys) {
-      const search = searchableByKey.get(key)?.search;
-      if (!search) continue;
+    for (const item of items) {
+      const search = item.search;
       if (search.kind === 'episodes') {
         const list = episodesByInstance.get(search.instanceId) ?? [];
         list.push(...search.episodeIds);
@@ -392,8 +359,25 @@ export default function LibraryGapsPage() {
     if (failed && ok === 0) toast.error(`Search failed for ${failed} batch${failed === 1 ? '' : 'es'}`);
     else if (failed) reportBulk('Search started for', ok, failed, { noun: 'batch', pluralNoun: 'batches' });
     else toast.success(`Search started for ${total} item${total === 1 ? '' : 's'}`);
-    if (failed === 0) exit();
-  }, [selectedKeys, searchableByKey, exit]);
+    return failed === 0;
+  }, []);
+
+  const handleBulkSearch = useCallback(async () => {
+    const items = [...selectedKeys]
+      .map((key) => searchableByKey.get(key))
+      .filter((i): i is LibraryGapItem => Boolean(i));
+    const ok = await searchItems(items);
+    if (ok) exit();
+  }, [selectedKeys, searchableByKey, searchItems, exit]);
+
+  const handleSearchAll = useCallback(async () => {
+    setSearchingAll(true);
+    try {
+      await searchItems(searchableItems);
+    } finally {
+      setSearchingAll(false);
+    }
+  }, [searchItems, searchableItems]);
 
   if (loading) return <PageSpinner />;
 
@@ -405,52 +389,104 @@ export default function LibraryGapsPage() {
 
   const allComplete = data.sections.every((s) => s.available && s.count === 0);
 
-  return (
-    <div className="animate-content-in">
-      {!allComplete && canSearch && searchableItems.length > 0 && (
-        <div className="mb-3 flex items-center justify-end">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => (selectionMode ? exit() : enter())}
-                className={cn(
-                  'p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors',
-                  selectionMode ? 'bg-primary text-primary-foreground' : 'hover:bg-accent active:bg-accent/80'
-                )}
-                aria-label={selectionMode ? 'Exit selection' : 'Select gaps to search'}
-                aria-pressed={selectionMode}
-              >
-                <ListChecks className="h-5 w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>{selectionMode ? 'Exit selection' : 'Select to search'}</TooltipContent>
-          </Tooltip>
-        </div>
-      )}
+  if (allComplete) {
+    return (
+      <div className="animate-content-in py-16 text-center text-muted-foreground">
+        <CheckCircle2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
+        <p className="text-sm">No gaps — your library is complete</p>
+      </div>
+    );
+  }
 
-      {allComplete ? (
-        <div className="py-16 text-center text-muted-foreground">
-          <CheckCircle2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
-          <p className="text-sm">No gaps — your library is complete</p>
-        </div>
-      ) : (
-        <div className="space-y-5">
+  const activeMeta = activeSection ? SECTION_META[activeSection.id] : null;
+  // How many seasons/episodes/movies the shown cards actually cover — when the
+  // server truncated the section, the count badge exceeds this.
+  const shownUnits = activeSection
+    ? activeSection.items.reduce((n, item) => n + searchUnits(item), 0)
+    : 0;
+  const truncated = activeSection ? activeSection.count > shownUnits : false;
+
+  return (
+    <div className="animate-content-in space-y-4">
+      <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
           {data.sections.map((section) => (
-            <GapSectionView
+            <SectionTile
               key={section.id}
               section={section}
-              priorityKeys={priorityGapKeys}
-              selectionMode={selectionMode}
-              selectedKeys={selectedKeys}
-              onToggle={toggle}
+              active={activeSection?.id === section.id}
+              onSelect={() => selectTab(section.id)}
             />
           ))}
         </div>
+      </div>
+
+      {activeSection && activeMeta && (
+        <section className="space-y-2.5 animate-rail-in" key={activeSection.id}>
+          <div className="flex min-h-9 items-center gap-2 px-0.5">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {activeMeta.title}
+            </h2>
+            <Badge variant="secondary" className="text-[10px]">{activeSection.count}</Badge>
+            {truncated && (
+              <span className="text-[11px] text-muted-foreground">
+                showing first {shownUnits} of {activeSection.count}
+              </span>
+            )}
+            {canSearch && searchableItems.length > 0 && !selectionMode && (
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleSearchAll}
+                  disabled={searchingAll}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-60"
+                >
+                  {searchingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+                  Search all
+                </button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={enter}
+                      className="p-2 flex items-center justify-center rounded-lg transition-colors hover:bg-accent active:bg-accent/80"
+                      aria-label="Select gaps to search"
+                    >
+                      <ListChecks className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Select to search</TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+            {selectionMode && (
+              <button
+                type="button"
+                onClick={exit}
+                className="ml-auto text-xs font-medium text-primary hover:underline"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
+
+          <div className={SECTION_GRID}>
+            {activeSection.items.map((item, i) => (
+              <GapCard
+                key={item.key}
+                item={item}
+                imagePriority={i < 8}
+                selectionMode={selectionMode}
+                selected={selectedKeys.has(item.key)}
+                onToggleSelect={() => toggle(item.key)}
+              />
+            ))}
+          </div>
+        </section>
       )}
 
       {selectionMode && (
         <>
-          {/* Spacer so the floating bar doesn't cover the last rail. */}
+          {/* Spacer so the floating bar doesn't cover the last row. */}
           <div aria-hidden className="h-24" />
           <BulkActionBar
             count={count}
