@@ -6,8 +6,10 @@ import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   ArrowUpDown,
+  BadgeCheck,
   Bell,
   Bookmark,
+  ChevronRight,
   Filter,
   ListChecks,
   Loader2,
@@ -16,6 +18,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Tag,
   Trash2,
   X,
 } from 'lucide-react';
@@ -81,7 +84,7 @@ interface WatchlistTag {
   count: number;
 }
 
-type SortKey = 'addedAt' | 'title' | 'year' | 'rating' | 'mediaType';
+type SortKey = 'addedAt' | 'title' | 'year' | 'rating';
 type SortDir = 'asc' | 'desc';
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
@@ -89,14 +92,20 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: 'title', label: 'Title' },
   { value: 'year', label: 'Release Year' },
   { value: 'rating', label: 'Score' },
-  { value: 'mediaType', label: 'Type' },
 ];
 
-const MEDIA_TYPE_OPTIONS: Array<{ value: MediaType; label: string }> = [
+const TYPE_OPTIONS: Array<{ value: 'all' | MediaType; label: string }> = [
+  { value: 'all', label: 'All' },
   { value: 'movie', label: 'Movies' },
   { value: 'series', label: 'Series' },
   { value: 'anime', label: 'Anime' },
 ];
+
+const TYPE_SECTION_LABEL: Record<MediaType, string> = {
+  movie: 'Movies',
+  series: 'Series',
+  anime: 'Anime',
+};
 
 const SOURCE_OPTIONS: Array<{ value: Source; label: string }> = [
   { value: 'TMDB', label: 'TMDB' },
@@ -106,12 +115,13 @@ const SOURCE_OPTIONS: Array<{ value: Source; label: string }> = [
   { value: 'RADARR', label: 'Radarr' },
 ];
 
-const STORAGE_KEY = 'helprr.watchlist.view.v1';
+// v2: `type` (segmented control) replaced the v1 `mediaTypes` checkbox array.
+const STORAGE_KEY = 'helprr.watchlist.view.v2';
 
 interface ViewState {
   sort: SortKey;
   sortDir: SortDir;
-  mediaTypes: MediaType[];
+  type: 'all' | MediaType;
   sources: Source[];
   libraryOnly: 'all' | 'in' | 'out';
 }
@@ -119,10 +129,15 @@ interface ViewState {
 const DEFAULT_VIEW: ViewState = {
   sort: 'addedAt',
   sortDir: 'desc',
-  mediaTypes: [],
+  type: 'all',
   sources: [],
   libraryOnly: 'all',
 };
+
+/** An item is "in library" when its detail page lives in the local library routes. */
+function isInLibrary(item: WatchlistItem): boolean {
+  return item.href !== null && /^\/(movies|series)\//.test(item.href);
+}
 
 function loadView(): ViewState {
   if (typeof window === 'undefined') return DEFAULT_VIEW;
@@ -133,11 +148,7 @@ function loadView(): ViewState {
     return {
       sort: SORT_OPTIONS.some((o) => o.value === parsed.sort) ? (parsed.sort as SortKey) : DEFAULT_VIEW.sort,
       sortDir: parsed.sortDir === 'asc' || parsed.sortDir === 'desc' ? parsed.sortDir : DEFAULT_VIEW.sortDir,
-      mediaTypes: Array.isArray(parsed.mediaTypes)
-        ? parsed.mediaTypes.filter((m): m is MediaType =>
-            MEDIA_TYPE_OPTIONS.some((o) => o.value === m)
-          )
-        : [],
+      type: TYPE_OPTIONS.some((o) => o.value === parsed.type) ? (parsed.type as ViewState['type']) : 'all',
       sources: Array.isArray(parsed.sources)
         ? parsed.sources.filter((s): s is Source => SOURCE_OPTIONS.some((o) => o.value === s))
         : [],
@@ -181,6 +192,19 @@ function columnsForWidth(containerWidth: number, minCard: number, gap: number): 
   return Math.max(1, Math.floor((containerWidth + gap) / (minCard + gap)));
 }
 
+// Height of a virtualized section-header row (label + count + breathing room).
+const HEADER_ROW_HEIGHT = 40;
+
+// Cap the "Not in library" rail; "View all" flips the library filter instead.
+const RAIL_LIMIT = 20;
+const RAIL_CARD =
+  'min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px]';
+
+// The virtualized list mixes section headers with rows of cards.
+type VirtualRow =
+  | { kind: 'header'; label: string; count: number }
+  | { kind: 'cards'; items: WatchlistItem[] };
+
 export default function WatchlistPage() {
   const canEdit = useCan('watchlist.edit');
   const queryClient = useQueryClient();
@@ -195,7 +219,8 @@ export default function WatchlistPage() {
   } = useBulkSelection();
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [activeTagId, setActiveTagId] = useState<string | null>(null);
+  // Multi-select tag filter (client-side: every item already carries its tags).
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [removeTarget, setRemoveTarget] = useState<WatchlistItem | null>(null);
   const [removing, setRemoving] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -224,20 +249,17 @@ export default function WatchlistPage() {
     }
   }, [view, viewLoaded]);
 
-  // The items query key carries the active tag + search so changing either
-  // refetches; gcTime keeps the list warm for instant back-nav.
+  // The items query key carries the search so changing it refetches; gcTime
+  // keeps the list warm for instant back-nav. Tags filter client-side.
   const itemsKey = useMemo(
-    () => ['watchlist', 'items', { tag: activeTagId, q: appliedSearch }] as const,
-    [activeTagId, appliedSearch],
+    () => ['watchlist', 'items', { q: appliedSearch }] as const,
+    [appliedSearch],
   );
   const itemsQuery = useQuery({
     queryKey: itemsKey,
     queryFn: jsonFetcher<WatchlistItem[]>(
-      `/api/watchlist${activeTagId || appliedSearch
-        ? `?${new URLSearchParams({
-            ...(activeTagId ? { tag: activeTagId } : {}),
-            ...(appliedSearch ? { q: appliedSearch } : {}),
-          }).toString()}`
+      `/api/watchlist${appliedSearch
+        ? `?${new URLSearchParams({ q: appliedSearch }).toString()}`
         : ''}`,
     ),
     select: ensureArray,
@@ -336,19 +358,22 @@ export default function WatchlistPage() {
     }
   }
 
-  const filtered = useMemo(() => {
+  // Source + library filters apply before the type split so the segmented
+  // control's per-type counts match what selecting a type will show.
+  const baseFiltered = useMemo(() => {
     if (!items) return null;
     let list = items;
-    if (view.mediaTypes.length > 0) {
-      list = list.filter((i) => view.mediaTypes.includes(i.mediaType));
+    if (selectedTagIds.length > 0) {
+      const wanted = new Set(selectedTagIds);
+      list = list.filter((i) => i.tags.some((t) => wanted.has(t.id)));
     }
     if (view.sources.length > 0) {
       list = list.filter((i) => view.sources.includes(i.source));
     }
     if (view.libraryOnly === 'in') {
-      list = list.filter((i) => i.href !== null && /^\/(movies|series)\//.test(i.href));
+      list = list.filter(isInLibrary);
     } else if (view.libraryOnly === 'out') {
-      list = list.filter((i) => !(i.href !== null && /^\/(movies|series)\//.test(i.href)));
+      list = list.filter((i) => !isInLibrary(i));
     }
 
     const cmp = (a: WatchlistItem, b: WatchlistItem): number => {
@@ -369,10 +394,6 @@ export default function WatchlistPage() {
           r = ar - br;
           break;
         }
-        case 'mediaType':
-          r = a.mediaType.localeCompare(b.mediaType);
-          if (r === 0) r = a.title.localeCompare(b.title);
-          break;
         case 'addedAt':
         default:
           r = new Date(a.addedAt).getTime() - new Date(b.addedAt).getTime();
@@ -381,7 +402,36 @@ export default function WatchlistPage() {
       return view.sortDir === 'asc' ? r : -r;
     };
     return [...list].sort(cmp);
-  }, [items, view]);
+  }, [items, selectedTagIds, view.sources, view.libraryOnly, view.sort, view.sortDir]);
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<MediaType, number> = { movie: 0, series: 0, anime: 0 };
+    for (const item of baseFiltered ?? []) counts[item.mediaType]++;
+    return counts;
+  }, [baseFiltered]);
+
+  const filtered = useMemo(() => {
+    if (!baseFiltered) return null;
+    if (view.type === 'all') return baseFiltered;
+    return baseFiltered.filter((i) => i.mediaType === view.type);
+  }, [baseFiltered, view.type]);
+
+  // "Needs action" shelf: watchlisted but not yet in the library. Only shown in
+  // the unfiltered All view; "View all" flips the library filter instead of
+  // growing the rail unboundedly.
+  const notInLibrary = useMemo(
+    () => (filtered ?? []).filter((i) => !isInLibrary(i)),
+    [filtered]
+  );
+  const showRail =
+    view.type === 'all' &&
+    view.libraryOnly === 'all' &&
+    !selectionMode &&
+    notInLibrary.length > 0;
+  const railItems = useMemo(
+    () => (showRail ? notInLibrary.slice(0, RAIL_LIMIT) : []),
+    [showRail, notInLibrary]
+  );
 
   const filteredIds = useMemo(() => (filtered ?? []).map((i) => i.id), [filtered]);
   const actionableSelectedCount = useMemo(
@@ -485,8 +535,8 @@ export default function WatchlistPage() {
   }, []);
 
   // Track the grid's width + page offset so the window virtualizer positions
-  // rows correctly. Re-measures when the content above it (tags, filtered set)
-  // changes the grid's top.
+  // rows correctly. Re-measures when the content above it (tags, rail, filtered
+  // set) changes the grid's top.
   useEffect(() => {
     const container = contentRef.current;
     if (!container) return;
@@ -503,7 +553,7 @@ export default function WatchlistPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [filtered, tags]);
+  }, [filtered, tags, showRail]);
 
   const { minCard, gap } = gridMetrics(viewportWidth);
   // Before the grid is measured, estimate from the viewport so the first paint
@@ -514,20 +564,71 @@ export default function WatchlistPage() {
     const cardWidth = Math.max(1, (containerWidth - gap * (columns - 1)) / columns);
     return cardWidth * 1.5 + gap; // aspect-[2/3] poster + row gap
   }, [containerWidth, columns, gap]);
-  const rowCount = filtered ? Math.ceil(filtered.length / columns) : 0;
+
+  // Flatten the grouped sections into virtualizable rows: a header row per
+  // labelled section, then its cards chunked by the current column count. The
+  // single-type view is one unlabelled section (no header rows).
+  const rows = useMemo<VirtualRow[]>(() => {
+    if (!filtered || filtered.length === 0) return [];
+    const sections: Array<{ label: string | null; items: WatchlistItem[] }> =
+      view.type === 'all'
+        ? (['movie', 'series', 'anime'] as const)
+            .map((t) => ({
+              label: TYPE_SECTION_LABEL[t],
+              items: filtered.filter((i) => i.mediaType === t),
+            }))
+            .filter((s) => s.items.length > 0)
+        : [{ label: null, items: filtered }];
+    // A lone section doesn't need its header — the segmented control already says what it is.
+    if (sections.length === 1) sections[0] = { ...sections[0], label: null };
+
+    const out: VirtualRow[] = [];
+    for (const section of sections) {
+      if (section.label !== null) {
+        out.push({ kind: 'header', label: section.label, count: section.items.length });
+      }
+      for (let i = 0; i < section.items.length; i += columns) {
+        out.push({ kind: 'cards', items: section.items.slice(i, i + columns) });
+      }
+    }
+    return out;
+  }, [filtered, view.type, columns]);
+
   const gridVirtualizer = useWindowVirtualizer({
-    count: rowCount,
-    estimateSize: () => rowHeight,
-    enabled: filtered !== null && filtered.length > 0,
+    count: rows.length,
+    estimateSize: (i) => (rows[i]?.kind === 'header' ? HEADER_ROW_HEIGHT : rowHeight),
+    enabled: rows.length > 0,
     overscan: 3,
     scrollMargin: contentOffsetTop,
   });
+
+  // estimateSize changes (resize, regroup) don't invalidate cached measurements
+  // on their own — recompute so spacer math stays in sync with the rows.
+  useEffect(() => {
+    gridVirtualizer.measure();
+  }, [gridVirtualizer, rows, rowHeight]);
+
+  // Eager-load the images the first paint shows: the rail start + first grid row.
+  const priorityIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const item of railItems.slice(0, 4)) ids.add(item.id);
+    const firstCards = rows.find((r) => r.kind === 'cards');
+    if (firstCards?.kind === 'cards') {
+      for (const item of firstCards.items.slice(0, 4)) ids.add(item.id);
+    }
+    return ids;
+  }, [railItems, rows]);
 
   const visibleTags = tags.filter((t) => t.count > 0);
   const totalCount = items?.length ?? 0;
   const filteredCount = filtered?.length ?? 0;
   const hasActiveFilters =
-    view.mediaTypes.length > 0 || view.sources.length > 0 || view.libraryOnly !== 'all';
+    view.type !== 'all' || view.sources.length > 0 || view.libraryOnly !== 'all';
+
+  const resetFilters = useCallback(() => {
+    setView((v) => ({ ...v, type: 'all', sources: [], libraryOnly: 'all' }));
+    setSelectedTagIds([]);
+  }, []);
 
   const activeSortLabel =
     SORT_OPTIONS.find((o) => o.value === view.sort)?.label ?? 'Date Added';
@@ -576,23 +677,27 @@ export default function WatchlistPage() {
             <DropdownMenuContent align="start" className="w-56">
               <DropdownMenuLabel>Media type</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {MEDIA_TYPE_OPTIONS.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.value}
-                  checked={view.mediaTypes.includes(opt.value)}
-                  onCheckedChange={() =>
-                    setView((v) => ({
-                      ...v,
-                      mediaTypes: v.mediaTypes.includes(opt.value)
-                        ? v.mediaTypes.filter((m) => m !== opt.value)
-                        : [...v.mediaTypes, opt.value],
-                    }))
-                  }
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
+              <DropdownMenuRadioGroup
+                value={view.type}
+                onValueChange={(v) =>
+                  setView((prev) => ({ ...prev, type: (v as ViewState['type']) ?? 'all' }))
+                }
+              >
+                {TYPE_OPTIONS.map((opt) => (
+                  <DropdownMenuRadioItem
+                    key={opt.value}
+                    value={opt.value}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    {opt.label}
+                    {opt.value !== 'all' && (
+                      <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                        {typeCounts[opt.value]}
+                      </span>
+                    )}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>Source</DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -640,12 +745,7 @@ export default function WatchlistPage() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() =>
-                      setView((v) => ({
-                        ...v,
-                        mediaTypes: [],
-                        sources: [],
-                        libraryOnly: 'all',
-                      }))
+                      setView((v) => ({ ...v, type: 'all', sources: [], libraryOnly: 'all' }))
                     }
                   >
                     Reset filters
@@ -700,6 +800,56 @@ export default function WatchlistPage() {
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {visibleTags.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors relative"
+                  aria-label="Filter by tags"
+                >
+                  <Tag className="h-5 w-5" />
+                  {selectedTagIds.length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary" />
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuLabel>Tags</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {visibleTags.map((t) => (
+                  <DropdownMenuCheckboxItem
+                    key={t.id}
+                    checked={selectedTagIds.includes(t.id)}
+                    onCheckedChange={() =>
+                      setSelectedTagIds((prev) =>
+                        prev.includes(t.id) ? prev.filter((id) => id !== t.id) : [...prev, t.id]
+                      )
+                    }
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: t.color ?? '#6366f1' }}
+                    />
+                    <span className="truncate">{t.name}</span>
+                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                      {t.count}
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                ))}
+                {selectedTagIds.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => setSelectedTagIds([])}>
+                      Clear tags
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <div className="text-xs text-muted-foreground ml-auto tabular-nums">
             {filteredCount === totalCount
@@ -760,43 +910,43 @@ export default function WatchlistPage() {
             </DropdownMenu>
           )}
         </div>
+
       </div>
 
       <div className="px-2 md:px-6 mt-3 space-y-3">
-        {visibleTags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setActiveTagId(null)}
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
-                activeTagId === null ? 'bg-foreground text-background border-foreground' : 'hover:bg-muted'
-              }`}
-            >
-              All · {totalCount}
-            </button>
-            {visibleTags.map((t) => {
-              const active = activeTagId === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setActiveTagId(active ? null : t.id)}
-                  className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium hover:opacity-100"
-                  style={{
-                    backgroundColor: active ? (t.color ?? '#6366f1') : `${t.color ?? '#6366f1'}1f`,
-                    borderColor: `${t.color ?? '#6366f1'}55`,
-                    color: active ? '#fff' : (t.color ?? undefined),
-                  }}
-                >
-                  {t.name}
-                  <span className="opacity-70">· {t.count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-
         {error && <div className="text-sm text-red-400">{error}</div>}
+
+        {showRail && (
+          <section className="space-y-2">
+            <div className="flex items-center gap-2 px-0.5">
+              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Not in library
+              </h2>
+              <span className="text-[11px] text-muted-foreground tabular-nums">{notInLibrary.length}</span>
+              {notInLibrary.length > railItems.length && (
+                <button
+                  type="button"
+                  onClick={() => setView((v) => ({ ...v, libraryOnly: 'out' }))}
+                  className="ml-auto inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
+                >
+                  View all
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
+              {railItems.map((item, i) => (
+                <div key={item.id} className={cn('shrink-0', RAIL_CARD)}>
+                  <WatchlistCard
+                    item={item}
+                    imagePriority={priorityIds.has(item.id) && i < 4}
+                    onRemove={() => setRemoveTarget(item)}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {filtered === null ? (
           itemsQuery.isLoading ? (
@@ -817,18 +967,7 @@ export default function WatchlistPage() {
             <div className="py-16 text-center text-muted-foreground space-y-2">
               <Filter className="h-8 w-8 mx-auto opacity-60" />
               <p className="text-sm">No items match the current filters.</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setView((v) => ({
-                    ...v,
-                    mediaTypes: [],
-                    sources: [],
-                    libraryOnly: 'all',
-                  }))
-                }
-              >
+              <Button variant="outline" size="sm" onClick={resetFilters}>
                 Reset filters
               </Button>
             </div>
@@ -838,9 +977,6 @@ export default function WatchlistPage() {
             const virtualRows = gridVirtualizer.getVirtualItems();
             const firstRow = virtualRows[0];
             const lastRow = virtualRows[virtualRows.length - 1];
-            const startIndex = (firstRow?.index ?? 0) * columns;
-            const endIndex = Math.min(filtered.length, ((lastRow?.index ?? 0) + 1) * columns);
-            const visible = filtered.slice(startIndex, endIndex);
             const topSpacer = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
             const bottomSpacer = lastRow
               ? Math.max(0, gridVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
@@ -848,19 +984,50 @@ export default function WatchlistPage() {
             return (
               <div ref={contentRef}>
                 {topSpacer > 0 && <div style={{ height: topSpacer }} />}
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(122px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(138px,1fr))] lg:grid-cols-[repeat(auto-fill,minmax(154px,1fr))] xl:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-2.5 sm:gap-3.5 md:gap-4">
-                  {visible.map((item, i) => (
-                    <WatchlistCard
-                      key={item.id}
-                      item={item}
-                      imagePriority={startIndex + i < Math.min(columns * 2, 4)}
-                      selectable={selectionMode}
-                      selected={selectedKeys.has(item.id)}
-                      onToggleSelect={() => toggle(item.id)}
-                      onRemove={() => setRemoveTarget(item)}
-                    />
-                  ))}
-                </div>
+                {virtualRows.map((vr) => {
+                  const row = rows[vr.index];
+                  if (!row) return null;
+                  if (row.kind === 'header') {
+                    return (
+                      <div
+                        key={vr.key}
+                        style={{ height: HEADER_ROW_HEIGHT }}
+                        className="flex items-end gap-2 px-0.5 pb-2"
+                      >
+                        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">
+                          {row.label}
+                        </h2>
+                        <span className="text-[11px] text-muted-foreground tabular-nums leading-none">
+                          {row.count}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={vr.key}
+                      className="grid"
+                      style={{
+                        height: rowHeight,
+                        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                        columnGap: gap,
+                      }}
+                    >
+                      {row.items.map((item) => (
+                        <div key={item.id} className="self-start">
+                          <WatchlistCard
+                            item={item}
+                            imagePriority={priorityIds.has(item.id)}
+                            selectable={selectionMode}
+                            selected={selectedKeys.has(item.id)}
+                            onToggleSelect={() => toggle(item.id)}
+                            onRemove={() => setRemoveTarget(item)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
                 {bottomSpacer > 0 && <div style={{ height: bottomSpacer }} />}
               </div>
             );
@@ -951,6 +1118,7 @@ function WatchlistCard({
   const canEdit = useCan('watchlist.edit');
   const canSchedule = useCan('scheduledAlerts.edit');
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const inLibrary = isInLibrary(item);
   const poster = item.posterUrl
     ? (toCachedImageSrc(
         item.posterUrl,
@@ -968,7 +1136,7 @@ function WatchlistCard({
   const posterCore = (
     <div
       className={cn(
-        'relative aspect-[2/3] rounded-xl overflow-hidden bg-muted',
+        'relative aspect-[2/3] rounded-xl overflow-hidden border border-border/40 bg-muted',
         selectable && selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
       )}
     >
@@ -979,7 +1147,7 @@ function WatchlistCard({
           fill
           sizes="(max-width: 640px) 33vw, (max-width: 1200px) 18vw, 170px"
           priority={imagePriority}
-          className="object-cover"
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
           unoptimized={isProtectedApiImageSrc(poster)}
         />
       ) : (
@@ -994,6 +1162,9 @@ function WatchlistCard({
           {item.year !== null && <span>{item.year}</span>}
           {item.rating !== null && (
             <span className="tabular-nums">★ {(item.rating / 10).toFixed(1)}</span>
+          )}
+          {inLibrary && (
+            <BadgeCheck aria-label="In library" className="h-3 w-3 text-emerald-400" />
           )}
         </div>
       </div>
