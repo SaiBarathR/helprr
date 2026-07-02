@@ -119,6 +119,7 @@ export type TorrentsSortKeyPreference =
   | 'time_active'
   | 'seeding_time';
 export type TorrentsSortDirectionPreference = 'asc' | 'desc';
+export type TorrentsViewPreference = 'card' | 'table';
 export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
 export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
 export type NotificationsReadStatePreference = 'all' | 'unread' | 'read';
@@ -232,7 +233,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 39;
+export const STORE_VERSION = 40;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -424,6 +425,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 39) {
     state.calendarShowImages = true;
   }
+  if (version < 40) {
+    state.torrentsView = 'card';
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -518,6 +522,8 @@ interface UIState {
   setTorrentsSortKey: (sortKey: TorrentsSortKeyPreference) => void;
   torrentsSortDir: TorrentsSortDirectionPreference;
   setTorrentsSortDir: (dir: TorrentsSortDirectionPreference) => void;
+  torrentsView: TorrentsViewPreference;
+  setTorrentsView: (view: TorrentsViewPreference) => void;
   // Activity preferences
   activityTab: ActivityTabPreference;
   setActivityTab: (tab: ActivityTabPreference) => void;
@@ -666,6 +672,7 @@ const PERSISTED_KEYS = [
   'torrentsFilter',
   'torrentsSortKey',
   'torrentsSortDir',
+  'torrentsView',
   'activityTab',
   'activitySortBy',
   'activityFilterBy',
@@ -845,6 +852,8 @@ export const useUIStore = create<UIState>()(
       setTorrentsSortKey: (sortKey) => set({ torrentsSortKey: sortKey }),
       torrentsSortDir: 'desc',
       setTorrentsSortDir: (dir) => set({ torrentsSortDir: dir }),
+      torrentsView: 'card',
+      setTorrentsView: (view) => set({ torrentsView: view }),
       // Activity
       activityTab: 'queue',
       setActivityTab: (tab) => set({ activityTab: tab }),

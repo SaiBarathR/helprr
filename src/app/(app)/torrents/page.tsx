@@ -81,6 +81,9 @@ import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 
 const TORRENT_ROW_HEIGHT = 160;
+// Table rows are a fixed h-14 (56px, border included via border-box) so the
+// virtualizer estimate is exact.
+const TABLE_ROW_HEIGHT = 56;
 
 const TORRENT_ACTION_MESSAGES: Record<string, { single: string; bulk?: string }> = {
   start: { single: 'Started', bulk: 'start' },
@@ -450,7 +453,7 @@ function SpeedLimitInput({
   );
 }
 
-// --- TorrentRow component ---
+// --- Row actions dropdown (shared by card and table rows) ---
 
 interface TorrentRowProps {
   torrent: QBittorrentTorrent;
@@ -463,6 +466,73 @@ interface TorrentRowProps {
   onOpenRenameDrawer: (hash: string, name: string) => void;
 }
 
+function TorrentRowActions({
+  torrent,
+  onTorrentAction,
+  onOpenDeleteDrawer,
+  onOpenCategoryDrawer,
+  onOpenRenameDrawer,
+  triggerClassName,
+}: Omit<TorrentRowProps, 'selected' | 'onToggleSelect' | 'onFetchDetail'> & { triggerClassName?: string }) {
+  const canManageTorrents = useCan('torrents.manage');
+  const canDeleteTorrents = useCan('torrents.delete');
+  if (!canManageTorrents && !canDeleteTorrents) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className={triggerClassName ?? 'h-7 w-7 shrink-0'}>
+          <MoreVertical className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {canManageTorrents && (
+          <>
+            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'start')}>
+              <Play className="mr-2 h-4 w-4" /> Start
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'stop')}>
+              <Pause className="mr-2 h-4 w-4" /> Stop
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'forceStart')}>
+              <Zap className="mr-2 h-4 w-4" /> Force Start
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'recheck')}>
+              <CheckCircle2 className="mr-2 h-4 w-4" /> Recheck
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'reannounce')}>
+              <Megaphone className="mr-2 h-4 w-4" /> Reannounce
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onOpenCategoryDrawer(torrent.hash)}>
+              <Tag className="mr-2 h-4 w-4" /> Set Category
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onOpenRenameDrawer(torrent.hash, torrent.name)}>
+              <Pencil className="mr-2 h-4 w-4" /> Rename
+            </DropdownMenuItem>
+          </>
+        )}
+        {canManageTorrents && canDeleteTorrents && <DropdownMenuSeparator />}
+        {canDeleteTorrents && (
+          <>
+            <DropdownMenuItem onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, false)}>
+              <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive"
+              onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Delete with files
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+// --- TorrentRow component (card view) ---
+
 const TorrentRow = memo(function TorrentRow({
   torrent,
   selected,
@@ -473,8 +543,6 @@ const TorrentRow = memo(function TorrentRow({
   onOpenCategoryDrawer,
   onOpenRenameDrawer,
 }: TorrentRowProps) {
-  const canManageTorrents = useCan('torrents.manage');
-  const canDeleteTorrents = useCan('torrents.delete');
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
 
   return (
@@ -494,57 +562,14 @@ const TorrentRow = memo(function TorrentRow({
             >
               {torrent.name}
             </button>
-            {(canManageTorrents || canDeleteTorrents) && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 -mt-0.5">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {canManageTorrents && (
-                    <>
-                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'start')}>
-                        <Play className="mr-2 h-4 w-4" /> Start
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'stop')}>
-                        <Pause className="mr-2 h-4 w-4" /> Stop
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'forceStart')}>
-                        <Zap className="mr-2 h-4 w-4" /> Force Start
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'recheck')}>
-                        <CheckCircle2 className="mr-2 h-4 w-4" /> Recheck
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'reannounce')}>
-                        <Megaphone className="mr-2 h-4 w-4" /> Reannounce
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onOpenCategoryDrawer(torrent.hash)}>
-                        <Tag className="mr-2 h-4 w-4" /> Set Category
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onOpenRenameDrawer(torrent.hash, torrent.name)}>
-                        <Pencil className="mr-2 h-4 w-4" /> Rename
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                  {canManageTorrents && canDeleteTorrents && <DropdownMenuSeparator />}
-                  {canDeleteTorrents && (
-                    <>
-                      <DropdownMenuItem onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, false)}>
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, true)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete with files
-                      </DropdownMenuItem>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <TorrentRowActions
+              torrent={torrent}
+              onTorrentAction={onTorrentAction}
+              onOpenDeleteDrawer={onOpenDeleteDrawer}
+              onOpenCategoryDrawer={onOpenCategoryDrawer}
+              onOpenRenameDrawer={onOpenRenameDrawer}
+              triggerClassName="h-7 w-7 shrink-0 -mt-0.5"
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
@@ -600,6 +625,184 @@ const TorrentRow = memo(function TorrentRow({
   );
 }, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
 
+// --- Table view ---
+
+// Shared cell classes so header and rows stay column-aligned. Columns collapse
+// progressively on narrower screens; below `sm` the name cell grows a second
+// line carrying state/size/speed so the table stays usable on phones.
+const TABLE_COL = {
+  select: 'w-7 shrink-0 flex items-center justify-center',
+  name: 'flex-1 min-w-0',
+  size: 'hidden sm:flex w-16 shrink-0 justify-end',
+  progress: 'w-24 sm:w-28 shrink-0 flex items-center',
+  status: 'hidden sm:flex w-24 shrink-0',
+  dlspeed: 'hidden md:flex w-20 shrink-0 justify-end',
+  upspeed: 'hidden md:flex w-20 shrink-0 justify-end',
+  eta: 'hidden lg:flex w-16 shrink-0 justify-end',
+  seeds: 'hidden xl:flex w-12 shrink-0 justify-end',
+  peers: 'hidden xl:flex w-12 shrink-0 justify-end',
+  ratio: 'hidden xl:flex w-14 shrink-0 justify-end',
+  actions: 'w-8 shrink-0 flex items-center justify-center',
+} as const;
+
+function SortHeaderButton({
+  label,
+  columnKey,
+  className,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  columnKey: SortKey;
+  className: string;
+  sortKey: SortKey;
+  sortDir: 'asc' | 'desc';
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortKey === columnKey;
+  const Icon = sortDir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      className={`${className} items-center gap-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors`}
+      onClick={() => onSort(columnKey)}
+    >
+      <span className="truncate">{label}</span>
+      {active && <Icon className="h-3 w-3 shrink-0" />}
+    </button>
+  );
+}
+
+function TorrentTableHeader({
+  sortKey,
+  sortDir,
+  onSort,
+  allSelected,
+  onToggleAll,
+}: {
+  sortKey: SortKey;
+  sortDir: 'asc' | 'desc';
+  onSort: (key: SortKey) => void;
+  allSelected: boolean;
+  onToggleAll: () => void;
+}) {
+  const sortProps = { sortKey, sortDir, onSort };
+  return (
+    <div className="flex items-center gap-2 h-9 px-2 sm:px-3 border-b border-border/50">
+      <div className={TABLE_COL.select}>
+        <input
+          type="checkbox"
+          checked={allSelected}
+          onChange={onToggleAll}
+          className="rounded border-border"
+          aria-label="Select all"
+        />
+      </div>
+      <SortHeaderButton label="Name" columnKey="name" className={`${TABLE_COL.name} flex text-left`} {...sortProps} />
+      <SortHeaderButton label="Status" columnKey="state" className={TABLE_COL.status} {...sortProps} />
+      <SortHeaderButton label="Progress" columnKey="progress" className={TABLE_COL.progress} {...sortProps} />
+      <SortHeaderButton label="Size" columnKey="size" className={TABLE_COL.size} {...sortProps} />
+      <SortHeaderButton label="DL" columnKey="dlspeed" className={TABLE_COL.dlspeed} {...sortProps} />
+      <SortHeaderButton label="UL" columnKey="upspeed" className={TABLE_COL.upspeed} {...sortProps} />
+      <SortHeaderButton label="ETA" columnKey="eta" className={TABLE_COL.eta} {...sortProps} />
+      <SortHeaderButton label="Seeds" columnKey="num_seeds" className={TABLE_COL.seeds} {...sortProps} />
+      <SortHeaderButton label="Peers" columnKey="num_leechs" className={TABLE_COL.peers} {...sortProps} />
+      <SortHeaderButton label="Ratio" columnKey="ratio" className={TABLE_COL.ratio} {...sortProps} />
+      <div className={TABLE_COL.actions} />
+    </div>
+  );
+}
+
+const TorrentTableRow = memo(function TorrentTableRow({
+  torrent,
+  selected,
+  onToggleSelect,
+  onFetchDetail,
+  onTorrentAction,
+  onOpenDeleteDrawer,
+  onOpenCategoryDrawer,
+  onOpenRenameDrawer,
+}: TorrentRowProps) {
+  const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
+
+  return (
+    <div className="flex items-center gap-2 h-14 px-2 sm:px-3">
+      <div className={TABLE_COL.select}>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(torrent.hash)}
+          className="rounded border-border"
+        />
+      </div>
+      <div className={TABLE_COL.name}>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <button
+            className="text-sm font-medium truncate text-left hover:underline min-w-0"
+            title={torrent.name}
+            onClick={() => onFetchDetail(torrent.hash)}
+          >
+            {torrent.name}
+          </button>
+          {torrent.category && (
+            <Badge variant="outline" className="hidden md:inline-flex text-[10px] px-1.5 py-0 shrink-0 max-w-[120px] truncate">
+              {torrent.category}
+            </Badge>
+          )}
+          {hasSpeedLimit && <Gauge className="hidden md:block h-3 w-3 text-yellow-500 shrink-0" />}
+        </div>
+        <div className="sm:hidden flex items-center gap-1.5 mt-0.5 text-[10px] text-muted-foreground">
+          {getStateBadge(torrent.state)}
+          <span>{formatBytes(torrent.size)}</span>
+          {torrent.dlspeed > 0 && (
+            <span className="text-green-500">
+              <ArrowDown className="inline h-2.5 w-2.5" /> {formatSpeed(torrent.dlspeed)}
+            </span>
+          )}
+          {torrent.upspeed > 0 && (
+            <span className="text-blue-500">
+              <ArrowUp className="inline h-2.5 w-2.5" /> {formatSpeed(torrent.upspeed)}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className={TABLE_COL.status}>{getStateBadge(torrent.state)}</div>
+      <div className={`${TABLE_COL.progress} gap-1.5`}>
+        <Progress value={torrent.progress * 100} className="h-1 flex-1" />
+        <span className="text-[10px] text-muted-foreground w-8 text-right shrink-0">
+          {(torrent.progress * 100).toFixed(0)}%
+        </span>
+      </div>
+      <div className={`${TABLE_COL.size} text-xs text-muted-foreground`}>{formatBytes(torrent.size)}</div>
+      <div className={`${TABLE_COL.dlspeed} text-xs`}>
+        {torrent.dlspeed > 0
+          ? <span className="text-green-500">{formatSpeed(torrent.dlspeed)}</span>
+          : <span className="text-muted-foreground">&mdash;</span>}
+      </div>
+      <div className={`${TABLE_COL.upspeed} text-xs`}>
+        {torrent.upspeed > 0
+          ? <span className="text-blue-500">{formatSpeed(torrent.upspeed)}</span>
+          : <span className="text-muted-foreground">&mdash;</span>}
+      </div>
+      <div className={`${TABLE_COL.eta} text-xs text-muted-foreground`}>
+        {torrent.eta > 0 && torrent.eta < 8640000 ? formatEta(torrent.eta) : '—'}
+      </div>
+      <div className={`${TABLE_COL.seeds} text-xs text-muted-foreground`}>{torrent.num_seeds}</div>
+      <div className={`${TABLE_COL.peers} text-xs text-muted-foreground`}>{torrent.num_leechs}</div>
+      <div className={`${TABLE_COL.ratio} text-xs text-muted-foreground`}>{(torrent.ratio ?? 0).toFixed(2)}</div>
+      <div className={TABLE_COL.actions}>
+        <TorrentRowActions
+          torrent={torrent}
+          onTorrentAction={onTorrentAction}
+          onOpenDeleteDrawer={onOpenDeleteDrawer}
+          onOpenCategoryDrawer={onOpenCategoryDrawer}
+          onOpenRenameDrawer={onOpenRenameDrawer}
+        />
+      </div>
+    </div>
+  );
+}, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
+
 // --- Main page ---
 
 export default function TorrentsPage() {
@@ -616,6 +819,9 @@ export default function TorrentsPage() {
   const setSortKey = useUIStore((s) => s.setTorrentsSortKey);
   const sortDir = useUIStore((s) => s.torrentsSortDir);
   const setSortDir = useUIStore((s) => s.setTorrentsSortDir);
+  const viewMode = useUIStore((s) => s.torrentsView);
+  const setViewMode = useUIStore((s) => s.setTorrentsView);
+  const isTableView = viewMode === 'table';
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
@@ -1046,13 +1252,21 @@ export default function TorrentsPage() {
   }, [search, torrents, filter, sortKey, sortDir]);
 
   const useVirtualization = !loading && filteredTorrents.length > 0;
+  const rowHeight = isTableView ? TABLE_ROW_HEIGHT : TORRENT_ROW_HEIGHT;
   const virtualizer = useWindowVirtualizer({
     count: filteredTorrents.length,
-    estimateSize: () => TORRENT_ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     enabled: useVirtualization,
     overscan: 8,
     scrollMargin: listOffsetTop,
   });
+
+  // The virtualizer caches row measurements; switching views changes the row
+  // height, so drop the cache and re-measure with the new estimate.
+  useEffect(() => {
+    virtualizer.measure();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowHeight]);
 
   const virtualRows = virtualizer.getVirtualItems();
   const firstVirtualRow = virtualRows[0];
@@ -1092,6 +1306,17 @@ export default function TorrentsPage() {
     }
     setSelectedTorrents(new Set(filteredTorrents.map((torrent) => torrent.hash)));
   }, [filteredTorrents, selectedTorrents.size]);
+
+  // Table column-header sort: same toggle semantics as the sort dropdown.
+  const handleHeaderSort = useCallback((key: SortKey) => {
+    const { torrentsSortKey, torrentsSortDir } = useUIStore.getState();
+    if (torrentsSortKey === key) {
+      setSortDir(torrentsSortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'name' || key === 'category' || key === 'state' ? 'asc' : 'desc');
+    }
+  }, [setSortDir, setSortKey]);
 
   // Get detail torrent data from the list for session stats / magnet
   const detailTorrent = detailHash ? torrentByHash.get(detailHash) : null;
@@ -1355,39 +1580,79 @@ export default function TorrentsPage() {
       ) : (
         <div className="space-y-0" ref={listRef}>
           <div className="flex items-center gap-2 px-3 pb-2">
-            <input
-              type="checkbox"
-              checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
-              onChange={selectAll}
-              className="rounded border-border"
-            />
+            {!isTableView && (
+              <input
+                type="checkbox"
+                checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
+                onChange={selectAll}
+                className="rounded border-border"
+              />
+            )}
             <span className="text-xs text-muted-foreground">
               {filteredTorrents.length} torrent{filteredTorrents.length !== 1 ? 's' : ''}
             </span>
           </div>
 
-          {topSpacerHeight > 0 && (
-            <div style={{ height: topSpacerHeight }} />
-          )}
-
-          <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
-            {visibleTorrents.map((torrent) => (
-              <TorrentRow
-                key={torrent.hash}
-                torrent={torrent}
-                selected={selectedTorrents.has(torrent.hash)}
-                onToggleSelect={toggleSelect}
-                onFetchDetail={fetchDetail}
-                onTorrentAction={torrentAction}
-                onOpenDeleteDrawer={openDeleteDrawer}
-                onOpenCategoryDrawer={openCategoryDrawer}
-                onOpenRenameDrawer={openRenameDrawer}
+          {isTableView ? (
+            <div className="rounded-xl bg-card overflow-hidden">
+              <TorrentTableHeader
+                sortKey={sortKey}
+                sortDir={sortDir}
+                onSort={handleHeaderSort}
+                allSelected={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
+                onToggleAll={selectAll}
               />
-            ))}
-          </div>
 
-          {bottomSpacerHeight > 0 && (
-            <div style={{ height: bottomSpacerHeight }} />
+              {topSpacerHeight > 0 && (
+                <div style={{ height: topSpacerHeight }} />
+              )}
+
+              <div className="divide-y divide-border/50">
+                {visibleTorrents.map((torrent) => (
+                  <TorrentTableRow
+                    key={torrent.hash}
+                    torrent={torrent}
+                    selected={selectedTorrents.has(torrent.hash)}
+                    onToggleSelect={toggleSelect}
+                    onFetchDetail={fetchDetail}
+                    onTorrentAction={torrentAction}
+                    onOpenDeleteDrawer={openDeleteDrawer}
+                    onOpenCategoryDrawer={openCategoryDrawer}
+                    onOpenRenameDrawer={openRenameDrawer}
+                  />
+                ))}
+              </div>
+
+              {bottomSpacerHeight > 0 && (
+                <div style={{ height: bottomSpacerHeight }} />
+              )}
+            </div>
+          ) : (
+            <>
+              {topSpacerHeight > 0 && (
+                <div style={{ height: topSpacerHeight }} />
+              )}
+
+              <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50">
+                {visibleTorrents.map((torrent) => (
+                  <TorrentRow
+                    key={torrent.hash}
+                    torrent={torrent}
+                    selected={selectedTorrents.has(torrent.hash)}
+                    onToggleSelect={toggleSelect}
+                    onFetchDetail={fetchDetail}
+                    onTorrentAction={torrentAction}
+                    onOpenDeleteDrawer={openDeleteDrawer}
+                    onOpenCategoryDrawer={openCategoryDrawer}
+                    onOpenRenameDrawer={openRenameDrawer}
+                  />
+                ))}
+              </div>
+
+              {bottomSpacerHeight > 0 && (
+                <div style={{ height: bottomSpacerHeight }} />
+              )}
+            </>
           )}
         </div>
       )}
@@ -1681,6 +1946,19 @@ export default function TorrentsPage() {
             <DrawerTitle>qBittorrent Settings</DrawerTitle>
           </DrawerHeader>
           <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto space-y-4">
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">View</h3>
+              <div className="rounded-lg border divide-y">
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted-foreground">Table View</span>
+                  <Switch
+                    checked={isTableView}
+                    onCheckedChange={(checked) => setViewMode(checked ? 'table' : 'card')}
+                  />
+                </div>
+              </div>
+            </div>
+
             {globalLimitsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
