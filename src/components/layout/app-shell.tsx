@@ -18,6 +18,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex-1 flex flex-col min-h-screen min-w-0">
       {!isBottom && <BottomNav />}
+      {isBottom && (
+        // With the nav at the bottom nothing occupies the status-bar strip, so
+        // cover it — sticky toolbars pin at top = env(safe-area-inset-top) and
+        // content would otherwise scroll behind the clock.
+        <div
+          aria-hidden
+          className="md:hidden pointer-events-none fixed inset-x-0 top-0 z-40 h-[env(safe-area-inset-top)] app-chrome-bar bg-background/95 backdrop-blur-sm"
+        />
+      )}
       <main
         className={cn(
           'app-main flex-1 [overflow-x:clip]',

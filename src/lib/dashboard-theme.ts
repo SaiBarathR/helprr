@@ -402,6 +402,14 @@ export type PersistedThemeVars =
  * still has UI prefs, so the script no-ops instead of forcing glass over
  * their saved custom theme; ThemeApplier repopulates the cache after
  * hydration.
+ *
+ * v4: also replays the persisted navPosition onto <html> as
+ * data-nav-position pre-paint. The bottom-nav geometry in globals.css keys
+ * on that attribute, and AppShell only sets it in a useEffect — without the
+ * replay, bottom-nav users get a first paint with top-nav sticky offsets
+ * (toolbars 3rem too low) that jumps after hydration. Runs before the theme
+ * early-returns, in its own try so a corrupt prefs payload can't skip the
+ * theme replay.
  */
 const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
   __glass: {
@@ -413,11 +421,11 @@ const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
   __dark: buildGlassThemeStyle('dark', DEFAULT_GLASS_INTENSITY),
 });
 
-export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var r=localStorage.getItem(${JSON.stringify(
-  THEME_VARS_STORAGE_KEY,
-)});var v;if(r){v=JSON.parse(r);}else{if(localStorage.getItem(${JSON.stringify(
+export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var e=document.documentElement,p=localStorage.getItem(${JSON.stringify(
   UI_PREFS_STORAGE_KEY,
-)}))return;v=${DEFAULT_BOOT_PAYLOAD};}if(!v||typeof v!=='object')return;var e=document.documentElement,g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}}catch(e){}})();`;
+)});try{if(p&&JSON.parse(p).state.navPosition==='bottom')e.dataset.navPosition='bottom';}catch(n){}var r=localStorage.getItem(${JSON.stringify(
+  THEME_VARS_STORAGE_KEY,
+)});var v;if(r){v=JSON.parse(r);}else{if(p)return;v=${DEFAULT_BOOT_PAYLOAD};}if(!v||typeof v!=='object')return;var g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}}catch(e){}})();`;
 
 /** Write a full set of --hpr-* variables onto `el`. */
 export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThemePrefs): void {
