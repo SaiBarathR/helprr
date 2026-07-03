@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -733,6 +733,7 @@ const TorrentTableRow = memo(function TorrentTableRow({
           checked={selected}
           onChange={() => onToggleSelect(torrent.hash)}
           className="rounded border-border"
+          aria-label={`Select ${torrent.name}`}
         />
       </div>
       <div className={TABLE_COL.name}>
@@ -1036,7 +1037,8 @@ export default function TorrentsPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [selectedTorrents.size, loading, error, torrents.length, search]);
+    // isTableView: switching views remounts the measured node, so re-attach.
+  }, [selectedTorrents.size, loading, error, torrents.length, search, isTableView]);
 
   const torrentAction = useCallback(async (
     hash: string,
@@ -1262,11 +1264,12 @@ export default function TorrentsPage() {
   });
 
   // The virtualizer caches row measurements; switching views changes the row
-  // height, so drop the cache and re-measure with the new estimate.
-  useEffect(() => {
+  // height, so drop the cache and re-measure with the new estimate. Layout
+  // effect so the re-measure lands before paint (no stale-size flash); the
+  // virtualizer instance is referentially stable across renders.
+  useLayoutEffect(() => {
     virtualizer.measure();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowHeight]);
+  }, [rowHeight, virtualizer]);
 
   const virtualRows = virtualizer.getVirtualItems();
   const firstVirtualRow = virtualRows[0];
@@ -1307,7 +1310,8 @@ export default function TorrentsPage() {
     setSelectedTorrents(new Set(filteredTorrents.map((torrent) => torrent.hash)));
   }, [filteredTorrents, selectedTorrents.size]);
 
-  // Table column-header sort: same toggle semantics as the sort dropdown.
+  // Shared by the table column headers and the sort dropdown: picking the
+  // active key toggles direction; a new key gets its natural default.
   const handleHeaderSort = useCallback((key: SortKey) => {
     const { torrentsSortKey, torrentsSortDir } = useUIStore.getState();
     if (torrentsSortKey === key) {
@@ -1378,15 +1382,7 @@ export default function TorrentsPage() {
                 <DropdownMenuCheckboxItem
                   key={opt.key}
                   checked={sortKey === opt.key}
-                  onCheckedChange={() => {
-                    if (sortKey === opt.key) {
-                      const latestSortDir = useUIStore.getState().torrentsSortDir;
-                      setSortDir(latestSortDir === 'asc' ? 'desc' : 'asc');
-                    } else {
-                      setSortKey(opt.key);
-                      setSortDir(opt.key === 'name' || opt.key === 'category' || opt.key === 'state' ? 'asc' : 'desc');
-                    }
-                  }}
+                  onCheckedChange={() => handleHeaderSort(opt.key)}
                   onSelect={(e) => e.preventDefault()}
                 >
                   {opt.label}
@@ -1578,7 +1574,7 @@ export default function TorrentsPage() {
           {search ? 'No torrents match your search.' : 'No torrents found.'}
         </div>
       ) : (
-        <div className="space-y-0" ref={listRef}>
+        <div className="space-y-0">
           <div className="flex items-center gap-2 px-3 pb-2">
             {!isTableView && (
               <input
@@ -1593,6 +1589,10 @@ export default function TorrentsPage() {
             </span>
           </div>
 
+          {/* listRef marks the virtualized list origin: its top must coincide
+              with row 0's render position (scrollMargin is measured from it),
+              so it wraps ONLY the spacers + rows — never the count bar or the
+              table header. */}
           {isTableView ? (
             <div className="rounded-xl bg-card overflow-hidden">
               <TorrentTableHeader
@@ -1603,32 +1603,34 @@ export default function TorrentsPage() {
                 onToggleAll={selectAll}
               />
 
-              {topSpacerHeight > 0 && (
-                <div style={{ height: topSpacerHeight }} />
-              )}
+              <div ref={listRef}>
+                {topSpacerHeight > 0 && (
+                  <div style={{ height: topSpacerHeight }} />
+                )}
 
-              <div className="divide-y divide-border/50">
-                {visibleTorrents.map((torrent) => (
-                  <TorrentTableRow
-                    key={torrent.hash}
-                    torrent={torrent}
-                    selected={selectedTorrents.has(torrent.hash)}
-                    onToggleSelect={toggleSelect}
-                    onFetchDetail={fetchDetail}
-                    onTorrentAction={torrentAction}
-                    onOpenDeleteDrawer={openDeleteDrawer}
-                    onOpenCategoryDrawer={openCategoryDrawer}
-                    onOpenRenameDrawer={openRenameDrawer}
-                  />
-                ))}
+                <div className="divide-y divide-border/50">
+                  {visibleTorrents.map((torrent) => (
+                    <TorrentTableRow
+                      key={torrent.hash}
+                      torrent={torrent}
+                      selected={selectedTorrents.has(torrent.hash)}
+                      onToggleSelect={toggleSelect}
+                      onFetchDetail={fetchDetail}
+                      onTorrentAction={torrentAction}
+                      onOpenDeleteDrawer={openDeleteDrawer}
+                      onOpenCategoryDrawer={openCategoryDrawer}
+                      onOpenRenameDrawer={openRenameDrawer}
+                    />
+                  ))}
+                </div>
+
+                {bottomSpacerHeight > 0 && (
+                  <div style={{ height: bottomSpacerHeight }} />
+                )}
               </div>
-
-              {bottomSpacerHeight > 0 && (
-                <div style={{ height: bottomSpacerHeight }} />
-              )}
             </div>
           ) : (
-            <>
+            <div ref={listRef}>
               {topSpacerHeight > 0 && (
                 <div style={{ height: topSpacerHeight }} />
               )}
@@ -1652,7 +1654,7 @@ export default function TorrentsPage() {
               {bottomSpacerHeight > 0 && (
                 <div style={{ height: bottomSpacerHeight }} />
               )}
-            </>
+            </div>
           )}
         </div>
       )}
