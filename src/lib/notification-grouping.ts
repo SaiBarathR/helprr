@@ -41,6 +41,10 @@ export interface GroupedItem {
   redirect?: string;
   seasonNumber?: number;
   episodeId?: number;
+  // Per-item dedupe key, preserved so dedupe-driven events (upcomingPremiere)
+  // can still recognize an already-notified item when it was sent inside a
+  // grouped row (which has no top-level dedupeKey of its own).
+  dedupeKey?: string;
 }
 
 type NotifyFn = (event: NotificationEventInput, context: PollNotificationContext) => Promise<number | null>;
@@ -78,6 +82,9 @@ const GROUP_NOUNS: Record<string, string> = {
   'qbittorrent:torrentAdded': 'Torrents Added',
   'qbittorrent:torrentCompleted': 'Downloads Complete',
   'qbittorrent:torrentDeleted': 'Torrents Removed',
+  'sonarr:upcomingPremiere': 'Upcoming Episodes',
+  'radarr:upcomingPremiere': 'Upcoming Movies',
+  'lidarr:upcomingPremiere': 'Upcoming Albums',
 };
 
 function groupNoun(source: string | undefined, eventType: string): string {
@@ -97,6 +104,7 @@ function instancePrefix(event: NotificationEventInput): string {
 
 // Stable, always-valid destination when the group has no single shared media parent.
 function tabRedirect(source: string | undefined, eventType: string): string {
+  if (eventType === 'upcomingPremiere') return '/calendar';
   if (source === 'qbittorrent') return '/torrents';
   if (eventType === 'grabbed') return `/activity?tab=queue&source=${source}`;
   if (eventType === 'downloadFailed' || eventType === 'importFailed') return `/activity?tab=failed&source=${source}`;
@@ -155,6 +163,7 @@ function buildGroupedNotification(group: Entry[]): {
     if (typeof md.redirect === 'string') item.redirect = md.redirect;
     if (typeof md.seasonNumber === 'number') item.seasonNumber = md.seasonNumber;
     if (typeof md.episodeId === 'number') item.episodeId = md.episodeId;
+    if (typeof e.event.dedupeKey === 'string') item.dedupeKey = e.event.dedupeKey;
     return item;
   });
 
