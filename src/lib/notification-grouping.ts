@@ -41,10 +41,6 @@ export interface GroupedItem {
   redirect?: string;
   seasonNumber?: number;
   episodeId?: number;
-  // Per-item dedupe key, preserved so dedupe-driven events (upcomingPremiere)
-  // can still recognize an already-notified item when it was sent inside a
-  // grouped row (which has no top-level dedupeKey of its own).
-  dedupeKey?: string;
 }
 
 type NotifyFn = (event: NotificationEventInput, context: PollNotificationContext) => Promise<number | null>;
@@ -163,7 +159,6 @@ function buildGroupedNotification(group: Entry[]): {
     if (typeof md.redirect === 'string') item.redirect = md.redirect;
     if (typeof md.seasonNumber === 'number') item.seasonNumber = md.seasonNumber;
     if (typeof md.episodeId === 'number') item.episodeId = md.episodeId;
-    if (typeof e.event.dedupeKey === 'string') item.dedupeKey = e.event.dedupeKey;
     return item;
   });
 
@@ -173,6 +168,13 @@ function buildGroupedNotification(group: Entry[]): {
     items,
     redirect,
   };
+  // Every event's dedupe key, uncapped — ITEM_CAP trims the display list, but
+  // dedupe-driven events (upcomingPremiere) must persist keys for the whole
+  // group or the trimmed tail re-fires next cycle.
+  const itemDedupeKeys = group
+    .map((e) => e.event.dedupeKey)
+    .filter((k): k is string => typeof k === 'string');
+  if (itemDedupeKeys.length > 0) metadata.itemDedupeKeys = itemDedupeKeys;
   if (source) metadata.source = source;
   const instanceId = metaString(first.metadata, 'instanceId');
   if (instanceId) metadata.instanceId = instanceId;

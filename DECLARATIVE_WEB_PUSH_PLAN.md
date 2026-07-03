@@ -10,10 +10,11 @@ path returns without `showNotification()`, but the strike rule still applies whe
 can't run or errors for reasons outside our control (SW terminated mid-handler, storage
 eviction, WebKit bugs after OS updates).
 
-**Declarative Web Push** (Safari/iOS 18.4+, macOS 15.5+) removes the service worker from the
-delivery path entirely: the OS parses the push payload and displays the notification itself.
-There is no silent-push penalty by construction — if a SW handler exists and fails, the
-declarative payload is displayed as an automatic fallback.
+**Declarative Web Push** (Safari/iOS 18.4+, macOS 15.5+) makes the service worker optional for
+delivery: the OS can parse the push payload and display the notification itself. A registered
+SW at root scope still receives the push event and may override the notification, but when it
+doesn't — or fails to show one — the declarative payload is displayed as an automatic
+fallback. There is no silent-push penalty by construction.
 
 Most users don't hit the revocation problem, so this ships as an **opt-in per-device setting**:
 an iPhone user whose notifications keep silently dying can flip it on; everyone else keeps the
