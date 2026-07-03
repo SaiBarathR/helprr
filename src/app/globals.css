@@ -166,14 +166,17 @@
   }
 }
 
-/* Bottom-nav mode has no top header; pad only for the notch (all widths). */
-:root[data-nav-position="bottom"] {
-  --main-pad-top: max(0.5rem, env(safe-area-inset-top, 0.5rem));
-}
-
 .app-main {
   padding-top: var(--main-pad-top);
   padding-inline: var(--main-pad-x);
+}
+
+/* Bottom-nav mode has no top header; push at-rest content below the notch.
+   The inset lives here (not in --main-pad-top) so .page-toolbar-flush keeps a
+   normal padding — sticky toolbars pin at top = inset (--header-height) and
+   the status-bar scrim in AppShell covers the 0..inset strip. */
+:root[data-nav-position="bottom"] .app-main {
+  padding-top: calc(env(safe-area-inset-top, 0px) + var(--main-pad-top));
 }
 
 .page-toolbar {
