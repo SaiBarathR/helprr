@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
+import { SwipeRow } from '@/components/ui/swipe-row';
 import {
   Play,
   Pause,
@@ -544,8 +545,26 @@ const TorrentRow = memo(function TorrentRow({
   onOpenRenameDrawer,
 }: TorrentRowProps) {
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
+  const canManageTorrents = useCan('torrents.manage');
+  const canDeleteTorrents = useCan('torrents.delete');
+  const stopped = PAUSED_STATES.has(torrent.state);
 
   return (
+    <SwipeRow
+      contentClassName="bg-card"
+      leftAction={canManageTorrents ? {
+        label: stopped ? 'Start' : 'Stop',
+        icon: stopped ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />,
+        className: 'bg-primary text-primary-foreground',
+        onAction: () => onTorrentAction(torrent.hash, stopped ? 'start' : 'stop'),
+      } : undefined}
+      rightAction={canDeleteTorrents ? {
+        label: 'Delete',
+        icon: <Trash2 className="h-4 w-4" />,
+        className: 'bg-destructive text-destructive-foreground',
+        onAction: () => onOpenDeleteDrawer(torrent.hash, torrent.name, false),
+      } : undefined}
+    >
     <div className="px-3 py-3 sm:px-4">
       <div className="flex items-start gap-3">
         <input
@@ -622,6 +641,7 @@ const TorrentRow = memo(function TorrentRow({
         </div>
       </div>
     </div>
+    </SwipeRow>
   );
 }, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
 
