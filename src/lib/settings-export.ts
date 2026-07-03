@@ -9,6 +9,7 @@ import type {
   StallRuleShape,
 } from '@/lib/cleanup/types';
 import type { BandwidthSchedule } from '@/lib/bandwidth-scheduler/types';
+import type { DiskThreshold } from '@/lib/disk-space';
 
 // Allow-lists shared by import validation + the import route. Kept here so the
 // client-side validator and the server-side applier agree on what's known.
@@ -21,9 +22,13 @@ export const USER_STATUS_VALUES = new Set<string>(['active', 'pending', 'disable
 export const USER_TEMPLATE_VALUES = new Set<string>(['admin', 'member']);
 
 export const EXPORT_FORMAT_KIND = 'helprr-settings-export';
-export const EXPORT_FORMAT_VERSION = 1;
-// Max import payload size. Watchlist + dashboard layouts can push past 1 MiB.
-export const MAX_IMPORT_BYTES = 2_097_152;
+// v2: scheduledAlerts section; per-account watchlist/scheduledAlerts/dashboardLayouts
+// under users; dashboardLayouts section restricted to global (admin) layouts.
+// Older files import fine — every v2 field is additive and optional.
+export const EXPORT_FORMAT_VERSION = 2;
+// Max import payload size. v2 exports carry every account's watchlist, alerts,
+// and layouts under users, so the ceiling is higher than the old 2 MiB.
+export const MAX_IMPORT_BYTES = 4_194_304;
 
 export type UiPrefCategoryId =
   | 'navigation'
@@ -35,8 +40,10 @@ export type UiPrefCategoryId =
   | 'requests'
   | 'notificationFilters'
   | 'calendar'
+  | 'insights'
   | 'cleanup'
-  | 'dashboardTheme';
+  | 'dashboardTheme'
+  | 'search';
 
 export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   navigation: 'Navigation',
@@ -48,10 +55,15 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   requests: 'Requests (Seerr)',
   notificationFilters: 'Notification filters',
   calendar: 'Calendar',
+  insights: 'Insights date range',
   cleanup: 'Cleanup history filters',
   dashboardTheme: 'Dashboard theme',
+  search: 'Search history',
 };
 
+// Every key in store.ts PERSISTED_KEYS must appear in exactly one category here,
+// or it silently resets on migration. Sole exception: discoverLayout, which is
+// server-owned and travels via the dedicated discoverLayout export section.
 export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]> = {
   navigation: ['navPosition', 'navOrder', 'disabledNavItems', 'defaultPage', 'sidebarCollapsed'],
   mediaViews: [
@@ -61,20 +73,26 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'seriesView', 'seriesPosterSize', 'seriesSort', 'seriesSearch',
     'seriesSortDirection', 'seriesFilter', 'seriesInstanceFilter', 'seriesWatchFilter', 'seriesVisibleFields',
     'musicView', 'musicPosterSize', 'musicSort', 'musicSearch',
-    'musicSortDirection', 'musicFilter', 'musicVisibleFields',
+    'musicSortDirection', 'musicFilter', 'musicInstanceFilter', 'musicVisibleFields',
   ],
   discover: ['discoverContentType', 'discoverSort', 'discoverSortDirection', 'discoverFilters'],
   anime: ['animeSort', 'animeFilters', 'animeCarouselOrder', 'disabledAnimeCarousels'],
-  torrents: ['torrentsFilter', 'torrentsSortKey', 'torrentsSortDir'],
-  activity: ['activityTab', 'activitySortBy', 'activityFilterBy'],
+  torrents: ['torrentsFilter', 'torrentsSortKey', 'torrentsSortDir', 'torrentsView'],
+  activity: ['activityTab', 'activitySortBy', 'activityFilterBy', 'activityInstanceFilter'],
   requests: ['requestsTab', 'requestsFilter', 'requestsUserFilter', 'requestsTypeFilter', 'requestsSort', 'requestsSortDirection'],
   notificationFilters: ['notificationsFilters'],
-  calendar: ['calendarView', 'calendarTypeFilter', 'calendarMonitoredOnly'],
+  calendar: [
+    'calendarView', 'calendarTypeFilter', 'calendarMonitoredOnly',
+    'calendarShowImages', 'calendarShowScheduled', 'calendarInstanceFilter',
+  ],
+  insights: ['insightsDateFrom', 'insightsDateTo'],
   cleanup: ['cleanupHistoryFilters'],
   dashboardTheme: [
     'dashboardAccent', 'dashboardPalette', 'dashboardGradient', 'dashboardFont',
     'dashboardFg', 'dashboardFgMute', 'dashboardFgSubtle',
+    'liquidGlass', 'glassMode', 'glassIntensity',
   ],
+  search: ['searchHistory'],
 };
 
 export const UI_PREF_CATEGORY_IDS: readonly UiPrefCategoryId[] = Object.keys(
@@ -130,6 +148,7 @@ export interface ExportedAppSettings {
   activityDigestMode: string;
   activityDigestHour: number;
   activityDigestDayOfWeek: number;
+  notificationGroupingEnabled: boolean;
   animeAutoMapEnabled: boolean;
   animeAutoMapHour: number;
   anilistSectionsTtlMin: number;
@@ -138,6 +157,8 @@ export interface ExportedAppSettings {
   anilistAiringTtlMin: number;
   // Stored bandwidth-schedule JSON; re-normalized via parseBandwidthSchedule() on import.
   qbtBandwidthSchedule: BandwidthSchedule | null;
+  // Per-disk low-space alert config; re-normalized via parseDiskThresholds() on import.
+  diskThresholds: DiskThreshold[];
 }
 
 export interface ExportedNotificationRule {
@@ -171,6 +192,8 @@ export interface ExportedDashboardLayout {
 }
 
 export interface ExportedDashboardLayouts {
+  // v2: only global (admin-scope) layouts. Members' personal layouts travel
+  // inside users.accounts[].dashboardLayouts so they re-attach to their owner.
   layouts: ExportedDashboardLayout[];
   // Default-layout references by name (IDs are install-local). Built-ins can
   // also be matched via slug as a fallback.
@@ -200,6 +223,32 @@ export interface ExportedWatchlistItem {
 export interface ExportedWatchlist {
   items: ExportedWatchlistItem[];
   tags: ExportedWatchlistTag[];
+}
+
+export interface ExportedScheduledAlert {
+  source: string;
+  externalId: string;
+  mediaType: string;
+  // ServiceConnection id snapshot — install-local; import keeps it only when a
+  // connection with that id still exists, else null (resolver falls back).
+  instanceId: string | null;
+  title: string;
+  subtitle: string | null;
+  posterUrl: string | null;
+  href: string | null;
+  scheduleMode: string;
+  scope: string;
+  releaseTypes: string[];
+  offsetMinutes: number;
+  timeZone: string;
+  metadata: Record<string, unknown> | null;
+  // Absolute alerts fire once at a fixed time held only by their occurrence row;
+  // release_relative occurrences regenerate from the rule, so this stays null.
+  absoluteNotifyAt: string | null;
+}
+
+export interface ExportedScheduledAlerts {
+  alerts: ExportedScheduledAlert[];
 }
 
 export interface ExportedAnimeMappingEntry {
@@ -235,6 +284,10 @@ export interface ExportedUserSettings {
   quietHoursEnabled: boolean;
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
+  // v2: the user's chosen default layouts by name (IDs are install-local).
+  // Resolved against their own layouts first, then the global ones.
+  defaultDesktopLayoutName?: string | null;
+  defaultMobileLayoutName?: string | null;
 }
 
 export interface ExportedUserAniListIdentity {
@@ -260,6 +313,11 @@ export interface ExportedUserAccount {
   settings: ExportedUserSettings | null;
   // Identity only — OAuth tokens are install-bound and deliberately excluded.
   anilist: ExportedUserAniListIdentity | null;
+  // v2: this account's own content so a full-instance migration restores every
+  // user, not just the exporting admin. All optional — absent in v1 files.
+  watchlist?: ExportedWatchlist | null;
+  scheduledAlerts?: ExportedScheduledAlert[] | null;
+  dashboardLayouts?: ExportedDashboardLayout[] | null;
 }
 
 export interface ExportedUsers {
@@ -280,6 +338,7 @@ export interface SettingsExportPayload {
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;
   watchlist?: ExportedWatchlist;
+  scheduledAlerts?: ExportedScheduledAlerts;
   animeMappings?: ExportedAnimeMappings;
   users?: ExportedUsers;
 }
@@ -374,6 +433,15 @@ export function validateImportFile(
       !Array.isArray((obj.watchlist as { tags?: unknown }).tags))
   ) {
     return { ok: false, error: 'Invalid watchlist section.' };
+  }
+  if (
+    obj.scheduledAlerts !== undefined &&
+    (typeof obj.scheduledAlerts !== 'object' ||
+      obj.scheduledAlerts === null ||
+      Array.isArray(obj.scheduledAlerts) ||
+      !Array.isArray((obj.scheduledAlerts as { alerts?: unknown }).alerts))
+  ) {
+    return { ok: false, error: 'Invalid scheduledAlerts section.' };
   }
   if (
     obj.animeMappings !== undefined &&
