@@ -7,7 +7,38 @@ import { AnimeCarouselSettings } from '@/components/settings/anime-carousel-sett
 import { InstallAppSection } from '@/components/settings/install-app-section';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
-import { Compass, Paintbrush } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { useUIStore } from '@/lib/store';
+import { haptic } from '@/lib/haptics';
+import { Compass, Paintbrush, Vibrate } from 'lucide-react';
+
+function HapticsSection() {
+  const hapticsEnabled = useUIStore((s) => s.hapticsEnabled);
+  const setHapticsEnabled = useUIStore((s) => s.setHapticsEnabled);
+
+  return (
+    <GroupedSection title="Touch" footer="Vibration on swipe actions and pull-to-refresh. Not supported on all devices.">
+      <div className="grouped-row">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-violet-500/10 text-violet-400">
+            <Vibrate className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0 flex flex-col items-start">
+            <span className="text-[15px] font-medium truncate">Haptic feedback</span>
+          </div>
+        </div>
+        <Switch
+          checked={hapticsEnabled}
+          onCheckedChange={(v) => {
+            setHapticsEnabled(v);
+            // Demo tick so enabling is immediately felt.
+            if (v) haptic('medium');
+          }}
+        />
+      </div>
+    </GroupedSection>
+  );
+}
 
 export default function AppearanceSettingsPage() {
   return (
@@ -42,6 +73,8 @@ export default function AppearanceSettingsPage() {
           subtitle="Accent color, palette, gradient, text, and font"
         />
       </GroupedSection>
+
+      <HapticsSection />
 
       <NavOrderSettings />
       <AnimeCarouselSettings />

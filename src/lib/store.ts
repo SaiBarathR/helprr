@@ -233,7 +233,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 40;
+export const STORE_VERSION = 41;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -428,6 +428,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 40) {
     state.torrentsView = 'card';
   }
+  if (version < 41) {
+    state.hapticsEnabled = true;
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -620,6 +623,9 @@ interface UIState {
   setLiquidGlass: (on: boolean) => void;
   setGlassMode: (m: GlassMode) => void;
   setGlassIntensity: (n: number) => void;
+  // Haptic feedback on touch gestures (swipe actions, pull-to-refresh)
+  hapticsEnabled: boolean;
+  setHapticsEnabled: (v: boolean) => void;
   // Discover layout (server-side, cached locally for dashboard widget catalog)
   discoverLayout: DiscoverLayoutConfig | null;
   setDiscoverLayout: (config: DiscoverLayoutConfig | null) => void;
@@ -710,6 +716,7 @@ const PERSISTED_KEYS = [
   'liquidGlass',
   'glassMode',
   'glassIntensity',
+  'hapticsEnabled',
   'searchHistory',
 ] as const satisfies readonly (keyof UIState)[];
 
@@ -1011,6 +1018,9 @@ export const useUIStore = create<UIState>()(
       setGlassMode: (m) => set({ glassMode: m }),
       setGlassIntensity: (n) =>
         set({ glassIntensity: Math.min(100, Math.max(0, Math.round(n))) }),
+      // Haptics
+      hapticsEnabled: true,
+      setHapticsEnabled: (v) => set({ hapticsEnabled: v }),
       // Discover layout cache
       discoverLayout: null,
       setDiscoverLayout: (config) =>
@@ -1054,7 +1064,7 @@ export const useUIStore = create<UIState>()(
               next[key] = value;
               continue;
             }
-            if (key === 'liquidGlass') {
+            if (key === 'liquidGlass' || key === 'hapticsEnabled') {
               if (typeof value !== 'boolean') continue;
               next[key] = value;
               continue;

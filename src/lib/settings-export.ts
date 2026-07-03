@@ -91,6 +91,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'dashboardAccent', 'dashboardPalette', 'dashboardGradient', 'dashboardFont',
     'dashboardFg', 'dashboardFgMute', 'dashboardFgSubtle',
     'liquidGlass', 'glassMode', 'glassIntensity',
+    'hapticsEnabled',
   ],
   search: ['searchHistory'],
 };

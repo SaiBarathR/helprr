@@ -49,6 +49,7 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 import { EventIcon, getEventColorClass } from '@/components/notifications/event-visuals';
+import { SwipeRow } from '@/components/ui/swipe-row';
 import { NotificationDetailDrawer, type GroupedNotificationItem } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -294,6 +295,22 @@ export default function NotificationsPage() {
       adjustBadge('notifications', -1, -1);
     } catch { }
   }, [adjustBadge, queryClient, listKey, filters.readState]);
+
+  const deleteOne = useCallback(async (n: Notification) => {
+    try {
+      const res = await fetch(`/api/notifications/${n.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        toast.error('Failed to delete notification');
+        return;
+      }
+      queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
+        removeNotification(old, n.id),
+      );
+      if (!n.read) adjustBadge('notifications', -1, -1);
+    } catch {
+      toast.error('Failed to delete notification');
+    }
+  }, [adjustBadge, queryClient, listKey]);
 
   const resolveQueueNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
     const cacheKey = `${source}:${id}`;
@@ -688,8 +705,22 @@ export default function NotificationsPage() {
         <>
           <div className="space-y-0.5 animate-list-in">
             {notifications.map((n) => (
-              <div
+              <SwipeRow
                 key={n.id}
+                leftAction={!n.read ? {
+                  label: 'Read',
+                  icon: <Check className="h-4 w-4" />,
+                  className: 'bg-primary text-primary-foreground',
+                  onAction: () => void markAsRead(n.id),
+                } : undefined}
+                rightAction={{
+                  label: 'Delete',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  className: 'bg-destructive text-destructive-foreground',
+                  onAction: () => void deleteOne(n),
+                }}
+              >
+              <div
                 role="button"
                 tabIndex={0}
                 onClick={() => void handleNotificationClick(n)}
@@ -726,6 +757,7 @@ export default function NotificationsPage() {
                   <Info className="h-4 w-4" />
                 </button>
               </div>
+              </SwipeRow>
             ))}
           </div>
           {notificationsQuery.hasNextPage && (

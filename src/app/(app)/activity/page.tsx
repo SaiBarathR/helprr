@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { SwipeRow } from '@/components/ui/swipe-row';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import {
   Download, Trash2, AlertTriangle,
@@ -754,8 +755,17 @@ function QueueTab({
           // Single-item download → the existing card, opening the detail drawer.
           if (!group.isPack) {
             return (
-              <button
+              <SwipeRow
                 key={group.key}
+                className="rounded-xl"
+                rightAction={canManageActivity ? {
+                  label: 'Remove',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  className: 'bg-destructive text-destructive-foreground',
+                  onAction: () => setRemoveTarget({ kind: 'item', item: rep }),
+                } : undefined}
+              >
+              <button
                 onClick={() => setSelectedItem(rep)}
                 className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
               >
@@ -806,6 +816,7 @@ function QueueTab({
                   <span>Total: {formatBytes(rep.size)}</span>
                 </div>
               </button>
+              </SwipeRow>
             );
           }
 
@@ -833,7 +844,17 @@ function QueueTab({
           });
 
           return (
-            <div key={group.key} className="rounded-xl bg-muted/30 overflow-hidden">
+            <SwipeRow
+              key={group.key}
+              className="rounded-xl"
+              rightAction={canManageActivity ? {
+                label: 'Remove',
+                icon: <Trash2 className="h-4 w-4" />,
+                className: 'bg-destructive text-destructive-foreground',
+                onAction: () => setRemoveTarget({ kind: 'pack', group }),
+              } : undefined}
+            >
+            <div className="rounded-xl bg-muted/30 overflow-hidden">
               <div className="flex items-stretch">
                 <button
                   onClick={() => toggleExpand(group.key)}
@@ -928,6 +949,7 @@ function QueueTab({
                 </div>
               )}
             </div>
+            </SwipeRow>
           );
         })}
       </div>

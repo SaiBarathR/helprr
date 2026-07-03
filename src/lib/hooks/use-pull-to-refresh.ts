@@ -1,6 +1,7 @@
 'use client';
 
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { haptic } from '@/lib/haptics';
 import { sleep } from '@/lib/utils';
 
 interface UsePullToRefreshOptions {
@@ -109,6 +110,9 @@ export function usePullToRefresh({
       if (e.cancelable) e.preventDefault();
       // Diminishing resistance: easy to start, hard to overshoot.
       const resisted = Math.min(maxDistance, delta * 0.5);
+      // Tick when the pull arms (or disarms) so release-to-refresh is felt.
+      const wasArmed = distanceRef.current >= threshold;
+      if ((resisted >= threshold) !== wasArmed) haptic('medium');
       setPullDistance(resisted);
     };
 
@@ -128,6 +132,7 @@ export function usePullToRefresh({
       Promise.all([Promise.resolve(onRefreshRef.current()), sleep(REFRESH_MIN_MS)])
         .catch(() => {})
         .finally(() => {
+          haptic('success');
           setRefreshing(false);
           setPullDistance(0);
         });
