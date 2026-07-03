@@ -371,7 +371,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               <div>
                 <div className="text-sm font-medium">Dashboard Layouts</div>
                 <div className="text-xs text-muted-foreground">
-                  All saved bento layouts (built-in + custom), widget positions, per-widget refresh intervals, and the active default for desktop &amp; mobile.
+                  Global bento layouts (built-in + admin-created), widget positions, per-widget refresh intervals, and the active default for desktop &amp; mobile. Members&apos; personal layouts are included with User Accounts.
                 </div>
               </div>
             </label>
