@@ -47,17 +47,21 @@ async function updateAppBadge() {
   }
 }
 
+// Every push MUST end in showNotification: iOS counts a push that displays
+// nothing as a "silent push" and silently revokes the subscription after three
+// strikes, so a missing or unparseable payload falls back to a generic
+// notification instead of returning early.
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
-  let data;
-  try {
-    data = event.data.json();
-  } catch (error) {
-    logToClients('error', 'Service worker push payload parse failed', { error: String(error) });
-    return;
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (error) {
+      logToClients('error', 'Service worker push payload parse failed', { error: String(error) });
+    }
   }
   const options = {
-    body: data.body,
+    body: data.body || 'You have a new notification — open Helprr to see it.',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: data.tag || 'helprr-notification',

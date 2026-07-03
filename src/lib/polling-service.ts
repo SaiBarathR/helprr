@@ -2140,16 +2140,36 @@ export class PollingService {
         eventType: 'upcomingPremiere',
         createdAt: { gte: new Date(now.getTime() - dedupeLookbackMs) },
       },
-      select: { dedupeKey: true, body: true },
+      select: { dedupeKey: true, body: true, metadata: true },
     });
     const notifiedKeys = new Set<string>();
     const notifiedBodies = new Set<string>();
     for (const row of priorUpcoming) {
-      if (row.dedupeKey) notifiedKeys.add(row.dedupeKey);
-      else notifiedBodies.add(row.body);
+      if (row.dedupeKey) {
+        notifiedKeys.add(row.dedupeKey);
+        continue;
+      }
+      // A grouped row has no top-level dedupeKey; its per-item keys live in
+      // metadata.items (see notification-grouping.ts). Harvest them so items
+      // sent inside a digest are still suppressed on later cycles.
+      const md = row.metadata as { grouped?: unknown; items?: unknown } | null;
+      if (md?.grouped && Array.isArray(md.items)) {
+        for (const item of md.items) {
+          const key = (item as { dedupeKey?: unknown } | null)?.dedupeKey;
+          if (typeof key === 'string') notifiedKeys.add(key);
+        }
+      } else {
+        notifiedBodies.add(row.body);
+      }
     }
     const alreadyNotified = (dedupeKeys: string[], body: string): boolean =>
       dedupeKeys.some((key) => notifiedKeys.has(key)) || notifiedBodies.has(body);
+
+    // Collapse same-cycle premiere bursts (e.g. the daily-digest hour firing
+    // every premiere of the day at once) into one grouped push per
+    // (source, instance). Flushed after all three calendar sections; a failed
+    // flush just re-fires next cycle because no history row was written.
+    const collector = new PollNotificationCollector();
 
     const shouldFireBeforeAir = (airTimeMs: number): boolean => {
       const minsUntilAir = (airTimeMs - now.getTime()) / 60_000;
@@ -2214,7 +2234,7 @@ export class PollingService {
         }
 
         notifiedKeys.add(dedupeKey);
-        await this.notifyAndLog({
+        collector.add({
           eventType: 'upcomingPremiere',
           title: this.instanceTitle(notificationTitle, connection.label, sonarrClients.length),
           body,
@@ -2300,7 +2320,7 @@ export class PollingService {
           }
 
           notifiedKeys.add(dedupeKey);
-          await this.notifyAndLog({
+          collector.add({
             eventType: 'upcomingPremiere',
             title: this.instanceTitle('Upcoming Movie', connection.label, radarrClients.length),
             body,
@@ -2354,7 +2374,7 @@ export class PollingService {
         if (alreadyNotified(connection.isDefault ? [dedupeKey, legacyKey] : [dedupeKey], body)) continue;
 
         notifiedKeys.add(dedupeKey);
-        await this.notifyAndLog({
+        collector.add({
           eventType: 'upcomingPremiere',
           title: this.instanceTitle('Upcoming Album', connection.label, lidarrClients.length),
           body,
@@ -2379,6 +2399,8 @@ export class PollingService {
       logger.warn('Lidarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
+
+    await collector.flush({ enabled: settings.notificationGroupingEnabled, notify: this.notifyAndLog.bind(this) });
   }
 
   // Prune NotificationHistory rows past the configured retention window. The
