@@ -2150,12 +2150,11 @@ export class PollingService {
         continue;
       }
       // A grouped row has no top-level dedupeKey; its per-item keys live in
-      // metadata.items (see notification-grouping.ts). Harvest them so items
-      // sent inside a digest are still suppressed on later cycles.
-      const md = row.metadata as { grouped?: unknown; items?: unknown } | null;
-      if (md?.grouped && Array.isArray(md.items)) {
-        for (const item of md.items) {
-          const key = (item as { dedupeKey?: unknown } | null)?.dedupeKey;
+      // metadata.itemDedupeKeys (see notification-grouping.ts). Harvest them so
+      // items sent inside a digest are still suppressed on later cycles.
+      const md = row.metadata as { grouped?: unknown; itemDedupeKeys?: unknown } | null;
+      if (md?.grouped && Array.isArray(md.itemDedupeKeys)) {
+        for (const key of md.itemDedupeKeys) {
           if (typeof key === 'string') notifiedKeys.add(key);
         }
       } else {
@@ -2180,7 +2179,15 @@ export class PollingService {
     };
 
     // Sonarr calendar (every instance) ---------------------------------------
-    const sonarrClients = await getSonarrClients();
+    // Client discovery is isolated per source (here and below) so one failure
+    // can't abort the method before the collector flush and silently delay the
+    // other sources' already-buffered notifications.
+    let sonarrClients: Awaited<ReturnType<typeof getSonarrClients>> = [];
+    try {
+      sonarrClients = await getSonarrClients();
+    } catch (error) {
+      logger.warn('Skipping Sonarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
+    }
     for (const { connection, client } of sonarrClients) {
     try {
       const calendar = await client.getCalendar(start, end);
@@ -2264,7 +2271,12 @@ export class PollingService {
     }
 
     // Radarr calendar (every instance) ---------------------------------------
-    const radarrClients = await getRadarrClients();
+    let radarrClients: Awaited<ReturnType<typeof getRadarrClients>> = [];
+    try {
+      radarrClients = await getRadarrClients();
+    } catch (error) {
+      logger.warn('Skipping Radarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
+    }
     for (const { connection, client } of radarrClients) {
     try {
       const calendar = await client.getCalendar(start, end);
@@ -2349,7 +2361,12 @@ export class PollingService {
     }
 
     // Lidarr calendar (every instance) ---------------------------------------
-    const lidarrClients = await getLidarrClients();
+    let lidarrClients: Awaited<ReturnType<typeof getLidarrClients>> = [];
+    try {
+      lidarrClients = await getLidarrClients();
+    } catch (error) {
+      logger.warn('Skipping Lidarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
+    }
     for (const { connection, client } of lidarrClients) {
     try {
       const calendar = await client.getCalendar(start, end);

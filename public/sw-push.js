@@ -61,7 +61,7 @@ self.addEventListener('push', (event) => {
     }
   }
   const options = {
-    body: data.body || 'You have a new notification — open Helprr to see it.',
+    body: data.body ?? 'You have a new notification — open Helprr to see it.',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: data.tag || 'helprr-notification',
