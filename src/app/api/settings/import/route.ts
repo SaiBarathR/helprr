@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { AppSettings, Prisma, ServiceType, UserRole, UserStatus } from '@prisma/client';
+import type { AppSettings, Prisma, ScheduledAlert, ServiceType, UserRole, UserStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
@@ -40,6 +40,8 @@ import {
 } from '@/lib/settings-export';
 import { isAlertScope, isScheduleMode, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
 import { DEFAULT_OFFSET_MINUTES } from '@/lib/scheduled-alerts/constants';
+import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
+import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import {
   validateDiscoverLayout,
   reconcileDiscoverLayout,
@@ -249,6 +251,7 @@ async function applyAppSettingsInTxn(
       activityDigestMode: (data.activityDigestMode as string | undefined) ?? 'off',
       activityDigestHour: (data.activityDigestHour as number | undefined) ?? 8,
       activityDigestDayOfWeek: (data.activityDigestDayOfWeek as number | undefined) ?? 1,
+      notificationGroupingEnabled: (data.notificationGroupingEnabled as boolean | undefined) ?? true,
       animeAutoMapEnabled: (data.animeAutoMapEnabled as boolean | undefined) ?? true,
       animeAutoMapHour: (data.animeAutoMapHour as number | undefined) ?? 0,
       anilistSectionsTtlMin: (data.anilistSectionsTtlMin as number | undefined) ?? 5,
@@ -257,6 +260,9 @@ async function applyAppSettingsInTxn(
       anilistAiringTtlMin: (data.anilistAiringTtlMin as number | undefined) ?? 10,
       ...(data.qbtBandwidthSchedule !== undefined
         ? { qbtBandwidthSchedule: data.qbtBandwidthSchedule as Prisma.InputJsonValue }
+        : {}),
+      ...(data.diskThresholds !== undefined
+        ? { diskThresholds: data.diskThresholds as Prisma.InputJsonValue }
         : {}),
     },
   });
@@ -1082,9 +1088,11 @@ async function applyAnimeMappingsInTxn(
 
 /**
  * Restore scheduled-alert rules for one user. Occurrences are NOT imported:
- * release_relative alerts regenerate theirs on the next polling cycle, and an
- * absolute alert's single occurrence is recreated here from absoluteNotifyAt
- * (skipped when that time has already passed — the alert would never fire).
+ * an absolute alert's single occurrence is recreated here from absoluteNotifyAt
+ * (skipped when that time has already passed — the alert would never fire), and
+ * release_relative alerts are pushed to `createdReleaseRelative` so the caller
+ * resolves their occurrences after the transaction commits — resolution hits
+ * external APIs and must not run inside the transaction.
  */
 async function applyScheduledAlertsInTxn(
   tx: Prisma.TransactionClient,
@@ -1092,6 +1100,7 @@ async function applyScheduledAlertsInTxn(
   skipped: string[],
   ownerUserId: string,
   ownerLabel: string,
+  createdReleaseRelative: ScheduledAlert[],
 ): Promise<number> {
   let applied = 0;
   const instanceExists = new Map<string, boolean>();
@@ -1209,6 +1218,8 @@ async function applyScheduledAlertsInTxn(
           body: subtitle ?? title,
         },
       });
+    } else if (scheduleMode === 'release_relative') {
+      createdReleaseRelative.push(created);
     }
     applied += 1;
   }
@@ -1286,6 +1297,7 @@ async function applyUsersInTxn(
   data: ExportedUsers,
   skipped: string[],
   importerId: string,
+  createdReleaseRelative: ScheduledAlert[],
 ): Promise<number> {
   if (!Array.isArray(data.accounts)) {
     skipped.push('Users: missing accounts array');
@@ -1465,7 +1477,7 @@ async function applyUsersInTxn(
       await applyWatchlistInTxn(tx, acc.watchlist, skipped, userId);
     }
     if (Array.isArray(acc.scheduledAlerts)) {
-      await applyScheduledAlertsInTxn(tx, acc.scheduledAlerts, skipped, userId, ownerLabel);
+      await applyScheduledAlertsInTxn(tx, acc.scheduledAlerts, skipped, userId, ownerLabel, createdReleaseRelative);
     }
     if (Array.isArray(acc.dashboardLayouts)) {
       await applyUserDashboardLayoutsInTxn(tx, acc.dashboardLayouts, skipped, userId, ownerLabel);
@@ -1475,9 +1487,13 @@ async function applyUsersInTxn(
     // against the user's own layouts first, then the global ones — a member
     // may have picked a shared built-in as their default.
     if (acc.settings && typeof acc.settings === 'object') {
-      const resolveLayoutId = async (rawName: unknown): Promise<string | null> => {
+      // Explicit null in the export means "no default" — clear it (null).
+      // An absent field or a name that no longer resolves on this install is
+      // left untouched (undefined).
+      const resolveLayoutId = async (rawName: unknown): Promise<string | null | undefined> => {
+        if (rawName === null) return null;
         const name = typeof rawName === 'string' ? rawName.trim() : '';
-        if (!name) return null;
+        if (!name) return undefined;
         const own = await tx.dashboardLayout.findFirst({
           where: { userId, name },
           select: { id: true },
@@ -1487,23 +1503,23 @@ async function applyUsersInTxn(
           where: { userId: null, name },
           select: { id: true },
         });
-        return global?.id ?? null;
+        return global?.id ?? undefined;
       };
       const [desktopId, mobileId] = await Promise.all([
         resolveLayoutId(acc.settings.defaultDesktopLayoutName),
         resolveLayoutId(acc.settings.defaultMobileLayoutName),
       ]);
-      if (desktopId || mobileId) {
+      if (desktopId !== undefined || mobileId !== undefined) {
         await tx.userSettings.upsert({
           where: { userId },
           update: {
-            ...(desktopId ? { defaultDesktopLayoutId: desktopId } : {}),
-            ...(mobileId ? { defaultMobileLayoutId: mobileId } : {}),
+            ...(desktopId !== undefined ? { defaultDesktopLayoutId: desktopId } : {}),
+            ...(mobileId !== undefined ? { defaultMobileLayoutId: mobileId } : {}),
           },
           create: {
             userId,
-            defaultDesktopLayoutId: desktopId,
-            defaultMobileLayoutId: mobileId,
+            defaultDesktopLayoutId: desktopId ?? null,
+            defaultMobileLayoutId: mobileId ?? null,
           },
         });
       }
@@ -1595,6 +1611,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   let appliedAnimeMappings = 0;
   let appliedUsers = 0;
   let appSettingsTxnResult: AppSettingsTxnResult | null = null;
+  // release_relative alerts created during the import; occurrences are resolved
+  // after commit (resolution hits Sonarr/Radarr/AniList — too slow for the txn).
+  const createdReleaseRelative: ScheduledAlert[] = [];
 
   try {
     appSettingsTxnResult = await prisma.$transaction(async (tx) => {
@@ -1652,7 +1671,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
           alerts,
           skipped,
           importerId,
-          'Scheduled alerts'
+          'Scheduled alerts',
+          createdReleaseRelative
         );
       }
 
@@ -1667,7 +1687,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       if (body.users && typeof body.users === 'object') {
-        appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId);
+        appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId, createdReleaseRelative);
       }
 
       return innerAppSettings;
@@ -1739,6 +1759,24 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       await Promise.all([restartQueueCleaner(), restartDownloadCleaner()]);
     } catch (err) {
       console.warn('Failed to restart cleanup schedulers after import', err);
+    }
+  }
+
+  // Materialize occurrences for imported release_relative alerts, mirroring
+  // POST /api/scheduled-alerts. Without this they'd stay inert until the
+  // background refresh reaches them (it processes oldest-updated first, so
+  // fresh imports would be last in line).
+  if (createdReleaseRelative.length > 0) {
+    const ctx = createResolverContext({
+      maxOffsetMinutes: Math.max(...createdReleaseRelative.map((a) => a.offsetMinutes)),
+    });
+    for (const alert of createdReleaseRelative) {
+      try {
+        const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
+        await upsertOccurrencesForAlert(alert, candidates, { resolved });
+      } catch (err) {
+        console.warn('Failed to resolve occurrences for imported alert', alert.id, err);
+      }
     }
   }
 
