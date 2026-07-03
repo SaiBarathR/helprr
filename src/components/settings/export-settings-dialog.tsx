@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { useMe } from '@/components/permission-provider';
 import { useUIStore, STORE_VERSION } from '@/lib/store';
 import {
   UI_PREF_CATEGORY_IDS,
@@ -39,15 +40,20 @@ interface ConnectedServiceInfo {
 }
 
 export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialogProps) {
+  // Global sections (app settings, services, users, …) are admin-only; the
+  // server enforces this too — members with settings.backup export only their
+  // own watchlist, scheduled alerts, and device-local UI prefs.
+  const isAdmin = useMe()?.role === 'admin';
   const [selectedUi, setSelectedUi] = useState<Set<UiPrefCategoryId>>(
     () => new Set(UI_PREF_CATEGORY_IDS)
   );
-  const [selectedAppSettings, setSelectedAppSettings] = useState(true);
-  const [selectedDiscoverLayout, setSelectedDiscoverLayout] = useState(true);
-  const [selectedNotifPrefs, setSelectedNotifPrefs] = useState(true);
-  const [selectedCleanup, setSelectedCleanup] = useState(true);
-  const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(true);
+  const [selectedAppSettings, setSelectedAppSettings] = useState(isAdmin);
+  const [selectedDiscoverLayout, setSelectedDiscoverLayout] = useState(isAdmin);
+  const [selectedNotifPrefs, setSelectedNotifPrefs] = useState(isAdmin);
+  const [selectedCleanup, setSelectedCleanup] = useState(isAdmin);
+  const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(isAdmin);
   const [selectedWatchlist, setSelectedWatchlist] = useState(false);
+  const [selectedScheduledAlerts, setSelectedScheduledAlerts] = useState(false);
   const [selectedAnimeMappings, setSelectedAnimeMappings] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState(false);
   const [availableServices, setAvailableServices] = useState<ConnectedServiceInfo[]>([]);
@@ -57,7 +63,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
   const [loadingServices, setLoadingServices] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !isAdmin) return;
     setLoadingServices(true);
     fetch('/api/services')
       .then((r) => (r.ok ? r.json() : []))
@@ -79,7 +85,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         setSelectedServices(new Set());
       })
       .finally(() => setLoadingServices(false));
-  }, [open]);
+  }, [open, isAdmin]);
 
   const allUiSelected = selectedUi.size === UI_PREF_CATEGORY_IDS.length;
   const noneUiSelected = selectedUi.size === 0;
@@ -123,10 +129,11 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
     && !selectedCleanup
     && !selectedDashboardLayouts
     && !selectedWatchlist
+    && !selectedScheduledAlerts
     && !selectedAnimeMappings
     && !selectedUsers
     && selectedServices.size === 0
-  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedAnimeMappings, selectedUsers, selectedServices]);
+  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices]);
 
   async function handleExport() {
     if (nothingSelected) {
@@ -146,6 +153,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
           cleanup: selectedCleanup,
           dashboardLayouts: selectedDashboardLayouts,
           watchlist: selectedWatchlist,
+          scheduledAlerts: selectedScheduledAlerts,
           animeMappings: selectedAnimeMappings,
           users: selectedUsers,
           includeSecrets,
@@ -177,6 +185,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         ...(serverPayload.discoverLayout && { discoverLayout: serverPayload.discoverLayout }),
         ...(serverPayload.dashboardLayouts && { dashboardLayouts: serverPayload.dashboardLayouts }),
         ...(serverPayload.watchlist && { watchlist: serverPayload.watchlist }),
+        ...(serverPayload.scheduledAlerts && { scheduledAlerts: serverPayload.scheduledAlerts }),
         ...(serverPayload.animeMappings && { animeMappings: serverPayload.animeMappings }),
         ...(serverPayload.users && { users: serverPayload.users }),
       };
@@ -246,6 +255,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
             </div>
           </section>
 
+          {isAdmin && (<>
           {/* App Settings */}
           <section>
             <label className="flex w-full items-center gap-3 cursor-pointer">
@@ -366,6 +376,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               </div>
             </label>
           </section>
+          </>)}
 
           {/* Watchlist */}
           <section>
@@ -383,6 +394,23 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
             </label>
           </section>
 
+          {/* Scheduled Alerts */}
+          <section>
+            <label className="flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedScheduledAlerts}
+                onCheckedChange={(v) => setSelectedScheduledAlerts(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">Scheduled alerts</div>
+                <div className="text-xs text-muted-foreground">
+                  Your active release reminders. Off by default — content, not settings.
+                </div>
+              </div>
+            </label>
+          </section>
+
+          {isAdmin && (<>
           {/* Anime Mappings */}
           <section>
             <label className="flex w-full items-center gap-3 cursor-pointer">
@@ -409,7 +437,8 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               <div>
                 <div className="text-sm font-medium">Users &amp; accounts</div>
                 <div className="text-xs text-muted-foreground">
-                  Accounts, roles, permissions, and per-user settings. Passwords are only included when
+                  Accounts, roles, permissions, and per-user settings — plus each user&apos;s watchlist,
+                  scheduled alerts, and personal dashboard layouts. Passwords are only included when
                   &ldquo;Include API keys / tokens&rdquo; is on; AniList/Jellyfin tokens are never exported.
                   Off by default.
                 </div>
@@ -443,6 +472,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
               </div>
             )}
           </section>
+          </>)}
         </div>
 
         <DialogFooter>

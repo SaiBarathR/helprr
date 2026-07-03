@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { useMe } from '@/components/permission-provider';
 import { useUIStore, migrateUiPrefs, STORE_VERSION } from '@/lib/store';
 import { validateDiscoverLayout } from '@/lib/discover-layout-config';
 import {
@@ -80,6 +81,10 @@ function buildMigratedUiPrefs(
 }
 
 export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportSettingsDialogProps) {
+  // Global sections (app settings, services, users, …) are admin-only; the
+  // server enforces this too — members with settings.backup import only their
+  // own watchlist, scheduled alerts, and device-local UI prefs.
+  const isAdmin = useMe()?.role === 'admin';
   const fileRef = useRef<HTMLInputElement>(null);
   const [parsed, setParsed] = useState<ParsedFile | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -89,6 +94,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedCleanup, setSelectedCleanup] = useState(false);
   const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(false);
   const [selectedWatchlist, setSelectedWatchlist] = useState(false);
+  const [selectedScheduledAlerts, setSelectedScheduledAlerts] = useState(false);
   const [selectedAnimeMappings, setSelectedAnimeMappings] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
@@ -109,6 +115,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedCleanup(false);
       setSelectedDashboardLayouts(false);
       setSelectedWatchlist(false);
+      setSelectedScheduledAlerts(false);
       setSelectedAnimeMappings(false);
       setSelectedUsers(false);
       setSelectedServices(new Set());
@@ -163,19 +170,20 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         availableServices,
       });
       setSelectedUi(new Set(availableUi));
-      setSelectedAppSettings(!!payload.appSettings);
-      setSelectedDiscoverLayout(!!payload.discoverLayout);
-      setSelectedCleanup(!!payload.cleanup);
-      setSelectedDashboardLayouts(!!payload.dashboardLayouts);
+      setSelectedAppSettings(isAdmin && !!payload.appSettings);
+      setSelectedDiscoverLayout(isAdmin && !!payload.discoverLayout);
+      setSelectedCleanup(isAdmin && !!payload.cleanup);
+      setSelectedDashboardLayouts(isAdmin && !!payload.dashboardLayouts);
       // Watchlist, anime mappings, and user accounts are content/sensitive —
       // leave off by default; the user can opt in. "Replace everything" still
       // pulls them in.
       setSelectedWatchlist(false);
+      setSelectedScheduledAlerts(false);
       setSelectedAnimeMappings(false);
       setSelectedUsers(false);
-      setSelectedServices(new Set(availableServices));
+      setSelectedServices(new Set(isAdmin ? availableServices : []));
       const devices = payload.notificationPrefs ?? [];
-      setSelectedSourceDevice(devices[0]?.deviceName ?? '');
+      setSelectedSourceDevice(isAdmin ? devices[0]?.deviceName ?? '' : '');
     } catch (err) {
       setFileError((err as Error)?.message || 'Failed to read file.');
     }
@@ -218,16 +226,17 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedCleanup
       || selectedDashboardLayouts
       || selectedWatchlist
+      || selectedScheduledAlerts
       || selectedAnimeMappings
       || selectedUsers
       || selectedServices.size > 0
       || (!!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
-    const willOverwriteServiceSecrets = parsed.payload.includesSecrets && (
+    const willOverwriteServiceSecrets = isAdmin && parsed.payload.includesSecrets && (
       replaceAll
         ? parsed.availableServices.length > 0
         : selectedServices.size > 0
@@ -237,7 +246,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     // confirmation whenever any accounts will be applied — not only on password
     // presence.
     const hasUsers = (parsed.payload.users?.accounts ?? []).length > 0;
-    const willOverwriteUsers = hasUsers && (
+    const willOverwriteUsers = isAdmin && hasUsers && (
       replaceAll ? !!parsed.payload.users : selectedUsers
     );
     if (willOverwriteServiceSecrets || willOverwriteUsers) {
@@ -255,27 +264,32 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     let useCleanup = selectedCleanup;
     let useDashboardLayouts = selectedDashboardLayouts;
     let useWatchlist = selectedWatchlist;
+    let useScheduledAlerts = selectedScheduledAlerts;
     let useAnimeMappings = selectedAnimeMappings;
     let useUsers = selectedUsers;
     let useServices = selectedServices;
     let useDevice = selectedSourceDevice;
     if (replaceAll) {
+      // "Replace everything" still respects the admin-only boundary: for a
+      // member it replaces only what they could select by hand.
       useUi = new Set(parsed.availableUi);
-      useAppSettings = !!parsed.payload.appSettings;
-      useDiscoverLayout = !!parsed.payload.discoverLayout;
-      useCleanup = !!parsed.payload.cleanup;
-      useDashboardLayouts = !!parsed.payload.dashboardLayouts;
+      useAppSettings = isAdmin && !!parsed.payload.appSettings;
+      useDiscoverLayout = isAdmin && !!parsed.payload.discoverLayout;
+      useCleanup = isAdmin && !!parsed.payload.cleanup;
+      useDashboardLayouts = isAdmin && !!parsed.payload.dashboardLayouts;
       useWatchlist = !!parsed.payload.watchlist;
-      useAnimeMappings = !!parsed.payload.animeMappings;
-      useUsers = !!parsed.payload.users;
-      useServices = new Set(parsed.availableServices);
-      useDevice = availableNotifDevices[0]?.deviceName ?? '';
+      useScheduledAlerts = !!parsed.payload.scheduledAlerts;
+      useAnimeMappings = isAdmin && !!parsed.payload.animeMappings;
+      useUsers = isAdmin && !!parsed.payload.users;
+      useServices = new Set(isAdmin ? parsed.availableServices : []);
+      useDevice = isAdmin ? availableNotifDevices[0]?.deviceName ?? '' : '';
       setSelectedUi(useUi);
       setSelectedAppSettings(useAppSettings);
       setSelectedDiscoverLayout(useDiscoverLayout);
       setSelectedCleanup(useCleanup);
       setSelectedDashboardLayouts(useDashboardLayouts);
       setSelectedWatchlist(useWatchlist);
+      setSelectedScheduledAlerts(useScheduledAlerts);
       setSelectedAnimeMappings(useAnimeMappings);
       setSelectedUsers(useUsers);
       setSelectedServices(useServices);
@@ -323,6 +337,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       if (useWatchlist && parsed.payload.watchlist) {
         body.watchlist = parsed.payload.watchlist;
       }
+      if (useScheduledAlerts && parsed.payload.scheduledAlerts) {
+        body.scheduledAlerts = parsed.payload.scheduledAlerts;
+      }
       if (useAnimeMappings && parsed.payload.animeMappings) {
         body.animeMappings = parsed.payload.animeMappings;
       }
@@ -330,7 +347,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         body.users = parsed.payload.users;
       }
 
-      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout || body.dashboardLayouts || body.watchlist || body.animeMappings || body.users;
+      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout || body.dashboardLayouts || body.watchlist || body.scheduledAlerts || body.animeMappings || body.users;
       if (needsServerCall) {
         const res = await fetch('/api/settings/import', {
           method: 'POST',
@@ -447,7 +464,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {parsed.payload.appSettings && (
+            {isAdmin && parsed.payload.appSettings && (
               <section>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <Checkbox
@@ -465,7 +482,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {parsed.payload.discoverLayout && (
+            {isAdmin && parsed.payload.discoverLayout && (
               <section>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <Checkbox
@@ -482,7 +499,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {parsed.payload.cleanup && (
+            {isAdmin && parsed.payload.cleanup && (
               <section>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <Checkbox
@@ -501,7 +518,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {parsed.payload.dashboardLayouts && (
+            {isAdmin && parsed.payload.dashboardLayouts && (
               <section>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <Checkbox
@@ -537,7 +554,25 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {parsed.payload.animeMappings && (
+            {parsed.payload.scheduledAlerts && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedScheduledAlerts}
+                    onCheckedChange={(v) => setSelectedScheduledAlerts(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Scheduled alerts</div>
+                    <div className="text-xs text-muted-foreground">
+                      {parsed.payload.scheduledAlerts.alerts.length} release reminder(s), restored to your account.
+                      Already-covered and past reminders are skipped.
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
+            {isAdmin && parsed.payload.animeMappings && (
               <section>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <Checkbox
@@ -555,7 +590,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {parsed.payload.users && (
+            {isAdmin && parsed.payload.users && (
               <section>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <Checkbox
@@ -565,7 +600,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                   <div>
                     <div className="text-sm font-medium">Users &amp; accounts</div>
                     <div className="text-xs text-muted-foreground">
-                      {parsed.payload.users.accounts.length} account(s) with roles, permissions &amp; per-user settings.
+                      {parsed.payload.users.accounts.length} account(s) with roles, permissions, per-user settings,
+                      and (v2 exports) each user&apos;s watchlist, scheduled alerts &amp; personal dashboard layouts.
                       {parsed.payload.users.accounts.some((a) => typeof a.passwordHash === 'string' && a.passwordHash.length > 0)
                         ? ' Includes password hashes.'
                         : ' No passwords in file — accounts without an existing one need an admin to set it.'}
@@ -575,7 +611,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {parsed.availableServices.length > 0 && (
+            {isAdmin && parsed.availableServices.length > 0 && (
               <section>
                 <div className="text-sm font-medium mb-2">
                   Service Connections
@@ -599,7 +635,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               </section>
             )}
 
-            {availableNotifDevices.length > 0 && (
+            {isAdmin && availableNotifDevices.length > 0 && (
               <section>
                 <div className="text-sm font-medium mb-2">Notification Preferences</div>
                 <p className="text-xs text-muted-foreground mb-2">

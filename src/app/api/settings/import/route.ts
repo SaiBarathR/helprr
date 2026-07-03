@@ -16,6 +16,7 @@ import { isServiceType } from '@/lib/service-connection-secrets';
 import { isArrType, ensureDefaultForType, clearConnectionMemo } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
+import { parseDiskThresholds } from '@/lib/disk-space';
 import { parsePermissions } from '@/lib/permissions';
 import { normalizeRegionCode } from '@/lib/region';
 import { setCachedAnilistTtlSettings } from '@/lib/cache/state';
@@ -29,12 +30,16 @@ import {
   type ExportedAppSettings,
   type ExportedAnimeMappings,
   type ExportedCleanup,
+  type ExportedDashboardLayout,
   type ExportedDashboardLayouts,
+  type ExportedScheduledAlerts,
   type ExportedServiceConnection,
   type ExportedNotificationDevice,
   type ExportedUsers,
   type ExportedWatchlist,
 } from '@/lib/settings-export';
+import { isAlertScope, isScheduleMode, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
+import { DEFAULT_OFFSET_MINUTES } from '@/lib/scheduled-alerts/constants';
 import {
   validateDiscoverLayout,
   reconcileDiscoverLayout,
@@ -81,6 +86,7 @@ interface ImportRequestBody {
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;
   watchlist?: ExportedWatchlist;
+  scheduledAlerts?: ExportedScheduledAlerts;
   animeMappings?: ExportedAnimeMappings;
   users?: ExportedUsers;
 }
@@ -94,6 +100,7 @@ interface ImportResult {
     dashboardLayouts: number;
     watchlistItems: number;
     watchlistTags: number;
+    scheduledAlerts: number;
     animeMappings: number;
     users: number;
   };
@@ -176,6 +183,8 @@ function buildAppSettingsUpdate(
     out.activityDigestHour = clampInt(input.activityDigestHour, 0, 23, 8);
   if (input.activityDigestDayOfWeek !== undefined)
     out.activityDigestDayOfWeek = clampInt(input.activityDigestDayOfWeek, 0, 6, 1);
+  if (input.notificationGroupingEnabled !== undefined)
+    out.notificationGroupingEnabled = Boolean(input.notificationGroupingEnabled);
   if (input.animeAutoMapEnabled !== undefined)
     out.animeAutoMapEnabled = Boolean(input.animeAutoMapEnabled);
   if (input.animeAutoMapHour !== undefined)
@@ -192,6 +201,8 @@ function buildAppSettingsUpdate(
   if (input.qbtBandwidthSchedule !== undefined)
     out.qbtBandwidthSchedule =
       parseBandwidthSchedule(input.qbtBandwidthSchedule) as unknown as Prisma.InputJsonValue;
+  if (input.diskThresholds !== undefined)
+    out.diskThresholds = parseDiskThresholds(input.diskThresholds) as unknown as Prisma.InputJsonValue;
   return out;
 }
 
@@ -1069,6 +1080,207 @@ async function applyAnimeMappingsInTxn(
   return applied;
 }
 
+/**
+ * Restore scheduled-alert rules for one user. Occurrences are NOT imported:
+ * release_relative alerts regenerate theirs on the next polling cycle, and an
+ * absolute alert's single occurrence is recreated here from absoluteNotifyAt
+ * (skipped when that time has already passed — the alert would never fire).
+ */
+async function applyScheduledAlertsInTxn(
+  tx: Prisma.TransactionClient,
+  alerts: unknown[],
+  skipped: string[],
+  ownerUserId: string,
+  ownerLabel: string,
+): Promise<number> {
+  let applied = 0;
+  const instanceExists = new Map<string, boolean>();
+  for (const raw of alerts) {
+    if (!raw || typeof raw !== 'object') continue;
+    const a = raw as Record<string, unknown>;
+    const source = typeof a.source === 'string' ? a.source.toUpperCase() : '';
+    const mediaType = typeof a.mediaType === 'string' ? a.mediaType.toLowerCase() : '';
+    const externalId = typeof a.externalId === 'string' ? a.externalId.trim() : '';
+    const title = typeof a.title === 'string' ? a.title.trim().slice(0, 200) : '';
+    const scheduleMode = typeof a.scheduleMode === 'string' ? a.scheduleMode : '';
+    if (
+      !isValidSource(source) ||
+      !isValidMediaType(mediaType) ||
+      !externalId ||
+      !title ||
+      !isScheduleMode(scheduleMode)
+    ) {
+      skipped.push(`${ownerLabel}: alert skipped (missing or invalid fields)`);
+      continue;
+    }
+    const scope =
+      typeof a.scope === 'string' && isAlertScope(a.scope)
+        ? a.scope
+        : mediaType === 'movie' ? 'movie' : mediaType === 'anime' ? 'anime' : 'series';
+    const releaseTypes = parseReleaseTypes(a.releaseTypes);
+    const offsetMinutes =
+      typeof a.offsetMinutes === 'number' && Number.isFinite(a.offsetMinutes)
+        ? Math.max(0, Math.min(10_080, Math.round(a.offsetMinutes)))
+        : DEFAULT_OFFSET_MINUTES;
+    const timeZone =
+      typeof a.timeZone === 'string' && isValidTimeZone(a.timeZone) ? a.timeZone : 'UTC';
+
+    let absoluteNotifyAt: Date | null = null;
+    if (scheduleMode === 'absolute') {
+      const at = typeof a.absoluteNotifyAt === 'string' ? new Date(a.absoluteNotifyAt) : null;
+      if (!at || !Number.isFinite(at.getTime()) || at.getTime() < Date.now() - 60_000) {
+        skipped.push(`${ownerLabel}: "${title}" skipped (custom reminder time already passed)`);
+        continue;
+      }
+      absoluteNotifyAt = at;
+    }
+
+    // Instance ids are install-local; keep only if that connection still exists.
+    let instanceId = typeof a.instanceId === 'string' && a.instanceId ? a.instanceId : null;
+    if (instanceId) {
+      let ok = instanceExists.get(instanceId);
+      if (ok === undefined) {
+        ok = Boolean(
+          await tx.serviceConnection.findUnique({ where: { id: instanceId }, select: { id: true } })
+        );
+        instanceExists.set(instanceId, ok);
+      }
+      if (!ok) instanceId = null;
+    }
+
+    // Idempotent re-import: an equivalent active rule already covers this target.
+    const existing = await tx.scheduledAlert.findFirst({
+      where: { userId: ownerUserId, source, externalId, mediaType, scope, scheduleMode, status: 'active' },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    // Only the known resolver-targeting keys survive; anything else is dropped.
+    const metadata: Record<string, number> = {};
+    const metaRaw =
+      a.metadata && typeof a.metadata === 'object' && !Array.isArray(a.metadata)
+        ? (a.metadata as Record<string, unknown>)
+        : null;
+    if (metaRaw) {
+      for (const key of ['seasonNumber', 'episodeId', 'seriesId', 'movieId'] as const) {
+        const v = metaRaw[key];
+        if (typeof v === 'number' && Number.isFinite(v)) metadata[key] = Math.round(v);
+      }
+    }
+
+    const subtitle = typeof a.subtitle === 'string' && a.subtitle ? a.subtitle.slice(0, 500) : null;
+    const posterUrl =
+      typeof a.posterUrl === 'string' && a.posterUrl ? validateImportedPosterUrl(a.posterUrl) : null;
+    // hrefs are in-app paths; reject anything that could leave the app.
+    const href =
+      typeof a.href === 'string' && a.href.startsWith('/') && !a.href.startsWith('//')
+        ? a.href.slice(0, 500)
+        : null;
+
+    const created = await tx.scheduledAlert.create({
+      data: {
+        userId: ownerUserId,
+        source,
+        externalId,
+        mediaType,
+        instanceId,
+        title,
+        subtitle,
+        posterUrl,
+        href,
+        scheduleMode,
+        scope,
+        releaseTypes: releaseTypes as unknown as Prisma.InputJsonValue,
+        offsetMinutes,
+        timeZone,
+        metadata: metadata as unknown as Prisma.InputJsonValue,
+      },
+    });
+    if (scheduleMode === 'absolute' && absoluteNotifyAt) {
+      // Mirrors POST /api/scheduled-alerts' absolute-occurrence shape.
+      await tx.scheduledAlertOccurrence.create({
+        data: {
+          alertId: created.id,
+          releaseAt: absoluteNotifyAt,
+          notifyAt: absoluteNotifyAt,
+          releaseKind: 'custom',
+          targetKey: `custom:${source}:${externalId}`,
+          title,
+          body: subtitle ?? title,
+        },
+      });
+    }
+    applied += 1;
+  }
+  return applied;
+}
+
+/**
+ * Restore one user's personal dashboard layouts, upserting by the
+ * (userId, name) unique key. Same widget validation/sanitization and
+ * MAX_LAYOUTS cap as the global-layout import.
+ */
+async function applyUserDashboardLayoutsInTxn(
+  tx: Prisma.TransactionClient,
+  layouts: unknown[],
+  skipped: string[],
+  ownerUserId: string,
+  ownerLabel: string,
+): Promise<number> {
+  const settingsRow = await tx.appSettings.findUnique({
+    where: { id: 'singleton' },
+    select: { discoverLayout: true },
+  });
+  const rawDiscover = settingsRow?.discoverLayout as unknown;
+  const validatedDiscover = rawDiscover ? validateDiscoverLayout(rawDiscover) : null;
+  const discoverLayout = reconcileDiscoverLayout(validatedDiscover);
+
+  let applied = 0;
+  let count = await tx.dashboardLayout.count({ where: { userId: ownerUserId } });
+  for (const raw of layouts) {
+    if (!raw || typeof raw !== 'object') continue;
+    const layout = raw as Partial<ExportedDashboardLayout>;
+    if (typeof layout.name !== 'string' || layout.name.trim().length === 0) {
+      skipped.push(`${ownerLabel}: dashboard layout skipped (missing name)`);
+      continue;
+    }
+    const name = layout.name.trim().slice(0, MAX_LAYOUT_NAME_LENGTH);
+    const widgets = validateLayoutWidgets(layout.widgets);
+    if (!widgets) {
+      skipped.push(`${ownerLabel}: dashboard layout "${name}" skipped (invalid widgets)`);
+      continue;
+    }
+    const sanitized = sanitizeDashboardLayout(widgets, discoverLayout);
+    const existing = await tx.dashboardLayout.findFirst({
+      where: { userId: ownerUserId, name },
+      select: { id: true },
+    });
+    if (existing) {
+      await tx.dashboardLayout.update({
+        where: { id: existing.id },
+        data: { widgets: sanitized as unknown as Prisma.InputJsonValue },
+      });
+    } else {
+      if (count >= MAX_LAYOUTS) {
+        skipped.push(`${ownerLabel}: dashboard layout "${name}" skipped (max ${MAX_LAYOUTS} layouts reached)`);
+        continue;
+      }
+      await tx.dashboardLayout.create({
+        data: {
+          userId: ownerUserId,
+          name,
+          isBuiltIn: false,
+          slug: null,
+          widgets: sanitized as unknown as Prisma.InputJsonValue,
+        },
+      });
+      count += 1;
+    }
+    applied += 1;
+  }
+  return applied;
+}
+
 async function applyUsersInTxn(
   tx: Prisma.TransactionClient,
   data: ExportedUsers,
@@ -1197,8 +1409,9 @@ async function applyUsersInTxn(
     }
     applied += 1;
 
-    // Per-user settings. Nullable string fields are validated lightly; per-user
-    // layout default ids are deliberately dropped (install-local; not restored).
+    // Per-user settings. Nullable string fields are validated lightly; the
+    // default-layout choices are restored by name further down, once this
+    // user's own layouts have been recreated.
     if (acc.settings && typeof acc.settings === 'object') {
       const s = acc.settings;
       const timeZone =
@@ -1243,6 +1456,57 @@ async function applyUsersInTxn(
         update: linkData,
         create: { userId, ...linkData },
       });
+    }
+
+    // v2 per-account content: this user's watchlist, scheduled alerts, and
+    // personal dashboard layouts. All optional — absent in v1 files.
+    const ownerLabel = `User "${username}"`;
+    if (acc.watchlist && typeof acc.watchlist === 'object') {
+      await applyWatchlistInTxn(tx, acc.watchlist, skipped, userId);
+    }
+    if (Array.isArray(acc.scheduledAlerts)) {
+      await applyScheduledAlertsInTxn(tx, acc.scheduledAlerts, skipped, userId, ownerLabel);
+    }
+    if (Array.isArray(acc.dashboardLayouts)) {
+      await applyUserDashboardLayoutsInTxn(tx, acc.dashboardLayouts, skipped, userId, ownerLabel);
+    }
+
+    // Default-layout choices travel by name (ids are install-local). Resolve
+    // against the user's own layouts first, then the global ones — a member
+    // may have picked a shared built-in as their default.
+    if (acc.settings && typeof acc.settings === 'object') {
+      const resolveLayoutId = async (rawName: unknown): Promise<string | null> => {
+        const name = typeof rawName === 'string' ? rawName.trim() : '';
+        if (!name) return null;
+        const own = await tx.dashboardLayout.findFirst({
+          where: { userId, name },
+          select: { id: true },
+        });
+        if (own) return own.id;
+        const global = await tx.dashboardLayout.findFirst({
+          where: { userId: null, name },
+          select: { id: true },
+        });
+        return global?.id ?? null;
+      };
+      const [desktopId, mobileId] = await Promise.all([
+        resolveLayoutId(acc.settings.defaultDesktopLayoutName),
+        resolveLayoutId(acc.settings.defaultMobileLayoutName),
+      ]);
+      if (desktopId || mobileId) {
+        await tx.userSettings.upsert({
+          where: { userId },
+          update: {
+            ...(desktopId ? { defaultDesktopLayoutId: desktopId } : {}),
+            ...(mobileId ? { defaultMobileLayoutId: mobileId } : {}),
+          },
+          create: {
+            userId,
+            defaultDesktopLayoutId: desktopId,
+            defaultMobileLayoutId: mobileId,
+          },
+        });
+      }
     }
   }
   return applied;
@@ -1295,6 +1559,29 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
+  // Mirror of the export-side rule: a non-admin with settings.backup may only
+  // restore their own watchlist and scheduled alerts (uiPrefs never reach this
+  // route). Every other section writes global state — service connections,
+  // user accounts, app settings, cleanup rules, layouts, notification devices.
+  if (importer?.role !== 'admin') {
+    const globalSections = [
+      body.appSettings,
+      body.serviceConnections,
+      body.notificationDevice,
+      body.cleanup,
+      body.discoverLayout,
+      body.dashboardLayouts,
+      body.animeMappings,
+      body.users,
+    ];
+    if (globalSections.some((section) => section != null)) {
+      return NextResponse.json(
+        { error: 'Only admins can import global settings, service connections, or user accounts' },
+        { status: 403 }
+      );
+    }
+  }
+
   const skipped: string[] = [];
   const appliedServices: ServiceType[] = [];
   let appliedAppSettings = false;
@@ -1304,6 +1591,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   let appliedDashboardLayouts = 0;
   let appliedWatchlistItems = 0;
   let appliedWatchlistTags = 0;
+  let appliedScheduledAlerts = 0;
   let appliedAnimeMappings = 0;
   let appliedUsers = 0;
   let appSettingsTxnResult: AppSettingsTxnResult | null = null;
@@ -1355,6 +1643,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
       if (body.dashboardLayouts && typeof body.dashboardLayouts === 'object') {
         appliedDashboardLayouts = await applyDashboardLayoutsInTxn(tx, body.dashboardLayouts, skipped);
+      }
+
+      if (body.scheduledAlerts && typeof body.scheduledAlerts === 'object') {
+        const alerts = Array.isArray(body.scheduledAlerts.alerts) ? body.scheduledAlerts.alerts : [];
+        appliedScheduledAlerts = await applyScheduledAlertsInTxn(
+          tx,
+          alerts,
+          skipped,
+          importerId,
+          'Scheduled alerts'
+        );
       }
 
       if (body.watchlist && typeof body.watchlist === 'object') {
@@ -1475,6 +1774,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       dashboardLayouts: appliedDashboardLayouts,
       watchlistItems: appliedWatchlistItems,
       watchlistTags: appliedWatchlistTags,
+      scheduledAlerts: appliedScheduledAlerts,
       animeMappings: appliedAnimeMappings,
       users: appliedUsers,
     },
