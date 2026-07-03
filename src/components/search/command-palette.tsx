@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Loader2, Clock, History } from 'lucide-react';
+import { Search, Loader2, Clock, History, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import {
   Command,
@@ -14,7 +14,8 @@ import {
 } from '@/components/ui/command';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { toCachedImageSrc } from '@/lib/image';
-import { parseSearchQuery } from '@/lib/search/parse-query';
+import { suggestScopes } from '@/lib/search/parse-query';
+import { resolveProviderFromAlias } from '@/lib/search/provider-defs';
 import {
   SEARCH_MODULE_ORDER,
   type SearchModule,
@@ -57,7 +58,22 @@ export function CommandPalette() {
 
   const { recent, add: addHistory } = useSearchHistory('global');
 
-  const parsed = useMemo(() => parseSearchQuery(query), [query]);
+  const trimmedQuery = query.trim();
+
+  // Scope suggestions for short alias-like input. Suggestions only — typing
+  // never activates a scope, so titles starting with an alias stay searchable.
+  const scopeSuggestions = useMemo(() => {
+    if (activeScope || !trimmedQuery) return [];
+    return suggestScopes(trimmedQuery)
+      .map((def) => SEARCH_PROVIDER_UI[def.id])
+      .filter((def) => providerAvailable(me, def));
+  }, [activeScope, trimmedQuery, me]);
+
+  // The scope Tab commits: exact alias match, or the only remaining suggestion.
+  const tabTarget = useMemo(() => {
+    const exact = scopeSuggestions.find((def) => def.alias === trimmedQuery.toLowerCase());
+    return exact ?? (scopeSuggestions.length === 1 ? scopeSuggestions[0] : undefined);
+  }, [scopeSuggestions, trimmedQuery]);
 
   const availableProviders = useMemo(
     () => SEARCH_PROVIDER_ORDER.map((id) => SEARCH_PROVIDER_UI[id]).filter((def) => providerAvailable(me, def)),
@@ -88,114 +104,73 @@ export function CommandPalette() {
     }
   }, [open]);
 
-  // Track active scope chip from parsed input.
+  // Debounced fetch — scoped when a scope chip is active, local otherwise.
   useEffect(() => {
-    if (
-      parsed.mode === 'scoped' ||
-      parsed.mode === 'scoped-empty' ||
-      parsed.mode === 'scope-help'
-    ) {
-      setActiveScope(SEARCH_PROVIDER_UI[parsed.provider]);
-    } else {
-      setActiveScope(null);
-    }
-  }, [parsed]);
+    const q = query.trim();
 
-  // Debounced fetch for local and scoped searches.
-  useEffect(() => {
-    if (parsed.mode === 'empty' || parsed.mode === 'scope-help' || parsed.mode === 'scope-suggest') {
+    if (activeScope) {
       setLocalResults([]);
-      setProviderResults([]);
-      setRateLimited(undefined);
-      setLoading(false);
-      return;
-    }
-
-    if (parsed.mode === 'scoped-empty') {
-      setLocalResults([]);
-      setProviderResults([]);
-      setRateLimited(undefined);
-      setLoading(false);
-      return;
-    }
-
-    if (parsed.mode === 'local') {
-      const q = parsed.query;
-      if (q.length < MIN_LOCAL_QUERY) {
-        setLocalResults([]);
+      if (!providerAvailable(me, activeScope) || q.length < activeScope.minQuery) {
         setProviderResults([]);
+        setRateLimited(undefined);
         setLoading(false);
         return;
       }
       setLoading(true);
-      setProviderResults([]);
-      setRateLimited(undefined);
       const controller = new AbortController();
       const timer = setTimeout(async () => {
         try {
-          const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
-          if (!res.ok) throw new Error('search failed');
-          const data = (await res.json()) as SearchResponse;
-          if (!controller.signal.aborted) setLocalResults(data.results ?? []);
+          const res = await fetch(
+            `/api/search/providers/${activeScope.id}?q=${encodeURIComponent(q)}&limit=20`,
+            { signal: controller.signal }
+          );
+          if (!res.ok) throw new Error('provider search failed');
+          const data = (await res.json()) as SearchProviderResponse;
+          if (!controller.signal.aborted) {
+            setProviderResults(data.results ?? []);
+            setRateLimited(data.rateLimited);
+          }
         } catch {
-          if (!controller.signal.aborted) setLocalResults([]);
+          if (!controller.signal.aborted) {
+            setProviderResults([]);
+            setRateLimited(undefined);
+          }
         } finally {
           if (!controller.signal.aborted) setLoading(false);
         }
-      }, LOCAL_DEBOUNCE_MS);
+      }, activeScope.debounceMs);
       return () => {
         clearTimeout(timer);
         controller.abort();
       };
     }
 
-    // scoped
-    const def = SEARCH_PROVIDER_UI[parsed.provider];
-    if (!providerAvailable(me, def)) {
-      setProviderResults([]);
+    setProviderResults([]);
+    setRateLimited(undefined);
+    if (q.length < MIN_LOCAL_QUERY) {
       setLocalResults([]);
       setLoading(false);
       return;
     }
-
-    const q = parsed.query;
-    if (q.length < def.minQuery) {
-      setProviderResults([]);
-      setLocalResults([]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
-    setLocalResults([]);
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(
-          `/api/search/providers/${parsed.provider}?q=${encodeURIComponent(q)}&limit=20`,
-          { signal: controller.signal }
-        );
-        if (!res.ok) throw new Error('provider search failed');
-        const data = (await res.json()) as SearchProviderResponse;
-        if (!controller.signal.aborted) {
-          setProviderResults(data.results ?? []);
-          setRateLimited(data.rateLimited);
-        }
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+        if (!res.ok) throw new Error('search failed');
+        const data = (await res.json()) as SearchResponse;
+        if (!controller.signal.aborted) setLocalResults(data.results ?? []);
       } catch {
-        if (!controller.signal.aborted) {
-          setProviderResults([]);
-          setRateLimited(undefined);
-        }
+        if (!controller.signal.aborted) setLocalResults([]);
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
-    }, def.debounceMs);
-
+    }, LOCAL_DEBOUNCE_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [parsed, me]);
+  }, [query, activeScope, me]);
 
   const select = useCallback(
     (route: string, term?: string) => {
@@ -207,8 +182,37 @@ export function CommandPalette() {
   );
 
   const applyScope = useCallback((def: SearchProviderUiDef) => {
-    setQuery(`${def.alias} `);
+    setActiveScope(def);
+    setQuery('');
   }, []);
+
+  // Scoped history is stored as `alias: query` — the colon keeps it
+  // distinguishable from a literal search that happens to start with an alias.
+  const selectRecent = useCallback(
+    (term: string) => {
+      const scoped = term.match(/^([a-z]{2,3}):\s*(.*)$/i);
+      const def = scoped ? resolveProviderFromAlias(scoped[1]) : undefined;
+      if (def && providerAvailable(me, SEARCH_PROVIDER_UI[def.id])) {
+        setActiveScope(SEARCH_PROVIDER_UI[def.id]);
+        setQuery(scoped![2]);
+      } else {
+        setQuery(term);
+      }
+    },
+    [me]
+  );
+
+  const onInputKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Tab' && !e.shiftKey && tabTarget) {
+        e.preventDefault();
+        applyScope(tabTarget);
+      } else if (e.key === 'Backspace' && activeScope && query === '') {
+        setActiveScope(null);
+      }
+    },
+    [tabTarget, applyScope, activeScope, query]
+  );
 
   const grouped = useMemo(() => {
     const byModule = new Map<SearchModule, SearchResult[]>();
@@ -233,21 +237,18 @@ export function CommandPalette() {
     ? `Search ${activeScope.label}…`
     : 'Search or type a scope (tm, ani, tor…)';
 
-  const showRateLimit =
-    rateLimited &&
-    (parsed.mode === 'scoped' || parsed.mode === 'scoped-empty') &&
-    !loading;
+  const showRateLimit = !!rateLimited && !!activeScope && !loading;
 
   const showEmptyLocal =
     !loading &&
-    parsed.mode === 'local' &&
-    parsed.query.length >= MIN_LOCAL_QUERY &&
+    !activeScope &&
+    trimmedQuery.length >= MIN_LOCAL_QUERY &&
     !hasLocalResults;
 
   const showEmptyScoped =
     !loading &&
-    parsed.mode === 'scoped' &&
-    parsed.query.length >= (activeScope?.minQuery ?? MIN_LOCAL_QUERY) &&
+    !!activeScope &&
+    trimmedQuery.length >= (activeScope?.minQuery ?? MIN_LOCAL_QUERY) &&
     !hasProviderResults &&
     !showRateLimit;
 
@@ -260,13 +261,18 @@ export function CommandPalette() {
         >
           <DialogTitle className="sr-only">Search</DialogTitle>
           <DialogDescription className="sr-only">
-            Search your library or use a scope prefix like tm for TMDB.
+            Search your library, or type a scope alias like tm and press Tab to search a specific source.
           </DialogDescription>
           <Command shouldFilter={false} className="bg-transparent">
             <div className="relative border-b border-border">
               {activeScope && (
                 <div className="flex items-center gap-2 px-3 pt-2">
-                  <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                  <button
+                    type="button"
+                    aria-label={`Clear ${activeScope.label} scope`}
+                    onClick={() => setActiveScope(null)}
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                  >
                     <activeScope.icon className="size-3" />
                     {activeScope.label}
                     {activeScope.cost === 'remote' && (
@@ -274,21 +280,27 @@ export function CommandPalette() {
                         remote
                       </span>
                     )}
-                  </span>
+                    <X className="size-3" />
+                  </button>
                 </div>
               )}
-              <CommandInput value={query} onValueChange={setQuery} placeholder={placeholder} />
+              <CommandInput
+                value={query}
+                onValueChange={setQuery}
+                onKeyDown={onInputKeyDown}
+                placeholder={placeholder}
+              />
               {loading && (
                 <Loader2 className="absolute right-3 top-3.5 size-4 animate-spin text-muted-foreground" />
               )}
             </div>
             <CommandList className="max-h-[min(60vh,420px)]">
-              {parsed.mode === 'empty' && (
+              {!activeScope && !trimmedQuery && (
                 <>
                   {recent.length > 0 && (
                     <CommandGroup heading="Recent">
                       {recent.map((term) => (
-                        <CommandItem key={term} value={`recent-${term}`} onSelect={() => setQuery(term)}>
+                        <CommandItem key={term} value={`recent-${term}`} onSelect={() => selectRecent(term)}>
                           <History className="size-4 shrink-0 text-muted-foreground" />
                           <span className="truncate">{term}</span>
                         </CommandItem>
@@ -303,27 +315,22 @@ export function CommandPalette() {
                 </>
               )}
 
-              {(parsed.mode === 'scope-help' || parsed.mode === 'scope-suggest') && (
+              {scopeSuggestions.length > 0 && (
                 <CommandGroup heading="Search scopes">
-                  {(parsed.mode === 'scope-suggest'
-                    ? parsed.suggestions
-                    : [SEARCH_PROVIDER_UI[parsed.provider]]
-                  )
-                    .filter((def) => providerAvailable(me, SEARCH_PROVIDER_UI[def.id]))
-                    .map((def) => (
-                      <ScopeHelpItem
-                        key={def.id}
-                        def={SEARCH_PROVIDER_UI[def.id]}
-                        onSelect={() => applyScope(SEARCH_PROVIDER_UI[def.id])}
-                        hint={parsed.mode === 'scope-help' ? 'Press Space to search' : undefined}
-                      />
-                    ))}
+                  {scopeSuggestions.map((def) => (
+                    <ScopeHelpItem
+                      key={def.id}
+                      def={def}
+                      onSelect={() => applyScope(def)}
+                      hint={def.id === tabTarget?.id ? 'Press Tab to search this scope' : undefined}
+                    />
+                  ))}
                 </CommandGroup>
               )}
 
-              {parsed.mode === 'scoped-empty' && activeScope && (
+              {activeScope && !trimmedQuery && (
                 <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-                  Type to search {activeScope.label}. Results use the {activeScope.alias} scope.
+                  Type to search {activeScope.label}. Backspace or tap the chip to clear the scope.
                 </div>
               )}
 
@@ -348,7 +355,7 @@ export function CommandPalette() {
                         <LocalResultRow
                           key={result.id}
                           result={result}
-                          onSelect={(route) => select(route, parsed.mode === 'local' ? parsed.query : undefined)}
+                          onSelect={(route) => select(route, trimmedQuery)}
                         />
                       ))}
                     </CommandGroup>
@@ -361,9 +368,7 @@ export function CommandPalette() {
                     <ProviderResultRow
                       key={result.id}
                       result={result}
-                      onSelect={(route) =>
-                        select(route, parsed.mode === 'scoped' ? `${parsed.def.alias} ${parsed.query}` : undefined)
-                      }
+                      onSelect={(route) => select(route, `${activeScope.alias}: ${trimmedQuery}`)}
                     />
                   ))}
                 </CommandGroup>
