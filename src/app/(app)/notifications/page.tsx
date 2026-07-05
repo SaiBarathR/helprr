@@ -296,20 +296,39 @@ export default function NotificationsPage() {
     } catch { }
   }, [adjustBadge, queryClient, listKey, filters.readState]);
 
-  const deleteOne = useCallback(async (n: Notification) => {
-    try {
-      const res = await fetch(`/api/notifications/${n.id}`, { method: 'DELETE' });
-      if (!res.ok) {
+  // Swipe-delete is recoverable: the row is dropped optimistically and the
+  // DELETE (permanent — there is no un-delete API) is only sent once the undo
+  // toast settles. Undo refetches the list, which restores the still-existing
+  // server row.
+  const deleteOne = useCallback((n: Notification) => {
+    queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
+      removeNotification(old, n.id),
+    );
+    if (!n.read) adjustBadge('notifications', -1, -1);
+    let settled = false;
+    const commit = async () => {
+      if (settled) return;
+      settled = true;
+      try {
+        const res = await fetch(`/api/notifications/${n.id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error();
+      } catch {
         toast.error('Failed to delete notification');
-        return;
+        void queryClient.invalidateQueries({ queryKey: listKey });
       }
-      queryClient.setQueryData<InfiniteData<NotificationsPage>>(listKey, (old) =>
-        removeNotification(old, n.id),
-      );
-      if (!n.read) adjustBadge('notifications', -1, -1);
-    } catch {
-      toast.error('Failed to delete notification');
-    }
+    };
+    toast('Notification deleted', {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          settled = true;
+          if (!n.read) adjustBadge('notifications', 1, 1);
+          void queryClient.invalidateQueries({ queryKey: listKey });
+        },
+      },
+      onAutoClose: () => void commit(),
+      onDismiss: () => void commit(),
+    });
   }, [adjustBadge, queryClient, listKey]);
 
   const resolveQueueNotificationHref = useCallback(async (source: 'sonarr' | 'radarr', id: number) => {
