@@ -25,6 +25,14 @@ function isIos(): boolean {
 // produces the system haptic tick, so we keep one hidden switch around and
 // click it programmatically. On non-supporting versions the click is inert —
 // no haptic, no side effects (the input is detached from any form/listeners).
+//
+// iOS 18+ additionally requires the toggle to happen during transient user
+// activation: ticks fired from touch/click handlers (swipe thresholds, the
+// settings demo tick) still work, while ones fired from async continuations
+// (e.g. a refresh settling) silently no-op there. That's the accepted
+// degradation — there is no alternative haptics API on iOS and no feature
+// detection for switch ticks, so version-gating would only disable devices
+// where it works.
 let iosSwitchInput: HTMLInputElement | null = null;
 
 function tickIosSwitch(): void {

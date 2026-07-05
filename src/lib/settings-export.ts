@@ -43,6 +43,7 @@ export type UiPrefCategoryId =
   | 'insights'
   | 'cleanup'
   | 'dashboardTheme'
+  | 'interaction'
   | 'search';
 
 export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
@@ -58,6 +59,7 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   insights: 'Insights date range',
   cleanup: 'Cleanup history filters',
   dashboardTheme: 'Dashboard theme',
+  interaction: 'Touch & interaction',
   search: 'Search history',
 };
 
@@ -91,8 +93,8 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'dashboardAccent', 'dashboardPalette', 'dashboardGradient', 'dashboardFont',
     'dashboardFg', 'dashboardFgMute', 'dashboardFgSubtle',
     'liquidGlass', 'glassMode', 'glassIntensity',
-    'hapticsEnabled',
   ],
+  interaction: ['hapticsEnabled'],
   search: ['searchHistory'],
 };
 

@@ -129,7 +129,9 @@ export function SwipeRow({ leftAction, rightAction, disabled, className, content
   }, [close]);
 
   const onTouchStart = (e: TouchEvent<HTMLDivElement>) => {
-    if (disabled || e.touches.length !== 1) return;
+    // No actions (e.g. the viewer lacks every permission) → behave like a
+    // plain row: never engage, own the gesture, or swallow the next click.
+    if (disabled || (!leftAction && !rightAction) || e.touches.length !== 1) return;
     startRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     engagedRef.current = false;
     abandonedRef.current = false;
@@ -166,6 +168,11 @@ export function SwipeRow({ leftAction, rightAction, disabled, className, content
     let offset = base + dx;
     if (!leftAction) offset = Math.min(0, offset);
     if (!rightAction) offset = Math.max(0, offset);
+    // A gesture that starts on an open row may close it but never cross into
+    // the opposite zone — otherwise overshooting a "swipe closed" would arm
+    // (or full-swipe commit) the other side's action.
+    if (openRef.current === 'left') offset = Math.max(0, offset);
+    else if (openRef.current === 'right') offset = Math.min(0, offset);
     applyOffset(offset, false);
 
     const commitAt = rowWidthRef.current * COMMIT_FRACTION;
@@ -201,6 +208,17 @@ export function SwipeRow({ leftAction, rightAction, disabled, className, content
     close();
   };
 
+  const onTouchCancel = () => {
+    // Clear the same gesture state touchend clears — a cancelled engaged
+    // swipe must not leave justSwipedRef armed to swallow the next tap.
+    startRef.current = null;
+    if (engagedRef.current) {
+      engagedRef.current = false;
+      setTimeout(() => { justSwipedRef.current = false; }, 100);
+    }
+    close();
+  };
+
   return (
     <div
       ref={rootRef}
@@ -209,7 +227,7 @@ export function SwipeRow({ leftAction, rightAction, disabled, className, content
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
-      onTouchCancel={close}
+      onTouchCancel={onTouchCancel}
       onClickCapture={(e) => {
         // Swallow the tap that ends a swipe, and close-on-tap when open —
         // the row content underneath must not also receive the click.
@@ -228,13 +246,19 @@ export function SwipeRow({ leftAction, rightAction, disabled, className, content
         }
       }}
     >
+      {/* Action zones are a touch-gesture affordance only: hidden from the
+          accessibility tree and never keyboard-focusable (collapsed zones
+          would otherwise be silently tabbable). Every action here must stay
+          reachable through visible buttons/menus on the row. */}
       {leftAction && (
         <div
           ref={leftZoneRef}
+          aria-hidden="true"
           className={cn('absolute inset-y-0 left-0 z-0 flex w-0 items-center justify-center overflow-hidden', leftAction.className)}
         >
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => fire(leftAction)}
             className="flex h-full flex-col items-center justify-center gap-0.5 px-2"
             style={{ minWidth: ACTION_WIDTH }}
@@ -247,10 +271,12 @@ export function SwipeRow({ leftAction, rightAction, disabled, className, content
       {rightAction && (
         <div
           ref={rightZoneRef}
+          aria-hidden="true"
           className={cn('absolute inset-y-0 right-0 z-0 flex w-0 items-center justify-center overflow-hidden', rightAction.className)}
         >
           <button
             type="button"
+            tabIndex={-1}
             onClick={() => fire(rightAction)}
             className="flex h-full flex-col items-center justify-center gap-0.5 px-2"
             style={{ minWidth: ACTION_WIDTH }}
