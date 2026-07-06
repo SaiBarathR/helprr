@@ -224,7 +224,7 @@ function PluginNotice() {
 // page ("No user activity found") on a connection failure.
 function ServerErrorState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="rounded-xl bg-muted/30 p-6 text-center">
+    <div role="alert" className="rounded-xl bg-muted/30 p-6 text-center">
       <AlertCircle className="h-8 w-8 mx-auto mb-2 text-destructive/60" />
       <p className="text-sm font-medium text-muted-foreground">Couldn&apos;t reach the Jellyfin server</p>
       <p className="text-xs text-muted-foreground/70 mt-1">Check that Jellyfin is running and its connection settings are correct.</p>

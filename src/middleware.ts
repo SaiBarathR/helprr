@@ -5,7 +5,11 @@ import { getJwtSecret } from '@/lib/jwt-secret';
 
 const COOKIE_NAME = 'helprr-session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin', '/api/health'];
+// Prefix-matched public routes (login page + auth endpoints).
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin'];
+// Exact-matched public routes: /api/health is the container liveness probe —
+// matched exactly so a future /api/health-* route isn't silently exposed.
+const PUBLIC_EXACT_PATHS = ['/api/health'];
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -46,7 +50,7 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Allow public paths
-  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p)) || PUBLIC_EXACT_PATHS.includes(pathname)) {
     return addSecurityHeaders(NextResponse.next());
   }
 
