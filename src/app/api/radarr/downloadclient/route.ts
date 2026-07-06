@@ -7,7 +7,7 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 /**
  * Handle GET requests to fetch Radarr download clients.
  *
- * @returns A JSON HTTP response containing the array of download clients on success, or a JSON object with an `error` message and HTTP status 500 on failure.
+ * @returns A JSON HTTP response containing the array of download clients on success; on failure a JSON `{ error }` — 404 when the upstream returned 404, otherwise 500 with a generic message.
  */
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();

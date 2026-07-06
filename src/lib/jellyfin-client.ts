@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { ConfigurationError } from '@/lib/config-error';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { getAppTimeZone, getLocalDateKey, getTimeZoneOffsetMinutes } from '@/lib/timezone';
 import type {
@@ -123,7 +124,7 @@ export class JellyfinClient {
 
   private requireUserId(): string {
     if (!this.userId) {
-      throw new Error('Jellyfin userId is not configured. Re-test and save Jellyfin settings.');
+      throw new ConfigurationError('Jellyfin userId is not configured. Re-test and save Jellyfin settings.');
     }
     return this.userId;
   }

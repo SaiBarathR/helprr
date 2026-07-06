@@ -1,10 +1,6 @@
 import { isAxiosError } from 'axios';
 import { NextResponse } from 'next/server';
-
-// Intentional, user-facing configuration guidance thrown by service-helpers
-// ("X is not configured. Please add a X connection in Settings."). It contains
-// no upstream detail and the settings UI relies on seeing it verbatim.
-const SAFE_CONFIG_MESSAGE_RE = /is not configured|context is missing/;
+import { ConfigurationError } from '@/lib/config-error';
 
 /**
  * Convert a caught error into a client-safe JSON response. Upstream failures
@@ -20,7 +16,9 @@ export function upstreamErrorResponse(error: unknown, fallback: string): NextRes
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  if (error instanceof Error && SAFE_CONFIG_MESSAGE_RE.test(error.message)) {
+  // Intentional, user-facing configuration guidance — contains no upstream
+  // detail and the settings UI relies on seeing it verbatim.
+  if (error instanceof ConfigurationError) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

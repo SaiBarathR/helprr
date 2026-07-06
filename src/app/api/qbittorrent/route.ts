@@ -400,7 +400,6 @@ async function postHandler(request: NextRequest) {
     logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet' });
     return NextResponse.json({ success: true, hash: normalizedHash });
   } catch (error) {
-    console.error('Failed to add torrent:', error);
     logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', failed: true });
     return upstreamErrorResponse(error, 'Failed to add torrent');
   }

@@ -7,7 +7,7 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 /**
  * Handles GET requests for Sonarr download clients.
  *
- * @returns The JSON response containing the list of download clients on success, or an error object `{ error: string }` with HTTP status 500 on failure.
+ * @returns The JSON response containing the list of download clients on success; on failure an error object `{ error: string }` — 404 when the upstream returned 404, otherwise 500 with a generic message.
  */
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();

@@ -65,7 +65,6 @@ async function postHandler(request: NextRequest) {
     logApiDuration('/api/qbittorrent/transfer/limits', startedAt, { method: 'POST', action });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Failed to set transfer limits:', error);
     logApiDuration('/api/qbittorrent/transfer/limits', startedAt, { method: 'POST', failed: true });
     return upstreamErrorResponse(error, 'Failed');
   }
