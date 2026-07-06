@@ -120,6 +120,39 @@ async function runTorrentAction(client: QBittorrentClient, body: Record<string, 
   return null;
 }
 
+// A client-supplied savepath is only forwarded if it resolves under one of
+// qBittorrent's configured download roots (default save path + category save
+// paths) — otherwise the grantable "may add torrents" capability silently
+// implies "may write torrent payloads anywhere qBittorrent can".
+function normalizeSavePath(value: string): string | null {
+  const normalized = value.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!normalized) return null;
+  if (normalized.split('/').some((segment) => segment === '..')) return null;
+  return normalized;
+}
+
+async function validateSavepath(client: QBittorrentClient, savepath: string): Promise<NextResponse | null> {
+  const normalized = normalizeSavePath(savepath);
+  if (normalized) {
+    const [defaultSavePath, categories] = await Promise.all([
+      client.getDefaultSavePath(),
+      client.getCategories(),
+    ]);
+    const roots = [defaultSavePath, ...Object.values(categories).map((category) => category.savePath)]
+      .map((root) => (root ? normalizeSavePath(root) : null))
+      .filter((root): root is string => Boolean(root));
+
+    if (roots.some((root) => normalized === root || normalized.startsWith(`${root}/`))) {
+      return null;
+    }
+  }
+
+  return NextResponse.json(
+    { error: 'savepath must be inside a configured download folder' },
+    { status: 400 }
+  );
+}
+
 function normalizeAddResponse(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
@@ -204,6 +237,14 @@ async function postHandler(request: NextRequest) {
       const category = formData.get('category') as string | null;
       const savepath = formData.get('savepath') as string | null;
       const paused = formData.get('paused') === 'true';
+
+      if (savepath) {
+        const savepathError = await validateSavepath(client, savepath);
+        if (savepathError) {
+          logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'file', validationFailed: true });
+          return savepathError;
+        }
+      }
 
       let fileHash: string;
       try {
@@ -305,6 +346,14 @@ async function postHandler(request: NextRequest) {
     const category = isNonEmptyString(body.category) ? body.category.trim() : undefined;
     const savepath = isNonEmptyString(body.savepath) ? body.savepath.trim() : undefined;
     const paused = typeof body.paused === 'boolean' ? body.paused : undefined;
+
+    if (savepath) {
+      const savepathError = await validateSavepath(client, savepath);
+      if (savepathError) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'magnet', validationFailed: true });
+        return savepathError;
+      }
+    }
     const stopCondition = body.stopCondition === 'MetadataReceived' || body.stopCondition === 'FilesChecked'
       ? body.stopCondition
       : undefined;
