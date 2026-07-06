@@ -53,4 +53,8 @@ ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 ENV LOG_DIR=/app/logs
 
-CMD ["sh", "-c", "npx prisma db execute --file prisma/manual-fixups.sql --schema prisma/schema.prisma && npx prisma db push --skip-generate --accept-data-loss && node server.js"]
+# NOTE: `db push` intentionally omits `--accept-data-loss`. Additive schema
+# changes still apply automatically; a change that would DROP columns/tables
+# aborts the boot loudly instead of silently destroying data (handle those
+# deliberately via prisma/manual-fixups.sql or an explicit migration).
+CMD ["sh", "-c", "npx prisma db execute --file prisma/manual-fixups.sql --schema prisma/schema.prisma && npx prisma db push --skip-generate && node server.js"]
