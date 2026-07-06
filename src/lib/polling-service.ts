@@ -233,18 +233,18 @@ function parseSeenIds(raw: unknown): number[] {
   return raw.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
 }
 
-// PollingState existence doubles as the first-run marker: a freshly created row
-// means the instance has never been polled, so its pre-existing queue/torrent
-// items must baseline silently instead of firing a burst of stale "new item"
-// pushes (initial setup, connection re-add). History polling already baselines
-// via the null cursor; this covers the queue/torrent diffing. pollSeerr keeps
-// its own equivalent guard.
+// A null lastQueueIds is the first-run marker: the queue baseline only exists
+// once a queue poll has stored its snapshot, so until then pre-existing
+// queue/torrent items must baseline silently instead of firing a burst of
+// stale "new item" pushes (initial setup, connection re-add). Row existence
+// alone is NOT a baseline — pollServiceReachability upserts the row in the
+// same cycle, racing the queue pollers. History polling already baselines via
+// the null cursor; this covers the queue/torrent diffing. pollSeerr keeps its
+// own equivalent guard.
 async function getPollingState(serviceConnectionId: string) {
   const existing = await prisma.pollingState.findUnique({ where: { serviceConnectionId } });
-  if (existing) return { state: existing, firstRun: false };
-  const state = await prisma.pollingState.create({
-    data: { serviceConnectionId, lastQueueIds: [] },
-  });
+  if (existing) return { state: existing, firstRun: existing.lastQueueIds === null };
+  const state = await prisma.pollingState.create({ data: { serviceConnectionId } });
   return { state, firstRun: true };
 }
 
@@ -932,10 +932,12 @@ export class PollingService {
             }
           }
 
+          // Deliberately no lastQueueIds here: the queue baseline (and the
+          // first-run detection built on it) belongs to the queue pollers.
           await prisma.pollingState.upsert({
             where: { serviceConnectionId: connection.id },
             update: { lastReachable: ok },
-            create: { serviceConnectionId: connection.id, lastReachable: ok, lastQueueIds: [] },
+            create: { serviceConnectionId: connection.id, lastReachable: ok },
           }).catch(() => {});
         } catch (error) {
           logger.debug('Reachability probe failed unexpectedly', {

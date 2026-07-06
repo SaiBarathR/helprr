@@ -17,7 +17,7 @@ const LOG = 'cleanup-scheduler';
 // when the slow one finally returns.
 const CYCLE_TIMEOUT_MS = 5 * 60_000;
 
-async function runWithTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
+async function runWithWatchdog<T>(label: string, fn: () => Promise<T>): Promise<T> {
   const timer = setTimeout(() => {
     logger.error(`${label} cycle exceeded ${CYCLE_TIMEOUT_MS}ms watchdog — next cycle is blocked until it settles`, {}, { scope: LOG });
   }, CYCLE_TIMEOUT_MS);
@@ -72,7 +72,7 @@ async function safeRunQueue(): Promise<QueueEvaluationResult | null> {
   // writes dryRunPreview history rows so users can see what would happen.
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    return await runWithTimeout('Queue cleaner', () => runQueueCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    return await runWithWatchdog('Queue cleaner', () => runQueueCleanerCycle({ dryRun, triggeredBy: 'auto' }));
   } catch (err) {
     logger.error('Queue cleaner cycle threw', { err: String(err) }, { scope: LOG });
     return null;
@@ -83,7 +83,7 @@ async function safeRunDownload(): Promise<DownloadEvaluationResult | null> {
   const job = getState().download;
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    return await runWithTimeout('Download cleaner', () => runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    return await runWithWatchdog('Download cleaner', () => runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto' }));
   } catch (err) {
     logger.error('Download cleaner cycle threw', { err: String(err) }, { scope: LOG });
     return null;
