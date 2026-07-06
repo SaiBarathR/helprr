@@ -1,5 +1,7 @@
 // AniList GraphQL API Types
 
+import type { DiscoverLibraryStatus } from './index';
+
 export type AniListMediaFormat = 'TV' | 'TV_SHORT' | 'MOVIE' | 'SPECIAL' | 'OVA' | 'ONA' | 'MUSIC' | 'MANGA' | 'NOVEL' | 'ONE_SHOT';
 export type AniListMediaStatus = 'FINISHED' | 'RELEASING' | 'NOT_YET_RELEASED' | 'CANCELLED' | 'HIATUS';
 export type AniListMediaSeason = 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL';
@@ -449,6 +451,9 @@ export interface AniListDetailResponse {
     type: AniListMediaType | null;
     chapters: number | null;
     volumes: number | null;
+    // Added by the detail route: year (from seasonYear) + arr library membership.
+    year?: number | null;
+    library?: DiscoverLibraryStatus;
   }>;
   reviews: AniListReview[];
   externalLinks: AniListExternalLink[];

@@ -13,6 +13,7 @@ import {
   type Tagged,
 } from '@/lib/discover';
 import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
+import { annotateAnimeItems } from '@/lib/anime-library';
 import type { SonarrSeries } from '@/types';
 
 type ServiceAvailability = 'ok' | 'unavailable';
@@ -45,17 +46,21 @@ async function getHandler(
       return NextResponse.json({ error: 'Invalid anime ID' }, { status: 400 });
     }
 
-    const [detail, nextAiringEpisode, libraryResult, mappingLinks] = await Promise.all([
+    const [detail, nextAiringEpisode, libraryResult] = await Promise.all([
       getAnimeDetail(id),
       getAnimeNextAiringEpisode(id),
       getLibraries(),
-      loadLibraryLinksForAnilistIds([id]),
     ]);
 
     const normalized = {
       ...normalizeAniListDetail(detail),
       nextAiringEpisode,
     };
+    // One reverse-lookup query covering the detail item and its recommendations.
+    const mappingLinks = await loadLibraryLinksForAnilistIds([
+      id,
+      ...normalized.recommendations.map((rec) => rec.id),
+    ]);
     const isMovie = isMovieFormat(normalized.format);
     const lookups = buildLibraryLookups(libraryResult.movies ?? [], libraryResult.series ?? []);
 
@@ -93,8 +98,18 @@ async function getHandler(
               })
       );
 
+    // Recommendations feed the rail on detail pages; annotate them so the rail
+    // can hide its Add icon for in-library items (they carry seasonYear, not year).
+    const recommendations = await annotateAnimeItems(
+      normalized.recommendations.map((rec) => ({ ...rec, year: rec.seasonYear ?? null })),
+      libraryResult.movies ?? [],
+      libraryResult.series ?? [],
+      mappingLinks
+    );
+
     return NextResponse.json({
       ...normalized,
+      recommendations,
       libraryAvailability: libraryResult.availability,
       library,
     });

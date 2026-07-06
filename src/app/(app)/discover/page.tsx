@@ -380,8 +380,8 @@ function MediaPoster({
       </button>
       <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1.5">
         {item.library?.exists ? (
-          <div className="flex items-center justify-center h-5 w-5 rounded-md bg-green-600/80">
-            <Check className="h-3 w-3 text-foreground" />
+          <div className="flex items-center justify-center h-5 w-5 rounded-md bg-background/60 backdrop-blur-md">
+            <Check className="h-3 w-3 text-green-400" strokeWidth={3} />
           </div>
         ) : (
           <>

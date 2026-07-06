@@ -57,8 +57,8 @@ export function AnimeCard({
             </Badge>
           )}
           {item.library?.exists && (
-            <Badge className="absolute top-1 left-1 text-[9px] bg-green-600/80 text-foreground">
-              <Check className="h-2 w-2" />
+            <Badge className="absolute top-1 left-1 text-[9px] bg-background/60 backdrop-blur-md text-green-400">
+              <Check className="h-2 w-2" strokeWidth={3} />
             </Badge>
           )}
           {item.format && (
