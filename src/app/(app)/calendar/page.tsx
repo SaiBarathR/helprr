@@ -84,11 +84,18 @@ function backdropFromEvent(event: CalendarEvent): string | null {
  *  side so the row copy stays readable. Sits under content — the content
  *  siblings must be `relative` to paint above it. */
 function RowBackdrop({ src }: { src: string | null }) {
+  const imageOpacity = useUIStore((s) => s.calendarImageOpacity);
   if (!src) return null;
   return (
     <div aria-hidden className="absolute inset-0 pointer-events-none">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt="" loading="lazy" className="h-full w-full object-cover opacity-35" />
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        className="h-full w-full object-cover"
+        style={{ opacity: imageOpacity / 100 }}
+      />
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-background/40" />
     </div>
   );

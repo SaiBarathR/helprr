@@ -233,7 +233,10 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 41;
+export const STORE_VERSION = 42;
+
+// Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
+export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
 
 export function migrateUiPrefs(persisted: unknown, version: number): Record<string, unknown> {
   const state = (persisted && typeof persisted === 'object' ? persisted : {}) as Record<string, unknown>;
@@ -431,6 +434,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 41) {
     state.hapticsEnabled = true;
   }
+  if (version < 42) {
+    state.calendarImageOpacity = DEFAULT_CALENDAR_IMAGE_OPACITY;
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -580,6 +586,9 @@ interface UIState {
   setCalendarShowScheduled: (v: boolean) => void;
   calendarShowImages: boolean;
   setCalendarShowImages: (v: boolean) => void;
+  // 0-100 backdrop artwork opacity behind calendar rows
+  calendarImageOpacity: number;
+  setCalendarImageOpacity: (n: number) => void;
   // Navigation preferences
   navPosition: 'top' | 'bottom';
   setNavPosition: (position: 'top' | 'bottom') => void;
@@ -698,6 +707,7 @@ const PERSISTED_KEYS = [
   'calendarInstanceFilter',
   'calendarShowScheduled',
   'calendarShowImages',
+  'calendarImageOpacity',
   'navPosition',
   'navOrder',
   'disabledNavItems',
@@ -927,6 +937,9 @@ export const useUIStore = create<UIState>()(
       setCalendarShowScheduled: (v) => set({ calendarShowScheduled: v }),
       calendarShowImages: true,
       setCalendarShowImages: (v) => set({ calendarShowImages: v }),
+      calendarImageOpacity: DEFAULT_CALENDAR_IMAGE_OPACITY,
+      setCalendarImageOpacity: (n) =>
+        set({ calendarImageOpacity: Math.min(100, Math.max(0, Math.round(n))) }),
       // Navigation
       navPosition: 'top',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),
@@ -1074,7 +1087,7 @@ export const useUIStore = create<UIState>()(
               next[key] = value;
               continue;
             }
-            if (key === 'glassIntensity') {
+            if (key === 'glassIntensity' || key === 'calendarImageOpacity') {
               if (typeof value !== 'number' || !Number.isFinite(value)) continue;
               next[key] = Math.min(100, Math.max(0, Math.round(value)));
               continue;
