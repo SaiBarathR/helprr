@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getCurrentUser, requireAuth, requireCapability } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { getJellyfinUserContext } from '@/lib/service-helpers';
 import { getRedisClient } from '@/lib/redis';
@@ -84,7 +85,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (user.role !== 'admin' && !(await canUserAccessItem(user, itemId))) {
+    // jellyfin.sessions and jellyfin.stats deliberately expose server-wide
+    // playback metadata (every user's now-playing and history), so artwork for
+    // those items is no more privileged than what those routes already reveal
+    // — without this bypass, session cards and analytics render with 404
+    // posters. Everyone else is limited to their own Jellyfin account's scope.
+    const canSeeServerWideArtwork =
+      user.role === 'admin' || can(user, 'jellyfin.sessions') || can(user, 'jellyfin.stats');
+    if (!canSeeServerWideArtwork && !(await canUserAccessItem(user, itemId))) {
       return new NextResponse(null, { status: 404 });
     }
 
