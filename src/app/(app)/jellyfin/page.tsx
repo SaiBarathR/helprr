@@ -219,6 +219,23 @@ function PluginNotice() {
   );
 }
 
+// Shown when the Jellyfin server itself can't be reached — distinct from the
+// per-section empty states, which would otherwise render a blank/misleading
+// page ("No user activity found") on a connection failure.
+function ServerErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="rounded-xl bg-muted/30 p-6 text-center">
+      <AlertCircle className="h-8 w-8 mx-auto mb-2 text-destructive/60" />
+      <p className="text-sm font-medium text-muted-foreground">Couldn&apos;t reach the Jellyfin server</p>
+      <p className="text-xs text-muted-foreground/70 mt-1">Check that Jellyfin is running and its connection settings are correct.</p>
+      <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
+        <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Tab 1: OVERVIEW
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -376,6 +393,24 @@ function OverviewTab() {
     || (recentQuery.isLoading && !recentQuery.data)
   ) {
     return <PageSpinner />;
+  }
+
+  // All always-on slices failed with nothing cached to show: the server is
+  // unreachable, not "empty" — every section below would silently vanish.
+  if (
+    sessionsQuery.isError && resumeQuery.isError && countsQuery.isError && recentQuery.isError
+    && !sessionsQuery.data && !resumeQuery.data && !countsQuery.data && !recentQuery.data
+  ) {
+    return (
+      <ServerErrorState
+        onRetry={() => {
+          void sessionsQuery.refetch();
+          void resumeQuery.refetch();
+          void countsQuery.refetch();
+          void recentQuery.refetch();
+        }}
+      />
+    );
   }
 
   return (
@@ -762,6 +797,9 @@ function UsersTab() {
   }
 
   if ((playbackQuery.isLoading && !playbackQuery.data) || (jellyfinUsersQuery.isLoading && !jellyfinUsersQuery.data)) return <PageSpinner />;
+  if (playbackQuery.isError && !playbackQuery.data) {
+    return <ServerErrorState onRetry={() => void playbackQuery.refetch()} />;
+  }
   if (!pluginAvailable) return <PluginNotice />;
   if (users.length === 0) return <div className="text-center py-16 text-muted-foreground"><Users className="h-8 w-8 mx-auto mb-2 opacity-40" /><p className="text-sm">No user activity found</p></div>;
 
@@ -1130,6 +1168,19 @@ function StatsTab() {
     hourlyQ.data?.pluginAvailable !== false;
 
   if (loading) return <PageSpinner />;
+
+  // Every stat panel failed: the server is unreachable — without this the page
+  // renders only the range/user selectors with all panels silently absent.
+  const statQueries = [activityQ, tvQ, movQ, methodQ, clientQ, deviceQ, hourlyQ];
+  if (statQueries.every((q) => q.isError && !q.data)) {
+    return (
+      <ServerErrorState
+        onRetry={() => {
+          for (const q of statQueries) void q.refetch();
+        }}
+      />
+    );
+  }
 
   if (!pluginAvailable) return <div className="space-y-5"><PluginNotice /></div>;
 
