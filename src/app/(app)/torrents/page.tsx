@@ -347,7 +347,10 @@ function SpeedLimitInput({
 }: {
   label: string;
   currentLimit: number;
-  onSave: (limitBytesPerSec: number) => Promise<void>;
+  // Resolving false means the action layer already surfaced the failure (its
+  // own toast) — skip the success toast and keep the editor open. A throw
+  // means the failure hasn't been surfaced yet, so toast it here.
+  onSave: (limitBytesPerSec: number) => Promise<boolean | void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
@@ -380,9 +383,10 @@ function SpeedLimitInput({
     setSaving(true);
     const bytesPerSec = unit === 'MB/s' ? numVal * 1024 * 1024 : numVal * 1024;
     try {
-      await onSave(Math.round(bytesPerSec));
-      setEditing(false);
-      toast.success(`${label} updated`);
+      if (await onSave(Math.round(bytesPerSec)) !== false) {
+        setEditing(false);
+        toast.success(`${label} updated`);
+      }
     } catch {
       toast.error(`Failed to set ${label.toLowerCase()}`);
     } finally {
@@ -393,9 +397,10 @@ function SpeedLimitInput({
   const handleUnlimited = async () => {
     setSaving(true);
     try {
-      await onSave(0);
-      setEditing(false);
-      toast.success(`${label} set to unlimited`);
+      if (await onSave(0) !== false) {
+        setEditing(false);
+        toast.success(`${label} set to unlimited`);
+      }
     } catch {
       toast.error(`Failed to set ${label.toLowerCase()}`);
     } finally {
@@ -852,12 +857,18 @@ export default function TorrentsPage() {
   const [listOffsetTop, setListOffsetTop] = useState(0);
 
   const [detailHash, setDetailHash] = useState<string | null>(null);
+  // Mirrors detailHash so an in-flight detail fetch can tell it was superseded
+  // (another torrent opened, or the drawer closed) and drop its response.
+  const detailHashRef = useRef<string | null>(null);
   const [detailData, setDetailData] = useState<{
     properties: Record<string, unknown>;
     files: TorrentFile[];
     trackers: TorrentTracker[];
   } | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  useEffect(() => {
+    detailHashRef.current = detailHash;
+  }, [detailHash]);
 
   const [deleteDrawer, setDeleteDrawer] = useState<{ open: boolean; hash: string; name: string; deleteFiles: boolean }>({
     open: false,
@@ -992,19 +1003,23 @@ export default function TorrentsPage() {
 
   const fetchDetail = useCallback(async (hash: string) => {
     setDetailHash(hash);
+    detailHashRef.current = hash;
     setDetailLoading(true);
     setDetailData(null);
     try {
       const res = await fetch(`/api/qbittorrent/${hash}/details`);
+      // Superseded (another torrent opened) or drawer closed while in flight:
+      // this response no longer owns the drawer state.
+      if (detailHashRef.current !== hash) return;
       if (res.ok) {
         setDetailData(await res.json());
       } else {
         toast.error('Failed to load torrent details');
       }
     } catch {
-      toast.error('Failed to load torrent details');
+      if (detailHashRef.current === hash) toast.error('Failed to load torrent details');
     } finally {
-      setDetailLoading(false);
+      if (detailHashRef.current === hash) setDetailLoading(false);
     }
   }, []);
 
@@ -1137,8 +1152,8 @@ export default function TorrentsPage() {
     }
   }, [refetchSummary]);
 
-  const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>) => {
-    if (selectedTorrents.size === 0) return;
+  const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>): Promise<boolean> => {
+    if (selectedTorrents.size === 0) return false;
     const count = selectedTorrents.size;
     const hashes = Array.from(selectedTorrents).join('|');
     const verb = torrentActionMessage(action, 'bulk');
@@ -1149,6 +1164,7 @@ export default function TorrentsPage() {
     } else {
       reportBulkTorrent(verb, 0, count);
     }
+    return ok;
   }, [selectedTorrents, torrentAction]);
 
   const handleDelete = useCallback(async () => {
@@ -1743,17 +1759,19 @@ export default function TorrentsPage() {
                         label="Download Limit"
                         currentLimit={Number(detailData.properties.dl_limit) || 0}
                         onSave={async (limit) => {
-                          await torrentAction(detailHash, 'setDownloadLimit', { limit });
+                          const ok = await torrentAction(detailHash, 'setDownloadLimit', { limit });
                           // Refresh detail
-                          void fetchDetail(detailHash);
+                          if (ok) void fetchDetail(detailHash);
+                          return ok;
                         }}
                       />
                       <SpeedLimitInput
                         label="Upload Limit"
                         currentLimit={Number(detailData.properties.up_limit) || 0}
                         onSave={async (limit) => {
-                          await torrentAction(detailHash, 'setUploadLimit', { limit });
-                          void fetchDetail(detailHash);
+                          const ok = await torrentAction(detailHash, 'setUploadLimit', { limit });
+                          if (ok) void fetchDetail(detailHash);
+                          return ok;
                         }}
                       />
                     </div>
@@ -1994,11 +2012,12 @@ export default function TorrentsPage() {
                       label="Global Download Limit"
                       currentLimit={globalLimits.downloadLimit}
                       onSave={async (limit) => {
-                        await fetch('/api/qbittorrent/transfer/limits', {
+                        const res = await fetch('/api/qbittorrent/transfer/limits', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'setDownloadLimit', limit }),
                         });
+                        if (!res.ok) throw new Error('Failed to set global download limit');
                         void fetchGlobalLimits();
                       }}
                     />
@@ -2006,22 +2025,24 @@ export default function TorrentsPage() {
                       label="Global Upload Limit"
                       currentLimit={globalLimits.uploadLimit}
                       onSave={async (limit) => {
-                        await fetch('/api/qbittorrent/transfer/limits', {
+                        const res = await fetch('/api/qbittorrent/transfer/limits', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ action: 'setUploadLimit', limit }),
                         });
+                        if (!res.ok) throw new Error('Failed to set global upload limit');
                         void fetchGlobalLimits();
                       }}
                     />
                     <div className="flex items-center justify-between px-3 py-2">
                       <span className="text-xs text-muted-foreground">Alternative Speed Limits</span>
+                      {/* Rendered from speedLimitsMode (not globalLimits) so the switch
+                          gets the optimistic flip + pending-poll guard the toolbar
+                          button already has — qBittorrent applies the toggle
+                          asynchronously, so an immediate re-fetch reads the old mode. */}
                       <Switch
-                        checked={globalLimits.speedLimitsMode === 1}
-                        onCheckedChange={async () => {
-                          await toggleAltSpeedMode();
-                          void fetchGlobalLimits();
-                        }}
+                        checked={speedLimitsMode === 1}
+                        onCheckedChange={() => void toggleAltSpeedMode()}
                       />
                     </div>
                   </div>
@@ -2136,16 +2157,18 @@ export default function TorrentsPage() {
                 label="Download Limit"
                 currentLimit={0}
                 onSave={async (limit) => {
-                  await bulkAction('setDownloadLimit', { limit });
-                  setBulkSpeedDrawer(false);
+                  const ok = await bulkAction('setDownloadLimit', { limit });
+                  if (ok) setBulkSpeedDrawer(false);
+                  return ok;
                 }}
               />
               <SpeedLimitInput
                 label="Upload Limit"
                 currentLimit={0}
                 onSave={async (limit) => {
-                  await bulkAction('setUploadLimit', { limit });
-                  setBulkSpeedDrawer(false);
+                  const ok = await bulkAction('setUploadLimit', { limit });
+                  if (ok) setBulkSpeedDrawer(false);
+                  return ok;
                 }}
               />
             </div>

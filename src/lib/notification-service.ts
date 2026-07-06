@@ -493,7 +493,9 @@ export async function notifyEvent(event: {
       if (shouldDeferPush(sub)) return { kind: 'skipped' };
       if (requiredCap) {
         if (!sub.user || !can(sub.user, requiredCap)) return { kind: 'skipped' };
-      } else if (!sub.user || sub.user.role !== 'admin') {
+      } else if (!sub.user || (sub.user.role !== 'admin' && !event.userIds)) {
+        // Unmapped event types broadcast to admins only — unless the caller
+        // explicitly targeted users (e.g. a member's own test notification).
         return { kind: 'skipped' };
       }
       const pref = sub.preferences.find((p) => p.eventType === event.eventType);

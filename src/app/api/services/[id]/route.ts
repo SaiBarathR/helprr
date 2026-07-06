@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { clearConnectionMemo, ensureDefaultForType, setDefaultConnection } from '@/lib/arr-instances';
-import { maskApiKey } from '@/lib/service-connection-secrets';
+import { serializeConnection } from '@/lib/service-connection-secrets';
 
 async function deleteHandler(_request: NextRequest, ctx: { params: Promise<{ id: string }> }): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -54,7 +54,8 @@ async function patchHandler(request: NextRequest, ctx: { params: Promise<{ id: s
 
   clearConnectionMemo();
   const updated = await prisma.serviceConnection.findUnique({ where: { id } });
-  return NextResponse.json({ ...updated, apiKey: updated ? maskApiKey(updated.apiKey) : null });
+  if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  return NextResponse.json(serializeConnection(updated));
 }
 
 export const DELETE = withApiLogging(deleteHandler, 'api/services/[id]');

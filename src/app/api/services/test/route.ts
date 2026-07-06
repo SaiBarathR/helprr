@@ -77,7 +77,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       ? (usernameValue.trim() || undefined)
       : undefined;
 
-    const resolvedApiKey = await resolveApiKeyForService(type, apiKey);
+    // Unmask against the instance being tested — the default instance's key
+    // must not substitute for a sibling's (multi-instance Sonarr/Radarr/Lidarr).
+    const instanceId = isNonEmptyString(body.instanceId) ? body.instanceId.trim() : undefined;
+    const resolvedApiKey = await resolveApiKeyForService(type, apiKey, instanceId);
     const cleanUrl = url.replace(/\/+$/, '');
 
     switch (type) {

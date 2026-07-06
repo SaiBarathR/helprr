@@ -1,4 +1,4 @@
-import type { ServiceType } from '@prisma/client';
+import type { ServiceConnection, ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
 export function isNonEmptyString(value: unknown): value is string {
@@ -14,6 +14,25 @@ export function isServiceType(value: string): value is ServiceType {
   return ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR', 'LIDARR'].includes(
     value
   );
+}
+
+// Allowlist of fields safe to send to the browser: apiKey is masked and OAuth
+// tokens/metadata never leave the server (legacy AniList rows can hold
+// plaintext tokens).
+export function serializeConnection(conn: ServiceConnection) {
+  return {
+    id: conn.id,
+    type: conn.type,
+    label: conn.label,
+    isDefault: conn.isDefault,
+    url: conn.url,
+    externalUrl: conn.externalUrl,
+    username: conn.username,
+    apiKey: maskApiKey(conn.apiKey),
+    tokenExpiresAt: conn.tokenExpiresAt,
+    createdAt: conn.createdAt,
+    updatedAt: conn.updatedAt,
+  };
 }
 
 export async function resolveApiKeyForService(
