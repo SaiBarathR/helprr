@@ -10,7 +10,7 @@ import { CategoryRow } from '@/components/settings/category-row';
 import { Switch } from '@/components/ui/switch';
 import { useUIStore } from '@/lib/store';
 import { haptic } from '@/lib/haptics';
-import { Compass, Paintbrush, Vibrate } from 'lucide-react';
+import { Compass, Image as ImageIcon, Paintbrush, Vibrate } from 'lucide-react';
 
 function HapticsSection() {
   const hapticsEnabled = useUIStore((s) => s.hapticsEnabled);
@@ -35,6 +35,41 @@ function HapticsSection() {
             if (v) haptic('medium');
           }}
         />
+      </div>
+    </GroupedSection>
+  );
+}
+
+function CalendarBackdropSection() {
+  const imageOpacity = useUIStore((s) => s.calendarImageOpacity);
+  const setImageOpacity = useUIStore((s) => s.setCalendarImageOpacity);
+
+  return (
+    <GroupedSection title="Calendar" footer="How visible the artwork behind calendar rows is when images are enabled.">
+      <div className="grouped-row">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-sky-500/10 text-sky-400">
+            <ImageIcon className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0 flex flex-col items-start">
+            <span className="text-[15px] font-medium truncate">Backdrop opacity</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-[160px] shrink-0">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={imageOpacity}
+            onChange={(e) => setImageOpacity(Number(e.target.value))}
+            aria-label="Calendar backdrop opacity"
+            className="flex-1 min-w-0"
+            style={{ accentColor: 'var(--primary)' }}
+          />
+          <span className="text-sm text-muted-foreground tabular-nums w-10 text-right">
+            {imageOpacity}%
+          </span>
+        </div>
       </div>
     </GroupedSection>
   );
@@ -75,6 +110,8 @@ export default function AppearanceSettingsPage() {
       </GroupedSection>
 
       <HapticsSection />
+
+      <CalendarBackdropSection />
 
       <NavOrderSettings />
       <AnimeCarouselSettings />
