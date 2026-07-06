@@ -62,6 +62,9 @@ export function useInfiniteScroll<T>({
   // into our skip range can't trap us refetching the same offset forever.
   const skipRef = useRef(0);
   const inFlightRef = useRef(false);
+  // Bumped by every replace (reset/reload) so a response from a superseded
+  // fetch is discarded instead of populating the new query's list.
+  const generationRef = useRef(0);
   const itemsLengthRef = useRef(0);
   itemsLengthRef.current = items.length;
 
@@ -69,12 +72,21 @@ export function useInfiniteScroll<T>({
 
   const loadPage = useCallback(
     async (skip: number, replace: boolean) => {
-      if (inFlightRef.current) return;
+      if (replace) {
+        // A reset/reload always wins: supersede whatever is in flight rather
+        // than dropping the new request (the old response is discarded below).
+        generationRef.current += 1;
+        setLoadingMore(false);
+      } else if (inFlightRef.current) {
+        return;
+      }
+      const gen = generationRef.current;
       inFlightRef.current = true;
       if (replace) setLoading(true);
       else setLoadingMore(true);
       try {
         const page = await fetchPage(skip, take);
+        if (gen !== generationRef.current) return;
         setError(null);
         setTotal(page.total);
         setItems((prev) => {
@@ -94,11 +106,15 @@ export function useInfiniteScroll<T>({
           setExhausted(true);
         }
       } catch (e) {
+        if (gen !== generationRef.current) return;
         setError(e instanceof Error ? e.message : 'Failed to load');
       } finally {
-        inFlightRef.current = false;
-        if (replace) setLoading(false);
-        else setLoadingMore(false);
+        // A superseded fetch must not clear flags the newer fetch now owns.
+        if (gen === generationRef.current) {
+          inFlightRef.current = false;
+          if (replace) setLoading(false);
+          else setLoadingMore(false);
+        }
       }
     },
     [fetchPage, take, getId]
