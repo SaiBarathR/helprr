@@ -30,6 +30,13 @@ export interface FetchCachedImageOptions {
   ttlSeconds?: number;
   staleSeconds?: number;
   transform?: ImageTransform;
+  /**
+   * Called for each redirect target before it is followed. Only the initial
+   * upstream URL is validated by the caller, so without this check a 30x from
+   * an allowlisted host could point the proxy at an internal address (SSRF).
+   * When omitted, redirects are not followed at all.
+   */
+  isRedirectTargetAllowed?: (target: URL) => boolean;
 }
 
 export interface FetchCachedImageResult {
@@ -146,34 +153,78 @@ function isFetchAbortError(error: unknown): boolean {
   return false;
 }
 
-async function fetchUpstreamImage(url: string, headers?: HeadersInit): Promise<{ status: number; ok: boolean; body: Buffer | null; contentType: string | null }> {
+const MAX_IMAGE_REDIRECTS = 3;
+
+async function fetchUpstreamImage(
+  url: string,
+  headers?: HeadersInit,
+  isRedirectTargetAllowed?: (target: URL) => boolean,
+): Promise<{ status: number; ok: boolean; body: Buffer | null; contentType: string | null }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IMAGE_UPSTREAM_FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
-      headers,
-      cache: 'no-store',
-      signal: controller.signal,
-    });
-    if (!response.ok) {
+    let currentUrl = url;
+    let currentHeaders = headers;
+
+    // Redirects are followed manually so every hop is re-validated against the
+    // caller's allowlist — `redirect: 'follow'` would let an allowlisted host
+    // 30x the proxy to an internal address.
+    for (let hop = 0; ; hop++) {
+      const response = await fetch(currentUrl, {
+        headers: currentHeaders,
+        cache: 'no-store',
+        signal: controller.signal,
+        redirect: 'manual',
+      });
+
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location || hop >= MAX_IMAGE_REDIRECTS) {
+          return { status: 502, ok: false, body: null, contentType: null };
+        }
+
+        let target: URL;
+        try {
+          target = new URL(location, currentUrl);
+        } catch {
+          return { status: 502, ok: false, body: null, contentType: null };
+        }
+
+        if (
+          (target.protocol !== 'http:' && target.protocol !== 'https:')
+          || !isRedirectTargetAllowed?.(target)
+        ) {
+          return { status: 502, ok: false, body: null, contentType: null };
+        }
+
+        // Never leak the upstream's auth header to a different origin.
+        if (target.origin !== new URL(currentUrl).origin) {
+          currentHeaders = undefined;
+        }
+        currentUrl = target.toString();
+        continue;
+      }
+
+      if (!response.ok) {
+        return {
+          status: response.status,
+          ok: false,
+          body: null,
+          contentType: null,
+        };
+      }
+
+      const contentType = response.headers.get('content-type') || 'image/jpeg';
+      const body = Buffer.from(await response.arrayBuffer());
+
       return {
         status: response.status,
-        ok: false,
-        body: null,
-        contentType: null,
+        ok: true,
+        body,
+        contentType,
       };
     }
-
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const body = Buffer.from(await response.arrayBuffer());
-
-    return {
-      status: response.status,
-      ok: true,
-      body,
-      contentType,
-    };
   } catch (error) {
     if (isFetchAbortError(error)) {
       return {
@@ -225,8 +276,13 @@ async function applyImageTransform(
   }
 }
 
-async function fetchBypass(url: string, headers: HeadersInit | undefined, transform: ImageTransform | undefined): Promise<FetchCachedImageResult> {
-  const upstream = await fetchUpstreamImage(url, headers);
+async function fetchBypass(
+  url: string,
+  headers: HeadersInit | undefined,
+  transform: ImageTransform | undefined,
+  isRedirectTargetAllowed?: (target: URL) => boolean,
+): Promise<FetchCachedImageResult> {
+  const upstream = await fetchUpstreamImage(url, headers, isRedirectTargetAllowed);
   if (!upstream.ok || !upstream.body) {
     return {
       status: upstream.status,
@@ -251,7 +307,7 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
     // Caching is off: every request re-fetches AND re-transcodes (sharp) with no
     // memoization — the cost the cache normally amortizes is paid each time. This is
     // an explicit admin opt-out (debugging / reclaiming disk), not a hot-path default.
-    return fetchBypass(options.upstreamUrl, options.upstreamHeaders, options.transform);
+    return fetchBypass(options.upstreamUrl, options.upstreamHeaders, options.transform, options.isRedirectTargetAllowed);
   }
 
   const generation = await getCacheGeneration();
@@ -291,7 +347,7 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
   }
 
   try {
-    const upstream = await fetchUpstreamImage(options.upstreamUrl, options.upstreamHeaders);
+    const upstream = await fetchUpstreamImage(options.upstreamUrl, options.upstreamHeaders, options.isRedirectTargetAllowed);
     if (upstream.ok && upstream.body) {
       const transformed = await applyImageTransform(upstream.body, upstream.contentType || 'image/jpeg', options.transform);
       const relativePath = await saveCachedImage(generation, keyHash, transformed.body);

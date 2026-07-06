@@ -190,6 +190,21 @@ function resolveAuthHeaders(connection: ConnectionLike | null): HeadersInit | un
   return undefined;
 }
 
+// Shared by the initial `src` check and every redirect hop: a target is only
+// fetchable if it is the TMDB image host, an allowed path on a configured
+// connection, or a known external image host.
+function isProxyTargetAllowed(target: URL, connections: ConnectionLike[]): boolean {
+  if (target.hostname === 'image.tmdb.org') return true;
+
+  const matched = connections.find((connection) => {
+    const base = normalizeBaseUrl(connection.url);
+    return base ? matchesConnectionBase(target, base) : false;
+  });
+  if (matched) return isMatchedConnectionImagePathAllowed(matched, target);
+
+  return isAllowedKnownExternalImageHost(target);
+}
+
 function sortConnectionsByHint(connections: ConnectionLike[], hint: ServiceHint | null): ConnectionLike[] {
   if (!hint || hint === 'tmdb') return connections;
 
@@ -272,6 +287,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       upstreamUrl: targetUrl.toString(),
       upstreamHeaders,
       transform: { width },
+      isRedirectTargetAllowed: (target) => isProxyTargetAllowed(target, connections),
     });
 
     if (!result.body) {

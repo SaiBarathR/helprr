@@ -42,6 +42,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     const url = `${connection.url.replace(/\/+$/, '')}/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(type)}?maxWidth=${maxWidth}&quality=${quality}`;
+    const connectionOrigin = new URL(connection.url).origin;
 
     const result = await fetchImageWithServerCache({
       cacheKey: `jellyfin:${itemId}:${type}:${maxWidth}:${quality}`,
@@ -50,6 +51,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         Authorization: `MediaBrowser Token="${connection.apiKey}"`,
         'X-Emby-Token': connection.apiKey,
       },
+      // Only follow redirects that stay on the configured Jellyfin server.
+      isRedirectTargetAllowed: (target) => target.origin === connectionOrigin,
     });
 
     if (!result.body) {
