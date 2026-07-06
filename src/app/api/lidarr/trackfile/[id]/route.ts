@@ -3,6 +3,7 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function deleteHandler(
   request: NextRequest,
@@ -27,8 +28,7 @@ async function deleteHandler(
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete track file';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete track file');
   }
 }
 

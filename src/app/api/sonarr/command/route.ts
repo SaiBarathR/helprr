@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
@@ -91,8 +92,7 @@ async function postHandler(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to execute command';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to execute command');
   }
 }
 

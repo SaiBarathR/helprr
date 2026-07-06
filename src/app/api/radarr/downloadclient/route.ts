@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Handle GET requests to fetch Radarr download clients.
@@ -18,8 +19,7 @@ async function getHandler(request: NextRequest) {
     const clients = await client.getDownloadClients();
     return NextResponse.json(clients);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch download clients';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch download clients');
   }
 }
 

@@ -3,6 +3,7 @@ import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const VALID_PRIORITIES = new Set([0, 1, 6, 7]);
 
@@ -52,10 +53,7 @@ async function postHandler(
     return NextResponse.json({ success: true });
   } catch (error) {
     logApiDuration('/api/qbittorrent/[hash]/files/priority', startedAt, { method: 'POST', failed: true });
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to set file priority' },
-      { status: 500 }
-    );
+    return upstreamErrorResponse(error, 'Failed to set file priority');
   }
 }
 

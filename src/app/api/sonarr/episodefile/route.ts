@@ -12,6 +12,7 @@ import {
 import { recordFileAudit } from '@/lib/file-audit';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { EpisodeFileEdit, EpisodeFileResource } from '@/types';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // ── GET /api/sonarr/episodefile?seriesId= ───────────────────────────────────
 // Lists the episode files for a series (the Manage Episodes data source).
@@ -31,8 +32,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const files = await client.getEpisodeFiles(seriesId);
     return NextResponse.json(files);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch episode files';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch episode files');
   }
 }
 
@@ -133,7 +133,10 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     errorMessage,
   });
 
-  if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  if (!success) {
+    console.error('[api] Failed to edit episode files:', errorMessage);
+    return NextResponse.json({ error: 'Failed to edit episode files' }, { status: 500 });
+  }
   // File metadata feeds the cached library rows (per-episode quality rollups).
   await invalidateTaggedLibrary('sonarr', instanceId);
   return NextResponse.json(result);
@@ -209,7 +212,10 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     errorMessage,
   });
 
-  if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  if (!success) {
+    console.error('[api] Failed to delete episode files:', errorMessage);
+    return NextResponse.json({ error: 'Failed to delete episode files' }, { status: 500 });
+  }
   // Deleting files changes the series statistics (episodeFileCount, sizeOnDisk).
   await invalidateTaggedLibrary('sonarr', instanceId);
   return NextResponse.json({ success: true, deleted: ids.length });

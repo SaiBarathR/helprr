@@ -3,6 +3,7 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import type { RadarrLookupResult } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
@@ -25,8 +26,7 @@ async function getHandler(request: NextRequest) {
     }));
     return NextResponse.json(annotatedResults);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to lookup movie';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to lookup movie');
   }
 }
 

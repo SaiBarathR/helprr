@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function toPositiveInt(value: unknown): number | null {
   const n = Number(value);
@@ -43,8 +44,7 @@ async function getHandler(request: NextRequest) {
     const releases = await client.getReleases(params);
     return NextResponse.json(releases);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to search releases';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to search releases');
   }
 }
 
@@ -71,8 +71,7 @@ async function postHandler(request: NextRequest) {
     await client.grabRelease(guid, parsedIndexerId, downloadClientId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to grab release';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to grab release');
   }
 }
 

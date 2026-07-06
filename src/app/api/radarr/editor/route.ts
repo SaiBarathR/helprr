@@ -8,6 +8,7 @@ import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } f
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Bulk monitor/tag across many movies via Radarr's native /movie/editor endpoint.
 async function putHandler(request: NextRequest) {
@@ -46,8 +47,7 @@ async function putHandler(request: NextRequest) {
     if (tagResult?.createdAny) await invalidateReferenceLabels('radarr', conn.id);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to update movies';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to update movies');
   }
 }
 
@@ -69,8 +69,7 @@ async function deleteHandler(request: NextRequest) {
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete movies';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete movies');
   }
 }
 

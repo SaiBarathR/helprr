@@ -9,6 +9,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
 import { etagJson } from '@/lib/etag-json';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const RADARR_CACHE_HEADERS = {
   // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
@@ -109,8 +110,7 @@ async function getHandler(request: NextRequest) {
     );
   } catch (error) {
     logApiDuration('/api/radarr', startedAt, { method: 'GET', failed: true });
-    const message = error instanceof Error ? error.message : 'Failed to fetch movies';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch movies');
   }
 }
 
@@ -131,8 +131,7 @@ async function postHandler(request: Request) {
     return NextResponse.json(result);
   } catch (error) {
     logApiDuration('/api/radarr', startedAt, { method: 'POST', failed: true });
-    const message = error instanceof Error ? error.message : 'Failed to add movie';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to add movie');
   }
 }
 

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { ownerScope } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler() {
   const auth = await requireUser();
@@ -16,7 +17,7 @@ async function postHandler() {
     });
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

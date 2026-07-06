@@ -3,6 +3,7 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -14,8 +15,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const profiles = await client.getQualityProfiles();
     return NextResponse.json(profiles, { headers: REFERENCE_CACHE_HEADERS });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch quality profiles';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch quality profiles');
   }
 }
 

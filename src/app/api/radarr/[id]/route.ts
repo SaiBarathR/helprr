@@ -4,6 +4,7 @@ import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffMovieEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -31,8 +32,7 @@ async function getHandler(
     const movie = await client.getMovieById(parsed.value);
     return NextResponse.json(movie);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch movie';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch movie');
   }
 }
 
@@ -84,8 +84,7 @@ async function putHandler(
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to update movie';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to update movie');
   }
 }
 
@@ -110,8 +109,7 @@ async function deleteHandler(
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete movie';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete movie');
   }
 }
 

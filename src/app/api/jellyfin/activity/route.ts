@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -25,8 +26,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const data = await client.getActivityLog({ limit, startIndex, hasUserId });
     return NextResponse.json({ entries: data.Items, total: data.TotalRecordCount });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch activity log';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch activity log');
   }
 }
 

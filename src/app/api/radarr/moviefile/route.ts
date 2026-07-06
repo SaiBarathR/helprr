@@ -12,6 +12,7 @@ import {
 import { recordFileAudit } from '@/lib/file-audit';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { MovieFileEdit, MovieFileResource } from '@/types';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // ── GET /api/radarr/moviefile?movieId= ──────────────────────────────────────
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -30,8 +31,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const files = await client.getMovieFiles(movieId);
     return NextResponse.json(files);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch movie files';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch movie files');
   }
 }
 
@@ -128,7 +128,10 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     errorMessage,
   });
 
-  if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  if (!success) {
+    console.error('[api] Failed to edit movie files:', errorMessage);
+    return NextResponse.json({ error: 'Failed to edit movie files' }, { status: 500 });
+  }
   // File metadata (quality/languages/…) is embedded in the cached library rows.
   await invalidateTaggedLibrary('radarr', instanceId);
   return NextResponse.json(result);
@@ -200,7 +203,10 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     errorMessage,
   });
 
-  if (!success) return NextResponse.json({ error: errorMessage }, { status: 500 });
+  if (!success) {
+    console.error('[api] Failed to delete movie files:', errorMessage);
+    return NextResponse.json({ error: 'Failed to delete movie files' }, { status: 500 });
+  }
   // Deleting files flips the movie's hasFile in the cached library list.
   await invalidateTaggedLibrary('radarr', instanceId);
   return NextResponse.json({ success: true, deleted: ids.length });

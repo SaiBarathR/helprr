@@ -5,6 +5,7 @@ import { COOKIE_NAME, getCurrentUser, requireAuth } from '@/lib/auth';
 import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
 import { getRedisClient } from '@/lib/redis';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const TEST_WINDOW_MS = 60_000;
 const TEST_MAX_ATTEMPTS = 10;
@@ -70,10 +71,7 @@ async function postHandler(): Promise<NextResponse> {
     });
     return NextResponse.json({ sent });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed' },
-      { status: 500 }
-    );
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

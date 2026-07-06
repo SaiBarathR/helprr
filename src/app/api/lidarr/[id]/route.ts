@@ -4,6 +4,7 @@ import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffArtistEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -31,8 +32,7 @@ async function getHandler(
     const artist = await client.getArtistById(parsed.value);
     return NextResponse.json(artist);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch artist';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch artist');
   }
 }
 
@@ -79,8 +79,7 @@ async function putHandler(
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to update artist';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to update artist');
   }
 }
 
@@ -105,8 +104,7 @@ async function deleteHandler(
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete artist';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete artist');
   }
 }
 

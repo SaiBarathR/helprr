@@ -3,6 +3,7 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { invalidateOnCommandComplete } from '@/lib/cache/tagged-library';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(
   request: NextRequest,
@@ -25,8 +26,7 @@ async function getHandler(
     await invalidateOnCommandComplete('lidarr', result, instanceId);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch command';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch command');
   }
 }
 

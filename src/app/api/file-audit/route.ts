@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Admin-only viewer for the FileOperationAudit trail (Manage Episodes/Files
 // edits, deletes, imports). Paginated, newest first.
@@ -28,8 +29,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       { headers: { 'Cache-Control': 'private, no-store' } }
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load audit log';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load audit log');
   }
 }
 

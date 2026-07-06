@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function isPositiveIntParam(value: string): boolean {
   const n = Number(value);
@@ -39,8 +40,7 @@ async function getHandler(request: NextRequest) {
     const files = await client.getTrackFiles(params);
     return NextResponse.json(files);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch track files';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch track files');
   }
 }
 

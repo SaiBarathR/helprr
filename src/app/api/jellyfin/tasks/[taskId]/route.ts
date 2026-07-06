@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler(
   _req: NextRequest,
@@ -19,8 +20,7 @@ async function postHandler(
     await client.startScheduledTask(taskId);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to start task';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to start task');
   }
 }
 
@@ -40,8 +40,7 @@ async function deleteHandler(
     await client.stopScheduledTask(taskId);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to stop task';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to stop task');
   }
 }
 

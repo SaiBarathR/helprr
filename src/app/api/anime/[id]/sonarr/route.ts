@@ -6,6 +6,7 @@ import { SonarrClient } from '@/lib/sonarr-client';
 import { ensureSeriesAniListMapping } from '@/lib/anilist-series-mapping';
 import { withApiLogging } from '@/lib/api-logger';
 import type { AnimeSonarrMappingItem, AnimeSonarrMappingsResponse, SeriesAniListMappingState } from '@/types/anilist';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Each linked entry points back to its series mapping; a series appears once
 // even if it links several AniList entries (we only filter by this one).
@@ -86,8 +87,7 @@ async function getHandler(
 
     return NextResponse.json({ mappings } satisfies AnimeSonarrMappingsResponse);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load Sonarr mappings';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load Sonarr mappings');
   }
 }
 

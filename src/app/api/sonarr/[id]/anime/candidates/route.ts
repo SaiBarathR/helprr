@@ -6,6 +6,7 @@ import { searchSeriesAniListCandidates } from '@/lib/anilist-series-mapping';
 import type { SonarrSeries } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import { anilistRateLimitResponse } from '@/lib/anilist-http';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(
   request: NextRequest,
@@ -53,8 +54,7 @@ async function getHandler(
   } catch (error) {
     const rateLimited = anilistRateLimitResponse(error);
     if (rateLimited) return rateLimited;
-    const message = error instanceof Error ? error.message : 'Failed to search AniList candidates';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to search AniList candidates');
   }
 }
 

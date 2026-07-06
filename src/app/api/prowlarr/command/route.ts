@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Handle POST requests that send a named command to a Prowlarr instance.
@@ -28,8 +29,7 @@ async function postHandler(request: NextRequest) {
     const result = await client.sendCommand(name);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to send command';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to send command');
   }
 }
 

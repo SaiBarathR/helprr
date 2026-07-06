@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler(req: NextRequest) {
   const authError = await requireAuth();
@@ -30,8 +31,7 @@ async function postHandler(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to execute action';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to execute action');
   }
 }
 

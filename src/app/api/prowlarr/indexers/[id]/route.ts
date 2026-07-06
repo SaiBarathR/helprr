@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Deletes the Prowlarr indexer identified by the route `id` parameter.
@@ -28,8 +29,7 @@ async function deleteHandler(
     await client.deleteIndexer(parsedId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete indexer';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete indexer');
   }
 }
 

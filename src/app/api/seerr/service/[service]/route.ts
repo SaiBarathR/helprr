@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Quality profiles / root folders / tags for the request + approve modals.
 async function getHandler(
@@ -22,8 +23,7 @@ async function getHandler(
     const data = await client.getServiceData(service, is4k);
     return NextResponse.json(data);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load service options';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load service options');
   }
 }
 

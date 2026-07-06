@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -29,8 +30,7 @@ async function getHandler(
     const albums = await client.getAlbums(parsed.value);
     return NextResponse.json(albums);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch albums';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch albums');
   }
 }
 

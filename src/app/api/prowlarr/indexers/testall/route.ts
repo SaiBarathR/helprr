@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Handle POST requests to test all Prowlarr indexers and return the test outcome.
@@ -19,8 +20,7 @@ async function postHandler() {
     const result = await client.testAllIndexers();
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Test All failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Test All failed');
   }
 }
 

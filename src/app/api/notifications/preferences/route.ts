@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth';
 import { ownerScope } from '@/lib/user-dto';
 import { EVENT_TYPES, ensureNotificationPreferences } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
@@ -50,7 +51,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(preferences);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 
@@ -113,7 +114,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(preference);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

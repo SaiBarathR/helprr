@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('jellyfin.view');
@@ -19,8 +20,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     if (error instanceof JellyfinNotLinkedError) {
       return NextResponse.json({ items: [], linked: false });
     }
-    const message = error instanceof Error ? error.message : 'Failed to fetch resume items';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch resume items');
   }
 }
 

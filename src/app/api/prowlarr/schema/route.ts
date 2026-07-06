@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Handle GET requests to fetch Prowlarr indexer schemas.
@@ -21,8 +22,7 @@ async function getHandler() {
     const schemas = await client.getIndexerSchemas();
     return NextResponse.json(schemas);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch indexer schemas';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch indexer schemas');
   }
 }
 

@@ -3,6 +3,7 @@ import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { DEVICE_ID } from '@/lib/jellyfin-client';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -16,8 +17,7 @@ async function getHandler(): Promise<NextResponse> {
     const devices = await client.getDevices();
     return NextResponse.json({ devices, selfDeviceId: DEVICE_ID });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch devices';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch devices');
   }
 }
 
@@ -60,8 +60,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json({ deleted: toDelete.length });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete device';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete device');
   }
 }
 

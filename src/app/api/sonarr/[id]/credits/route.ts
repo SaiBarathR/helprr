@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { tmdbImageUrl } from '@/lib/discover';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const EMPTY = { cast: [], crew: [] };
 
@@ -63,8 +64,7 @@ async function getHandler(
 
     return NextResponse.json({ cast, crew });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch credits';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch credits');
   }
 }
 

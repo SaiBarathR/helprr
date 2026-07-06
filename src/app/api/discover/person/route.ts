@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import { tmdbImageUrl } from '@/lib/discover';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
@@ -101,8 +102,7 @@ async function getHandler(request: NextRequest) {
       );
     }
 
-    const message = error instanceof Error ? error.message : 'Failed to load person';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load person');
   }
 }
 

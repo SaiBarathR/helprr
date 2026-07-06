@@ -4,6 +4,7 @@ import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { diffSeriesEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(
   request: NextRequest,
@@ -21,8 +22,7 @@ async function getHandler(
     const series = await client.getSeriesById(Number(id));
     return NextResponse.json(series);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch series';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch series');
   }
 }
 
@@ -72,8 +72,7 @@ async function putHandler(
     await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to update series';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to update series');
   }
 }
 
@@ -96,8 +95,7 @@ async function deleteHandler(
     await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete series';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete series');
   }
 }
 
