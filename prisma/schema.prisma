@@ -240,7 +240,10 @@ model NotificationHistory {
   createdAt DateTime @default(now())
   dedupeKey String?
 
-  @@index([eventType, dedupeKey])
+  // Unique so the history insert is the atomic dedupe gate: a concurrent
+  // writer racing the prefetch hits P2002 instead of double-sending. NULL
+  // dedupeKeys (non-deduped events) are distinct in Postgres, so unaffected.
+  @@unique([eventType, dedupeKey])
   // Covers the upcomingPremiere dedupe prefetch in polling-service
   // (eventType equality + createdAt range) so it seeks the slice instead of
   // range-scanning createdAt and filtering eventType in memory.
