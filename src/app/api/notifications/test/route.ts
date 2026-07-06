@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createHash } from 'crypto';
-import { COOKIE_NAME, requireAuth } from '@/lib/auth';
+import { COOKIE_NAME, getCurrentUser, requireAuth } from '@/lib/auth';
 import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
 import { getRedisClient } from '@/lib/redis';
@@ -38,6 +38,8 @@ return attempts`,
 async function postHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const rateLimitKey = await sessionRateLimitKey();
   let attempts: number;
@@ -63,6 +65,8 @@ async function postHandler(): Promise<NextResponse> {
       // for every press — otherwise rapid presses collapse into one banner
       metadata: { source: 'test', id: now.getTime() },
       url: '/notifications',
+      // A test push goes to the requester's own devices, not every admin's.
+      userIds: [user.id],
     });
     return NextResponse.json({ sent });
   } catch (error) {

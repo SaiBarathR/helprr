@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CalendarEvent } from '@/types';
 
 interface UseCalendarParams {
@@ -23,7 +23,15 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
   const startISO = start.toISOString();
   const endISO = end.toISOString();
 
-  const fetchEvents = useCallback(async (signal?: AbortSignal) => {
+  // One controller for both the effect fetch and manual refetch, so whichever
+  // request is newest supersedes the in-flight one (a stale month can't win).
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fetchEvents = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const signal = controller.signal;
     setLoading(true);
     setError(null);
 
@@ -50,18 +58,17 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
       setEvents(data);
     } catch (err) {
       // Aborted = superseded by a newer range/type; that request owns the state now.
-      if (signal?.aborted) return;
+      if (signal.aborted) return;
       setError(err instanceof Error ? err.message : 'An error occurred');
       setEvents([]);
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
   }, [startISO, endISO, type, includeScheduled]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetchEvents(controller.signal);
-    return () => controller.abort();
+    void fetchEvents();
+    return () => abortRef.current?.abort();
   }, [fetchEvents]);
 
   const refetch = useCallback(() => {

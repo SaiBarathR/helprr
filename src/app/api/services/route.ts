@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
-import { isNonEmptyString, isServiceType, maskApiKey, resolveApiKeyForService } from '@/lib/service-connection-secrets';
+import { isNonEmptyString, isServiceType, resolveApiKeyForService, serializeConnection } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
 import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
@@ -53,12 +53,7 @@ async function getHandler(): Promise<NextResponse> {
       orderBy: { type: 'asc' },
     });
 
-    const masked = connections.map((conn) => ({
-      ...conn,
-      apiKey: maskApiKey(conn.apiKey),
-    }));
-
-    return NextResponse.json(masked);
+    return NextResponse.json(connections.map(serializeConnection));
   } catch (error) {
     console.error('Failed to fetch service connections:', getErrorInfo(error));
     return NextResponse.json(
@@ -234,10 +229,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     await ensureDefaultForType(type);
     clearConnectionMemo();
 
-    return NextResponse.json({
-      ...connection,
-      apiKey: maskApiKey(connection.apiKey),
-    });
+    return NextResponse.json(serializeConnection(connection));
   } catch (error) {
     const responseStatus = (error as { response?: { status?: number } })?.response?.status;
     if (typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500) {

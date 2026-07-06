@@ -919,7 +919,9 @@ function HistoryTab() {
   const fromStr = dateRange.from ? dateRange.from.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
   const toStr = dateRange.to ? dateRange.to.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : fromStr;
   const rangeLabel = fromStr === toStr ? fromStr : `${fromStr} — ${toStr}`;
-  const hasMore = items.length < total;
+  // hasNextPage, not items.length < total: getNextPageParam stops on an empty
+  // page even when `total` over-reports, and the button must disappear with it.
+  const hasMore = historyQuery.hasNextPage;
 
   return (
     <div className="space-y-3">

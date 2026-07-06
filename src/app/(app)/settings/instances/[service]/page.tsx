@@ -176,6 +176,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           type,
           url: vars.url,
           apiKey: vars.apiKey,
+          // So a masked key is unmasked against THIS instance, not the type's default.
+          ...(editingId && { instanceId: editingId }),
           ...(isQbt && { username: vars.username || 'admin' }),
         }),
       });

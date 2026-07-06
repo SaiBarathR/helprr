@@ -729,6 +729,18 @@ function QueueTab({
   }
 
   if (sorted.length === 0) {
+    // A dead arr instance must not masquerade as an empty queue (mirrors WantedTab).
+    if (queueQuery.isError) {
+      return (
+        <div className="text-center py-16 text-muted-foreground">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40 text-red-500" />
+          <p className="text-sm">Couldn&apos;t load the queue</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => queueQuery.refetch()}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="text-center py-16 text-muted-foreground">
         <Download className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -1176,6 +1188,18 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
   }
 
   if (queue.length === 0) {
+    // A dead arr instance must not masquerade as "no failed imports" (mirrors WantedTab).
+    if (queueQuery.isError) {
+      return (
+        <div className="text-center py-16 text-muted-foreground">
+          <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40 text-red-500" />
+          <p className="text-sm">Couldn&apos;t load failed imports</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => queueQuery.refetch()}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+          </Button>
+        </div>
+      );
+    }
     return (
       <div className="text-center py-16 text-muted-foreground">
         <FileWarning className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -1249,7 +1273,9 @@ interface WantedRecord {
  */
 function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
-  const [searching, setSearching] = useState<string | null>(null);
+  // Keyed per item: overlapping searches on two items must not clear each
+  // other's spinner (a single string flag would).
+  const [searching, setSearching] = useState<ReadonlySet<string>>(new Set());
 
   // The server filters and paginates for exactly this source set + instance, so
   // every filter combination is a genuinely different result — key on all of them
@@ -1285,7 +1311,7 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
 
   async function handleSearch(record: WantedRecord) {
     const key = `${record.source}-${record.id}`;
-    setSearching(key);
+    setSearching((prev) => new Set(prev).add(key));
     // Route the search command to the instance the wanted item lives on.
     const qs = record.instanceId ? `?instanceId=${record.instanceId}` : '';
     try {
@@ -1312,7 +1338,13 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
       if (!res.ok) throw new Error(`Search failed (${res.status})`);
       toast.success('Search started');
     } catch { toast.error('Search failed'); }
-    finally { setSearching(null); }
+    finally {
+      setSearching((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }
   }
 
   if (loading) {
@@ -1406,9 +1438,9 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
               variant="ghost"
               className="h-7 w-7 p-0 shrink-0"
               onClick={() => handleSearch(record)}
-              disabled={searching === key}
+              disabled={searching.has(key)}
             >
-              {searching === key ? (
+              {searching.has(key) ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Search className="h-3.5 w-3.5" />
