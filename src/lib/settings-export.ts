@@ -169,6 +169,8 @@ export interface ExportedNotificationRule {
   enabled: boolean;
   tagFilter: string | null;
   qualityFilter: string | null;
+  // Optional: absent in exports created before the muted-users filter existed.
+  mutedUserFilter?: string | null;
 }
 
 export interface ExportedNotificationDevice {

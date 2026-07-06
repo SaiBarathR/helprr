@@ -216,6 +216,9 @@ model NotificationPreference {
   enabled        Boolean          @default(true)
   tagFilter      String?
   qualityFilter  String?
+  // Comma-separated Jellyfin user names/ids whose playback never notifies this
+  // device (jellyfinPlaybackStart only)
+  mutedUserFilter String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 

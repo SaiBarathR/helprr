@@ -1809,18 +1809,68 @@ export class PollingService {
         newSessionCount: newSessions.length,
       }, { scope: 'polling' });
 
-      for (const session of newSessions) {
+      const startedSessions = newSessions.filter((s) => s.NowPlayingItem);
+
+      // Map the streaming Jellyfin users to Helprr accounts (batched, once per
+      // cycle) so playback pushes are user-aware: the history row is stamped to
+      // the streamer and they are not pushed about their own stream. Sessions
+      // from unlinked Jellyfin users keep today's broadcast behavior.
+      let ownerByJellyfinId = new Map<string, string>();
+      let activeUserIds: string[] = [];
+      if (startedSessions.length) {
+        const jellyfinIds = Array.from(
+          new Set(
+            startedSessions
+              .map((s) => s.UserId)
+              .filter((id): id is string => !!id)
+          )
+        );
+        if (jellyfinIds.length) {
+          ownerByJellyfinId = new Map(
+            (
+              await prisma.user.findMany({
+                where: { jellyfinUserId: { in: jellyfinIds } },
+                select: { id: true, jellyfinUserId: true },
+              })
+            ).map((u) => [u.jellyfinUserId as string, u.id])
+          );
+        }
+        if (ownerByJellyfinId.size) {
+          activeUserIds = (
+            await prisma.user.findMany({
+              where: { status: 'active' },
+              select: { id: true },
+            })
+          ).map((u) => u.id);
+        }
+      }
+
+      for (const session of startedSessions) {
         const item = session.NowPlayingItem;
         if (item) {
           const title = item.SeriesName
             ? `${item.SeriesName} - ${item.Name}`
             : item.Name;
+          const ownerId = session.UserId
+            ? ownerByJellyfinId.get(session.UserId) ?? null
+            : null;
           await this.notifyAndLog({
             eventType: 'jellyfinPlaybackStart',
             title: 'Playback Started',
             body: `${session.UserName} is watching ${title}`,
-            metadata: { source: 'jellyfin', sessionId: session.Id, redirect: '/jellyfin' },
+            metadata: {
+              source: 'jellyfin',
+              sessionId: session.Id,
+              // Matched against each device's muted-users filter at delivery.
+              jellyfinUserId: session.UserId,
+              jellyfinUserName: session.UserName,
+              redirect: '/jellyfin',
+            },
             url: '/jellyfin',
+            // Everyone but the streamer; an empty list (sole-user instance)
+            // still suppresses the self-push while the history row is kept.
+            userIds: ownerId ? activeUserIds.filter((id) => id !== ownerId) : undefined,
+            ownerUserId: ownerId,
           }, { service: 'jellyfin', reason: 'playback-start', sessionId: session.Id });
         }
       }
