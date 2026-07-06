@@ -253,7 +253,7 @@ model PollingState {
   id                  String            @id @default(cuid())
   serviceConnectionId String            @unique
   connection          ServiceConnection @relation(fields: [serviceConnectionId], references: [id], onDelete: Cascade)
-  lastQueueIds        Json              @default("[]")
+  lastQueueIds        Json?             // null = queue baseline not yet captured (first-run marker; see getPollingState)
   lastHistoryDate     DateTime?
   lastHistoryId       Int?              // max history id at lastHistoryDate; tie-breaks same-timestamp records
   lastHistorySeenIds  Json              @default("[]") // ids seen at lastHistoryDate; caps same-ts burst gaps

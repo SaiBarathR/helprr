@@ -92,7 +92,7 @@ export async function register() {
         await startBackgroundServices();
       } catch (e) {
         const delayMs = Math.min(5_000 * 2 ** attempt, START_RETRY_MAX_MS);
-        console.warn(`[Helprr] Could not start polling service (retrying in ${Math.round(delayMs / 1000)}s):`, e);
+        console.warn(`[Helprr] Could not start polling service (attempt ${attempt + 1}, retrying in ${Math.round(delayMs / 1000)}s):`, e);
         setTimeout(() => void startWithRetry(attempt + 1), delayMs).unref();
       }
     };
