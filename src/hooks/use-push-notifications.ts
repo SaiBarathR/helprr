@@ -134,9 +134,19 @@ export function usePushNotifications() {
       // network hiccup doesn't leave the toggle "enabled" but pushes silent.
       const scheduleRetry = () => {
         retryTimerRef.current = setTimeout(() => {
-          void reconcileSubscription(sub).catch((err) => {
-            console.warn('[Push] subscription check retry failed:', err);
-          });
+          void reconcileSubscription(sub)
+            .then((result) => {
+              // Apply the retry's outcome: if the server says the subscription
+              // was revoked, reflect it in the UI (reconcileSubscription already
+              // unsubscribed the browser) instead of keeping "enabled" shown.
+              if (result.done && result.revoked) {
+                setIsSubscribed(false);
+                setSubscriptionEndpoint(null);
+              }
+            })
+            .catch((err) => {
+              console.warn('[Push] subscription check retry failed:', err);
+            });
         }, 5000);
       };
       let revoked = false;
