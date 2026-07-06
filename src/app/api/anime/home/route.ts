@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeHome } from '@/lib/anilist-client';
-import { normalizeAniListItem, isMovieFormat } from '@/lib/anilist-helpers';
-import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, seriesLibraryStatusFromMatches, type Tagged } from '@/lib/discover';
-import { loadLibraryLinksForAnilistIds, type AnilistLibraryLink } from '@/lib/anilist-series-mapping';
-import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
-import type { AniListMediaSeason, AniListListItem, AniListMedia } from '@/types/anilist';
+import { normalizeAniListItem } from '@/lib/anilist-helpers';
+import { annotateAnimeItems } from '@/lib/anime-library';
+import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
+import type { AniListMediaSeason, AniListMedia } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
 
 interface SeasonWindow {
@@ -21,47 +20,6 @@ const HOME_PER_PAGE_DEFAULT = 10;
 async function getLibraries() {
   const { movies, series } = await loadTaggedLibrary();
   return { movies, series };
-}
-
-function annotateAnimeItems(
-  items: AniListListItem[],
-  movies: Tagged<RadarrMovie>[],
-  series: Tagged<SonarrSeries>[],
-  mappingLinks: Map<number, AnilistLibraryLink[]>
-): (AniListListItem & { library?: DiscoverLibraryStatus })[] {
-  if (!movies.length && !series.length) return items;
-
-  const lookups = buildLibraryLookups(movies, series);
-  const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
-  for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
-
-  return items.map((item) => {
-    if (isMovieFormat(item.format)) {
-      return {
-        ...item,
-        library: matchMovieInLibrary(lookups, {
-          title: item.title,
-          year: item.year,
-        }),
-      };
-    }
-
-    // Reverse mapping (AniList entry → Sonarr series) catches season splits that
-    // title matching misses; intersect with the live library to drop stale links.
-    const matched = (mappingLinks.get(item.id) ?? [])
-      .map((link) => seriesByKey.get(`${link.sonarrInstanceId}:${link.sonarrSeriesId}`))
-      .filter((show): show is Tagged<SonarrSeries> => !!show);
-
-    return {
-      ...item,
-      library: matched.length
-        ? seriesLibraryStatusFromMatches(matched)
-        : matchSeriesInLibrary(lookups, {
-            title: item.title,
-            year: item.year,
-          }),
-    };
-  });
 }
 
 function getCurrentSeasonClient(): { season: AniListMediaSeason; year: number } {
@@ -117,14 +75,22 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const currentSeason: SeasonWindow = current;
     const nextSeasonInfo: SeasonWindow = next;
 
+    const [trending, season, nextSeason, popular, top] = await Promise.all([
+      normalizeAndAnnotate(result.trending),
+      normalizeAndAnnotate(result.season),
+      normalizeAndAnnotate(result.nextSeason),
+      normalizeAndAnnotate(result.popular),
+      normalizeAndAnnotate(result.top),
+    ]);
+
     return NextResponse.json({
       currentSeason,
       nextSeasonInfo,
-      trending: normalizeAndAnnotate(result.trending),
-      season: normalizeAndAnnotate(result.season),
-      nextSeason: normalizeAndAnnotate(result.nextSeason),
-      popular: normalizeAndAnnotate(result.popular),
-      top: normalizeAndAnnotate(result.top),
+      trending,
+      season,
+      nextSeason,
+      popular,
+      top,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load anime home data';

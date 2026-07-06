@@ -12,13 +12,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, Bookmark, ChevronRight, MoreVertical, Plus, Star } from 'lucide-react';
+import { Bell, Bookmark, Check, ChevronRight, MoreVertical, Plus, Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { buildRadarrAddParams, buildSonarrAddParams, isMovieFormat } from '@/lib/anilist-helpers';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
 import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';
 import type { AniListMediaFormat, AniListMediaType } from '@/types/anilist';
+import type { DiscoverLibraryStatus } from '@/types';
 
 interface MediaItem {
   id: number;
@@ -31,6 +32,7 @@ interface MediaItem {
   type?: AniListMediaType | null;
   chapters?: number | null;
   volumes?: number | null;
+  library?: DiscoverLibraryStatus;
 }
 
 interface AnimeMediaRailProps {
@@ -45,14 +47,17 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
-  // A watch-status hit on the anilist id means this anime is confirmed in the
-  // Sonarr library (the map is built FROM the arr library, matched into Jellyfin
-  // — see jellyfin-watch-status.ts). A hit is never a false positive, so we use
-  // it to hide the add icon. Caveat: it only covers downloaded + mapped *series*
-  // for Jellyfin-linked users — movies and non-Jellyfin users are handled later
-  // (see ANIME_ADD_LIBRARY_AWARENESS_PLAN.md).
+  // `library` is the server-annotated arr membership (Jellyfin-free, covers
+  // movies and not-yet-downloaded series). The watch-status hit still matters
+  // for surfaces whose data source isn't annotated (e.g. manga-detail
+  // recommendations) — a hit is never a false positive.
   const watchStatus = lookup({ anilistId: item.id });
-  const inLibrary = watchStatus != null;
+  const inLibrary = item.library?.exists === true || watchStatus != null;
+  // Deep-link to the in-app detail of the library copy; ?instance= because arr
+  // ids are only unique per instance (same scheme as OpenInInstances).
+  const libraryHref = item.library?.exists && item.library.id != null
+    ? `${item.library.type === 'movie' ? '/movies' : '/series'}/${item.library.id}${item.library.instanceId ? `?instance=${item.library.instanceId}` : ''}`
+    : null;
 
   const imgSrc = item.coverImage
     ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
@@ -93,6 +98,15 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
           {canAdd && (
             <Link href={addHref} aria-label={`Add to ${addService}`} className={iconClass}>
               <Plus className="h-3.5 w-3.5" />
+            </Link>
+          )}
+          {libraryHref && (
+            <Link
+              href={libraryHref}
+              aria-label="Open in library"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-green-400 hover:bg-background/80 transition-colors"
+            >
+              <Check className="h-3 w-3" strokeWidth={3} />
             </Link>
           )}
           <button
@@ -162,6 +176,14 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
                     <Link href={addHref}>
                       <Plus className="mr-2 h-4 w-4" />
                       Add to {addService}
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {libraryHref && (
+                  <DropdownMenuItem asChild>
+                    <Link href={libraryHref}>
+                      <Check className="mr-2 h-4 w-4" />
+                      Open in library
                     </Link>
                   </DropdownMenuItem>
                 )}

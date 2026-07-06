@@ -7,23 +7,13 @@ import {
 } from '@/lib/anilist-client';
 import {
   normalizeAniListItem,
-  isMovieFormat,
 } from '@/lib/anilist-helpers';
-import {
-  buildLibraryLookups,
-  matchMovieInLibrary,
-  matchSeriesInLibrary,
-  seriesLibraryStatusFromMatches,
-  type Tagged,
-} from '@/lib/discover';
-import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
-import type { RadarrMovie, SonarrSeries, DiscoverLibraryStatus } from '@/types';
+import { annotateAnimeItems } from '@/lib/anime-library';
 import { withApiLogging } from '@/lib/api-logger';
 import type {
   AniListMediaFormat,
   AniListMediaSeason,
   AniListMediaStatus,
-  AniListListItem,
   AnimeBrowseSort,
 } from '@/types/anilist';
 
@@ -62,47 +52,6 @@ const VALID_STATUSES = new Set<AniListMediaStatus>([
 async function getLibraries() {
   const { movies, series } = await loadTaggedLibrary();
   return { movies, series };
-}
-
-async function annotateAnimeItems(
-  items: AniListListItem[],
-  movies: Tagged<RadarrMovie>[],
-  series: Tagged<SonarrSeries>[]
-): Promise<(AniListListItem & { library?: DiscoverLibraryStatus })[]> {
-  if (!movies.length && !series.length) return items;
-
-  const lookups = buildLibraryLookups(movies, series);
-  // Reverse mapping (AniList entry → Sonarr series) catches season splits that
-  // title matching misses; intersect with the live library below.
-  const mappingLinks = await loadLibraryLinksForAnilistIds(items.map((item) => item.id));
-  const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
-  for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
-
-  return items.map((item) => {
-    if (isMovieFormat(item.format)) {
-      return {
-        ...item,
-        library: matchMovieInLibrary(lookups, {
-          title: item.title,
-          year: item.year,
-        }),
-      };
-    }
-
-    const matched = (mappingLinks.get(item.id) ?? [])
-      .map((link) => seriesByKey.get(`${link.sonarrInstanceId}:${link.sonarrSeriesId}`))
-      .filter((show): show is Tagged<SonarrSeries> => !!show);
-
-    return {
-      ...item,
-      library: matched.length
-        ? seriesLibraryStatusFromMatches(matched)
-        : matchSeriesInLibrary(lookups, {
-            title: item.title,
-            year: item.year,
-          }),
-    };
-  });
 }
 
 function parsePositiveInteger(value: string | null, fallback: number) {
