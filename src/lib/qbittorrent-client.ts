@@ -311,6 +311,10 @@ export class QBittorrentClient {
     return this.get('/api/v2/torrents/categories');
   }
 
+  async getDefaultSavePath(): Promise<string> {
+    return this.get<string>('/api/v2/app/defaultSavePath');
+  }
+
   // Per-torrent speed limits
   async setTorrentDownloadLimit(hashes: string, limit: number): Promise<void> {
     const params = new URLSearchParams();
