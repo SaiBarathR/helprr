@@ -51,6 +51,12 @@ const DISK_ALERT_REMINDER_MS = 6 * 60 * 60 * 1000; // 6 hours
 // but a longer tail makes the growth-rate fit more stable + survives gaps).
 const DISK_SNAPSHOT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
+// How long CleanupHistory and settled ScheduledAlertOccurrence rows are kept.
+// Both tables otherwise grow unbounded: auto-run cleaners write rows every
+// cycle (including skipped/dryRunPreview), and a standing episode/airing alert
+// accrues one terminal occurrence row per episode forever.
+const AUDIT_HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
 function localDateOnly(input: Date, timeZone: string): Date {
   return new Date(`${getLocalDateKey(input, timeZone)}T00:00:00.000Z`);
 }
@@ -225,6 +231,21 @@ type HistoryCursorState = {
 function parseSeenIds(raw: unknown): number[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
+}
+
+// PollingState existence doubles as the first-run marker: a freshly created row
+// means the instance has never been polled, so its pre-existing queue/torrent
+// items must baseline silently instead of firing a burst of stale "new item"
+// pushes (initial setup, connection re-add). History polling already baselines
+// via the null cursor; this covers the queue/torrent diffing. pollSeerr keeps
+// its own equivalent guard.
+async function getPollingState(serviceConnectionId: string) {
+  const existing = await prisma.pollingState.findUnique({ where: { serviceConnectionId } });
+  if (existing) return { state: existing, firstRun: false };
+  const state = await prisma.pollingState.create({
+    data: { serviceConnectionId, lastQueueIds: [] },
+  });
+  return { state, firstRun: true };
 }
 
 function historyCursorFromState(state: {
@@ -1083,11 +1104,7 @@ export class PollingService {
       const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
       try {
-        const state = await prisma.pollingState.upsert({
-          where: { serviceConnectionId: instanceId },
-          update: {},
-          create: { serviceConnectionId: instanceId, lastQueueIds: [] },
-        });
+        const { state, firstRun } = await getPollingState(instanceId);
 
         // Queue polling
         const tagMap = await buildTagMap(client);
@@ -1127,6 +1144,7 @@ export class PollingService {
           if (!prev) {
             // Item is new in the queue this cycle.
             newQueueCount++;
+            if (firstRun) continue; // baseline: pre-existing item, not new
             if (currentIssue === 'import') {
               importIssueCount++;
               const redirect = failedTabHref;
@@ -1311,11 +1329,7 @@ export class PollingService {
       const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
       try {
-        const state = await prisma.pollingState.upsert({
-          where: { serviceConnectionId: instanceId },
-          update: {},
-          create: { serviceConnectionId: instanceId, lastQueueIds: [] },
-        });
+        const { state, firstRun } = await getPollingState(instanceId);
 
         const tagMap = await buildTagMap(client);
         const queue = await fetchAllQueueRecords(client);
@@ -1351,6 +1365,7 @@ export class PollingService {
 
           if (!prev) {
             newQueueCount++;
+            if (firstRun) continue; // baseline: pre-existing item, not new
             if (currentIssue === 'import') {
               importIssueCount++;
               const redirect = failedTabHref;
@@ -1524,11 +1539,7 @@ export class PollingService {
       const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
       try {
-        const state = await prisma.pollingState.upsert({
-          where: { serviceConnectionId: instanceId },
-          update: {},
-          create: { serviceConnectionId: instanceId, lastQueueIds: [] },
-        });
+        const { state, firstRun } = await getPollingState(instanceId);
 
         const tagMap = await buildTagMap(client);
         const queue = await fetchAllQueueRecords(client);
@@ -1561,6 +1572,7 @@ export class PollingService {
               : null;
 
           if (!prev) {
+            if (firstRun) continue; // baseline: pre-existing item, not new
             if (currentIssue === 'import') {
               collector.add({
                 eventType: 'importFailed',
@@ -1694,11 +1706,7 @@ export class PollingService {
     const connection = await getDefaultConnection('QBITTORRENT');
     if (!connection) return;
 
-    const state = await prisma.pollingState.upsert({
-      where: { serviceConnectionId: connection.id },
-      update: {},
-      create: { serviceConnectionId: connection.id, lastQueueIds: [] },
-    });
+    const { state, firstRun } = await getPollingState(connection.id);
 
     const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
     const collector = new PollNotificationCollector();
@@ -1719,7 +1727,7 @@ export class PollingService {
     // Detect new torrents (added)
     for (const torrent of torrents) {
       const prev = prevMap.get(torrent.hash);
-      if (!prev) {
+      if (!prev && !firstRun) {
         collector.add({
           eventType: 'torrentAdded',
           title: 'Torrent Added',
@@ -2470,9 +2478,11 @@ export class PollingService {
     await collector.flush({ enabled: settings.notificationGroupingEnabled, notify: this.notifyAndLog.bind(this) });
   }
 
-  // Prune NotificationHistory rows past the configured retention window. The
-  // poll loop runs every ~30s, so throttle the actual DELETE to once/day. The
-  // @@index([createdAt]) keeps the sweep cheap even when nothing is due.
+  // Prune NotificationHistory rows past the configured retention window, plus
+  // CleanupHistory and settled ScheduledAlertOccurrence rows past the fixed
+  // AUDIT_HISTORY_RETENTION_MS window. The poll loop runs every ~30s, so
+  // throttle the actual DELETEs to once/day. Indexed columns (createdAt /
+  // [status, notifyAt]) keep the sweeps cheap even when nothing is due.
   private async checkNotificationRetention(): Promise<void> {
     const now = Date.now();
     if (now - this.lastNotificationPruneAt < 86_400_000) return;
@@ -2483,13 +2493,30 @@ export class PollingService {
     const { count } = await prisma.notificationHistory.deleteMany({
       where: { createdAt: { lt: cutoff } },
     });
+
+    const auditCutoff = new Date(now - AUDIT_HISTORY_RETENTION_MS);
+    const { count: cleanupCount } = await prisma.cleanupHistory.deleteMany({
+      where: { createdAt: { lt: auditCutoff } },
+    });
+    // Terminal statuses only — pending rows stay until delivery resolves them.
+    // Safe against re-sends: upsertOccurrencesForAlert never re-creates a
+    // candidate whose notifyAt is in the past.
+    const { count: occurrenceCount } = await prisma.scheduledAlertOccurrence.deleteMany({
+      where: { status: { in: ['sent', 'failed', 'cancelled'] }, notifyAt: { lt: auditCutoff } },
+    });
+
     // Advance the throttle only after a successful sweep, so a transient DB
     // error retries on the next cycle instead of being skipped for a full day.
     this.lastNotificationPruneAt = now;
-    if (count > 0) {
+    if (count > 0 || cleanupCount > 0 || occurrenceCount > 0) {
       logger.info(
-        'Pruned old notification history',
-        { deleted: count, retentionDays: days },
+        'Pruned old history rows',
+        {
+          notifications: count,
+          notificationRetentionDays: days,
+          cleanupHistory: cleanupCount,
+          alertOccurrences: occurrenceCount,
+        },
         { scope: 'polling' },
       );
     }

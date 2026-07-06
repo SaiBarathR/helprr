@@ -9,24 +9,22 @@ import type {
 
 const LOG = 'cleanup-scheduler';
 
-// Hard cap on a single cleanup cycle. Without this, a stuck Sonarr/Radarr/qBit
-// HTTP call would pin `inFlight` forever and silently no-op every subsequent
-// tick. 5 minutes is well above a normal cycle (~seconds) but short enough that
-// recovery is reasonable.
+// Watchdog on a single cleanup cycle. Every upstream HTTP call carries its own
+// 30s axios timeout, so a cycle always settles eventually; the watchdog only
+// flags one that runs long. It must NOT abandon the cycle early — `inFlight`
+// has to stay set until the cycle actually settles, or the next tick starts a
+// second concurrent cycle that double-strikes/double-deletes the same torrents
+// when the slow one finally returns.
 const CYCLE_TIMEOUT_MS = 5 * 60_000;
 
-async function runWithTimeout<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<null>((resolve) => {
-    timer = setTimeout(() => {
-      logger.error(`${label} cycle exceeded ${CYCLE_TIMEOUT_MS}ms watchdog — abandoning`, {}, { scope: LOG });
-      resolve(null);
-    }, CYCLE_TIMEOUT_MS);
-  });
+async function runWithTimeout<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const timer = setTimeout(() => {
+    logger.error(`${label} cycle exceeded ${CYCLE_TIMEOUT_MS}ms watchdog — next cycle is blocked until it settles`, {}, { scope: LOG });
+  }, CYCLE_TIMEOUT_MS);
   try {
-    return await Promise.race([fn(), timeout]);
+    return await fn();
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }
 
