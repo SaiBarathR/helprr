@@ -47,6 +47,20 @@ import { RemoveQueueDialog, type RemoveQueueOptions } from './_components/remove
 
 // --- Status helpers ---
 
+// Shared error empty-state for the tabs: a dead arr instance must not
+// masquerade as an empty list.
+function TabErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="text-center py-16 text-muted-foreground">
+      <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40 text-red-500" />
+      <p className="text-sm">{message}</p>
+      <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
+        <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
+      </Button>
+    </div>
+  );
+}
+
 function statusColor(status: string, tracked?: string) {
   if (tracked === 'warning' || status === 'warning') return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
   if (tracked === 'error' || status === 'failed') return 'bg-red-500/10 text-red-500 border-red-500/20';
@@ -729,17 +743,8 @@ function QueueTab({
   }
 
   if (sorted.length === 0) {
-    // A dead arr instance must not masquerade as an empty queue (mirrors WantedTab).
     if (queueQuery.isError) {
-      return (
-        <div className="text-center py-16 text-muted-foreground">
-          <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40 text-red-500" />
-          <p className="text-sm">Couldn&apos;t load the queue</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => queueQuery.refetch()}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
-          </Button>
-        </div>
-      );
+      return <TabErrorState message="Couldn't load the queue" onRetry={() => queueQuery.refetch()} />;
     }
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -1188,17 +1193,8 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
   }
 
   if (queue.length === 0) {
-    // A dead arr instance must not masquerade as "no failed imports" (mirrors WantedTab).
     if (queueQuery.isError) {
-      return (
-        <div className="text-center py-16 text-muted-foreground">
-          <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40 text-red-500" />
-          <p className="text-sm">Couldn&apos;t load failed imports</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => queueQuery.refetch()}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
-          </Button>
-        </div>
-      );
+      return <TabErrorState message="Couldn't load failed imports" onRetry={() => queueQuery.refetch()} />;
     }
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -1264,6 +1260,12 @@ interface WantedRecord {
   artist?: { id: number; artistName: string };
 }
 
+// Row identity for list keys and per-item search state: multi-instance setups
+// can repeat a (source, id) pair, so the instance must be part of the key.
+function wantedRecordKey(record: WantedRecord): string {
+  return `${record.source}-${record.instanceId ?? 'default'}-${record.id}`;
+}
+
 /**
  * Render the Wanted tab showing either missing or cutoff items with per-item search and pagination.
  *
@@ -1310,7 +1312,7 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   }, [wantedQuery.isError, wantedQuery.errorUpdatedAt]);
 
   async function handleSearch(record: WantedRecord) {
-    const key = `${record.source}-${record.id}`;
+    const key = wantedRecordKey(record);
     setSearching((prev) => new Set(prev).add(key));
     // Route the search command to the instance the wanted item lives on.
     const qs = record.instanceId ? `?instanceId=${record.instanceId}` : '';
@@ -1353,15 +1355,7 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
 
   if (records.length === 0) {
     if (wantedQuery.isError) {
-      return (
-        <div className="text-center py-16 text-muted-foreground">
-          <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-40 text-red-500" />
-          <p className="text-sm">Couldn&apos;t load wanted items</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => wantedQuery.refetch()}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry
-          </Button>
-        </div>
-      );
+      return <TabErrorState message="Couldn't load wanted items" onRetry={() => wantedQuery.refetch()} />;
     }
     return (
       <div className="text-center py-16 text-muted-foreground">
@@ -1383,7 +1377,7 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
   return (
     <div className="space-y-1 animate-list-in">
       {records.map((record) => {
-        const key = `${record.source}-${record.id}`;
+        const key = wantedRecordKey(record);
         const isEpisode = record.mediaType === 'episode';
         const isAlbum = record.mediaType === 'album';
         const albumYear = record.releaseDate ? new Date(record.releaseDate).getFullYear() : undefined;
