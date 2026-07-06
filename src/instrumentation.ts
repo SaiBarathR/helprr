@@ -32,7 +32,7 @@ export async function register() {
     const { getOrCreateAppSettings } = await import('@/lib/app-settings');
     const { configureApiLogging } = await import('@/lib/api-logger');
 
-    try {
+    const startBackgroundServices = async () => {
       const settings = await getOrCreateAppSettings();
       const { setAppTimeZone } = await import('@/lib/timezone');
       setAppTimeZone(settings.timeZone);
@@ -79,8 +79,23 @@ export async function register() {
       } catch (cleanupErr) {
         console.warn('[Helprr] Could not start cleanup jobs:', cleanupErr);
       }
-    } catch (e) {
-      console.warn('[Helprr] Could not start polling service:', e);
-    }
+    };
+
+    // A DB that isn't reachable yet (e.g. Postgres restart racing app boot)
+    // must not leave polling, push, and cleanup silently dead until a manual
+    // restart — retry with capped backoff until the settings load succeeds.
+    // pollingService.start is idempotent, so a retry firing after an admin
+    // already restarted the service via the settings API is harmless.
+    const START_RETRY_MAX_MS = 5 * 60_000;
+    const startWithRetry = async (attempt: number): Promise<void> => {
+      try {
+        await startBackgroundServices();
+      } catch (e) {
+        const delayMs = Math.min(5_000 * 2 ** attempt, START_RETRY_MAX_MS);
+        console.warn(`[Helprr] Could not start polling service (retrying in ${Math.round(delayMs / 1000)}s):`, e);
+        setTimeout(() => void startWithRetry(attempt + 1), delayMs).unref();
+      }
+    };
+    await startWithRetry(0);
   }
 }
