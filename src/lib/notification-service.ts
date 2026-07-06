@@ -488,6 +488,34 @@ export async function notifyEvent(event: {
     ? EVENT_TYPE_TO_CAPABILITY[event.eventType]
     : undefined;
 
+  if (!metadataRedirect && targetUrl) {
+    metadata.redirect = targetUrl;
+  }
+
+  // Write the history row BEFORE the push fanout: it doubles as the dedupe
+  // marker (upcomingPremiere/digest suppression reads NotificationHistory), so
+  // writing it after sending meant a failed write re-pushed the same event to
+  // every device on the next cycle. Write-first flips that to at-most-once:
+  // if this insert fails we throw without sending — every caller catches and
+  // logs, and cycle-driven events simply re-fire next poll. Delivery counts
+  // are patched into the row's metadata after the fanout.
+  const history = await prisma.notificationHistory.create({
+    data: {
+      eventType: event.eventType,
+      userId: event.ownerUserId ?? null,
+      title: event.title,
+      body: event.body,
+      dedupeKey: event.dedupeKey ?? null,
+      metadata: JSON.parse(JSON.stringify(metadata)),
+    },
+  }).catch((err) => {
+    logger.warn('Notification history write failed — push send skipped', {
+      eventType: event.eventType,
+      reason: err instanceof Error ? err.message : String(err),
+    }, { scope: 'notifications' });
+    throw err;
+  });
+
   type SendOutcome = { kind: 'sent' } | { kind: 'failed' } | { kind: 'skipped' };
   const results = await mapSettled(subscriptions, PUSH_FANOUT_CONCURRENCY, async (sub): Promise<SendOutcome> => {
       if (shouldDeferPush(sub)) return { kind: 'skipped' };
@@ -531,19 +559,10 @@ export async function notifyEvent(event: {
     }, { scope: 'notifications' });
   }
 
-  if (!metadataRedirect && targetUrl) {
-    metadata.redirect = targetUrl;
-  }
-
-  let historyWritten = false;
   try {
-    await prisma.notificationHistory.create({
+    await prisma.notificationHistory.update({
+      where: { id: history.id },
       data: {
-        eventType: event.eventType,
-        userId: event.ownerUserId ?? null,
-        title: event.title,
-        body: event.body,
-        dedupeKey: event.dedupeKey ?? null,
         metadata: JSON.parse(JSON.stringify({
           ...metadata,
           sentCount: sent,
@@ -552,31 +571,29 @@ export async function notifyEvent(event: {
         })),
       },
     });
-    historyWritten = true;
   } catch (err) {
-    logger.warn('Notification history write failed', {
+    // The dedupe row already exists; only the embedded counts are stale.
+    logger.warn('Notification history count update failed', {
       eventType: event.eventType,
       reason: err instanceof Error ? err.message : String(err),
       sentCount: sent,
     }, { scope: 'notifications' });
   }
-  if (historyWritten) {
-    if (sent > 0) {
-      logger.info('Notification history written', {
-        eventType: event.eventType,
-        sentCount: sent,
-        metadata: safeNotificationMetadata(metadata),
-      }, { scope: 'notifications' });
-    } else {
-      logger.info('Notification history written with no pushes sent', {
-        eventType: event.eventType,
-        subscriptionCount: subscriptions.length,
-        attempted,
-        skippedByPreference,
-        sentCount: sent,
-        metadata: safeMetadata,
-      }, { scope: 'notifications' });
-    }
+  if (sent > 0) {
+    logger.info('Notification history written', {
+      eventType: event.eventType,
+      sentCount: sent,
+      metadata: safeNotificationMetadata(metadata),
+    }, { scope: 'notifications' });
+  } else {
+    logger.info('Notification history written with no pushes sent', {
+      eventType: event.eventType,
+      subscriptionCount: subscriptions.length,
+      attempted,
+      skippedByPreference,
+      sentCount: sent,
+      metadata: safeMetadata,
+    }, { scope: 'notifications' });
   }
 
   logger.info('Notification event completed', {
@@ -585,7 +602,6 @@ export async function notifyEvent(event: {
     skippedByPreference,
     attempted,
     sentCount: sent,
-    historyWritten,
   }, { scope: 'notifications' });
 
   return sent;
