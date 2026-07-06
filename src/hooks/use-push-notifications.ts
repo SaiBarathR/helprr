@@ -24,6 +24,13 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
+function appServerKeyMatches(existing: ArrayBuffer | null, expected: Uint8Array): boolean {
+  if (!existing) return false;
+  const bytes = new Uint8Array(existing);
+  if (bytes.length !== expected.length) return false;
+  return bytes.every((b, i) => b === expected[i]);
+}
+
 function waitForServiceWorker(timeoutMs = 10000): Promise<ServiceWorkerRegistration> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -212,10 +219,17 @@ export function usePushNotifications() {
         return { success: false, error: msg };
       }
 
-      // 4. Subscribe to push
+      // 4. Subscribe to push. If the browser still holds a subscription made
+      // under a different applicationServerKey (server VAPID keys rotated),
+      // subscribe() throws InvalidStateError forever — drop the stale one first.
+      const appServerKey = urlBase64ToUint8Array(vapidKey);
+      const existing = await registration.pushManager.getSubscription();
+      if (existing && !appServerKeyMatches(existing.options.applicationServerKey, appServerKey)) {
+        await existing.unsubscribe();
+      }
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidKey).buffer as ArrayBuffer,
+        applicationServerKey: appServerKey.buffer as ArrayBuffer,
       });
 
       // 5. Send subscription to server
