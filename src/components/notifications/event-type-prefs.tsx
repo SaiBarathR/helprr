@@ -16,6 +16,10 @@ import { useMe, hasCapability } from '@/components/permission-provider';
 // metadata, so only they expose the filter inputs.
 const FILTERABLE_EVENTS = new Set(['grabbed', 'imported', 'downloadFailed', 'importFailed']);
 
+// Events that expose the muted-users filter (matched against the streaming
+// Jellyfin user at delivery — keep in sync with notification-service.ts).
+const MUTE_FILTERABLE_EVENTS = new Set(['jellyfinPlaybackStart']);
+
 interface Preference {
   id: string;
   subscriptionId: string;
@@ -23,6 +27,14 @@ interface Preference {
   enabled: boolean;
   tagFilter: string | null;
   qualityFilter: string | null;
+  mutedUserFilter: string | null;
+}
+
+type FilterFields = Pick<Preference, 'tagFilter' | 'qualityFilter' | 'mutedUserFilter'>;
+
+function parseMutedList(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value.split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 interface EventTypePrefsProps {
@@ -36,8 +48,21 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // Last server-confirmed filter values per event, so a failed save reverts only
   // the edited field locally (no full reload, which would race in-progress edits).
-  const savedFiltersRef = useRef<Map<string, { tagFilter: string | null; qualityFilter: string | null }>>(new Map());
+  const savedFiltersRef = useRef<Map<string, FilterFields>>(new Map());
   const me = useMe();
+
+  // Name chips for the playback mute filter. Listing Jellyfin users needs the
+  // sessions capability (admin); everyone else still has the free-text input.
+  const canListJellyfinUsers = hasCapability(me, 'jellyfin.sessions');
+  const { data: jellyfinUsersData } = useQuery({
+    queryKey: ['jellyfin-users'],
+    queryFn: jsonFetcher<{ users: Array<{ Id?: string; Name?: string }> }>('/api/jellyfin/users'),
+    enabled: canListJellyfinUsers,
+    staleTime: 5 * 60_000,
+  });
+  const jellyfinUserNames = (jellyfinUsersData?.users ?? [])
+    .map((u) => u.Name)
+    .filter((n): n is string => Boolean(n));
 
   const prefsQueryKey = ['notification-prefs', subscriptionEndpoint] as const;
   const { data: loadedPrefs, isLoading: loading } = useQuery({
@@ -59,7 +84,10 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- seed editable prefs from the query
     setPreferences(loadedPrefs);
     savedFiltersRef.current = new Map(
-      loadedPrefs.map((p) => [p.eventType, { tagFilter: p.tagFilter, qualityFilter: p.qualityFilter }]),
+      loadedPrefs.map((p) => [
+        p.eventType,
+        { tagFilter: p.tagFilter, qualityFilter: p.qualityFilter, mutedUserFilter: p.mutedUserFilter },
+      ]),
     );
     // Reset (not retain) when empty, so a save can't be posted to a stale
     // subscription after the endpoint changes.
@@ -73,6 +101,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
       enabled: boolean;
       tagFilter: string | null;
       qualityFilter: string | null;
+      mutedUserFilter: string | null;
     }) => {
       const res = await fetch('/api/notifications/preferences', {
         method: 'POST',
@@ -98,12 +127,14 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
         enabled,
         tagFilter: current?.tagFilter ?? null,
         qualityFilter: current?.qualityFilter ?? null,
+        mutedUserFilter: current?.mutedUserFilter ?? null,
       },
       {
         onSuccess: () => {
           savedFiltersRef.current.set(eventType, {
             tagFilter: current?.tagFilter ?? null,
             qualityFilter: current?.qualityFilter ?? null,
+            mutedUserFilter: current?.mutedUserFilter ?? null,
           });
           queryClient.invalidateQueries({ queryKey: prefsQueryKey });
         },
@@ -117,44 +148,75 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
     );
   }
 
-  function setFilterValue(eventType: string, field: 'tagFilter' | 'qualityFilter', value: string) {
+  function setFilterValue(
+    eventType: string,
+    field: 'tagFilter' | 'qualityFilter' | 'mutedUserFilter',
+    value: string,
+  ) {
     setPreferences((prev) =>
       prev.map((p) => (p.eventType === eventType ? { ...p, [field]: value } : p)),
     );
   }
 
-  function persistFilters(eventType: string) {
+  // `overrides` lets a chip click persist its freshly computed value without
+  // waiting for the setPreferences state update to land.
+  function persistFilters(eventType: string, overrides?: Partial<FilterFields>) {
     if (!subscriptionId) return;
     const pref = preferences.find((p) => p.eventType === eventType);
     if (!pref) return;
+    const merged = { ...pref, ...overrides };
     savePreference.mutate(
       {
         subscriptionId,
         eventType,
-        enabled: pref.enabled,
-        tagFilter: pref.tagFilter,
-        qualityFilter: pref.qualityFilter,
+        enabled: merged.enabled,
+        tagFilter: merged.tagFilter,
+        qualityFilter: merged.qualityFilter,
+        mutedUserFilter: merged.mutedUserFilter,
       },
       {
         onSuccess: () => {
-          savedFiltersRef.current.set(eventType, { tagFilter: pref.tagFilter, qualityFilter: pref.qualityFilter });
+          savedFiltersRef.current.set(eventType, {
+            tagFilter: merged.tagFilter,
+            qualityFilter: merged.qualityFilter,
+            mutedUserFilter: merged.mutedUserFilter,
+          });
           queryClient.invalidateQueries({ queryKey: prefsQueryKey });
         },
         onError: () => {
           toast.error('Failed to save filter');
           // Revert only this event's filter fields to the last saved values — a full
           // reload would race any edit in flight on another field.
-          const saved = savedFiltersRef.current.get(eventType) ?? { tagFilter: null, qualityFilter: null };
+          const saved =
+            savedFiltersRef.current.get(eventType)
+            ?? { tagFilter: null, qualityFilter: null, mutedUserFilter: null };
           setPreferences((prev) =>
             prev.map((p) =>
               p.eventType === eventType
-                ? { ...p, tagFilter: saved.tagFilter, qualityFilter: saved.qualityFilter }
+                ? {
+                    ...p,
+                    tagFilter: saved.tagFilter,
+                    qualityFilter: saved.qualityFilter,
+                    mutedUserFilter: saved.mutedUserFilter,
+                  }
                 : p,
             ),
           );
         },
       },
     );
+  }
+
+  function toggleMutedUser(eventType: string, name: string) {
+    const pref = preferences.find((p) => p.eventType === eventType);
+    const entries = parseMutedList(pref?.mutedUserFilter);
+    const lower = name.toLowerCase();
+    const next = entries.some((e) => e.toLowerCase() === lower)
+      ? entries.filter((e) => e.toLowerCase() !== lower)
+      : [...entries, name];
+    const value = next.length ? next.join(', ') : null;
+    setFilterValue(eventType, 'mutedUserFilter', value ?? '');
+    persistFilters(eventType, { mutedUserFilter: value });
   }
 
   function toggleExpanded(eventType: string) {
@@ -182,8 +244,9 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
             const pref = preferences.find((p) => p.eventType === eventType);
             const checked = pref?.enabled ?? true;
             const canFilter = FILTERABLE_EVENTS.has(eventType);
+            const canMuteUsers = MUTE_FILTERABLE_EVENTS.has(eventType);
             const isExpanded = expanded.has(eventType);
-            const hasFilter = Boolean(pref?.qualityFilter || pref?.tagFilter);
+            const hasFilter = Boolean(pref?.qualityFilter || pref?.tagFilter || pref?.mutedUserFilter);
             return (
               <Fragment key={eventType}>
                 <div className="grouped-row items-start">
@@ -192,7 +255,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
                     <div className="text-xs text-muted-foreground mt-0.5">
                       {meta.description}
                     </div>
-                    {canFilter && checked && (
+                    {(canFilter || canMuteUsers) && checked && (
                       <button
                         type="button"
                         onClick={() => toggleExpanded(eventType)}
@@ -235,6 +298,48 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
                     <p className="text-[11px] text-muted-foreground">
                       Comma-separated, case-insensitive. Leave blank to receive all. When set, this device is
                       only notified for matching items.
+                    </p>
+                  </div>
+                )}
+                {canMuteUsers && checked && isExpanded && (
+                  <div className="px-4 pb-3 pt-1 space-y-2">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Mute these users</label>
+                      {jellyfinUserNames.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {jellyfinUserNames.map((name) => {
+                            const muted = parseMutedList(pref?.mutedUserFilter).some(
+                              (e) => e.toLowerCase() === name.toLowerCase(),
+                            );
+                            return (
+                              <button
+                                key={name}
+                                type="button"
+                                onClick={() => toggleMutedUser(eventType, name)}
+                                aria-pressed={muted}
+                                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                                  muted
+                                    ? 'border-destructive/40 bg-destructive/10 text-destructive line-through'
+                                    : 'border-border bg-muted/40 text-foreground'
+                                }`}
+                              >
+                                {name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <Input
+                        value={pref?.mutedUserFilter ?? ''}
+                        onChange={(e) => setFilterValue(eventType, 'mutedUserFilter', e.target.value)}
+                        onBlur={() => void persistFilters(eventType)}
+                        placeholder="e.g. alice, bob"
+                        className="mt-1.5 h-8 text-sm"
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Comma-separated Jellyfin user names, case-insensitive. Playback started by these
+                      users won&apos;t notify this device. Leave blank to hear about everyone.
                     </p>
                   </div>
                 )}

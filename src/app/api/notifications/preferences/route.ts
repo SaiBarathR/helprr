@@ -60,7 +60,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const body = await request.json();
-    const { subscriptionId, eventType, enabled, tagFilter, qualityFilter } = body;
+    const { subscriptionId, eventType, enabled, tagFilter, qualityFilter, mutedUserFilter } = body;
     if (typeof subscriptionId !== 'string' || !subscriptionId.trim()) {
       return NextResponse.json({ error: 'subscriptionId is required' }, { status: 400 });
     }
@@ -92,6 +92,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const normalizedQuality = normalizeOptionalString(qualityFilter, 'qualityFilter');
     if (normalizedQuality.error) return normalizedQuality.error;
 
+    const normalizedMutedUsers = normalizeOptionalString(mutedUserFilter, 'mutedUserFilter');
+    if (normalizedMutedUsers.error) return normalizedMutedUsers.error;
+
     const subscription = await prisma.pushSubscription.findFirst({
       where: { id: subscriptionId, ...ownerScope(auth.user) },
       select: { id: true },
@@ -104,8 +107,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     const preference = await prisma.notificationPreference.upsert({
       where: { subscriptionId_eventType: { subscriptionId, eventType } },
-      update: { enabled, tagFilter: normalizedTag.value, qualityFilter: normalizedQuality.value },
-      create: { subscriptionId, eventType, enabled, tagFilter: normalizedTag.value, qualityFilter: normalizedQuality.value },
+      update: { enabled, tagFilter: normalizedTag.value, qualityFilter: normalizedQuality.value, mutedUserFilter: normalizedMutedUsers.value },
+      create: { subscriptionId, eventType, enabled, tagFilter: normalizedTag.value, qualityFilter: normalizedQuality.value, mutedUserFilter: normalizedMutedUsers.value },
     });
 
     return NextResponse.json(preference);

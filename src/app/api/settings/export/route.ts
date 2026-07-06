@@ -261,6 +261,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
           enabled: row.enabled,
           tagFilter: row.tagFilter ?? null,
           qualityFilter: row.qualityFilter ?? null,
+          mutedUserFilter: row.mutedUserFilter ?? null,
         });
         grouped.set(key, entry);
       }

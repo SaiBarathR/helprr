@@ -227,11 +227,27 @@ function parseFilterList(value: string | null | undefined): string[] {
 // (that's the point of "only 4K"). Events that aren't filterable, or prefs with
 // no filters, always pass.
 function matchesFilters(
-  pref: { tagFilter: string | null; qualityFilter: string | null } | undefined,
+  pref:
+    | { tagFilter: string | null; qualityFilter: string | null; mutedUserFilter: string | null }
+    | undefined,
   eventType: string,
   metadata: Record<string, unknown>,
 ): boolean {
-  if (!FILTERABLE_EVENTS.has(eventType) || !pref) return true;
+  if (!pref) return true;
+
+  // Playback events use a MUTE list instead: entries name the streaming
+  // Jellyfin user (by name or id); a match suppresses the push. New/unlisted
+  // users keep notifying by default.
+  if (eventType === 'jellyfinPlaybackStart') {
+    const muted = parseFilterList(pref.mutedUserFilter);
+    if (muted.length === 0) return true;
+    const identifiers = [metadata.jellyfinUserId, metadata.jellyfinUserName]
+      .filter((v): v is string => typeof v === 'string')
+      .map((v) => v.toLowerCase());
+    return !identifiers.some((v) => muted.includes(v));
+  }
+
+  if (!FILTERABLE_EVENTS.has(eventType)) return true;
 
   const qualityFilter = parseFilterList(pref.qualityFilter);
   if (qualityFilter.length > 0) {

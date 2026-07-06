@@ -394,6 +394,7 @@ async function applyNotificationDeviceInTxn(
         enabled: Boolean(rule.enabled),
         tagFilter: rule.tagFilter ?? null,
         qualityFilter: rule.qualityFilter ?? null,
+        mutedUserFilter: rule.mutedUserFilter ?? null,
       },
       create: {
         subscriptionId: subscription.id,
@@ -401,6 +402,7 @@ async function applyNotificationDeviceInTxn(
         enabled: Boolean(rule.enabled),
         tagFilter: rule.tagFilter ?? null,
         qualityFilter: rule.qualityFilter ?? null,
+        mutedUserFilter: rule.mutedUserFilter ?? null,
       },
     });
     applied += 1;
