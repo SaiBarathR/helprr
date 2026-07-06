@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import https from 'https';
 import util from 'util';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
 import { can } from '@/lib/permissions';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
@@ -499,22 +500,35 @@ export async function notifyEvent(event: {
   // if this insert fails we throw without sending — every caller catches and
   // logs, and cycle-driven events simply re-fire next poll. Delivery counts
   // are patched into the row's metadata after the fanout.
-  const history = await prisma.notificationHistory.create({
-    data: {
-      eventType: event.eventType,
-      userId: event.ownerUserId ?? null,
-      title: event.title,
-      body: event.body,
-      dedupeKey: event.dedupeKey ?? null,
-      metadata: JSON.parse(JSON.stringify(metadata)),
-    },
-  }).catch((err) => {
+  let history: { id: string };
+  try {
+    history = await prisma.notificationHistory.create({
+      data: {
+        eventType: event.eventType,
+        userId: event.ownerUserId ?? null,
+        title: event.title,
+        body: event.body,
+        dedupeKey: event.dedupeKey ?? null,
+        metadata: JSON.parse(JSON.stringify(metadata)),
+      },
+    });
+  } catch (err) {
+    // The unique (eventType, dedupeKey) index makes this insert the atomic
+    // dedupe gate: P2002 means a concurrent writer already claimed the key
+    // and is sending — this call is the duplicate, not an error.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      logger.info('Notification already recorded — skipping duplicate send', {
+        eventType: event.eventType,
+        dedupeKey: event.dedupeKey,
+      }, { scope: 'notifications' });
+      return 0;
+    }
     logger.warn('Notification history write failed — push send skipped', {
       eventType: event.eventType,
       reason: err instanceof Error ? err.message : String(err),
     }, { scope: 'notifications' });
     throw err;
-  });
+  }
 
   type SendOutcome = { kind: 'sent' } | { kind: 'failed' } | { kind: 'skipped' };
   const results = await mapSettled(subscriptions, PUSH_FANOUT_CONCURRENCY, async (sub): Promise<SendOutcome> => {
