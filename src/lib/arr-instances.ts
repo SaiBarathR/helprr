@@ -1,4 +1,5 @@
 import type { ServiceConnection, ServiceType } from '@prisma/client';
+import { ConfigurationError } from '@/lib/config-error';
 import { prisma } from '@/lib/db';
 
 export type ArrServiceType = 'SONARR' | 'RADARR' | 'LIDARR';
@@ -75,7 +76,7 @@ export async function resolveConnection(type: ServiceType, instanceId?: string |
   }
   const def = await getDefaultConnection(type);
   if (!def) {
-    throw new Error(`${type} is not configured. Please add a connection in Settings.`);
+    throw new ConfigurationError(`${type} is not configured. Please add a connection in Settings.`);
   }
   return def;
 }

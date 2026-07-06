@@ -2,6 +2,7 @@ import type { ServiceConnection, User } from '@prisma/client';
 import type { Tagged } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 import { prisma } from '@/lib/db';
+import { ConfigurationError } from '@/lib/config-error';
 import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
@@ -68,7 +69,7 @@ export async function getQBittorrentClient(): Promise<QBittorrentClient> {
   });
 
   if (!connection) {
-    throw new Error(
+    throw new ConfigurationError(
       'qBittorrent is not configured. Please add a qBittorrent connection in Settings.'
     );
   }
@@ -97,7 +98,7 @@ export async function getProwlarrClient(): Promise<ProwlarrClient> {
   });
 
   if (!connection) {
-    throw new Error(
+    throw new ConfigurationError(
       'Prowlarr is not configured. Please add a Prowlarr connection in Settings.'
     );
   }
@@ -120,13 +121,13 @@ export async function getJellyfinClientContext(): Promise<{
   });
 
   if (!connection) {
-    throw new Error(
+    throw new ConfigurationError(
       'Jellyfin is not configured. Please add a Jellyfin connection in Settings.'
     );
   }
 
   if (!connection.username) {
-    throw new Error(
+    throw new ConfigurationError(
       'Jellyfin user context is missing. Re-test and save the Jellyfin connection in Settings.'
     );
   }
@@ -181,7 +182,7 @@ export async function getJellyfinUserContext(
 ): Promise<{ client: JellyfinClient; connectionFingerprint: string; jellyfinUserId: string }> {
   const connection = await prisma.serviceConnection.findFirst({ where: { type: 'JELLYFIN' } });
   if (!connection) {
-    throw new Error('Jellyfin is not configured. Please add a Jellyfin connection in Settings.');
+    throw new ConfigurationError('Jellyfin is not configured. Please add a Jellyfin connection in Settings.');
   }
 
   const userId =
@@ -203,7 +204,7 @@ export async function getSeerrClient(): Promise<SeerrClient> {
   });
 
   if (!connection) {
-    throw new Error('Seerr is not configured. Please add a Seerr connection in Settings.');
+    throw new ConfigurationError('Seerr is not configured. Please add a Seerr connection in Settings.');
   }
 
   return new SeerrClient(connection.url, connection.apiKey);
@@ -215,7 +216,7 @@ export async function getTMDBClient(): Promise<TmdbClient> {
   });
 
   if (!connection) {
-    throw new Error('TMDB is not configured. Please add a TMDB connection in Settings.');
+    throw new ConfigurationError('TMDB is not configured. Please add a TMDB connection in Settings.');
   }
 
   return new TmdbClient(connection.url, connection.apiKey);

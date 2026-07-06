@@ -106,11 +106,13 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
 
   let success = false;
   let errorMessage: string | null = null;
+  let caughtError: unknown;
   let result: MovieFileResource[] | undefined;
   try {
     result = await client.bulkEditMovieFiles(edits.map(buildResource));
     success = true;
   } catch (error) {
+    caughtError = error;
     errorMessage = error instanceof Error ? error.message : 'Failed to edit movie files';
   }
 
@@ -128,10 +130,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     errorMessage,
   });
 
-  if (!success) {
-    console.error('[api] Failed to edit movie files:', errorMessage);
-    return NextResponse.json({ error: 'Failed to edit movie files' }, { status: 500 });
-  }
+  if (!success) return upstreamErrorResponse(caughtError, 'Failed to edit movie files');
   // File metadata (quality/languages/…) is embedded in the cached library rows.
   await invalidateTaggedLibrary('radarr', instanceId);
   return NextResponse.json(result);
@@ -182,10 +181,12 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
 
   let success = false;
   let errorMessage: string | null = null;
+  let caughtError: unknown;
   try {
     await client.deleteMovieFilesBulk(ids);
     success = true;
   } catch (error) {
+    caughtError = error;
     errorMessage = error instanceof Error ? error.message : 'Failed to delete movie files';
   }
 
@@ -203,10 +204,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
     errorMessage,
   });
 
-  if (!success) {
-    console.error('[api] Failed to delete movie files:', errorMessage);
-    return NextResponse.json({ error: 'Failed to delete movie files' }, { status: 500 });
-  }
+  if (!success) return upstreamErrorResponse(caughtError, 'Failed to delete movie files');
   // Deleting files flips the movie's hasFile in the cached library list.
   await invalidateTaggedLibrary('radarr', instanceId);
   return NextResponse.json({ success: true, deleted: ids.length });
