@@ -165,6 +165,20 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
     const pref = preferences.find((p) => p.eventType === eventType);
     if (!pref) return;
     const merged = { ...pref, ...overrides };
+    // Skip when nothing changed vs the last server-confirmed values (the server
+    // trims and maps empty to null, so compare normalized). Without this, an
+    // input blur re-POSTs unchanged text and can race — and, landing last,
+    // overwrite — a chip save that was dispatched right after it.
+    const saved = savedFiltersRef.current.get(eventType);
+    const norm = (v: string | null) => (v ?? '').trim();
+    if (
+      saved
+      && norm(saved.tagFilter) === norm(merged.tagFilter)
+      && norm(saved.qualityFilter) === norm(merged.qualityFilter)
+      && norm(saved.mutedUserFilter) === norm(merged.mutedUserFilter)
+    ) {
+      return;
+    }
     savePreference.mutate(
       {
         subscriptionId,
@@ -315,6 +329,10 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
                               <button
                                 key={name}
                                 type="button"
+                                // Keep focus (and the pending onBlur save) off
+                                // the text input so the chip's save is the only
+                                // write for this click.
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => toggleMutedUser(eventType, name)}
                                 aria-pressed={muted}
                                 className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
