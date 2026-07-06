@@ -10,6 +10,18 @@ COPY prisma ./prisma/
 RUN npm ci
 RUN npx prisma generate
 
+# Production-only dependencies for the runtime image (no devDependencies).
+# The Prisma CLI is a production dependency, so it survives --omit=dev and
+# stays available for boot-time `migrate deploy`.
+FROM base AS prod-deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+RUN npm ci --omit=dev
+RUN npx prisma generate
+
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
@@ -43,8 +55,8 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Prisma CLI needs full node_modules for db push
-COPY --from=deps /app/node_modules ./node_modules
+# Prisma CLI needs node_modules for boot-time migrate deploy
+COPY --from=prod-deps /app/node_modules ./node_modules
 
 USER nextjs
 
@@ -53,8 +65,8 @@ ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 ENV LOG_DIR=/app/logs
 
-# NOTE: `db push` intentionally omits `--accept-data-loss`. Additive schema
-# changes still apply automatically; a change that would DROP columns/tables
-# aborts the boot loudly instead of silently destroying data (handle those
-# deliberately via prisma/manual-fixups.sql or an explicit migration).
-CMD ["sh", "-c", "npx prisma db execute --file prisma/manual-fixups.sql --schema prisma/schema.prisma && npx prisma db push --skip-generate && node server.js"]
+# Apply pending migrations, then start. Fails loudly (and blocks boot) if a
+# migration cannot be applied. Databases created before the migration-based
+# workflow must be baselined once:
+#   npx prisma migrate resolve --applied 0001_init
+CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]

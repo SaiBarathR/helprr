@@ -105,12 +105,12 @@ VAPID_PRIVATE_KEY=...
 
 ```bash
 npm run db:generate
-npm run db:push
+npm run db:migrate
 ```
 
-`npm run db:push` first runs `prisma/manual-fixups.sql`, then runs
-`prisma db push`. The fixups are idempotent and handle schema transitions that
-Prisma cannot safely infer on existing databases.
+`npm run db:migrate` runs `prisma migrate dev`, which applies all pending
+migrations (creating the schema from scratch on a fresh database). All schema
+changes go through migrations — see [Database migrations](#database-migrations).
 
 5) Run the dev server
 
@@ -126,8 +126,8 @@ The repository includes a `docker-compose.yml` with a Postgres container and the
 
 1) Set environment variables (recommended via a local `.env` file that is not committed)
 
-- `POSTGRES_PASSWORD` (optional override; defaults to `postgres`)
-- `DATABASE_URL` (optional override; defaults to the internal compose URL)
+- `POSTGRES_PASSWORD` (**required**; compose refuses to start without it)
+- `DATABASE_URL` (optional override; defaults to the internal compose URL using `POSTGRES_PASSWORD` — set it explicitly with the password percent-encoded if the password contains URL special characters)
 - `REDIS_URL` (optional override; defaults to `redis://helprr-redis:6379`)
 - `REDIS_PASSWORD` (**required**; sets the Redis `--requirepass` password and the client AUTH password — the app fails to start without it)
 - `APP_PASSWORD` (seeds the bootstrap admin password on first boot)
@@ -148,8 +148,32 @@ docker compose up --build
 Notes:
 
 - The image build expects `NEXT_PUBLIC_VAPID_PUBLIC_KEY` to be available as a build arg.
-- The container entrypoint runs `prisma/manual-fixups.sql`, then
-  `npx prisma db push --skip-generate --accept-data-loss`, before starting Next.js.
+- The container entrypoint runs `npx prisma migrate deploy` (applies pending
+  migrations, no-op when up to date) before starting Next.js.
+
+## Database migrations
+
+Prisma Migrate is the single source of truth for the schema:
+
+- **Development:** change `prisma/schema.prisma`, then run `npm run db:migrate`
+  (`prisma migrate dev`) to generate and apply a migration. Commit the generated
+  folder under `prisma/migrations/`.
+- **Deployment:** the Docker entrypoint runs `prisma migrate deploy` on every
+  boot, applying any pending migrations before the server starts. If a
+  migration fails, the container exits instead of running against a
+  half-migrated database.
+- Data backfills that must accompany a schema change go into the migration's
+  SQL itself, so dev and production stay in lockstep.
+
+**Upgrading a database created before this workflow** (schema managed by
+`prisma db push`): `migrate deploy` will refuse to run against a non-empty
+database with no migration history (error P3005). Baseline it once, then start
+normally:
+
+```bash
+docker compose run --rm helprr npx prisma migrate resolve --applied 0001_init
+docker compose up -d
+```
 
 ## Generating VAPID keys (for push notifications)
 
@@ -179,9 +203,8 @@ npm run build
 npm run start
 
 npm run db:generate
-npm run db:fixups
-npm run db:push
 npm run db:migrate
+npm run db:deploy
 
 npm run lint
 ```
