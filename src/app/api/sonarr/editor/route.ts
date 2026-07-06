@@ -8,6 +8,7 @@ import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } f
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Bulk monitor/tag across many series via Sonarr's native /series/editor endpoint.
 async function putHandler(request: NextRequest) {
@@ -46,8 +47,7 @@ async function putHandler(request: NextRequest) {
     if (tagResult?.createdAny) await invalidateReferenceLabels('sonarr', conn.id);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to update series';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to update series');
   }
 }
 
@@ -69,8 +69,7 @@ async function deleteHandler(request: NextRequest) {
     await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to delete series';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to delete series');
   }
 }
 

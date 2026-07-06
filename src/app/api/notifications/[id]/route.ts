@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { ownerScope } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function putHandler(
   _request: NextRequest,
@@ -25,7 +26,7 @@ async function putHandler(
     });
     return NextResponse.json(notification);
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 
@@ -42,7 +43,7 @@ async function deleteHandler(
     if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

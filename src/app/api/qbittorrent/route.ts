@@ -8,6 +8,7 @@ import { TorrentParseError, parseTorrentInfoHash } from '@/lib/torrent-metainfo'
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
@@ -401,10 +402,7 @@ async function postHandler(request: NextRequest) {
   } catch (error) {
     console.error('Failed to add torrent:', error);
     logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', failed: true });
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to add torrent' },
-      { status: 500 }
-    );
+    return upstreamErrorResponse(error, 'Failed to add torrent');
   }
 }
 

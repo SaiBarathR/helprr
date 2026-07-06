@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Retrieve the list of indexers from the Prowlarr client and return them as JSON.
@@ -19,8 +20,7 @@ async function getHandler(): Promise<NextResponse> {
     const indexers = await client.getIndexers();
     return NextResponse.json(indexers);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch indexers';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch indexers');
   }
 }
 
@@ -65,8 +65,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const indexer = await client.addIndexer(body);
     return NextResponse.json(indexer);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to perform action';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to perform action');
   }
 }
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 import type { MediaManagementConfig } from '@/types';
 
 // Deliberately uncached: drives the "permanent vs recycle-bin" delete warning,
@@ -32,9 +33,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     };
     return NextResponse.json(result, { headers: NO_STORE });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to fetch media management config';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch media management config');
   }
 }
 

@@ -6,6 +6,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
@@ -17,8 +18,7 @@ async function getHandler(request: NextRequest) {
     const tags = await client.getTags();
     return NextResponse.json(tags, { headers: REFERENCE_CACHE_HEADERS });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch tags';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch tags');
   }
 }
 
@@ -51,8 +51,7 @@ async function postHandler(request: NextRequest) {
     if (!match) await invalidateReferenceLabels('radarr', conn.id);
     return NextResponse.json(tag);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to create tag';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to create tag');
   }
 }
 

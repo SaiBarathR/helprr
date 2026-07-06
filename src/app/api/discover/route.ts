@@ -11,6 +11,7 @@ import type {
 } from '@/types';
 import type { TmdbDiscoverParams, TmdbListItem } from '@/lib/tmdb-client';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 type DiscoverSections = NonNullable<DiscoverResponse['sections']>;
 
 const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder: 'asc' | 'desc'; contentType: DiscoverContentType }>> = {
@@ -678,8 +679,7 @@ async function getHandler(request: NextRequest) {
       );
     }
 
-    const message = error instanceof Error ? error.message : 'Failed to load discover data';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load discover data');
   }
 }
 

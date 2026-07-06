@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Handle GET requests to fetch Prowlarr application profiles.
@@ -21,8 +22,7 @@ async function getHandler() {
     const profiles = await client.getAppProfiles();
     return NextResponse.json(profiles);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch app profiles';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch app profiles');
   }
 }
 

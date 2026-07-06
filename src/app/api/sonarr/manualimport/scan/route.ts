@@ -4,6 +4,7 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
 import { coercePositiveInt } from '@/lib/manage-files-guard';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // ── GET /api/sonarr/manualimport/scan?seriesId=&seasonNumber= ────────────────
 // Scans a series folder for importable files (imported + loose) for Manage
@@ -46,8 +47,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     });
     return NextResponse.json(items);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to scan for import';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to scan for import');
   }
 }
 
@@ -70,8 +70,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const items = await client.reprocessManualImport(json.body);
     return NextResponse.json(items);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to reprocess import';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to reprocess import');
   }
 }
 

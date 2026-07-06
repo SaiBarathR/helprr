@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { isKnownEventType } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function buildWhere(searchParams: URLSearchParams): Prisma.NotificationHistoryWhereInput {
   const where: Prisma.NotificationHistoryWhereInput = {};
@@ -76,7 +77,7 @@ async function getHandler(request: NextRequest) {
 
     return NextResponse.json({ page, pageSize, totalRecords, records });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 
@@ -102,7 +103,7 @@ async function deleteHandler(request: NextRequest) {
     const { count } = await prisma.notificationHistory.deleteMany({ where });
     return NextResponse.json({ deletedCount: count });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

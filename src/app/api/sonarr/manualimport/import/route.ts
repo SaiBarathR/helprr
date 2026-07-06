@@ -170,7 +170,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   });
 
   if (commandId == null) {
-    return NextResponse.json({ error: errorMessage ?? 'Import was not queued' }, { status: 500 });
+    console.error('[api] Failed to submit import:', errorMessage);
+    return NextResponse.json({ error: 'Import was not queued' }, { status: 500 });
   }
   return NextResponse.json({ commandId });
 }

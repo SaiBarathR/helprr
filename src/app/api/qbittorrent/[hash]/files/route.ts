@@ -3,6 +3,7 @@ import { getQBittorrentClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(
   _request: NextRequest,
@@ -26,10 +27,7 @@ async function getHandler(
     return NextResponse.json({ files });
   } catch (error) {
     logApiDuration('/api/qbittorrent/[hash]/files', startedAt, { method: 'GET', failed: true });
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch torrent files' },
-      { status: 500 }
-    );
+    return upstreamErrorResponse(error, 'Failed to fetch torrent files');
   }
 }
 

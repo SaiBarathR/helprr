@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -14,8 +15,7 @@ async function getHandler(): Promise<NextResponse> {
     const libraries = await client.getLibraries();
     return NextResponse.json({ libraries });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch libraries';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch libraries');
   }
 }
 

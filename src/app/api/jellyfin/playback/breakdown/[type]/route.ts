@@ -9,6 +9,7 @@ import {
 } from '@/lib/jellyfin-playback-query';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(
   request: NextRequest,
@@ -102,8 +103,7 @@ async function getHandler(
     const entries = await client.getBreakdownReport(type, days, endDate);
     return NextResponse.json({ entries: entries ?? [], pluginAvailable: entries !== null });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch breakdown report';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch breakdown report');
   }
 }
 

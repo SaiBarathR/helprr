@@ -5,6 +5,7 @@ import { normalizeTmdbItem, annotateDiscoverItems, tmdbImageUrl } from '@/lib/di
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverCollectionDetail, DiscoverItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(
   _request: NextRequest,
@@ -60,8 +61,7 @@ async function getHandler(
         { status: 429 }
       );
     }
-    const message = error instanceof Error ? error.message : 'Failed to load collection';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load collection');
   }
 }
 

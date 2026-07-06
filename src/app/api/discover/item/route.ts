@@ -5,6 +5,7 @@ import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, tmdbIma
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverDetail } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function toYear(value?: string | null) {
   if (!value) return null;
@@ -154,8 +155,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const message = error instanceof Error ? error.message : 'Failed to load item';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load item');
   }
 }
 

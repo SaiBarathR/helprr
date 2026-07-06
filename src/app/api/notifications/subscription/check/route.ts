@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -21,10 +22,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (row.revokedAt) return NextResponse.json({ exists: false, revoked: true });
     return NextResponse.json({ exists: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed' },
-      { status: 500 }
-    );
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

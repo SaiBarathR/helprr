@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Efficient history endpoint using submit_custom_query against PlaybackActivity table.
@@ -107,8 +108,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json({ items, total, limit, offset, pluginAvailable: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch history';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch history');
   }
 }
 

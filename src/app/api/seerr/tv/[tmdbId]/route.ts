@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Season list (numbers + episode counts + per-season Seerr status) for the
 // series request/approve modal's season-selection table.
@@ -23,8 +24,7 @@ async function getHandler(
     const seasons = await client.getTvSeasons(tmdbId);
     return NextResponse.json({ seasons });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load seasons';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load seasons');
   }
 }
 

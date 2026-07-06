@@ -15,6 +15,7 @@ import type {
   RadarrMovie,
   RadarrLookupResult,
 } from '@/types';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const COLLECTIONS_SCOPE = 'radarr-collections';
 
@@ -138,8 +139,7 @@ async function getHandler(request: NextRequest) {
     return NextResponse.json(summaries, { headers: COLLECTIONS_CACHE_HEADERS });
   } catch (error) {
     logApiDuration('/api/radarr/collections', startedAt, { method: 'GET', failed: true });
-    const message = error instanceof Error ? error.message : 'Failed to fetch collections';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch collections');
   }
 }
 
@@ -219,8 +219,7 @@ async function postHandler(request: NextRequest) {
     return NextResponse.json(movie);
   } catch (error) {
     logApiDuration('/api/radarr/collections', startedAt, { method: 'POST', failed: true });
-    const message = error instanceof Error ? error.message : 'Failed to add movie';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to add movie');
   }
 }
 
@@ -256,8 +255,7 @@ async function putHandler(request: NextRequest) {
     return NextResponse.json({ ok: true, collectionId, monitored });
   } catch (error) {
     logApiDuration('/api/radarr/collections', startedAt, { method: 'PUT', failed: true });
-    const message = error instanceof Error ? error.message : 'Failed to update collection';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to update collection');
   }
 }
 

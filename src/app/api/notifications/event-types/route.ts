@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { ownerScope } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Distinct event types present in the caller's visible notification history.
 // The notifications filter uses this so any type the user can SEE is also
@@ -18,7 +19,7 @@ async function getHandler() {
     });
     return NextResponse.json({ eventTypes: rows.map((r) => r.eventType) });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed' }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

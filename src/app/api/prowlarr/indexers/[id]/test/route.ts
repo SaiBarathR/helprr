@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 /**
  * Handle POST requests to trigger a Prowlarr indexer test for the route `.../indexers/[id]/test`.
@@ -25,8 +26,7 @@ async function postHandler(
     const result = await client.testIndexer(parseInt(id, 10));
     return NextResponse.json(result ?? { success: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Test failed';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Test failed');
   }
 }
 

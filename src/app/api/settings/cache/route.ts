@@ -8,6 +8,7 @@ import {
 } from '@/lib/cache/admin';
 import { getCacheImagesEnabled } from '@/lib/cache/state';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler() {
   const authError = await requireAuth();
@@ -29,8 +30,7 @@ async function getHandler() {
       lastPurgedAt: maintenance.lastPurgedAt,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch cache usage';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch cache usage');
   }
 }
 
@@ -67,8 +67,7 @@ async function deleteHandler(request: NextRequest) {
       usage,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to purge cache';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to purge cache');
   }
 }
 

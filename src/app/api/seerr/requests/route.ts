@@ -17,6 +17,7 @@ import type {
   SeerrRequestSort,
   SeerrSortDirection,
 } from '@/types/seerr';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const VALID_FILTERS: SeerrRequestFilter[] = [
   'all',
@@ -129,8 +130,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       results: enriched,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch requests';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch requests');
   }
 }
 

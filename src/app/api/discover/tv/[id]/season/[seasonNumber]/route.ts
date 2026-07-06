@@ -5,6 +5,7 @@ import { tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverSeasonDetailResponse } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(
   _request: NextRequest,
@@ -59,8 +60,7 @@ async function getHandler(
         { status: 429 }
       );
     }
-    const message = error instanceof Error ? error.message : 'Failed to load season';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load season');
   }
 }
 

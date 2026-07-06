@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('jellyfin.view');
@@ -39,8 +40,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const items = await client.getPlaybackHistory(userId, date, resolvedFilter);
     return NextResponse.json({ items: items ?? [], pluginAvailable: items !== null });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch playback history';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to fetch playback history');
   }
 }
 

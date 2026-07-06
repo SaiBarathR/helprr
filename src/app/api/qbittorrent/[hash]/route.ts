@@ -5,6 +5,7 @@ import type { Capability } from '@/lib/capabilities';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 // Per-action capability: delete is the most destructive, bandwidth-limit changes
 // are their own grant, everything else is general torrent management.
@@ -117,10 +118,7 @@ async function postHandler(
     return NextResponse.json({ success: true });
   } catch (error) {
     logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, failed: true });
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed' },
-      { status: 500 }
-    );
+    return upstreamErrorResponse(error, 'Failed');
   }
 }
 

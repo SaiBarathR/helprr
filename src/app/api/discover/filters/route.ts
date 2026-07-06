@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverFiltersResponse } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 const FILTERS_CACHE_TTL_MS = 10 * 60 * 1000;
 let filtersCache:
@@ -167,8 +168,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const message = error instanceof Error ? error.message : 'Failed to load discover filters';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load discover filters');
   }
 }
 

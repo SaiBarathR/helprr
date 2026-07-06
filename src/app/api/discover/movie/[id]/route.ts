@@ -17,6 +17,7 @@ import type {
   DiscoverMovieFullDetail,
   DiscoverItem,
 } from '@/types';
+import { upstreamErrorResponse } from '@/lib/api-error';
 
 function toYear(value?: string | null) {
   if (!value) return null;
@@ -201,8 +202,7 @@ async function getHandler(
         { status: 429 }
       );
     }
-    const message = error instanceof Error ? error.message : 'Failed to load movie detail';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return upstreamErrorResponse(error, 'Failed to load movie detail');
   }
 }
 
