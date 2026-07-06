@@ -13,6 +13,12 @@ import { getRedisClient } from '@/lib/redis';
 //      username. Auto-recovers (capped delay) so it can't be weaponized into a
 //      permanent account lockout, and ignores a replayed identical wrong password
 //      so a legitimate user isn't locked out by credential-stuffing noise.
+//   3. Global failed-attempt backstop (bottom) — always on and independent of
+//      client IP, so a default deployment still caps an attacker who spreads
+//      guesses across many distinct usernames (layer 2 is keyed per-username and
+//      never aggregates). Counts failures only, so normal logins can't trip it;
+//      when tripped it blocks all logins for the remainder of the window — a
+//      visible, self-healing brownout instead of an unlimited-rate brute force.
 // Both routes funnel through the same Redis keys so an attacker can't sidestep a
 // cap by alternating endpoints.
 
@@ -217,5 +223,58 @@ export async function clearUsernameBackoff(username: string): Promise<void> {
     await redis.del(userKey(username));
   } catch (error) {
     console.error('[Auth] Failed to clear username backoff:', error);
+  }
+}
+
+// ─── Global failed-attempt backstop (layer 3) ─────────────────────────────────
+
+const GLOBAL_FAILURE_WINDOW_MS = 15 * 60_000;
+const GLOBAL_FAILURE_MAX = 30;
+const GLOBAL_FAILURES_KEY = 'login:failures:global';
+
+/**
+ * Reject with 429 while the aggregate failed-login count is over the cap.
+ * Read-only (only failures advance the counter, in recordGlobalLoginFailure),
+ * so a locked-out attacker can't extend the window by retrying. Fails closed
+ * with a 503 if Redis is unreachable, like the other layers.
+ */
+export async function enforceGlobalLoginBackstop(): Promise<NextResponse | null> {
+  let count = 0;
+  let retryMs = GLOBAL_FAILURE_WINDOW_MS;
+  try {
+    const redis = await getRedisClient();
+    const [countRaw, pttl] = await Promise.all([
+      redis.get(GLOBAL_FAILURES_KEY),
+      redis.pTTL(GLOBAL_FAILURES_KEY),
+    ]);
+    count = countRaw ? Number(countRaw) : 0;
+    if (typeof pttl === 'number' && pttl > 0) retryMs = pttl;
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  }
+
+  if (Number.isFinite(count) && count >= GLOBAL_FAILURE_MAX) {
+    return lockedResponse(retryMs);
+  }
+  return null;
+}
+
+/** Record a failed attempt in the global fixed window. Best-effort. */
+export async function recordGlobalLoginFailure(): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    await redis.eval(
+      `local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count`,
+      {
+        keys: [GLOBAL_FAILURES_KEY],
+        arguments: [String(GLOBAL_FAILURE_WINDOW_MS)],
+      }
+    );
+  } catch (error) {
+    console.error('[Auth] Failed to record global login failure:', error);
   }
 }

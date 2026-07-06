@@ -9,6 +9,8 @@ import {
   enforceUsernameBackoff,
   recordUsernameFailure,
   clearUsernameBackoff,
+  enforceGlobalLoginBackstop,
+  recordGlobalLoginFailure,
 } from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
@@ -47,6 +49,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const backoff = await enforceUsernameBackoff(username);
   if (backoff) return backoff;
 
+  // Layer 3: global failed-attempt backstop (shared key with /api/auth/login).
+  const globalBackstop = await enforceGlobalLoginBackstop();
+  if (globalBackstop) return globalBackstop;
+
   const connection = await prisma.serviceConnection.findFirst({
     where: { type: 'JELLYFIN' },
     select: { url: true },
@@ -61,6 +67,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       // Only a wrong password counts toward backoff — a Jellyfin outage (502) is
       // not a guess and must not throttle the user out.
       await recordUsernameFailure(username, password);
+      await recordGlobalLoginFailure();
       return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
     }
     return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
