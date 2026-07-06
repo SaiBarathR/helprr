@@ -137,8 +137,10 @@ export async function checkScheduledAlerts(): Promise<void> {
     try {
       await notifyEvent({
         eventType: 'scheduledAlert',
-        title: 'Scheduled Alert',
-        body: occ.body ?? occ.title,
+        // The occurrence title carries the media name (resolver/creation always
+        // set it); the body carries the release detail (e.g. "S03E01 - …").
+        title: occ.title || alert.title,
+        body: occ.body ?? alert.subtitle ?? occ.title,
         metadata: {
           ...meta,
           scheduledAlertId: alert.id,
