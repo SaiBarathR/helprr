@@ -1,11 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { getCurrentUser, requireAuth, requireCapability } from '@/lib/auth';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
+import { getJellyfinUserContext } from '@/lib/service-helpers';
+import { getRedisClient } from '@/lib/redis';
 import { withApiLogging } from '@/lib/api-logger';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
 const ALLOWED_IMAGE_TYPES = new Set(['Primary', 'Backdrop', 'Banner', 'Thumb', 'Logo']);
+const ITEM_ACCESS_TTL_SECONDS = 15 * 60;
+
+/**
+ * Images are fetched with the connection's admin API key, which can read
+ * artwork for any item server-wide. Members are therefore checked against
+ * their own Jellyfin account first (same per-user scoping as every other
+ * Jellyfin route); the verdict is cached in Redis so a poster grid doesn't
+ * pay an upstream round-trip per image. Fails closed: no linked account or
+ * an upstream error denies access.
+ */
+async function canUserAccessItem(user: User, itemId: string): Promise<boolean> {
+  let context: Awaited<ReturnType<typeof getJellyfinUserContext>>;
+  try {
+    context = await getJellyfinUserContext(user);
+  } catch {
+    return false;
+  }
+
+  const cacheKey = `jellyfin:item-access:${context.connectionFingerprint}:${context.jellyfinUserId}:${itemId.toLowerCase()}`;
+  try {
+    const redis = await getRedisClient();
+    const cached = await redis.get(cacheKey);
+    if (cached !== null) return cached === '1';
+  } catch {
+    // Redis unavailable — fall through to a live check.
+  }
+
+  let allowed: boolean;
+  try {
+    const result = await context.client.getItems({ ids: itemId, limit: 1 });
+    allowed = (result.Items?.length ?? 0) > 0;
+  } catch {
+    return false;
+  }
+
+  try {
+    const redis = await getRedisClient();
+    await redis.set(cacheKey, allowed ? '1' : '0', { EX: ITEM_ACCESS_TTL_SECONDS });
+  } catch {
+    // Best-effort cache write.
+  }
+
+  return allowed;
+}
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
@@ -32,6 +79,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const qualityParsed = Number.parseInt(qualityRaw, 10);
     const maxWidth = Number.isFinite(maxWidthParsed) ? Math.min(Math.max(maxWidthParsed, 1), 2000) : 300;
     const quality = Number.isFinite(qualityParsed) ? Math.min(Math.max(qualityParsed, 1), 100) : 90;
+
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (user.role !== 'admin' && !(await canUserAccessItem(user, itemId))) {
+      return new NextResponse(null, { status: 404 });
+    }
 
     const connection = await prisma.serviceConnection.findFirst({
       where: { type: 'JELLYFIN' },
