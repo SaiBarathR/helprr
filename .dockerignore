@@ -8,3 +8,15 @@ node_modules
 Dockerfile
 docker-compose.yml
 .claude
+logs
+anilistCharts
+.playwright-mcp
+.pw-scratch
+.DS_Store
+*.har
+postman
+plans
+docs
+jellyfinDocs
+header-issue-mobile
+*.tsbuildinfo

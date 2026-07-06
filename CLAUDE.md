@@ -77,8 +77,8 @@ npm run build        # Production build (Webpack required for Serwist)
 npm run start        # Production server on port 3050
 npm run lint         # ESLint (Next.js core-web-vitals + TypeScript)
 npm run db:generate  # Generate Prisma client
-npm run db:push      # Sync schema to database (no migration files)
-npm run db:migrate   # Prisma migrate dev
+npm run db:migrate   # Prisma migrate dev — the ONLY way to change the schema (generates + applies a migration)
+npm run db:deploy    # Prisma migrate deploy — apply pending migrations (what the Docker entrypoint runs)
 ```
 
 **Important:** `build` uses the `--webpack` flag because Serwist is incompatible with Turbopack (Next.js 16 default). `dev` runs on Turbopack — Serwist is disabled in development (see Service Worker), so webpack is not needed there and on-demand route compiles are ~20x faster.
@@ -128,6 +128,8 @@ Zustand stores in `src/lib/store/` manage UI state (sidebar collapse, media view
 ### Database
 
 Prisma 6 with PostgreSQL. **Do not upgrade to Prisma 7** — v7 changed the datasource config pattern, breaking `url = env("DATABASE_URL")`. Key models: `ServiceConnection`, `PushSubscription`, `NotificationPreference`, `NotificationHistory`, `PollingState`, `AppSettings` (singleton with `id="singleton"`).
+
+**Migrations are the single source of truth.** Every schema change goes through `npm run db:migrate` (`prisma migrate dev`) and the generated folder under `prisma/migrations/` is committed. Never use `prisma db push`. The Docker entrypoint runs `prisma migrate deploy` on boot. Data backfills that accompany a schema change belong in the migration SQL itself. History was squashed to a single `0001_init` on 2026-07-06 (pre-release, no external users); pre-existing databases are baselined with `prisma migrate resolve --applied 0001_init`.
 
 ## Tech Constraints
 

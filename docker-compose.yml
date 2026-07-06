@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - POSTGRES_DB=helprr
     volumes:
       - helprr-db-data:/var/lib/postgresql/data
@@ -51,7 +51,10 @@ services:
     environment:
       - TZ=${TZ:-UTC}
       - LOG_DIR=${LOG_DIR:-/app/logs}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@helprr-db:5432/helprr}
+      # Default URL embeds POSTGRES_PASSWORD; if the password contains URL
+      # special characters (@ : / ? # etc.), set DATABASE_URL explicitly with
+      # the password percent-encoded.
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@helprr-db:5432/helprr}
       - REDIS_URL=${REDIS_URL:-redis://helprr-redis:6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - APP_PASSWORD=${APP_PASSWORD}

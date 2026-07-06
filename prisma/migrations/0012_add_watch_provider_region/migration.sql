@@ -1,2 +1,0 @@
-ALTER TABLE "AppSettings"
-ADD COLUMN IF NOT EXISTS "watchProviderRegion" TEXT NOT NULL DEFAULT 'US';
