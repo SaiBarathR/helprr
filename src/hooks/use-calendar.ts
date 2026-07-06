@@ -55,6 +55,7 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
       }
 
       const data: CalendarEvent[] = await res.json();
+      if (signal.aborted) return; // superseded while the body was streaming
       setEvents(data);
     } catch (err) {
       // Aborted = superseded by a newer range/type; that request owns the state now.

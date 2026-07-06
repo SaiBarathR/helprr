@@ -40,8 +40,10 @@ export async function resolveApiKeyForService(
   providedApiKey: string,
   instanceId?: string
 ): Promise<string> {
+  // instanceId is scoped to the requested type: an id belonging to another
+  // service type must not resolve (and leak) that row's secret.
   const existing = instanceId
-    ? await prisma.serviceConnection.findUnique({ where: { id: instanceId } })
+    ? await prisma.serviceConnection.findFirst({ where: { id: instanceId, type } })
     : (await prisma.serviceConnection.findFirst({ where: { type, isDefault: true } }))
       ?? (await prisma.serviceConnection.findFirst({ where: { type } }));
   if (!existing) return providedApiKey;
