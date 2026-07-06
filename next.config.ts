@@ -15,9 +15,28 @@ const nextConfig: NextConfig = {
   // the standalone build can load it at runtime.
   serverExternalPackages: ['sharp'],
   images: {
+    // Explicit allowlist — a wildcard here turns /_next/image into an open
+    // image proxy / SSRF probe (the optimizer route is unauthenticated). Almost
+    // all remote images are already proxied same-origin through /api/image
+    // (which enforces its own host allowlist + private-host blocking) or are
+    // rendered `unoptimized`; these hosts cover the few the optimizer may fetch
+    // directly. Keep in sync with DEFAULT_EXTERNAL_IMAGE_HOSTS in
+    // src/app/api/image/route.ts.
     remotePatterns: [
-      { protocol: 'http', hostname: '**' },
-      { protocol: 'https', hostname: '**' },
+      { protocol: 'https', hostname: 'image.tmdb.org' },
+      { protocol: 'https', hostname: 'artworks.thetvdb.com' },
+      { protocol: 'https', hostname: 'thetvdb.com' },
+      { protocol: 'https', hostname: 'www.thetvdb.com' },
+      { protocol: 'https', hostname: 'fanart.tv' },
+      { protocol: 'https', hostname: 'assets.fanart.tv' },
+      { protocol: 'https', hostname: 'static.tvmaze.com' },
+      { protocol: 'https', hostname: 's1.anilist.co' },
+      { protocol: 'https', hostname: 's2.anilist.co' },
+      { protocol: 'https', hostname: 's3.anilist.co' },
+      { protocol: 'https', hostname: 's4.anilist.co' },
+      { protocol: 'https', hostname: 'images.lidarr.audio' },
+      { protocol: 'https', hostname: 'img.youtube.com' },
+      { protocol: 'https', hostname: 'i.ytimg.com' },
     ],
   },
 };
