@@ -78,9 +78,21 @@ export async function upsertOccurrencesForAlert(
   }
 }
 
+// How long a refreshed alert is left alone before it's re-resolved. Each
+// refresh does upstream lookups + DB writes per alert, so without this gate
+// every active alert churns on every poll cycle for nothing new (releases
+// don't move minute-to-minute). updatedAt is bumped after each refresh (and
+// by user edits — those paths resolve occurrences themselves), so filtering
+// on it gives a cheap "not refreshed recently" gate.
+const REFRESH_MIN_INTERVAL_MS = 15 * 60_000;
+
 export async function refreshScheduledAlertOccurrences(): Promise<void> {
   const alerts = await prisma.scheduledAlert.findMany({
-    where: { status: 'active', scheduleMode: 'release_relative' },
+    where: {
+      status: 'active',
+      scheduleMode: 'release_relative',
+      updatedAt: { lt: new Date(Date.now() - REFRESH_MIN_INTERVAL_MS) },
+    },
     take: 100,
     orderBy: { updatedAt: 'asc' },
   });
