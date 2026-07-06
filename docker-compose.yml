@@ -71,6 +71,15 @@ services:
       - helprr-logs:${LOG_DIR:-/app/logs}
     networks:
       - helprr-net
+    healthcheck:
+      # Flags a wedged Node process as unhealthy (restart-on-unhealthy needs an
+      # external supervisor like autoheal; plain Docker only reports status).
+      test: [ "CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3050/api/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Entrypoint runs `prisma migrate deploy` before the server starts.
+      start_period: 60s
 
 networks:
   helprr-net:

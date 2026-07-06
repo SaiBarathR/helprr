@@ -5,7 +5,7 @@ import { getJwtSecret } from '@/lib/jwt-secret';
 
 const COOKIE_NAME = 'helprr-session';
 
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin'];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin', '/api/health'];
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 const SECURITY_HEADERS: Record<string, string> = {
