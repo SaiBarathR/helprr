@@ -50,6 +50,7 @@ import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 import { EventIcon, getEventColorClass } from '@/components/notifications/event-visuals';
 import { SwipeRow } from '@/components/ui/swipe-row';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { NotificationDetailDrawer, type GroupedNotificationItem } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -599,6 +600,11 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
+      {/* New rows can arrive from polling at any time; the badge endpoint counts
+          unread live, so refresh both together. */}
+      <PullToRefresh
+        onRefresh={() => Promise.all([notificationsQuery.refetch(), refreshBadges()])}
+      />
       <PageHeader
         showBack={false}
         title="History"
