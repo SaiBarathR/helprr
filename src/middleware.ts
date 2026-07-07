@@ -19,15 +19,27 @@ const SECURITY_HEADERS: Record<string, string> = {
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'X-DNS-Prefetch-Control': 'off',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  'Content-Security-Policy': IS_DEV
-    ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: http:; font-src 'self' https:; connect-src 'self' ws: wss: http: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    : "default-src 'self'; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 };
 
-function addSecurityHeaders(response: NextResponse): NextResponse {
+// Dev keeps a relaxed policy: Fast Refresh needs eval, and dev-injected inline
+// scripts carry no nonce.
+const DEV_CSP =
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: http:; font-src 'self' https:; connect-src 'self' ws: wss: http: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
+// Production script-src is nonce-based. Modern browsers honor
+// 'nonce-…' + 'strict-dynamic' and ignore the host sources and
+// 'unsafe-inline'; older browsers ignore the nonce and fall back to
+// 'self' https: 'unsafe-inline' (the pre-nonce policy). Styles keep
+// 'unsafe-inline' — Next.js and the component library inject inline styles.
+function buildProdCsp(nonce: string): string {
+  return `default-src 'self'; script-src 'self' 'unsafe-inline' https: 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
+}
+
+function addSecurityHeaders(response: NextResponse, csp: string): NextResponse {
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value);
   }
+  response.headers.set('Content-Security-Policy', csp);
   return response;
 }
 
@@ -36,32 +48,51 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
  * path + query as a `next` param so deep links (e.g. /protocol?u=...) survive
  * the login round-trip. The login page validates and honors `next`.
  */
-function redirectToLogin(request: NextRequest): NextResponse {
+function redirectToLogin(request: NextRequest, csp: string): NextResponse {
   const { pathname, search } = request.nextUrl;
   const loginUrl = new URL('/login', request.url);
   const target = `${pathname}${search}`;
   if (pathname !== '/' && pathname !== '/login') {
     loginUrl.searchParams.set('next', target);
   }
-  return addSecurityHeaders(NextResponse.redirect(loginUrl));
+  return addSecurityHeaders(NextResponse.redirect(loginUrl), csp);
 }
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Per-request CSP. In production the nonce + policy also ride on the request
+  // headers: Next.js reads the content-security-policy request header and
+  // stamps the nonce onto its own inline scripts, and the root layout reads
+  // x-nonce for the theme bootstrap script.
+  let csp = DEV_CSP;
+  let requestHeaders: Headers | undefined;
+  if (!IS_DEV) {
+    const nonce = btoa(crypto.randomUUID());
+    csp = buildProdCsp(nonce);
+    requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-nonce', nonce);
+    requestHeaders.set('content-security-policy', csp);
+  }
+  const pass = () =>
+    addSecurityHeaders(
+      requestHeaders ? NextResponse.next({ request: { headers: requestHeaders } }) : NextResponse.next(),
+      csp
+    );
+
   // Allow public paths
   if (PUBLIC_PATHS.some(p => pathname.startsWith(p)) || PUBLIC_EXACT_PATHS.includes(pathname)) {
-    return addSecurityHeaders(NextResponse.next());
+    return pass();
   }
 
   // Allow service worker and manifest
   if (pathname === '/sw.js' || pathname === '/sw-push.js' || pathname === '/manifest.json' || pathname.startsWith('/_next')) {
-    return addSecurityHeaders(NextResponse.next());
+    return pass();
   }
 
   // Allow static assets
   if (pathname.startsWith('/icons') || pathname.startsWith('/images')) {
-    return addSecurityHeaders(NextResponse.next());
+    return pass();
   }
 
   // Web Share Target POSTs hit /api/share directly from the OS share sheet.
@@ -70,32 +101,32 @@ export async function middleware(request: NextRequest) {
   // preserving the shared payload (middleware can't read the multipart body to
   // forward it, and a JSON 401 here would land the user on a raw error page).
   if (pathname === '/api/share') {
-    return addSecurityHeaders(NextResponse.next());
+    return pass();
   }
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
 
   if (!token) {
     if (pathname.startsWith('/api/')) {
-      return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
+      return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
     }
-    return redirectToLogin(request);
+    return redirectToLogin(request, csp);
   }
 
   try {
     const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
     if (typeof payload.sid !== 'string' || !payload.sid) {
       if (pathname.startsWith('/api/')) {
-        return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
+        return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
       }
-      return redirectToLogin(request);
+      return redirectToLogin(request, csp);
     }
-    return addSecurityHeaders(NextResponse.next());
+    return pass();
   } catch {
     if (pathname.startsWith('/api/')) {
-      return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
+      return addSecurityHeaders(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }), csp);
     }
-    return redirectToLogin(request);
+    return redirectToLogin(request, csp);
   }
 }
 
