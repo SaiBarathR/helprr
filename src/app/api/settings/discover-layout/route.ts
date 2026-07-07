@@ -6,8 +6,6 @@ import { withApiLogging } from '@/lib/api-logger';
 import {
   reconcileDiscoverLayout,
   validateDiscoverLayout,
-  DEFAULT_DISCOVER_LAYOUT,
-  type DiscoverLayoutConfig,
 } from '@/lib/discover-layout-config';
 
 async function getHandler() {

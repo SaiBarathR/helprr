@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
 import { ExternalLink, FileStack } from 'lucide-react';

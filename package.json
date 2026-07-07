@@ -9,7 +9,7 @@
     "db:migrate": "npx prisma migrate dev",
     "db:deploy": "npx prisma migrate deploy",
     "db:generate": "npx prisma generate",
-    "lint": "eslint"
+    "lint": "node scripts/check-settings-export.mjs && eslint"
   },
   "dependencies": {
     "@date-fns/tz": "^1.4.1",

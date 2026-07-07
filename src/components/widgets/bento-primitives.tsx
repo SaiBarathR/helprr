@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react';
-import { ArrowLeftRight, ArrowUpDown, Check, Clock, LayoutGrid, List, Plus, Save, Settings } from 'lucide-react';
+import { ArrowLeftRight, ArrowUpDown, Check, LayoutGrid, List, Plus, Save, Settings } from 'lucide-react';
 
 export const HPR = {
   ink: 'var(--hpr-ink)',
@@ -696,19 +696,6 @@ export function BentoTopBar({
     </div>
   );
 }
-
-const btnPrimary: React.CSSProperties = {
-  padding: '7px 12px',
-  background: HPR.amber,
-  color: HPR.ink,
-  border: 'none',
-  borderRadius: 8,
-  fontFamily: FONT_BODY,
-  fontWeight: 600,
-  fontSize: 12,
-  cursor: 'pointer',
-  letterSpacing: '-0.01em',
-};
 
 const btnSecondary: React.CSSProperties = {
   padding: '7px 12px',

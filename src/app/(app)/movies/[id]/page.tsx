@@ -48,7 +48,7 @@ import {
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
 import { format } from 'date-fns';
-import type { RadarrMovie, RadarrCredit, QualityProfile, Tag, DiscoverMovieFullDetail } from '@/types';
+import type { RadarrMovie, RadarrCredit, DiscoverMovieFullDetail } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

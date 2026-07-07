@@ -86,6 +86,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   calendar: [
     'calendarView', 'calendarTypeFilter', 'calendarMonitoredOnly',
     'calendarShowImages', 'calendarShowScheduled', 'calendarInstanceFilter',
+    'calendarImageOpacity',
   ],
   insights: ['insightsDateFrom', 'insightsDateTo'],
   cleanup: ['cleanupHistoryFilters'],

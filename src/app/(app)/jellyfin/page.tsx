@@ -40,7 +40,6 @@ import {
   Server,
   Users,
   Clock,
-  Library,
   AlertCircle,
   CheckCircle2,
   Clapperboard,
@@ -60,7 +59,6 @@ import type {
   JellyfinSession,
   JellyfinItem,
   JellyfinSystemInfo,
-  JellyfinLibrary,
   JellyfinItemCounts,
   JellyfinDevice,
   JellyfinActivityEntry,
@@ -72,7 +70,7 @@ import type {
   CustomHistoryItem,
 } from '@/types/jellyfin';
 import { toast } from 'sonner';
-import { ticksToMinutes, formatDurationSeconds, formatTriggerSchedule, timeAgo, taskRunDuration } from '@/lib/jellyfin-helpers';
+import { formatDurationSeconds, formatTriggerSchedule, timeAgo, taskRunDuration } from '@/lib/jellyfin-helpers';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { SessionCard } from '@/components/jellyfin/session-card';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
@@ -584,20 +582,6 @@ function StatCard({ icon: Icon, color, value, label }: { icon: React.ElementType
     <div className="rounded-xl bg-card p-4 flex items-center gap-3">
       <div className={`rounded-lg p-2.5 ${c[color] || c.blue}`}><Icon className="h-5 w-5" /></div>
       <div><p className="text-2xl font-bold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>
-    </div>
-  );
-}
-
-function LibraryCard({ library }: { library: JellyfinLibrary }) {
-  const m: Record<string, React.ElementType> = { movies: Film, tvshows: Tv, music: Clapperboard, homevideos: MonitorPlay };
-  const Icon = m[library.CollectionType || ''] || Library;
-  return (
-    <div className="rounded-xl bg-card p-3 flex items-center gap-3">
-      <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{library.Name}</p>
-        <p className="text-xs text-muted-foreground">{library.CollectionType || 'Mixed'}{library.ChildCount != null && ` \u00B7 ${library.ChildCount} items`}</p>
-      </div>
     </div>
   );
 }

@@ -20,7 +20,7 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { SonarrMapDrawer } from '@/components/anime/sonarr-map-drawer';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { ExternalLink, Tv, Film, Loader2, Clock, Trophy, TrendingUp, Pencil } from 'lucide-react';
+import { ExternalLink, Tv, Film, Loader2, Trophy, TrendingUp, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';

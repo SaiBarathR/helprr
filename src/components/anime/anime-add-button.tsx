@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowUpRight, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { isMovieFormat, buildSonarrAddParams, buildRadarrAddParams } from '@/lib/anilist-helpers';
 import type { AniListMediaFormat } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
