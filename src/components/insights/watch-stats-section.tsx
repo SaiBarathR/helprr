@@ -83,7 +83,7 @@ export function WatchStatsSection({ range }: { range: InsightsRange }) {
   const movies = statsQuery.data?.movies ?? [];
   const activity = statsQuery.data?.activity ?? [];
   const hourly = statsQuery.data?.hourly ?? {};
-  const users = statsQuery.data?.users ?? [];
+  const users = React.useMemo(() => statsQuery.data?.users ?? [], [statsQuery.data]);
 
   const userEntries: PlaybackBreakdownEntry[] = React.useMemo(
     () =>

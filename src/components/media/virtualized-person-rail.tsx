@@ -36,8 +36,10 @@ export function VirtualizedPersonRail({
   headerClassName = 'mb-2',
   viewAllHref,
 }: VirtualizedPersonRailProps) {
+  'use no memo'; // useVirtualizer returns functions React Compiler can't safely memoize — opt out of compilation
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- informational "Compilation Skipped" notice; the 'use no memo' opt-out above is the documented TanStack Virtual fix
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => scrollRef.current,
