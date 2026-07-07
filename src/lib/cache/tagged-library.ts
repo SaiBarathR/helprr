@@ -132,6 +132,12 @@ export async function invalidateTaggedLibrary(scope: string, instanceId?: string
       for (const seed of seeds) ops.push(deleteCachedJson('radarr-collections', seed));
     }
 
+    // Insights' media analysis keeps its own normalized Sonarr episode-file cache
+    // (15 min); drop it so an import/upgrade/delete shows up in Analysis right away.
+    // Keep in sync with CACHE_SCOPE in lib/media-analysis.ts. Radarr needs no entry —
+    // its analysis rows derive live from the tagged movie library dropped above.
+    if (scope === 'sonarr') ops.push(deleteCachedJson('media-analysis', 'sonarr'));
+
     // Library gaps aggregate across the *arr libraries; drop them so a mutated
     // library doesn't replay its pre-mutation gaps for the rest of the TTL.
     ops.push(deleteCachedLibraryGaps());
