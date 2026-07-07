@@ -96,7 +96,7 @@ export function parsePermissions(value: unknown): CapabilityMap {
   return out;
 }
 
-type PermissionUser = Pick<User, 'role' | 'template' | 'permissions'>;
+export type PermissionUser = Pick<User, 'role' | 'template' | 'permissions'>;
 
 /**
  * Whether `user` may perform `cap`. Admins always can. Otherwise: a per-user

@@ -69,32 +69,40 @@ function fmtBitrate(bps: number): string {
 export function TechnicalBreakdownCard({
   kind,
   onKindChange,
+  canMovies,
+  canSeries,
 }: {
   kind: MediaAnalysisKindFilter;
   onKindChange: (kind: MediaAnalysisKindFilter) => void;
+  canMovies: boolean;
+  canSeries: boolean;
 }) {
   const { data, loading } = useInsightsResource<MediaAnalysisResponse>(
     `/api/insights/media-analysis${kindQuery(kind)}`
   );
 
-  const chips = (
-    <div className="flex items-center gap-1">
-      {(['all', 'movie', 'episode'] as const).map((id) => (
-        <button
-          key={id}
-          type="button"
-          onClick={() => onKindChange(id)}
-          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
-            kind === id
-              ? 'bg-primary/20 text-primary border border-primary/40'
-              : 'bg-accent/40 text-muted-foreground border border-transparent hover:text-foreground'
-          }`}
-        >
-          {id === 'all' ? 'All' : id === 'movie' ? 'Movies' : 'Episodes'}
-        </button>
-      ))}
-    </div>
-  );
+  // The scope switch only makes sense when both libraries are permitted —
+  // with one library, 'all' already IS that library.
+  const chips =
+    canMovies && canSeries ? (
+      <div className="flex items-center gap-1" role="group" aria-label="Analysis scope">
+        {(['all', 'movie', 'episode'] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onKindChange(id)}
+            aria-pressed={kind === id}
+            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
+              kind === id
+                ? 'bg-primary/20 text-primary border border-primary/40'
+                : 'bg-accent/40 text-muted-foreground border border-transparent hover:text-foreground'
+            }`}
+          >
+            {id === 'all' ? 'All' : id === 'movie' ? 'Movies' : 'Episodes'}
+          </button>
+        ))}
+      </div>
+    ) : undefined;
 
   const hasData = !!data && data.totals.files > 0;
 

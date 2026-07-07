@@ -206,7 +206,7 @@ export default function InsightsPage() {
         )}
         {activeTab === 'analysis' && (
           <div className="space-y-4 animate-content-in">
-            <TechnicalBreakdownCard kind={analysisKind} onKindChange={setAnalysisKind} />
+            <TechnicalBreakdownCard kind={analysisKind} onKindChange={setAnalysisKind} canMovies={canMovies} canSeries={canSeries} />
             <QualityScoreCard kind={analysisKind} />
             <FileExplorerCard kind={analysisKind} />
           </div>

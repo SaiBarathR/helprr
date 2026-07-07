@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
-import { can } from '@/lib/permissions';
-import { getMediaAnalysisDataset } from '@/lib/media-analysis';
+import { getMediaAnalysisDataset, analysisInclude } from '@/lib/media-analysis';
 import type { MediaAnalysisFile, MediaAnalysisFilesResponse } from '@/types/insights';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -39,10 +38,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const params = request.nextUrl.searchParams;
   const kind = params.get('kind'); // 'movie' | 'episode' | null (all)
 
-  const dataset = await getMediaAnalysisDataset({
-    movies: can(user, 'movies.view') && kind !== 'episode',
-    series: can(user, 'series.view') && kind !== 'movie',
-  });
+  const dataset = await getMediaAnalysisDataset(analysisInclude(user, kind));
 
   // Filter options reflect the kind-scoped dataset (before the other filters),
   // so narrowing by codec doesn't erase the other codecs from the select.

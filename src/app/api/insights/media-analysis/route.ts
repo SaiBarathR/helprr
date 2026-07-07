@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
-import { can } from '@/lib/permissions';
-import { getMediaAnalysisDataset, computeQualityScore } from '@/lib/media-analysis';
+import { getMediaAnalysisDataset, computeQualityScore, analysisInclude } from '@/lib/media-analysis';
 import type {
   MediaAnalysisDistEntry,
   MediaAnalysisFile,
@@ -50,10 +49,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   const kind = request.nextUrl.searchParams.get('kind'); // 'movie' | 'episode' | null (all)
 
-  const dataset = await getMediaAnalysisDataset({
-    movies: can(user, 'movies.view') && kind !== 'episode',
-    series: can(user, 'series.view') && kind !== 'movie',
-  });
+  const dataset = await getMediaAnalysisDataset(analysisInclude(user, kind));
   const rows = dataset.rows;
 
   let movies = 0;

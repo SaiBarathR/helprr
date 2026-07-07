@@ -230,8 +230,15 @@ export function FileExplorerCard({ kind }: { kind: MediaAnalysisKindFilter }) {
     `/api/insights/media-analysis/files?${params.toString()}`
   );
 
-  // Kind is page-level state; a switch there restarts pagination too.
-  React.useEffect(() => setPage(1), [kind]);
+  // Kind is page-level state; a switch there invalidates the facet values too
+  // (they're distinct per dataset), so clear them along with the pagination.
+  React.useEffect(() => {
+    setResolution(ALL);
+    setVideoCodec(ALL);
+    setDynamicRange(ALL);
+    setAudioCodec(ALL);
+    setPage(1);
+  }, [kind]);
 
   const toggleSelect = React.useCallback((file: MediaAnalysisFile, checked: boolean) => {
     setSelected((prev) => {

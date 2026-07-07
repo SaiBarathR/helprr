@@ -1,4 +1,5 @@
 import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
+import { can, type PermissionUser } from '@/lib/permissions';
 import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import type { SonarrEpisodeFileMediaInfo, EpisodeFileResource } from '@/types';
@@ -89,15 +90,24 @@ function bucketResolution(mediaInfoRes: string | undefined, qualityRes: number |
   return 'SD';
 }
 
-/** '1:52:33' / '52:33' / minutes-as-number → whole minutes. */
+/**
+ * '1:52:33' / '52:33' / seconds-as-number → whole minutes. Numbers are TOTAL
+ * SECONDS (matching formatRuntime in the file detail pages). Non-positive
+ * results are unknown, never 0 — a 0 would divide the bitrate estimate.
+ */
 function parseRuntimeMins(raw: string | number | undefined): number | null {
   if (raw === undefined || raw === null || raw === '') return null;
-  if (typeof raw === 'number') return Number.isFinite(raw) ? Math.round(raw) : null;
-  const parts = raw.split(':').map(Number);
-  if (parts.some((p) => !Number.isFinite(p))) return null;
-  if (parts.length === 3) return Math.round(parts[0] * 60 + parts[1] + parts[2] / 60);
-  if (parts.length === 2) return Math.round(parts[0] + parts[1] / 60);
-  return Math.round(parts[0] / 60); // bare seconds
+  let mins: number;
+  if (typeof raw === 'number') {
+    mins = Math.round(raw / 60);
+  } else {
+    const parts = raw.split(':').map(Number);
+    if (parts.some((p) => !Number.isFinite(p))) return null;
+    if (parts.length === 3) mins = Math.round(parts[0] * 60 + parts[1] + parts[2] / 60);
+    else if (parts.length === 2) mins = Math.round(parts[0] + parts[1] / 60);
+    else mins = Math.round(parts[0] / 60); // bare seconds
+  }
+  return Number.isFinite(mins) && mins > 0 ? mins : null;
 }
 
 /** 'eng/jpn/jpn' → ['eng', 'jpn'] — one entry per language, not per stream. */
@@ -254,17 +264,17 @@ interface SonarrSweepResult {
 
 /** Fetch every series' episode files, N series at a time per run. */
 async function sweepSonarrFiles(): Promise<SonarrSweepResult> {
+  // One client fetch serves both the (possible) library refresh and the sweep.
+  const instances = await getSonarrClients().catch(() => []);
   const lib = await getCachedTaggedLibrary({
     scope: 'sonarr',
     cacheKeySeed: 'all',
-    getInstances: () => getSonarrClients().catch(() => []),
+    getInstances: () => Promise.resolve(instances),
     fetchOne: (client) => client.getSeries(),
   });
   if (!lib.available) return { rows: [], available: false, partial: false };
 
-  const clients = new Map(
-    (await getSonarrClients().catch(() => [])).map(({ connection, client }) => [connection.id, client]),
-  );
+  const clients = new Map(instances.map(({ connection, client }) => [connection.id, client]));
 
   const queue = lib.items.filter((s) => (s.statistics?.episodeFileCount ?? 1) > 0);
   const rows: MediaAnalysisFile[] = [];
@@ -313,19 +323,44 @@ async function sweepSonarrFiles(): Promise<SonarrSweepResult> {
 function fileBasename(file: EpisodeFileResource): string | null {
   const p = file.relativePath ?? file.path;
   if (!p) return null;
-  const base = p.split('/').pop();
-  return base ?? null;
+  // Sonarr on Windows reports backslash paths.
+  const base = p.split(/[\\/]/).pop();
+  return base || null;
 }
+
+// Single-flight: the aggregates + files endpoints land together when the tab
+// opens, and a cold cache must not run two full per-series sweeps concurrently.
+let sonarrRowsInFlight: Promise<SonarrSweepResult> | null = null;
 
 async function getSonarrRows(): Promise<SonarrSweepResult> {
   const cached = await getCachedJson<MediaAnalysisFile[]>(CACHE_SCOPE, 'sonarr');
   if (cached) return { rows: cached, available: true, partial: false };
-  const result = await sweepSonarrFiles();
-  // Only a COMPLETE sweep is cached — a partial one is served once and retried next request.
-  if (result.available && !result.partial) {
-    await setCachedJson(CACHE_SCOPE, 'sonarr', result.rows, SONARR_FILES_TTL_SECONDS);
+  if (!sonarrRowsInFlight) {
+    sonarrRowsInFlight = (async () => {
+      try {
+        const result = await sweepSonarrFiles();
+        // Only a COMPLETE sweep is cached — a partial one is served once and retried next request.
+        if (result.available && !result.partial) {
+          await setCachedJson(CACHE_SCOPE, 'sonarr', result.rows, SONARR_FILES_TTL_SECONDS);
+        }
+        return result;
+      } finally {
+        sonarrRowsInFlight = null;
+      }
+    })();
   }
-  return result;
+  return sonarrRowsInFlight;
+}
+
+/**
+ * Which services a request may include: the user's permission ANDed with the
+ * ?kind= scope. Shared by both media-analysis routes so they can't drift.
+ */
+export function analysisInclude(user: PermissionUser, kind: string | null): { movies: boolean; series: boolean } {
+  return {
+    movies: can(user, 'movies.view') && kind !== 'episode',
+    series: can(user, 'series.view') && kind !== 'movie',
+  };
 }
 
 /**
