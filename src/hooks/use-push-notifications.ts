@@ -74,32 +74,7 @@ export function usePushNotifications() {
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-    setIsSupported(supported);
-    setIsStandalone(
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true
-    );
-    if ('Notification' in window) setPermission(Notification.permission);
-    try {
-      if (localStorage.getItem(PUSH_ENABLED_FLAG) === '1') setPreviouslyEnabled(true);
-    } catch {
-      /* localStorage unavailable (private mode) — banner just won't fire */
-    }
-
-    if (supported) {
-      checkSubscription();
-    } else {
-      setLoading(false);
-    }
-
-    return () => {
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    };
-  }, []);
-
-  async function reconcileSubscription(sub: PushSubscription): Promise<{ done: boolean; revoked?: boolean }> {
+  const reconcileSubscription = useCallback(async (sub: PushSubscription): Promise<{ done: boolean; revoked?: boolean }> => {
     const res = await fetch('/api/notifications/subscription/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -120,9 +95,9 @@ export function usePushNotifications() {
       if (reregistered) setWasReregistered(true);
     }
     return { done: true };
-  }
+  }, []);
 
-  async function checkSubscription() {
+  const checkSubscription = useCallback(async () => {
     try {
       const registration = await waitForServiceWorker();
       const sub = await registration.pushManager.getSubscription();
@@ -181,7 +156,32 @@ export function usePushNotifications() {
       console.warn('[Push] Could not check subscription:', err);
     }
     setLoading(false);
-  }
+  }, [reconcileSubscription]);
+
+  useEffect(() => {
+    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+    setIsSupported(supported);
+    setIsStandalone(
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true
+    );
+    if ('Notification' in window) setPermission(Notification.permission);
+    try {
+      if (localStorage.getItem(PUSH_ENABLED_FLAG) === '1') setPreviouslyEnabled(true);
+    } catch {
+      /* localStorage unavailable (private mode) — banner just won't fire */
+    }
+
+    if (supported) {
+      checkSubscription();
+    } else {
+      setLoading(false);
+    }
+
+    return () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    };
+  }, [checkSubscription]);
 
   const subscribe = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);

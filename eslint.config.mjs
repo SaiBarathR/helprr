@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated Serwist bundle (build artifact, gitignored but present after `npm run build`)
+    "public/sw.js",
   ]),
 ]);
 

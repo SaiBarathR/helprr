@@ -20,7 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Filter, Loader2, ExternalLink, ChevronRight } from 'lucide-react';
+import { Filter, Loader2, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';

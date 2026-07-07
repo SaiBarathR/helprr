@@ -29,10 +29,7 @@ import {
   Trash2,
   Loader2,
   Save,
-  Sparkles,
-  X,
   Check,
-  ChevronRight,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';

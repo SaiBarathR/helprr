@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Loader2, Search, Trash2 } from 'lucide-react';
+import { ChevronLeft, Loader2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher, ApiError } from '@/lib/query-fetch';

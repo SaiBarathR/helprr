@@ -64,7 +64,6 @@ import {
   isProwlarrIndexerBlocked,
   type ProwlarrIndexer,
   type ProwlarrIndexerStatus,
-  type ProwlarrIndexerStat,
   type ProwlarrTestAllResponse,
   type ProwlarrHistoryRecord,
   type ProwlarrHistoryResponse,
