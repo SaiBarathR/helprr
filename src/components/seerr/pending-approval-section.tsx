@@ -40,7 +40,9 @@ interface PendingRow {
 export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?: () => void; grid?: boolean }) {
   const canApprove = useCan('requests.approve');
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
-  const [focusHandled, setFocusHandled] = useState(false);
+  // Keyed by focus id (not a boolean) so a second notification tap with a
+  // different ?focus= on the already-mounted page is still handled.
+  const [handledFocusId, setHandledFocusId] = useState<string | null>(null);
   // Deep-link target from a `requestCreated` notification tap (?focus=<pendingId>)
   // — auto-opens the approve sheet for that row once.
   const focusId = useSearchParams().get('focus');
@@ -64,20 +66,20 @@ export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?
   // then open the approve sheet. One-shot — gives up once pages are exhausted.
   // The open/give-up decision runs during render (guarded); the effect below
   // only drives the paging side effect while the row hasn't surfaced.
-  if (!focusHandled && focusId && !loading) {
+  if (focusId && handledFocusId !== focusId && !loading) {
     const row = rows.find((r) => r.id === focusId);
     if (row) {
       if (canApprove) setModalRow(row);
-      setFocusHandled(true);
+      setHandledFocusId(focusId);
     } else if (!hasMore) {
-      setFocusHandled(true);
+      setHandledFocusId(focusId);
     }
   }
 
   useEffect(() => {
-    if (focusHandled || !focusId || loading || loadingMore || !hasMore) return;
+    if (!focusId || handledFocusId === focusId || loading || loadingMore || !hasMore) return;
     if (!rows.some((r) => r.id === focusId)) loadMore();
-  }, [focusId, rows, focusHandled, loading, loadingMore, hasMore, loadMore]);
+  }, [focusId, rows, handledFocusId, loading, loadingMore, hasMore, loadMore]);
 
   const removeMutation = useMutation({
     mutationFn: async (id: string) => {

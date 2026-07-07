@@ -22,6 +22,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { invalidateMovies } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import type { RadarrMovie } from '@/types';
+import { parentPath, lastPathSegment, joinPath } from '@/lib/paths';
 
 export default function MovieEditPage() {
   const { id } = useParams();
@@ -55,7 +56,7 @@ export default function MovieEditPage() {
     setQualityProfileId(movie.qualityProfileId);
     setMinimumAvailability(movie.minimumAvailability);
     setSelectedTags([...movie.tags]);
-    setRootFolder(movie.path ? movie.path.split('/').slice(0, -1).join('/') : '');
+    setRootFolder(movie.path ? parentPath(movie.path) : '');
   }
 
   const saveMutation = useMutation({
@@ -94,8 +95,7 @@ export default function MovieEditPage() {
 
     // Update root folder path if changed
     if (rootFolder && movie.path) {
-      const movieFolder = movie.path.split('/').pop();
-      updatedMovie.path = `${rootFolder}/${movieFolder}`;
+      updatedMovie.path = joinPath(rootFolder, lastPathSegment(movie.path));
     }
 
     saveMutation.mutate(updatedMovie);

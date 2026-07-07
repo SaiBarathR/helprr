@@ -125,26 +125,26 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     : undefined;
 
   // Seed the form from the matching connection. Re-seeds when the edited entity
-  // (editingId) changes, but not on a background refetch (which would clobber
-  // in-progress edits). Guarded during render.
-  const [seededFor, setSeededFor] = useState<string | null | undefined>(undefined);
-  if (servicesQuery.data && seededFor !== editingId) {
-    setSeededFor(editingId);
-    if (existingConn) {
-      setEditingConnId(existingConn.id ?? null);
-      if (isMultiInstance) {
-        setLabel(existingConn.label ?? '');
-        setIsDefault(existingConn.isDefault ?? false);
-      }
-      setUrl(existingConn.url ?? '');
-      setApiKey(existingConn.apiKey ?? '');
-      setUsername(existingConn.username ?? '');
-      setExternalUrl(existingConn.externalUrl ?? '');
-      setConfigured(true);
-      if (isJellyfin && existingConn.username) {
-        setJellyfinValidated({ userId: existingConn.username });
-      }
-    }
+  // changes — keyed by the full route context (service type + instance param),
+  // since client-side navigation between services reuses this component — but
+  // not on a background refetch (which would clobber in-progress edits).
+  // Always resets to defaults first so no state carries over from the previous
+  // service/instance. Guarded during render.
+  const seedKey = `${type}:${instanceParam ?? ''}`;
+  const [seededFor, setSeededFor] = useState<string | null>(null);
+  if (servicesQuery.data && seededFor !== seedKey) {
+    setSeededFor(seedKey);
+    setEditingConnId(existingConn?.id ?? null);
+    setLabel(existingConn?.label ?? '');
+    setIsDefault(existingConn?.isDefault ?? false);
+    setUrl(existingConn?.url ?? '');
+    setApiKey(existingConn?.apiKey ?? '');
+    setUsername(existingConn?.username ?? '');
+    setExternalUrl(existingConn?.externalUrl ?? '');
+    setConfigured(Boolean(existingConn));
+    setJellyfinValidated(
+      isJellyfin && existingConn?.username ? { userId: existingConn.username } : null
+    );
   }
 
   // Load the Jellyfin user list for the saved connection (primitive deps so a
