@@ -62,7 +62,6 @@ function AddArtistPageContent() {
   const [monitor, setMonitor] = useState('all');
   const [monitorNewItems, setMonitorNewItems] = useState<'all' | 'none'>('all');
   const [searchOnAdd, setSearchOnAdd] = useState(true);
-  const [autoSearched, setAutoSearched] = useState(false);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
 
   const instancesQuery = useQuery({
@@ -91,11 +90,14 @@ function AddArtistPageContent() {
   const results = lookupQuery.data ?? [];
   const searching = lookupQuery.isFetching;
 
+  // The blocks below adjust state during render (guarded so they converge)
+  // instead of via setState-in-effect — see React's "adjusting state when
+  // props change" pattern.
+
   // Default to the marked-default instance once instances load (picker shows when >1).
-  useEffect(() => {
-    if (instances.length === 0) return;
-    setInstanceId((prev) => prev ?? instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
-  }, [instances]);
+  if (instanceId === undefined && instances.length > 0) {
+    setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+  }
 
   // Surface a non-401 lookup failure (a 401 is handled globally → redirect).
   useEffect(() => {
@@ -106,29 +108,28 @@ function AddArtistPageContent() {
 
   // Switching instances invalidates the previously-picked (instance-local)
   // profile/folder/tag ids — clear them so a stale value can't be POSTed before
-  // the new instance's reference data arrives (the effects below re-default).
-  useEffect(() => {
+  // the new instance's reference data arrives (the defaults below re-apply).
+  const [prevInstanceId, setPrevInstanceId] = useState(instanceId);
+  if (instanceId !== prevInstanceId) {
+    setPrevInstanceId(instanceId);
     setProfileId('');
     setMetadataProfileId('');
     setRootFolder('');
     setSelectedTags([]);
-  }, [instanceId]);
+  }
 
   // Default the profile / metadata-profile / root-folder selection to the first
   // option when the instance's reference data arrives. Keep a still-valid user
   // choice on a background refetch; re-default only when it's missing now.
-  useEffect(() => {
-    if (profiles.length === 0) return;
-    setProfileId((prev) => (prev && profiles.some((p) => String(p.id) === prev) ? prev : String(profiles[0].id)));
-  }, [profiles]);
-  useEffect(() => {
-    if (metadataProfiles.length === 0) return;
-    setMetadataProfileId((prev) => (prev && metadataProfiles.some((p) => String(p.id) === prev) ? prev : String(metadataProfiles[0].id)));
-  }, [metadataProfiles]);
-  useEffect(() => {
-    if (rootFolders.length === 0) return;
-    setRootFolder((prev) => (prev && rootFolders.some((f) => f.path === prev) ? prev : rootFolders[0].path));
-  }, [rootFolders]);
+  if (profiles.length > 0 && !(profileId && profiles.some((p) => String(p.id) === profileId))) {
+    setProfileId(String(profiles[0].id));
+  }
+  if (metadataProfiles.length > 0 && !(metadataProfileId && metadataProfiles.some((p) => String(p.id) === metadataProfileId))) {
+    setMetadataProfileId(String(metadataProfiles[0].id));
+  }
+  if (rootFolders.length > 0 && !(rootFolder && rootFolders.some((f) => f.path === rootFolder))) {
+    setRootFolder(rootFolders[0].path);
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -191,18 +192,17 @@ function AddArtistPageContent() {
   const selectedInLibrary = selected?.library?.exists === true;
   const selectedPoster = selected ? posterUrl(selected.images, selected.remotePoster) : null;
 
-  useEffect(() => {
-    const prefill = searchParams.get('term');
-    if (prefill) setTerm(prefill);
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (autoSearched) return;
-    const prefill = searchParams.get('term');
-    if (!prefill) return;
-    setAutoSearched(true);
-    setSubmittedTerm(prefill);
-  }, [searchParams, autoSearched]);
+  // Prefill from the URL (?term=): fill the search box and fire the lookup
+  // once per distinct prefill. Guarded during render.
+  const prefillTerm = searchParams.get('term');
+  const [prevPrefillTerm, setPrevPrefillTerm] = useState<string | null>(null);
+  if (prevPrefillTerm !== prefillTerm) {
+    setPrevPrefillTerm(prefillTerm);
+    if (prefillTerm) {
+      setTerm(prefillTerm);
+      setSubmittedTerm(prefillTerm);
+    }
+  }
 
   return (
     <div className="animate-content-in">
