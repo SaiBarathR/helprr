@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+
 // Last-resort boundary: replaces the root layout when it (or an error boundary
 // above a page) throws. globals.css is not loaded here, so styles are inline.
 export default function GlobalError({
@@ -9,6 +11,10 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    console.error('[App] Unhandled root-layout error:', error);
+  }, [error]);
+
   return (
     <html lang="en">
       <body
