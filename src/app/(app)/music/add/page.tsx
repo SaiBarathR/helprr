@@ -198,6 +198,7 @@ function AddArtistPageContent() {
   const [prevPrefillTerm, setPrevPrefillTerm] = useState<string | null>(null);
   if (prevPrefillTerm !== prefillTerm) {
     setPrevPrefillTerm(prefillTerm);
+    setSelected(null);
     if (prefillTerm) {
       setTerm(prefillTerm);
       setSubmittedTerm(prefillTerm);

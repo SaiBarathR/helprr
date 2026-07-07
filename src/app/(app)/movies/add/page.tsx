@@ -80,12 +80,14 @@ function AddMoviePageContent() {
     setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
   }
 
-  // Tag ids are instance-local, so clear the selection when the instance changes —
-  // otherwise a stale id from the previous instance gets POSTed. (Profile and root
-  // folder re-default from the new instance's reference data below.)
+  // Switching instances invalidates the previously-picked (instance-local)
+  // profile/folder/tag ids — clear them so a stale value can't be POSTed before
+  // the new instance's reference data arrives (the defaults below re-apply).
   const [prevInstanceId, setPrevInstanceId] = useState(instanceId);
   if (instanceId !== prevInstanceId) {
     setPrevInstanceId(instanceId);
+    setProfileId('');
+    setRootFolder('');
     setSelectedTags([]);
   }
 
@@ -214,12 +216,13 @@ function AddMoviePageContent() {
   // Guarded during render.
   const prefillTerm = searchParams.get('term');
   const prefillTmdbRaw = searchParams.get('tmdbId');
-  const parsedPrefillTmdbId = prefillTmdbRaw !== null ? Number(prefillTmdbRaw) : null;
+  const parsedPrefillTmdbId = prefillTmdbRaw ? Number(prefillTmdbRaw) : null;
   const prefillTmdbId =
     parsedPrefillTmdbId !== null && Number.isFinite(parsedPrefillTmdbId) ? parsedPrefillTmdbId : null;
   const [prevPrefill, setPrevPrefill] = useState<{ term: string | null; tmdbId: number | null } | null>(null);
   if (!prevPrefill || prevPrefill.term !== prefillTerm || prevPrefill.tmdbId !== prefillTmdbId) {
     setPrevPrefill({ term: prefillTerm, tmdbId: prefillTmdbId });
+    setSelected(null);
     if (prefillTerm) {
       setTerm(prefillTerm);
       setTargetTmdbId(prefillTmdbId);
