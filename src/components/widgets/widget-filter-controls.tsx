@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpDown, CalendarIcon, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
+import { format } from 'date-fns';
 import {
   Drawer,
   DrawerContent,
@@ -167,9 +168,12 @@ export function TypeSelect({
 
 // ─── Date range select ───
 
+// date-fns, not toLocaleDateString: the label is server-rendered, and a locale
+// difference between Node and the browser (e.g. "Jun 8" vs "8 Jun") is a
+// hydration mismatch that regenerates the whole page tree on the client.
 function fmtMonthDay(d: Date | undefined): string {
   if (!d) return '';
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return format(d, 'MMM d');
 }
 
 export function DateRangeSelect({
