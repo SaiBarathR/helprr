@@ -83,14 +83,22 @@ export function WatchlistAddDialog({ open, onOpenChange, draft, initialTags, onS
   const [knownTags, setKnownTags] = useState<KnownTag[]>([]);
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // Reset the form whenever the dialog opens (or its draft/tags change while
+  // open). Guarded during render.
+  const [prev, setPrev] = useState<{ open: boolean; draft: WatchlistDraft | null; initialTags?: string[] } | null>(null);
+  if (!prev || prev.open !== open || prev.draft !== draft || prev.initialTags !== initialTags) {
+    setPrev({ open, draft, initialTags });
+    if (open && draft) {
+      setTitle(draft.title);
+      setSelected(Array.from(new Set((initialTags ?? []).map(normalizeTagName).filter(Boolean))));
+      setTagInput('');
+    }
+  }
+
   useEffect(() => {
     if (!open || !draft) return;
-    setTitle(draft.title);
-    const initial = Array.from(new Set((initialTags ?? []).map(normalizeTagName).filter(Boolean)));
-    setSelected(initial);
-    setTagInput('');
     void fetchKnownTags().then(setKnownTags);
-  }, [open, draft, initialTags]);
+  }, [open, draft]);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
 

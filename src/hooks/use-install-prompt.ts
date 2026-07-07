@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
+import { useIsStandalone } from '@/hooks/use-is-standalone';
 
 type Platform = 'ios' | 'android' | 'desktop';
 
@@ -9,29 +10,28 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+// Platform never changes within a session, so the store never emits.
+const emptySubscribe = () => () => {};
+
+function getPlatform(): Platform {
+  const ua = navigator.userAgent;
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) return 'ios';
+  if (/Android/.test(ua)) return 'android';
+  return 'desktop';
+}
+
 export function useInstallPrompt() {
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [platform, setPlatform] = useState<Platform>('desktop');
+  const standaloneDisplay = useIsStandalone();
+  // Installing doesn't flip the current tab's display-mode, so track the
+  // appinstalled event separately to hide install prompts right away.
+  const [installed, setInstalled] = useState(false);
+  const platform = useSyncExternalStore(emptySubscribe, getPlatform, () => 'desktop');
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    // Standalone detection (same pattern as use-push-notifications.ts)
-    setIsStandalone(
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true
-    );
-
-    // Platform detection
-    const ua = navigator.userAgent;
-    const isIOS =
-      /iPad|iPhone|iPod/.test(ua) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    const isAndroid = /Android/.test(ua);
-
-    if (isIOS) setPlatform('ios');
-    else if (isAndroid) setPlatform('android');
-    else setPlatform('desktop');
-
     // beforeinstallprompt lifecycle
     function handleBeforeInstall(e: Event) {
       e.preventDefault();
@@ -39,7 +39,7 @@ export function useInstallPrompt() {
     }
 
     function handleAppInstalled() {
-      setIsStandalone(true);
+      setInstalled(true);
       setDeferredPrompt(null);
     }
 
@@ -64,5 +64,5 @@ export function useInstallPrompt() {
     return outcome === 'accepted';
   }, [deferredPrompt]);
 
-  return { isStandalone, platform, canPrompt, triggerInstall };
+  return { isStandalone: standaloneDisplay || installed, platform, canPrompt, triggerInstall };
 }

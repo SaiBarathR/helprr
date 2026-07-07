@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import {
@@ -555,13 +555,13 @@ export function DiscoverLayoutSettings() {
   // Filters metadata for genre/provider pickers (read-only; derive from the query).
   const filtersMeta = initQuery.data?.filtersMeta ?? null;
 
-  // Seed the editable layout once from the query (don't clobber edits on refetch).
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current || !initQuery.data) return;
-    seeded.current = true;
+  // Seed the editable layout once from the query (don't clobber edits on
+  // refetch). Guarded one-shot during render.
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded && initQuery.data) {
+    setSeeded(true);
     if (initQuery.data.layout) setLayout(initQuery.data.layout);
-  }, [initQuery.data]);
+  }
 
   const sections = useMemo(() => layout?.sections ?? [], [layout]);
   const sectionIds = useMemo(() => sections.map((s) => s.id), [sections]);

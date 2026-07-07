@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import Link from 'next/link';
@@ -87,16 +87,15 @@ export default function DownloadsSettingsPage() {
 
   // Seed the editable state once from the loaded schedule (don't re-seed on
   // background refetches — that would clobber in-progress edits). The save
-  // mutation updates this state directly from its response.
-  const seeded = useRef(false);
-  useEffect(() => {
-    const data = scheduleQuery.data;
-    if (seeded.current || !data) return;
-    seeded.current = true;
-    setRules(data.schedule.rules);
-    setTimeZone(data.timeZone);
-    setActiveRuleId(data.activeRuleId);
-  }, [scheduleQuery.data]);
+  // mutation updates this state directly from its response. Guarded one-shot
+  // during render (React's "adjusting state when props change" pattern).
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded && scheduleQuery.data) {
+    setSeeded(true);
+    setRules(scheduleQuery.data.schedule.rules);
+    setTimeZone(scheduleQuery.data.timeZone);
+    setActiveRuleId(scheduleQuery.data.activeRuleId);
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (rulesToSave: BandwidthRule[]) => {

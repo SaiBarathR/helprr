@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import Link from 'next/link';
@@ -68,11 +68,12 @@ export default function DashboardRefreshSettingsPage() {
   const data = layoutsQuery.data ?? null;
   const loading = layoutsQuery.isLoading;
 
-  // Seed the editable override/draft/expanded state once from the loaded layouts.
-  const seeded = useRef(false);
-  useEffect(() => {
-    if (seeded.current || !data) return;
-    seeded.current = true;
+  // Seed the editable override/draft/expanded state once from the loaded
+  // layouts. Guarded one-shot during render (React's "adjusting state when
+  // props change" pattern).
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded && data) {
+    setSeeded(true);
     const initial: OverrideMap = {};
     const initialDrafts: Record<string, Record<string, string>> = {};
     const initialExpanded: Record<string, boolean> = {};
@@ -91,7 +92,7 @@ export default function DashboardRefreshSettingsPage() {
     setOverrides(initial);
     setDrafts(initialDrafts);
     setExpanded(initialExpanded);
-  }, [data]);
+  }
 
   const dirty = useMemo(() => {
     if (!data) return false;

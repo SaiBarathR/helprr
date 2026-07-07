@@ -62,18 +62,22 @@ export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?
 
   // Walk pages until the deep-linked row surfaces (it may be beyond page 1),
   // then open the approve sheet. One-shot — gives up once pages are exhausted.
-  useEffect(() => {
-    if (focusHandled || !focusId || loading) return;
+  // The open/give-up decision runs during render (guarded); the effect below
+  // only drives the paging side effect while the row hasn't surfaced.
+  if (!focusHandled && focusId && !loading) {
     const row = rows.find((r) => r.id === focusId);
     if (row) {
       if (canApprove) setModalRow(row);
       setFocusHandled(true);
-    } else if (hasMore && !loadingMore) {
-      loadMore();
     } else if (!hasMore) {
       setFocusHandled(true);
     }
-  }, [focusId, rows, canApprove, focusHandled, loading, loadingMore, hasMore, loadMore]);
+  }
+
+  useEffect(() => {
+    if (focusHandled || !focusId || loading || loadingMore || !hasMore) return;
+    if (!rows.some((r) => r.id === focusId)) loadMore();
+  }, [focusId, rows, focusHandled, loading, loadingMore, hasMore, loadMore]);
 
   const removeMutation = useMutation({
     mutationFn: async (id: string) => {

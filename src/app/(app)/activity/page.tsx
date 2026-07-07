@@ -331,17 +331,26 @@ export default function ActivityPage() {
   const userSwitchedTabRef = useRef(false);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
+  // Resume the last-used tab when arriving without an explicit ?tab deep-link
+  // (the nav item / a generic "view all"). A ?tab from a widget or push wins and
+  // was already applied by the useState initializer above. Guarded one-shot
+  // during render — hasHydrated is false on the hydration render itself, so
+  // SSR markup is unaffected.
+  const [tabResumed, setTabResumed] = useState(false);
+  if (hasHydrated && !tabResumed) {
+    setTabResumed(true);
+    const params = new URLSearchParams(searchParamsKey);
+    const persistedTab = useUIStore.getState().activityTab;
+    if (!params.get('tab') && !userSwitchedTabRef.current && isTabKey(persistedTab)) {
+      setTab(persistedTab);
+    }
+  }
+
   useEffect(() => {
     if (!hasHydrated || initRef.current) return;
     initRef.current = true;
     const params = new URLSearchParams(searchParamsKey);
     const currentState = useUIStore.getState();
-    // Resume the last-used tab when arriving without an explicit ?tab deep-link
-    // (the nav item / a generic "view all"). A ?tab from a widget or push wins and
-    // was already applied by the useState initializer above.
-    if (!params.get('tab') && !userSwitchedTabRef.current && isTabKey(currentState.activityTab)) {
-      setTab(currentState.activityTab);
-    }
     const requestedSource = params.get('source');
     const requestedSort = params.get('sort');
     if (requestedSource && isFilterKey(requestedSource) && requestedSource !== 'all') {
