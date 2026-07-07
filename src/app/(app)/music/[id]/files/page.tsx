@@ -106,8 +106,8 @@ export default function ArtistFilesPage() {
   });
 
   const artist = artistQuery.data ?? null;
-  const albums = albumsQuery.data ?? [];
-  const files = filesQuery.data ?? [];
+  const albums = useMemo(() => albumsQuery.data ?? [], [albumsQuery.data]);
+  const files = useMemo(() => filesQuery.data ?? [], [filesQuery.data]);
   const history = historyQuery.data ?? [];
   const loading =
     artistQuery.isLoading || albumsQuery.isLoading || filesQuery.isLoading || historyQuery.isLoading;

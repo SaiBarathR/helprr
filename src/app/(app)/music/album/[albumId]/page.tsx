@@ -85,8 +85,8 @@ export default function AlbumDetailPage() {
     enabled: Number.isFinite(albumId),
   });
   const album = albumQuery.data?.album ?? null;
-  const tracks = albumQuery.data?.tracks ?? [];
-  const trackFiles = albumQuery.data?.trackFiles ?? [];
+  const tracks = useMemo(() => albumQuery.data?.tracks ?? [], [albumQuery.data]);
+  const trackFiles = useMemo(() => albumQuery.data?.trackFiles ?? [], [albumQuery.data]);
   const loading = albumQuery.isLoading;
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);

@@ -132,7 +132,7 @@ export default function ArtistDetailPage() {
     select: (d) => (Array.isArray(d) ? d : []),
   });
   const artist = artistQuery.data ?? null;
-  const albums = albumsQuery.data ?? [];
+  const albums = useMemo(() => albumsQuery.data ?? [], [albumsQuery.data]);
   // Reference data — shared (and deduped) with the list / edit / add pages.
   const { data: qualityProfiles = [] } = useQualityProfiles('lidarr', instance);
   const { data: metadataProfiles = [] } = useMetadataProfiles(instance);

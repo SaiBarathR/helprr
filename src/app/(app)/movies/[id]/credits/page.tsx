@@ -31,7 +31,7 @@ export default function MovieCreditsPage() {
   });
 
   const title = movieQuery.data?.title ?? '';
-  const credits = creditsQuery.data ?? [];
+  const credits = useMemo(() => creditsQuery.data ?? [], [creditsQuery.data]);
   // First-load-only: once credits are cached, a background refetch must not
   // re-blank CreditsListPage to a full-screen spinner.
   const loading = (movieQuery.isLoading || creditsQuery.isLoading) && !creditsQuery.data;
