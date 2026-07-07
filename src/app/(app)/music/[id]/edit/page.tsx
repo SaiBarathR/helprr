@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -52,15 +52,17 @@ export default function ArtistEditPage() {
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
-  // Seed the form once the artist loads (and re-seed if the cached artist changes).
-  useEffect(() => {
-    if (!artist) return;
+  // Seed the form once the artist loads (and re-seed if the cached artist
+  // changes). Guarded during render.
+  const [seededArtist, setSeededArtist] = useState<LidarrArtist | null>(null);
+  if (artist && artist !== seededArtist) {
+    setSeededArtist(artist);
     setQualityProfileId(artist.qualityProfileId);
     setMetadataProfileId(artist.metadataProfileId);
     setMonitorNewItems(artist.monitorNewItems || 'all');
     setSelectedTags([...artist.tags]);
     setRootFolder(artist.path ? artist.path.split('/').slice(0, -1).join('/') : '');
-  }, [artist]);
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (updated: LidarrArtist) => {

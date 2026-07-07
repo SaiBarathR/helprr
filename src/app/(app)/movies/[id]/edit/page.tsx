@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
@@ -47,14 +47,16 @@ export default function MovieEditPage() {
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
-  // Seed the form once the movie loads (and re-seed if the cached movie changes).
-  useEffect(() => {
-    if (!movie) return;
+  // Seed the form once the movie loads (and re-seed if the cached movie
+  // changes). Guarded during render.
+  const [seededMovie, setSeededMovie] = useState<RadarrMovie | null>(null);
+  if (movie && movie !== seededMovie) {
+    setSeededMovie(movie);
     setQualityProfileId(movie.qualityProfileId);
     setMinimumAvailability(movie.minimumAvailability);
     setSelectedTags([...movie.tags]);
     setRootFolder(movie.path ? movie.path.split('/').slice(0, -1).join('/') : '');
-  }, [movie]);
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (updatedMovie: RadarrMovie) => {

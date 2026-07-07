@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, use } from 'react';
+import { useEffect, useState, use } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
@@ -117,55 +117,65 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   });
   const loading = servicesQuery.isLoading;
 
+  // The connection being edited, from the latest query data.
+  const existingConn = servicesQuery.data
+    ? (isMultiInstance
+        ? (editingId ? servicesQuery.data.find((c) => c.id === editingId) : undefined)
+        : servicesQuery.data.find((c) => c.type === type))
+    : undefined;
+
   // Seed the form from the matching connection. Re-seeds when the edited entity
   // (editingId) changes, but not on a background refetch (which would clobber
-  // in-progress edits).
-  const seededFor = useRef<string | null | undefined>(undefined);
+  // in-progress edits). Guarded during render.
+  const [seededFor, setSeededFor] = useState<string | null | undefined>(undefined);
+  if (servicesQuery.data && seededFor !== editingId) {
+    setSeededFor(editingId);
+    if (existingConn) {
+      setEditingConnId(existingConn.id ?? null);
+      if (isMultiInstance) {
+        setLabel(existingConn.label ?? '');
+        setIsDefault(existingConn.isDefault ?? false);
+      }
+      setUrl(existingConn.url ?? '');
+      setApiKey(existingConn.apiKey ?? '');
+      setUsername(existingConn.username ?? '');
+      setExternalUrl(existingConn.externalUrl ?? '');
+      setConfigured(true);
+      if (isJellyfin && existingConn.username) {
+        setJellyfinValidated({ userId: existingConn.username });
+      }
+    }
+  }
+
+  // Load the Jellyfin user list for the saved connection (primitive deps so a
+  // background refetch with unchanged values doesn't re-fire the fetch).
+  const jfUrl = existingConn?.url;
+  const jfApiKey = existingConn?.apiKey;
+  const jfSavedUser = existingConn?.username;
   useEffect(() => {
-    const data = servicesQuery.data;
-    if (!data || seededFor.current === editingId) return;
-    seededFor.current = editingId;
-    const existing = isMultiInstance
-      ? (editingId ? data.find((c) => c.id === editingId) : undefined)
-      : data.find((c) => c.type === type);
-    if (!existing) return;
-    setEditingConnId(existing.id ?? null);
-    if (isMultiInstance) {
-      setLabel(existing.label ?? '');
-      setIsDefault(existing.isDefault ?? false);
-    }
-    setUrl(existing.url ?? '');
-    setApiKey(existing.apiKey ?? '');
-    setUsername(existing.username ?? '');
-    setExternalUrl(existing.externalUrl ?? '');
-    setConfigured(true);
-    if (isJellyfin && existing.username) {
-      setJellyfinValidated({ userId: existing.username });
-    }
-    if (isJellyfin && existing.url && existing.apiKey) {
-      void (async () => {
-        try {
-          const usersRes = await fetch('/api/jellyfin/users');
-          if (usersRes.status === 401) {
-            handleAuthError(new ApiError(401, 'Session expired'));
-            return;
-          }
-          if (!usersRes.ok) return;
-          const usersData = await usersRes.json();
-          const rawUsers: unknown[] = Array.isArray((usersData as { users?: unknown }).users)
-            ? (usersData as { users: unknown[] }).users
-            : [];
-          const options = mapJellyfinUsers(rawUsers);
-          if (existing.username && !options.some((u) => u.id === existing.username)) {
-            options.unshift({ id: existing.username, name: `Saved User (${existing.username})` });
-          }
-          setJellyfinUsers(options);
-        } catch {
-          // noop
+    if (!isJellyfin || !jfUrl || !jfApiKey) return;
+    void (async () => {
+      try {
+        const usersRes = await fetch('/api/jellyfin/users');
+        if (usersRes.status === 401) {
+          handleAuthError(new ApiError(401, 'Session expired'));
+          return;
         }
-      })();
-    }
-  }, [servicesQuery.data, editingId, isJellyfin, isMultiInstance, type]);
+        if (!usersRes.ok) return;
+        const usersData = await usersRes.json();
+        const rawUsers: unknown[] = Array.isArray((usersData as { users?: unknown }).users)
+          ? (usersData as { users: unknown[] }).users
+          : [];
+        const options = mapJellyfinUsers(rawUsers);
+        if (jfSavedUser && !options.some((u) => u.id === jfSavedUser)) {
+          options.unshift({ id: jfSavedUser, name: `Saved User (${jfSavedUser})` });
+        }
+        setJellyfinUsers(options);
+      } catch {
+        // noop
+      }
+    })();
+  }, [isJellyfin, jfUrl, jfApiKey, jfSavedUser]);
 
   const testMutation = useMutation({
     mutationFn: async (vars: { url: string; apiKey: string; username: string }) => {

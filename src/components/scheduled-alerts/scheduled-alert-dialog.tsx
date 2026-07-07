@@ -83,18 +83,41 @@ export function ScheduledAlertDialog({
         ? ANIME_RELEASE_OPTIONS
         : SERIES_RELEASE_OPTIONS;
 
-  useEffect(() => {
-    if (!open || !draft) return;
-    setTitleValue(draft.title);
-    setPreviewCount(0);
-
-    if (initialScheduleMode) {
-      setScheduleMode(initialScheduleMode);
-      setReleaseTypes(initialReleaseTypes ?? []);
-      setOffsetMinutes(initialOffsetMinutes ?? 60);
-      setAbsoluteValue(toDatetimeLocalValue(initialAbsoluteNotifyAt));
-      return;
+  // Seed the form whenever the dialog opens (or its inputs change while open).
+  // Guarded during render; the preview fetch below fills defaults when no
+  // initial values were passed.
+  const [prev, setPrev] = useState<{
+    open: boolean;
+    draft: typeof draft;
+    initialScheduleMode: typeof initialScheduleMode;
+    initialReleaseTypes: typeof initialReleaseTypes;
+    initialOffsetMinutes: typeof initialOffsetMinutes;
+    initialAbsoluteNotifyAt: typeof initialAbsoluteNotifyAt;
+  } | null>(null);
+  if (
+    !prev ||
+    prev.open !== open ||
+    prev.draft !== draft ||
+    prev.initialScheduleMode !== initialScheduleMode ||
+    prev.initialReleaseTypes !== initialReleaseTypes ||
+    prev.initialOffsetMinutes !== initialOffsetMinutes ||
+    prev.initialAbsoluteNotifyAt !== initialAbsoluteNotifyAt
+  ) {
+    setPrev({ open, draft, initialScheduleMode, initialReleaseTypes, initialOffsetMinutes, initialAbsoluteNotifyAt });
+    if (open && draft) {
+      setTitleValue(draft.title);
+      setPreviewCount(0);
+      if (initialScheduleMode) {
+        setScheduleMode(initialScheduleMode);
+        setReleaseTypes(initialReleaseTypes ?? []);
+        setOffsetMinutes(initialOffsetMinutes ?? 60);
+        setAbsoluteValue(toDatetimeLocalValue(initialAbsoluteNotifyAt));
+      }
     }
+  }
+
+  useEffect(() => {
+    if (!open || !draft || initialScheduleMode) return;
 
     const controller = new AbortController();
     void fetch('/api/scheduled-alerts/preview', {
@@ -115,14 +138,7 @@ export function ScheduledAlertDialog({
       .catch(() => {});
 
     return () => controller.abort();
-  }, [
-    open,
-    draft,
-    initialScheduleMode,
-    initialReleaseTypes,
-    initialOffsetMinutes,
-    initialAbsoluteNotifyAt,
-  ]);
+  }, [open, draft, initialScheduleMode]);
 
   const saveMutation = useMutation({
     mutationFn: async (body: Record<string, unknown>) => {

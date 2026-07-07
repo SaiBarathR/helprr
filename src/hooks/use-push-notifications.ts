@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
+import { useIsStandalone } from '@/hooks/use-is-standalone';
 
 const PUSH_ENABLED_FLAG = 'helprr-push-enabled';
 
@@ -60,18 +61,36 @@ async function registerWithServer(sub: PushSubscription): Promise<boolean> {
   return res.ok;
 }
 
+// Environment facts that never change within a session — read them as external
+// stores (server snapshot: unsupported/null) instead of setState-on-mount.
+const emptySubscribe = () => () => {};
+const getIsSupported = () =>
+  'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+// Re-read on every render: requestPermission() flows always re-render (loading /
+// subscribed state changes), so a fresh grant/deny surfaces immediately.
+const getPermission = (): NotificationPermission | null =>
+  'Notification' in window ? Notification.permission : null;
+
 export function usePushNotifications() {
-  const [isSupported, setIsSupported] = useState(false);
+  const isSupported = useSyncExternalStore(emptySubscribe, getIsSupported, () => false);
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const isStandalone = useIsStandalone();
+  const [checking, setLoading] = useState(true);
+  // Unsupported browsers have nothing to check — resolve loading immediately.
+  const loading = isSupported && checking;
   const [error, setError] = useState<string | null>(null);
   const [subscriptionEndpoint, setSubscriptionEndpoint] = useState<string | null>(null);
   const [wasReregistered, setWasReregistered] = useState(false);
   // Tracks whether THIS device ever had push turned on (localStorage), so we can
   // tell "never enabled" apart from "was enabled but iOS/permission dropped it".
-  const [previouslyEnabled, setPreviouslyEnabled] = useState(false);
-  const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [previouslyEnabled, setPreviouslyEnabled] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && localStorage.getItem(PUSH_ENABLED_FLAG) === '1';
+    } catch {
+      return false; // localStorage unavailable (private mode) — banner just won't fire
+    }
+  });
+  const permission = useSyncExternalStore(emptySubscribe, getPermission, () => null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reconcileSubscription = useCallback(async (sub: PushSubscription): Promise<{ done: boolean; revoked?: boolean }> => {
@@ -159,29 +178,12 @@ export function usePushNotifications() {
   }, [reconcileSubscription]);
 
   useEffect(() => {
-    const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-    setIsSupported(supported);
-    setIsStandalone(
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as unknown as { standalone?: boolean }).standalone === true
-    );
-    if ('Notification' in window) setPermission(Notification.permission);
-    try {
-      if (localStorage.getItem(PUSH_ENABLED_FLAG) === '1') setPreviouslyEnabled(true);
-    } catch {
-      /* localStorage unavailable (private mode) — banner just won't fire */
-    }
-
-    if (supported) {
-      checkSubscription();
-    } else {
-      setLoading(false);
-    }
-
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- checkSubscription only sets state after await points (async SW/server reconcile), never synchronously; the rule can't see the async boundary
+    if (isSupported) checkSubscription();
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [checkSubscription]);
+  }, [isSupported, checkSubscription]);
 
   const subscribe = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
@@ -245,7 +247,6 @@ export function usePushNotifications() {
       setSubscriptionEndpoint(sub.endpoint);
       setWasReregistered(false);
       setPreviouslyEnabled(true);
-      setPermission('granted');
       setPushEnabledFlag(true);
       setLoading(false);
       return { success: true };
