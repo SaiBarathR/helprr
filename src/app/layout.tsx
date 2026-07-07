@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { headers } from 'next/headers';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { ThemeApplier } from '@/components/theme-applier';
 import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/dashboard-theme';
@@ -45,11 +46,15 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Per-request CSP script nonce from the middleware. Reading headers() also
+  // forces dynamic rendering app-wide — required for nonce-based CSP, since a
+  // static prerender can't carry a per-request nonce in its inline scripts.
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
   return (
     <html lang="en" suppressHydrationWarning>
       <body
@@ -58,7 +63,7 @@ export default function RootLayout({
         {/* Blocking, pre-hydration: replays the persisted resolved theme onto
             <html> before first paint so a non-default theme doesn't snap. Must
             stay the first body child (runs before any themed markup parses). */}
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP_SCRIPT }} />
         <ThemeApplier />
         <TooltipProvider delayDuration={300}>
           {children}
