@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import type { DateRange } from 'react-day-picker';
-import { Library, Download, HardDrive, MonitorPlay, type LucideIcon } from 'lucide-react';
+import { Library, Download, HardDrive, MonitorPlay, ScanSearch, type LucideIcon } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import { DateRangeSelect } from '@/components/widgets/widget-filter-controls';
@@ -37,6 +37,9 @@ const TopIndexersCard = dynamic(
 );
 import { WatchStatsSection } from '@/components/insights/watch-stats-section';
 import { JellyfinLibrariesCard } from '@/components/insights/jellyfin-libraries-card';
+import { TechnicalBreakdownCard, type MediaAnalysisKindFilter } from '@/components/insights/technical-breakdown-card';
+import { QualityScoreCard } from '@/components/insights/quality-score-card';
+import { FileExplorerCard } from '@/components/insights/file-explorer-card';
 import type { ServicesStatsResponse } from '@/types/service-stats';
 
 function keyToDate(key: string): Date {
@@ -50,12 +53,13 @@ function daysBetween(fromKey: string, toKey: string): number {
   return Math.max(1, Math.round((b - a) / 86_400_000) + 1);
 }
 
-type InsightsTabId = 'library' | 'downloads' | 'storage' | 'watching';
+type InsightsTabId = 'library' | 'downloads' | 'storage' | 'analysis' | 'watching';
 
 const TAB_META: Record<InsightsTabId, { label: string; icon: LucideIcon }> = {
   library: { label: 'Library', icon: Library },
   downloads: { label: 'Downloads', icon: Download },
   storage: { label: 'Storage', icon: HardDrive },
+  analysis: { label: 'Analysis', icon: ScanSearch },
   watching: { label: 'Watching', icon: MonitorPlay },
 };
 
@@ -114,11 +118,16 @@ export default function InsightsPage() {
     if (showLibrary || canGaps || canJellyfin) list.push('library');
     if (showLibrary || canProwlarr) list.push('downloads');
     if (showLibrary || canTorrents) list.push('storage');
+    // Media analysis reads *arr file metadata, so it needs at least one video library.
+    if (canMovies || canSeries) list.push('analysis');
     if (canWatchStats) list.push('watching');
     return list;
-  }, [showLibrary, canGaps, canJellyfin, canProwlarr, canTorrents, canWatchStats]);
+  }, [showLibrary, canGaps, canJellyfin, canProwlarr, canTorrents, canWatchStats, canMovies, canSeries]);
 
   const [tab, setTab] = React.useState<InsightsTabId>('library');
+  // Movies/Episodes scope for the Analysis tab — shared by all three cards so
+  // the two aggregate cards dedupe onto one request.
+  const [analysisKind, setAnalysisKind] = React.useState<MediaAnalysisKindFilter>('all');
   // Permissions load async — fall back to the first offered tab until the
   // chosen one (or any) is available.
   const activeTab = tabs.includes(tab) ? tab : tabs[0];
@@ -193,6 +202,13 @@ export default function InsightsPage() {
           <div className="space-y-4 animate-content-in">
             {showLibrary && <StorageInsightsCard />}
             {canTorrents && <SeedingEconomicsCard />}
+          </div>
+        )}
+        {activeTab === 'analysis' && (
+          <div className="space-y-4 animate-content-in">
+            <TechnicalBreakdownCard kind={analysisKind} onKindChange={setAnalysisKind} />
+            <QualityScoreCard kind={analysisKind} />
+            <FileExplorerCard kind={analysisKind} />
           </div>
         )}
         {activeTab === 'watching' && (
