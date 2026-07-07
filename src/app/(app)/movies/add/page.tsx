@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -43,7 +43,6 @@ function AddMoviePageContent() {
   const [monitor, setMonitor] = useState<'movieOnly' | 'movieAndCollection' | 'none'>('movieOnly');
   const [searchForMovie, setSearchForMovie] = useState(true);
   const [minAvailability, setMinAvailability] = useState('released');
-  const [autoSearched, setAutoSearched] = useState(false);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
 
   const instancesQuery = useQuery({
@@ -59,8 +58,6 @@ function AddMoviePageContent() {
   // Per-instance reference data, shared (and deduped) with the list/edit pages.
   const { data: profiles = [] } = useQualityProfiles('radarr', instanceId);
   const { data: rootFolders = [] } = useRootFolders('radarr', instanceId);
-  const lastPrefillTermRef = useRef<string | null>(null);
-  const lastPrefillTmdbIdRef = useRef<number | null>(null);
 
   // Search runs against the submitted term (form submit / URL prefill set it).
   // TanStack threads the AbortSignal, so an in-flight lookup is cancelled on a
@@ -74,25 +71,29 @@ function AddMoviePageContent() {
   const results = lookupQuery.data ?? [];
   const searching = lookupQuery.isFetching;
 
+  // The blocks below adjust state during render (guarded so they converge)
+  // instead of via setState-in-effect — see React's "adjusting state when
+  // props change" pattern.
+
   // Default to the marked-default instance once instances load (picker shows when >1).
-  useEffect(() => {
-    if (instances.length === 0) return;
-    setInstanceId((prev) => prev ?? instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
-  }, [instances]);
+  if (instanceId === undefined && instances.length > 0) {
+    setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+  }
 
   // Tag ids are instance-local, so clear the selection when the instance changes —
   // otherwise a stale id from the previous instance gets POSTed. (Profile and root
-  // folder re-default from the new instance's reference data in the effects below.)
-  useEffect(() => {
+  // folder re-default from the new instance's reference data below.)
+  const [prevInstanceId, setPrevInstanceId] = useState(instanceId);
+  if (instanceId !== prevInstanceId) {
+    setPrevInstanceId(instanceId);
     setSelectedTags([]);
-  }, [instanceId]);
+  }
 
   // Auto-select the prefilled result once the lookup resolves.
-  useEffect(() => {
-    if (targetTmdbId == null || !lookupQuery.data) return;
+  if (targetTmdbId != null && lookupQuery.data) {
     setSelected(lookupQuery.data.find((item) => item.tmdbId === targetTmdbId) ?? null);
     setTargetTmdbId(null);
-  }, [lookupQuery.data, targetTmdbId]);
+  }
 
   // Surface a non-401 lookup failure (a 401 is handled globally → redirect).
   useEffect(() => {
@@ -105,14 +106,12 @@ function AddMoviePageContent() {
   // instance's reference data arrives. Keep a still-valid user choice on a
   // background refetch; re-default only when the current value is missing from
   // the fresh list (e.g. after switching instances).
-  useEffect(() => {
-    if (profiles.length === 0) return;
-    setProfileId((prev) => (prev && profiles.some((p) => String(p.id) === prev) ? prev : String(profiles[0].id)));
-  }, [profiles]);
-  useEffect(() => {
-    if (rootFolders.length === 0) return;
-    setRootFolder((prev) => (prev && rootFolders.some((f) => f.path === prev) ? prev : rootFolders[0].path));
-  }, [rootFolders]);
+  if (profiles.length > 0 && !(profileId && profiles.some((p) => String(p.id) === profileId))) {
+    setProfileId(String(profiles[0].id));
+  }
+  if (rootFolders.length > 0 && !(rootFolder && rootFolders.some((f) => f.path === rootFolder))) {
+    setRootFolder(rootFolders[0].path);
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -210,41 +209,23 @@ function AddMoviePageContent() {
     ? posterUrl(selected.images as { coverType: string; remoteUrl: string }[])
     : null;
 
-  useEffect(() => {
-    const prefillTerm = searchParams.get('term');
-    if (prefillTerm) setTerm(prefillTerm);
-  }, [searchParams]);
-
-  useEffect(() => {
-    const prefillTerm = searchParams.get('term');
-    const tmdbIdRaw = searchParams.get('tmdbId');
-    const parsedTmdbId = tmdbIdRaw !== null ? Number(tmdbIdRaw) : null;
-    const targetTmdbId = parsedTmdbId !== null && Number.isFinite(parsedTmdbId) ? parsedTmdbId : null;
-
-    const hasPrefillChanged = (
-      prefillTerm !== lastPrefillTermRef.current
-      || targetTmdbId !== lastPrefillTmdbIdRef.current
-    );
-
-    if (!hasPrefillChanged) return;
-
-    lastPrefillTermRef.current = prefillTerm;
-    lastPrefillTmdbIdRef.current = targetTmdbId;
-    setAutoSearched(false);
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (autoSearched) return;
-
-    const prefillTerm = searchParams.get('term');
-    if (!prefillTerm) return;
-
-    const tmdbIdRaw = searchParams.get('tmdbId');
-    const parsedTmdbId = tmdbIdRaw !== null ? Number(tmdbIdRaw) : null;
-    setAutoSearched(true);
-    setTargetTmdbId(parsedTmdbId !== null && Number.isFinite(parsedTmdbId) ? parsedTmdbId : null);
-    setSubmittedTerm(prefillTerm);
-  }, [searchParams, autoSearched]);
+  // Prefill from the URL (?term=&tmdbId=): fill the search box and fire the
+  // lookup once per distinct prefill; re-fires if the params change in place.
+  // Guarded during render.
+  const prefillTerm = searchParams.get('term');
+  const prefillTmdbRaw = searchParams.get('tmdbId');
+  const parsedPrefillTmdbId = prefillTmdbRaw !== null ? Number(prefillTmdbRaw) : null;
+  const prefillTmdbId =
+    parsedPrefillTmdbId !== null && Number.isFinite(parsedPrefillTmdbId) ? parsedPrefillTmdbId : null;
+  const [prevPrefill, setPrevPrefill] = useState<{ term: string | null; tmdbId: number | null } | null>(null);
+  if (!prevPrefill || prevPrefill.term !== prefillTerm || prevPrefill.tmdbId !== prefillTmdbId) {
+    setPrevPrefill({ term: prefillTerm, tmdbId: prefillTmdbId });
+    if (prefillTerm) {
+      setTerm(prefillTerm);
+      setTargetTmdbId(prefillTmdbId);
+      setSubmittedTerm(prefillTerm);
+    }
+  }
 
   return (
     <div className="animate-content-in">

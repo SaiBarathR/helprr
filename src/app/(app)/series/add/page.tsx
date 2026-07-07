@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -45,7 +45,6 @@ function AddSeriesPageContent() {
   const [searchForMissingEpisodes, setSearchForMissingEpisodes] = useState(true);
   const [seriesType, setSeriesType] = useState('standard');
   const [seasonFolder, setSeasonFolder] = useState(true);
-  const [autoSearched, setAutoSearched] = useState(false);
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
 
   const instancesQuery = useQuery({
@@ -61,11 +60,6 @@ function AddSeriesPageContent() {
   // Per-instance reference data, shared (and deduped) with the list/edit pages.
   const { data: profiles = [] } = useQualityProfiles('sonarr', instanceId);
   const { data: rootFolders = [] } = useRootFolders('sonarr', instanceId);
-  const lastAutoSearchParamsRef = useRef<{ term: string; tvdbId: string | null; tmdbId: string | null }>({
-    term: '',
-    tvdbId: null,
-    tmdbId: null,
-  });
 
   // Search runs against the submitted term; TanStack threads the AbortSignal so
   // an in-flight lookup is cancelled on a new search automatically.
@@ -78,22 +72,26 @@ function AddSeriesPageContent() {
   const results = lookupQuery.data ?? [];
   const searching = lookupQuery.isFetching;
 
+  // The blocks below adjust state during render (guarded so they converge)
+  // instead of via setState-in-effect — see React's "adjusting state when
+  // props change" pattern.
+
   // Default to the marked-default instance once instances load (picker shows when >1).
-  useEffect(() => {
-    if (instances.length === 0) return;
-    setInstanceId((prev) => prev ?? instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
-  }, [instances]);
+  if (instanceId === undefined && instances.length > 0) {
+    setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+  }
 
   // Tag ids are instance-local, so clear the selection when the instance changes —
   // otherwise a stale id from the previous instance gets POSTed. (Profile and root
-  // folder re-default from the new instance's reference data in the effects below.)
-  useEffect(() => {
+  // folder re-default from the new instance's reference data below.)
+  const [prevInstanceId, setPrevInstanceId] = useState(instanceId);
+  if (instanceId !== prevInstanceId) {
+    setPrevInstanceId(instanceId);
     setSelectedTags([]);
-  }, [instanceId]);
+  }
 
   // Auto-select the prefilled result (by tvdbId or tmdbId) once the lookup resolves.
-  useEffect(() => {
-    if ((targetTvdbId == null && targetTmdbId == null) || !lookupQuery.data) return;
+  if ((targetTvdbId != null || targetTmdbId != null) && lookupQuery.data) {
     const matched = lookupQuery.data.find((item) => {
       if (targetTvdbId != null && item.tvdbId === targetTvdbId) return true;
       if (targetTmdbId != null) return item.tmdbId === targetTmdbId;
@@ -102,7 +100,7 @@ function AddSeriesPageContent() {
     if (matched) setSelected(matched);
     setTargetTvdbId(null);
     setTargetTmdbId(null);
-  }, [lookupQuery.data, targetTvdbId, targetTmdbId]);
+  }
 
   // Surface a non-401 lookup failure (a 401 is handled globally → redirect).
   useEffect(() => {
@@ -115,14 +113,12 @@ function AddSeriesPageContent() {
   // instance's reference data arrives. Keep a still-valid user choice on a
   // background refetch; re-default only when the current value is missing from
   // the fresh list (e.g. after switching instances).
-  useEffect(() => {
-    if (profiles.length === 0) return;
-    setProfileId((prev) => (prev && profiles.some((p) => String(p.id) === prev) ? prev : String(profiles[0].id)));
-  }, [profiles]);
-  useEffect(() => {
-    if (rootFolders.length === 0) return;
-    setRootFolder((prev) => (prev && rootFolders.some((f) => f.path === prev) ? prev : rootFolders[0].path));
-  }, [rootFolders]);
+  if (profiles.length > 0 && !(profileId && profiles.some((p) => String(p.id) === profileId))) {
+    setProfileId(String(profiles[0].id));
+  }
+  if (rootFolders.length > 0 && !(rootFolder && rootFolders.some((f) => f.path === rootFolder))) {
+    setRootFolder(rootFolders[0].path);
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -235,45 +231,44 @@ function AddSeriesPageContent() {
     ? posterUrl(selected.images as { coverType: string; remoteUrl: string }[])
     : null;
 
-  useEffect(() => {
-    const prefillTerm = searchParams.get('term');
-    const tvdbId = searchParams.get('tvdbId');
-    const tmdbId = searchParams.get('tmdbId');
-    const nextTerm = prefillTerm ?? '';
-    setTerm(nextTerm);
-
-    const previousParams = lastAutoSearchParamsRef.current;
-    if (
-      previousParams.term !== nextTerm
-      || previousParams.tvdbId !== tvdbId
-      || previousParams.tmdbId !== tmdbId
-    ) {
-      setAutoSearched(false);
-      setSelected(null);
-      lastAutoSearchParamsRef.current = { term: nextTerm, tvdbId, tmdbId };
+  // Prefill from the URL (?term=&tvdbId=&tmdbId=): fill the search box and
+  // fire the lookup once per distinct prefill; re-fires if the params change
+  // in place. Guarded during render.
+  const prefillTerm = searchParams.get('term') ?? '';
+  const prefillTvdbRaw = searchParams.get('tvdbId');
+  const prefillTmdbRaw = searchParams.get('tmdbId');
+  const [prevPrefill, setPrevPrefill] = useState<{ term: string; tvdbId: string | null; tmdbId: string | null }>({
+    term: '',
+    tvdbId: null,
+    tmdbId: null,
+  });
+  if (
+    prevPrefill.term !== prefillTerm
+    || prevPrefill.tvdbId !== prefillTvdbRaw
+    || prevPrefill.tmdbId !== prefillTmdbRaw
+  ) {
+    setPrevPrefill({ term: prefillTerm, tvdbId: prefillTvdbRaw, tmdbId: prefillTmdbRaw });
+    setTerm(prefillTerm);
+    setSelected(null);
+    if (prefillTerm) {
+      const tvdb = prefillTvdbRaw ? Number(prefillTvdbRaw) : null;
+      const tmdb = prefillTmdbRaw ? Number(prefillTmdbRaw) : null;
+      setTargetTvdbId(tvdb !== null && Number.isFinite(tvdb) ? tvdb : null);
+      setTargetTmdbId(tmdb !== null && Number.isFinite(tmdb) ? tmdb : null);
+      setSubmittedTerm(prefillTerm);
     }
+  }
 
-    const prefillSeriesType = searchParams.get('seriesType');
+  // Series-type prefill (?seriesType=), tracked separately so it applies even
+  // when the search prefill hasn't changed.
+  const prefillSeriesType = searchParams.get('seriesType');
+  const [prevSeriesTypeParam, setPrevSeriesTypeParam] = useState<string | null>(null);
+  if (prevSeriesTypeParam !== prefillSeriesType) {
+    setPrevSeriesTypeParam(prefillSeriesType);
     if (prefillSeriesType === 'anime' || prefillSeriesType === 'daily' || prefillSeriesType === 'standard') {
       setSeriesType(prefillSeriesType);
     }
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (autoSearched) return;
-
-    const prefillTerm = searchParams.get('term');
-    if (!prefillTerm) return;
-
-    const tvdbIdParam = searchParams.get('tvdbId');
-    const tmdbIdParam = searchParams.get('tmdbId');
-    const tvdb = tvdbIdParam ? Number(tvdbIdParam) : null;
-    const tmdb = tmdbIdParam ? Number(tmdbIdParam) : null;
-    setAutoSearched(true);
-    setTargetTvdbId(tvdb !== null && Number.isFinite(tvdb) ? tvdb : null);
-    setTargetTmdbId(tmdb !== null && Number.isFinite(tmdb) ? tmdb : null);
-    setSubmittedTerm(prefillTerm);
-  }, [searchParams, autoSearched]);
+  }
 
   return (
     <div className="animate-content-in">
