@@ -81,12 +81,14 @@ function AddSeriesPageContent() {
     setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
   }
 
-  // Tag ids are instance-local, so clear the selection when the instance changes —
-  // otherwise a stale id from the previous instance gets POSTed. (Profile and root
-  // folder re-default from the new instance's reference data below.)
+  // Switching instances invalidates the previously-picked (instance-local)
+  // profile/folder/tag ids — clear them so a stale value can't be POSTed before
+  // the new instance's reference data arrives (the defaults below re-apply).
   const [prevInstanceId, setPrevInstanceId] = useState(instanceId);
   if (instanceId !== prevInstanceId) {
     setPrevInstanceId(instanceId);
+    setProfileId('');
+    setRootFolder('');
     setSelectedTags([]);
   }
 
