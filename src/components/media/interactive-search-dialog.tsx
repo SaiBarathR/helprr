@@ -69,17 +69,17 @@ function cfScoreBadge(score: number, formatNames?: string[]) {
 
 // Up to two language chips, then a "+k" overflow marker to protect the mobile row.
 function languageChips(languages?: { id: number; name: string }[]) {
-  const names = (languages ?? []).map((l) => l.name).filter(Boolean);
-  if (names.length === 0) return null;
-  const shown = names.slice(0, 2);
-  const extra = names.length - shown.length;
+  const named = (languages ?? []).filter((l) => l.name);
+  if (named.length === 0) return null;
+  const shown = named.slice(0, 2);
+  const extra = named.length - shown.length;
   return (
     <>
-      {shown.map((name) => (
-        <Badge key={name} variant="secondary" className="text-[10px]">{name}</Badge>
+      {shown.map((lang, i) => (
+        <Badge key={`${lang.id}-${i}`} variant="secondary" className="text-[10px]">{lang.name}</Badge>
       ))}
       {extra > 0 && (
-        <span className="text-[10px] text-muted-foreground" title={names.join(', ')}>+{extra}</span>
+        <span className="text-[10px] text-muted-foreground" title={named.map((l) => l.name).join(', ')}>+{extra}</span>
       )}
     </>
   );
@@ -299,6 +299,11 @@ export function InteractiveSearchDialog({
     onOpenChange(v);
   }
 
+  // sortKey persists across opens (the filters reset, sort doesn't), so a prior
+  // 'customFormatScore' selection can outlive the CF-score UI when the next
+  // search has no scores. Fall back to the default so a hidden key can't sort.
+  const activeSortKey: SortKey = sortKey === 'customFormatScore' && !hasCfScores ? 'quality' : sortKey;
+
   // Apply filters then sort
   const filteredAndSorted = useMemo(() => {
     let result = releases;
@@ -327,7 +332,7 @@ export function InteractiveSearchDialog({
 
     return [...result].sort((a, b) => {
       let cmp = 0;
-      switch (sortKey) {
+      switch (activeSortKey) {
         case 'quality':
           cmp = (b.qualityWeight || 0) - (a.qualityWeight || 0);
           break;
@@ -346,7 +351,7 @@ export function InteractiveSearchDialog({
       }
       return sortAsc ? -cmp : cmp;
     });
-  }, [releases, textFilter, indexerFilter, qualityFilter, languageFilter, seasonPackFilter, sortKey, sortAsc]);
+  }, [releases, textFilter, indexerFilter, qualityFilter, languageFilter, seasonPackFilter, activeSortKey, sortAsc]);
 
   const hasActiveFilters = !!textFilter || indexerFilter.length > 0 || qualityFilter.length > 0 || languageFilter.length > 0 || seasonPackFilter !== 'any';
 
@@ -514,13 +519,13 @@ export function InteractiveSearchDialog({
                     {(['quality', 'size', 'seeders', 'age', ...(hasCfScores ? ['customFormatScore'] as const : [])] as SortKey[]).map((key) => (
                       <Button
                         key={key}
-                        variant={sortKey === key ? 'secondary' : 'ghost'}
+                        variant={activeSortKey === key ? 'secondary' : 'ghost'}
                         size="sm"
                         className="h-6 px-2 text-xs"
                         onClick={() => handleSort(key)}
                       >
                         {SORT_LABELS[key]}
-                        {sortKey === key && (
+                        {activeSortKey === key && (
                           <ArrowUpDown className="ml-1 h-3 w-3" />
                         )}
                       </Button>
