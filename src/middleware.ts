@@ -31,8 +31,14 @@ const DEV_CSP =
 // 'unsafe-inline'; older browsers ignore the nonce and fall back to
 // 'self' https: 'unsafe-inline' (the pre-nonce policy). Styles keep
 // 'unsafe-inline' — Next.js and the component library inject inline styles.
+//
+// worker-src is set explicitly: without it, the service worker load falls back
+// through child-src to script-src, where 'strict-dynamic' makes the browser
+// ignore 'self' and reject the same-origin sw.js registration (a worker load
+// isn't part of the strict-dynamic trust-propagation chain). The PWA service
+// worker — push + offline — is core, so pin it to its own 'self' directive.
 function buildProdCsp(nonce: string): string {
-  return `default-src 'self'; script-src 'self' 'unsafe-inline' https: 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
+  return `default-src 'self'; script-src 'self' 'unsafe-inline' https: 'nonce-${nonce}' 'strict-dynamic'; worker-src 'self'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
 }
 
 function addSecurityHeaders(response: NextResponse, csp: string): NextResponse {
