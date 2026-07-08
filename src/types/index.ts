@@ -788,6 +788,11 @@ export interface Release {
   downloadUrl: string;
   infoUrl: string;
   indexerFlags: number;
+  // Present on the /api/v3/release payload; power the interactive-search
+  // CF-score sort/badge and the language facet.
+  customFormatScore?: number;
+  customFormats?: { id: number; name: string }[];
+  languages?: { id: number; name: string }[];
   // Sonarr-specific
   seriesId?: number;
   episodeId?: number;

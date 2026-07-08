@@ -48,7 +48,52 @@ function protocolBadge(protocol: string) {
   return <Badge variant="outline" className="text-[10px]">Torrent</Badge>;
 }
 
-type SortKey = 'quality' | 'size' | 'seeders' | 'age';
+// CF score badge — neutral at 0, green when positive, red when negative.
+// Matched custom-format names (if any) surface as a tooltip to keep the row light.
+function cfScoreBadge(score: number, formatNames?: string[]) {
+  const tone = score > 0
+    ? 'text-emerald-500 border-emerald-500/40'
+    : score < 0
+      ? 'text-rose-500 border-rose-500/40'
+      : 'text-muted-foreground';
+  return (
+    <Badge
+      variant="outline"
+      className={`text-[10px] tabular-nums ${tone}`}
+      title={formatNames && formatNames.length > 0 ? formatNames.join(', ') : undefined}
+    >
+      CF {score > 0 ? `+${score}` : score}
+    </Badge>
+  );
+}
+
+// Up to two language chips, then a "+k" overflow marker to protect the mobile row.
+function languageChips(languages?: { id: number; name: string }[]) {
+  const names = (languages ?? []).map((l) => l.name).filter(Boolean);
+  if (names.length === 0) return null;
+  const shown = names.slice(0, 2);
+  const extra = names.length - shown.length;
+  return (
+    <>
+      {shown.map((name) => (
+        <Badge key={name} variant="secondary" className="text-[10px]">{name}</Badge>
+      ))}
+      {extra > 0 && (
+        <span className="text-[10px] text-muted-foreground" title={names.join(', ')}>+{extra}</span>
+      )}
+    </>
+  );
+}
+
+type SortKey = 'quality' | 'size' | 'seeders' | 'age' | 'customFormatScore';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  quality: 'Quality',
+  size: 'Size',
+  seeders: 'Seeders',
+  age: 'Age',
+  customFormatScore: 'CF Score',
+};
 
 /**
  * Renders a dialog UI for searching, filtering, sorting, and grabbing releases from Sonarr or Radarr.
@@ -81,6 +126,7 @@ export function InteractiveSearchDialog({
   const [textFilter, setTextFilter] = useState('');
   const [indexerFilter, setIndexerFilter] = useState<string[]>([]);
   const [qualityFilter, setQualityFilter] = useState<string[]>([]);
+  const [languageFilter, setLanguageFilter] = useState<string[]>([]);
   const [seasonPackFilter, setSeasonPackFilter] = useState<'any' | 'seasonPack' | 'singleEpisode'>('any');
 
   // Override state
@@ -189,6 +235,21 @@ export function InteractiveSearchDialog({
     return [...set].sort();
   }, [releases]);
 
+  const languageFacets = useMemo(() => {
+    const set = new Set<string>();
+    releases.forEach((r) => {
+      r.languages?.forEach((l) => { if (l.name) set.add(l.name); });
+    });
+    return [...set].sort();
+  }, [releases]);
+
+  // Only surface CF-score UI when at least one release actually has a non-zero
+  // score — otherwise every value is 0 and the badge/sort key would be noise.
+  const hasCfScores = useMemo(
+    () => releases.some((r) => (r.customFormatScore ?? 0) !== 0),
+    [releases],
+  );
+
   function doSearch() {
     setSearched(true);
     void releasesQuery.refetch();
@@ -232,6 +293,7 @@ export function InteractiveSearchDialog({
       setTextFilter('');
       setIndexerFilter([]);
       setQualityFilter([]);
+      setLanguageFilter([]);
       setSeasonPackFilter('any');
     }
     onOpenChange(v);
@@ -254,6 +316,9 @@ export function InteractiveSearchDialog({
         return !!name && qualityFilter.includes(name);
       });
     }
+    if (languageFilter.length > 0) {
+      result = result.filter((r) => r.languages?.some((l) => languageFilter.includes(l.name)));
+    }
     if (seasonPackFilter === 'seasonPack') {
       result = result.filter((r) => r.fullSeason === true);
     } else if (seasonPackFilter === 'singleEpisode') {
@@ -275,12 +340,15 @@ export function InteractiveSearchDialog({
         case 'age':
           cmp = (a.age || 0) - (b.age || 0);
           break;
+        case 'customFormatScore':
+          cmp = (b.customFormatScore || 0) - (a.customFormatScore || 0);
+          break;
       }
       return sortAsc ? -cmp : cmp;
     });
-  }, [releases, textFilter, indexerFilter, qualityFilter, seasonPackFilter, sortKey, sortAsc]);
+  }, [releases, textFilter, indexerFilter, qualityFilter, languageFilter, seasonPackFilter, sortKey, sortAsc]);
 
-  const hasActiveFilters = !!textFilter || indexerFilter.length > 0 || qualityFilter.length > 0 || seasonPackFilter !== 'any';
+  const hasActiveFilters = !!textFilter || indexerFilter.length > 0 || qualityFilter.length > 0 || languageFilter.length > 0 || seasonPackFilter !== 'any';
 
   return (
     <>
@@ -389,6 +457,32 @@ export function InteractiveSearchDialog({
                             {q}
                           </DropdownMenuCheckboxItem>
                         ))}
+                        {languageFacets.length > 0 && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel>Language</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuCheckboxItem
+                              checked={languageFilter.length === 0}
+                              onCheckedChange={() => setLanguageFilter([])}
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              All Languages
+                            </DropdownMenuCheckboxItem>
+                            {languageFacets.map((lang) => (
+                              <DropdownMenuCheckboxItem
+                                key={lang}
+                                checked={languageFilter.includes(lang)}
+                                onCheckedChange={() => setLanguageFilter((prev) => (
+                                  prev.includes(lang) ? prev.filter((x) => x !== lang) : [...prev, lang]
+                                ))}
+                                onSelect={(e) => e.preventDefault()}
+                              >
+                                {lang}
+                              </DropdownMenuCheckboxItem>
+                            ))}
+                          </>
+                        )}
                         {showSeasonPackFilter && (
                           <>
                             <DropdownMenuSeparator />
@@ -417,7 +511,7 @@ export function InteractiveSearchDialog({
                   {/* Sort controls + count */}
                   <div className="flex items-center gap-1 flex-wrap text-xs">
                     <span className="text-muted-foreground mr-1">Sort:</span>
-                    {(['quality', 'size', 'seeders', 'age'] as SortKey[]).map((key) => (
+                    {(['quality', 'size', 'seeders', 'age', ...(hasCfScores ? ['customFormatScore'] as const : [])] as SortKey[]).map((key) => (
                       <Button
                         key={key}
                         variant={sortKey === key ? 'secondary' : 'ghost'}
@@ -425,7 +519,7 @@ export function InteractiveSearchDialog({
                         className="h-6 px-2 text-xs"
                         onClick={() => handleSort(key)}
                       >
-                        {key.charAt(0).toUpperCase() + key.slice(1)}
+                        {SORT_LABELS[key]}
                         {sortKey === key && (
                           <ArrowUpDown className="ml-1 h-3 w-3" />
                         )}
@@ -521,6 +615,10 @@ export function InteractiveSearchDialog({
                               {release.quality?.quality?.name || 'Unknown'}
                             </Badge>
                             {protocolBadge(release.protocol)}
+                            {hasCfScores && cfScoreBadge(
+                              release.customFormatScore ?? 0,
+                              release.customFormats?.map((f) => f.name),
+                            )}
                             <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
                               <HardDrive className="h-3 w-3" />
                               {formatBytes(release.size)}
@@ -541,6 +639,7 @@ export function InteractiveSearchDialog({
                             {release.releaseGroup && (
                               <Badge variant="outline" className="text-[10px]">{release.releaseGroup}</Badge>
                             )}
+                            {languageChips(release.languages)}
                           </div>
                           {isRejected && release.rejections?.length > 0 && (
                             <div className="flex items-start gap-1 text-xs text-destructive">

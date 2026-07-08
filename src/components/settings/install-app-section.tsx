@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Check, ChevronRight, Share, SquarePlus } from 'lucide-react';
+import { Check, ChevronRight, Share, SquarePlus, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CategoryRow } from '@/components/settings/category-row';
 import {
   Drawer,
   DrawerClose,
@@ -44,13 +45,21 @@ export function InstallAppSection() {
       <div className="grouped-section px-4 mb-6">
         <div className="grouped-section-title">App</div>
         <div className="grouped-section-content">
-          <div className="grouped-row" style={{ borderBottom: 'none' }}>
+          <div className="grouped-row">
             <div className="flex items-center gap-3">
               <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
               <span className="text-sm font-medium">Installed</span>
             </div>
             <Check className="h-4 w-4 text-green-500" />
           </div>
+          <CategoryRow
+            href="/settings/shortcuts"
+            icon={Zap}
+            iconBg="bg-amber-500/10"
+            iconColor="text-amber-400"
+            label="Siri Shortcuts"
+            subtitle="Automate Helprr from the Shortcuts app"
+          />
         </div>
       </div>
     );
@@ -64,7 +73,6 @@ export function InstallAppSection() {
           <button
             onClick={handleInstallTap}
             className="grouped-row w-full active:bg-foreground/5 transition-colors"
-            style={{ borderBottom: 'none' }}
           >
             <div className="flex flex-col items-start">
               <span className="text-sm font-medium">Install App</span>
@@ -72,6 +80,14 @@ export function InstallAppSection() {
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </button>
+          <CategoryRow
+            href="/settings/shortcuts"
+            icon={Zap}
+            iconBg="bg-amber-500/10"
+            iconColor="text-amber-400"
+            label="Siri Shortcuts"
+            subtitle="Automate Helprr from the Shortcuts app"
+          />
         </div>
       </div>
 
