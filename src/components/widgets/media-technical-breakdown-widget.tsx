@@ -1,34 +1,29 @@
 'use client';
 
 import * as React from 'react';
-import { ApiError } from '@/lib/query-fetch';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { MediaAnalysisResponse } from '@/types/insights';
 import { formatBytes } from '@/lib/format';
 import { HPR } from './bento-primitives';
-import { InsightsWidgetFrame, gridColumns, AnalysisScopeChips } from './insights-widget-frame';
+import { InsightsWidgetFrame, gridColumns, AnalysisScopeChips, fetchMediaAnalysis } from './insights-widget-frame';
 import { useWidgetFilter } from './use-widget-filter';
 import { Stat } from '@/components/insights/insights-shared';
 import {
   DistPanel,
   PANELS,
   fmtBitrate,
-  kindQuery,
   type MediaAnalysisKindFilter,
 } from '@/components/insights/technical-breakdown-card';
-
-async function fetchMediaAnalysis(kind: MediaAnalysisKindFilter): Promise<MediaAnalysisResponse> {
-  const res = await fetch(`/api/insights/media-analysis${kindQuery(kind)}`);
-  if (!res.ok) throw new ApiError(res.status, 'Request failed');
-  return res.json();
-}
 
 export function MediaTechnicalBreakdownWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter<{ kind: MediaAnalysisKindFilter }>(
     'media-technical-breakdown',
     { kind: 'all' },
   );
-  const fetchFn = React.useCallback(() => fetchMediaAnalysis(filters.kind), [filters.kind]);
+  const fetchFn = React.useCallback(
+    (signal?: AbortSignal) => fetchMediaAnalysis(filters.kind, signal),
+    [filters.kind],
+  );
 
   return (
     <InsightsWidgetFrame<MediaAnalysisResponse>

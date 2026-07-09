@@ -10,31 +10,26 @@ import { EmptyChartState } from './prowlarr-stats-shared';
 import { DaysPill } from './widget-filter-controls';
 import { useWidgetFilter } from './use-widget-filter';
 import { InsightsWidgetFrame, INSIGHTS_DAYS_OPTIONS, daysToRange, gridColumns } from './insights-widget-frame';
-import { Stat } from '@/components/insights/insights-shared';
+import { Stat, fmtWait } from '@/components/insights/insights-shared';
 
 const PipelineHourChart = dynamic(
   () => import('@/components/insights/download-pipeline-card').then((m) => m.PipelineHourChart),
   { ssr: false, loading: () => <EmptyChartState message="Loading…" /> },
 );
 
-// Minutes → compact human wait ("42m", "3.2h", "1.4d"). Duplicated inline to
-// avoid a static import from the recharts-importing card module.
-function fmtWait(mins: number): string {
-  if (mins < 60) return `${mins}m`;
-  if (mins < 60 * 24) return `${(mins / 60).toFixed(1)}h`;
-  return `${(mins / (60 * 24)).toFixed(1)}d`;
-}
-
-async function fetchPipeline(days: number): Promise<InsightsPipelineResponse> {
+async function fetchPipeline(days: number, signal?: AbortSignal): Promise<InsightsPipelineResponse> {
   const { from, to } = daysToRange(days);
-  const res = await fetch(`/api/insights/pipeline?from=${from}&to=${to}`);
+  const res = await fetch(`/api/insights/pipeline?from=${from}&to=${to}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
 
 export function DownloadPipelineWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter('download-pipeline', { days: 30 });
-  const fetchFn = React.useCallback(() => fetchPipeline(filters.days), [filters.days]);
+  const fetchFn = React.useCallback(
+    (signal?: AbortSignal) => fetchPipeline(filters.days, signal),
+    [filters.days],
+  );
 
   return (
     <InsightsWidgetFrame<InsightsPipelineResponse>

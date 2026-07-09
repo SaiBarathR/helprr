@@ -5,44 +5,17 @@ import dynamic from 'next/dynamic';
 import { ApiError } from '@/lib/query-fetch';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { InsightsDownloadsResponse } from '@/types/insights';
-import { HPR, mix } from './bento-primitives';
+import { HPR } from './bento-primitives';
 import { EmptyChartState } from './prowlarr-stats-shared';
 import { DaysPill } from './widget-filter-controls';
 import { useWidgetFilter } from './use-widget-filter';
 import { InsightsWidgetFrame, INSIGHTS_DAYS_OPTIONS, daysToRange } from './insights-widget-frame';
+import { SuccessRing } from '@/components/insights/insights-shared';
 
 const DownloadSuccessChart = dynamic(
   () => import('@/components/insights/download-success-card').then((m) => m.DownloadSuccessChart),
   { ssr: false, loading: () => <EmptyChartState message="Loading…" /> },
 );
-
-// Recharts-free leaves duplicated inline — a static import from the card would
-// pull recharts into this eagerly-loaded widget.
-function SuccessRing({ pct }: { pct: number }) {
-  return (
-    <div
-      className="relative shrink-0"
-      style={{
-        width: 72,
-        height: 72,
-        borderRadius: '50%',
-        background: `conic-gradient(${HPR.green} ${pct}%, ${mix(HPR.rose, 45)} 0)`,
-      }}
-    >
-      <div
-        className="absolute inset-[8px] rounded-full flex flex-col items-center justify-center"
-        style={{ background: HPR.surface }}
-      >
-        <span style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 700, fontSize: 18, color: HPR.fg }}>
-          {pct}%
-        </span>
-        <span style={{ fontSize: 8, color: HPR.fgSubtle, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          success
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function Chip({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -58,16 +31,19 @@ function Chip({ label, value, color }: { label: string; value: number; color: st
   );
 }
 
-async function fetchDownloads(days: number): Promise<InsightsDownloadsResponse> {
+async function fetchDownloads(days: number, signal?: AbortSignal): Promise<InsightsDownloadsResponse> {
   const { from, to } = daysToRange(days);
-  const res = await fetch(`/api/insights/downloads?from=${from}&to=${to}`);
+  const res = await fetch(`/api/insights/downloads?from=${from}&to=${to}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
 
 export function DownloadReliabilityWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter('download-reliability', { days: 30 });
-  const fetchFn = React.useCallback(() => fetchDownloads(filters.days), [filters.days]);
+  const fetchFn = React.useCallback(
+    (signal?: AbortSignal) => fetchDownloads(filters.days, signal),
+    [filters.days],
+  );
 
   return (
     <InsightsWidgetFrame<InsightsDownloadsResponse>

@@ -7,7 +7,7 @@ import 'react-resizable/css/styles.css';
 import { useUIStore } from '@/lib/store';
 import type { ColSpan, RowSpan } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
-import { useMe, hasCapability } from '@/components/permission-provider';
+import { useMe, hasCapabilities } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { WidgetGridItem } from './widget-grid-desktop';
 import { ThemeInspector } from './theme-inspector';
@@ -27,7 +27,7 @@ export function WidgetGridMobile() {
         const def = getWidgetDefinition(instance.widgetId, discoverLayout);
         return (
           !!def &&
-          (!def.requiredCapability || hasCapability(me, def.requiredCapability)) &&
+          (!def.requiredCapability || hasCapabilities(me, def.requiredCapability)) &&
           (!def.adminOnly || me?.role === 'admin')
         );
       }),

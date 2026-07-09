@@ -10,36 +10,10 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from 'recharts';
-import { HPR, mix } from '@/components/widgets/bento-primitives';
+import { HPR } from '@/components/widgets/bento-primitives';
 import { ChartTooltip, fmtNum } from '@/components/widgets/prowlarr-stats-shared';
-import { Panel, PanelLoading, PanelEmpty, useInsightsResource, shortDate, type InsightsRange } from './insights-shared';
+import { Panel, PanelLoading, PanelEmpty, SuccessRing, useInsightsResource, shortDate, type InsightsRange } from './insights-shared';
 import type { InsightsDownloadsResponse } from '@/types/insights';
-
-function SuccessRing({ pct }: { pct: number }) {
-  return (
-    <div
-      className="relative shrink-0"
-      style={{
-        width: 72,
-        height: 72,
-        borderRadius: '50%',
-        background: `conic-gradient(${HPR.green} ${pct}%, ${mix(HPR.rose, 45)} 0)`,
-      }}
-    >
-      <div
-        className="absolute inset-[8px] rounded-full flex flex-col items-center justify-center"
-        style={{ background: HPR.surface }}
-      >
-        <span style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 700, fontSize: 18, color: HPR.fg }}>
-          {pct}%
-        </span>
-        <span style={{ fontSize: 8, color: HPR.fgSubtle, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          success
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function Chip({ label, value, color }: { label: string; value: number; color: string }) {
   return (

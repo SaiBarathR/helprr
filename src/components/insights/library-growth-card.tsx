@@ -26,6 +26,10 @@ const SERIES = [
 // its parent — the caller sets the height (fixed on the insights page, flexible
 // in the widget).
 export function LibraryGrowthChart({ data }: { data: InsightsLibraryResponse }) {
+  // Gradient ids are document-global; useId keeps two chart instances on one
+  // dashboard (repeatable widget) from resolving each other's defs.
+  const uid = React.useId();
+  const gradId = (field: string) => `lg-${field}${uid}`;
   const active = React.useMemo(() => SERIES.filter((s) => data.series[s.field] != null), [data]);
   const chartData = React.useMemo(() => {
     return data.days.map((day, i) => {
@@ -39,7 +43,7 @@ export function LibraryGrowthChart({ data }: { data: InsightsLibraryResponse }) 
       <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 2 }}>
         <defs>
           {active.map((s) => (
-            <linearGradient key={s.key} id={`lg-${s.field}`} x1="0" y1="0" x2="0" y2="1">
+            <linearGradient key={s.key} id={gradId(s.field)} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={s.color} stopOpacity={0.35} />
               <stop offset="100%" stopColor={s.color} stopOpacity={0.02} />
             </linearGradient>
@@ -70,7 +74,7 @@ export function LibraryGrowthChart({ data }: { data: InsightsLibraryResponse }) 
             stackId="lib"
             stroke={s.color}
             strokeWidth={1.5}
-            fill={`url(#lg-${s.field})`}
+            fill={`url(#${gradId(s.field)})`}
           />
         ))}
       </AreaChart>

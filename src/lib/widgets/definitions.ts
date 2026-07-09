@@ -734,7 +734,7 @@ for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
 // lack the capability (a member never sees cleanup / prowlarr / Jellyfin
 // analytics / storage / Seerr-admin tiles). Library + personal widgets
 // (recently-added, continue-watching, etc.) stay ungated.
-const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability>> = {
+const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability | Capability[]>> = {
   'prowlarr-indexers': 'prowlarr.view',
   'prowlarr-stats-summary': 'prowlarr.view',
   'prowlarr-response-time': 'prowlarr.view',
@@ -767,14 +767,17 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability>> = {
   // surfaces their pending-approval items, so members may add it.
   'seerr-recent-requests': 'requests.view',
   'seerr-users': 'requests.approve',
-  // Insights analytics — every /api/insights/* route requires insights.view;
-  // seeding hits the torrents route so it gates on torrents.view instead.
+  // Insights analytics — each entry mirrors its data route's capability checks
+  // exactly, so a user never sees a tile whose fetch would 403 into a
+  // misleading empty state.
   'library-growth': 'insights.view',
-  'library-completeness': 'insights.view',
+  // /api/library-gaps requires both library capabilities (no insights.view).
+  'library-completeness': ['movies.view', 'series.view'],
   'download-reliability': 'insights.view',
   'download-pipeline': 'insights.view',
   'storage-breakdown': 'insights.view',
-  'seeding-economics': 'torrents.view',
+  // /api/insights/torrents checks insights.view first, then torrents.view.
+  'seeding-economics': ['insights.view', 'torrents.view'],
   'media-technical-breakdown': 'insights.view',
   'media-quality-scores': 'insights.view',
 };

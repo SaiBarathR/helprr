@@ -4,7 +4,9 @@ import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 interface UseWidgetDataOptions<T> {
-  fetchFn: () => Promise<T>;
+  /** Receives TanStack Query's AbortSignal so fetchers that forward it to
+   *  fetch() are cancelled when the query key changes or the widget unmounts. */
+  fetchFn: (signal?: AbortSignal) => Promise<T>;
   refreshInterval: number;
   enabled?: boolean;
   /**
@@ -60,7 +62,7 @@ export function useWidgetData<T>({
     queryKey: ['widget-data', cacheKey ?? fallbackKey],
     // useQuery always invokes the latest queryFn from the most recent render,
     // so this picks up an updated fetchFn without a ref.
-    queryFn: () => fetchFn(),
+    queryFn: ({ signal }) => fetchFn(signal),
     enabled,
     refetchInterval: refreshInterval,
     refetchIntervalInBackground: false,

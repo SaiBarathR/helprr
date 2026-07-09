@@ -7,7 +7,7 @@ import 'react-resizable/css/styles.css';
 import { useUIStore } from '@/lib/store';
 import type { ColSpan, RowSpan, WidgetInstance } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
-import { useMe, hasCapability } from '@/components/permission-provider';
+import { useMe, hasCapabilities } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { BentoCell, BentoEditChrome } from './bento-cell';
 import { WidgetRenderer } from './widget-renderer';
@@ -102,7 +102,7 @@ export function WidgetGridDesktop() {
         // or that are admin-only (AniList account carousels).
         return (
           !!def &&
-          (!def.requiredCapability || hasCapability(me, def.requiredCapability)) &&
+          (!def.requiredCapability || hasCapabilities(me, def.requiredCapability)) &&
           (!def.adminOnly || me?.role === 'admin')
         );
       }),

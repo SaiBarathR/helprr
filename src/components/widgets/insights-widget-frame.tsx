@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useCan } from '@/components/permission-provider';
+import { ApiError } from '@/lib/query-fetch';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { toDateKey } from '@/components/insights/insights-shared';
@@ -9,7 +10,8 @@ import { shiftDayKey } from '@/lib/insights';
 import { SectionHeader } from './bento-primitives';
 import { EmptyChartState } from './prowlarr-stats-shared';
 import type { DaysOption } from './widget-filter-controls';
-import type { MediaAnalysisKindFilter } from '@/components/insights/technical-breakdown-card';
+import { kindQuery, type MediaAnalysisKindFilter } from '@/components/insights/technical-breakdown-card';
+import type { MediaAnalysisResponse } from '@/types/insights';
 
 // Day windows offered by the range widgets (library growth, download
 // reliability, pipeline). No "all time": the insights routes clamp the window
@@ -39,6 +41,19 @@ export function gridColumns(width: number, minColWidth: number, maxCols: number)
   return Math.max(1, Math.min(maxCols, Math.floor(width / minColWidth)));
 }
 
+/**
+ * Fetcher shared by the Technical Breakdown + Quality Scores widgets (same
+ * endpoint, same ApiError handling — they also share a cache slot per kind).
+ */
+export async function fetchMediaAnalysis(
+  kind: MediaAnalysisKindFilter,
+  signal?: AbortSignal,
+): Promise<MediaAnalysisResponse> {
+  const res = await fetch(`/api/insights/media-analysis${kindQuery(kind)}`, { signal });
+  if (!res.ok) throw new ApiError(res.status, 'Request failed');
+  return res.json();
+}
+
 export interface InsightsWidgetFrameProps<T> {
   title: string;
   right?: React.ReactNode;
@@ -46,7 +61,9 @@ export interface InsightsWidgetFrameProps<T> {
   refreshInterval: number;
   editMode?: boolean;
   refetchOnFocus?: boolean;
-  fetchFn: () => Promise<T>;
+  /** TanStack Query's AbortSignal is threaded through so an in-flight fetch is
+   *  cancelled when the filter (cacheKey) changes or the widget unmounts. */
+  fetchFn: (signal?: AbortSignal) => Promise<T>;
   cacheKey: string;
   isEmpty: (data: T | null) => boolean;
   emptyMessage?: string;
@@ -126,6 +143,7 @@ export function AnalysisScopeChips({
         <button
           key={id}
           type="button"
+          disabled={disabled}
           onClick={disabled ? undefined : () => onChange(id)}
           aria-pressed={value === id}
           className={`px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${

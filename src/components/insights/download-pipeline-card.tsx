@@ -11,15 +11,8 @@ import {
 } from 'recharts';
 import { HPR, mix } from '@/components/widgets/bento-primitives';
 import { ChartTooltip } from '@/components/widgets/prowlarr-stats-shared';
-import { Panel, PanelLoading, PanelEmpty, Stat, useInsightsResource, type InsightsRange } from './insights-shared';
+import { Panel, PanelLoading, PanelEmpty, Stat, fmtWait, useInsightsResource, type InsightsRange } from './insights-shared';
 import type { InsightsPipelineResponse } from '@/types/insights';
-
-/** Minutes → compact human wait ("42m", "3.2h", "1.4d"). */
-function fmtWait(mins: number): string {
-  if (mins < 60) return `${mins}m`;
-  if (mins < 60 * 24) return `${(mins / 60).toFixed(1)}h`;
-  return `${(mins / (60 * 24)).toFixed(1)}d`;
-}
 
 // The 24-bucket "activity by hour" bar chart, split out so the download-pipeline
 // dashboard widget can dynamic-import it. Fills its parent (caller sets height).
