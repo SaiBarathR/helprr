@@ -12,6 +12,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://localhost:7878',
     supportsExternalUrl: true,
     supportsMultiInstance: true,
+    supportsCustomHeaders: true,
   },
   {
     type: 'SONARR' as const,
@@ -24,6 +25,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://localhost:8989',
     supportsExternalUrl: true,
     supportsMultiInstance: true,
+    supportsCustomHeaders: true,
   },
   {
     type: 'LIDARR' as const,
@@ -36,6 +38,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://localhost:8686',
     supportsExternalUrl: true,
     supportsMultiInstance: true,
+    supportsCustomHeaders: true,
   },
   {
     type: 'QBITTORRENT' as const,
@@ -48,6 +51,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://localhost:8080',
     supportsExternalUrl: false,
     supportsMultiInstance: false,
+    supportsCustomHeaders: true,
   },
   {
     type: 'PROWLARR' as const,
@@ -60,6 +64,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://localhost:9696',
     supportsExternalUrl: false,
     supportsMultiInstance: false,
+    supportsCustomHeaders: true,
   },
   {
     type: 'JELLYFIN' as const,
@@ -72,6 +77,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://localhost:8096',
     supportsExternalUrl: true,
     supportsMultiInstance: false,
+    supportsCustomHeaders: true,
   },
   {
     type: 'TMDB' as const,
@@ -84,6 +90,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'https://api.themoviedb.org/3',
     supportsExternalUrl: false,
     supportsMultiInstance: false,
+    supportsCustomHeaders: false,
   },
   {
     type: 'SEERR' as const,
@@ -96,6 +103,7 @@ export const SERVICE_CONFIG = [
     placeholder: 'http://localhost:5055',
     supportsExternalUrl: true,
     supportsMultiInstance: false,
+    supportsCustomHeaders: true,
   },
 ] as const;
 

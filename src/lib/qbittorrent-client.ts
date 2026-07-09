@@ -65,7 +65,7 @@ export class QBittorrentClient {
   private authPromise: Promise<void> | null = null;
   private torrentControlMode: 'unknown' | 'startStop' | 'pauseResume' = 'unknown';
 
-  constructor(url: string, password: string, username: string = 'admin') {
+  constructor(url: string, password: string, username: string = 'admin', customHeaders?: Record<string, string>) {
     this.baseUrl = url.replace(/\/+$/, '');
     this.username = username;
     this.password = password;
@@ -73,6 +73,7 @@ export class QBittorrentClient {
     this.client = axios.create({
       baseURL: this.baseUrl,
       headers: {
+        ...customHeaders,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       timeout: 30_000,

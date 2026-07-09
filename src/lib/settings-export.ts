@@ -129,6 +129,9 @@ export interface ExportedServiceConnection {
   apiKey: string | null;
   accessToken: string | null;
   refreshToken: string | null;
+  // { name: value } map; a secret like apiKey, so only present when the export
+  // includes secrets. null = omitted (no secrets, or none configured).
+  customHeaders: Record<string, string> | null;
 }
 
 export interface ExportedAppSettings {

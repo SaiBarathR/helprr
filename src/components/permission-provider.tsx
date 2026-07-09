@@ -22,6 +22,8 @@ export interface MePayload {
    * so unlinked users never fire a guaranteed-empty request.
    */
   jellyfinLinked: boolean;
+  /** Whether HELPRR_CUSTOM_HEADERS is enabled — gates the custom-headers editor in instance settings. */
+  customHeadersEnabled: boolean;
 }
 
 const PermissionContext = createContext<MePayload | null>(null);

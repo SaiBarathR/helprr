@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { parseDiskThresholds } from '@/lib/disk-space';
+import { parseCustomHeaders } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
 import {
   type ExportedAnimeMapping,
@@ -231,17 +232,21 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         where: { type: { in: selectedServices } },
         orderBy: { type: 'asc' },
       });
-      const exported: ExportedServiceConnection[] = connections.map((c) => ({
-        type: c.type,
-        label: c.label,
-        isDefault: c.isDefault,
-        url: c.url,
-        externalUrl: c.externalUrl ?? null,
-        username: c.username ?? null,
-        apiKey: includeSecrets ? c.apiKey : null,
-        accessToken: includeSecrets ? (c.accessToken ?? null) : null,
-        refreshToken: includeSecrets ? (c.refreshToken ?? null) : null,
-      }));
+      const exported: ExportedServiceConnection[] = connections.map((c) => {
+        const headers = parseCustomHeaders(c.customHeaders);
+        return {
+          type: c.type,
+          label: c.label,
+          isDefault: c.isDefault,
+          url: c.url,
+          externalUrl: c.externalUrl ?? null,
+          username: c.username ?? null,
+          apiKey: includeSecrets ? c.apiKey : null,
+          accessToken: includeSecrets ? (c.accessToken ?? null) : null,
+          refreshToken: includeSecrets ? (c.refreshToken ?? null) : null,
+          customHeaders: includeSecrets && Object.keys(headers).length > 0 ? headers : null,
+        };
+      });
       payload.serviceConnections = exported;
     }
 

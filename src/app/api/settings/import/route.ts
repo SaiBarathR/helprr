@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { withApiLogging } from '@/lib/api-logger';
+import { parseCustomHeaders } from '@/lib/service-connection-secrets';
 import { pollingService } from '@/lib/polling-service';
 import { setCachedCacheImagesEnabled } from '@/lib/cache/state';
 import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
@@ -328,6 +329,10 @@ async function applyServiceConnectionInTxn(
   const refreshToken = typeof conn.refreshToken === 'string' && conn.refreshToken.length > 0
     ? conn.refreshToken
     : existing?.refreshToken ?? null;
+  // Present in the file → validate + restore; absent (older/no-secrets backup) →
+  // leave any existing headers untouched. Not gated by HELPRR_CUSTOM_HEADERS:
+  // restoring the data is independent of whether sending is currently enabled.
+  const customHeaders = conn.customHeaders != null ? parseCustomHeaders(conn.customHeaders) : null;
 
   if (existing) {
     await tx.serviceConnection.update({
@@ -336,6 +341,7 @@ async function applyServiceConnectionInTxn(
         url, apiKey, username, label, externalUrl,
         ...(accessToken !== null && { accessToken }),
         ...(refreshToken !== null && { refreshToken }),
+        ...(customHeaders !== null && { customHeaders }),
       },
     });
   } else {
@@ -354,6 +360,7 @@ async function applyServiceConnectionInTxn(
         type: conn.type, label, isDefault: conn.isDefault === true, url, apiKey, username, externalUrl,
         ...(accessToken !== null && { accessToken }),
         ...(refreshToken !== null && { refreshToken }),
+        ...(customHeaders !== null && { customHeaders }),
       },
     });
   }
