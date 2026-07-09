@@ -104,6 +104,7 @@ function newRowId(): string {
 // pulls in server-only deps, so it can't be imported into this client component).
 const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
 const MAX_HEADERS = 10;
+const MAX_HEADER_VALUE_LENGTH = 2048;
 function hasControlChar(s: string): boolean {
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
@@ -436,6 +437,15 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
         if (!name) continue; // blank rows are ignored, not an error
         if (!HEADER_NAME_PATTERN.test(name)) {
           toast.error(`Invalid header name "${name}" — letters, numbers, and hyphens only`);
+          return;
+        }
+        const value = h.value.trim();
+        if (!value) {
+          toast.error(`Header "${name}" needs a value`);
+          return;
+        }
+        if (value.length > MAX_HEADER_VALUE_LENGTH) {
+          toast.error(`Header "${name}" value is too long (max ${MAX_HEADER_VALUE_LENGTH} characters)`);
           return;
         }
         if (hasControlChar(h.value)) {
