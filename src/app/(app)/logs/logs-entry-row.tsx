@@ -47,7 +47,9 @@ function stringifyEntry(entry: LogEntry) {
 export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
   function LogsEntryRow({ entry, isExpanded, onToggle, dataIndex, style }, ref) {
     const [copied, setCopied] = useState(false);
-    const json = stringifyEntry(entry);
+    // Only serialized when expanded — metadata payloads can be large and the
+    // JSON is unused while collapsed.
+    const json = isExpanded ? stringifyEntry(entry) : '';
 
     async function handleCopy() {
       try {
@@ -70,6 +72,7 @@ export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
         <button
           type="button"
           onClick={onToggle}
+          aria-expanded={isExpanded}
           className="block w-full px-4 py-3 text-left active:bg-foreground/5 hover:bg-foreground/[0.02] transition-colors"
         >
           <div className="flex min-w-0 items-start justify-between gap-3">

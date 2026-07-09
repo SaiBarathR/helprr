@@ -1,11 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogsToolbar } from './logs-toolbar';
 import { LogsActiveFilters } from './logs-active-filters';
@@ -15,7 +14,8 @@ import type { LogLevel, LogSource } from './logs-filter-menu';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 function entryKey(entry: LogEntry, index: number) {
-  return `${entry.timestampUtc}-${entry.requestId ?? index}`;
+  // Index keeps keys unique even if two lines share a timestamp + requestId.
+  return `${entry.timestampUtc}-${entry.requestId ?? ''}-${index}`;
 }
 
 function isIosDevice() {
@@ -141,10 +141,13 @@ export default function LogsPage() {
   const useVirtualization = entries.length > 0;
   const virtualizer = useWindowVirtualizer({
     count: entries.length,
-    estimateSize: () => 88,
+    estimateSize: () => 66,
     enabled: useVirtualization,
     overscan: 8,
     scrollMargin,
+    // Key measurements to entries, not indices, so cached heights follow their
+    // rows when the list changes (e.g. new entries prepended on refresh).
+    getItemKey: (index) => entryKey(entries[index], index),
   });
 
   const refresh = useCallback(() => {
@@ -177,7 +180,10 @@ export default function LogsPage() {
         const response = await fetch(`/api/logs/files?file=${encodeURIComponent(file)}`, {
           method: 'DELETE',
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+          toast.error('Failed to delete file');
+          return;
+        }
         if (selectedFile === file) setSelectedFile('all');
         await queryClient.invalidateQueries({ queryKey: ['logs'] });
       } finally {
@@ -254,6 +260,12 @@ export default function LogsPage() {
     [from, levels, query, selectedFile, sources, to]
   );
 
+  // The active-filter chips row above the list appears/disappears with
+  // hasFilters, shifting the list's offsetTop — keep scrollMargin in sync.
+  useEffect(() => {
+    if (listRef.current) setScrollMargin(listRef.current.offsetTop);
+  }, [hasFilters]);
+
   const hasSearchFilters = levels.size > 0 || sources.size > 0 || query !== '' || from !== '' || to !== '';
   const downloadLabel = hasSearchFilters
     ? 'Download filtered logs'
@@ -263,20 +275,6 @@ export default function LogsPage() {
 
   return (
     <div className="animate-content-in pb-6 space-y-2">
-      <div className="px-1 pt-1">
-        <Link
-          href="/settings"
-          className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
-        >
-          <ChevronLeft className="h-5 w-5" />
-          Settings
-        </Link>
-      </div>
-
-      <div className="px-1 mb-2">
-        <h1 className="text-2xl font-semibold">Logs</h1>
-      </div>
-
       <LogsToolbar
         searchInput={searchInput}
         onSearchInputChange={setSearchInput}
@@ -330,7 +328,13 @@ export default function LogsPage() {
         {expanded.size > 0 && (
           <button
             type="button"
-            onClick={() => setExpanded(new Set())}
+            onClick={() => {
+              setExpanded(new Set());
+              // Expanded rows that scrolled out of view are unmounted, so they
+              // never remeasure on collapse — their cached heights go stale and
+              // scrolling jumps. Reset all measurements instead.
+              virtualizer.measure();
+            }}
             className="hover:text-foreground transition-colors"
           >
             Collapse all ({expanded.size})
