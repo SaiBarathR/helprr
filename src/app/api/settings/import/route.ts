@@ -329,10 +329,13 @@ async function applyServiceConnectionInTxn(
   const refreshToken = typeof conn.refreshToken === 'string' && conn.refreshToken.length > 0
     ? conn.refreshToken
     : existing?.refreshToken ?? null;
-  // Present in the file → validate + restore; absent (older/no-secrets backup) →
-  // leave any existing headers untouched. Not gated by HELPRR_CUSTOM_HEADERS:
-  // restoring the data is independent of whether sending is currently enabled.
-  const customHeaders = conn.customHeaders != null ? parseCustomHeaders(conn.customHeaders) : null;
+  // Present with at least one valid header → restore; absent, empty, or
+  // all-invalid → leave any existing headers untouched (a hand-edited or empty
+  // map must not silently wipe stored proxy headers). A normal export writes
+  // null when there are none, so legit round-trips are unaffected. Not gated by
+  // HELPRR_CUSTOM_HEADERS: restoring data is independent of whether sending is on.
+  const parsedHeaders = conn.customHeaders != null ? parseCustomHeaders(conn.customHeaders) : null;
+  const customHeaders = parsedHeaders && Object.keys(parsedHeaders).length > 0 ? parsedHeaders : null;
 
   if (existing) {
     await tx.serviceConnection.update({

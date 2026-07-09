@@ -8,6 +8,7 @@ import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 
 export const SERVICE_LABELS: Record<ServiceType, string> = {
   SONARR: 'Sonarr',
@@ -29,42 +30,42 @@ async function checkConnection(connection: ServiceConnection): Promise<void> {
     case 'SONARR': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('Sonarr URL is not configured');
-      const client = new SonarrClient(baseUrl, connection.apiKey);
+      const client = new SonarrClient(baseUrl, connection.apiKey, getConnectionHeaders(connection));
       await client.getSystemStatus();
       return;
     }
     case 'RADARR': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('Radarr URL is not configured');
-      const client = new RadarrClient(baseUrl, connection.apiKey);
+      const client = new RadarrClient(baseUrl, connection.apiKey, getConnectionHeaders(connection));
       await client.getSystemStatus();
       return;
     }
     case 'LIDARR': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('Lidarr URL is not configured');
-      const client = new LidarrClient(baseUrl, connection.apiKey);
+      const client = new LidarrClient(baseUrl, connection.apiKey, getConnectionHeaders(connection));
       await client.getSystemStatus();
       return;
     }
     case 'QBITTORRENT': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('qBittorrent URL is not configured');
-      const client = new QBittorrentClient(baseUrl, connection.apiKey, connection.username || 'admin');
+      const client = new QBittorrentClient(baseUrl, connection.apiKey, connection.username || 'admin', getConnectionHeaders(connection));
       await client.getVersion();
       return;
     }
     case 'PROWLARR': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('Prowlarr URL is not configured');
-      const client = new ProwlarrClient(baseUrl, connection.apiKey);
+      const client = new ProwlarrClient(baseUrl, connection.apiKey, getConnectionHeaders(connection));
       await client.getSystemStatus();
       return;
     }
     case 'JELLYFIN': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('Jellyfin URL is not configured');
-      const client = new JellyfinClient(baseUrl, connection.apiKey, connection.username || '');
+      const client = new JellyfinClient(baseUrl, connection.apiKey, connection.username || '', getConnectionHeaders(connection));
       await client.getSystemInfo();
       return;
     }
@@ -86,7 +87,7 @@ async function checkConnection(connection: ServiceConnection): Promise<void> {
     case 'SEERR': {
       const baseUrl = connection.url?.replace(/\/+$/, '');
       if (!baseUrl) throw new ConfigurationError('Seerr URL is not configured');
-      const client = new SeerrClient(baseUrl, connection.apiKey);
+      const client = new SeerrClient(baseUrl, connection.apiKey, getConnectionHeaders(connection));
       await client.verify();
       return;
     }
