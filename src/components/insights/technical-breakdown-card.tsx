@@ -16,7 +16,7 @@ export function kindQuery(kind: MediaAnalysisKindFilter): string {
   return kind === 'all' ? '' : `?kind=${kind}`;
 }
 
-const PANELS: { key: keyof MediaAnalysisResponse['distributions']; label: string; color: string }[] = [
+export const PANELS: { key: keyof MediaAnalysisResponse['distributions']; label: string; color: string }[] = [
   { key: 'videoCodec', label: 'Video codec', color: HPR.blue },
   { key: 'resolution', label: 'Resolution', color: HPR.purple },
   { key: 'dynamicRange', label: 'Dynamic range', color: HPR.amber },
@@ -25,7 +25,7 @@ const PANELS: { key: keyof MediaAnalysisResponse['distributions']; label: string
   { key: 'videoBitDepth', label: 'Bit depth', color: HPR.pink },
 ];
 
-function DistPanel({ label, color, entries, totalFiles }: {
+export function DistPanel({ label, color, entries, totalFiles }: {
   label: string;
   color: string;
   entries: MediaAnalysisDistEntry[];
@@ -62,7 +62,7 @@ function DistPanel({ label, color, entries, totalFiles }: {
   );
 }
 
-function fmtBitrate(bps: number): string {
+export function fmtBitrate(bps: number): string {
   return `${(bps / 1_000_000).toFixed(1)} Mbps`;
 }
 

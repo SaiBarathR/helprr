@@ -6,6 +6,31 @@ import { formatBytes } from '@/lib/format';
 import { Panel, PanelLoading, PanelEmpty, Stat, useInsightsResource } from './insights-shared';
 import type { InsightsTorrentsResponse } from '@/types/insights';
 
+// One "Top uploads" row: torrent name + uploaded/ratio + a proportional bar.
+// Shared with the seeding-economics dashboard widget.
+export function SeedingUploadRow({
+  t,
+  maxUpload,
+}: {
+  t: InsightsTorrentsResponse['topUploaded'][number];
+  maxUpload: number;
+}) {
+  const widthPct = maxUpload > 0 ? Math.max(2, Math.round((t.uploaded / maxUpload) * 100)) : 0;
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="truncate" style={{ color: HPR.fg }}>{t.name}</span>
+        <span className="shrink-0 tabular-nums" style={{ color: HPR.fgMute }}>
+          {formatBytes(t.uploaded)} · {Number.isFinite(t.ratio) ? `${t.ratio.toFixed(2)}x` : '—'}
+        </span>
+      </div>
+      <div className="h-1 rounded-full overflow-hidden" style={{ background: mix(HPR.green, 12) }}>
+        <div className="h-full rounded-full" style={{ width: `${widthPct}%`, background: HPR.green }} />
+      </div>
+    </div>
+  );
+}
+
 export function SeedingEconomicsCard() {
   const { data, loading } = useInsightsResource<InsightsTorrentsResponse>('/api/insights/torrents');
 
@@ -38,22 +63,9 @@ export function SeedingEconomicsCard() {
                 Top uploads
               </p>
               <div className="space-y-1.5">
-                {data.topUploaded.map((t) => {
-                  const widthPct = maxUpload > 0 ? Math.max(2, Math.round((t.uploaded / maxUpload) * 100)) : 0;
-                  return (
-                    <div key={t.name} className="space-y-0.5">
-                      <div className="flex items-baseline justify-between gap-2 text-xs">
-                        <span className="truncate" style={{ color: HPR.fg }}>{t.name}</span>
-                        <span className="shrink-0 tabular-nums" style={{ color: HPR.fgMute }}>
-                          {formatBytes(t.uploaded)} · {Number.isFinite(t.ratio) ? `${t.ratio.toFixed(2)}x` : '—'}
-                        </span>
-                      </div>
-                      <div className="h-1 rounded-full overflow-hidden" style={{ background: mix(HPR.green, 12) }}>
-                        <div className="h-full rounded-full" style={{ width: `${widthPct}%`, background: HPR.green }} />
-                      </div>
-                    </div>
-                  );
-                })}
+                {data.topUploaded.map((t) => (
+                  <SeedingUploadRow key={t.name} t={t} maxUpload={maxUpload} />
+                ))}
               </div>
             </div>
           )}

@@ -17,7 +17,7 @@ export function scoreColor(score: number): string {
   return HPR.rose;
 }
 
-function ScoreRing({ score, files }: { score: number; files: number }) {
+export function ScoreRing({ score, files }: { score: number; files: number }) {
   const color = scoreColor(score);
   return (
     <div
@@ -56,7 +56,7 @@ export function ScoreBadge({ score }: { score: number }) {
   );
 }
 
-function CandidateRow({ c }: { c: MediaAnalysisUpgradeCandidate }) {
+export function CandidateRow({ c }: { c: MediaAnalysisUpgradeCandidate }) {
   const body = (
     <div className="flex items-center gap-2.5 py-1.5">
       <ScoreBadge score={c.score} />

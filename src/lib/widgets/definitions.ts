@@ -59,6 +59,16 @@ import { ANIME_CAROUSEL_MAP, DEFAULT_ANIME_CAROUSEL_ORDER } from '@/lib/anime-ca
 // For You recommendations
 import { ForYouWidget } from '@/components/widgets/for-you-widget';
 
+// Insights-derived analytics widgets
+import { LibraryGrowthWidget } from '@/components/widgets/library-growth-widget';
+import { LibraryCompletenessWidget } from '@/components/widgets/library-completeness-widget';
+import { DownloadReliabilityWidget } from '@/components/widgets/download-reliability-widget';
+import { DownloadPipelineWidget } from '@/components/widgets/download-pipeline-widget';
+import { StorageBreakdownWidget } from '@/components/widgets/storage-breakdown-widget';
+import { SeedingEconomicsWidget } from '@/components/widgets/seeding-economics-widget';
+import { MediaTechnicalBreakdownWidget } from '@/components/widgets/media-technical-breakdown-widget';
+import { MediaQualityScoresWidget } from '@/components/widgets/media-quality-scores-widget';
+
 const span = (colSpan: WidgetSpan['colSpan'], rowSpan: WidgetSpan['rowSpan']): WidgetSpan => ({
   colSpan,
   rowSpan,
@@ -605,6 +615,97 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     component: RequestsUsersWidget,
     requiredServices: ['SEERR'],
   },
+
+  // ── Insights analytics ──
+  {
+    id: 'library-growth',
+    name: 'Library Growth',
+    description: 'Movies, series, and music added over time',
+    icon: 'BarChart3',
+    category: 'media',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 300,
+    component: LibraryGrowthWidget,
+  },
+  {
+    id: 'library-completeness',
+    name: 'Library Completeness',
+    description: 'Overall completeness with overdue, missing, and gap counts',
+    icon: 'Layers',
+    category: 'media',
+    defaultDesktopSpan: span(4, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 300,
+    component: LibraryCompletenessWidget,
+  },
+  {
+    id: 'download-reliability',
+    name: 'Download Reliability',
+    description: 'Grabbed / imported / failed success rate over the window',
+    icon: 'Activity',
+    category: 'downloads',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 300,
+    component: DownloadReliabilityWidget,
+  },
+  {
+    id: 'download-pipeline',
+    name: 'Download Pipeline',
+    description: 'Grab→import latency, hourly activity, indexers, and release groups',
+    icon: 'Timer',
+    category: 'downloads',
+    defaultDesktopSpan: span(6, 4),
+    defaultMobileSpan: span(2, 3),
+    defaultRefreshIntervalSecs: 300,
+    component: DownloadPipelineWidget,
+  },
+  {
+    id: 'storage-breakdown',
+    name: 'Storage Breakdown',
+    description: 'Library size by type with the largest items',
+    icon: 'HardDrive',
+    category: 'monitoring',
+    defaultDesktopSpan: span(4, 4),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 300,
+    component: StorageBreakdownWidget,
+  },
+  {
+    id: 'seeding-economics',
+    name: 'Seeding Economics',
+    description: 'Upload totals, ratio, and top seeding torrents',
+    icon: 'Database',
+    category: 'monitoring',
+    defaultDesktopSpan: span(4, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 120,
+    component: SeedingEconomicsWidget,
+    requiredServices: ['QBITTORRENT'],
+  },
+  {
+    id: 'media-technical-breakdown',
+    name: 'Technical Breakdown',
+    description: 'Codec, resolution, HDR, and audio distribution of your files',
+    icon: 'Film',
+    category: 'monitoring',
+    defaultDesktopSpan: span(8, 4),
+    defaultMobileSpan: span(2, 3),
+    defaultRefreshIntervalSecs: 300,
+    component: MediaTechnicalBreakdownWidget,
+  },
+  {
+    id: 'media-quality-scores',
+    name: 'Quality Scores',
+    description: 'Average quality score, histogram, and upgrade candidates',
+    icon: 'Sparkles',
+    category: 'monitoring',
+    defaultDesktopSpan: span(6, 4),
+    defaultMobileSpan: span(2, 3),
+    defaultRefreshIntervalSecs: 300,
+    component: MediaQualityScoresWidget,
+  },
 ];
 
 // Dynamically add anime carousel widgets — full-width carousels
@@ -666,6 +767,16 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability>> = {
   // surfaces their pending-approval items, so members may add it.
   'seerr-recent-requests': 'requests.view',
   'seerr-users': 'requests.approve',
+  // Insights analytics — every /api/insights/* route requires insights.view;
+  // seeding hits the torrents route so it gates on torrents.view instead.
+  'library-growth': 'insights.view',
+  'library-completeness': 'insights.view',
+  'download-reliability': 'insights.view',
+  'download-pipeline': 'insights.view',
+  'storage-breakdown': 'insights.view',
+  'seeding-economics': 'torrents.view',
+  'media-technical-breakdown': 'insights.view',
+  'media-quality-scores': 'insights.view',
 };
 for (const def of ALL_WIDGET_DEFINITIONS) {
   const cap = WIDGET_REQUIRED_CAPABILITY[def.id];

@@ -5,13 +5,43 @@ import Link from 'next/link';
 import { HPR, mix } from '@/components/widgets/bento-primitives';
 import { formatBytes } from '@/lib/format';
 import { Panel, PanelLoading, PanelEmpty, Stat, useInsightsResource } from './insights-shared';
-import type { InsightsStorageResponse } from '@/types/insights';
+import type { InsightsStorageItem, InsightsStorageResponse } from '@/types/insights';
 
-const KIND_COLOR: Record<string, string> = {
+export const KIND_COLOR: Record<string, string> = {
   movie: HPR.blue,
   series: HPR.violet,
   artist: HPR.pink,
 };
+
+// One "Largest items" row: title/size + a proportional bar. Shared with the
+// storage-breakdown dashboard widget.
+export function StorageItemRow({ item, maxSize }: { item: InsightsStorageItem; maxSize: number }) {
+  const widthPct = maxSize > 0 ? Math.max(2, Math.round((item.sizeOnDisk / maxSize) * 100)) : 0;
+  const color = KIND_COLOR[item.kind] ?? HPR.blue;
+  const row = (
+    <div className="space-y-0.5">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="truncate" style={{ color: HPR.fg }}>
+          {item.title}
+          {item.year ? <span style={{ color: HPR.fgSubtle }}> · {item.year}</span> : null}
+        </span>
+        <span className="shrink-0 tabular-nums" style={{ color: HPR.fgMute }}>
+          {formatBytes(item.sizeOnDisk)}
+        </span>
+      </div>
+      <div className="h-1 rounded-full overflow-hidden" style={{ background: mix(color, 12) }}>
+        <div className="h-full rounded-full" style={{ width: `${widthPct}%`, background: color }} />
+      </div>
+    </div>
+  );
+  return item.href ? (
+    <Link href={item.href} className="block hover:opacity-80 transition-opacity">
+      {row}
+    </Link>
+  ) : (
+    row
+  );
+}
 
 export function StorageInsightsCard() {
   const { data, loading } = useInsightsResource<InsightsStorageResponse>('/api/insights/storage');
@@ -75,33 +105,9 @@ export function StorageInsightsCard() {
                 Largest items
               </p>
               <div className="space-y-1.5">
-                {data!.topItems.map((item) => {
-                  const widthPct = maxSize > 0 ? Math.max(2, Math.round((item.sizeOnDisk / maxSize) * 100)) : 0;
-                  const color = KIND_COLOR[item.kind] ?? HPR.blue;
-                  const row = (
-                    <div className="space-y-0.5">
-                      <div className="flex items-baseline justify-between gap-2 text-xs">
-                        <span className="truncate" style={{ color: HPR.fg }}>
-                          {item.title}
-                          {item.year ? <span style={{ color: HPR.fgSubtle }}> · {item.year}</span> : null}
-                        </span>
-                        <span className="shrink-0 tabular-nums" style={{ color: HPR.fgMute }}>
-                          {formatBytes(item.sizeOnDisk)}
-                        </span>
-                      </div>
-                      <div className="h-1 rounded-full overflow-hidden" style={{ background: mix(color, 12) }}>
-                        <div className="h-full rounded-full" style={{ width: `${widthPct}%`, background: color }} />
-                      </div>
-                    </div>
-                  );
-                  return item.href ? (
-                    <Link key={`${item.kind}-${item.href}`} href={item.href} className="block hover:opacity-80 transition-opacity">
-                      {row}
-                    </Link>
-                  ) : (
-                    <div key={`${item.kind}-${item.title}`}>{row}</div>
-                  );
-                })}
+                {data!.topItems.map((item) => (
+                  <StorageItemRow key={`${item.kind}-${item.href ?? item.title}`} item={item} maxSize={maxSize} />
+                ))}
               </div>
             </div>
           )}

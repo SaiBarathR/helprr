@@ -21,6 +21,63 @@ const SERIES = [
   { key: 'Music', field: 'music' as const, color: HPR.pink },
 ];
 
+// The stacked area chart, split out so the library-growth dashboard widget can
+// dynamic-import it (keeps recharts out of the dashboard's initial chunk). Fills
+// its parent — the caller sets the height (fixed on the insights page, flexible
+// in the widget).
+export function LibraryGrowthChart({ data }: { data: InsightsLibraryResponse }) {
+  const active = React.useMemo(() => SERIES.filter((s) => data.series[s.field] != null), [data]);
+  const chartData = React.useMemo(() => {
+    return data.days.map((day, i) => {
+      const row: Record<string, number | string> = { date: shortDate(day) };
+      for (const s of active) row[s.key] = data.series[s.field]![i] ?? 0;
+      return row;
+    });
+  }, [data, active]);
+  return (
+    <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+      <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 2 }}>
+        <defs>
+          {active.map((s) => (
+            <linearGradient key={s.key} id={`lg-${s.field}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={s.color} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={s.color} stopOpacity={0.02} />
+            </linearGradient>
+          ))}
+        </defs>
+        <CartesianGrid stroke="var(--hpr-hairline)" vertical={false} />
+        <XAxis
+          dataKey="date"
+          tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
+          axisLine={false}
+          tickLine={false}
+          minTickGap={24}
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
+          tickFormatter={fmtNum}
+          axisLine={false}
+          tickLine={false}
+          width={36}
+          allowDecimals={false}
+        />
+        <RechartsTooltip content={<ChartTooltip />} />
+        {active.map((s) => (
+          <Area
+            key={s.key}
+            type="monotone"
+            dataKey={s.key}
+            stackId="lib"
+            stroke={s.color}
+            strokeWidth={1.5}
+            fill={`url(#lg-${s.field})`}
+          />
+        ))}
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function LibraryGrowthCard({ range }: { range: InsightsRange }) {
   const { data, loading } = useInsightsResource<InsightsLibraryResponse>(
     `/api/insights/library?from=${range.from}&to=${range.to}`
@@ -62,46 +119,7 @@ export function LibraryGrowthCard({ range }: { range: InsightsRange }) {
             ))}
           </div>
           <div style={{ height: 240 }}>
-            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
-              <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 2 }}>
-                <defs>
-                  {active.map((s) => (
-                    <linearGradient key={s.key} id={`lg-${s.field}`} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={s.color} stopOpacity={0.35} />
-                      <stop offset="100%" stopColor={s.color} stopOpacity={0.02} />
-                    </linearGradient>
-                  ))}
-                </defs>
-                <CartesianGrid stroke="var(--hpr-hairline)" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                  axisLine={false}
-                  tickLine={false}
-                  minTickGap={24}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
-                  tickFormatter={fmtNum}
-                  axisLine={false}
-                  tickLine={false}
-                  width={36}
-                  allowDecimals={false}
-                />
-                <RechartsTooltip content={<ChartTooltip />} />
-                {active.map((s) => (
-                  <Area
-                    key={s.key}
-                    type="monotone"
-                    dataKey={s.key}
-                    stackId="lib"
-                    stroke={s.color}
-                    strokeWidth={1.5}
-                    fill={`url(#lg-${s.field})`}
-                  />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
+            <LibraryGrowthChart data={data} />
           </div>
         </>
       )}
