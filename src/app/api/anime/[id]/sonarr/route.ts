@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { ensureSeriesAniListMapping } from '@/lib/anilist-series-mapping';
 import { withApiLogging } from '@/lib/api-logger';
@@ -73,7 +74,7 @@ async function getHandler(
           (mapping) => mapping.sonarrInstanceId === connection.id && mapping.sonarrSeriesId === hintId
         );
         if (!alreadyMapped) {
-          const client = new SonarrClient(connection.url, connection.apiKey);
+          const client = new SonarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection));
           const series = await client.getSeriesById(hintId);
           if (series && series.seriesType === 'anime') {
             await ensureSeriesAniListMapping(series, connection.id);

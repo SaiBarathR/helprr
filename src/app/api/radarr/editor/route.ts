@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
 import { RadarrClient } from '@/lib/radarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
 import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } from '@/lib/bulk-editor';
@@ -31,7 +32,7 @@ async function putHandler(request: NextRequest) {
     // Resolve the connection once so we can reuse its id for cache invalidation without a
     // second lookup — and so the only throwing call (the DB resolve) runs before any write.
     const conn = await resolveConnection('RADARR', instanceId);
-    const client = new RadarrClient(conn.url, conn.apiKey);
+    const client = new RadarrClient(conn.url, conn.apiKey, getConnectionHeaders(conn));
     const tagResult = parsed.tags
       ? await resolveTagIds(client, parsed.tags, parsed.applyTags ?? 'add')
       : undefined;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
@@ -42,7 +43,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Resolve the connection once so we can reuse its id for cache invalidation without a
     // second lookup — and so the only throwing call (the DB resolve) runs before any write.
     const conn = await resolveConnection('LIDARR', instanceId);
-    const client = new LidarrClient(conn.url, conn.apiKey);
+    const client = new LidarrClient(conn.url, conn.apiKey, getConnectionHeaders(conn));
     // Dedup case-insensitively (mirrors resolveTagIds in bulk-editor.ts) so we never
     // create a duplicate and always hand back a real {id,label}.
     const existing = await client.getTags();

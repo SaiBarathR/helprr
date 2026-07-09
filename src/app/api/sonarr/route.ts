@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getSonarrClients } from '@/lib/service-helpers';
 import { resolveConnection } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import type { SonarrSeries, SonarrSeriesListItem } from '@/types';
@@ -73,7 +74,7 @@ async function getHandler(request: NextRequest) {
     const resolveInstances = () =>
       (instancesPromise ??= instanceId
         ? resolveConnection('SONARR', instanceId).then((conn) => [
-            { connection: conn, client: new SonarrClient(conn.url, conn.apiKey) },
+            { connection: conn, client: new SonarrClient(conn.url, conn.apiKey, getConnectionHeaders(conn)) },
           ])
         : getSonarrClients());
 
