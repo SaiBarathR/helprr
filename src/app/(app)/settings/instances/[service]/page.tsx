@@ -92,6 +92,26 @@ function mapJellyfinUsers(rawUsers: unknown[]): JellyfinUserOption[] {
   return Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// crypto.randomUUID() is only defined in secure contexts; a self-hosted install
+// on plain http:// would throw. These ids are just React keys, so fall back.
+function newRowId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `h_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
+// Keep in sync with parseCustomHeaders in service-connection-secrets.ts (that lib
+// pulls in server-only deps, so it can't be imported into this client component).
+const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
+const MAX_HEADERS = 10;
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return true;
+  }
+  return false;
+}
+
 export default function ServiceDetailPage({ params }: { params: Promise<{ service: string }> }) {
   const { service: slug } = use(params);
   const config = findServiceBySlug(slug);
@@ -160,7 +180,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     setHeaders(
       existingConn?.customHeaders
         ? Object.entries(existingConn.customHeaders).map(([name, value]) => ({
-            id: crypto.randomUUID(),
+            id: newRowId(),
             name,
             value,
           }))
@@ -352,7 +372,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   });
 
   function addHeader() {
-    setHeaders((prev) => [...prev, { id: crypto.randomUUID(), name: '', value: '' }]);
+    setHeaders((prev) => [...prev, { id: newRowId(), name: '', value: '' }]);
   }
   function patchHeader(id: string, patch: Partial<Omit<HeaderRow, 'id'>>) {
     setHeaders((prev) => prev.map((h) => (h.id === id ? { ...h, ...patch } : h)));
@@ -409,7 +429,22 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     }
     if (isQbt) body.username = trimmedUser || 'admin';
     else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
-    if (canEditHeaders) body.customHeaders = buildHeadersObject();
+    if (canEditHeaders) {
+      // Surface what the server would otherwise silently drop.
+      for (const h of headers) {
+        const name = h.name.trim();
+        if (!name) continue; // blank rows are ignored, not an error
+        if (!HEADER_NAME_PATTERN.test(name)) {
+          toast.error(`Invalid header name "${name}" — letters, numbers, and hyphens only`);
+          return;
+        }
+        if (hasControlChar(h.value)) {
+          toast.error(`Header "${name}" has an invalid value`);
+          return;
+        }
+      }
+      body.customHeaders = buildHeadersObject();
+    }
 
     saveMutation.mutate(body);
   }
@@ -582,6 +617,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               <div key={h.id} className="flex items-center gap-2">
                 <Input
                   placeholder="Header name"
+                  aria-label={h.name ? `Header name: ${h.name}` : 'Header name'}
                   value={h.name}
                   onChange={(e) => patchHeader(h.id, { name: e.target.value })}
                   className="h-9 flex-1"
@@ -589,6 +625,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 <Input
                   type="password"
                   placeholder="Value"
+                  aria-label={h.name ? `Value for ${h.name}` : 'Header value'}
                   value={h.value}
                   onChange={(e) => patchHeader(h.id, { value: e.target.value })}
                   className="h-9 flex-1"
@@ -598,16 +635,25 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                   size="icon"
                   className="h-9 w-9 shrink-0 text-muted-foreground"
                   onClick={() => removeHeader(h.id)}
-                  aria-label="Remove header"
+                  aria-label={h.name ? `Remove header ${h.name}` : 'Remove header'}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
             ))}
-            <Button variant="outline" size="sm" className="h-9" onClick={addHeader}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={addHeader}
+              disabled={headers.length >= MAX_HEADERS}
+            >
               <Plus className="mr-2 h-3.5 w-3.5" />
               Add header
             </Button>
+            {headers.length >= MAX_HEADERS && (
+              <p className="text-xs text-muted-foreground">Maximum {MAX_HEADERS} headers per connection.</p>
+            )}
           </div>
         )}
 

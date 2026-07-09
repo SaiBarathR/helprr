@@ -21,9 +21,20 @@ const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
 const MAX_HEADERS = 10;
 const MAX_HEADER_VALUE_LENGTH = 2048;
 
+// Control chars (incl. CR/LF) in a header value make Node's HTTP layer throw
+// ERR_INVALID_CHAR at request time, which would break every call on that client.
+// Reject them here so a bad paste can't brick a connection.
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return true;
+  }
+  return false;
+}
+
 // Coerce an untrusted value (request body or stored JSON) into a validated
-// name→value map: safe header names only, non-empty trimmed values, capped in
-// count and length. Invalid entries are dropped rather than rejected.
+// name→value map: safe header names only, non-empty trimmed values free of
+// control chars, capped in count and length. Invalid entries are dropped.
 export function parseCustomHeaders(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const result: Record<string, string> = {};
@@ -33,7 +44,7 @@ export function parseCustomHeaders(value: unknown): Record<string, string> {
     if (!HEADER_NAME_PATTERN.test(name)) continue;
     if (typeof rawValue !== 'string') continue;
     const val = rawValue.trim();
-    if (!val || val.length > MAX_HEADER_VALUE_LENGTH) continue;
+    if (!val || val.length > MAX_HEADER_VALUE_LENGTH || hasControlChar(val)) continue;
     result[name] = val;
   }
   return result;
