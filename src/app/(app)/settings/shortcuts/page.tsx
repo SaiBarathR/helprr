@@ -45,6 +45,27 @@ const RECIPES: Recipe[] = [
     description: 'Jump straight to the download queue and history.',
     path: '/activity',
   },
+  {
+    label: 'Open Watchlist',
+    description: 'Jump straight to saved movies and series.',
+    path: '/watchlist',
+  },
+  {
+    label: 'Open Series',
+    description: 'Jump straight to your Sonarr series library.',
+    path: '/series',
+  },
+  {
+    label: 'Open Movies',
+    description: 'Jump straight to your Radarr movie library.',
+    path: '/movies',
+  },
+];
+
+const PROTOCOL_EXAMPLES = [
+  'web+helprr://discover?query=<text>',
+  'web+helprr://watchlist/add/<id>?type=tv',
+  'web+helprr://request?tmdbId=<id>&type=movie',
 ];
 
 function RecipeRow({ recipe, origin }: { recipe: Recipe; origin: string }) {
@@ -129,6 +150,31 @@ export default function ShortcutsSettingsPage() {
         {RECIPES.map((r) => (
           <RecipeRow key={r.label} recipe={r} origin={origin} />
         ))}
+      </GroupedSection>
+
+      <GroupedSection
+        title="Alternative protocol form"
+        footer="For the manifest wrapper form, encode the custom-scheme URL and pass it as u."
+      >
+        <div className="grouped-row flex-col items-stretch gap-2 py-3">
+          <p className="text-sm">
+            Prefer the HTTPS recipes above for Shortcuts. If your platform handles registered web
+            protocols reliably, these custom-scheme forms route through the same Helprr commands.
+          </p>
+          <div className="space-y-2">
+            {PROTOCOL_EXAMPLES.map((example) => (
+              <code
+                key={example}
+                className="block text-[11px] leading-relaxed text-muted-foreground bg-foreground/[0.04] rounded-md px-2.5 py-1.5 overflow-x-auto whitespace-nowrap"
+              >
+                {example}
+              </code>
+            ))}
+            <code className="block text-[11px] leading-relaxed text-muted-foreground bg-foreground/[0.04] rounded-md px-2.5 py-1.5 overflow-x-auto whitespace-nowrap">
+              {`${origin}/protocol?u=<encoded web+helprr URL>`}
+            </code>
+          </div>
+        </div>
       </GroupedSection>
 
       <GroupedSection
