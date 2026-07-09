@@ -12,7 +12,6 @@ import {
   Bell,
   Settings,
   Sparkles,
-  ScrollText,
   Sparkle,
   Bookmark,
   Dices,
@@ -43,7 +42,6 @@ export type NavItemId =
   | 'insights'
   | 'activity'
   | 'notifications'
-  | 'logs'
   | 'settings';
 
 export interface NavItemDef {
@@ -80,7 +78,6 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', requiredCapability: 'insights.view' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view', badgeArea: 'activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
-  { id: 'logs', href: '/logs', icon: ScrollText, label: 'Logs', shortLabel: 'Logs', requiredCapability: 'logs.view' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },
 ];
 
