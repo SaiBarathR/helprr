@@ -8,7 +8,14 @@ import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
-import { isNonEmptyString, isServiceType, resolveApiKeyForService } from '@/lib/service-connection-secrets';
+import {
+  customHeadersEnabled,
+  isNonEmptyString,
+  isServiceType,
+  parseCustomHeaders,
+  resolveApiKeyForService,
+  resolveCustomHeadersForService,
+} from '@/lib/service-connection-secrets';
 import type { ServiceType } from '@prisma/client';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -81,11 +88,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // must not substitute for a sibling's (multi-instance Sonarr/Radarr/Lidarr).
     const instanceId = isNonEmptyString(body.instanceId) ? body.instanceId.trim() : undefined;
     const resolvedApiKey = await resolveApiKeyForService(type, apiKey, instanceId);
+    // Test with the same headers a live request would carry, so a proxied
+    // instance is validated as it actually runs.
+    const customHeaders = customHeadersEnabled()
+      ? await resolveCustomHeadersForService(type, parseCustomHeaders(body.customHeaders), instanceId)
+      : undefined;
     const cleanUrl = url.replace(/\/+$/, '');
 
     switch (type) {
       case 'SONARR': {
-        const client = new SonarrClient(cleanUrl, resolvedApiKey);
+        const client = new SonarrClient(cleanUrl, resolvedApiKey, customHeaders);
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
@@ -94,7 +106,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       case 'RADARR': {
-        const client = new RadarrClient(cleanUrl, resolvedApiKey);
+        const client = new RadarrClient(cleanUrl, resolvedApiKey, customHeaders);
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
@@ -103,7 +115,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       case 'LIDARR': {
-        const client = new LidarrClient(cleanUrl, resolvedApiKey);
+        const client = new LidarrClient(cleanUrl, resolvedApiKey, customHeaders);
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
@@ -112,7 +124,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       case 'QBITTORRENT': {
-        const client = new QBittorrentClient(cleanUrl, resolvedApiKey, username || 'admin');
+        const client = new QBittorrentClient(cleanUrl, resolvedApiKey, username || 'admin', customHeaders);
         const version = await client.getVersion();
         return NextResponse.json({
           success: true,
@@ -121,7 +133,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       case 'PROWLARR': {
-        const client = new ProwlarrClient(cleanUrl, resolvedApiKey);
+        const client = new ProwlarrClient(cleanUrl, resolvedApiKey, customHeaders);
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
@@ -130,7 +142,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       case 'JELLYFIN': {
-        const client = new JellyfinClient(cleanUrl, resolvedApiKey);
+        const client = new JellyfinClient(cleanUrl, resolvedApiKey, '', customHeaders);
         const [sysInfo, user, hasAdminAccess] = await Promise.all([
           client.getSystemInfo(),
           client.resolveCurrentUser(resolvedApiKey),
@@ -190,7 +202,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
 
       case 'SEERR': {
-        const client = new SeerrClient(cleanUrl, resolvedApiKey);
+        const client = new SeerrClient(cleanUrl, resolvedApiKey, customHeaders);
         const [me, status] = await Promise.all([client.verify(), client.getStatus()]);
         return NextResponse.json({
           success: true,

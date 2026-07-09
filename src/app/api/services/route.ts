@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
-import { isNonEmptyString, isServiceType, resolveApiKeyForService, serializeConnection } from '@/lib/service-connection-secrets';
+import {
+  customHeadersEnabled,
+  isNonEmptyString,
+  isServiceType,
+  parseCustomHeaders,
+  resolveApiKeyForService,
+  resolveCustomHeadersForService,
+  serializeConnection,
+} from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
 import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
@@ -139,8 +147,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const idValue = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : undefined;
     const apiKeyToStore = await resolveApiKeyForService(type, apiKey, idValue);
 
+    // Feature-gated: when disabled — or when the client doesn't send the field —
+    // customHeaders is undefined, which leaves any stored value untouched. An
+    // explicit {} (all rows removed in the UI) clears them.
+    const customHeaders = customHeadersEnabled() && body.customHeaders !== undefined
+      ? await resolveCustomHeadersForService(type, parseCustomHeaders(body.customHeaders), idValue)
+      : undefined;
+
     if (type === 'JELLYFIN') {
-      const client = new JellyfinClient(url, apiKeyToStore);
+      const client = new JellyfinClient(url, apiKeyToStore, '', customHeaders);
       const [currentUser, hasAdminAccess] = await Promise.all([
         client.resolveCurrentUser(apiKeyToStore),
         client.hasAdminAccess(),
@@ -214,10 +229,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       connection = existing
         ? await prisma.serviceConnection.update({
             where: { id: existing.id },
-            data: { url, apiKey: apiKeyToStore, username, label, ...(externalUrl !== undefined && { externalUrl }) },
+            data: { url, apiKey: apiKeyToStore, username, label, ...(externalUrl !== undefined && { externalUrl }), ...(customHeaders !== undefined && { customHeaders }) },
           })
         : await prisma.serviceConnection.create({
-            data: { type, label, url, apiKey: apiKeyToStore, username, ...(externalUrl !== undefined && { externalUrl }) },
+            data: { type, label, url, apiKey: apiKeyToStore, username, ...(externalUrl !== undefined && { externalUrl }), ...(customHeaders !== undefined && { customHeaders }) },
           });
     } catch (err) {
       if ((err as { code?: string }).code === 'P2002') {

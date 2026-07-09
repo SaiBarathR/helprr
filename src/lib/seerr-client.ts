@@ -64,11 +64,12 @@ export class SeerrClient {
   private client: AxiosInstance;
   private baseUrl: string;
 
-  constructor(url: string, apiKey: string) {
+  constructor(url: string, apiKey: string, customHeaders?: Record<string, string>) {
     this.baseUrl = url.replace(/\/+$/, '');
     this.client = axios.create({
       baseURL: `${this.baseUrl}/api/v1`,
       headers: {
+        ...customHeaders,
         'X-Api-Key': apiKey,
         'Content-Type': 'application/json',
         Accept: 'application/json',

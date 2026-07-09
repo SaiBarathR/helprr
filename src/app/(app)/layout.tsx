@@ -61,6 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     tmdbConfigured,
     seerrUserId: user.seerrUserId,
     jellyfinLinked,
+    customHeadersEnabled: process.env.HELPRR_CUSTOM_HEADERS === 'true',
   };
 
   return (

@@ -33,12 +33,13 @@ export class JellyfinClient {
   private serverUrl: string;
   private userId: string;
 
-  constructor(url: string, token: string, userId: string = '') {
+  constructor(url: string, token: string, userId: string = '', customHeaders?: Record<string, string>) {
     this.serverUrl = url.replace(/\/+$/, '');
     this.userId = userId;
     this.client = axios.create({
       baseURL: this.serverUrl,
       headers: {
+        ...customHeaders,
         'Authorization': `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
         'X-Emby-Token': token,
         'Content-Type': 'application/json',

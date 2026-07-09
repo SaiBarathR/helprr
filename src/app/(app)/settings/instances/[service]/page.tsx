@@ -7,7 +7,8 @@ import { handleAuthError } from '@/lib/query-client';
 import Link from 'next/link';
 import { notFound, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { ChevronLeft, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { ChevronLeft, CheckCircle, XCircle, Loader2, Trash2, Plus } from 'lucide-react';
+import { useMe } from '@/components/permission-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,6 +38,13 @@ interface ServiceRecord {
   apiKey?: string;
   username?: string | null;
   externalUrl?: string | null;
+  customHeaders?: Record<string, string> | null;
+}
+
+interface HeaderRow {
+  id: string;
+  name: string;
+  value: string;
 }
 
 interface JellyfinApiUser {
@@ -109,7 +117,11 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const [editingConnId, setEditingConnId] = useState<string | null>(null);
   const [label, setLabel] = useState('');
   const [isDefault, setIsDefault] = useState(false);
+  const [headers, setHeaders] = useState<HeaderRow[]>([]);
   const queryClient = useQueryClient();
+
+  const canEditHeaders =
+    useMe()?.customHeadersEnabled === true && config.supportsCustomHeaders === true;
 
   const servicesQuery = useQuery({
     queryKey: ['services'],
@@ -144,6 +156,15 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     setConfigured(Boolean(existingConn));
     setJellyfinValidated(
       isJellyfin && existingConn?.username ? { userId: existingConn.username } : null
+    );
+    setHeaders(
+      existingConn?.customHeaders
+        ? Object.entries(existingConn.customHeaders).map(([name, value]) => ({
+            id: crypto.randomUUID(),
+            name,
+            value,
+          }))
+        : []
     );
   }
 
@@ -189,6 +210,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           // So a masked key is unmasked against THIS instance, not the type's default.
           ...(editingId && { instanceId: editingId }),
           ...(isQbt && { username: vars.username || 'admin' }),
+          ...(canEditHeaders && { customHeaders: buildHeadersObject() }),
         }),
       });
       // The test endpoint returns 200 with { success } even on a failed probe;
@@ -239,7 +261,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const testing = testMutation.isPending;
 
   const saveMutation = useMutation({
-    mutationFn: async (body: Record<string, string | boolean>) => {
+    mutationFn: async (body: Record<string, unknown>) => {
       const res = await fetch('/api/services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -329,6 +351,25 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     },
   });
 
+  function addHeader() {
+    setHeaders((prev) => [...prev, { id: crypto.randomUUID(), name: '', value: '' }]);
+  }
+  function patchHeader(id: string, patch: Partial<Omit<HeaderRow, 'id'>>) {
+    setHeaders((prev) => prev.map((h) => (h.id === id ? { ...h, ...patch } : h)));
+  }
+  function removeHeader(id: string) {
+    setHeaders((prev) => prev.filter((h) => h.id !== id));
+  }
+  // Rows → { name: value } map; drops rows with a blank name (last-wins on dupes).
+  function buildHeadersObject(): Record<string, string> {
+    const obj: Record<string, string> = {};
+    for (const h of headers) {
+      const name = h.name.trim();
+      if (name) obj[name] = h.value;
+    }
+    return obj;
+  }
+
   function handleTest() {
     const trimmedUrl = url.trim();
     const trimmedKey = apiKey.trim();
@@ -357,7 +398,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       return;
     }
 
-    const body: Record<string, string | boolean> = { type, url: trimmedUrl, apiKey: trimmedKey };
+    const body: Record<string, unknown> = { type, url: trimmedUrl, apiKey: trimmedKey };
     if (isMultiInstance) {
       if (!label.trim()) {
         toast.error('Please name this instance');
@@ -368,6 +409,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     }
     if (isQbt) body.username = trimmedUser || 'admin';
     else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
+    if (canEditHeaders) body.customHeaders = buildHeadersObject();
 
     saveMutation.mutate(body);
   }
@@ -527,6 +569,46 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               </div>
             )}
           </>
+        )}
+
+        {canEditHeaders && (
+          <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-2">
+            <Label className="text-xs text-muted-foreground">Custom headers</Label>
+            <p className="text-xs text-muted-foreground">
+              Sent on every request to this instance — for reverse proxies (Cloudflare Access,
+              Authelia, basic auth). Saved with the connection below.
+            </p>
+            {headers.map((h) => (
+              <div key={h.id} className="flex items-center gap-2">
+                <Input
+                  placeholder="Header name"
+                  value={h.name}
+                  onChange={(e) => patchHeader(h.id, { name: e.target.value })}
+                  className="h-9 flex-1"
+                />
+                <Input
+                  type="password"
+                  placeholder="Value"
+                  value={h.value}
+                  onChange={(e) => patchHeader(h.id, { value: e.target.value })}
+                  className="h-9 flex-1"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0 text-muted-foreground"
+                  onClick={() => removeHeader(h.id)}
+                  aria-label="Remove header"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <Button variant="outline" size="sm" className="h-9" onClick={addHeader}>
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              Add header
+            </Button>
+          </div>
         )}
 
         <div className="px-4 py-3 flex gap-2">

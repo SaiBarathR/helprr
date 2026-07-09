@@ -13,6 +13,7 @@ import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
 import { resolveConnection, listConnections } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 
 let cachedQBittorrentClient: QBittorrentClient | null = null;
 let cachedQBittorrentConfigKey: string | null = null;
@@ -22,38 +23,39 @@ function buildJellyfinConnectionFingerprint(connection: ServiceConnection): stri
     apiKey: connection.apiKey,
     url: connection.url,
     username: connection.username ?? null,
+    customHeaders: getConnectionHeaders(connection) ?? null,
   }));
 }
 
 export async function getSonarrClient(instanceId?: string): Promise<SonarrClient> {
   const connection = await resolveConnection('SONARR', instanceId);
-  return new SonarrClient(connection.url, connection.apiKey);
+  return new SonarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection));
 }
 
 export async function getRadarrClient(instanceId?: string): Promise<RadarrClient> {
   const connection = await resolveConnection('RADARR', instanceId);
-  return new RadarrClient(connection.url, connection.apiKey);
+  return new RadarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection));
 }
 
 export async function getLidarrClient(instanceId?: string): Promise<LidarrClient> {
   const connection = await resolveConnection('LIDARR', instanceId);
-  return new LidarrClient(connection.url, connection.apiKey);
+  return new LidarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection));
 }
 
 /** All Sonarr instances paired with a ready client (for fan-out: polling, aggregation, cleanup). */
 export async function getSonarrClients(): Promise<Array<{ connection: ServiceConnection; client: SonarrClient }>> {
   const conns = await listConnections('SONARR');
-  return conns.map((connection) => ({ connection, client: new SonarrClient(connection.url, connection.apiKey) }));
+  return conns.map((connection) => ({ connection, client: new SonarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection)) }));
 }
 
 export async function getRadarrClients(): Promise<Array<{ connection: ServiceConnection; client: RadarrClient }>> {
   const conns = await listConnections('RADARR');
-  return conns.map((connection) => ({ connection, client: new RadarrClient(connection.url, connection.apiKey) }));
+  return conns.map((connection) => ({ connection, client: new RadarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection)) }));
 }
 
 export async function getLidarrClients(): Promise<Array<{ connection: ServiceConnection; client: LidarrClient }>> {
   const conns = await listConnections('LIDARR');
-  return conns.map((connection) => ({ connection, client: new LidarrClient(connection.url, connection.apiKey) }));
+  return conns.map((connection) => ({ connection, client: new LidarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection)) }));
 }
 
 /**
@@ -75,10 +77,11 @@ export async function getQBittorrentClient(): Promise<QBittorrentClient> {
   }
 
   const username = connection.username || 'admin';
-  const configKey = `${connection.url}|${connection.apiKey}|${username}`;
+  const customHeaders = getConnectionHeaders(connection);
+  const configKey = `${connection.url}|${connection.apiKey}|${username}|${customHeaders ? stableStringify(customHeaders) : ''}`;
 
   if (!cachedQBittorrentClient || cachedQBittorrentConfigKey !== configKey) {
-    cachedQBittorrentClient = new QBittorrentClient(connection.url, connection.apiKey, username);
+    cachedQBittorrentClient = new QBittorrentClient(connection.url, connection.apiKey, username, customHeaders);
     cachedQBittorrentConfigKey = configKey;
   }
 
@@ -103,7 +106,7 @@ export async function getProwlarrClient(): Promise<ProwlarrClient> {
     );
   }
 
-  return new ProwlarrClient(connection.url, connection.apiKey);
+  return new ProwlarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection));
 }
 
 export async function getJellyfinClient(): Promise<JellyfinClient> {
@@ -133,7 +136,7 @@ export async function getJellyfinClientContext(): Promise<{
   }
 
   return {
-    client: new JellyfinClient(connection.url, connection.apiKey, connection.username),
+    client: new JellyfinClient(connection.url, connection.apiKey, connection.username, getConnectionHeaders(connection)),
     connection,
     connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
   };
@@ -192,7 +195,7 @@ export async function getJellyfinUserContext(
   }
 
   return {
-    client: new JellyfinClient(connection.url, connection.apiKey, userId),
+    client: new JellyfinClient(connection.url, connection.apiKey, userId, getConnectionHeaders(connection)),
     connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
     jellyfinUserId: userId,
   };
@@ -207,7 +210,7 @@ export async function getSeerrClient(): Promise<SeerrClient> {
     throw new ConfigurationError('Seerr is not configured. Please add a Seerr connection in Settings.');
   }
 
-  return new SeerrClient(connection.url, connection.apiKey);
+  return new SeerrClient(connection.url, connection.apiKey, getConnectionHeaders(connection));
 }
 
 export async function getTMDBClient(): Promise<TmdbClient> {

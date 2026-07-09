@@ -186,10 +186,11 @@ interface CommandResponse {
 export class ProwlarrClient {
   private client: AxiosInstance;
 
-  constructor(url: string, apiKey: string) {
+  constructor(url: string, apiKey: string, customHeaders?: Record<string, string>) {
     this.client = axios.create({
       baseURL: url.replace(/\/+$/, ''),
       headers: {
+        ...customHeaders,
         'X-Api-Key': apiKey,
         'Content-Type': 'application/json',
       },

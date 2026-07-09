@@ -10,6 +10,65 @@ export function maskApiKey(key: string): string {
   return key.slice(0, 4) + '****' + key.slice(-4);
 }
 
+// Custom HTTP headers let a Helprr server reach an *arr instance that sits
+// behind an authenticating reverse proxy (Cloudflare Access, Authelia, basic
+// auth). Gated off by default — it only helps split (non-co-located) topologies.
+export function customHeadersEnabled(): boolean {
+  return process.env.HELPRR_CUSTOM_HEADERS === 'true';
+}
+
+const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
+const MAX_HEADERS = 10;
+const MAX_HEADER_VALUE_LENGTH = 2048;
+
+// Coerce an untrusted value (request body or stored JSON) into a validated
+// name→value map: safe header names only, non-empty trimmed values, capped in
+// count and length. Invalid entries are dropped rather than rejected.
+export function parseCustomHeaders(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [rawName, rawValue] of Object.entries(value as Record<string, unknown>)) {
+    if (Object.keys(result).length >= MAX_HEADERS) break;
+    const name = rawName.trim();
+    if (!HEADER_NAME_PATTERN.test(name)) continue;
+    if (typeof rawValue !== 'string') continue;
+    const val = rawValue.trim();
+    if (!val || val.length > MAX_HEADER_VALUE_LENGTH) continue;
+    result[name] = val;
+  }
+  return result;
+}
+
+export function maskCustomHeaders(map: Record<string, string>): Record<string, string> {
+  const masked: Record<string, string> = {};
+  for (const [name, value] of Object.entries(map)) {
+    masked[name] = maskApiKey(value);
+  }
+  return masked;
+}
+
+// Mirror resolveApiKeyForService for each header value: if the UI submits back
+// the masked value unchanged, keep the stored secret. The provided keyset wins
+// (a removed row is a removed header).
+export function resolveCustomHeaders(
+  existing: Record<string, string>,
+  provided: Record<string, string>
+): Record<string, string> {
+  const resolved: Record<string, string> = {};
+  for (const [name, value] of Object.entries(provided)) {
+    resolved[name] = name in existing && value === maskApiKey(existing[name]) ? existing[name] : value;
+  }
+  return resolved;
+}
+
+// Send-time gate: returns the plaintext headers only when the feature is
+// enabled, so toggling the flag off stops sending without deleting stored rows.
+export function getConnectionHeaders(conn: ServiceConnection): Record<string, string> | undefined {
+  if (!customHeadersEnabled()) return undefined;
+  const parsed = parseCustomHeaders(conn.customHeaders);
+  return Object.keys(parsed).length > 0 ? parsed : undefined;
+}
+
 export function isServiceType(value: string): value is ServiceType {
   return ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR', 'LIDARR'].includes(
     value
@@ -29,6 +88,7 @@ export function serializeConnection(conn: ServiceConnection) {
     externalUrl: conn.externalUrl,
     username: conn.username,
     apiKey: maskApiKey(conn.apiKey),
+    customHeaders: maskCustomHeaders(parseCustomHeaders(conn.customHeaders)),
     tokenExpiresAt: conn.tokenExpiresAt,
     createdAt: conn.createdAt,
     updatedAt: conn.updatedAt,
@@ -53,4 +113,19 @@ export async function resolveApiKeyForService(
     return existing.apiKey;
   }
   return providedApiKey;
+}
+
+// Same lookup as resolveApiKeyForService, applied to the custom-header map so a
+// re-save that echoes masked values keeps the stored secrets.
+export async function resolveCustomHeadersForService(
+  type: ServiceType,
+  provided: Record<string, string>,
+  instanceId?: string
+): Promise<Record<string, string>> {
+  const existing = instanceId
+    ? await prisma.serviceConnection.findFirst({ where: { id: instanceId, type } })
+    : (await prisma.serviceConnection.findFirst({ where: { type, isDefault: true } }))
+      ?? (await prisma.serviceConnection.findFirst({ where: { type } }));
+  if (!existing) return provided;
+  return resolveCustomHeaders(parseCustomHeaders(existing.customHeaders), provided);
 }
