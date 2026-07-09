@@ -7,7 +7,7 @@ import { formatBytes } from '@/lib/format';
 import { Panel, PanelLoading, PanelEmpty, Stat, useInsightsResource } from './insights-shared';
 import type { InsightsStorageItem, InsightsStorageResponse } from '@/types/insights';
 
-export const KIND_COLOR: Record<string, string> = {
+export const KIND_COLOR: Record<InsightsStorageItem['kind'], string> = {
   movie: HPR.blue,
   series: HPR.violet,
   artist: HPR.pink,

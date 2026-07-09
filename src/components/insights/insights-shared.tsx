@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Loader2 } from 'lucide-react';
-import { SectionHeader, HPR } from '@/components/widgets/bento-primitives';
+import { SectionHeader, HPR, mix } from '@/components/widgets/bento-primitives';
 
 // ─── Date-range type shared by the page + cards ───
 export interface InsightsRange {
@@ -80,6 +80,42 @@ export function PanelEmpty({ message, height = 200 }: { message: string; height?
       style={{ height, color: HPR.fgSubtle }}
     >
       {message}
+    </div>
+  );
+}
+
+/** Minutes → compact human wait ("42m", "3.2h", "1.4d"). Recharts-free on purpose:
+ *  shared by the pipeline card AND the eagerly-loaded dashboard widget. */
+export function fmtWait(mins: number): string {
+  if (mins < 60) return `${mins}m`;
+  if (mins < 60 * 24) return `${(mins / 60).toFixed(1)}h`;
+  return `${(mins / (60 * 24)).toFixed(1)}d`;
+}
+
+// ─── SuccessRing: conic success-rate donut. Recharts-free on purpose: shared by
+// the download-success card AND the eagerly-loaded reliability widget. ───
+export function SuccessRing({ pct }: { pct: number }) {
+  return (
+    <div
+      className="relative shrink-0"
+      style={{
+        width: 72,
+        height: 72,
+        borderRadius: '50%',
+        background: `conic-gradient(${HPR.green} ${pct}%, ${mix(HPR.rose, 45)} 0)`,
+      }}
+    >
+      <div
+        className="absolute inset-[8px] rounded-full flex flex-col items-center justify-center"
+        style={{ background: HPR.surface }}
+      >
+        <span style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 700, fontSize: 18, color: HPR.fg }}>
+          {pct}%
+        </span>
+        <span style={{ fontSize: 8, color: HPR.fgSubtle, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          success
+        </span>
+      </div>
     </div>
   );
 }

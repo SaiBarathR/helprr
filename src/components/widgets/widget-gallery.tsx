@@ -42,7 +42,7 @@ import {
 } from 'lucide-react';
 import { getAllWidgetDefinitions } from '@/lib/widgets/registry';
 import { useUIStore } from '@/lib/store';
-import { useMe, hasCapability } from '@/components/permission-provider';
+import { useMe, hasCapabilities } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
 import type { WidgetCategory } from '@/lib/widgets/types';
 
@@ -113,7 +113,7 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
     () =>
       getAllWidgetDefinitions(discoverLayout).filter(
         (def) =>
-          (!def.requiredCapability || hasCapability(me, def.requiredCapability)) &&
+          (!def.requiredCapability || hasCapabilities(me, def.requiredCapability)) &&
           (!def.adminOnly || me?.role === 'admin')
       ),
     [discoverLayout, me]

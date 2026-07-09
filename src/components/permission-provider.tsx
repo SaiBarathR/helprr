@@ -51,6 +51,12 @@ export function hasCapability(me: MePayload | null, cap: Capability): boolean {
   return me.capabilities[cap] === true;
 }
 
+/** hasCapability over one-or-many caps (ALL must pass) — matches widget
+ *  definitions whose data route checks multiple capabilities. */
+export function hasCapabilities(me: MePayload | null, caps: Capability | Capability[]): boolean {
+  return Array.isArray(caps) ? caps.every((c) => hasCapability(me, c)) : hasCapability(me, caps);
+}
+
 /** Hook form of hasCapability for conditional rendering of buttons/sections. */
 export function useCan(cap: Capability): boolean {
   return hasCapability(useContext(PermissionContext), cap);

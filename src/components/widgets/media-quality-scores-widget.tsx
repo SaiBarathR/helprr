@@ -1,27 +1,23 @@
 'use client';
 
 import * as React from 'react';
-import { ApiError } from '@/lib/query-fetch';
 import type { WidgetProps } from '@/lib/widgets/types';
 import type { MediaAnalysisResponse } from '@/types/insights';
 import { HPR, mix } from './bento-primitives';
-import { InsightsWidgetFrame, AnalysisScopeChips } from './insights-widget-frame';
+import { InsightsWidgetFrame, AnalysisScopeChips, fetchMediaAnalysis } from './insights-widget-frame';
 import { useWidgetFilter } from './use-widget-filter';
 import { ScoreRing, CandidateRow } from '@/components/insights/quality-score-card';
-import { kindQuery, type MediaAnalysisKindFilter } from '@/components/insights/technical-breakdown-card';
-
-async function fetchMediaAnalysis(kind: MediaAnalysisKindFilter): Promise<MediaAnalysisResponse> {
-  const res = await fetch(`/api/insights/media-analysis${kindQuery(kind)}`);
-  if (!res.ok) throw new ApiError(res.status, 'Request failed');
-  return res.json();
-}
+import type { MediaAnalysisKindFilter } from '@/components/insights/technical-breakdown-card';
 
 export function MediaQualityScoresWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter<{ kind: MediaAnalysisKindFilter }>(
     'media-quality-scores',
     { kind: 'all' },
   );
-  const fetchFn = React.useCallback(() => fetchMediaAnalysis(filters.kind), [filters.kind]);
+  const fetchFn = React.useCallback(
+    (signal?: AbortSignal) => fetchMediaAnalysis(filters.kind, signal),
+    [filters.kind],
+  );
 
   return (
     <InsightsWidgetFrame<MediaAnalysisResponse>
@@ -36,6 +32,9 @@ export function MediaQualityScoresWidget({ refreshInterval, editMode = false }: 
     >
       {(data, { width }) => {
         const quality = data.quality;
+        // isEmpty already filtered the null case, but guard explicitly instead
+        // of asserting so a future isEmpty change can't crash the ring.
+        if (quality.avgScore === null) return null;
         const maxBucket = Math.max(1, ...quality.histogram.map((h) => h.count));
         // Stack the ring above the histogram on narrow cells; the histogram rows
         // have a fixed min-width and would otherwise overflow beside the ring.
@@ -43,7 +42,7 @@ export function MediaQualityScoresWidget({ refreshInterval, editMode = false }: 
         return (
           <div className="flex flex-col gap-4">
             <div className={stack ? 'flex flex-col gap-3' : 'flex items-center gap-4'}>
-              <ScoreRing score={quality.avgScore!} files={data.totals.scoredFiles} />
+              <ScoreRing score={quality.avgScore} files={data.totals.scoredFiles} />
               <div className={`flex min-w-0 flex-col gap-1 ${stack ? 'w-full' : 'flex-1'}`}>
                 {quality.histogram.map((h) => (
                   <div key={h.bucket} className="flex items-center gap-2" title={`${h.count.toLocaleString()} files`}>

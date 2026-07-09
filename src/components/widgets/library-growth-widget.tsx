@@ -26,16 +26,19 @@ const SERIES = [
   { key: 'Music', field: 'music' as const, color: HPR.pink },
 ];
 
-async function fetchLibrary(days: number): Promise<InsightsLibraryResponse> {
+async function fetchLibrary(days: number, signal?: AbortSignal): Promise<InsightsLibraryResponse> {
   const { from, to } = daysToRange(days);
-  const res = await fetch(`/api/insights/library?from=${from}&to=${to}`);
+  const res = await fetch(`/api/insights/library?from=${from}&to=${to}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
 
 export function LibraryGrowthWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter('library-growth', { days: 30 });
-  const fetchFn = React.useCallback(() => fetchLibrary(filters.days), [filters.days]);
+  const fetchFn = React.useCallback(
+    (signal?: AbortSignal) => fetchLibrary(filters.days, signal),
+    [filters.days],
+  );
 
   return (
     <InsightsWidgetFrame<InsightsLibraryResponse>

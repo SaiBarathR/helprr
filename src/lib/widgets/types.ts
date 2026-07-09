@@ -63,8 +63,10 @@ export interface WidgetDefinition {
   component: ComponentType<WidgetProps>;
   requiredServices?: ('SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR')[];
   /** When set, the widget is hidden (dashboard + gallery) from users who lack
-   *  this capability — so a member never sees cleanup/prowlarr/analytics tiles. */
-  requiredCapability?: Capability;
+   *  this capability — so a member never sees cleanup/prowlarr/analytics tiles.
+   *  An array requires ALL listed capabilities (mirror the data route's checks
+   *  so a visible widget never 403s into a misleading empty state). */
+  requiredCapability?: Capability | Capability[];
   /** When true, the widget is hidden (dashboard + gallery) from non-admins.
    *  Used for AniList account-dependent carousels that read the single shared
    *  operator account (admin-only). */
