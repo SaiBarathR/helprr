@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { requireAuth, requireAdmin, requireCapability } from '@/lib/auth';
 import { resolveConnection } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { SonarrClient } from '@/lib/sonarr-client';
 import {
   addManualEntry,
@@ -23,7 +24,7 @@ async function getAnimeSeries(id: string, instanceId?: string): Promise<{ series
 
   // Resolve the connection so the AniList mapping is keyed by this exact instance.
   const connection = await resolveConnection('SONARR', instanceId);
-  const client = new SonarrClient(connection.url, connection.apiKey);
+  const client = new SonarrClient(connection.url, connection.apiKey, getConnectionHeaders(connection));
   let series: SonarrSeries;
   try {
     series = await client.getSeriesById(seriesId);

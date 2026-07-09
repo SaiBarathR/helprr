@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient, getRadarrClients } from '@/lib/service-helpers';
 import { resolveConnection } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { RadarrClient } from '@/lib/radarr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import type { RadarrMovie, RadarrMovieListItem } from '@/types';
@@ -73,7 +74,7 @@ async function getHandler(request: NextRequest) {
     const resolveInstances = () =>
       (instancesPromise ??= instanceId
         ? resolveConnection('RADARR', instanceId).then((conn) => [
-            { connection: conn, client: new RadarrClient(conn.url, conn.apiKey) },
+            { connection: conn, client: new RadarrClient(conn.url, conn.apiKey, getConnectionHeaders(conn)) },
           ])
         : getRadarrClients());
 

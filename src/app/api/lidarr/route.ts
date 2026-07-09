@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient, getLidarrClients } from '@/lib/service-helpers';
 import { resolveConnection } from '@/lib/arr-instances';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import type { LidarrArtist, LidarrArtistListItem } from '@/types';
@@ -72,7 +73,7 @@ async function getHandler(request: NextRequest) {
     const resolveInstances = () =>
       (instancesPromise ??= instanceId
         ? resolveConnection('LIDARR', instanceId).then((conn) => [
-            { connection: conn, client: new LidarrClient(conn.url, conn.apiKey) },
+            { connection: conn, client: new LidarrClient(conn.url, conn.apiKey, getConnectionHeaders(conn)) },
           ])
         : getLidarrClients());
 
