@@ -83,9 +83,15 @@ export function usePullToRefresh({
 
     const getScrollTop = () => scrollContainerRef?.current?.scrollTop ?? window.scrollY;
 
+    // An open modal layer (drawer/dialog/sheet) locks body scroll via
+    // react-remove-scroll, which stamps this attribute on <body>. Touches while
+    // it's open belong to the overlay (e.g. dragging a drawer shut), not the page.
+    const isModalLayerOpen = () => document.body.hasAttribute('data-scroll-locked');
+
     const onTouchStart = (e: TouchEvent) => {
       if (disabledRef.current || refreshingRef.current) return;
       if (e.touches.length !== 1) return;
+      if (isModalLayerOpen()) return;
       if (getScrollTop() > 0) return;
       startYRef.current = e.touches[0].clientY;
       engagedRef.current = false;
@@ -93,8 +99,9 @@ export function usePullToRefresh({
 
     const onTouchMove = (e: TouchEvent) => {
       if (startYRef.current === null) return;
-      // A late scroll (e.g. content grew) cancels the pull.
-      if (getScrollTop() > 0) {
+      // A late scroll (e.g. content grew) or a modal layer opening mid-gesture
+      // (e.g. long-press) cancels the pull.
+      if (getScrollTop() > 0 || isModalLayerOpen()) {
         reset();
         return;
       }
