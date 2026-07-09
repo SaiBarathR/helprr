@@ -21,14 +21,39 @@ function fmtWait(mins: number): string {
   return `${(mins / (60 * 24)).toFixed(1)}d`;
 }
 
+// The 24-bucket "activity by hour" bar chart, split out so the download-pipeline
+// dashboard widget can dynamic-import it. Fills its parent (caller sets height).
+export function PipelineHourChart({ data }: { data: InsightsPipelineResponse }) {
+  const hourData = React.useMemo(
+    () => data.hours.map((count, hour) => ({ hour: `${String(hour).padStart(2, '0')}`, Activity: count })),
+    [data]
+  );
+  return (
+    <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
+      <BarChart data={hourData} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
+        <XAxis
+          dataKey="hour"
+          interval={3}
+          tick={{ fontSize: 9, fill: HPR.fgSubtle }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <YAxis
+          allowDecimals={false}
+          tick={{ fontSize: 9, fill: HPR.fgSubtle }}
+          axisLine={false}
+          tickLine={false}
+        />
+        <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: mix(HPR.blue, 10) }} />
+        <Bar dataKey="Activity" fill={HPR.blue} radius={[2, 2, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 export function DownloadPipelineCard({ range }: { range: InsightsRange }) {
   const { data, loading } = useInsightsResource<InsightsPipelineResponse>(
     `/api/insights/pipeline?from=${range.from}&to=${range.to}`
-  );
-
-  const hourData = React.useMemo(
-    () => (data ? data.hours.map((count, hour) => ({ hour: `${String(hour).padStart(2, '0')}`, Activity: count })) : []),
-    [data]
   );
 
   const hasData =
@@ -57,25 +82,7 @@ export function DownloadPipelineCard({ range }: { range: InsightsRange }) {
               Activity by hour of day
             </p>
             <div style={{ height: 120 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={hourData} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
-                  <XAxis
-                    dataKey="hour"
-                    interval={3}
-                    tick={{ fontSize: 9, fill: HPR.fgSubtle }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    tick={{ fontSize: 9, fill: HPR.fgSubtle }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: mix(HPR.blue, 10) }} />
-                  <Bar dataKey="Activity" fill={HPR.blue} radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <PipelineHourChart data={data!} />
             </div>
           </div>
 

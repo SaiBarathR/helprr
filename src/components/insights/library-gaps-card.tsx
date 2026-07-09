@@ -18,7 +18,7 @@ function ringColor(pct: number): string {
   return HPR.rose;
 }
 
-function CompletenessRing({ pct }: { pct: number }) {
+export function CompletenessRing({ pct }: { pct: number }) {
   const color = ringColor(pct);
   return (
     <div
@@ -48,7 +48,7 @@ function CompletenessRing({ pct }: { pct: number }) {
 // Icon + label + accent for each gap section shown beside the ring. Mirrors SECTION_META
 // on the full /library-gaps page; the accent only paints when a section has gaps so a clean
 // library reads as calm grey rather than a wall of colour.
-const COUNT_META: Record<LibraryGapSectionId, { label: string; icon: LucideIcon; color: string }> = {
+export const COUNT_META: Record<LibraryGapSectionId, { label: string; icon: LucideIcon; color: string }> = {
   overdue: { label: 'Overdue', icon: Clock, color: HPR.rose },
   missingSeasons: { label: 'Missing seasons', icon: Tv, color: HPR.violet },
   collectionGaps: { label: 'Collection gaps', icon: Layers, color: HPR.blue },
@@ -57,9 +57,9 @@ const COUNT_META: Record<LibraryGapSectionId, { label: string; icon: LucideIcon;
 };
 
 // Order shown left-to-right, most-actionable first.
-const COUNT_ORDER: LibraryGapSectionId[] = ['overdue', 'missingSeasons', 'collectionGaps', 'newUpcoming', 'notReleased'];
+export const COUNT_ORDER: LibraryGapSectionId[] = ['overdue', 'missingSeasons', 'collectionGaps', 'newUpcoming', 'notReleased'];
 
-function CountTile({ id, count }: { id: LibraryGapSectionId; count: number }) {
+export function CountTile({ id, count }: { id: LibraryGapSectionId; count: number }) {
   const { label, icon: Icon, color } = COUNT_META[id];
   const active = count > 0;
   return (
@@ -163,6 +163,6 @@ export function LibraryGapsCard() {
 }
 
 // Per-domain completeness for the split rows. Callers filter out absent services before rendering.
-function pct({ owned, total }: { owned: number; total: number }): number | null {
+export function pct({ owned, total }: { owned: number; total: number }): number | null {
   return total > 0 ? Math.round((owned / total) * 100) : null;
 }
