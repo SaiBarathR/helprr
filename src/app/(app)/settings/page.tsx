@@ -15,6 +15,7 @@ import {
   Link2,
   Activity,
   FileStack,
+  Terminal,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -60,6 +61,7 @@ export default function SettingsIndexPage() {
 
   const canStorage = hasCapability(me, 'settings.storage');
   const canLogging = hasCapability(me, 'settings.logging');
+  const canViewLogs = hasCapability(me, 'logs.view');
   const canDownloads = hasCapability(me, 'settings.downloads');
   const canBackup = hasCapability(me, 'settings.backup');
   const canUsers = hasCapability(me, 'users.manage');
@@ -156,6 +158,16 @@ export default function SettingsIndexPage() {
             iconColor="text-indigo-400"
             label="Logging"
             subtitle="Level, rotation, retention"
+          />
+        )}
+        {canViewLogs && (
+          <CategoryRow
+            href="/logs"
+            icon={Terminal}
+            iconBg="bg-blue-500/10"
+            iconColor="text-blue-400"
+            label="Logs"
+            subtitle="View, search, and download server logs"
           />
         )}
         {canDownloads && (

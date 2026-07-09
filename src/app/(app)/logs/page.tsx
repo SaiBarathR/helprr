@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { Loader2 } from 'lucide-react';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { LogsToolbar } from './logs-toolbar';
 import { LogsActiveFilters } from './logs-active-filters';
@@ -262,6 +263,20 @@ export default function LogsPage() {
 
   return (
     <div className="animate-content-in pb-6 space-y-2">
+      <div className="px-1 pt-1">
+        <Link
+          href="/settings"
+          className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
+        >
+          <ChevronLeft className="h-5 w-5" />
+          Settings
+        </Link>
+      </div>
+
+      <div className="px-1 mb-2">
+        <h1 className="text-2xl font-semibold">Logs</h1>
+      </div>
+
       <LogsToolbar
         searchInput={searchInput}
         onSearchInputChange={setSearchInput}
