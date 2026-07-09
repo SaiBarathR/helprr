@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { ServiceConnection } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
 
 type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist' | 'lidarr';
@@ -10,6 +12,7 @@ interface ConnectionLike {
   type: 'RADARR' | 'SONARR' | 'JELLYFIN' | 'TMDB' | 'LIDARR';
   url: string;
   apiKey: string;
+  customHeaders: ServiceConnection['customHeaders'];
 }
 
 const IMAGE_PATH_EXTENSION_RE = /\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|webp)$/i;
@@ -22,7 +25,7 @@ const SERVICE_IMAGE_PATH_PATTERNS: Record<ConnectionLike['type'], RegExp[]> = {
   TMDB: [/^\/t\/p\//i],
 };
 
-type ImageProxyConnectionRow = Pick<ConnectionLike, 'type'> & { url: string; apiKey: string };
+type ImageProxyConnectionRow = Pick<ConnectionLike, 'type' | 'url' | 'apiKey' | 'customHeaders'>;
 
 // The proxy resolves auth headers from connection rows on every image request.
 // Connections change only when an admin edits a service in Settings and Helprr
@@ -44,7 +47,7 @@ async function getImageProxyConnections(): Promise<ImageProxyConnectionRow[]> {
   connectionsInflight = prisma.serviceConnection
     .findMany({
       where: { type: { in: ['RADARR', 'SONARR', 'JELLYFIN', 'TMDB', 'LIDARR'] } },
-      select: { type: true, url: true, apiKey: true },
+      select: { type: true, url: true, apiKey: true, customHeaders: true },
     })
     .then((rows) => {
       connectionsCache = { at: Date.now(), rows: rows as ImageProxyConnectionRow[] };
@@ -174,14 +177,20 @@ function isMatchedConnectionImagePathAllowed(connection: ConnectionLike, target:
 function resolveAuthHeaders(connection: ConnectionLike | null): HeadersInit | undefined {
   if (!connection) return undefined;
 
+  // Custom headers first so Helprr's own auth headers always win on collision;
+  // getConnectionHeaders is a no-op unless HELPRR_CUSTOM_HEADERS is enabled.
+  const custom = getConnectionHeaders(connection);
+
   if (connection.type === 'RADARR' || connection.type === 'SONARR' || connection.type === 'LIDARR') {
     return {
+      ...custom,
       'X-Api-Key': connection.apiKey,
     };
   }
 
   if (connection.type === 'JELLYFIN') {
     return {
+      ...custom,
       Authorization: `MediaBrowser Token="${connection.apiKey}"`,
       'X-Emby-Token': connection.apiKey,
     };
@@ -253,6 +262,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           type: conn.type as ConnectionLike['type'],
           url: parsed.toString(),
           apiKey: conn.apiKey,
+          customHeaders: conn.customHeaders,
         };
       })
       .filter((value): value is ConnectionLike => Boolean(value));

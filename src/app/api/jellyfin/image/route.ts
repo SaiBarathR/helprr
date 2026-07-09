@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { getCurrentUser, requireAuth, requireCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
+import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { getJellyfinUserContext } from '@/lib/service-helpers';
 import { getRedisClient } from '@/lib/redis';
 import { withApiLogging } from '@/lib/api-logger';
@@ -111,6 +112,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       cacheKey: `jellyfin:${itemId}:${type}:${maxWidth}:${quality}`,
       upstreamUrl: url,
       upstreamHeaders: {
+        // Custom headers first so Helprr's own token headers win; no-op unless
+        // HELPRR_CUSTOM_HEADERS is enabled.
+        ...getConnectionHeaders(connection),
         Authorization: `MediaBrowser Token="${connection.apiKey}"`,
         'X-Emby-Token': connection.apiKey,
       },

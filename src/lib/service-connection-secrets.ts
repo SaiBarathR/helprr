@@ -74,7 +74,8 @@ export function resolveCustomHeaders(
 
 // Send-time gate: returns the plaintext headers only when the feature is
 // enabled, so toggling the flag off stops sending without deleting stored rows.
-export function getConnectionHeaders(conn: ServiceConnection): Record<string, string> | undefined {
+// Accepts anything carrying the customHeaders column (full row or a select).
+export function getConnectionHeaders(conn: Pick<ServiceConnection, 'customHeaders'>): Record<string, string> | undefined {
   if (!customHeadersEnabled()) return undefined;
   const parsed = parseCustomHeaders(conn.customHeaders);
   return Object.keys(parsed).length > 0 ? parsed : undefined;
