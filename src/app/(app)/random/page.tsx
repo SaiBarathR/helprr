@@ -10,9 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import type { RandomPick } from '@/types';
+import type { RandomPick, RandomWatchFilterType as FilterType } from '@/types';
 
-type FilterType = 'any' | 'movie' | 'series';
 type WatchFilter = 'all' | 'unwatched';
 
 export default function RandomWatchPage() {

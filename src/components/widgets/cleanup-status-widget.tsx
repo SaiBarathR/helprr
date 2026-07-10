@@ -89,7 +89,7 @@ export function CleanupStatusWidget({ refreshInterval, editMode = false }: Widge
         title="Cleanup"
         badge={dryRun ? <Pill color={HPR.amber}>DRY</Pill> : null}
         right={
-          <Link href="/cleanup" style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Link href="/cleanup" aria-label="View all" style={{ color: 'inherit', textDecoration: 'none' }}>
             <span className="@max-[219px]/cell:hidden">View all </span>→
           </Link>
         }

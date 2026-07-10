@@ -131,7 +131,7 @@ export function WatchlistWidget({
       right={
         <>
           {toggleNode}
-          <Link href="/watchlist" style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Link href="/watchlist" aria-label="View all" style={{ color: 'inherit', textDecoration: 'none' }}>
             <span className="@max-[219px]/cell:hidden">View all </span>→
           </Link>
         </>
