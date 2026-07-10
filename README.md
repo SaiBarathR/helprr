@@ -1,217 +1,322 @@
 # Helprr
 
-Entire site was built using Codex, Opus and Gemini. Using it daily, I haven’t found any issues in functionality so far, but I’ll update the README if I come across any bugs that I’m unable to fix. The UI is mobile-first, as I needed an Iphone app to control radarr, sonarr and qbittorrent with push notifications. I have only added features which I wanted to use myself to use from mobile, not all the options and features present in arr stack and qbittorrent is added. UI may not be the best, but I have opted for functionality and cramped as much info as possible in the dashboard and activity feed pages, so that I can get all the info at a glance on mobile. 
+Helprr is the dashboard I wanted for my own media server: one place to see what is downloading, what is available, what needs attention, and what I might want to watch next. It is a self-hosted, mobile-first Progressive Web App (PWA) that sits on top of the *arr stack, qBittorrent, Jellyfin, Prowlarr, and a few discovery/request services.
 
-Helprr is a self-hosted web dashboard (PWA) that connects to **Sonarr**, **Radarr**, **Prowlarr**, **Jellyfin**, **TMDb**, **AniList** and **qBittorrent**.
-It polls those services on an interval and can send **Web Push** notifications for common events (downloads starting/completing/failing, health warnings, upcoming releases, etc.) with per-device notification preferences. Provides pages to discover new content using TMDb and AniList APIs, and add it to Sonarr/Radarr. The UI is password-protected with per-user accounts (an initial admin is seeded from `APP_PASSWORD` on first run; admins manage additional users in-app), and the app can be used on mobile as PWA for push notifications or desktop or just in browser.
+I built it because I wanted an iPhone-friendly way to manage my setup and receive proper push notifications, without paying for another subscription. I have used the iPhone PWA from the first day I created this repository, and I test every feature in the real setup before I call it done. Desktop is not an afterthought either—the larger layout is where the configurable dashboard, analytics, and admin tools are most useful.
 
-End Goal: A simple, mobile-friendly app to monitor and control your media server with push notifications, without needing to pay subscriptions for mobile apps.
+> [!WARNING] This entire project was built with AI-assisted development—mainly Codex, Claude/Opus, and Gemini. I have tested the features I use and keep using the app every day, but this is still a personal self-hosted project. It is not affiliated with, endorsed by, or a replacement for any service it connects to.
 
-<details>
-<summary>📱 App Screenshots</summary>
-<div style="display:flex; overflow-x:auto; gap:10px;">
-<img src="https://github.com/user-attachments/assets/4a0a2686-cd36-4772-9e4b-f1ca7e0b0ca1"  width="200"/>
-<img src="https://github.com/user-attachments/assets/9ec671c7-1b9c-4592-afba-c2425e28144f" width="200"/>
-<img src="https://github.com/user-attachments/assets/36f9f800-87c1-4e37-8b44-fc3642338629" width="200"/>
-  <img width="200"  alt="image" src="https://github.com/user-attachments/assets/f6d7ebc2-76c9-4b8e-85e4-74e7080b87cb" />
-  <img width="200" alt="image" src="https://github.com/user-attachments/assets/0678d9cc-9384-4858-8925-a69b85cbd006" />
-<img width="200"  alt="image" src="https://github.com/user-attachments/assets/f72210f5-f5d4-4846-8098-fa04c7a84fd0" />
-<img src="https://github.com/user-attachments/assets/921c6184-afb6-453b-9896-83cf67551fb6" width="200"/>
-<img src="https://github.com/user-attachments/assets/778f2e34-efb0-4119-b9b9-a14b3b5e4bcc"  width="200"/>
-<img width="200"  alt="image" src="https://github.com/user-attachments/assets/333fcc8d-4ace-46d4-a17d-e299fc9cfc42" />
-<img width="200" alt="image" src="https://github.com/user-attachments/assets/1c938422-9ca6-4d76-a145-bcab9ee93384" />
-<img src="https://github.com/user-attachments/assets/4a89a06d-8fdf-4001-b4d1-a58effc73922" width="200"/>
-<img width="200" alt="image" src="https://github.com/user-attachments/assets/df8a3500-f6ad-417d-b32b-bee9df630d0b" />
 
-</div>
-</details>
 
-## Features
+## What to expect
 
-- Password-protected UI with per-user accounts (initial admin seeded from `APP_PASSWORD`; admins manage other users in-app)
-- Connect/configure Sonarr, Radarr, qBittorrent from Settings
-- Dashboard + Activity feed + Calendar views
-- Notifications inbox + per-device notification preferences
-- PWA service worker (Serwist in production; lightweight push-only worker in development)
+Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittorrent, or Jellyfin. I have added the parts I actually need for day-to-day use and kept the rest in the original services. What you see in the app depends on which services you connect and what permissions the signed-in user has.
 
-## Tech stack
+### Dashboard and personalization
 
-- Next.js (App Router) on port **3050**
-- Prisma + PostgreSQL
-- Web Push (`web-push`) with VAPID keys
+- Separate mobile and desktop layouts, draggable widgets, and saved dashboard layouts.
+- Widgets for the things I want at a glance: library counts, activity, calendar, active downloads, storage, service health, Prowlarr, Jellyfin, Seerr, cleanup, recommendations, insights, watchlists, library gaps, and shortcuts.
+- Per-user layout customization, plus shared layouts for administrators.
+- Theme, navigation order/visibility, carousel, refresh, timezone, and discovery-layout preferences.
+- Global command palette/search (`⌘K` / `Ctrl+K`) when clicking through the sidebar is slower than just searching.
 
-## Prerequisites
 
-- Node.js 20+
-- PostgreSQL 16+ (or Docker)
-- Redis 7+ (or Docker)
 
-## Environment variables
+### Media, discovery, and requests
 
-Copy `.env.example` to `.env.local` (for local dev), or set these in your deployment environment:
+- Browse, search, filter, sort, add, monitor, tag, edit, and manage movies, TV series, music artists/albums, and files.
+- TMDb discovery with the rails I use most, plus collections, people, credits, region/language controls, and filters.
+- AniList anime and manga discovery, schedules, people/studio pages, library tracking, and Sonarr/Radarr mappings (including auto-mapping).
+- Watchlists, scheduled reminders, calendar views, a random-watch picker, and library-gap views for when I do not know what to watch.
+- Seerr request visibility and workflow when Seerr is part of the setup.
 
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | yes | PostgreSQL connection string used by Prisma |
-| `REDIS_URL` | yes | Redis connection string used for caching and login rate limiting — `getRedisClient()` throws if unset |
-| `REDIS_PASSWORD` | yes | Redis AUTH password (sets `--requirepass` in docker-compose, sent as the client AUTH password) — `getRedisClient()` throws if unset |
-| `APP_PASSWORD` | yes | Seeds the **bootstrap admin** password on first boot (not checked at login afterward — login verifies the per-user hash in the DB) |
-| `JWT_SECRET` | yes | Signs the auth cookie — `getJwtSecret()` throws if unset, so the app will not serve authenticated requests without it |
-| `HELPRR_ADMIN_USERNAME` | optional | Bootstrap admin login username (default `admin`) |
-| `HELPRR_ADMIN_PASSWORD_RESET` | optional | Set `true` to force-reset the admin password from `APP_PASSWORD` on next boot (recovery); remove it afterward |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | optional | Public VAPID key (enables push notifications; must be available at build time for Docker builds) |
-| `VAPID_PRIVATE_KEY` | optional | Private VAPID key (server-side) |
-| `VAPID_SUBJECT` | optional | VAPID subject, e.g. `mailto:you@example.com` |
-| `TZ` | optional | Timezone for displaying dates/times (defaults to UTC) |
 
-`DATABASE_URL`, `REDIS_URL`, `REDIS_PASSWORD`, `APP_PASSWORD`, and `JWT_SECRET` are all **required for startup** — the app throws on boot (or on the first request that touches Redis/auth) if any are missing. Note that `APP_PASSWORD` only seeds the bootstrap admin on first boot; it is **not** used as a live login password.
 
-If VAPID vars are not set, Helprr will still run, but **push notifications are disabled**.
+### Operations and server control
+
+- Activity queue/history, wanted/missing/cutoff views, manual import, and queue actions.
+- qBittorrent details/files, add/start/stop/delete actions, speed limits, alternative limits, and time-windowed bandwidth schedules.
+- Rule-based queue, download, and seeding cleanup with dry runs, automation, strikes, and history.
+- Prowlarr indexer status, testing, syncing, statistics, and history.
+- Jellyfin library and playback views, active sessions/devices, watch-state actions, server tasks/control, and playback analytics.
+- Insights pages for checking library growth, downloads, storage, media analysis, and viewing habits without digging through several separate apps.
+
+
+
+### Alerts, users, and administration
+
+- Installable PWA with Web Push, device preferences, inbox/history, test notifications, digest events, and per-event controls.
+- Per-user accounts, admin/member roles, granular capability overrides, and active-session revocation.
+- Multiple Sonarr, Radarr, and Lidarr instances; service health checks; custom HTTP headers for supported integrations behind an authenticating proxy.
+- Backup/restore, file-operation audit records, log retention, and server-log inspection for the moments when something needs fixing.
+
+
+
+## Integrations
+
+All integrations are optional and configured in **Settings → Instances**. Features that depend on an integration stay unavailable until it is connected.
+
+
+| Integration | What Helprr uses it for                                                               |
+| ----------- | ------------------------------------------------------------------------------------- |
+| Sonarr      | TV library, monitoring, queue/activity, discovery additions, file and episode actions |
+| Radarr      | Movie library, monitoring, queue/activity, discovery additions, file actions          |
+| Lidarr      | Music library, artist/album actions, monitoring, files                                |
+| qBittorrent | Torrents, transfer state, file priorities, limits, cleanup, bandwidth schedules       |
+| Prowlarr    | Indexers, history, tests, sync, and reliability stats                                 |
+| Jellyfin    | Library/watch status, sessions/devices, playback analytics, server control            |
+| TMDb        | Movie/TV discovery, metadata, collections, people, and artwork                        |
+| AniList     | Anime/manga discovery, schedules, library tracking, and mappings                      |
+| Seerr       | Requests and request workflow                                                         |
+
+
+
+
+## Current interface
+
+These are the hand-picked captures from my current setup. They are not mockups—the gallery shows the actual desktop and iPhone PWA experience I use for monitoring, discovery, planning, administration, and cleanup.
+
+### Desktop
+
+
+
+
+
+
+
+
+
+
+
+
+
+### iPhone PWA
+
+
+
+
+
+
+
+
+
+
+
+### Video demos
+
+I recorded two short walkthroughs from the real app so you can get a better feel for it before setting anything up.
+
+#### Desktop walkthrough
+
+This covers the dashboard, Calendar, Discover, notifications, and the settings/admin side of the app.
+
+https://github.com/user-attachments/assets/2969a145-719e-453a-a1e1-112cd0dd60c0
+
+#### iPhone PWA walkthrough
+
+This shows the installable mobile experience, day-to-day browsing, and the push-notification flow.
+
+https://github.com/user-attachments/assets/7fa980fd-0dc6-48a8-91c1-cd35453571fd
+
+## Quick start with Docker (recommended)
+
+Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 7. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050**.
+
+### 1. Create your deployment configuration
+
+```bash
+cp .env.example .env
+openssl rand -base64 48
+```
+
+Edit `.env`. Before the first start, set at least:
+
+```dotenv
+POSTGRES_PASSWORD=use-a-long-unique-password
+REDIS_PASSWORD=use-a-different-long-unique-password
+APP_PASSWORD=choose-the-first-admin-password
+JWT_SECRET=paste-the-32-or-more-character-value-generated-above
+TZ=Etc/UTC
+```
+
+`APP_PASSWORD` creates the bootstrap administrator on first boot. Its username is `admin` by default, or the value of `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change an existing user's password.
+
+### 2. Build and start
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+Open `http://YOUR_SERVER:3050`, sign in with the bootstrap account, then connect services in **Settings → Instances**.
+
+Use `docker compose logs -f helprr` to follow startup. The application health endpoint is `GET /api/health`.
+
+### Production notes
+
+- Docker itself does not provide TLS. Put Helprr behind an HTTPS reverse proxy before relying on PWA installation or Web Push from a non-localhost address.
+- Set `TRUST_FORWARDED_PROTO=true` only when that proxy strips and sets forwarded headers itself. This enables correct secure-cookie and client-IP decisions.
+- Set `APP_ORIGIN=https://helprr.example.com` when enabling AniList OAuth in production. It must be a valid HTTPS origin.
+- If the PostgreSQL password contains URL-reserved characters (`@`, `:`, `/`, `?`, `#`, …), set `DATABASE_URL` explicitly with the password percent-encoded.
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is embedded during the image build. Rebuild with `docker compose up -d --build` after adding or changing it.
+
+
 
 ## Local development
 
-1) Install dependencies
+Use Node.js **24** to match the Docker image, plus Docker Compose for the local PostgreSQL and Redis services.
 
-```bash
-npm ci
-```
+1. Create Compose configuration and start only the data services. Compose reads the project-level `.env`, not `.env.local`.
+  ```bash
+   cp .env.example .env
+   # Set POSTGRES_PASSWORD and REDIS_PASSWORD in .env first
+   docker compose up -d helprr-db helprr-redis
+  ```
+2. Create `.env.local` for the Node process. Use host addresses—not Compose service names—and URL-encode the PostgreSQL password if needed.
+  ```dotenv
+   DATABASE_URL=postgresql://postgres:YOUR_ENCODED_POSTGRES_PASSWORD@localhost:5432/helprr
+   REDIS_URL=redis://localhost:6379
+   REDIS_PASSWORD=YOUR_REDIS_PASSWORD
+   APP_PASSWORD=YOUR_BOOTSTRAP_ADMIN_PASSWORD
+   JWT_SECRET=YOUR_32_OR_MORE_CHARACTER_SECRET
+   TZ=Etc/UTC
+  ```
+3. Install dependencies, initialize Prisma, and run the app.
+  ```bash
+   npm ci
+   npm run db:generate
+   npm run db:deploy
+   npm run dev
+  ```
 
-2) Start PostgreSQL and Redis (example using docker-compose)
+Open [http://localhost:3050](http://localhost:3050). Use `npm run db:migrate` only when you are authoring a new Prisma migration; it is not the normal first-run command.
 
-```bash
-docker compose up -d helprr-db helprr-redis
-```
+## Environment reference
 
-3) Configure `.env.local`
+Copy `.env.example` as a starting point. Never commit `.env`, `.env.local`, API keys, passwords, VAPID private keys, or backups containing credentials.
 
-Example (adjust credentials/host to match your Postgres setup):
+### Required for a usable installation
 
-```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/helprr
-REDIS_URL=redis://localhost:6379
-REDIS_PASSWORD=change-me-redis
 
-APP_PASSWORD=change-me
-JWT_SECRET=change-me-too
-TZ=Asia/Kolkata
+| Variable            | Docker Compose / local                           | Purpose and guidance                                                                                                                                                         |
+| ------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POSTGRES_PASSWORD` | Required by Compose; not used by a Node-only app | Password for the bundled PostgreSQL container. It is used to form Compose's default `DATABASE_URL`.                                                                          |
+| `DATABASE_URL`      | Required by the app                              | PostgreSQL Prisma connection string. In Compose it is optional if the bundled default is suitable; explicitly set it for an external database or a percent-encoded password. |
+| `REDIS_URL`         | Required by the app                              | Redis connection URL. Use `redis://helprr-redis:6379` inside Compose and `redis://localhost:6379` for a host-run Node process.                                               |
+| `REDIS_PASSWORD`    | Required by the app and Compose                  | Redis AUTH password. Compose starts Redis with this password.                                                                                                                |
+| `APP_PASSWORD`      | Needed to create/recover the bootstrap admin     | Seeds the bootstrap admin only. It is never used as the normal live login password after that account has a stored hash.                                                     |
+| `JWT_SECRET`        | Required by the app                              | Session-signing secret; must be at least 32 characters. Generate with `openssl rand -base64 48`.                                                                             |
 
-# Optional: enable push notifications
-VAPID_SUBJECT=mailto:you@example.com
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
-```
 
-4) Initialize the database schema
 
-```bash
-npm run db:generate
-npm run db:migrate
-```
 
-`npm run db:migrate` runs `prisma migrate dev`, which applies all pending
-migrations (creating the schema from scratch on a fresh database). All schema
-changes go through migrations — see [Database migrations](#database-migrations).
+### Accounts, deployment, and optional feature gates
 
-5) Run the dev server
 
-```bash
-npm run dev
-```
+| Variable                      | Default                                     | When to use it                                                                                                                                                 |
+| ----------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HELPRR_ADMIN_USERNAME`       | `admin`                                     | Changes the bootstrap admin's username.                                                                                                                        |
+| `HELPRR_ADMIN_PASSWORD_RESET` | off                                         | Set to `true` for one restart to reset the bootstrap admin from `APP_PASSWORD`; remove it immediately after recovery. It does not revoke existing sessions.    |
+| `TZ`                          | `UTC` when invalid or absent                | IANA timezone used for application date/time behavior, for example `Asia/Kolkata`.                                                                             |
+| `LOG_DIR`                     | app `logs` directory; `/app/logs` in Docker | Location for server logs. Compose persists its default through the `helprr-logs` volume.                                                                       |
+| `APP_ORIGIN`                  | none                                        | Required for AniList OAuth in production. Use the public HTTPS origin, such as `https://helprr.example.com`.                                                   |
+| `TRUST_FORWARDED_PROTO`       | off                                         | Set to `true` only behind a trusted proxy that sanitizes `X-Forwarded-*`; enables secure cookies and forwarded client-IP rate limiting.                        |
+| `HELPRR_CUSTOM_HEADERS`       | off                                         | Set to `true` to expose per-connection custom HTTP headers for supported services behind an authenticating proxy (for example, Authelia or Cloudflare Access). |
+| `EXTRA_ALLOWED_IMAGE_HOSTS`   | none                                        | Comma-separated trusted external image hosts to permit through the image proxy. Do not add private/internal hosts.                                             |
 
-Open http://localhost:3050
 
-## Docker
 
-The repository includes a `docker-compose.yml` with a Postgres container and the Helprr app.
 
-1) Set environment variables (recommended via a local `.env` file that is not committed)
+### Web Push (all three values are needed)
 
-- `POSTGRES_PASSWORD` (**required**; compose refuses to start without it)
-- `DATABASE_URL` (optional override; defaults to the internal compose URL using `POSTGRES_PASSWORD` — set it explicitly with the password percent-encoded if the password contains URL special characters)
-- `REDIS_URL` (optional override; defaults to `redis://helprr-redis:6379`)
-- `REDIS_PASSWORD` (**required**; sets the Redis `--requirepass` password and the client AUTH password — the app fails to start without it)
-- `APP_PASSWORD` (seeds the bootstrap admin password on first boot)
-- `JWT_SECRET` (**required**; signs the auth cookie — the app fails to start without it)
-- `HELPRR_ADMIN_USERNAME` (optional; bootstrap admin login username, default `admin`)
-- `HELPRR_ADMIN_PASSWORD_RESET` (optional; set `true` to force-reset the admin password from `APP_PASSWORD`, then remove)
-- `TZ` (optional override; defaults to `UTC`)
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (build-time)
-- `VAPID_PRIVATE_KEY`
-- `VAPID_SUBJECT`
 
-2) Build and run
+| Variable                       | Purpose                                                                                       |
+| ------------------------------ | --------------------------------------------------------------------------------------------- |
+| `VAPID_SUBJECT`                | Contact URI supplied to push providers, for example `mailto:you@example.com`.                 |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Public VAPID key sent to browsers. It is build-time for Docker, so rebuild after changing it. |
+| `VAPID_PRIVATE_KEY`            | Server-only VAPID private key. Keep it secret.                                                |
 
-```bash
-docker compose up --build
-```
 
-Notes:
-
-- The image build expects `NEXT_PUBLIC_VAPID_PUBLIC_KEY` to be available as a build arg.
-- The container entrypoint runs `npx prisma migrate deploy` (applies pending
-  migrations, no-op when up to date) before starting Next.js.
-
-## Database migrations
-
-Prisma Migrate is the single source of truth for the schema:
-
-- **Development:** change `prisma/schema.prisma`, then run `npm run db:migrate`
-  (`prisma migrate dev`) to generate and apply a migration. Commit the generated
-  folder under `prisma/migrations/`.
-- **Deployment:** the Docker entrypoint runs `prisma migrate deploy` on every
-  boot, applying any pending migrations before the server starts. If a
-  migration fails, the container exits instead of running against a
-  half-migrated database.
-- Data backfills that must accompany a schema change go into the migration's
-  SQL itself, so dev and production stay in lockstep.
-
-**Upgrading a database created before this workflow** (schema managed by
-`prisma db push`): `migrate deploy` will refuse to run against a non-empty
-database with no migration history (error P3005). Baseline it once, then start
-normally:
-
-```bash
-docker compose run --rm helprr npx prisma migrate resolve --applied 0001_init
-docker compose up -d
-```
-
-## Generating VAPID keys (for push notifications)
-
-You can generate a VAPID keypair with:
+Generate a pair with:
 
 ```bash
 npx web-push generate-vapid-keys
 ```
 
-Use the **public** key as `NEXT_PUBLIC_VAPID_PUBLIC_KEY` and the **private** key as `VAPID_PRIVATE_KEY`.
+Without a complete VAPID set, Helprr still runs but push notification subscription/delivery is unavailable.
 
-## Connecting Sonarr / Radarr / qBittorrent
+### Cache and image tuning
 
-In the app, go to **Settings** and set:
+All values below are optional positive integers; invalid or non-positive values fall back to the defaults.
 
-- Sonarr: base URL + API key
-- Radarr: base URL + API key
-- qBittorrent: base URL + password (stored as the connection `apiKey`) + optional username (defaults to `admin`)
 
-Helprr’s polling service will skip any service that is not configured.
+| Variable                          | Default                   | Scenario                                                                                                    |
+| --------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `IMAGE_CACHE_DIR`                 | `/tmp/helprr-image-cache` | Directory for server-side cached image bytes. Choose a writable, persistent path only if you provision one. |
+| `IMAGE_CACHE_TTL_SECONDS`         | `604800` (7 days)         | How long a successful image is considered fresh.                                                            |
+| `IMAGE_CACHE_STALE_SECONDS`       | `2592000` (30 days)       | How long a stale cached image may be served when its upstream fails.                                        |
+| `IMAGE_UPSTREAM_FETCH_TIMEOUT_MS` | `5000`                    | Timeout for fetching an upstream image.                                                                     |
+| `TMDB_CACHE_DEFAULT_TTL_SECONDS`  | `600` (10 minutes)        | Default TTL for TMDb data without a more specific category.                                                 |
+| `TMDB_CACHE_DISCOVER_TTL_SECONDS` | `600` (10 minutes)        | TTL for TMDb discovery responses.                                                                           |
+| `TMDB_CACHE_DETAILS_TTL_SECONDS`  | `86400` (1 day)           | TTL for TMDb title/detail responses.                                                                        |
+| `TMDB_CACHE_STATIC_TTL_SECONDS`   | `604800` (7 days)         | TTL for TMDb static/reference data.                                                                         |
+| `TMDB_CACHE_STALE_SECONDS`        | `2592000` (30 days)       | Stale-if-error window for TMDb cache data.                                                                  |
+| `CACHE_LOCK_TTL_MS`               | `10000`                   | Cache-fill lock duration; change only when diagnosing unusually slow or long-running upstream requests.     |
 
-## Scripts
+
+The bundled Compose file now passes these advanced values through when they are set in `.env`. The default image-cache directory is inside the app container, so it is ephemeral if that container is recreated unless you add your own persistent mount.
+
+## First-run checklist
+
+1. Sign in with the bootstrap administrator.
+2. Open **Settings → Instances** and connect the services you actually use. Test each connection before relying on it.
+3. In **Settings → Users**, create member accounts and grant only the capabilities they need.
+4. Configure preferences, dashboard layout, notifications, and optional cleanup/bandwidth rules.
+5. For push: serve the app over HTTPS, configure VAPID values, open Helprr on the target device, install it as a PWA if desired, and allow notifications.
+6. Export a backup from **Settings → Backup & Restore** after the initial configuration and keep it secure.
+
+
+
+## Database migrations and upgrades
+
+Prisma migrations are the database source of truth.
+
+- For normal deployment and first setup, use `npm run db:deploy`; the Docker entrypoint runs the same `prisma migrate deploy` command automatically before starting Next.js.
+- When changing `prisma/schema.prisma` during development, run `npm run db:migrate` and commit the generated migration directory.
+- A database created by an older `prisma db push` workflow with no migration history must be baselined once before Docker can start it:
+  ```bash
+  docker compose run --rm helprr npx prisma migrate resolve --applied 0001_init
+  docker compose up -d
+  ```
+
+
+
+## Useful commands
 
 ```bash
+# App
 npm run dev
 npm run build
 npm run start
-
-npm run db:generate
-npm run db:migrate
-npm run db:deploy
-
 npm run lint
+
+# Prisma
+npm run db:generate
+npm run db:deploy
+npm run db:migrate
+
+# Docker
+docker compose up -d --build
+docker compose logs -f helprr
+docker compose down
 ```
+
+
 
 ## Security notes
 
-- Set strong values for `APP_PASSWORD` and `JWT_SECRET` in production.
-- Passwords are stored as per-user scrypt hashes in the database; login checks the hash, **not** `APP_PASSWORD`. `APP_PASSWORD` only seeds the first admin account on initial boot — changing it later and restarting does nothing on its own.
-- **Lost or compromised admin password?** Set `HELPRR_ADMIN_PASSWORD_RESET=true` (alongside the desired `APP_PASSWORD`) and restart to re-hash the admin password, then remove the flag (otherwise every reboot re-applies `APP_PASSWORD`). This resets **only** the bootstrap admin — admins change other users' passwords in-app (Settings → Users).
-- A password reset does **not** sign out existing sessions. To lock out someone who already has a session, also revoke sessions in Settings → Sessions (and/or disable the account).
+- Use unique, long secrets and a private network or HTTPS reverse proxy. Do not expose Helprr directly to the public internet without understanding the security implications.
+- Passwords are stored as per-user scrypt hashes. `APP_PASSWORD` seeds/resets only the bootstrap admin; it is not a universal login password.
+- Resetting the bootstrap password does not invalidate active sessions. Revoke sessions from **Settings → Sessions** when access needs to be removed.
+- Service credentials and custom headers are sensitive. Restrict administrator accounts and protect backups/log exports.
+- Verify AI-generated changes before deploying them. Keep your service containers and this project up to date, and test upgrades against a backup.
