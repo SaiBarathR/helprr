@@ -69,6 +69,13 @@ import { SeedingEconomicsWidget } from '@/components/widgets/seeding-economics-w
 import { MediaTechnicalBreakdownWidget } from '@/components/widgets/media-technical-breakdown-widget';
 import { MediaQualityScoresWidget } from '@/components/widgets/media-quality-scores-widget';
 
+// Page features surfaced as widgets
+import { WatchlistWidget } from '@/components/widgets/watchlist-widget';
+import { LibraryGapsWidget } from '@/components/widgets/library-gaps-widget';
+import { RandomWatchWidget } from '@/components/widgets/random-watch-widget';
+import { SettingsShortcutWidget } from '@/components/widgets/settings-shortcut-widget';
+import { SETTINGS_SHORTCUTS } from '@/lib/widgets/settings-shortcuts';
+
 const span = (colSpan: WidgetSpan['colSpan'], rowSpan: WidgetSpan['rowSpan']): WidgetSpan => ({
   colSpan,
   rowSpan,
@@ -706,7 +713,69 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 300,
     component: MediaQualityScoresWidget,
   },
+
+  // ── Page features as widgets ──
+  {
+    id: 'watchlist',
+    name: 'Watchlist',
+    description: 'Your saved titles, newest first — poster rail or list',
+    icon: 'Bookmark',
+    category: 'media',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 120,
+    supportsNarrow: true,
+    desktopLayout: 'posters',
+    mobileLayout: 'list',
+    component: WatchlistWidget,
+  },
+  {
+    id: 'library-gaps',
+    name: 'Library Gaps',
+    description: 'Missing seasons, collection gaps, and overdue items',
+    icon: 'SearchX',
+    category: 'media',
+    defaultDesktopSpan: span(6, 3),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 300,
+    component: LibraryGapsWidget,
+  },
+  {
+    id: 'random-watch',
+    name: 'Random Pick',
+    description: 'A random downloaded title with a reroll button',
+    icon: 'Dices',
+    category: 'discover',
+    defaultDesktopSpan: span(4, 2),
+    defaultMobileSpan: span(2, 2),
+    defaultRefreshIntervalSecs: 300,
+    supportsNarrow: true,
+    component: RandomWatchWidget,
+  },
 ];
+
+// Dynamically add settings launcher tiles — one 1×1 shortcut per settings
+// destination, gated exactly like the settings index page (capability in the
+// literal here; NOT in WIDGET_REQUIRED_CAPABILITY below).
+for (const shortcut of SETTINGS_SHORTCUTS) {
+  ALL_WIDGET_DEFINITIONS.push({
+    id: `settings-${shortcut.key}`,
+    name: shortcut.label,
+    description: shortcut.subtitle,
+    icon: shortcut.iconName,
+    category: 'settings',
+    defaultDesktopSpan: span(2, 1),
+    defaultMobileSpan: span(1, 1),
+    // Static Link tile — no data fetching, so the interval is inert.
+    defaultRefreshIntervalSecs: 300,
+    supportsNarrow: true,
+    mobileLayout: 'vertical',
+    requiredCapability: shortcut.capability,
+    adminOnly: shortcut.adminOnly,
+    component: (props: WidgetProps) =>
+      React.createElement(SettingsShortcutWidget, { shortcut, ...props }),
+  } as WidgetDefinition);
+}
 
 // Dynamically add anime carousel widgets — full-width carousels
 for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
@@ -780,6 +849,11 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability | Capability
   'seeding-economics': ['insights.view', 'torrents.view'],
   'media-technical-breakdown': 'insights.view',
   'media-quality-scores': 'insights.view',
+  // Page-feature widgets — each mirrors its data route's capability checks.
+  'watchlist': 'watchlist.view',
+  // /api/library-gaps requires both library capabilities.
+  'library-gaps': ['movies.view', 'series.view'],
+  'random-watch': 'random.view',
 };
 for (const def of ALL_WIDGET_DEFINITIONS) {
   const cap = WIDGET_REQUIRED_CAPABILITY[def.id];

@@ -15,7 +15,8 @@ export type WidgetCategory =
   | 'downloads'
   | 'streaming'
   | 'monitoring'
-  | 'discover';
+  | 'discover'
+  | 'settings';
 
 export type WidgetLayoutVariant =
   | 'carousel'

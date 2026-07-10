@@ -5,7 +5,7 @@ import { can } from '@/lib/permissions';
 import { getRadarrClients, getSonarrClients } from '@/lib/service-helpers';
 import { fetchUserWatchStatusMap, lookupWatchStatus } from '@/lib/jellyfin-watch-status-map';
 import { arrKey, isFullyWatched } from '@/types/watch-status';
-import type { RadarrMovie, SonarrSeries } from '@/types';
+import type { RadarrMovie, RandomPick, SonarrSeries } from '@/types';
 
 type RandomType = 'movie' | 'series' | 'any';
 const VALID_TYPES: ReadonlySet<RandomType> = new Set(['movie', 'series', 'any']);
@@ -15,21 +15,6 @@ const VALID_WATCH: ReadonlySet<WatchScope> = new Set(['all', 'unwatched']);
 
 type TaggedMovie = RadarrMovie & { instanceId: string };
 type TaggedSeries = SonarrSeries & { instanceId: string };
-
-interface RandomPick {
-  mediaType: 'movie' | 'series';
-  id: number;
-  instanceId: string | null;
-  title: string;
-  year: number | null;
-  overview: string | null;
-  posterUrl: string | null;
-  backdropUrl: string | null;
-  runtime: number | null;
-  genres: string[];
-  href: string;
-  rating: number | null;
-}
 
 function imageOf(images: { coverType: string; remoteUrl?: string; url?: string }[] | undefined, coverType: string): string | null {
   if (!images) return null;
