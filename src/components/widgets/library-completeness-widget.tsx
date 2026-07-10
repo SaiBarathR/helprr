@@ -49,7 +49,8 @@ export function LibraryCompletenessWidget({ refreshInterval, editMode = false, n
               ['Movies', completeness.movies],
             ] as const).filter(([, s]) => s.total > 0)
           : [];
-        const tileCols = gridColumns(width, 116, narrow ? 2 : 5);
+        // 140 fits the widest tile ("Missing seasons") without truncation.
+        const tileCols = gridColumns(width, 140, narrow ? 2 : 5);
         // Stack the ring above the TV/Movies split on narrow cells.
         const stack = width < 210;
 

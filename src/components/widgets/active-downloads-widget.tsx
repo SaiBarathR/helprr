@@ -128,7 +128,7 @@ export function ActiveDownloadsWidget({
             <>
               {toggleNode}
               <Link href="/torrents" style={{ color: 'inherit', textDecoration: 'none' }}>
-                View all →
+                <span className="@max-[219px]/cell:hidden">View all </span>→
               </Link>
             </>
           }
@@ -149,10 +149,10 @@ export function ActiveDownloadsWidget({
               <div key={itemKey(it)}>
                 {i > 0 && <Hairline />}
                 <div
+                  className="gap-2.5 @max-[219px]/cell:gap-2"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 10,
                     padding: '10px 0',
                   }}
                 >
@@ -169,6 +169,9 @@ export function ActiveDownloadsWidget({
                       {it.title}
                     </div>
                     <div
+                      // Size and ETA are data values — wrap onto a second line
+                      // on narrow cells instead of clipping.
+                      className="flex-wrap"
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -191,15 +194,18 @@ export function ActiveDownloadsWidget({
                       <Bar pct={pct} color={HPR.blue} height={2} />
                     </div>
                   </div>
-                  <div style={{ textAlign: 'right', minWidth: 46 }}>
+                  {/* Percentage must stay fully visible: fit-to-content (not a
+                      fixed 46px reserve) and a smaller font on compact cells. */}
+                  <div className="shrink-0 text-right min-w-[46px] @max-[219px]/cell:min-w-fit">
                     <div
+                      className="text-[15px] @max-[219px]/cell:text-[13px]"
                       style={{
                         fontFamily: FONT_DISPLAY,
-                        fontSize: 15,
                         color: HPR.green,
                         fontWeight: 700,
                         lineHeight: 1,
                         letterSpacing: '-0.02em',
+                        whiteSpace: 'nowrap',
                       }}
                     >
                       {pct.toFixed(0)}%
@@ -223,7 +229,7 @@ export function ActiveDownloadsWidget({
           <>
             {toggleNode}
             <Link href="/torrents" style={{ color: 'inherit', textDecoration: 'none' }}>
-              View all →
+              <span className="@max-[219px]/cell:hidden">View all </span>→
             </Link>
           </>
         }

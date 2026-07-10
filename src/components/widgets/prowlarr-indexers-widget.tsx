@@ -98,7 +98,14 @@ export function ProwlarrIndexersWidget({
             textOverflow: 'ellipsis',
           }}
         >
-          {compact ? 'Indexers' : 'Prowlarr Indexers'}
+          {compact ? (
+            'Indexers'
+          ) : (
+            <>
+              <span className="@max-[219px]/cell:hidden">Prowlarr Indexers</span>
+              <span className="hidden @max-[219px]/cell:inline">Indexers</span>
+            </>
+          )}
         </Eyebrow>
         <div
           style={{
@@ -145,7 +152,11 @@ export function ProwlarrIndexersWidget({
           </div>
         </div>
       </div>
-      {!compact && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
+      {!compact && (
+        <div className="@max-[219px]/cell:hidden" style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>
+          →
+        </div>
+      )}
     </div>
   );
 

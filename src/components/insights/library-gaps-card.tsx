@@ -63,21 +63,21 @@ export function CountTile({ id, count }: { id: LibraryGapSectionId; count: numbe
   const { label, icon: Icon, color } = COUNT_META[id];
   const active = count > 0;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       <span
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
         style={{ background: mix(active ? color : HPR.fgMute, 12), color: active ? color : HPR.fgSubtle }}
       >
         <Icon className="h-4 w-4" />
       </span>
-      <div className="flex flex-col leading-none gap-1">
+      <div className="flex min-w-0 flex-col leading-none gap-1">
         <span
           className="tabular-nums"
           style={{ fontFamily: 'var(--hpr-font-display)', fontWeight: 600, fontSize: 17, color: active ? HPR.fg : HPR.fgMute }}
         >
           {count.toLocaleString()}
         </span>
-        <span className="text-[10px] uppercase tracking-wide whitespace-nowrap" style={{ color: HPR.fgMute }}>
+        <span className="truncate text-[10px] uppercase tracking-wide" style={{ color: HPR.fgMute }}>
           {label}
         </span>
       </div>

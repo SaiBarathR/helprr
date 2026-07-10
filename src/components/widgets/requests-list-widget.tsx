@@ -352,7 +352,7 @@ export function RequestsListWidget({
       title="Requests"
       right={
         <Link href="/requests" style={{ color: 'inherit', textDecoration: 'none' }}>
-          View all →
+          <span className="@max-[219px]/cell:hidden">View all </span>→
         </Link>
       }
     />
@@ -498,7 +498,7 @@ export function RequestsListWidget({
               <div
                 className={cn(
                   'relative shrink-0 overflow-hidden rounded-md bg-muted',
-                  unbounded ? 'h-14 w-10 sm:h-16 sm:w-11' : 'h-12 w-9'
+                  unbounded ? 'h-14 w-10 sm:h-16 sm:w-11' : 'h-12 w-9 @max-[159px]/cell:hidden'
                 )}
               >
                 {poster ? (
@@ -518,25 +518,30 @@ export function RequestsListWidget({
                 )}
               </div>
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className={cn('truncate font-medium text-foreground', unbounded ? 'text-sm' : 'text-xs')}>
+                <div className="flex min-w-0 items-baseline justify-between gap-2">
+                  <span className={cn('min-w-0 truncate font-medium text-foreground', unbounded ? 'text-sm' : 'text-xs')}>
                     {title}
                     {year ? <span className="font-normal text-muted-foreground"> · {year}</span> : null}
                   </span>
-                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                  {/* Full "13 days ago" on regular cells, "13 days" on compact, gone on tiny. */}
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground @max-[219px]/cell:hidden">
                     {formatDistanceToNowSafe(req.createdAt)}
                   </span>
+                  <span className="hidden shrink-0 text-[10px] tabular-nums text-muted-foreground @max-[219px]/cell:inline @max-[159px]/cell:hidden">
+                    {formatDistanceToNowSafe(req.createdAt).replace(/ ago$/, '')}
+                  </span>
                 </div>
-                <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                  <span className={cn('rounded px-1.5 py-0.5 font-medium', reqBadge.className)}>
+                {/* Badges wrap onto extra lines on compact cells instead of clipping. */}
+                <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[10px] text-muted-foreground @max-[219px]/cell:flex-wrap">
+                  <span className={cn('shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 font-medium', reqBadge.className)}>
                     {reqBadge.label}
                   </span>
                   {mediaBadge ? (
-                    <span className={cn('rounded px-1.5 py-0.5 font-medium', mediaBadge.className)}>
+                    <span className={cn('shrink-0 whitespace-nowrap rounded px-1.5 py-0.5 font-medium', mediaBadge.className)}>
                       {mediaBadge.label}
                     </span>
                   ) : null}
-                  <span className="truncate">{requesterLabel(req)}</span>
+                  <span className="min-w-0 truncate @max-[219px]/cell:hidden">{requesterLabel(req)}</span>
                 </div>
               </div>
               {/* Desktop quick actions — the extra width fits the two most

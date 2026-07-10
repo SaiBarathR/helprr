@@ -90,25 +90,20 @@ export function CleanupStatusWidget({ refreshInterval, editMode = false }: Widge
         badge={dryRun ? <Pill color={HPR.amber}>DRY</Pill> : null}
         right={
           <Link href="/cleanup" style={{ color: 'inherit', textDecoration: 'none' }}>
-            View all →
+            <span className="@max-[219px]/cell:hidden">View all </span>→
           </Link>
         }
       />
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr 1fr',
-          gap: 6,
-          marginBottom: 8,
-        }}
-      >
+      {/* 2×2 below 220px so labels and values stay fully readable. */}
+      <div className="mb-2 grid grid-cols-4 gap-1.5 @max-[219px]/cell:grid-cols-2">
         <CleanupTile label="Today" value={stats?.removedToday} color={HPR.fgMute} />
         <CleanupTile label="Past 7d" value={stats?.removedThisWeek} color={HPR.green} />
         <CleanupTile label="Strikes" value={stats?.totalStrikes} color={HPR.amber} />
         <CleanupTile label="Re-search" value={stats?.reSearchedAllTime} color={HPR.fgMute} />
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+      {/* Wraps to stacked rows when the cell is too narrow for both side by side. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
         <CleanerRow label="Queue" leg={queue} now={now} color={HPR.amber} />
         <CleanerRow label="Download" leg={download} now={now} color={HPR.blue} />
       </div>
@@ -157,7 +152,16 @@ export function CleanupStatusWidget({ refreshInterval, editMode = false }: Widge
                 >
                   {s.torrentName}
                 </div>
-                <div style={{ fontSize: 9, color: HPR.fgMute, fontFamily: FONT_MONO }}>
+                <div
+                  style={{
+                    fontSize: 9,
+                    color: HPR.fgMute,
+                    fontFamily: FONT_MONO,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
                   {s.strikeType}
                   {s.ruleName ? ` · ${s.ruleName}` : ''}
                   {' · '}
@@ -201,6 +205,9 @@ function CleanupTile({
           fontWeight: 700,
           lineHeight: 1,
           letterSpacing: '-0.02em',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
       >
         {value ?? '—'}
@@ -213,6 +220,9 @@ function CleanupTile({
           letterSpacing: '0.08em',
           textTransform: 'uppercase',
           fontFamily: FONT_MONO,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
         }}
       >
         {label}
@@ -242,17 +252,29 @@ function CleanerRow({
   return (
     <div
       style={{
-        flex: 1,
+        flex: '1 1 110px',
+        minWidth: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
+        gap: 6,
         padding: '7px 9px',
         background: HPR.ink,
         border: `1px solid ${HPR.hairline}`,
         borderRadius: 6,
       }}
     >
-      <span style={{ fontSize: 11, color: HPR.fg }}>{label}</span>
+      <span
+        style={{
+          fontSize: 11,
+          color: HPR.fg,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {label}
+      </span>
       <span
         style={{
           fontFamily: FONT_MONO,
@@ -262,6 +284,8 @@ function CleanerRow({
           padding: '1px 6px',
           borderRadius: 4,
           fontWeight: 500,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}
       >
         {text}

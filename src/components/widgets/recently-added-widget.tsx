@@ -121,7 +121,7 @@ export function RecentlyAddedWidget({
             <>
               {toggleNode}
               <Link href="/activity" style={{ color: 'inherit', textDecoration: 'none' }}>
-                View all →
+                <span className="@max-[219px]/cell:hidden">View all </span>→
               </Link>
             </>
           }
@@ -163,7 +163,7 @@ export function RecentlyAddedWidget({
           <>
             {toggleNode}
             <Link href="/activity" style={{ color: 'inherit', textDecoration: 'none' }}>
-              View all →
+              <span className="@max-[219px]/cell:hidden">View all </span>→
             </Link>
           </>
         }

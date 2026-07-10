@@ -5,12 +5,21 @@ import * as React from 'react';
 import dynamic from 'next/dynamic';
 import type { ProwlarrStats } from '@/lib/prowlarr-client';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useWidgetFilter } from './use-widget-filter';
 import { daysToStartDate, DaysPill, PROWLARR_DAYS_OPTIONS } from './widget-filter-controls';
 import { SectionHeader, HPR } from './bento-primitives';
 
 export const Y_WIDTH = 96;
 export const CHART_MARGIN = { top: 2, right: 12, left: 0, bottom: 2 } as const;
+
+// Narrow cells give the category axis less room: below these container widths
+// the y-axis shrinks and its labels truncate earlier so bars stay visible.
+export function chartLayoutForWidth(width: number): { yWidth: number; yMaxLen: number; xTickCount?: number } {
+  if (width > 0 && width < 180) return { yWidth: 52, yMaxLen: 7, xTickCount: 3 };
+  if (width > 0 && width < 260) return { yWidth: 68, yMaxLen: 10, xTickCount: 4 };
+  return { yWidth: Y_WIDTH, yMaxLen: 14 };
+}
 
 export async function fetchProwlarrStats(days: number): Promise<ProwlarrStats | null> {
   const startDate = daysToStartDate(days);
@@ -39,11 +48,11 @@ interface YTickProps {
   x?: number;
   y?: number;
   payload?: { value: string | number };
+  maxLen?: number;
 }
 
-export function YTick({ x, y, payload }: YTickProps) {
+export function YTick({ x, y, payload, maxLen = 14 }: YTickProps) {
   const text = String(payload?.value ?? '');
-  const maxLen = 14;
   const display = text.length > maxLen ? text.slice(0, maxLen - 1) + '…' : text;
   return (
     <text x={x} y={y} dy={4} textAnchor="end" fill="var(--hpr-fgMute)" fontSize={10}>
@@ -146,6 +155,7 @@ interface ProwlarrChartWidgetShellProps<Row extends { name: string }> {
 export function ProwlarrChartWidgetShell<Row extends { name: string }>(
   props: ProwlarrChartWidgetShellProps<Row>,
 ) {
+  const { ref: chartRef, width: chartWidth } = useElementSize<HTMLDivElement>();
   const {
     widgetId,
     title,
@@ -188,7 +198,8 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
         badge={badge}
         right={
           legend && legend.length > 0 ? (
-            <div style={{ display: 'flex', gap: 8 }}>
+            // Legend is decoration on compact cells — the tooltip still names each series.
+            <div className="flex gap-2 @max-[219px]/cell:hidden">
               {legend.map(({ color, label }) => (
                 <span
                   key={label}
@@ -207,8 +218,8 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
       ) : rows.length === 0 ? (
         <EmptyChartState message={emptyMessage} />
       ) : (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <ProwlarrBarChart rows={rows} bars={bars} xTickFormatter={xTickFormatter} />
+        <div ref={chartRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <ProwlarrBarChart rows={rows} bars={bars} xTickFormatter={xTickFormatter} containerWidth={chartWidth} />
         </div>
       )}
     </div>

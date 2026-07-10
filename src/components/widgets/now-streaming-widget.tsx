@@ -107,7 +107,7 @@ export function NowStreamingWidget({
         right={
           <>
             {toggleNode}
-            {!narrow && <span>{list.length} active</span>}
+            {!narrow && <span className="@max-[219px]/cell:hidden">{list.length} active</span>}
           </>
         }
       />
@@ -194,6 +194,7 @@ export function NowStreamingWidget({
                       <Bar pct={pct} color={HPR.cyan} height={2} />
                     </div>
                     {!narrow && <span
+                      className="@max-[219px]/cell:hidden"
                       style={{
                         fontFamily: FONT_MONO,
                         fontSize: 9,

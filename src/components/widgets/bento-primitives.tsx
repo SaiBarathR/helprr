@@ -10,6 +10,7 @@
 
 import * as React from 'react';
 import { ArrowLeftRight, ArrowUpDown, Check, LayoutGrid, List, Plus, Save, Settings } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export const HPR = {
   ink: 'var(--hpr-ink)',
@@ -118,17 +119,10 @@ export function SectionHeader({
 }) {
   const fontSize = size === 'lg' ? 18 : size === 'sm' ? 13 : 15;
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 6,
-        gap: 8,
-        minWidth: 0,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+    // Layout props live in classes so tiny cells can wrap the header onto two
+    // lines (title, then badge/controls) instead of crushing the title away.
+    <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2 @max-[159px]/cell:flex-wrap">
+      <div className="flex min-w-0 items-center gap-2 overflow-hidden @max-[159px]/cell:flex-wrap">
         {title ? (
           <h3
             style={{
@@ -509,18 +503,19 @@ export function StatTile({
         alignItems: 'center',
         gap: narrow ? 8 : 10,
         minWidth: 0,
+        overflow: 'hidden',
       }}
     >
       <div
+        // Icon is decoration — it goes first when the cell can't fit icon + value.
+        // display comes from classes so the container variant's `hidden` wins.
+        className="flex items-center justify-center @max-[239px]/cell:hidden"
         style={{
           width: narrow ? 28 : 32,
           height: narrow ? 28 : 32,
           borderRadius: 7,
           background: mix(tone, 14),
           color: tone,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
           flexShrink: 0,
           fontSize: 13,
         }}
@@ -529,10 +524,15 @@ export function StatTile({
       </div>
       <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <span
+          // Font size lives in classes (not inline style) so the container
+          // variant can shrink it — the value must stay fully visible.
+          className={cn(
+            narrow ? 'text-lg' : 'text-[22px]',
+            '@max-[239px]/cell:text-[15px]'
+          )}
           style={{
             fontFamily: FONT_DISPLAY,
             fontWeight: 600,
-            fontSize: narrow ? 18 : 22,
             color: HPR.fg,
             lineHeight: 1.05,
             letterSpacing: '-0.02em',
@@ -543,7 +543,16 @@ export function StatTile({
         >
           {value}
         </span>
-        <Eyebrow style={{ fontSize: 9 }}>{label}</Eyebrow>
+        <Eyebrow
+          style={{
+            fontSize: 9,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {label}
+        </Eyebrow>
       </div>
     </div>
   );

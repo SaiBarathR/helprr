@@ -65,7 +65,7 @@ export function JellyfinDevicesWidget({
           onClick={() => { if (!editMode) setSeeAll(true); }}
           style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: editMode ? 'default' : 'pointer', padding: 0 }}
         >
-          See all →
+          <span className="@max-[219px]/cell:hidden">See all </span>→
         </button>
       )}
     </>

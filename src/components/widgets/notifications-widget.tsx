@@ -142,7 +142,7 @@ export function NotificationsWidget({
         title="Notifications"
         right={
           <Link href="/notifications" style={{ color: 'inherit', textDecoration: 'none' }}>
-            View all →
+            <span className="@max-[219px]/cell:hidden">View all </span>→
           </Link>
         }
       />
@@ -185,15 +185,15 @@ export function NotificationsWidget({
               }}
             >
               <div
+                // Icon chip is decoration — dropped on compact cells. display
+                // lives in classes so the container variant's `hidden` wins.
+                className="flex items-center justify-center @max-[219px]/cell:hidden"
                 style={{
                   width: 22,
                   height: 22,
                   borderRadius: 5,
                   background: mix(color, 14),
                   color,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
@@ -220,15 +220,19 @@ export function NotificationsWidget({
                   >
                     {n.title}
                   </span>
+                  {/* "about 11 hours ago" → "11 hours" on compact cells so it
+                      can't crowd out the title or run under the info button. */}
                   <span
-                    style={{
-                      fontFamily: FONT_MONO,
-                      fontSize: 9,
-                      color: HPR.fgSubtle,
-                      flexShrink: 0,
-                    }}
+                    className="shrink-0 @max-[219px]/cell:hidden"
+                    style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle }}
                   >
                     {formatDistanceToNowSafe(n.createdAt)}
+                  </span>
+                  <span
+                    className="hidden shrink-0 @max-[219px]/cell:inline"
+                    style={{ fontFamily: FONT_MONO, fontSize: 9, color: HPR.fgSubtle }}
+                  >
+                    {formatDistanceToNowSafe(n.createdAt).replace(/^about /, '').replace(/ ago$/, '')}
                   </span>
                 </div>
                 {n.body && (

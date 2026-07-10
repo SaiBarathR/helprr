@@ -161,7 +161,10 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
               </div>
               <div className="rounded-lg bg-card px-3 py-2 text-center">
                 <p className="text-lg font-semibold tabular-nums text-emerald-500">{completedCount}</p>
-                <p className="text-[10px] text-muted-foreground">Completed</p>
+                <p className="text-[10px] text-muted-foreground">
+                  <span className="@max-[239px]/cell:hidden">Completed</span>
+                  <span className="hidden @max-[239px]/cell:inline">Done</span>
+                </p>
               </div>
               <div className="rounded-lg bg-card px-3 py-2 text-center">
                 <p

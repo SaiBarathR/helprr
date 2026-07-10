@@ -38,18 +38,20 @@ export function RankedList({
   return (
     <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50 h-full flex flex-col">
       {sorted.map((entry, i) => (
-        <div key={`${entry.label}-${i}`} className="relative px-3 flex items-center gap-3 flex-1 min-h-0">
+        <div key={`${entry.label}-${i}`} className="relative px-3 flex items-center gap-3 flex-1 min-h-0 @max-[279px]/cell:px-2 @max-[279px]/cell:gap-2">
           <div
             className="absolute inset-0 bg-[var(--hpr-cyan)]/5"
             style={{ width: `${((sortBy === 'duration' ? entry.time : entry.count) / maxVal) * 100}%` }}
           />
-          <span className="text-xs text-muted-foreground font-mono w-5 shrink-0 relative">{i + 1}</span>
+          {/* Rank is decoration — dropped on tiny cells so the title keeps readable width. */}
+          <span className="text-xs text-muted-foreground font-mono w-5 shrink-0 relative @max-[179px]/cell:hidden">{i + 1}</span>
           <span className="text-sm truncate flex-1 relative">{entry.label}</span>
           <div className="text-right shrink-0 relative">
             <span className="text-xs font-medium tabular-nums">
               {sortBy === 'duration' ? formatDurationSeconds(entry.time) : `${entry.count} plays`}
             </span>
-            <p className="text-[10px] text-muted-foreground">
+            {/* Secondary metric goes on compact cells — the title gets the room. */}
+            <p className="text-[10px] text-muted-foreground @max-[279px]/cell:hidden">
               {sortBy === 'duration' ? `${entry.count} plays` : entry.time > 0 ? formatDurationSeconds(entry.time) : ''}
             </p>
           </div>
@@ -114,7 +116,8 @@ export function PlaybackMethodBar({
                 {sortBy === 'duration' ? formatDurationSeconds(e.time) : e.count}
               </span>
               <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-right shrink-0">{pct}%</span>
-              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+              {/* Secondary metric goes on compact cells — label + primary metric keep the room. */}
+              <span className="text-[10px] text-muted-foreground tabular-nums shrink-0 @max-[259px]/cell:hidden">
                 {sortBy === 'duration' ? `${e.count} plays` : formatDurationSeconds(e.time)}
               </span>
             </div>
@@ -127,7 +130,7 @@ export function PlaybackMethodBar({
 
 // ─── Play activity chart ───
 
-export function PlayActivityChart({ data }: { data: PlayActivityUser[] }) {
+export function PlayActivityChart({ data, width = 0 }: { data: PlayActivityUser[]; width?: number }) {
   const chartData = useMemo(() => {
     const realUsers = data.filter((u) => u.user_id !== 'labels_user');
     if (realUsers.length === 0) return null;
@@ -241,6 +244,12 @@ export function PlayActivityChart({ data }: { data: PlayActivityUser[] }) {
   const { realUsers, aggregated, totalPlays, maxVal, avgPerDay, periodLabel, labelInterval, userBars, isMonthly } =
     chartData;
 
+  // Fit axis labels to the measured width (~48px per "Jun 12" label) so they
+  // never overlap on narrow cells; falls back to the count-based interval.
+  const effectiveInterval = width > 0
+    ? Math.max(1, Math.ceil(aggregated.length / Math.max(2, Math.floor(width / 48))))
+    : labelInterval;
+
   return (
     <div className="rounded-xl bg-card p-3 h-full flex flex-col overflow-hidden">
       <div className="flex items-baseline gap-3 shrink-0">
@@ -313,9 +322,9 @@ export function PlayActivityChart({ data }: { data: PlayActivityUser[] }) {
 
       <div className="flex gap-[2px] mt-1 shrink-0">
         {aggregated.map(([label], i) => (
-          <div key={label} className="flex-1 text-center min-w-0">
-            {i % labelInterval === 0 || i === aggregated.length - 1 ? (
-              <span className="text-[8px] text-muted-foreground">
+          <div key={label} className="flex-1 text-center min-w-0 overflow-hidden">
+            {i % effectiveInterval === 0 || i === aggregated.length - 1 ? (
+              <span className="text-[8px] text-muted-foreground whitespace-nowrap">
                 {isMonthly
                   ? new Date(label + '-15').toLocaleDateString(undefined, { month: 'short', year: '2-digit' })
                   : new Date(label + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -355,7 +364,8 @@ export function HourlyHeatmap({ data }: { data: Record<string, number> }) {
 
   return (
     <div className="rounded-xl bg-card p-3 flex flex-col gap-2 h-full overflow-hidden">
-      <div className="flex items-baseline justify-between text-[11px] text-muted-foreground shrink-0">
+      {/* Wraps on narrow cells instead of the two stats colliding. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-[11px] text-muted-foreground shrink-0">
         <span>Total: {formatDurationSeconds(totalSecs)}</span>
         {peakVal > 0 && (
           <span>

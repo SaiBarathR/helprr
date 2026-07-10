@@ -193,7 +193,7 @@ export function UpcomingWidget({
             <>
               {toggleNode}
               <Link href="/calendar" style={{ color: 'inherit', textDecoration: 'none' }}>
-                View all →
+                <span className="@max-[219px]/cell:hidden">View all </span>→
               </Link>
             </>
           }
@@ -236,7 +236,7 @@ export function UpcomingWidget({
           <>
             {toggleNode}
             <Link href="/calendar" style={{ color: 'inherit', textDecoration: 'none' }}>
-              View all →
+              <span className="@max-[219px]/cell:hidden">View all </span>→
             </Link>
           </>
         }
