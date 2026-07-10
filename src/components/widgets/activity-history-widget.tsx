@@ -353,7 +353,7 @@ export function ActivityHistoryWidget({
               const customFormats = (r.customFormats || []).filter((cf) => cf.name);
               const href = getHref(r);
 
-              const primaryParts: string[] = [`${formatDistanceToNowShort(r.date)} ago`];
+              const primaryParts: string[] = [formatDistanceToNowShort(r.date)];
               if (qualityName) primaryParts.push(qualityName);
               if (r.eventType) {
                 primaryParts.unshift(getEventLabel(r.eventType));
@@ -494,7 +494,7 @@ export function ActivityHistoryWidget({
                   tone={toneFromString(title)}
                   fontSize={11}
                   imageUrl={posterUrl ?? undefined}
-                  timePill={`${formatDistanceToNowShort(r.date)} ago`}
+                  timePill={formatDistanceToNowShort(r.date)}
                   badge={{ icon: getEventIcon(r.eventType), color }}
                 />
                 <div className='mt-0 md:mt-1.5'>

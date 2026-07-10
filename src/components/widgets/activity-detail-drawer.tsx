@@ -181,7 +181,7 @@ export function ActivityDetailDrawer({ record, onClose }: Props) {
             </Badge>
           </div>
           <div className="text-[11px]" style={{ color: HPR.fgMute, fontFamily: FONT_MONO }}>
-            {record ? `${formatDistanceToNowShort(record.date)} ago` : ''}
+            {record ? formatDistanceToNowShort(record.date) : ''}
             {record ? ` · ${new Date(record.date).toLocaleString()}` : ''}
           </div>
         </DrawerHeader>
