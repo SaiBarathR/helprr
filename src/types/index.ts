@@ -1071,6 +1071,23 @@ export interface LibraryGapsResponse {
   completeness?: LibraryCompleteness; // omitted when no monitored units exist
 }
 
+// Random watch — one downloaded movie/series drawn from the Radarr/Sonarr
+// pools by /api/random-watch. Shared by the page and the dashboard widget.
+export interface RandomPick {
+  mediaType: 'movie' | 'series';
+  id: number;
+  instanceId: string | null;
+  title: string;
+  year: number | null;
+  overview: string | null;
+  posterUrl: string | null;
+  backdropUrl: string | null;
+  runtime: number | null;
+  genres: string[];
+  href: string;
+  rating: number | null;
+}
+
 // Radarr Credit
 export interface RadarrCredit {
   id: number;

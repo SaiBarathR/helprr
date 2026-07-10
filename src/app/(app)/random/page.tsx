@@ -10,24 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import type { RandomPick } from '@/types';
 
 type FilterType = 'any' | 'movie' | 'series';
 type WatchFilter = 'all' | 'unwatched';
-
-interface RandomPick {
-  mediaType: 'movie' | 'series';
-  id: number;
-  instanceId: string | null;
-  title: string;
-  year: number | null;
-  overview: string | null;
-  posterUrl: string | null;
-  backdropUrl: string | null;
-  runtime: number | null;
-  genres: string[];
-  href: string;
-  rating: number | null;
-}
 
 export default function RandomWatchPage() {
   const me = useMe();

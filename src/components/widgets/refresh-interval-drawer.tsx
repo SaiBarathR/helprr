@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import {
-  Activity, AlertTriangle, BarChart, BarChart3, Bell, Building2, Calendar,
-  CalendarDays, Clock, Database, Download, Film, Filter, HardDrive, HelpCircle,
-  History, Layers, MonitorPlay, PlayCircle, RotateCcw, Search, Server,
-  ShieldAlert, Sparkles, Square, Tags, Timer, Tv, Users, XCircle,
+  Activity, AlertTriangle, BarChart, BarChart3, Bell, Bookmark, Building2,
+  Calendar, CalendarDays, Clock, Database, Dices, Download, FileStack, Film,
+  Filter, Gauge, HardDrive, HelpCircle, History, Layers, Link2, MonitorPlay,
+  Palette, PlayCircle, RotateCcw, ScrollText, Search, SearchX, Server, Shield,
+  ShieldAlert, Sliders, Sparkles, Square, Tags, Terminal, Timer, Tv,
+  UserCircle, Users, XCircle,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -25,10 +27,11 @@ import {
 import { useDashboardLayout } from './dashboard-layout-context';
 
 const WIDGET_ICONS: Record<string, LucideIcon> = {
-  Activity, BarChart, BarChart3, Bell, Building2, Calendar, CalendarDays,
-  Clock, Database, Download, Film, Filter, HardDrive, History, Layers,
-  MonitorPlay, PlayCircle, Search, Server, ShieldAlert, Sparkles, Tags,
-  Timer, Tv, Users, XCircle,
+  Activity, BarChart, BarChart3, Bell, Bookmark, Building2, Calendar,
+  CalendarDays, Clock, Database, Dices, Download, FileStack, Film, Filter,
+  Gauge, HardDrive, History, Layers, Link2, MonitorPlay, Palette, PlayCircle,
+  ScrollText, Search, SearchX, Server, Shield, ShieldAlert, Sliders, Sparkles,
+  Tags, Terminal, Timer, Tv, UserCircle, Users, XCircle,
 };
 
 function getIcon(name: string): LucideIcon {
