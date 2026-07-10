@@ -52,6 +52,11 @@ next-env.d.ts
 /plans
 /docs
 
+# Versioned README captures
+!/docs/
+!/docs/screenshots/
+!/docs/screenshots/*.jpg
+
 # Captured request artifacts
 *.har
 anilistCharts/
