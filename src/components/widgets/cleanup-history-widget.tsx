@@ -170,7 +170,7 @@ export function CleanupHistoryWidget({
                     textOverflow: 'ellipsis',
                   }}
                 >
-                  {actionLabel(r.action)} · {r.cleaner} · {formatDistanceToNowShort(r.createdAt)} ago
+                  {actionLabel(r.action)} · {r.cleaner} · {formatDistanceToNowShort(r.createdAt)}
                   {rowSpan >= 2 && r.ruleName ? ` · ${r.ruleName}` : ''}
                 </div>
                 <div

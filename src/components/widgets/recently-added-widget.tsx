@@ -182,7 +182,7 @@ export function RecentlyAddedWidget({
                 label={it.title}
                 tone={toneFromString(it.title)}
                 imageUrl={posterSrc ?? undefined}
-                timePill={`${formatDistanceToNowShort(it.date)} ago`}
+                timePill={formatDistanceToNowShort(it.date)}
                 badge={{
                   icon:
                     it.type === 'movie' ? (
@@ -306,7 +306,7 @@ function RecentRow({ item }: { item: RecentItem }) {
             textOverflow: 'ellipsis',
           }}
         >
-          {formatDistanceToNowShort(item.date)} ago
+          {formatDistanceToNowShort(item.date)}
         </div>
       </div>
       <div
