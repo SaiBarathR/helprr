@@ -72,12 +72,12 @@ export function JellyfinActivityFeed({
       {list.length > 0 && (
         <button
           type="button"
+          aria-label="See all"
           onClick={() => { if (!editMode) setSeeAll(true); }}
           style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: editMode ? 'default' : 'pointer', padding: 0 }}
         >
           {/* Compact cells keep the action but shed the label width. */}
-          <span className="@max-[219px]/cell:hidden">See all →</span>
-          <span className="hidden @max-[219px]/cell:inline">All →</span>
+          <span className="@max-[219px]/cell:hidden">See all </span>→
         </button>
       )}
     </>

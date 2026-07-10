@@ -9,7 +9,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import type { WidgetProps } from '@/lib/widgets/types';
-import type { RandomPick } from '@/types';
+import type { RandomPick, RandomWatchFilterType as FilterType } from '@/types';
 import {
   EmptyState,
   FONT_DISPLAY,
@@ -22,8 +22,6 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useWidgetFilter } from './use-widget-filter';
-
-type FilterType = 'any' | 'movie' | 'series';
 
 interface RandomWatchResponse {
   pick: RandomPick | null;

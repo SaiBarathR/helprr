@@ -1073,6 +1073,8 @@ export interface LibraryGapsResponse {
 
 // Random watch — one downloaded movie/series drawn from the Radarr/Sonarr
 // pools by /api/random-watch. Shared by the page and the dashboard widget.
+export type RandomWatchFilterType = 'any' | 'movie' | 'series';
+
 export interface RandomPick {
   mediaType: 'movie' | 'series';
   id: number;

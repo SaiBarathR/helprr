@@ -41,7 +41,7 @@ export function LibraryGapsWidget({ refreshInterval, editMode = false }: WidgetP
     <InsightsWidgetFrame<LibraryGapsResponse>
       title="Library Gaps"
       right={
-        <Link href="/library-gaps" style={{ color: 'inherit', textDecoration: 'none' }}>
+        <Link href="/library-gaps" aria-label="View all" style={{ color: 'inherit', textDecoration: 'none' }}>
           <span className="@max-[219px]/cell:hidden">View all </span>→
         </Link>
       }

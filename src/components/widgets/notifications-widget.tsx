@@ -141,7 +141,7 @@ export function NotificationsWidget({
       <SectionHeader
         title="Notifications"
         right={
-          <Link href="/notifications" style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Link href="/notifications" aria-label="View all" style={{ color: 'inherit', textDecoration: 'none' }}>
             <span className="@max-[219px]/cell:hidden">View all </span>→
           </Link>
         }

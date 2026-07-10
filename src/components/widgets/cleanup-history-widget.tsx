@@ -109,7 +109,7 @@ export function CleanupHistoryWidget({
       <SectionHeader
         title="Cleanup History"
         right={
-          <Link href="/cleanup" style={{ color: 'inherit', textDecoration: 'none' }}>
+          <Link href="/cleanup" aria-label="View all" style={{ color: 'inherit', textDecoration: 'none' }}>
             <span className="@max-[219px]/cell:hidden">View all </span>→
           </Link>
         }
