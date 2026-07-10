@@ -152,7 +152,20 @@ export function AnalysisScopeChips({
               : 'bg-accent/40 text-muted-foreground border border-transparent hover:text-foreground'
           }`}
         >
-          {id === 'all' ? 'All' : id === 'movie' ? 'Movies' : 'Episodes'}
+          {/* Full labels give way to short ones when the cell can't fit the row. */}
+          {id === 'all' ? (
+            'All'
+          ) : id === 'movie' ? (
+            <>
+              <span className="@max-[239px]/cell:hidden">Movies</span>
+              <span className="hidden @max-[239px]/cell:inline">Mov</span>
+            </>
+          ) : (
+            <>
+              <span className="@max-[239px]/cell:hidden">Episodes</span>
+              <span className="hidden @max-[239px]/cell:inline">Eps</span>
+            </>
+          )}
         </button>
       ))}
     </div>

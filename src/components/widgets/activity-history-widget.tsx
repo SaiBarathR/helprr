@@ -221,6 +221,11 @@ function ActivityChip({
         fontSize: 9,
         letterSpacing: '0.02em',
         whiteSpace: 'nowrap',
+        // Chips sit in a flex-wrap row: a single long chip (indexer/release
+        // group) must clip at the row edge instead of overflowing the cell.
+        maxWidth: '100%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
       }}
     >
       {children}
@@ -281,8 +286,13 @@ export function ActivityHistoryWidget({
     <>
       {historyNode}
       {toggleNode}
-      <Link href="/activity?tab=queue" style={{ color: 'inherit', textDecoration: 'none' }}>
-        View all →
+      <Link
+        href="/activity?tab=queue"
+        aria-label="View all"
+        style={{ color: 'inherit', textDecoration: 'none' }}
+      >
+        {/* "View all →" → "→" on compact cells so the title keeps its width. */}
+        <span className="@max-[219px]/cell:hidden">View all </span>→
       </Link>
     </>
   );
@@ -350,17 +360,19 @@ export function ActivityHistoryWidget({
               }
 
               const inner = (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0' }}>
+                <div
+                  className="gap-2.5 @max-[219px]/cell:gap-2"
+                  style={{ display: 'flex', alignItems: 'flex-start', padding: '9px 0' }}
+                >
+                  {/* Event icon duplicates the event label in the meta line — dropped on tiny cells. */}
                   <div
+                    className="flex items-center justify-center @max-[159px]/cell:hidden"
                     style={{
                       width: 24,
                       height: 24,
                       borderRadius: 5,
                       background: mix(color, 14),
                       color,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
                       flexShrink: 0,
                       marginTop: 1,
                     }}
@@ -381,6 +393,9 @@ export function ActivityHistoryWidget({
                       {title}
                     </div>
                     <div
+                      // break-words: long unbreakable tokens (quality names) wrap
+                      // instead of painting past the row edge on narrow cells.
+                      className="break-words"
                       style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO, marginTop: 2 }}
                     >
                       {primaryParts.join(' · ')}
@@ -424,7 +439,10 @@ export function ActivityHistoryWidget({
                     }}
                     className='flex-col align-center gap-2'
                   >
-                    {r.mediaType === 'movie' ? <Film size={13} /> : <Tv size={13} />}
+                    {/* Media-type icon is decoration — hidden on compact cells; the detail button stays. */}
+                    <span className="@max-[219px]/cell:hidden">
+                      {r.mediaType === 'movie' ? <Film size={13} /> : <Tv size={13} />}
+                    </span>
                     <DetailButton onClick={() => openDetail(r)} />
                   </span>
                 </div>

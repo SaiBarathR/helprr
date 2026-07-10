@@ -85,7 +85,20 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
                 flexShrink: 0,
               }}
             >
-              {s.ok ? (narrow ? '●' : 'ONLINE') : narrow ? '×' : 'OFFLINE'}
+              {/* Status collapses to its symbol when the cell is too narrow for the word. */}
+              {s.ok ? (
+                narrow ? '●' : (
+                  <>
+                    <span className="@max-[179px]/cell:hidden">ONLINE</span>
+                    <span className="hidden @max-[179px]/cell:inline">●</span>
+                  </>
+                )
+              ) : narrow ? '×' : (
+                <>
+                  <span className="@max-[179px]/cell:hidden">OFFLINE</span>
+                  <span className="hidden @max-[179px]/cell:inline">×</span>
+                </>
+              )}
             </span>
           </div>
         ))}

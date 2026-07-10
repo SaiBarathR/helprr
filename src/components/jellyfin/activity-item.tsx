@@ -59,13 +59,14 @@ export function ActivityItem({ entry, variant, alert = false }: ActivityItemProp
   }
 
   return (
-    <div className="flex items-start gap-3 p-3">
-      <div className={`rounded-lg p-1.5 ${bg} ${color}`}><Icon className="h-3.5 w-3.5" /></div>
+    <div className="flex items-start gap-3 p-3 @max-[219px]/cell:gap-2 @max-[219px]/cell:p-2">
+      {/* Icon chip is decoration — dropped on compact cells. */}
+      <div className={`rounded-lg p-1.5 @max-[219px]/cell:hidden ${bg} ${color}`}><Icon className="h-3.5 w-3.5" /></div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{entry.Name}</p>
         {entry.Overview && <p className="text-xs text-muted-foreground truncate">{entry.Overview}</p>}
       </div>
-      <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(entry.Date)}</span>
+      <span className="text-xs text-muted-foreground whitespace-nowrap shrink-0">{timeAgo(entry.Date)}</span>
     </div>
   );
 }

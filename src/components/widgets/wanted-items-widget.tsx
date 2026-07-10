@@ -69,7 +69,16 @@ export function WantedItemsWidget({
         </div>
       )}
       <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
-        <Eyebrow>{compact ? 'Wanted' : 'Wanted Items'}</Eyebrow>
+        <Eyebrow>
+          {compact ? (
+            'Wanted'
+          ) : (
+            <>
+              <span className="@max-[219px]/cell:hidden">Wanted Items</span>
+              <span className="hidden @max-[219px]/cell:inline">Wanted</span>
+            </>
+          )}
+        </Eyebrow>
         <div
           style={{
             display: 'flex',
@@ -84,11 +93,13 @@ export function WantedItemsWidget({
               whole — the label never gets separated and clipped in tiny cells.
               In compact sizes the count drops to the small treatment (no big
               headline number) since the labels already name each data point. */}
-          <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+          {/* Font sizes live in classes so tiny cells (~82px) can step the type
+              down; the label truncates as a last resort — the number never does. */}
+          <span className="min-w-0 max-w-full" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
             <span
+              className={`${compact ? 'text-[15px]' : 'text-[22px]'} @max-[159px]/cell:text-[13px]`}
               style={{
                 fontFamily: FONT_DISPLAY,
-                fontSize: compact ? 15 : 22,
                 color: HPR.fg,
                 fontWeight: 700,
                 lineHeight: 1,
@@ -97,14 +108,16 @@ export function WantedItemsWidget({
             >
               {missing}
             </span>
-            <span style={{ fontSize: compact ? 10 : 11, color: HPR.fgMute }}>missing</span>
+            <span className={`min-w-0 truncate ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
+              missing
+            </span>
           </span>
           {cutoff > 0 && (
-            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
+            <span className="min-w-0 max-w-full" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, whiteSpace: 'nowrap' }}>
               <span
+                className={`${compact ? 'text-[15px]' : 'text-sm'} @max-[159px]/cell:text-[13px]`}
                 style={{
                   fontFamily: FONT_DISPLAY,
-                  fontSize: compact ? 15 : 14,
                   color: HPR.amber,
                   fontWeight: compact ? 700 : 600,
                   lineHeight: 1,
@@ -112,12 +125,18 @@ export function WantedItemsWidget({
               >
                 {cutoff}
               </span>
-              <span style={{ fontSize: compact ? 10 : 11, color: HPR.fgMute }}>cutoff</span>
+              <span className={`min-w-0 truncate ${compact ? 'text-[10px]' : 'text-[11px]'} @max-[159px]/cell:text-[9px]`} style={{ color: HPR.fgMute }}>
+                cutoff
+              </span>
             </span>
           )}
         </div>
       </div>
-      {!compact && <div style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>→</div>}
+      {!compact && (
+        <div className="@max-[219px]/cell:hidden" style={{ color: HPR.fgSubtle, fontSize: 13, flexShrink: 0 }}>
+          →
+        </div>
+      )}
     </div>
   );
 

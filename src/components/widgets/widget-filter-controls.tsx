@@ -238,7 +238,9 @@ export function SortTogglePill({
     >
       <Pill color={HPR.cyan}>
         <ArrowUpDown size={9} strokeWidth={2.4} />
-        {value === 'plays' ? 'PLAYS' : 'DURATION'}
+        {/* "DURATION" → "DUR" on compact cells so the widget title keeps room. */}
+        <span className="@max-[259px]/cell:hidden">{value === 'plays' ? 'PLAYS' : 'DURATION'}</span>
+        <span className="hidden @max-[259px]/cell:inline">{value === 'plays' ? 'PLAYS' : 'DUR'}</span>
       </Pill>
     </button>
   );

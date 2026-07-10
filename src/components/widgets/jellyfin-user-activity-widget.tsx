@@ -62,6 +62,22 @@ function formatDateCreated(dateStr: string): string {
   }
 }
 
+// The Playback Reporting plugin returns verbose durations ("2 weeks 1 day
+// 17 hours 35 minutes", "3 days ago"). Compact cells swap them for short
+// forms ("2w 1d", "3d") so the numbers stay fully readable.
+function shortPluginDuration(text: string, maxParts = 2): string {
+  const UNITS: Record<string, string> = {
+    year: 'y', month: 'mo', week: 'w', day: 'd', hour: 'h', minute: 'm', second: 's',
+  };
+  const parts: string[] = [];
+  for (const m of text.matchAll(/(\d+)\s*([a-zA-Z]+)/g)) {
+    const unit = UNITS[m[2].toLowerCase().replace(/s$/, '')];
+    if (unit) parts.push(`${m[1]}${unit}`);
+    if (parts.length >= maxParts) break;
+  }
+  return parts.length > 0 ? parts.join(' ') : text;
+}
+
 export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter<Filters>('jellyfin-user-activity', DEFAULTS);
   const [selectedUser, setSelectedUser] = useState<PlaybackUserActivity | null>(null);
@@ -145,10 +161,11 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
                   key={user.user_id}
                   type="button"
                   onClick={editMode ? undefined : () => openUserHistory(user)}
-                  className="w-full text-left rounded-xl bg-muted/30 p-3 active:bg-muted/50 transition-colors"
+                  className="w-full text-left rounded-xl bg-muted/30 p-3 active:bg-muted/50 transition-colors @max-[219px]/cell:p-2"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className="flex items-center gap-3 @max-[219px]/cell:gap-2">
+                    {/* Avatar is decoration — dropped on compact cells. */}
+                    <div className="h-9 w-9 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden @max-[219px]/cell:hidden">
                       {avatarSrc ? (
                         <Image
                           src={avatarSrc}
@@ -167,16 +184,24 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{user.user_name}</p>
                       <p className="text-[11px] text-muted-foreground truncate">
-                        {user.item_name || 'No recent activity'} · {user.client_name}
+                        {user.item_name || 'No recent activity'}
+                        {/* Client is tertiary — dropped on compact cells. */}
+                        <span className="@max-[219px]/cell:hidden"> · {user.client_name}</span>
                       </p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-[10px] text-muted-foreground">{user.last_seen}</p>
+                      {/* "3 days ago" → "3d" on compact cells. */}
+                      <p className="text-[10px] text-muted-foreground @max-[219px]/cell:hidden">{user.last_seen}</p>
+                      <p className="hidden text-[10px] text-muted-foreground @max-[219px]/cell:block">{shortPluginDuration(user.last_seen, 1)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0">{user.total_count} plays</Badge>
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{user.total_play_time}</Badge>
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 max-w-full">
+                      {/* "2 weeks 1 day 17 hours 35 minutes" → "2w 1d" once the pill can't fit. */}
+                      <span className="truncate @max-[259px]/cell:hidden">{user.total_play_time}</span>
+                      <span className="hidden @max-[259px]/cell:inline">{shortPluginDuration(user.total_play_time)}</span>
+                    </Badge>
                   </div>
                 </button>
               );

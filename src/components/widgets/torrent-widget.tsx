@@ -120,7 +120,9 @@ export function TorrentWidget({
           >
             {total}
           </span>
-          <Eyebrow>torrent</Eyebrow>
+          <Eyebrow>
+            <span className="@max-[159px]/cell:hidden">torrent</span>
+          </Eyebrow>
         </div>
         {data && (
           <div

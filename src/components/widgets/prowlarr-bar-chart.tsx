@@ -1,6 +1,6 @@
 'use client';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import { Y_WIDTH, CHART_MARGIN, YTick, ChartTooltip, type ProwlarrChartBar } from './prowlarr-stats-shared';
+import { chartLayoutForWidth, CHART_MARGIN, YTick, ChartTooltip, type ProwlarrChartBar } from './prowlarr-stats-shared';
 
 // Recharts (~40KB) lives only in this module so it can be code-split out of the
 // main dashboard bundle and loaded on demand (see the dynamic() import in
@@ -9,9 +9,12 @@ interface ProwlarrBarChartProps {
   rows: { name: string }[];
   bars: ProwlarrChartBar[];
   xTickFormatter: (value: number) => string;
+  /** Measured width of the chart container — drives the compact axis layout. */
+  containerWidth?: number;
 }
 
-export default function ProwlarrBarChart({ rows, bars, xTickFormatter }: ProwlarrBarChartProps) {
+export default function ProwlarrBarChart({ rows, bars, xTickFormatter, containerWidth = 0 }: ProwlarrBarChartProps) {
+  const { yWidth, yMaxLen, xTickCount } = chartLayoutForWidth(containerWidth);
   return (
     <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
       <BarChart data={rows} layout="vertical" margin={CHART_MARGIN}>
@@ -19,14 +22,15 @@ export default function ProwlarrBarChart({ rows, bars, xTickFormatter }: Prowlar
           type="number"
           tick={{ fontSize: 10, fill: 'var(--hpr-fgMute)' }}
           tickFormatter={xTickFormatter}
+          tickCount={xTickCount}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
           type="category"
           dataKey="name"
-          width={Y_WIDTH}
-          tick={<YTick />}
+          width={yWidth}
+          tick={<YTick maxLen={yMaxLen} />}
           axisLine={false}
           tickLine={false}
         />

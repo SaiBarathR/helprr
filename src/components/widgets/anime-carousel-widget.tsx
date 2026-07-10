@@ -271,7 +271,7 @@ export function AnimeCarouselWidget({
             <>
               {toggleNode}
               <Link href={viewAllHref} style={{ color: HPR.fgMute, textDecoration: 'none' }}>
-                View all →
+                <span className="@max-[219px]/cell:hidden">View all </span>→
               </Link>
             </>
           }
@@ -383,7 +383,7 @@ export function AnimeCarouselWidget({
           <>
             {toggleNode}
             <Link href={viewAllHref} style={{ color: HPR.fgMute, textDecoration: 'none' }}>
-              View all →
+              <span className="@max-[219px]/cell:hidden">View all </span>→
             </Link>
           </>
         }
@@ -469,7 +469,7 @@ export function AnimeCarouselWidget({
               fontFamily: FONT_MONO,
             }}
           >
-            See all →
+            <span className="@max-[219px]/cell:hidden">See all </span>→
           </Link>
         )}
       </div>

@@ -110,7 +110,7 @@ export function CleanupHistoryWidget({
         title="Cleanup History"
         right={
           <Link href="/cleanup" style={{ color: 'inherit', textDecoration: 'none' }}>
-            View all →
+            <span className="@max-[219px]/cell:hidden">View all </span>→
           </Link>
         }
       />
@@ -127,17 +127,19 @@ export function CleanupHistoryWidget({
         {list.slice(0, visibleCount).map((r, i) => {
           const color = actionColor(r.action);
           const inner = (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
+            <div
+              className="gap-2.5 @max-[219px]/cell:gap-2"
+              style={{ display: 'flex', alignItems: 'center', padding: '8px 0' }}
+            >
+              {/* Action icon is decoration (label repeats it) — dropped on tiny cells. */}
               <div
+                className="flex items-center justify-center @max-[159px]/cell:hidden"
                 style={{
                   width: 22,
                   height: 22,
                   borderRadius: 5,
                   background: mix(color, 14),
                   color,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
@@ -155,7 +157,10 @@ export function CleanupHistoryWidget({
                 >
                   {r.torrentName}
                 </div>
+                {/* Full meta on regular cells; compact cells drop the cleaner leg,
+                    rule name and "ago" so action + timestamp stay fully readable. */}
                 <div
+                  className="@max-[219px]/cell:hidden"
                   style={{
                     fontSize: 9,
                     color: HPR.fgMute,
@@ -167,6 +172,19 @@ export function CleanupHistoryWidget({
                 >
                   {actionLabel(r.action)} · {r.cleaner} · {formatDistanceToNowShort(r.createdAt)} ago
                   {rowSpan >= 2 && r.ruleName ? ` · ${r.ruleName}` : ''}
+                </div>
+                <div
+                  className="hidden @max-[219px]/cell:block"
+                  style={{
+                    fontSize: 9,
+                    color: HPR.fgMute,
+                    fontFamily: FONT_MONO,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  {actionLabel(r.action)} · {formatDistanceToNowShort(r.createdAt)}
                 </div>
                 {rowSpan >= 2 && r.reSearched && (
                   <div

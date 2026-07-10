@@ -47,14 +47,7 @@ export function ProwlarrStatsSummaryWidget({ refreshInterval, editMode = false, 
       {loading && indexers.length === 0 ? (
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            gap: 10,
-            flex: 1,
-          }}
-        >
+        <div className="grid flex-1 grid-cols-2 gap-2.5 @max-[239px]/cell:gap-x-1.5 @max-[159px]/cell:grid-cols-1 @max-[159px]/cell:gap-1.5">
           <StatTile
             icon={<Database size={14} />}
             label="Indexers"

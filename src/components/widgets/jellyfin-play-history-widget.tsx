@@ -53,6 +53,14 @@ function formatDateCreated(dateStr: string): string {
   }
 }
 
+function formatDateCreatedShort(dateStr: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
+  } catch {
+    return dateStr;
+  }
+}
+
 function getMethodColor(method: string): string {
   const m = method.toLowerCase();
   if (m.startsWith('directplay')) return 'text-green-500 border-green-500/30';
@@ -182,8 +190,8 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
           <>
             <div className="space-y-1">
               {items.map((item) => (
-                <div key={item.RowId} className="flex items-center gap-3 py-1 rounded-lg hover:bg-muted/30">
-                  <div className="p-1.5 rounded bg-muted shrink-0">
+                <div key={item.RowId} className="flex items-center gap-3 py-1 rounded-lg hover:bg-muted/30 @max-[219px]/cell:gap-2">
+                  <div className="p-1.5 rounded bg-muted shrink-0 @max-[219px]/cell:hidden">
                     {item.ItemType === 'Movie' ? (
                       <Film className="h-3.5 w-3.5 text-muted-foreground" />
                     ) : item.ItemType === 'Episode' ? (
@@ -194,19 +202,23 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm truncate">{item.ItemName}</p>
-                    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                      <span>{item.ClientName}</span>
+                    <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-[10px] text-muted-foreground">
+                      <span className="min-w-0 truncate">{item.ClientName}</span>
+                      {/* Device is tertiary — dropped on compact cells. */}
+                      <span className="@max-[219px]/cell:hidden">·</span>
+                      <span className="min-w-0 truncate @max-[219px]/cell:hidden">{item.DeviceName}</span>
                       <span>·</span>
-                      <span>{item.DeviceName}</span>
-                      <span>·</span>
-                      <span>{formatDurationSeconds(item.PlayDuration)}</span>
+                      <span className="shrink-0">{formatDurationSeconds(item.PlayDuration)}</span>
                     </div>
                   </div>
-                  <div className="text-right shrink-0 space-y-0.5">
-                    <Badge variant="outline" className={`text-[9px] px-1 py-0 ${getMethodColor(item.PlaybackMethod)}`}>
-                      {item.PlaybackMethod}
+                  <div className="text-right shrink-0 max-w-[50%] space-y-0.5">
+                    <Badge variant="outline" className={`text-[9px] px-1 py-0 max-w-full ${getMethodColor(item.PlaybackMethod)}`}>
+                      {/* "Transcode (v:direct a:direct)" → "Transcode" on compact cells. */}
+                      <span className="truncate @max-[219px]/cell:hidden">{item.PlaybackMethod}</span>
+                      <span className="hidden truncate @max-[219px]/cell:inline">{item.PlaybackMethod.split(' ')[0]}</span>
                     </Badge>
-                    <p className="text-[10px] text-muted-foreground">{formatDateCreated(item.DateCreated)}</p>
+                    <p className="text-[10px] text-muted-foreground truncate @max-[219px]/cell:hidden">{formatDateCreated(item.DateCreated)}</p>
+                    <p className="hidden text-[10px] text-muted-foreground truncate @max-[219px]/cell:block">{formatDateCreatedShort(item.DateCreated)}</p>
                   </div>
                 </div>
               ))}

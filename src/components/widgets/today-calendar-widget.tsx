@@ -118,7 +118,7 @@ export function TodayCalendarWidget({
     <>
       {toggleNode}
       <Link href="/calendar" style={{ color: 'inherit', textDecoration: 'none' }}>
-        View all →
+        <span className="@max-[219px]/cell:hidden">View all </span>→
       </Link>
     </>
   );
@@ -173,23 +173,26 @@ export function TodayCalendarWidget({
             const poster = getPoster(ev.images, posterHint(ev.type));
             const row = (
               <div
+                className="gap-3 @max-[219px]/cell:gap-2"
                 style={{
                   display: 'flex',
                   alignItems: 'flex-start',
-                  gap: 12,
                   padding: 8,
                   background: HPR.ink,
                   borderRadius: 12,
                 }}
               >
-                <Poster
-                  width={48}
-                  height={72}
-                  label={ev.title}
-                  tone={toneFromString(ev.title)}
-                  fontSize={8}
-                  imageUrl={poster ?? undefined}
-                />
+                {/* Poster is decoration — dropped on tiny cells so the title keeps width. */}
+                <div className="shrink-0 @max-[159px]/cell:hidden">
+                  <Poster
+                    width={48}
+                    height={72}
+                    label={ev.title}
+                    tone={toneFromString(ev.title)}
+                    fontSize={8}
+                    imageUrl={poster ?? undefined}
+                  />
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div
                     style={{
@@ -204,7 +207,8 @@ export function TodayCalendarWidget({
                     {ev.title}
                   </div>
                   {(ev.releaseType || ev.finaleType || ev.hasFile) && (
-                    <div className="flex items-center gap-1" style={{ marginTop: 3 }}>
+                    // Badges wrap onto extra lines on narrow cells instead of clipping.
+                    <div className="flex flex-wrap items-center gap-1" style={{ marginTop: 3 }}>
                       {ev.releaseType && <ReleaseTypeBadge type={ev.releaseType} />}
                       {ev.finaleType && <FinaleBadge type={ev.finaleType} />}
                       {Boolean(ev.hasFile) && (
@@ -252,16 +256,15 @@ export function TodayCalendarWidget({
                     </div>
                   )}
                 </div>
+                {/* Media-type icon is decoration — hidden on compact cells. */}
                 <div
+                  className="flex items-center justify-center @max-[219px]/cell:hidden"
                   style={{
                     width: 20,
                     height: 20,
                     borderRadius: 6,
                     background: typeColor(ev.type),
                     color: 'var(--hpr-fg)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
                     flexShrink: 0,
                     marginRight: 4,
                     marginTop: 2,

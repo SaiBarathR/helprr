@@ -75,7 +75,9 @@ export function JellyfinActivityFeed({
           onClick={() => { if (!editMode) setSeeAll(true); }}
           style={{ background: 'none', border: 'none', color: 'inherit', font: 'inherit', cursor: editMode ? 'default' : 'pointer', padding: 0 }}
         >
-          See all →
+          {/* Compact cells keep the action but shed the label width. */}
+          <span className="@max-[219px]/cell:hidden">See all →</span>
+          <span className="hidden @max-[219px]/cell:inline">All →</span>
         </button>
       )}
     </>
