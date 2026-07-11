@@ -188,6 +188,14 @@ export async function startCleanupJobs(): Promise<void> {
   await Promise.allSettled([restartQueueCleaner(), restartDownloadCleaner()]);
 }
 
+/** Clear both timers so no new cycles start (shutdown). In-flight cycles keep
+ *  running — drain them with awaitInFlightQueue/awaitInFlightDownload. */
+export function stopCleanupJobs(): void {
+  const s = getState();
+  clear(s.queue);
+  clear(s.download);
+}
+
 export interface CleanerSchedulerStatus {
   autoRunMode: AutoRunMode;
   intervalMinutes: number;

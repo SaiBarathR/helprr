@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow: multi-arch (amd64/arm64) images on GHCR — `edge` from the
   development branch, semver + `stable` channel tags from release tags.
 
+### Fixed
+
+- Graceful shutdown: the container previously ran node behind `sh -c`, so
+  SIGTERM never reached the app and every update hard-killed it after
+  Docker's grace period. The entrypoint now execs node as PID 1, and a
+  shutdown coordinator stops polling/cleanup timers, drains in-flight cycles
+  (bounded at 30s), flushes logs, and disconnects Prisma/Redis before exit.
+  Compose sets `stop_grace_period: 45s`.
+
 ### Changed
 
 - The VAPID public key is now runtime configuration served via an

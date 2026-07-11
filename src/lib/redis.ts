@@ -6,7 +6,6 @@ const globalForRedis = globalThis as typeof globalThis & {
   redisClient?: HelprrRedisClient;
   redisConnectPromise?: Promise<HelprrRedisClient>;
   redisDisconnectPromise?: Promise<void>;
-  redisShutdownHandlersRegistered?: boolean;
 };
 
 export async function getRedisClient(): Promise<HelprrRedisClient> {
@@ -76,21 +75,4 @@ export async function disconnectRedisClient(): Promise<void> {
   })();
 
   return globalForRedis.redisDisconnectPromise;
-}
-
-export function registerRedisShutdownHandlers(): void {
-  if (globalForRedis.redisShutdownHandlersRegistered) return;
-
-  const onShutdown = (signal: string) => {
-    void disconnectRedisClient().catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[Redis] Shutdown handler (${signal}) failed:`, message);
-    });
-  };
-
-  process.on('beforeExit', () => onShutdown('beforeExit'));
-  process.on('SIGINT', () => onShutdown('SIGINT'));
-  process.on('SIGTERM', () => onShutdown('SIGTERM'));
-
-  globalForRedis.redisShutdownHandlersRegistered = true;
 }

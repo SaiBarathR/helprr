@@ -436,6 +436,9 @@ export class PollingService {
   private currentIntervalMs: number | null = null;
   private isPolling = false;
   private pollPending = false;
+  // Handle on the running cycle so shutdown can drain it (bounded) instead of
+  // killing DB/notification writes mid-flight.
+  private currentPoll: Promise<void> | null = null;
   private activePollSources = new Set<string>();
   // Epoch ms of the last NotificationHistory retention sweep. The poll loop runs
   // every ~30s but the sweep is throttled to once/day; 0 = run on first cycle.
@@ -503,8 +506,10 @@ export class PollingService {
     initVapid();
     logger.info('Polling service starting', { intervalMs }, { scope: 'polling' });
     this.currentIntervalMs = intervalMs;
-    this.intervalId = setInterval(() => void this.poll(), intervalMs);
-    void this.poll();
+    this.intervalId = setInterval(() => {
+      this.currentPoll = this.poll();
+    }, intervalMs);
+    this.currentPoll = this.poll();
   }
 
   restart(intervalMs: number): void {
@@ -607,7 +612,22 @@ export class PollingService {
       this.isPolling = false;
       if (this.pollPending) {
         this.pollPending = false;
-        void this.poll();
+        // Only re-run while the service is still running — after stop() this
+        // would start a fresh cycle mid-shutdown.
+        if (this.intervalId) {
+          this.currentPoll = this.poll();
+        }
+      }
+    }
+  }
+
+  /** Await the in-flight polling cycle, if any. Never rejects — poll() logs its own failures. */
+  async awaitInFlightPoll(): Promise<void> {
+    if (this.currentPoll) {
+      try {
+        await this.currentPoll;
+      } catch {
+        /* logged inside poll() */
       }
     }
   }

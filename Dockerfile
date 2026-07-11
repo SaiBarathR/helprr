@@ -50,6 +50,7 @@ COPY --from=builder /app/prisma ./prisma
 # Standalone output + static assets
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 
 # Prisma CLI needs node_modules for boot-time migrate deploy
 COPY --from=prod-deps /app/node_modules ./node_modules
@@ -60,9 +61,10 @@ EXPOSE 3050
 ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 ENV LOG_DIR=/app/logs
+# Our shutdown coordinator (src/lib/shutdown.ts) owns SIGTERM/SIGINT and drains
+# background work; without this Next.js exits immediately on the first signal.
+ENV NEXT_MANUAL_SIG_HANDLE=true
 
-# Apply pending migrations, then start. Fails loudly (and blocks boot) if a
-# migration cannot be applied. Databases created before the migration-based
-# workflow must be baselined once:
-#   npx prisma migrate resolve --applied 0001_init
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# Migrations run in the entrypoint, which then execs node as PID 1 so it
+# receives SIGTERM directly (required for graceful shutdown on updates).
+CMD ["./docker-entrypoint.sh"]

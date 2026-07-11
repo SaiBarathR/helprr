@@ -16,10 +16,10 @@ export async function register() {
     initializeServerLogging();
 
     const { getJwtSecret } = await import('@/lib/jwt-secret');
-    const { registerRedisShutdownHandlers } = await import('@/lib/redis');
+    const { registerShutdownHandlers } = await import('@/lib/shutdown');
 
     getJwtSecret();
-    registerRedisShutdownHandlers();
+    registerShutdownHandlers();
 
     try {
       const { ensureBootstrapAdmin } = await import('@/lib/bootstrap-admin');
