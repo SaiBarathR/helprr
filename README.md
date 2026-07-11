@@ -177,14 +177,26 @@ https://github.com/user-attachments/assets/7fa980fd-0dc6-48a8-91c1-cd35453571fd
 
 Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 7. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050**.
 
-### 1. Create your deployment configuration
+### 1. Download the deployment files
+
+No clone, no build — Helprr ships as a prebuilt multi-arch image
+(amd64/arm64) on `ghcr.io/saibarathr/helprr`. You only need two files:
 
 ```bash
-cp .env.example .env
+mkdir helprr && cd helprr
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/SaiBarathR/helprr/main/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/SaiBarathR/helprr/main/.env.example
+```
+
+### 2. Configure
+
+Generate a JWT secret, then edit `.env`:
+
+```bash
 openssl rand -base64 48
 ```
 
-Edit `.env`. Before the first start, set at least:
+Before the first start, set at least:
 
 ```dotenv
 POSTGRES_PASSWORD=use-a-long-unique-password
@@ -196,12 +208,20 @@ TZ=Etc/UTC
 
 `APP_PASSWORD` creates the bootstrap administrator on first boot. Its username is `admin` by default, or the value of `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change an existing user's password.
 
-### 2. Start
+For push notifications, also set the Web Push keys — they are runtime
+configuration, no rebuild needed (generate a pair with
+`npx web-push generate-vapid-keys`):
 
-Prebuilt multi-arch images (amd64/arm64) are published to
-`ghcr.io/saibarathr/helprr`. The compose file uses the `edge` channel (latest
-development build) until the first stable release; pin a specific version with
-`HELPRR_VERSION` in `.env`.
+```dotenv
+VAPID_SUBJECT=mailto:you@example.com
+VAPID_PUBLIC_KEY=generated-public-key
+VAPID_PRIVATE_KEY=generated-private-key
+```
+
+### 3. Start
+
+The compose file uses the `edge` channel (latest development build) until the
+first stable release; pin a specific version with `HELPRR_VERSION` in `.env`.
 
 ```bash
 docker compose pull
@@ -209,10 +229,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Web Push works with the prebuilt image: the VAPID keys are runtime
-configuration (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` in
-`.env` — generate a pair with `npx web-push generate-vapid-keys`). To build
-from source instead:
+To build from source instead (developer flow — requires cloning this repo):
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
