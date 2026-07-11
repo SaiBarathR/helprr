@@ -80,16 +80,39 @@ self.addEventListener('push', (event) => {
 
 // Mirror the production worker: handle endpoint rotation (iOS rotates the push
 // endpoint) so dev/testing doesn't silently lose pushes or accumulate duplicate
-// devices. Hand the server both endpoints so it migrates the row in place. No
-// VAPID fallback here — this static file isn't webpack-processed, so the inlined
-// key isn't available; we rely on the event's own subscription / old key.
+// devices. Hand the server both endpoints so it migrates the row in place. The
+// VAPID key comes from the runtime endpoint (same as production).
+async function fetchVapidPublicKey() {
+  try {
+    const res = await fetch('/api/push/public-key', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.publicKey || null;
+  } catch {
+    return null;
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const output = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) output[i] = rawData.charCodeAt(i);
+  return output;
+}
+
 async function rotateSubscription(event) {
   try {
     const oldEndpoint = event.oldSubscription && event.oldSubscription.endpoint;
     let sub = event.newSubscription || null;
     if (!sub) {
-      const applicationServerKey =
+      let applicationServerKey =
         event.oldSubscription && event.oldSubscription.options && event.oldSubscription.options.applicationServerKey;
+      if (!applicationServerKey) {
+        const key = await fetchVapidPublicKey();
+        if (key) applicationServerKey = urlBase64ToUint8Array(key).buffer;
+      }
       if (!applicationServerKey) return;
       sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
     }

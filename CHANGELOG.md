@@ -20,10 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The VAPID public key is now runtime configuration served via an
+  authenticated `GET /api/push/public-key` (canonical env name
+  `VAPID_PUBLIC_KEY`; the old `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is still
+  accepted). Web Push now works with the prebuilt image, and rotating keys no
+  longer requires a rebuild.
 - `docker-compose.yml` now pulls the published `ghcr.io/saibarathr/helprr`
   image (`HELPRR_VERSION`, default `edge`) instead of building from source.
-  Building from source moved to `docker-compose.dev.yml` and is currently still
-  required for Web Push (build-time VAPID key).
+  Building from source moved to `docker-compose.dev.yml`.
 - `allowedDevOrigins` in `next.config.ts` is now read from the optional
   `ALLOWED_DEV_ORIGINS` env var (comma-separated) instead of being hardcoded.
 

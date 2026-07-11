@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
 import { can } from '@/lib/permissions';
+import { getVapidPublicKey } from '@/lib/vapid';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { isKnownEventType } from '@/lib/notification-events';
 import { getAppTimeZone, toZonedDate } from '@/lib/timezone';
@@ -275,7 +276,7 @@ function matchesFilters(
 export function initVapid() {
   if (vapidInitialized) return;
   const subject = process.env.VAPID_SUBJECT;
-  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+  const publicKey = getVapidPublicKey();
   const privateKey = process.env.VAPID_PRIVATE_KEY;
 
   if (!subject || !publicKey || !privateKey) {

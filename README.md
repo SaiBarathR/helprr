@@ -209,17 +209,14 @@ docker compose up -d
 docker compose ps
 ```
 
-> [!IMPORTANT]
-> Web Push does not work with the prebuilt image yet: the VAPID public key is
-> currently embedded at build time, so notifications require building from
-> source with `NEXT_PUBLIC_VAPID_PUBLIC_KEY` set in `.env`:
->
-> ```bash
-> docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-> ```
->
-> Moving the key to runtime configuration (so the prebuilt image supports push)
-> is planned before the stable release.
+Web Push works with the prebuilt image: the VAPID keys are runtime
+configuration (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` in
+`.env` — generate a pair with `npx web-push generate-vapid-keys`). To build
+from source instead:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
 
 Open `http://YOUR_SERVER:3050`, sign in with the bootstrap account, then connect services in **Settings → Instances**.
 
@@ -231,7 +228,7 @@ Use `docker compose logs -f helprr` to follow startup. The application health en
 - Set `TRUST_FORWARDED_PROTO=true` only when that proxy strips and sets forwarded headers itself. This enables correct secure-cookie and client-IP decisions.
 - Set `APP_ORIGIN=https://helprr.example.com` when enabling AniList OAuth in production. It must be a valid HTTPS origin.
 - If the PostgreSQL password contains URL-reserved characters (`@`, `:`, `/`, `?`, `#`, …), set `DATABASE_URL` explicitly with the password percent-encoded.
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is embedded during the image build. After adding or changing it, rebuild from source: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`.
+- The VAPID keys are runtime configuration: after adding or rotating them, `docker compose up -d` is enough — no rebuild. Already-subscribed devices re-subscribe automatically on their next endpoint rotation, or manually from **Settings → Notifications**.
 
 
 
@@ -306,7 +303,7 @@ Copy `.env.example` as a starting point. Never commit `.env`, `.env.local`, API 
 | Variable                       | Purpose                                                                                       |
 | ------------------------------ | --------------------------------------------------------------------------------------------- |
 | `VAPID_SUBJECT`                | Contact URI supplied to push providers, for example `mailto:you@example.com`.                 |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Public VAPID key sent to browsers. It is build-time for Docker, so rebuild after changing it. |
+| `VAPID_PUBLIC_KEY`             | Public VAPID key served to browsers at runtime (the old `NEXT_PUBLIC_VAPID_PUBLIC_KEY` name is still accepted). |
 | `VAPID_PRIVATE_KEY`            | Server-only VAPID private key. Keep it secret.                                                |
 
 
@@ -383,7 +380,7 @@ docker compose up -d
 docker compose logs -f helprr
 docker compose down
 
-# Docker (build from source, e.g. for Web Push)
+# Docker (build from source)
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 

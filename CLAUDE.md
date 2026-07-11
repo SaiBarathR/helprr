@@ -85,7 +85,7 @@ npm run db:deploy    # Prisma migrate deploy — apply pending migrations (what 
 ## Environment Variables
 
 Required: `DATABASE_URL`, `APP_PASSWORD`, `JWT_SECRET` — `APP_PASSWORD` is **not** a live login password; it only seeds the bootstrap admin's password on first boot (see Authentication).
-Optional (push notifications): `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
+Optional (push notifications): `VAPID_PUBLIC_KEY` (runtime config, served to clients via `GET /api/push/public-key`; legacy name `NEXT_PUBLIC_VAPID_PUBLIC_KEY` still accepted — see `src/lib/vapid.ts`), `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`
 Optional (proxy): `TRUST_FORWARDED_PROTO` — set to `true` only when behind a reverse proxy that strips client-supplied `x-forwarded-proto`. Enables the session cookie's `Secure` flag for proxy-terminated HTTPS.
 Optional (admin account): `HELPRR_ADMIN_USERNAME` — login username for the bootstrap admin (default `admin`); set/renamed on boot. `HELPRR_ADMIN_PASSWORD_RESET=true` force-rehashes the **bootstrap admin's** password from `APP_PASSWORD` on the next boot — a recovery path for a lost or compromised admin password. Remove it after the reset, or every reboot re-hashes from `APP_PASSWORD` and clobbers any password set in-app. Only the bootstrap admin row is affected; other users are never touched by env vars (admins manage them in-app).
 Required (cache + login rate limiting): `REDIS_URL`, `REDIS_PASSWORD` — `REDIS_PASSWORD` sets the Redis `--requirepass` password in docker-compose and is sent as the client AUTH password; `getRedisClient()` throws without it.

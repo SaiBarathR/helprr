@@ -190,10 +190,17 @@ export function usePushNotifications() {
     setError(null);
 
     try {
-      // 1. Check VAPID key
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      // 1. Fetch the VAPID key (runtime config — not baked into the bundle, so
+      // one prebuilt image serves every install's own key)
+      let vapidKey: string | null = null;
+      try {
+        const res = await fetch('/api/push/public-key');
+        if (res.ok) vapidKey = (await res.json()).publicKey ?? null;
+      } catch {
+        // fall through to the not-configured error
+      }
       if (!vapidKey) {
-        const msg = 'VAPID public key not configured. Check your .env file.';
+        const msg = 'VAPID public key not configured on the server. Set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT.';
         setError(msg);
         setLoading(false);
         return { success: false, error: msg };

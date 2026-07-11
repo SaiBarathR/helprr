@@ -308,7 +308,18 @@ self.addEventListener('push', (event) => {
 // re-subscribe creates a duplicate "device". Re-subscribe with the same VAPID key
 // and hand the server BOTH endpoints so it migrates the existing row in place
 // (preserving this device's per-event notification preferences).
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+// The key is runtime config served by the app (session cookie authenticates the
+// fetch), so rotation keeps working after the server's key pair changes.
+async function fetchVapidPublicKey(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/push/public-key', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.publicKey ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -327,9 +338,12 @@ async function rotateSubscription(event: {
     const oldEndpoint = event.oldSubscription?.endpoint;
     let sub = event.newSubscription ?? null;
     if (!sub) {
-      const applicationServerKey =
-        event.oldSubscription?.options?.applicationServerKey ??
-        (VAPID_PUBLIC_KEY ? (urlBase64ToUint8Array(VAPID_PUBLIC_KEY).buffer as ArrayBuffer) : undefined);
+      let applicationServerKey =
+        event.oldSubscription?.options?.applicationServerKey ?? undefined;
+      if (!applicationServerKey) {
+        const key = await fetchVapidPublicKey();
+        if (key) applicationServerKey = urlBase64ToUint8Array(key).buffer as ArrayBuffer;
+      }
       if (!applicationServerKey) return;
       sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
     }
