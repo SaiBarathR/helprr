@@ -23,13 +23,13 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// Create a tag on the spot from the add/edit forms. Gated by series.view — the same
-// bar the edit page clears (series PUT only needs series.view), so edit-only users
-// aren't blocked.
+// Create a tag on the spot from the add/edit forms. Creating a tag mutates
+// upstream Sonarr state, so it requires series.editTags — view-only users must
+// not be able to write through this route.
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
-  const capError = await requireCapability('series.view');
+  const capError = await requireCapability('series.editTags');
   if (capError) return capError;
 
   try {

@@ -220,8 +220,10 @@ export class LidarrClient {
     return this.get<LidarrTrackFile[]>('/api/v1/trackfile', params);
   }
 
-  async deleteTrackFile(id: number): Promise<void> {
-    await this.delete(`/api/v1/trackfile/${id}`);
+  async deleteTrackFilesBulk(trackFileIds: number[]): Promise<void> {
+    await this.client.delete('/api/v1/trackfile/bulk', {
+      data: { trackFileIds },
+    });
   }
 
   // Lookup (search to add)

@@ -18,6 +18,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   workflow: multi-arch (amd64/arm64) images on GHCR — `edge` from the
   development branch, semver + `stable` channel tags from release tags.
 
+### Security
+
+- Single episode/track file deletion now goes through the bulk routes, which
+  validate that every file id belongs to the stated series/artist and write a
+  file audit record; the unguarded `/api/sonarr/episodefile/[id]` and
+  `/api/lidarr/trackfile/[id]` routes are removed. Lidarr file deletes are now
+  audited (visible in Settings → File audit).
+- Creating Sonarr/Radarr/Lidarr tags now requires the matching `*.editTags`
+  capability; previously view-only users could create upstream tags.
+- The cleanup queue cleaner now paginates past 1,000 items and skips an
+  instance entirely (with a logged error) if its queue cannot be fetched
+  completely — a truncated view silently exempted the tail from rules and
+  strike handling.
+
 ### Fixed
 
 - Graceful shutdown: the container previously ran node behind `sh -c`, so

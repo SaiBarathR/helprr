@@ -114,8 +114,16 @@ export default function ArtistFilesPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (fileId: number) => {
-      const res = await fetch(withInstanceQuery(`/api/lidarr/trackfile/${fileId}`, instance), {
+      // Bulk endpoint with a single id — it validates the file belongs to this
+      // artist and writes a file audit record (the old /trackfile/[id] did neither).
+      const res = await fetch(withInstanceQuery('/api/lidarr/trackfile', instance), {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artistId,
+          trackFileIds: [fileId],
+          mediaTitle: artist?.artistName,
+        }),
       });
       // ApiError (not a plain Error) so a 401 carries its status to the global
       // MutationCache handler, which redirects to /login.

@@ -25,13 +25,13 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-// Create a tag on the spot from the add/edit forms. Gated by music.view — the same
-// bar the edit page clears (artist PUT only needs music.view), so edit-only users
-// aren't blocked.
+// Create a tag on the spot from the add/edit forms. Creating a tag mutates
+// upstream Lidarr state, so it requires music.editTags — view-only users must
+// not be able to write through this route.
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
-  const capError = await requireCapability('music.view');
+  const capError = await requireCapability('music.editTags');
   if (capError) return capError;
 
   try {

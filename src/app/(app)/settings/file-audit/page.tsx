@@ -11,7 +11,7 @@ import { formatBytes } from '@/lib/format';
 interface AuditRecord {
   id: string;
   username: string;
-  service: 'SONARR' | 'RADARR';
+  service: 'SONARR' | 'RADARR' | 'LIDARR';
   instanceId: string | null;
   operation: 'EDIT' | 'DELETE' | 'IMPORT';
   mediaType: string;
@@ -77,7 +77,7 @@ export default function FileAuditPage() {
                     <Badge variant={OP_VARIANT[r.operation]} className="text-[10px]">{r.operation}</Badge>
                     {!r.success && <Badge variant="destructive" className="text-[10px]">Failed</Badge>}
                     <span className="text-xs text-muted-foreground">
-                      {r.service === 'SONARR' ? 'Sonarr' : 'Radarr'}
+                      {r.service === 'SONARR' ? 'Sonarr' : r.service === 'RADARR' ? 'Radarr' : 'Lidarr'}
                     </span>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(r.createdAt)}</span>

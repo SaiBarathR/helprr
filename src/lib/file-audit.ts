@@ -16,12 +16,12 @@ import { prisma } from '@/lib/db';
 export interface FileAuditInput {
   /** Acting user; pass the resolved User from requireUser()/getCurrentUser(). */
   user: Pick<User, 'id' | 'username'> | null;
-  service: Extract<ServiceType, 'SONARR' | 'RADARR'>;
+  service: Extract<ServiceType, 'SONARR' | 'RADARR' | 'LIDARR'>;
   /** ServiceConnection instance the op ran against (undefined = default). */
   instanceId?: string | null;
   operation: FileOperation;
-  mediaType: 'series' | 'movie';
-  /** Sonarr seriesId / Radarr movieId. */
+  mediaType: 'series' | 'movie' | 'artist';
+  /** Sonarr seriesId / Radarr movieId / Lidarr artistId. */
   mediaId: number;
   mediaTitle: string;
   /** Number of files targeted by the operation. */

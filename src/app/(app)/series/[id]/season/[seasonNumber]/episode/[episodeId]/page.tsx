@@ -279,8 +279,16 @@ export default function EpisodeDetailPage() {
     if (!series || !episode || !episode.episodeFileId) return;
     setDeleting(true);
     try {
-      const deleteRes = await arrMutationFetch(instance, `/api/sonarr/episodefile/${episode.episodeFileId}`, {
+      // Bulk endpoint with a single id — it validates the file belongs to this
+      // series and writes a file audit record (the old /episodefile/[id] did neither).
+      const deleteRes = await arrMutationFetch(instance, '/api/sonarr/episodefile', {
         method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seriesId,
+          episodeFileIds: [episode.episodeFileId],
+          mediaTitle: series.title,
+        }),
       });
       if (!deleteRes.ok) {
         let message = 'Failed to delete episode file';

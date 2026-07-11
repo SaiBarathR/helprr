@@ -23,13 +23,13 @@ async function getHandler(request: NextRequest) {
   }
 }
 
-// Create a tag on the spot from the add/edit forms. Gated by movies.view — the same
-// bar the edit page clears (movie PUT only needs movies.view), so edit-only users
-// aren't blocked.
+// Create a tag on the spot from the add/edit forms. Creating a tag mutates
+// upstream Radarr state, so it requires movies.editTags — view-only users must
+// not be able to write through this route.
 async function postHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
-  const capError = await requireCapability('movies.view');
+  const capError = await requireCapability('movies.editTags');
   if (capError) return capError;
 
   try {

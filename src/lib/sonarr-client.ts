@@ -137,10 +137,6 @@ export class SonarrClient {
     });
   }
 
-  async deleteEpisodeFile(id: number): Promise<void> {
-    await this.delete(`/api/v3/episodefile/${id}`);
-  }
-
   // Episode files — Manage Episodes
   async getEpisodeFiles(seriesId: number): Promise<EpisodeFileResource[]> {
     return this.get<EpisodeFileResource[]>('/api/v3/episodefile', { seriesId });

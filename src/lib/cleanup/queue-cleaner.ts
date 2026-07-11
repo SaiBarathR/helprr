@@ -146,20 +146,46 @@ export async function loadSlowRules(): Promise<SlowRuleShape[]> {
   }));
 }
 
+const QUEUE_PAGE_SIZE = 1000;
+// 20 pages = 20k items — far beyond any plausible real queue. Hitting this
+// means something is wrong (or the instance is absurdly large); cleaning
+// against a partial queue view would silently exempt the truncated tail from
+// rules and strike handling, so the caller must skip the instance instead.
+const MAX_QUEUE_PAGES = 20;
+
+async function fetchFullQueue<R>(
+  fetchPage: (page: number, pageSize: number) => Promise<{ records?: R[]; totalRecords?: number }>
+): Promise<R[] | null> {
+  const all: R[] = [];
+  for (let page = 1; page <= MAX_QUEUE_PAGES; page++) {
+    const r = await fetchPage(page, QUEUE_PAGE_SIZE);
+    const records = r.records || [];
+    all.push(...records);
+    const total = typeof r.totalRecords === 'number' && Number.isFinite(r.totalRecords)
+      ? r.totalRecords
+      : all.length;
+    if (all.length >= total || records.length < QUEUE_PAGE_SIZE) return all;
+  }
+  return null;
+}
+
 async function loadArrQueues(): Promise<{
   sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
   radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
 }> {
   const sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
   const radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
-  // Hard cap: queues larger than 1000 will be truncated. Pagination not currently wired.
   for (const { connection, client } of await getSonarrClients()) {
     try {
-      const r = await client.getQueue(1, 1000);
+      const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
+      if (records === null) {
+        logger.error('Sonarr queue exceeds pagination bound; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
+        continue;
+      }
       sonarr.push({
         instanceId: connection.id,
         instanceLabel: connection.label,
-        queue: (r.records || []).map((i) => ({ ...i, source: 'sonarr' as const })),
+        queue: records.map((i) => ({ ...i, source: 'sonarr' as const })),
       });
     } catch (err) {
       if (!isMissingConfigError(err)) logger.warn('Sonarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
@@ -167,11 +193,15 @@ async function loadArrQueues(): Promise<{
   }
   for (const { connection, client } of await getRadarrClients()) {
     try {
-      const r = await client.getQueue(1, 1000);
+      const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
+      if (records === null) {
+        logger.error('Radarr queue exceeds pagination bound; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
+        continue;
+      }
       radarr.push({
         instanceId: connection.id,
         instanceLabel: connection.label,
-        queue: (r.records || []).map((i) => ({ ...i, source: 'radarr' as const })),
+        queue: records.map((i) => ({ ...i, source: 'radarr' as const })),
       });
     } catch (err) {
       if (!isMissingConfigError(err)) logger.warn('Radarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
