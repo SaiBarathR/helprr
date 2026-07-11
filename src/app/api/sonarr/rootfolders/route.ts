@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Root folders expose filesystem paths; gate behind the add/edit-path
+  // capabilities that actually consume them (add page, edit page).
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  if (!can(auth.user, 'series.add') && !can(auth.user, 'series.changePath')) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;

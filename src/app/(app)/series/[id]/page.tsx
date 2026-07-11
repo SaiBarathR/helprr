@@ -214,6 +214,7 @@ export default function SeriesDetailPage() {
   const canEditMonitoring = useCan('series.editMonitoring');
   const canEditTags = useCan('series.editTags');
   const canChangePath = useCan('series.changePath');
+  const canAddSeries = useCan('series.add');
   const canDeleteSeries = useCan('series.delete');
   const canManageFiles = useCan('series.manageFiles');
   const canScheduleAlert = useCan('scheduledAlerts.edit');
@@ -238,7 +239,9 @@ export default function SeriesDetailPage() {
 
   // Reference data — shared (and deduped) with the list / edit / add pages.
   const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance);
-  const { data: rootFolders = [] } = useRootFolders('sonarr', instance);
+  // The rootfolders route 403s without add/changePath, so skip the fetch (and
+  // the Root Folder info row) for plain viewers instead of erroring.
+  const { data: rootFolders = [] } = useRootFolders('sonarr', instance, canAddSeries || canChangePath);
   const { data: tags = [] } = useTags('sonarr', instance);
 
   // AniList payload (anime series only). The lazy per-tab fetches, background

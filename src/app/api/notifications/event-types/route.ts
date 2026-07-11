@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { ownerScope } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
@@ -9,7 +9,7 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 // The notifications filter uses this so any type the user can SEE is also
 // filterable, even without the matching notify.* receive capability.
 async function getHandler() {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('notifications.view');
   if (!auth.ok) return auth.response;
 
   try {

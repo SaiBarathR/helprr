@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { ownerScope } from '@/lib/user-dto';
 import { EVENT_TYPES, ensureNotificationPreferences } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('settings.notifications');
   if (!auth.ok) return auth.response;
 
   try {
@@ -56,7 +56,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('settings.notifications');
   if (!auth.ok) return auth.response;
 
   try {

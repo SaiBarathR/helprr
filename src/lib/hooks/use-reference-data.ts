@@ -114,11 +114,15 @@ export function useCreateTag(service: ArrService, instanceId?: string) {
   });
 }
 
-export function useRootFolders(service: ArrService, instanceId?: string) {
+// The rootfolders routes are gated on the add/changePath capabilities, so pages
+// that render for plain viewers (e.g. the series detail page) must pass
+// `enabled` to avoid a guaranteed 403 for members without those capabilities.
+export function useRootFolders(service: ArrService, instanceId?: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.rootFolders(service, instanceId),
     queryFn: jsonFetcher<RootFolder[]>(`/api/${service}/rootfolders`, instanceId),
     staleTime: REFERENCE_STALE,
+    enabled,
     select: ensureArray,
   });
 }
