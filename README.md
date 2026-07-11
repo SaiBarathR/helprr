@@ -375,3 +375,11 @@ docker compose down
 - Resetting the bootstrap password does not invalidate active sessions. Revoke sessions from **Settings → Sessions** when access needs to be removed.
 - Service credentials and custom headers are sensitive. Restrict administrator accounts and protect backups/log exports.
 - Verify AI-generated changes before deploying them. Keep your service containers and this project up to date, and test upgrades against a backup.
+- Found a vulnerability? Please report it privately — see [SECURITY.md](SECURITY.md).
+
+
+
+## License
+
+Helprr is free software, licensed under the [GNU General Public License v3.0](LICENSE).
+Release history lives in [CHANGELOG.md](CHANGELOG.md).

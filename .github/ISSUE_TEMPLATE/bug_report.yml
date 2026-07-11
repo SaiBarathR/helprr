@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in Helprr is broken or behaving unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in everything below —
+        version, platform, and logs are required because bugs are rarely reproducible without them.
+
+        **Do not report security vulnerabilities here** — use
+        [private vulnerability reporting](https://github.com/SaiBarathR/helprr/security/advisories/new) instead.
+  - type: input
+    id: version
+    attributes:
+      label: Helprr version
+      description: Shown in Settings → Status (or the image tag you are running).
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker Compose (repo compose file)
+        - Docker (custom setup)
+        - Bare metal / npm
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Host OS/architecture, and browser/device if this is a UI or PWA issue.
+      placeholder: "Ubuntu 24.04 amd64, iPhone 15 iOS 18 Safari PWA"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Server logs (`docker compose logs helprr` or Settings → Logs) and/or browser console output
+        around the time of the issue. Redact API keys, tokens, and passwords before pasting.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: services
+    attributes:
+      label: Connected services
+      description: Which services are connected and their versions, if relevant (Sonarr, Radarr, Lidarr, qBittorrent, Prowlarr, Jellyfin, Seerr…).
+      placeholder: "Sonarr 4.0.x, qBittorrent 5.x"
