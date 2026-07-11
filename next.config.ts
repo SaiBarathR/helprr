@@ -8,6 +8,15 @@ const withSerwist = withSerwistInit({
 });
 
 const nextConfig: NextConfig = {
+  // Dev-only: extra origins allowed to reach the dev server (LAN IP, Tailscale
+  // hostname, etc.). Comma-separated, set in .env.local — never used in production.
+  ...(process.env.ALLOWED_DEV_ORIGINS
+    ? {
+        allowedDevOrigins: process.env.ALLOWED_DEV_ORIGINS.split(',')
+          .map((origin) => origin.trim())
+          .filter(Boolean),
+      }
+    : {}),
   output: 'standalone',
   // Force webpack for Serwist compatibility
   turbopack: {},
