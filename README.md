@@ -78,6 +78,34 @@ These are the hand-picked captures from my current setup. They are not mockupsâ€
 
 ### Desktop
 
+<p align="center">
+  <img src="docs/screenshots/desktop-dashboard.jpg" alt="Helprr desktop dashboard with media, download, cleanup, service-health, Jellyfin, and scheduled-task widgets" width="49%" />
+  <img src="docs/screenshots/desktop-discover.jpg" alt="Helprr desktop Discover page with search, trending rails, and movie status" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-movie-details.jpg" alt="Helprr desktop movie detail page with metadata, cast, crew, and Radarr actions" width="49%" />
+  <img src="docs/screenshots/desktop-command-palette.jpg" alt="Helprr desktop global command palette with library and remote discovery search scopes" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-tmdb-search.jpg" alt="Helprr desktop TMDb search results from the command palette" width="49%" />
+  <img src="docs/screenshots/desktop-anime.jpg" alt="Helprr desktop Anime page with a featured title, watch progress, and planning rails" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-anime-schedule.jpg" alt="Helprr desktop Anime schedule with upcoming episodes and reminder controls" width="49%" />
+  <img src="docs/screenshots/desktop-calendar-agenda.jpg" alt="Helprr desktop Calendar agenda showing scheduled episode and media releases" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-calendar-month.jpg" alt="Helprr desktop month calendar with release details and notification actions" width="49%" />
+  <img src="docs/screenshots/desktop-settings.jpg" alt="Helprr desktop settings hub with instance, user, preference, service, storage, and backup controls" width="49%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-cleanup.jpg" alt="Helprr desktop cleanup dashboard with automated queue and download cleanup controls" width="49%" />
+</p>
 
 
 
@@ -92,6 +120,33 @@ These are the hand-picked captures from my current setup. They are not mockupsâ€
 
 ### iPhone PWA
 
+<p align="center">
+  <img src="docs/screenshots/mobile-dashboard.jpg" alt="Helprr iPhone dashboard with library, downloads, indexers, cleanup, and streaming widgets" width="31%" />
+  <img src="docs/screenshots/mobile-anime-search.jpg" alt="Helprr iPhone AniList search results" width="31%" />
+  <img src="docs/screenshots/mobile-discover.jpg" alt="Helprr iPhone Discover page with trending movies and theater releases" width="31%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-movie-details.jpg" alt="Helprr iPhone movie detail page with metadata and Radarr action" width="31%" />
+  <img src="docs/screenshots/mobile-anime.jpg" alt="Helprr iPhone Anime page with featured content and watch rails" width="31%" />
+  <img src="docs/screenshots/mobile-anime-schedule.jpg" alt="Helprr iPhone Anime schedule with upcoming releases and reminders" width="31%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-random-watch.jpg" alt="Helprr iPhone random watch suggestion with movie details and open action" width="31%" />
+  <img src="docs/screenshots/mobile-insights-analysis.jpg" alt="Helprr iPhone Insights technical media analysis" width="31%" />
+  <img src="docs/screenshots/mobile-settings.jpg" alt="Helprr iPhone settings hub with instance, user, notification, storage, logging, and download controls" width="31%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-notification-history.jpg" alt="Helprr iPhone notification history with daily summaries and health warnings" width="31%" />
+  <img src="docs/screenshots/mobile-cleanup.jpg" alt="Helprr iPhone cleanup dashboard with automated and manual cleanup controls" width="31%" />
+  <img src="docs/screenshots/mobile-calendar-week.jpg" alt="Helprr iPhone Calendar week view with upcoming releases" width="31%" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/mobile-calendar-month.jpg" alt="Helprr iPhone Calendar month view with release counts and daily agenda" width="31%" />
+</p>
 
 
 
