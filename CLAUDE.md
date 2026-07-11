@@ -74,7 +74,6 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 ```bash
 npm run dev          # Dev server (Turbopack) on port 3050
 npm run build        # Production build (Webpack required for Serwist)
-npm run start        # Production server on port 3050
 npm run lint         # ESLint (Next.js core-web-vitals + TypeScript)
 npm run db:generate  # Generate Prisma client
 npm run db:migrate   # Prisma migrate dev — the ONLY way to change the schema (generates + applies a migration)

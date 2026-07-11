@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [development, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - name: Build
+        run: npm run build
+        env:
+          # Dummy values — nothing connects during a build, but env validation
+          # and any statically-collected route must not fail on missing config.
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          REDIS_URL: redis://localhost:6379
+          REDIS_PASSWORD: ci-dummy-password
+          APP_PASSWORD: ci-dummy-password
+          JWT_SECRET: ci-dummy-jwt-secret-at-least-32-characters-long

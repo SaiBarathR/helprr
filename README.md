@@ -196,12 +196,30 @@ TZ=Etc/UTC
 
 `APP_PASSWORD` creates the bootstrap administrator on first boot. Its username is `admin` by default, or the value of `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change an existing user's password.
 
-### 2. Build and start
+### 2. Start
+
+Prebuilt multi-arch images (amd64/arm64) are published to
+`ghcr.io/saibarathr/helprr`. The compose file uses the `edge` channel (latest
+development build) until the first stable release; pin a specific version with
+`HELPRR_VERSION` in `.env`.
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 docker compose ps
 ```
+
+> [!IMPORTANT]
+> Web Push does not work with the prebuilt image yet: the VAPID public key is
+> currently embedded at build time, so notifications require building from
+> source with `NEXT_PUBLIC_VAPID_PUBLIC_KEY` set in `.env`:
+>
+> ```bash
+> docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+> ```
+>
+> Moving the key to runtime configuration (so the prebuilt image supports push)
+> is planned before the stable release.
 
 Open `http://YOUR_SERVER:3050`, sign in with the bootstrap account, then connect services in **Settings → Instances**.
 
@@ -213,7 +231,7 @@ Use `docker compose logs -f helprr` to follow startup. The application health en
 - Set `TRUST_FORWARDED_PROTO=true` only when that proxy strips and sets forwarded headers itself. This enables correct secure-cookie and client-IP decisions.
 - Set `APP_ORIGIN=https://helprr.example.com` when enabling AniList OAuth in production. It must be a valid HTTPS origin.
 - If the PostgreSQL password contains URL-reserved characters (`@`, `:`, `/`, `?`, `#`, …), set `DATABASE_URL` explicitly with the password percent-encoded.
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is embedded during the image build. Rebuild with `docker compose up -d --build` after adding or changing it.
+- `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is embedded during the image build. After adding or changing it, rebuild from source: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`.
 
 
 
@@ -352,7 +370,6 @@ Prisma migrations are the database source of truth.
 # App
 npm run dev
 npm run build
-npm run start
 npm run lint
 
 # Prisma
@@ -360,10 +377,14 @@ npm run db:generate
 npm run db:deploy
 npm run db:migrate
 
-# Docker
-docker compose up -d --build
+# Docker (published image)
+docker compose pull
+docker compose up -d
 docker compose logs -f helprr
 docker compose down
+
+# Docker (build from source, e.g. for Web Push)
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 

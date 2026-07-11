@@ -35,10 +35,12 @@ services:
       retries: 5
 
   helprr:
-    build:
-      context: .
-      args:
-        - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
+    # Published image. Pin a version with HELPRR_VERSION (e.g. 1.0.0); the
+    # default channel becomes `stable` with the 1.0.0 release. To build from
+    # source instead (required for Web Push until the VAPID key moves to
+    # runtime config):
+    #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+    image: ghcr.io/saibarathr/helprr:${HELPRR_VERSION:-edge}
     container_name: helprr
     restart: unless-stopped
     ports:
