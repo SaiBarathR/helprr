@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { endOfDay } from 'date-fns';
 import { prisma } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { isKnownEventType } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
@@ -52,7 +52,7 @@ function buildWhere(searchParams: URLSearchParams): Prisma.NotificationHistoryWh
 }
 
 async function getHandler(request: NextRequest) {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('notifications.view');
   if (!auth.ok) return auth.response;
 
   try {
@@ -82,7 +82,7 @@ async function getHandler(request: NextRequest) {
 }
 
 async function deleteHandler(request: NextRequest) {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('notifications.view');
   if (!auth.ok) return auth.response;
 
   try {

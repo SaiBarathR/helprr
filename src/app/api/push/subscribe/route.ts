@@ -5,6 +5,11 @@ import { ensureNotificationPreferences } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function postHandler(request: NextRequest) {
+  // Deliberately NOT gated on settings.notifications: the SW's
+  // pushsubscriptionchange handler posts here in the background when iOS
+  // rotates an endpoint, and an already-subscribed device must survive that
+  // rotation even if the user has since been denied the settings page.
+  // Delivery itself is gated per event by the notify.* capabilities.
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 

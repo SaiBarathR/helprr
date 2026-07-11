@@ -64,7 +64,8 @@ export default function SettingsIndexPage() {
   const canViewLogs = hasCapability(me, 'logs.view');
   const canDownloads = hasCapability(me, 'settings.downloads');
   const canBackup = hasCapability(me, 'settings.backup');
-  const canUsers = hasCapability(me, 'users.manage');
+  // Role-gated, not a capability — /api/users hard-requires the admin role.
+  const canUsers = me?.role === 'admin';
 
   return (
     <div className="animate-content-in pb-12">

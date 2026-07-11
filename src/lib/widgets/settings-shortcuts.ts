@@ -42,7 +42,7 @@ export interface SettingsShortcut {
 // the "N of M connected" count stays page-only.
 export const SETTINGS_SHORTCUTS: SettingsShortcut[] = [
   { key: 'instances', label: 'Instances', subtitle: 'Connect Sonarr, Radarr, qBittorrent, and more', href: '/settings/instances', iconName: 'Server', icon: Server, iconBg: 'bg-amber-500/10', iconColor: 'text-amber-500', capability: 'settings.instances' },
-  { key: 'users', label: 'Users', subtitle: 'Members, roles, and permissions', href: '/settings/users', iconName: 'Users', icon: Users, iconBg: 'bg-violet-500/10', iconColor: 'text-violet-400', capability: 'users.manage' },
+  { key: 'users', label: 'Users', subtitle: 'Members, roles, and permissions', href: '/settings/users', iconName: 'Users', icon: Users, iconBg: 'bg-violet-500/10', iconColor: 'text-violet-400', adminOnly: true },
   { key: 'anime-mappings', label: 'Anime mappings', subtitle: 'AniList season links, bulk reset', href: '/settings/anime-mappings', iconName: 'Link2', icon: Link2, iconBg: 'bg-cyan-500/10', iconColor: 'text-cyan-400', adminOnly: true },
   { key: 'file-audit', label: 'File operations', subtitle: 'Audit log of manage edits, deletes, imports', href: '/settings/file-audit', iconName: 'FileStack', icon: FileStack, iconBg: 'bg-amber-500/10', iconColor: 'text-amber-400', adminOnly: true },
   { key: 'preferences', label: 'Preferences', subtitle: 'Timezone, polling, refresh intervals', href: '/settings/preferences', iconName: 'Sliders', icon: Sliders, iconBg: 'bg-sky-500/10', iconColor: 'text-sky-400' },

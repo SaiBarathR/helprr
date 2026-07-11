@@ -800,10 +800,22 @@ for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
 }
 
 // Capability-gated widgets: hidden from the dashboard + gallery for users who
-// lack the capability (a member never sees cleanup / prowlarr / Jellyfin
-// analytics / storage / Seerr-admin tiles). Library + personal widgets
-// (recently-added, continue-watching, etc.) stay ungated.
+// lack the capability. Every entry mirrors the capability checks of the data
+// route(s) its component fetches, so a user never keeps a tile whose fetch
+// would 403 into a misleading empty state.
 const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability | Capability[]>> = {
+  // Activity widgets — /api/activity/* all require activity.view.
+  'active-downloads': 'activity.view',
+  'wanted-items': 'activity.view',
+  'recently-added': 'activity.view',
+  'activity-history': 'activity.view',
+  // Calendar widgets — /api/calendar requires calendar.view.
+  'upcoming': 'calendar.view',
+  'today-calendar': 'calendar.view',
+  // /api/notifications requires notifications.view.
+  'notifications': 'notifications.view',
+  // /api/jellyfin/resume requires jellyfin.view.
+  'continue-watching': 'jellyfin.view',
   'prowlarr-indexers': 'prowlarr.view',
   'prowlarr-stats-summary': 'prowlarr.view',
   'prowlarr-response-time': 'prowlarr.view',

@@ -7,6 +7,10 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  // Deliberately NOT capability-gated (same policy as /api/push/subscribe):
+  // the app-wide push hook calls this on every load to reconcile the browser's
+  // subscription with the server, and that must keep working for users denied
+  // the notification settings page.
 
   try {
     const body = await request.json().catch(() => ({}));

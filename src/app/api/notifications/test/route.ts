@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createHash } from 'crypto';
-import { COOKIE_NAME, getCurrentUser, requireAuth } from '@/lib/auth';
+import { COOKIE_NAME, requireUserCapability } from '@/lib/auth';
 import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
 import { getRedisClient } from '@/lib/redis';
@@ -37,10 +37,9 @@ return attempts`,
 }
 
 async function postHandler(): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireUserCapability('settings.notifications');
+  if (!auth.ok) return auth.response;
+  const user = auth.user;
 
   const rateLimitKey = await sessionRateLimitKey();
   let attempts: number;

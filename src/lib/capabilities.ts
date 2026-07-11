@@ -118,7 +118,9 @@ export const CAPABILITY_GROUPS = [
       { cap: 'prowlarr.manage', label: 'Manage Prowlarr indexers' },
       { cap: 'logs.view', label: 'View logs' },
       { cap: 'logs.manage', label: 'Delete logs' },
-      { cap: 'users.manage', label: 'Manage users & permissions' },
+      // User management is role-gated (admin only), not a grantable capability:
+      // the /api/users routes hard-require the admin role, so offering a
+      // users.manage toggle here would grant a page that 403s on every request.
     ],
   },
   {

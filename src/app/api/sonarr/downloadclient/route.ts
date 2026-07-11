@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -12,6 +12,9 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const authError = await requireAuth();
   if (authError) return authError;
+  // Only the interactive-release flow consumes this, which is activity.manage-gated.
+  const capError = await requireCapability('activity.manage');
+  if (capError) return capError;
 
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
