@@ -842,7 +842,10 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability | Capability
   'jellyfin-hourly-activity': 'jellyfin.stats',
   'cleanup-status': 'cleanup.view',
   'cleanup-history': 'cleanup.view',
-  'storage-usage': 'settings.storage',
+  // storage-usage is deliberately unmapped (like stats-grid): its data routes
+  // (/api/services/stats, /api/storage/trend) soft-gate disk data per *arr
+  // view capability — an OR this AND-semantics map can't express — and return
+  // an empty payload rather than 403 when the caller holds none of them.
   'seerr-pending-requests': 'requests.approve',
   // Recent-requests is member-safe: it scopes to the viewer's own requests and
   // surfaces their pending-approval items, so members may add it.
