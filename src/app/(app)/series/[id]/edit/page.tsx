@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateSeries } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
+import { useCan } from '@/components/permission-provider';
 import type { SonarrSeries } from '@/types';
 
 export default function SeriesEditPage() {
@@ -38,7 +39,10 @@ export default function SeriesEditPage() {
   const series = seriesQuery.data ?? null;
   const loading = seriesQuery.isLoading;
   const { data: qualityProfiles = [] } = useQualityProfiles('sonarr', instance);
-  const { data: rootFolders = [] } = useRootFolders('sonarr', instance);
+  // The rootfolders route 403s without add/changePath, so skip the fetch (and
+  // the path picker) for editors who can't change paths anyway.
+  const canChangePath = useCan('series.changePath');
+  const { data: rootFolders = [] } = useRootFolders('sonarr', instance, canChangePath);
   const [saving, setSaving] = useState(false);
 
   // Edit form state
