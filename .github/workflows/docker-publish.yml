@@ -158,8 +158,10 @@ jobs:
           case "$GITHUB_REF_NAME" in
             *-*) prerelease_flag="--prerelease" ;;
           esac
+          # GitHub forbids asset names starting with a dot — ship it as env.example.
+          cp .env.example env.example
           gh release create "$GITHUB_REF_NAME" \
             --draft \
             --generate-notes \
             $prerelease_flag \
-            docker-compose.yml .env.example
+            docker-compose.yml env.example
