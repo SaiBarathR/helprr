@@ -1,5 +1,6 @@
 import withSerwistInit from '@serwist/next';
 import type { NextConfig } from 'next';
+import pkg from './package.json';
 
 const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
@@ -8,6 +9,14 @@ const withSerwist = withSerwistInit({
 });
 
 const nextConfig: NextConfig = {
+  // Version identity, shown in Settings → Status. Baked in at build time on
+  // purpose — unlike the VAPID key this is a property of the build itself.
+  // Docker builds override via APP_VERSION/GIT_SHA build args (CI passes the
+  // image tag + commit); source builds fall back to package.json.
+  env: {
+    NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION || pkg.version,
+    NEXT_PUBLIC_GIT_SHA: process.env.GIT_SHA || '',
+  },
   // Dev-only: extra origins allowed to reach the dev server (LAN IP, Tailscale
   // hostname, etc.). Comma-separated, set in .env.local — never used in production.
   ...(process.env.ALLOWED_DEV_ORIGINS

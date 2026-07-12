@@ -31,6 +31,13 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
+# Version identity for Settings → Status (CI passes the image tag + commit SHA;
+# defaults keep local builds working — next.config falls back to package.json).
+ARG APP_VERSION=""
+ARG GIT_SHA=""
+ENV APP_VERSION=$APP_VERSION
+ENV GIT_SHA=$GIT_SHA
+
 RUN npm run build
 
 # Production image

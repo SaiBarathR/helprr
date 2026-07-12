@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/button';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { cn } from '@/lib/utils';
 
+// Inlined at build time (see next.config.ts `env`) — identifies the running build.
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'unknown';
+const GIT_SHA = process.env.NEXT_PUBLIC_GIT_SHA || '';
+
 interface ServiceHealthStatus {
   instanceId: string;
   type: string;
@@ -122,6 +126,25 @@ export default function ServiceStatusPage() {
           ))}
         </GroupedSection>
       )}
+
+      <div className="mt-6">
+        <GroupedSection>
+          <div className="grouped-row items-start">
+            <div className="min-w-0 flex-1 pr-3">
+              <div className="text-sm font-medium">Helprr</div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Include this version when reporting an issue.
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="text-sm">{APP_VERSION}</div>
+              {GIT_SHA && (
+                <div className="text-xs text-muted-foreground font-mono">{GIT_SHA.slice(0, 7)}</div>
+              )}
+            </div>
+          </div>
+        </GroupedSection>
+      </div>
     </div>
   );
 }
