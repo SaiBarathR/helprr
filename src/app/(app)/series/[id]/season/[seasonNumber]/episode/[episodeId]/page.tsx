@@ -679,7 +679,7 @@ export default function EpisodeDetailPage() {
         onOpenChange={setInteractiveSearch}
         title={`${series.title} - ${epCode} - ${episode.title || 'TBA'}`}
         service="sonarr"
-        searchParams={{ episodeId }}
+        searchParams={{ episodeId, ...(instance ? { instanceId: instance } : {}) }}
       />
 
       {canScheduleAlert && (

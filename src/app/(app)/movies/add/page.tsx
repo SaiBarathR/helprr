@@ -63,8 +63,8 @@ function AddMoviePageContent() {
   // TanStack threads the AbortSignal, so an in-flight lookup is cancelled on a
   // new search automatically (no manual abort ref needed).
   const lookupQuery = useQuery({
-    queryKey: ['radarr', 'lookup', submittedTerm],
-    queryFn: jsonFetcher<RadarrLookupResult[]>(`/api/radarr/lookup?term=${encodeURIComponent(submittedTerm)}`),
+    queryKey: ['radarr', 'lookup', instanceId ?? 'default', submittedTerm],
+    queryFn: jsonFetcher<RadarrLookupResult[]>(`/api/radarr/lookup?term=${encodeURIComponent(submittedTerm)}`, instanceId),
     enabled: submittedTerm.trim().length > 0,
     staleTime: 60_000,
   });

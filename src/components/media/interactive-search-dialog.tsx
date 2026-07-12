@@ -139,13 +139,14 @@ export function InteractiveSearchDialog({
     for (const [k, v] of Object.entries(searchParams)) params.set(k, String(v));
     return params.toString();
   }, [searchParams]);
+  const releaseUrl = `/api/${service}/release?${searchQueryString}`;
 
   // Release search is manual (button-triggered) — enabled:false, run via refetch.
   // jsonFetcher throws on !ok so a 401 (revoked session) redirects via the global
   // handler; other failures surface below as a "Search failed" toast.
   const releasesQuery = useQuery({
     queryKey: ['release-search', service, searchQueryString],
-    queryFn: jsonFetcher<Release[]>(`/api/${service}/release?${searchQueryString}`),
+    queryFn: jsonFetcher<Release[]>(releaseUrl),
     enabled: false,
   });
   const releases = useMemo(() => releasesQuery.data ?? [], [releasesQuery.data]);
@@ -159,8 +160,8 @@ export function InteractiveSearchDialog({
 
   // Download clients load lazily when the override sheet opens (cached after).
   const clientsQuery = useQuery({
-    queryKey: [service, 'downloadclients'],
-    queryFn: jsonFetcher<DownloadClient[]>(`/api/${service}/downloadclient`),
+    queryKey: [service, 'downloadclients', searchQueryString],
+    queryFn: jsonFetcher<DownloadClient[]>(`/api/${service}/downloadclient?${searchQueryString}`),
     enabled: overrideRelease !== null,
     select: (d) => (Array.isArray(d) ? d.filter((c) => c.enable) : []),
   });
@@ -175,7 +176,7 @@ export function InteractiveSearchDialog({
 
   const grabMutation = useMutation({
     mutationFn: async (release: Release) => {
-      const res = await fetch(`/api/${service}/release`, {
+      const res = await fetch(releaseUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guid: release.guid, indexerId: release.indexerId }),
@@ -198,7 +199,7 @@ export function InteractiveSearchDialog({
     mutationFn: async (vars: { release: Release; clientId: number | null }) => {
       const body: Record<string, unknown> = { guid: vars.release.guid, indexerId: vars.release.indexerId };
       if (vars.clientId !== null) body.downloadClientId = vars.clientId;
-      const res = await fetch(`/api/${service}/release`, {
+      const res = await fetch(releaseUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

@@ -2015,6 +2015,7 @@ export default function SeriesDetailPage() {
         onOpenChange={setShowAniListRemap}
         seriesId={series.id}
         seriesTitle={series.title}
+        instanceId={instance}
         mapping={animeMapping}
         details={animeDetails}
         onUpdated={handleAniListUpdated}

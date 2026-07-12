@@ -5,7 +5,7 @@ import { arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -30,6 +30,7 @@ import {
   ChevronDown,
   Check,
   MoreVertical,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
@@ -46,6 +47,17 @@ import {
 import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 
 function formatDuration(ms?: number): string {
   if (!ms) return '';
@@ -62,6 +74,7 @@ export default function AlbumDetailPage() {
   const { albumId: albumIdParam } = useParams();
   const albumId = Number(albumIdParam);
   const instance = useSearchParams().get('instance') ?? undefined;
+  const router = useRouter();
   const queryClient = useQueryClient();
   const detailViewKey: DetailViewKey = `album:${albumId}`;
   const scrollReadyRef = useRef(false);
@@ -94,10 +107,14 @@ export default function AlbumDetailPage() {
   const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
   const [showReleases, setShowReleases] = useState(false);
   const [selectingRelease, setSelectingRelease] = useState<number | null>(null);
+  const [deleteAlbumOpen, setDeleteAlbumOpen] = useState(false);
+  const [deleteAlbumFiles, setDeleteAlbumFiles] = useState(false);
+  const [deleteTrack, setDeleteTrack] = useState<{ track: LidarrTrack; file: LidarrTrackFile } | null>(null);
   const lidarrExternalUrl = useExternalUrlResolver()('LIDARR', instance);
 
   const canEditMonitoring = useCan('music.editMonitoring');
   const canManageActivity = useCan('activity.manage');
+  const canDelete = useCan('music.delete');
 
   // Reset scroll-restore guards whenever the album/instance changes.
   useEffect(() => {
@@ -205,6 +222,63 @@ export default function AlbumDetailPage() {
     finally { setSelectingRelease(null); }
   }
 
+  async function handleDeleteAlbum() {
+    if (!album) return;
+    setActionLoading('delete-album');
+    try {
+      const res = await arrMutationFetch(
+        instance,
+        `/api/lidarr/album/${album.id}?deleteFiles=${deleteAlbumFiles}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      toast.success('Album deleted');
+      queryClient.removeQueries({ queryKey: albumKey });
+      router.replace(`/music/${album.artistId}${instance ? `?instance=${instance}` : ''}`);
+    } catch (e) {
+      handleAuthError(e);
+      toast.error('Failed to delete album');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
+  async function handleDeleteTrackFile() {
+    if (!album || !deleteTrack) return;
+    setActionLoading(`delete-track-${deleteTrack.track.id}`);
+    try {
+      const res = await arrMutationFetch(instance, '/api/lidarr/trackfile', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artistId: album.artistId,
+          trackFileIds: [deleteTrack.file.id],
+          mediaTitle: `${artistName ?? 'Unknown artist'} — ${album.title}`,
+        }),
+      });
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      queryClient.setQueryData(
+        albumKey,
+        (prev: { album: LidarrAlbum | null; tracks: LidarrTrack[]; trackFiles: LidarrTrackFile[] } | undefined) =>
+          prev ? {
+            ...prev,
+            tracks: prev.tracks.map((track) => track.id === deleteTrack.track.id
+              ? { ...track, hasFile: false, trackFileId: 0 }
+              : track),
+            trackFiles: prev.trackFiles.filter((file) => file.id !== deleteTrack.file.id),
+          } : prev,
+      );
+      toast.success('Track file deleted');
+      setExpandedTrack(null);
+      setDeleteTrack(null);
+    } catch (e) {
+      handleAuthError(e);
+      toast.error('Failed to delete track file');
+    } finally {
+      setActionLoading('');
+    }
+  }
+
   const filesByTrackId = useMemo(() => {
     const map = new Map<number, LidarrTrackFile>();
     for (const f of trackFiles) map.set(f.id, f);
@@ -310,6 +384,18 @@ export default function AlbumDetailPage() {
                   <DropdownMenuItem onClick={() => window.open(`https://musicbrainz.org/release-group/${album.foreignAlbumId}`, '_blank')}>
                     <ExternalLink className="h-4 w-4" />
                     Open in MusicBrainz
+                  </DropdownMenuItem>
+                )}
+                {canDelete && (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => {
+                      setDeleteAlbumFiles(false);
+                      setDeleteAlbumOpen(true);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Album
                   </DropdownMenuItem>
                 )}
               </DropdownMenuContent>
@@ -501,6 +587,17 @@ export default function AlbumDetailPage() {
                             )}
                             {file.size > 0 && <div>Size: {formatBytes(file.size)}</div>}
                             {file.path && <div className="font-mono break-all">{file.path}</div>}
+                            {canDelete && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="mt-2"
+                                onClick={() => setDeleteTrack({ track, file })}
+                              >
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                                Delete Track File
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -518,8 +615,65 @@ export default function AlbumDetailPage() {
         onOpenChange={setInteractiveSearch}
         title={album.title}
         service="lidarr"
-        searchParams={{ albumId: album.id }}
+        searchParams={{ albumId: album.id, ...(instance ? { instanceId: instance } : {}) }}
       />
+      <AlertDialog open={deleteAlbumOpen} onOpenChange={setDeleteAlbumOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {album.title}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the album from Lidarr. Choose whether its downloaded track files should also be deleted from disk.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <label className="flex items-start gap-2 text-sm">
+            <Checkbox
+              className="mt-0.5"
+              checked={deleteAlbumFiles}
+              disabled={actionLoading === 'delete-album'}
+              onCheckedChange={(value) => setDeleteAlbumFiles(value === true)}
+            />
+            <span>Delete downloaded track files from disk</span>
+          </label>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading === 'delete-album'}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={actionLoading === 'delete-album'}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteAlbum();
+              }}
+            >
+              {actionLoading === 'delete-album' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Album
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={deleteTrack !== null} onOpenChange={(open) => { if (!open) setDeleteTrack(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete track file?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTrack ? `“${deleteTrack.track.title}” will be deleted from disk. Lidarr will keep the track and mark it as missing.` : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading.startsWith('delete-track-')}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={actionLoading.startsWith('delete-track-')}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteTrackFile();
+              }}
+            >
+              {actionLoading.startsWith('delete-track-') && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete Track File
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

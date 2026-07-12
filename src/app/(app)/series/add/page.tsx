@@ -64,8 +64,8 @@ function AddSeriesPageContent() {
   // Search runs against the submitted term; TanStack threads the AbortSignal so
   // an in-flight lookup is cancelled on a new search automatically.
   const lookupQuery = useQuery({
-    queryKey: ['sonarr', 'lookup', submittedTerm],
-    queryFn: jsonFetcher<SonarrLookupResult[]>(`/api/sonarr/lookup?term=${encodeURIComponent(submittedTerm)}`),
+    queryKey: ['sonarr', 'lookup', instanceId ?? 'default', submittedTerm],
+    queryFn: jsonFetcher<SonarrLookupResult[]>(`/api/sonarr/lookup?term=${encodeURIComponent(submittedTerm)}`, instanceId),
     enabled: submittedTerm.trim().length > 0,
     staleTime: 60_000,
   });

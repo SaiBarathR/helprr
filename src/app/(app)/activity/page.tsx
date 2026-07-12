@@ -309,16 +309,21 @@ export default function ActivityPage() {
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   // arr instances for the per-instance filter (shown only when >1 instance).
-  const { data: instanceOptions = [] } = useQuery({
+  const { data: arrConnections = [] } = useQuery({
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
     // is the /api/instances connection list for the filter. Keep it from prefix-
     // overlapping the services key so the two can't cross-invalidate.
     queryKey: ['arr-instances'],
-    queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
-    select: (conns): InstanceOption[] =>
-      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
+    queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
+    select: (conns) => Array.isArray(conns)
+      ? conns.filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')
+      : [],
     staleTime: 5 * 60_000,
   });
+  const instanceOptions = useMemo<InstanceOption[]>(
+    () => arrConnections.map((c) => ({ id: c.id, label: c.label })),
+    [arrConnections],
+  );
 
   // Drop a stale instance selection if that instance no longer exists.
   useEffect(() => {
@@ -385,11 +390,13 @@ export default function ActivityPage() {
     try {
       const body = JSON.stringify({ name: 'RefreshMonitoredDownloads' });
       const headers = { 'Content-Type': 'application/json' };
-      const results = await Promise.allSettled([
-        fetch('/api/sonarr/command', { method: 'POST', headers, body }),
-        fetch('/api/radarr/command', { method: 'POST', headers, body }),
-        fetch('/api/lidarr/command', { method: 'POST', headers, body }),
-      ]);
+      const targets = arrConnections.length > 0
+        ? arrConnections.map((connection) => ({ service: connection.type.toLowerCase(), instanceId: connection.id }))
+        : ['sonarr', 'radarr', 'lidarr'].map((service) => ({ service, instanceId: undefined }));
+      const results = await Promise.allSettled(targets.map(({ service, instanceId }) => {
+        const url = `/api/${service}/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`;
+        return fetch(url, { method: 'POST', headers, body });
+      }));
       const anyOk = results.some((r) => r.status === 'fulfilled' && r.value.ok);
       if (anyOk) {
         // Pull the current queue/history/wanted now (the command keeps updating

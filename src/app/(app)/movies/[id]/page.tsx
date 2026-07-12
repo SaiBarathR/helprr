@@ -976,7 +976,7 @@ export default function MovieDetailPage() {
         onOpenChange={setInteractiveSearch}
         title={movie.title}
         service="radarr"
-        searchParams={{ movieId: movie.id }}
+        searchParams={{ movieId: movie.id, ...(instance ? { instanceId: instance } : {}) }}
       />
 
       <RenamePreviewDialog

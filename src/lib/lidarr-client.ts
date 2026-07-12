@@ -206,6 +206,14 @@ export class LidarrClient {
     return this.put<LidarrAlbum>(`/api/v1/album/${body.id}`, body);
   }
 
+  async deleteAlbum(
+    id: number,
+    deleteFiles: boolean = false,
+    addImportListExclusion: boolean = false
+  ): Promise<void> {
+    await this.delete(`/api/v1/album/${id}`, { deleteFiles, addImportListExclusion });
+  }
+
   /** Monitor/unmonitor a set of albums in bulk. */
   async setAlbumsMonitored(albumIds: number[], monitored: boolean): Promise<void> {
     await this.put('/api/v1/album/monitor', { albumIds, monitored });

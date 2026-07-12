@@ -504,7 +504,7 @@ export default function SeasonDetailPage() {
         onOpenChange={setInteractiveSearch}
         title={`${series.title} - ${seasonTitle}`}
         service="sonarr"
-        searchParams={{ seriesId: series.id, seasonNumber }}
+        searchParams={{ seriesId: series.id, seasonNumber, ...(instance ? { instanceId: instance } : {}) }}
         showSeasonPackFilter
       />
 

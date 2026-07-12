@@ -82,8 +82,8 @@ function AddArtistPageContent() {
   // Search runs against the submitted term; TanStack threads the AbortSignal so
   // an in-flight lookup is cancelled on a new search automatically.
   const lookupQuery = useQuery({
-    queryKey: ['lidarr', 'lookup', submittedTerm],
-    queryFn: jsonFetcher<LidarrArtistLookupResult[]>(`/api/lidarr/lookup?term=${encodeURIComponent(submittedTerm)}`),
+    queryKey: ['lidarr', 'lookup', instanceId ?? 'default', submittedTerm],
+    queryFn: jsonFetcher<LidarrArtistLookupResult[]>(`/api/lidarr/lookup?term=${encodeURIComponent(submittedTerm)}`, instanceId),
     enabled: submittedTerm.trim().length > 0,
     staleTime: 60_000,
   });

@@ -25,12 +25,14 @@ import type {
   SeriesAniListMapping,
   SeriesAniListResponse,
 } from '@/types/anilist';
+import { withInstanceQuery } from '@/lib/query-fetch';
 
 interface AniListRemapDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   seriesId: number;
   seriesTitle: string;
+  instanceId?: string;
   mapping: SeriesAniListMapping | null;
   details: AniListDetailResponse[];
   onUpdated: (response: SeriesAniListResponse) => void;
@@ -62,6 +64,7 @@ export function AniListRemapDrawer({
   onOpenChange,
   seriesId,
   seriesTitle,
+  instanceId,
   mapping,
   details,
   onUpdated,
@@ -116,7 +119,7 @@ export function AniListRemapDrawer({
     (async () => {
       try {
         const params = new URLSearchParams({ q: base });
-        const res = await fetch(`/api/sonarr/${seriesId}/anime/candidates?${params.toString()}`, {
+        const res = await fetch(withInstanceQuery(`/api/sonarr/${seriesId}/anime/candidates?${params.toString()}`, instanceId), {
           signal: controller.signal,
         });
         if (!res.ok) return;
@@ -128,7 +131,7 @@ export function AniListRemapDrawer({
     })();
 
     return () => controller.abort();
-  }, [open, seriesId, primaryId, primaryTitle]);
+  }, [open, seriesId, instanceId, primaryId, primaryTitle]);
 
   // Related seasons surfaced from each linked entry's AniList relations
   // (SEQUEL/PREQUEL/etc.) merged with season-pattern search matches.
@@ -210,7 +213,7 @@ export function AniListRemapDrawer({
       try {
         const params = new URLSearchParams();
         if (trimmedQuery) params.set('q', trimmedQuery);
-        const res = await fetch(`/api/sonarr/${seriesId}/anime/candidates?${params.toString()}`, {
+        const res = await fetch(withInstanceQuery(`/api/sonarr/${seriesId}/anime/candidates?${params.toString()}`, instanceId), {
           signal: controller.signal,
         });
         if (!res.ok) {
@@ -235,7 +238,7 @@ export function AniListRemapDrawer({
       controller.abort();
       window.clearTimeout(handle);
     };
-  }, [open, seriesId, trimmedQuery]);
+  }, [open, seriesId, instanceId, trimmedQuery]);
 
   async function mutate(
     init: RequestInit & { url?: string },
@@ -244,7 +247,7 @@ export function AniListRemapDrawer({
     setBusyId(trackingId);
     setError(null);
     try {
-      const res = await fetch(init.url ?? `/api/sonarr/${seriesId}/anime`, init);
+      const res = await fetch(withInstanceQuery(init.url ?? `/api/sonarr/${seriesId}/anime`, instanceId), init);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || 'Failed to update AniList mapping');
@@ -287,7 +290,7 @@ export function AniListRemapDrawer({
     setClearing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/sonarr/${seriesId}/anime`, { method: 'DELETE' });
+      const res = await fetch(withInstanceQuery(`/api/sonarr/${seriesId}/anime`, instanceId), { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || 'Failed to clear AniList mapping');
