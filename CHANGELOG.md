@@ -47,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `.env.example` no longer sets `DATABASE_URL`/`REDIS_URL`: saved as `.env` for
+  the Docker quick start, the old `localhost` values overrode compose's
+  container wiring and made the app crash-loop with "Can't reach database
+  server". Both are now commented out with Docker/local-dev guidance.
+  (Caught by the fresh-install drill.)
 - Interactive search, release grabs, download-client overrides, Add-page
   lookups, AniList mapping actions, and the Activity refresh now target the
   selected Sonarr/Radarr/Lidarr instance instead of always using the default.
