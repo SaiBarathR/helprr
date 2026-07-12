@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test suite (`npm test`, vitest) covering capability resolution, file-ownership
   guards, cleanup queue pagination, and VAPID key resolution — runs in CI ahead
   of every image build.
+- Version tags now draft a GitHub release with `docker-compose.yml` and
+  `.env.example` attached, so installs can fetch the files matching their
+  exact version.
+- README operations guide: updating, backup (`pg_dump`) and restore
+  (including fresh-host disaster recovery), uninstalling (with a
+  `down -v` data-loss warning), and a plain-language list of every feature
+  that can delete media files.
 - GPL-3.0 license, security policy, changelog, and GitHub issue templates in
   preparation for the first stable release.
 - iOS Shortcuts guide (`docs/ios-shortcuts.md`) covering the `/protocol`

@@ -378,6 +378,111 @@ Prisma migrations are the database source of truth.
 
 
 
+## Updating
+
+Take a database backup, then pull and restart:
+
+```bash
+docker compose exec -T helprr-db pg_dump -U postgres -Fc helprr > "helprr-$(date +%Y%m%d-%H%M%S).dump"
+docker compose pull
+docker compose up -d
+```
+
+Pending database migrations run automatically before the app starts. The
+container drains background work gracefully on replacement (bounded at 30
+seconds), so updating while downloads or cleanup are active is safe.
+
+To stay on an exact version instead of a channel, set `HELPRR_VERSION` in
+`.env` (for example `HELPRR_VERSION=1.0.0`) and re-run the two Docker commands
+to move between versions. Downgrading across releases is not supported once a
+newer version has applied its migrations — restore the matching backup instead.
+
+
+
+## Backup and restore
+
+Everything Helprr needs to recover lives in PostgreSQL. Redis holds only
+cache and login rate-limit state and never needs to be backed up. The
+in-app settings export (**Settings → Backup**) is a *portable* subset —
+connections, preferences, rules, watchlists — useful for moving settings
+between installs, but it is **not** a disaster-recovery backup: it does not
+contain users' password hashes, sessions, push subscriptions, or history.
+
+**Back up** (run on a schedule via cron, and copy the dumps off-host):
+
+```bash
+docker compose exec -T helprr-db pg_dump -U postgres -Fc helprr > "helprr-$(date +%Y%m%d-%H%M%S).dump"
+```
+
+> [!WARNING]
+> Dumps contain your service API keys and users' password hashes. Treat backup
+> files as secrets: restrict permissions and encrypt them wherever they are
+> stored.
+
+**Restore over an existing installation** (e.g. roll back after a bad change):
+
+```bash
+docker compose stop helprr
+docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < helprr-YYYYMMDD-HHMMSS.dump
+docker compose start helprr
+```
+
+**Restore onto a fresh host** (disaster recovery):
+
+```bash
+# 1. Set up the deployment files and .env as in the quick start (same JWT_SECRET
+#    if you want existing sessions to survive; same VAPID keys or push
+#    subscriptions will need to re-subscribe).
+docker compose up -d helprr-db
+docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < helprr-YYYYMMDD-HHMMSS.dump
+docker compose up -d
+```
+
+The restored database already contains the applied-migrations history, so the
+app boots without re-running old migrations. Restore with the **same or newer**
+Helprr version than the one that produced the dump.
+
+
+
+## Uninstalling
+
+```bash
+docker compose down          # stops and removes containers; your data volumes remain
+docker compose down -v       # ⚠ ALSO DELETES the database, Redis, and log volumes
+docker image rm ghcr.io/saibarathr/helprr:edge   # remove downloaded images
+```
+
+> [!CAUTION]
+> `docker compose down -v` permanently deletes all application data — every
+> user, connection, watchlist, and history row. There is no undo. Take a
+> backup first unless you truly mean it.
+
+
+
+## Features that can delete media files
+
+For clarity, these are the places where Helprr can remove files from your
+disk (all are permission-gated; most write a record to
+**Settings → File audit**):
+
+- **Cleanup** (queue, download, and seeding rules) — can remove downloads from
+  qBittorrent *including their files* when a rule says so. Disabled by
+  default; supports dry-run previews, and automatic mode is opt-in per rule.
+- **Delete movie / series / artist / album** — each has an optional
+  "also delete files" choice in its confirmation dialog (off by default).
+- **Delete episode file / track file / movie file** — deletes that file from
+  disk; the media item stays in the library as missing.
+- **Activity queue removal** — optionally removes the download (and its data)
+  from the download client.
+- **Torrent deletion** — optionally deletes the torrent's data from disk.
+- **Manual import** — moves or copies files into your library folders.
+
+If Sonarr/Radarr has a recycle bin configured, *arr file deletions go there
+instead of being removed outright — Helprr records whether that was the case
+in the file audit entry.
+
+
+
 ## Useful commands
 
 ```bash
