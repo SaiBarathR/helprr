@@ -430,9 +430,11 @@ docker compose start helprr
 **Restore onto a fresh host** (disaster recovery):
 
 ```bash
-# 1. Set up the deployment files and .env as in the quick start (same JWT_SECRET
-#    if you want existing sessions to survive; same VAPID keys or push
-#    subscriptions will need to re-subscribe).
+# 1. Set up the deployment files and .env as in the quick start. Reuse the old
+#    install's JWT_SECRET (or sessions are invalidated), VAPID keys (or devices
+#    must re-subscribe), and HELPRR_ADMIN_USERNAME — on boot the bootstrap
+#    admin is renamed to that value (default "admin"). Passwords are safe
+#    either way: APP_PASSWORD never overwrites an existing password hash.
 docker compose up -d helprr-db
 docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < helprr-YYYYMMDD-HHMMSS.dump
 docker compose up -d
