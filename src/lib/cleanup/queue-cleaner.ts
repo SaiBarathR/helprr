@@ -29,6 +29,7 @@ import {
   StrikeJournal,
 } from './strikes';
 import { processWithLimit } from './concurrency';
+import { fetchFullQueue, QUEUE_PAGE_SIZE, MAX_QUEUE_PAGES } from './queue-pagination';
 import {
   AutoRunMode,
   AUTO_RUN_MODES,
@@ -144,29 +145,6 @@ export async function loadSlowRules(): Promise<SlowRuleShape[]> {
     deletePrivate: r.deletePrivate,
     reSearchOverride: r.reSearchOverride,
   }));
-}
-
-const QUEUE_PAGE_SIZE = 1000;
-// 20 pages = 20k items — far beyond any plausible real queue. Hitting this
-// means something is wrong (or the instance is absurdly large); cleaning
-// against a partial queue view would silently exempt the truncated tail from
-// rules and strike handling, so the caller must skip the instance instead.
-const MAX_QUEUE_PAGES = 20;
-
-async function fetchFullQueue<R>(
-  fetchPage: (page: number, pageSize: number) => Promise<{ records?: R[]; totalRecords?: number }>
-): Promise<R[] | null> {
-  const all: R[] = [];
-  for (let page = 1; page <= MAX_QUEUE_PAGES; page++) {
-    const r = await fetchPage(page, QUEUE_PAGE_SIZE);
-    const records = r.records || [];
-    all.push(...records);
-    const total = typeof r.totalRecords === 'number' && Number.isFinite(r.totalRecords)
-      ? r.totalRecords
-      : all.length;
-    if (all.length >= total || records.length < QUEUE_PAGE_SIZE) return all;
-  }
-  return null;
 }
 
 async function loadArrQueues(): Promise<{

@@ -9,11 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Lidarr album deletion (with an optional delete-files-from-disk checkbox) and
+  per-track file deletion from the album page; track file deletion goes through
+  the ownership-validated, audited endpoint.
+- The installed version and commit are shown in Settings → Status.
+- Test suite (`npm test`, vitest) covering capability resolution, file-ownership
+  guards, cleanup queue pagination, and VAPID key resolution — runs in CI ahead
+  of every image build.
 - GPL-3.0 license, security policy, changelog, and GitHub issue templates in
   preparation for the first stable release.
 - iOS Shortcuts guide (`docs/ios-shortcuts.md`) covering the `/protocol`
   deep-link surface and share-sheet integration.
-
 - CI workflow (lint + build on pushes and pull requests) and a Docker publish
   workflow: multi-arch (amd64/arm64) images on GHCR — `edge` from the
   development branch, semver + `stable` channel tags from release tags.
@@ -34,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Interactive search, release grabs, download-client overrides, Add-page
+  lookups, AniList mapping actions, and the Activity refresh now target the
+  selected Sonarr/Radarr/Lidarr instance instead of always using the default.
 - Graceful shutdown: the container previously ran node behind `sh -c`, so
   SIGTERM never reached the app and every update hard-killed it after
   Docker's grace period. The entrypoint now execs node as PID 1, and a
