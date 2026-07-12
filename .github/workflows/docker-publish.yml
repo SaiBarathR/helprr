@@ -135,3 +135,31 @@ jobs:
 
       - name: Inspect
         run: docker buildx imagetools inspect "$IMAGE:${{ steps.meta.outputs.version }}"
+
+  # On version tags, draft a GitHub release carrying the two files a user needs
+  # (docker-compose.yml + .env.example) so installs can fetch the exact files
+  # matching their version. Draft on purpose: finalize notes from CHANGELOG.md
+  # before publishing.
+  release:
+    needs: merge
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Draft release with deployment assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease_flag=""
+          case "$GITHUB_REF_NAME" in
+            *-*) prerelease_flag="--prerelease" ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --generate-notes \
+            $prerelease_flag \
+            docker-compose.yml .env.example
