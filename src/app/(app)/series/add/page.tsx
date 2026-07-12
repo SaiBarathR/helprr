@@ -76,9 +76,15 @@ function AddSeriesPageContent() {
   // instead of via setState-in-effect — see React's "adjusting state when
   // props change" pattern.
 
-  // Default to the marked-default instance once instances load (picker shows when >1).
+  // Honor a Discover-provided target instance when valid; otherwise use the
+  // marked default. Instance ids are service-scoped by the filtered list.
   if (instanceId === undefined && instances.length > 0) {
-    setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+    const requestedInstance = searchParams.get('instance');
+    setInstanceId(
+      instances.find((i) => i.id === requestedInstance)?.id
+        ?? instances.find((i) => i.isDefault)?.id
+        ?? instances[0]?.id
+    );
   }
 
   // Switching instances invalidates the previously-picked (instance-local)
@@ -90,6 +96,13 @@ function AddSeriesPageContent() {
     setProfileId('');
     setRootFolder('');
     setSelectedTags([]);
+    // A lookup result's library annotation belongs to the instance that
+    // returned it. Preserve only stable metadata ids while the new lookup runs.
+    if (selected) {
+      setTargetTvdbId(selected.tvdbId || null);
+      setTargetTmdbId(selected.tmdbId || null);
+      setSelected(null);
+    }
   }
 
   // Auto-select the prefilled result (by tvdbId or tmdbId) once the lookup resolves.
@@ -298,6 +311,26 @@ function AddSeriesPageContent() {
           </Button>
         </form>
 
+        {instances.length > 1 && (
+          <div className="grouped-section">
+            <div className="grouped-section-content">
+              <div className="grouped-row">
+                <Label className="text-sm shrink-0">Instance</Label>
+                <Select value={instanceId ?? ''} onValueChange={setInstanceId}>
+                  <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                    <SelectValue>{instances.find((i) => i.id === instanceId)?.label ?? 'Select'}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {instances.map((i) => (
+                      <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        )}
+
         {selected ? (
           <div className="space-y-5">
             {/* Series info */}
@@ -337,27 +370,12 @@ function AddSeriesPageContent() {
 
             {selectedInLibrary ? (
               <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-300">
-                This series is already in your library.
+                This series is already in {instances.find((i) => i.id === instanceId)?.label ?? 'the selected Sonarr instance'}.
               </div>
             ) : (
               <div className="grouped-section">
                 <div className="grouped-section-title">Options</div>
                 <div className="grouped-section-content">
-                  {instances.length > 1 && (
-                    <div className="grouped-row">
-                      <Label className="text-sm shrink-0">Instance</Label>
-                      <Select value={instanceId ?? ''} onValueChange={setInstanceId}>
-                        <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                          <SelectValue>{instances.find((i) => i.id === instanceId)?.label ?? 'Select'}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {instances.map((i) => (
-                            <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Quality Profile</Label>
                     <Select value={profileId} onValueChange={setProfileId}>

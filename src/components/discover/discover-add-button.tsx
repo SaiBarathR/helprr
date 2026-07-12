@@ -1,32 +1,33 @@
 'use client';
 
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
 import { OpenInInstances } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface DiscoverAddButtonProps {
   detail: DiscoverDetail;
 }
 
-function buildAddHref(detail: DiscoverDetail): string | null {
-  if (detail.addTarget.exists && detail.addTarget.id) {
-    // Carry the matched item's instance so the detail page caches under the same
-    // ?instance= slot the optimistic monitor writes use (mirrors anime-add-button).
-    const q = detail.addTarget.instanceId ? `?instance=${detail.addTarget.instanceId}` : '';
-    return detail.addTarget.service === 'radarr'
-      ? `/movies/${detail.addTarget.id}${q}`
-      : `/series/${detail.addTarget.id}${q}`;
-  }
-
+function buildAddHref(detail: DiscoverDetail, instanceId?: string): string {
   if (detail.mediaType === 'movie') {
     const params = new URLSearchParams();
     params.set('term', detail.title);
     params.set('tmdbId', String(detail.tmdbId));
+    if (instanceId) params.set('instance', instanceId);
     return `/movies/add?${params.toString()}`;
   }
 
@@ -35,13 +36,17 @@ function buildAddHref(detail: DiscoverDetail): string | null {
   params.set('tmdbId', String(detail.tmdbId));
   if (detail.tvdbId) params.set('tvdbId', String(detail.tvdbId));
   params.set('seriesType', 'standard');
+  if (instanceId) params.set('instance', instanceId);
   return `/series/add?${params.toString()}`;
 }
 
 export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
   const me = useMe();
   const href = buildAddHref(detail);
-  if (!href) return null;
+  const instancesQuery = useQuery({
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<Array<{ id: string; type: string; label: string; isDefault: boolean }>>('/api/instances'),
+  });
 
   const service = detail.mediaType === 'movie' ? 'Radarr' : 'Sonarr';
   const seerrMediaType = detail.mediaType === 'movie' ? 'movie' : 'tv';
@@ -49,6 +54,11 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
   // also request via Seerr when it's configured. Members only get Request.
   const canAddDirectly = hasCapability(me, detail.mediaType === 'movie' ? 'movies.add' : 'series.add');
   const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
+  const targetType = detail.mediaType === 'movie' ? 'RADARR' : 'SONARR';
+  const holdingInstanceIds = new Set(detail.library?.instances?.map((item) => item.instanceId) ?? []);
+  if (detail.addTarget.instanceId) holdingInstanceIds.add(detail.addTarget.instanceId);
+  const missingInstances = (instancesQuery.data ?? [])
+    .filter((item) => item.type === targetType && !holdingInstanceIds.has(item.id));
   const watchlistDraft = {
     source: 'TMDB' as const,
     externalId: String(detail.tmdbId),
@@ -71,6 +81,7 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
       : detail.addTarget.id
         ? [{ instanceId: detail.addTarget.instanceId ?? '', instanceLabel: '', id: detail.addTarget.id, titleSlug: detail.library?.titleSlug }]
         : [];
+    const addClassName = 'inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors';
     return (
       <div className="absolute top-1 right-1 md:top-2 md:right-1.5 hero-meta-fade flex items-center gap-1.5">
         <WatchlistButton
@@ -87,6 +98,32 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
           label={`Open in ${targetService}`}
           className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
         />
+        {canAddDirectly && missingInstances.length === 1 && (
+          <Link
+            href={buildAddHref(detail, missingInstances[0].id)}
+            className={addClassName}
+            aria-label={`Add to ${missingInstances[0].label}`}
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            <span className="tracking-widest uppercase">Add to {missingInstances[0].label}</span>
+          </Link>
+        )}
+        {canAddDirectly && missingInstances.length > 1 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className={addClassName}>
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              <span className="tracking-widest uppercase">Add to another</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {missingInstances.map((item) => (
+                <DropdownMenuItem key={item.id} asChild>
+                  <Link href={buildAddHref(detail, item.id)}>{item.label}</Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     );
   }
