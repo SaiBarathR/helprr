@@ -76,9 +76,81 @@ model ServiceConnection {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   pollingState   PollingState?
+  manualDownloadMappings ManualDownloadMapping[]
 
   @@unique([type, label])
   @@index([type])
+}
+
+enum ManualDownloadStatus {
+  PREFLIGHT
+  CREATING_MEDIA
+  SUBMITTING_RELEASE
+  QUEUED
+  DOWNLOADING
+  IMPORT_PENDING
+  READY_TO_IMPORT
+  IMPORTING
+  IMPORTED
+  NEEDS_MAPPING
+  BLOCKED
+  IMPORT_BLOCKED
+  FAILED
+  CANCELLED
+}
+
+enum ManualDownloadMode {
+  ARR_MANAGED
+  QBIT_REVIEWED
+}
+
+// A qBittorrent download intentionally linked to a newly-created Sonarr/Radarr
+// library item. The torrent hash is the durable join key across restarts.
+model ManualDownloadMapping {
+  id               String               @id @default(cuid())
+  mode             ManualDownloadMode   @default(ARR_MANAGED)
+  requestKey       String               @unique
+  torrentHash      String?
+  torrentName      String
+  service          ServiceType
+  instanceId       String
+  instance         ServiceConnection    @relation(fields: [instanceId], references: [id], onDelete: Restrict)
+  arrItemId        Int
+  arrTitle         String
+  externalId       Int
+  status           ManualDownloadStatus @default(PREFLIGHT)
+  arrDownloadId    String?
+  arrQueueId       Int?
+  initialFileIds   Json?
+  selectedFileIds  Json?
+  importCommandId  Int?
+  attemptCount     Int                  @default(0)
+  lastError        String?
+  createdByUserId  String?
+  completedAt      DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  attempts         ManualDownloadAttempt[]
+
+  @@index([status, updatedAt])
+  @@index([arrDownloadId])
+  @@index([torrentHash])
+  @@index([instanceId, arrItemId])
+}
+
+model ManualDownloadAttempt {
+  id          String                @id @default(cuid())
+  mappingId   String
+  mapping     ManualDownloadMapping @relation(fields: [mappingId], references: [id], onDelete: Cascade)
+  attempt     Int
+  outcome     String
+  scanPath    String?
+  commandId   Int?
+  error       String?
+  startedAt   DateTime              @default(now())
+  finishedAt  DateTime?
+
+  @@index([mappingId, startedAt])
 }
 
 model Session {

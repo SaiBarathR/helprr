@@ -21,6 +21,8 @@ import type {
   RadarrLookupResult,
   Release,
   DownloadClient,
+  ArrReleasePushInput,
+  ArrReleasePushResult,
 } from '@/types';
 
 interface SystemStatus {
@@ -113,6 +115,12 @@ export class RadarrClient {
     return this.post<RadarrMovie>('/api/v3/movie', body);
   }
 
+  // Radarr 6.2.1 uses the same POST-only ReleasePushResource contract as
+  // Sonarr. The response is Radarr's own parsed download decision.
+  async pushRelease(body: ArrReleasePushInput): Promise<ArrReleasePushResult[]> {
+    return this.post<ArrReleasePushResult[]>('/api/v3/release/push', body);
+  }
+
   async updateMovie(body: RadarrMovie, moveFiles: boolean = false): Promise<RadarrMovie> {
     const endpoint = `/api/v3/movie/${body.id}${moveFiles ? '?moveFiles=true' : ''}`;
     return this.put<RadarrMovie>(endpoint, body);
@@ -161,6 +169,10 @@ export class RadarrClient {
 
   async getDownloadClients(): Promise<DownloadClient[]> {
     return this.get<DownloadClient[]>('/api/v3/downloadclient');
+  }
+
+  async getRemotePathMappings(): Promise<import('@/types').ArrRemotePathMapping[]> {
+    return this.get<import('@/types').ArrRemotePathMapping[]>('/api/v3/remotepathmapping');
   }
 
   // Wanted
@@ -264,11 +276,12 @@ export class RadarrClient {
   // dedicated "manage files" branch: imported MovieFiles + loose unmapped files
   // in the movie folder, with no decision-engine rejections on the imported ones.
   async scanManualImport(params: {
-    movieId: number;
+    movieId?: number;
     folder?: string;
     filterExistingFiles?: boolean;
   }): Promise<ManualImportItem[]> {
-    const query: Record<string, unknown> = { movieId: params.movieId };
+    const query: Record<string, unknown> = {};
+    if (params.movieId) query.movieId = params.movieId;
     if (params.folder) {
       query.folder = params.folder;
       query.filterExistingFiles = params.filterExistingFiles ?? false;

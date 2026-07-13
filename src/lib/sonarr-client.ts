@@ -19,6 +19,8 @@ import type {
   SonarrLookupResult,
   Release,
   DownloadClient,
+  ArrReleasePushInput,
+  ArrReleasePushResult,
 } from '@/types';
 
 interface SystemStatus {
@@ -111,6 +113,13 @@ export class SonarrClient {
     return this.post<SonarrSeries>('/api/v3/series', body);
   }
 
+  // Sonarr 4.0.19 exposes this as POST-only. Required fields were verified
+  // against the installed controller: title, protocol, publishDate and one of
+  // magnetUrl/downloadUrl. Sonarr owns client selection and the grab lifecycle.
+  async pushRelease(body: ArrReleasePushInput): Promise<ArrReleasePushResult[]> {
+    return this.post<ArrReleasePushResult[]>('/api/v3/release/push', body);
+  }
+
   async updateSeries(body: SonarrSeries, moveFiles: boolean = false): Promise<SonarrSeries> {
     const endpoint = `/api/v3/series/${body.id}${moveFiles ? '?moveFiles=true' : ''}`;
     return this.put<SonarrSeries>(endpoint, body);
@@ -162,7 +171,7 @@ export class SonarrClient {
   // imported into the series folder still show (the whole point of "manage").
   async scanManualImport(params: {
     folder: string;
-    seriesId: number;
+    seriesId?: number;
     seasonNumber?: number;
     filterExistingFiles?: boolean;
   }): Promise<ManualImportItem[]> {
@@ -268,6 +277,10 @@ export class SonarrClient {
 
   async getDownloadClients(): Promise<DownloadClient[]> {
     return this.get<DownloadClient[]>('/api/v3/downloadclient');
+  }
+
+  async getRemotePathMappings(): Promise<import('@/types').ArrRemotePathMapping[]> {
+    return this.get<import('@/types').ArrRemotePathMapping[]>('/api/v3/remotepathmapping');
   }
 
   // Wanted

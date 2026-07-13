@@ -27,6 +27,10 @@ import {
 } from '@/components/ui/select';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
+import { Label } from '@/components/ui/label';
+import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
+import { queryKeys } from '@/lib/query-keys';
+import type { RadarrLookupResult, SonarrLookupResult } from '@/types';
 import type { TorrentFile } from '@/lib/qbittorrent-client';
 import {
   buildFileTree,
@@ -41,6 +45,22 @@ type ApiResult = {
   success?: boolean;
   error?: string;
   hash?: string;
+};
+
+type PreflightResult = {
+  service: 'SONARR' | 'RADARR';
+  instanceId: string;
+  externalId: number;
+  arrSelectsClient: boolean;
+  downloadClients: Array<{ id: number; name: string; priority: number }>;
+  error?: string;
+};
+
+type MappingConfig = {
+  service: 'SONARR' | 'RADARR';
+  instanceId: string;
+  media: Record<string, unknown>;
+  title: string;
 };
 
 const NO_CATEGORY = '__none__';
@@ -69,6 +89,9 @@ export default function AddTorrentPage() {
   const [savePath, setSavePath] = useState('');
   const [category, setCategory] = useState(NO_CATEGORY);
   const [startTorrent, setStartTorrent] = useState(true);
+  const [linkMedia, setLinkMedia] = useState(false);
+  const [mapping, setMapping] = useState<MappingConfig | null>(null);
+  const [preflightPlan, setPreflightPlan] = useState<PreflightResult | null>(null);
 
   // Review step: set once the torrent is added stopped and files can be picked.
   const [reviewHash, setReviewHash] = useState<string | null>(null);
@@ -78,7 +101,10 @@ export default function AddTorrentPage() {
   // only the previous direct-add behavior is offered.
   const canManage = useCan('torrents.manage');
   const canDelete = useCan('torrents.delete');
+  const canAddSeries = useCan('series.add');
+  const canAddMovies = useCan('movies.add');
   const canReview = canManage && canDelete;
+  const canLinkArr = canAddSeries || canAddMovies;
 
   const categoriesQuery = useQuery({
     queryKey: ['qbittorrent', 'categories'],
@@ -94,6 +120,19 @@ export default function AddTorrentPage() {
 
   const addMutation = useMutation({
     mutationFn: async ({ review }: { review: boolean }) => {
+      if (mapping && !review) {
+        const payload = {
+          mode: 'ARR_MANAGED', service: mapping.service, instanceId: mapping.instanceId,
+          media: mapping.media, magnetUrl: magnetLink.trim(),
+          torrentName: magnetDisplayName(magnetLink),
+        };
+        const response = await fetch('/api/manual-downloads', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+        });
+        const data = await parseApiResult(response);
+        if (!response.ok || data.error) throw new ApiError(response.status, data.error || 'Arr did not accept the release');
+        return { success: true };
+      }
       // With review, add .torrent files stopped so files can be deselected
       // before any data downloads. Magnets can't fetch metadata while stopped,
       // so they start with stopCondition=MetadataReceived: qBittorrent stops
@@ -143,7 +182,7 @@ export default function AddTorrentPage() {
         router.push('/torrents');
         return;
       }
-      toast.success('Torrent added');
+      toast.success(mapping ? 'Release sent to Arr' : 'Torrent added');
       router.push('/torrents');
     },
     onError: (err) => {
@@ -152,6 +191,29 @@ export default function AddTorrentPage() {
     },
   });
   const adding = addMutation.isPending;
+
+  const preflightMutation = useMutation({
+    mutationFn: async () => {
+      if (!mapping) throw new Error('Choose a movie or series first');
+      const response = await fetch('/api/manual-downloads/preflight', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'ARR_MANAGED', service: mapping.service, instanceId: mapping.instanceId,
+          media: mapping.media, magnetUrl: magnetLink.trim(),
+        }),
+      });
+      const data = await response.json().catch(() => ({})) as PreflightResult;
+      if (!response.ok || data.error) throw new ApiError(response.status, data.error || 'Preflight failed');
+      return data;
+    },
+    onSuccess: (data) => setPreflightPlan(data),
+    onError: (error) => {
+      setPreflightPlan(null);
+      if (error instanceof ApiError && error.status === 401) return;
+      toast.error(error instanceof Error ? error.message : 'Preflight failed');
+    },
+  });
 
   function handleAddTorrent(review: boolean) {
     if (addMode === 'magnet' && !magnetLink.trim()) {
@@ -165,6 +227,22 @@ export default function AddTorrentPage() {
     addMutation.mutate({ review });
   }
 
+  function handleArrAction() {
+    if (!magnetLink.trim()) {
+      toast.error('Please enter a magnet link');
+      return;
+    }
+    if (!mapping) {
+      toast.error('Choose a movie or series first');
+      return;
+    }
+    if (!preflightPlan) {
+      preflightMutation.mutate();
+      return;
+    }
+    addMutation.mutate({ review: false });
+  }
+
   if (reviewHash) {
     const displayName =
       (addMode === 'magnet'
@@ -176,6 +254,7 @@ export default function AddTorrentPage() {
         displayName={displayName}
         startTorrent={startTorrent}
         stopOnMetadata={addMode === 'magnet'}
+        mapping={mapping}
       />
     );
   }
@@ -193,7 +272,7 @@ export default function AddTorrentPage() {
           <Button
             variant={addMode === 'magnet' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setAddMode('magnet')}
+            onClick={() => { setAddMode('magnet'); setPreflightPlan(null); }}
             className="flex-1"
           >
             <LinkIcon className="mr-2 h-4 w-4" />
@@ -202,7 +281,7 @@ export default function AddTorrentPage() {
           <Button
             variant={addMode === 'file' ? 'default' : 'outline'}
             size="sm"
-            onClick={() => setAddMode('file')}
+            onClick={() => { setAddMode('file'); setLinkMedia(false); setMapping(null); setPreflightPlan(null); }}
             className="flex-1"
           >
             <FileUp className="mr-2 h-4 w-4" />
@@ -214,7 +293,7 @@ export default function AddTorrentPage() {
           <Input
             placeholder="magnet:?xt=urn:btih:..."
             value={magnetLink}
-            onChange={(e) => setMagnetLink(e.target.value)}
+            onChange={(e) => { setMagnetLink(e.target.value); setPreflightPlan(null); }}
             autoFocus
           />
         ) : (
@@ -240,7 +319,7 @@ export default function AddTorrentPage() {
           </>
         )}
 
-        <div className="space-y-3 pt-1">
+        {!linkMedia && <div className="space-y-3 pt-1">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground" htmlFor="save-path">
               Save at
@@ -281,13 +360,33 @@ export default function AddTorrentPage() {
             />
             <span className="text-sm">Start torrent</span>
           </label>
-        </div>
+        </div>}
+
+        {addMode === 'magnet' && canLinkArr && (
+          <MediaMappingPicker
+            canAddSeries={canAddSeries}
+            canAddMovies={canAddMovies}
+            enabled={linkMedia}
+            onEnabledChange={(enabled) => { setLinkMedia(enabled); setPreflightPlan(null); if (!enabled) setMapping(null); }}
+            value={mapping}
+            onChange={(value) => { setMapping(value); setPreflightPlan(null); }}
+          />
+        )}
+
+        {preflightPlan && mapping && (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm space-y-1">
+            <p className="font-medium">Setup check passed</p>
+            <p className="text-xs text-muted-foreground">
+              {mapping.service === 'SONARR' ? 'Sonarr' : 'Radarr'} will choose from {preflightPlan.downloadClients.length} enabled torrent client{preflightPlan.downloadClients.length === 1 ? '' : 's'} and manage the complete download and import.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-2 pt-2">
-          {canReview && (
+          {canReview && !linkMedia && (
             <Button
               onClick={() => handleAddTorrent(true)}
-              disabled={adding}
+              disabled={adding || preflightMutation.isPending || (linkMedia && !mapping)}
               className="w-full"
             >
               {adding && addMutation.variables?.review ? (
@@ -303,8 +402,8 @@ export default function AddTorrentPage() {
           <div className="flex gap-2">
             <Button
               variant={canReview ? 'outline' : 'default'}
-              onClick={() => handleAddTorrent(false)}
-              disabled={adding}
+              onClick={() => linkMedia ? handleArrAction() : handleAddTorrent(false)}
+              disabled={adding || preflightMutation.isPending || (linkMedia && !mapping)}
               className="flex-1"
             >
               {adding && !addMutation.variables?.review ? (
@@ -313,7 +412,13 @@ export default function AddTorrentPage() {
                   Adding...
                 </>
               ) : (
-                'Add Torrent'
+                linkMedia
+                  ? preflightMutation.isPending
+                    ? 'Checking setup…'
+                    : preflightPlan
+                      ? 'Send magnet to Arr'
+                      : 'Check setup'
+                  : 'Add Torrent'
               )}
             </Button>
             <Button
@@ -331,16 +436,143 @@ export default function AddTorrentPage() {
   );
 }
 
+function MediaMappingPicker({
+  canAddSeries,
+  canAddMovies,
+  enabled,
+  onEnabledChange,
+  value,
+  onChange,
+}: {
+  canAddSeries: boolean;
+  canAddMovies: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  value: MappingConfig | null;
+  onChange: (value: MappingConfig | null) => void;
+}) {
+  const [service, setService] = useState<'SONARR' | 'RADARR'>(canAddMovies ? 'RADARR' : 'SONARR');
+  const [instanceId, setInstanceId] = useState('');
+  const [term, setTerm] = useState('');
+  const [submittedTerm, setSubmittedTerm] = useState('');
+  const [profileId, setProfileId] = useState('');
+  const [rootFolder, setRootFolder] = useState('');
+
+  const instancesQuery = useQuery({
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<Array<{ id: string; type: string; label: string; isDefault: boolean }>>('/api/instances'),
+  });
+  const instances = useMemo(
+    () => (instancesQuery.data ?? []).filter((instance) => instance.type === service),
+    [instancesQuery.data, service],
+  );
+  const effectiveInstanceId = instances.some((instance) => instance.id === instanceId)
+    ? instanceId
+    : instances.find((instance) => instance.isDefault)?.id ?? instances[0]?.id ?? '';
+  const arrService = service === 'SONARR' ? 'sonarr' : 'radarr';
+  const { data: profiles = [] } = useQualityProfiles(arrService, effectiveInstanceId || undefined);
+  const { data: rootFolders = [] } = useRootFolders(arrService, effectiveInstanceId || undefined);
+  const effectiveProfileId = profiles.some((profile) => String(profile.id) === profileId)
+    ? profileId : profiles[0] ? String(profiles[0].id) : '';
+  const effectiveRootFolder = rootFolders.some((folder) => folder.path === rootFolder)
+    ? rootFolder : rootFolders[0]?.path ?? '';
+  const lookupQuery = useQuery({
+    queryKey: [arrService, 'lookup', effectiveInstanceId, submittedTerm],
+    queryFn: jsonFetcher<Array<SonarrLookupResult | RadarrLookupResult>>(
+      `/api/${arrService}/lookup?term=${encodeURIComponent(submittedTerm)}`,
+      effectiveInstanceId,
+    ),
+    enabled: enabled && Boolean(effectiveInstanceId && submittedTerm.trim()),
+  });
+
+  function choose(item: SonarrLookupResult | RadarrLookupResult) {
+    if (item.library?.exists) {
+      toast.error(`${item.title} already exists in the selected ${service === 'SONARR' ? 'Sonarr' : 'Radarr'} instance`);
+      return;
+    }
+    if (!effectiveProfileId || !effectiveRootFolder) {
+      toast.error('The selected instance needs a quality profile and root folder');
+      return;
+    }
+    const media = service === 'SONARR'
+      ? {
+          ...item,
+          qualityProfileId: Number(effectiveProfileId),
+          rootFolderPath: effectiveRootFolder,
+          monitored: true,
+          monitor: 'all',
+          seasonFolder: true,
+          seriesType: 'standard',
+        }
+      : {
+          ...item,
+          qualityProfileId: Number(effectiveProfileId),
+          rootFolderPath: effectiveRootFolder,
+          monitored: true,
+          minimumAvailability: 'released',
+        };
+    onChange({ service, instanceId: effectiveInstanceId, media, title: item.title });
+  }
+
+  return (
+    <div className="rounded-xl border bg-card p-3 space-y-3">
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={enabled} onChange={(event) => onEnabledChange(event.target.checked)} className="h-4 w-4 rounded border-border" />
+        <span className="text-sm font-medium">Link to Sonarr or Radarr</span>
+      </label>
+      {enabled && (
+        <div className="space-y-3 border-t pt-3">
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <p>Recommended: Sonarr or Radarr receives the magnet, chooses its download client, and owns queueing, import, rename, and library placement.</p>
+            {service === 'SONARR' && <p>Sonarr reads the magnet release name to determine whether it contains one episode, multiple episodes, or a full season pack.</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Select value={service} onValueChange={(next: 'SONARR' | 'RADARR') => { setService(next); setInstanceId(''); onChange(null); }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {canAddMovies && <SelectItem value="RADARR">Radarr</SelectItem>}
+                {canAddSeries && <SelectItem value="SONARR">Sonarr</SelectItem>}
+              </SelectContent>
+            </Select>
+            <Select value={effectiveInstanceId} onValueChange={(next) => { setInstanceId(next); onChange(null); }}>
+              <SelectTrigger><SelectValue placeholder="Instance" /></SelectTrigger>
+              <SelectContent>{instances.map((instance) => <SelectItem key={instance.id} value={instance.id}>{instance.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); onChange(null); setSubmittedTerm(term.trim()); }}>
+            <Input value={term} onChange={(event) => setTerm(event.target.value)} placeholder={`Search ${service === 'SONARR' ? 'series' : 'movies'}…`} />
+            <Button type="submit" variant="outline" disabled={!term.trim() || !effectiveInstanceId}>Search</Button>
+          </form>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1"><Label className="text-xs">Quality profile</Label><Select value={effectiveProfileId} onValueChange={(next) => { setProfileId(next); onChange(null); }}><SelectTrigger><SelectValue placeholder="Profile" /></SelectTrigger><SelectContent>{profiles.map((profile) => <SelectItem key={profile.id} value={String(profile.id)}>{profile.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="space-y-1"><Label className="text-xs">Root folder</Label><Select value={effectiveRootFolder} onValueChange={(next) => { setRootFolder(next); onChange(null); }}><SelectTrigger><SelectValue placeholder="Folder" /></SelectTrigger><SelectContent>{rootFolders.map((folder) => <SelectItem key={folder.path} value={folder.path}>{folder.path}</SelectItem>)}</SelectContent></Select></div>
+          </div>
+          {lookupQuery.isFetching && <p className="text-xs text-muted-foreground">Searching…</p>}
+          {(lookupQuery.data ?? []).slice(0, 8).map((item) => (
+            <button key={`${service}-${item.titleSlug}`} type="button" onClick={() => choose(item)} disabled={item.library?.exists} className="w-full rounded-lg border p-2 text-left text-sm disabled:opacity-50">
+              <span className="font-medium">{item.title}</span> <span className="text-muted-foreground">({item.year})</span>
+              {item.library?.exists && <span className="ml-2 text-xs">Already in library</span>}
+            </button>
+          ))}
+          {value && <p className="rounded-lg bg-muted p-2 text-sm">Linked to <span className="font-medium">{value.title}</span></p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReviewStep({
   hash,
   displayName,
   startTorrent,
   stopOnMetadata,
+  mapping,
 }: {
   hash: string;
   displayName: string;
   startTorrent: boolean;
   stopOnMetadata: boolean;
+  mapping: MappingConfig | null;
 }) {
   const router = useRouter();
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
@@ -442,6 +674,24 @@ function ReviewStep({
           throw new ApiError(res.status, data.error || 'Failed to skip deselected files');
         }
       }
+      if (mapping) {
+        const res = await fetch('/api/manual-downloads', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: 'QBIT_REVIEWED',
+            torrentHash: hash,
+            service: mapping.service,
+            instanceId: mapping.instanceId,
+            media: mapping.media,
+            selectedFileIds: files.filter((file) => !excluded.has(file.index)).map((file) => file.index),
+          }),
+        });
+        if (!res.ok) {
+          const data = await parseApiResult(res);
+          throw new ApiError(res.status, data.error || 'Failed to link torrent');
+        }
+      }
       if (startTorrent) {
         const res = await fetch(`/api/qbittorrent/${hash}`, {
           method: 'POST',
@@ -491,6 +741,14 @@ function ReviewStep({
   return (
     <div className="space-y-3 animate-content-in">
       <PageHeader title="Choose Files" subtitle={displayName} showBack={false} />
+
+      {mapping && (
+        <div className="rounded-xl border bg-card p-3 text-sm">
+          <span className="text-muted-foreground">Import after completion into </span>
+          <span className="font-medium">{mapping.title}</span>
+          <span className="text-muted-foreground"> via {mapping.service === 'SONARR' ? 'Sonarr' : 'Radarr'}</span>
+        </div>
+      )}
 
       {!hasMetadata ? (
         <div className="rounded-xl border bg-card p-8 flex flex-col items-center gap-3 text-center">

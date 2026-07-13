@@ -80,6 +80,7 @@ import {
 } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
+import { ManualDownloadManager } from '@/components/torrents/manual-download-manager';
 
 const TORRENT_ROW_HEIGHT = 160;
 // Table rows are a fixed h-14 (56px, border included via border-box) so the
@@ -1064,8 +1065,11 @@ export default function TorrentsPage() {
     };
     measure();
 
+    // Observe the list and its parent so content above (mapped downloads
+    // expanding/collapsing) also triggers a scrollMargin remasure.
     const observer = new ResizeObserver(measure);
     observer.observe(list);
+    if (list.parentElement) observer.observe(list.parentElement);
     window.addEventListener('resize', measure);
 
     return () => {
@@ -1523,6 +1527,8 @@ export default function TorrentsPage() {
           />
         </div>
       </div>
+
+      <ManualDownloadManager />
 
       {selectedTorrents.size > 0 && (
         <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">

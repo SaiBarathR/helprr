@@ -24,6 +24,7 @@ import { logger } from '@/lib/logger';
 import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/scheduled-alerts/delivery';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
+import { reconcileManualDownloads } from '@/lib/manual-downloads';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
 import {
@@ -1735,6 +1736,10 @@ export class PollingService {
 
     const torrents = await client.getTorrents();
     const currentMap = new Map(torrents.map((t) => [t.hash, t]));
+
+    // Arr-managed handoffs are reconciled from Arr queue/history and exact file
+    // deltas, so a Helprr restart cannot lose an accepted grab or its import.
+    await reconcileManualDownloads();
 
     // Previous state: array of {hash, progress, name}
     const prevEntries = (state.lastQueueIds as { hash: string; progress: number; name: string }[]) || [];

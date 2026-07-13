@@ -812,6 +812,44 @@ export interface DownloadClient {
   protocol: string;
   priority: number;
   implementation: string;
+  fields?: Array<{
+    name: string;
+    value?: unknown;
+  }>;
+}
+
+export interface ArrReleasePushInput {
+  title: string;
+  protocol: 'torrent';
+  publishDate: string;
+  magnetUrl?: string;
+  downloadUrl?: string;
+  infoHash?: string;
+  size?: number;
+  indexer?: string;
+  downloadClientId?: number;
+  shouldOverride?: boolean;
+  seriesId?: number;
+  episodeIds?: number[];
+  movieId?: number;
+}
+
+export interface ArrReleasePushResult {
+  title: string;
+  approved: boolean;
+  rejected: boolean;
+  rejections?: string[];
+  downloadAllowed: boolean;
+  mappedSeriesId?: number;
+  mappedMovieId?: number;
+  infoHash?: string;
+}
+
+export interface ArrRemotePathMapping {
+  id: number;
+  host: string;
+  remotePath: string;
+  localPath: string;
 }
 
 export interface DiskSpace {
