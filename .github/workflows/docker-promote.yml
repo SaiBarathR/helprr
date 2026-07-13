@@ -1,0 +1,70 @@
+name: Docker promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact stable version to promote (for example, 1.0.0)
+        required: true
+        type: string
+      source_digest:
+        description: Qualified multi-arch manifest digest (sha256:...)
+        required: true
+        type: string
+
+env:
+  IMAGE: ghcr.io/saibarathr/helprr
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate promotion inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_DIGEST: ${{ inputs.source_digest }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+
+          exact_digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
+            | awk '/^Digest:/ { print $2; exit }')
+          test "$exact_digest" = "$SOURCE_DIGEST"
+
+      - name: Promote qualified digest
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_DIGEST: ${{ inputs.source_digest }}
+        run: |
+          IFS=. read -r major minor patch <<< "$VERSION"
+          docker buildx imagetools create \
+            -t "$IMAGE:$major.$minor" \
+            -t "$IMAGE:$major" \
+            -t "$IMAGE:stable" \
+            "$IMAGE@$SOURCE_DIGEST"
+
+      - name: Verify aliases
+        env:
+          VERSION: ${{ inputs.version }}
+          SOURCE_DIGEST: ${{ inputs.source_digest }}
+        run: |
+          IFS=. read -r major minor patch <<< "$VERSION"
+          for tag in "$VERSION" "$major.$minor" "$major" stable; do
+            digest=$(docker buildx imagetools inspect "$IMAGE:$tag" \
+              | awk '/^Digest:/ { print $2; exit }')
+            echo "$tag -> $digest"
+            test "$digest" = "$SOURCE_DIGEST"
+          done
