@@ -1,6 +1,125 @@
-# Build-from-source override. Use together with the main file:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Standalone development stack. This file intentionally does not extend
+# docker-compose.yml: every container, network, volume, database, secret input,
+# and host port is isolated from the stable stack.
+#
+# Local source build:
+#   docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build
+#
+# Published edge image (set HELPRR_DEV_IMAGE=ghcr.io/saibarathr/helprr:edge):
+#   docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
+#   docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
+name: helprr-dev
+
 services:
-  helprr:
+  helprr-dev-db:
+    image: postgres:16-alpine
+    container_name: helprr-dev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${HELPRR_DEV_POSTGRES_PASSWORD:?HELPRR_DEV_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: helprr_dev
+    ports:
+      # Loopback-only: available to local database tools without exposing
+      # PostgreSQL to the LAN.
+      - "127.0.0.1:${HELPRR_DEV_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - helprr-dev-db-data:/var/lib/postgresql/data
+    networks:
+      - helprr-dev-net
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d helprr_dev" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  helprr-dev-redis:
+    image: redis:7-alpine
+    container_name: helprr-dev-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${HELPRR_DEV_REDIS_PASSWORD:?HELPRR_DEV_REDIS_PASSWORD is required}
+    command: [ "sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes" ]
+    ports:
+      # Loopback-only for local debugging tools.
+      - "127.0.0.1:${HELPRR_DEV_REDIS_PORT:-6380}:6379"
+    volumes:
+      - helprr-dev-redis-data:/data
+    networks:
+      - helprr-dev-net
+    healthcheck:
+      test: [ "CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  helprr-dev:
+    # Leave HELPRR_DEV_IMAGE=helprr-dev:local and use --build for source work.
+    # Set it to ghcr.io/saibarathr/helprr:edge and use pull + --no-build to
+    # exercise the exact image published from the development branch.
+    image: ${HELPRR_DEV_IMAGE:-helprr-dev:local}
     build:
       context: .
+      args:
+        APP_VERSION: ${HELPRR_DEV_APP_VERSION:-development}
+        GIT_SHA: ${HELPRR_DEV_GIT_SHA:-local}
+    container_name: helprr-dev
+    restart: unless-stopped
+    stop_grace_period: 45s
+    ports:
+      - "${HELPRR_DEV_APP_PORT:-3051}:3050"
+    depends_on:
+      helprr-dev-db:
+        condition: service_healthy
+      helprr-dev-redis:
+        condition: service_healthy
+    environment:
+      TZ: ${HELPRR_DEV_TZ:-UTC}
+      LOG_DIR: /app/logs
+      DATABASE_URL: postgresql://postgres:${HELPRR_DEV_POSTGRES_PASSWORD}@helprr-dev-db:5432/helprr_dev
+      REDIS_URL: redis://helprr-dev-redis:6379
+      REDIS_PASSWORD: ${HELPRR_DEV_REDIS_PASSWORD}
+      APP_PASSWORD: ${HELPRR_DEV_APP_PASSWORD:?HELPRR_DEV_APP_PASSWORD is required}
+      HELPRR_ADMIN_USERNAME: ${HELPRR_DEV_ADMIN_USERNAME:-dev-admin}
+      HELPRR_ADMIN_PASSWORD_RESET: ${HELPRR_DEV_ADMIN_PASSWORD_RESET:-}
+      JWT_SECRET: ${HELPRR_DEV_JWT_SECRET:?HELPRR_DEV_JWT_SECRET is required}
+      VAPID_PUBLIC_KEY: ${HELPRR_DEV_VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${HELPRR_DEV_VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${HELPRR_DEV_VAPID_SUBJECT:-}
+      APP_ORIGIN: ${HELPRR_DEV_APP_ORIGIN:-}
+      TRUST_FORWARDED_PROTO: ${HELPRR_DEV_TRUST_FORWARDED_PROTO:-}
+      HELPRR_CUSTOM_HEADERS: ${HELPRR_DEV_CUSTOM_HEADERS:-}
+      EXTRA_ALLOWED_IMAGE_HOSTS: ${HELPRR_DEV_EXTRA_ALLOWED_IMAGE_HOSTS:-}
+      IMAGE_CACHE_DIR: /tmp/helprr-dev-image-cache
+      IMAGE_CACHE_TTL_SECONDS: ${HELPRR_DEV_IMAGE_CACHE_TTL_SECONDS:-604800}
+      IMAGE_CACHE_STALE_SECONDS: ${HELPRR_DEV_IMAGE_CACHE_STALE_SECONDS:-2592000}
+      IMAGE_UPSTREAM_FETCH_TIMEOUT_MS: ${HELPRR_DEV_IMAGE_UPSTREAM_FETCH_TIMEOUT_MS:-5000}
+      TMDB_CACHE_DEFAULT_TTL_SECONDS: ${HELPRR_DEV_TMDB_CACHE_DEFAULT_TTL_SECONDS:-600}
+      TMDB_CACHE_DISCOVER_TTL_SECONDS: ${HELPRR_DEV_TMDB_CACHE_DISCOVER_TTL_SECONDS:-600}
+      TMDB_CACHE_DETAILS_TTL_SECONDS: ${HELPRR_DEV_TMDB_CACHE_DETAILS_TTL_SECONDS:-86400}
+      TMDB_CACHE_STATIC_TTL_SECONDS: ${HELPRR_DEV_TMDB_CACHE_STATIC_TTL_SECONDS:-604800}
+      TMDB_CACHE_STALE_SECONDS: ${HELPRR_DEV_TMDB_CACHE_STALE_SECONDS:-2592000}
+      CACHE_LOCK_TTL_MS: ${HELPRR_DEV_CACHE_LOCK_TTL_MS:-10000}
+    volumes:
+      - helprr-dev-logs:/app/logs
+    networks:
+      - helprr-dev-net
+    healthcheck:
+      test: [ "CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3050/api/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+networks:
+  helprr-dev-net:
+    name: helprr-dev-net
+    driver: bridge
+
+volumes:
+  helprr-dev-db-data:
+    name: helprr-dev-db-data
+  helprr-dev-redis-data:
+    name: helprr-dev-redis-data
+  helprr-dev-logs:
+    name: helprr-dev-logs
