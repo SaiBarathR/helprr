@@ -220,9 +220,9 @@ VAPID_PRIVATE_KEY=generated-private-key
 
 ### 3. Start
 
-The compose file uses the qualified `stable` channel. Pin a specific version
-with `HELPRR_VERSION` in `.env`, or opt into the unsupported `edge` channel to
-test the latest development build.
+The normal Compose file uses the qualified `stable` channel. Pin a specific
+version with `HELPRR_VERSION` in `.env`. Use the isolated development stack
+below for `edge` or source builds; never run them against production data.
 
 ```bash
 docker compose pull
@@ -230,15 +230,58 @@ docker compose up -d
 docker compose ps
 ```
 
-To build from source instead (developer flow — requires cloning this repo):
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-```
-
 Open `http://YOUR_SERVER:3050`, sign in with the bootstrap account, then connect services in **Settings → Instances**.
 
 Use `docker compose logs -f helprr` to follow startup. The application health endpoint is `GET /api/health`.
+
+### Isolated development stack
+
+Maintainers and contributors can run development beside stable on the same
+Docker host. The standalone development Compose file uses its own containers,
+network, database, Redis, volumes, secrets, and ports:
+
+| Component | Stable | Development |
+|---|---|---|
+| Application | `helprr` on `3050` | `helprr-dev` on `3051` |
+| PostgreSQL | `helprr-db` | `helprr-dev-db`, loopback port `5433` |
+| Redis | `helprr-redis` | `helprr-dev-redis`, loopback port `6380` |
+| Database | `helprr` | `helprr_dev` |
+| Volumes/network | Stable names | Dedicated `helprr-dev-*` names |
+
+Copy and edit the development-only env file. Generate new secrets; do not copy
+the production database, Redis, JWT, or VAPID secrets:
+
+```bash
+cp .env.dev.example .env.dev
+nano .env.dev
+```
+
+Build the current checkout in the isolated stack:
+
+```bash
+HELPRR_DEV_GIT_SHA="$(git rev-parse --short HEAD)" \
+  docker compose --env-file .env.dev -f docker-compose.dev.yml \
+  up -d --build
+```
+
+Open `http://YOUR_SERVER:3051`. The stable installation on port `3050` remains
+running and its database is never mounted or addressed by the development stack.
+
+To exercise the image published from `development`, set this in `.env.dev`:
+
+```dotenv
+HELPRR_DEV_IMAGE=ghcr.io/saibarathr/helprr:edge
+```
+
+Then pull and start without building local source:
+
+```bash
+docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
+docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
+```
+
+See [Maintainer development and release workflow](docs/maintainer-development-release-workflow.md)
+for the complete feature, `edge`, release, promotion, rollback, and hotfix process.
 
 ### Production notes
 
@@ -507,8 +550,12 @@ docker compose up -d
 docker compose logs -f helprr
 docker compose down
 
-# Docker (build from source)
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Docker (isolated development stack built from source)
+docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build
+
+# Docker (published edge image; set HELPRR_DEV_IMAGE=...:edge in .env.dev first)
+docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
+docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
 ```
 
 

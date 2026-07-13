@@ -14,6 +14,9 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 - `src/hooks` and `src/types` hold custom hooks and shared TypeScript types.
 - `prisma/schema.prisma` and `prisma/migrations` manage database schema and migration history.
 - Static and PWA assets live in `public/`; service worker code is in `src/app/sw.ts` and `public/sw*.js`.
+- `docker-compose.yml` is the stable stack. `docker-compose.dev.yml` is a standalone,
+  isolated development stack configured through `.env.dev` (copied from
+  `.env.dev.example`); it must not share the stable database or Redis volumes.
 - Prisma 6 with PostgreSQL. **Do not upgrade to Prisma 7** — v7 changed the datasource config pattern, breaking `url = env("DATABASE_URL")`. Key models: `ServiceConnection`, `PushSubscription`, `NotificationPreference`, `NotificationHistory`, `PollingState`, `AppSettings` (singleton with `id="singleton"`).
 
 ## Build, Test, and Development Commands
@@ -26,6 +29,8 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 - `npm run build`: create the standalone production build used by Docker.
 - `npm run lint`: run ESLint (`eslint-config-next` + TypeScript rules).
 - `npm test`: run the Vitest suite.
+- `docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build`:
+  build and run the current checkout in the isolated development stack on port 3051.
 
 ## Coding Style & Naming Conventions
 - TypeScript is `strict`; keep types explicit at API boundaries and shared library code.
@@ -34,7 +39,8 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 - Use PascalCase for React components, `useX` for hooks, camelCase for helpers, and kebab-case for route segments.
 
 ## Testing Guidelines
-- Vitest is configured in `vitest.config.ts`; CI runs it before publishing images.
+- Vitest is configured in `vitest.config.ts`. PR CI must be green before merging to
+  `development`; the resulting development push publishes the `edge` image separately.
 - Minimum pre-PR checks: `npm run lint`, `npm test`, `npm run build`, and manual verification of affected UI/API flows.
 - For new tests, prefer `*.test.ts` / `*.test.tsx` naming near the feature or under `src/**/__tests__`.
 
@@ -42,6 +48,7 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 - Never commit or raise PRs for this project unless instructed by the project owner or core maintainers.
 
 ## Security & Configuration Tips
-- Copy `.env.example` for local setup and never commit secrets.
+- Copy `.env.example` for stable/local setup or `.env.dev.example` to `.env.dev` for
+  the isolated Docker development stack. Never commit either real env file.
 - Treat `DATABASE_URL`, `APP_PASSWORD`, `JWT_SECRET`, and VAPID keys as sensitive.
 - Auth uses **per-user accounts** with scrypt password hashes in the DB (`User.passwordHash`); login verifies against that hash, not `APP_PASSWORD`. `APP_PASSWORD` only seeds the bootstrap admin on first boot and is never re-read on reboot. Admins manage other users' passwords in-app (Settings → Users). To force-reset the bootstrap admin's password from env, set `HELPRR_ADMIN_PASSWORD_RESET=true` (with the desired `APP_PASSWORD`), restart, then remove the flag. Only the bootstrap admin is affected; a reset does not revoke existing sessions.
