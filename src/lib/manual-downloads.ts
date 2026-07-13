@@ -2,10 +2,12 @@ import { createHash } from 'crypto';
 import { ManualDownloadMode, ManualDownloadStatus, ServiceType } from '@prisma/client';
 import { isAxiosError } from 'axios';
 import { prisma } from '@/lib/db';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getQBittorrentClient, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
+import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { logger } from '@/lib/logger';
 import { parseMagnetInfoHash } from '@/lib/magnet';
+import type { DownloadClient } from '@/types';
 
 type Service = 'SONARR' | 'RADARR';
 
@@ -104,9 +106,52 @@ export function buildArrReleasePushPayload(input: {
     magnetUrl: input.magnetUrl,
     infoHash: input.infoHash,
     indexer: 'Helprr manual download',
-    shouldOverride: true,
     ...(input.service === 'SONARR' ? { seriesId: input.arrItemId } : { movieId: input.arrItemId }),
   };
+}
+
+export function getManualOverrideCategory(clients: DownloadClient[], service: Service): string | null {
+  const categoryField = service === 'SONARR' ? 'tvCategory' : 'movieCategory';
+  for (const client of clients) {
+    if (!client.enable || client.protocol !== 'torrent' || !/qbittorrent/i.test(client.implementation)) continue;
+    const value = client.fields?.find((field) => field.name === categoryField)?.value;
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+async function queueManualOverride(input: {
+  service: Service;
+  instanceId: string;
+  magnetUrl: string;
+  infoHash: string;
+}) {
+  const client = await arrClient(input.service, input.instanceId);
+  const category = getManualOverrideCategory(await client.getDownloadClients(), input.service);
+  if (!category) {
+    throw new Error(
+      `The selected ${input.service === 'SONARR' ? 'Sonarr' : 'Radarr'} instance does not expose an enabled qBittorrent category for manual override`,
+    );
+  }
+
+  const qbit = await getQBittorrentClient();
+  const existing = await qbit.getTorrents(undefined, undefined, undefined, undefined, input.infoHash);
+  if (existing.length) {
+    await qbit.setCategory(input.infoHash, category);
+  } else {
+    const response = await qbit.addMagnet(input.magnetUrl, { category });
+    if (typeof response === 'string' && /^fails?\.?$/i.test(response.trim())) {
+      throw new Error('qBittorrent rejected the magnet');
+    }
+  }
+  let confirmed = existing.length > 0;
+  for (let attempt = 0; !confirmed && attempt < 10; attempt += 1) {
+    const torrents = await qbit.getTorrents(undefined, undefined, undefined, undefined, input.infoHash);
+    confirmed = torrents.length > 0;
+    if (!confirmed) await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!confirmed) throw new Error('qBittorrent did not confirm the manually overridden magnet');
+  await bumpQbitCacheVersion();
 }
 
 export function buildManualDownloadRequestKey(input: {
@@ -176,6 +221,7 @@ export async function createManualDownloadMapping(input: CreateInput) {
   const attempt = await prisma.manualDownloadAttempt.create({
     data: { mappingId: mapping.id, attempt: 1, outcome: 'SUBMITTING' },
   });
+  let manualOverrideQueued = false;
   try {
     const client = await arrClient(input.service, input.instanceId);
     const decisions = await client.pushRelease(buildArrReleasePushPayload({
@@ -183,13 +229,45 @@ export async function createManualDownloadMapping(input: CreateInput) {
       infoHash: hash, publishDate: new Date().toISOString(),
     }));
     const decision = decisions[0];
-    if (!decision || decision.rejected || !decision.downloadAllowed) throw new Error(decision?.rejections?.join('; ') || 'Arr did not accept the release');
+    if (!decision) throw new Error('Arr did not return a release decision');
+    if (decision.rejected || !decision.downloadAllowed) {
+      const rejection = decision.rejections?.join('; ') || 'Arr policy rejected the release';
+      try {
+        await queueManualOverride({
+          service: input.service,
+          instanceId: input.instanceId,
+          magnetUrl: input.magnetUrl!,
+          infoHash: hash,
+        });
+        manualOverrideQueued = true;
+      } catch (overrideError) {
+        throw new Error(`${rejection}. Manual qBittorrent override also failed: ${safeError(overrideError)}`);
+      }
+      await prisma.manualDownloadAttempt.update({
+        where: { id: attempt.id },
+        data: { outcome: 'OVERRIDE_QUEUED', error: rejection, finishedAt: new Date() },
+      });
+      const overridden = await prisma.manualDownloadMapping.update({
+        where: { id: mapping.id },
+        data: {
+          mode: ManualDownloadMode.QBIT_REVIEWED,
+          status: ManualDownloadStatus.DOWNLOADING,
+          attemptCount: 1,
+          arrDownloadId: hash,
+        },
+      });
+      return { ...overridden, manualOverride: true };
+    }
     await prisma.manualDownloadAttempt.update({
       where: { id: attempt.id }, data: { outcome: 'ACCEPTED', finishedAt: new Date() },
     });
     return prisma.manualDownloadMapping.update({ where: { id: mapping.id }, data: { status: ManualDownloadStatus.QUEUED, attemptCount: 1 } });
   } catch (error) {
     const message = safeError(error);
+    if (manualOverrideQueued) {
+      logger.error('Manual override queued but tracking update failed', { mappingId: mapping.id, error: message }, { scope: 'manual-download' });
+      throw new Error(`${message}. The magnet was added to qBittorrent; do not submit it again. Helprr could not finish updating its tracking record.`);
+    }
     let compensated = false;
     try {
       if (input.service === 'SONARR') await (await getSonarrClient(input.instanceId)).deleteSeries(created.id, false);
@@ -209,7 +287,31 @@ export async function createManualDownloadMapping(input: CreateInput) {
 export async function reconcileManualDownloads() {
   const mappings = await prisma.manualDownloadMapping.findMany({ where: { status: { in: [ManualDownloadStatus.QUEUED, ManualDownloadStatus.DOWNLOADING, ManualDownloadStatus.IMPORT_PENDING] } } });
   for (const mapping of mappings) {
-    if (mapping.mode !== ManualDownloadMode.ARR_MANAGED) continue;
+    if (mapping.mode === ManualDownloadMode.QBIT_REVIEWED) {
+      try {
+        const qbit = await getQBittorrentClient();
+        const torrent = mapping.torrentHash
+          ? (await qbit.getTorrents(undefined, undefined, undefined, undefined, mapping.torrentHash))[0]
+          : null;
+        const currentIds = mapping.service === ServiceType.SONARR
+          ? (await getSonarrClient(mapping.instanceId)).getEpisodeFiles(mapping.arrItemId).then((files) => files.map((file) => file.id))
+          : (await getRadarrClient(mapping.instanceId)).getMovieFiles(mapping.arrItemId).then((files) => files.map((file) => file.id));
+        const imported = hasNewArrFileId(mapping.initialFileIds, await currentIds);
+        await prisma.manualDownloadMapping.update({
+          where: { id: mapping.id },
+          data: imported
+            ? { status: ManualDownloadStatus.IMPORTED, completedAt: new Date(), lastError: null }
+            : !torrent
+              ? { status: ManualDownloadStatus.BLOCKED, lastError: 'The manually overridden torrent is no longer present in qBittorrent.' }
+              : torrent.progress >= 1
+                ? { status: ManualDownloadStatus.IMPORT_PENDING, lastError: 'Downloaded by manual override. If Arr does not import it automatically, use Arr manual import to override the remaining import checks.' }
+                : { status: ManualDownloadStatus.DOWNLOADING, lastError: null },
+        });
+      } catch (error) {
+        logger.warn('Manual qBittorrent override reconciliation failed', { mappingId: mapping.id, error: safeError(error) }, { scope: 'polling' });
+      }
+      continue;
+    }
     try {
       const client = mapping.service === ServiceType.SONARR ? await getSonarrClient(mapping.instanceId) : await getRadarrClient(mapping.instanceId);
       const [queue, history] = await Promise.all([

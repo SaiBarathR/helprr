@@ -3,6 +3,7 @@ import {
   buildArrReleasePushPayload,
   buildManualDownloadRequestKey,
   getMagnetReleaseTitle,
+  getManualOverrideCategory,
   hasNewArrFileId,
 } from '@/lib/manual-downloads';
 
@@ -20,8 +21,12 @@ describe('Arr-managed magnet payloads', () => {
       publishDate: '2026-07-12T12:00:00.000Z',
     })).toEqual(expect.objectContaining({
       title: 'Example.Show.S02E07.1080p.WEB-DL', seriesId: 42,
-      magnetUrl: url, infoHash: HASH, protocol: 'torrent', shouldOverride: true,
+      magnetUrl: url, infoHash: HASH, protocol: 'torrent',
     }));
+    expect(buildArrReleasePushPayload({
+      service: 'SONARR', arrItemId: 42, magnetUrl: url, infoHash: HASH,
+      publishDate: '2026-07-12T12:00:00.000Z',
+    })).not.toHaveProperty('shouldOverride');
   });
 
   it('preserves a Sonarr season-pack release title for Arr parsing', () => {
@@ -66,5 +71,28 @@ describe('Arr-managed magnet payloads', () => {
     expect(hasNewArrFileId([10, 11], [10, 11])).toBe(false);
     expect(hasNewArrFileId([10, 11], [10, 11, 12])).toBe(true);
     expect(hasNewArrFileId(null, [])).toBe(false);
+  });
+
+  it('uses the Arr qBittorrent category for a rejected manual release', () => {
+    expect(getManualOverrideCategory([{
+      id: 1,
+      name: 'qBittorrent',
+      enable: true,
+      protocol: 'torrent',
+      priority: 1,
+      implementation: 'QBittorrent',
+      fields: [{ name: 'movieCategory', value: 'radarr' }, { name: 'tvCategory', value: 'sonarr' }],
+    }], 'RADARR')).toBe('radarr');
+  });
+
+  it('does not bypass Arr policy when no qBittorrent category is configured', () => {
+    expect(getManualOverrideCategory([{
+      id: 1,
+      name: 'Transmission',
+      enable: true,
+      protocol: 'torrent',
+      priority: 1,
+      implementation: 'Transmission',
+    }], 'SONARR')).toBeNull();
   });
 });

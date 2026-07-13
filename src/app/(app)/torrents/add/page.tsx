@@ -6,14 +6,17 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
+  Check,
   ChevronDown,
   ChevronRight,
   File,
   FileUp,
+  Film,
   Folder,
   Link as LinkIcon,
   Loader2,
   Search,
+  Tv,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
@@ -25,12 +28,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { formatBytes } from '@/lib/format';
+import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { cn } from '@/lib/utils';
 import { useCan } from '@/components/permission-provider';
 import { Label } from '@/components/ui/label';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { queryKeys } from '@/lib/query-keys';
-import type { RadarrLookupResult, SonarrLookupResult } from '@/types';
+import type { MediaImage, RadarrLookupResult, SonarrLookupResult } from '@/types';
 import type { TorrentFile } from '@/lib/qbittorrent-client';
 import {
   buildFileTree,
@@ -45,6 +51,7 @@ type ApiResult = {
   success?: boolean;
   error?: string;
   hash?: string;
+  manualOverride?: boolean;
 };
 
 type PreflightResult = {
@@ -131,7 +138,7 @@ export default function AddTorrentPage() {
         });
         const data = await parseApiResult(response);
         if (!response.ok || data.error) throw new ApiError(response.status, data.error || 'Arr did not accept the release');
-        return { success: true };
+        return { success: true, manualOverride: data.manualOverride };
       }
       // With review, add .torrent files stopped so files can be deselected
       // before any data downloads. Magnets can't fetch metadata while stopped,
@@ -182,7 +189,13 @@ export default function AddTorrentPage() {
         router.push('/torrents');
         return;
       }
-      toast.success(mapping ? 'Release sent to Arr' : 'Torrent added');
+      toast.success(
+        mapping
+          ? data.manualOverride
+            ? 'Arr policy bypassed; magnet sent to qBittorrent for manual import'
+            : 'Release sent to Arr'
+          : 'Torrent added',
+      );
       router.push('/torrents');
     },
     onError: (err) => {
@@ -514,6 +527,24 @@ function MediaMappingPicker({
     onChange({ service, instanceId: effectiveInstanceId, media, title: item.title });
   }
 
+  const posterHint = service === 'SONARR' ? 'sonarr' : 'radarr';
+  const PosterFallback = service === 'SONARR' ? Tv : Film;
+
+  function posterUrl(images: MediaImage[] | undefined) {
+    const remote = images?.find((image) => image.coverType === 'poster')?.remoteUrl;
+    return remote ? toCachedImageSrc(remote, posterHint) : null;
+  }
+
+  function isSelected(item: SonarrLookupResult | RadarrLookupResult) {
+    if (!value || value.service !== service || value.instanceId !== effectiveInstanceId) return false;
+    const slug = typeof value.media.titleSlug === 'string' ? value.media.titleSlug : null;
+    return slug === item.titleSlug;
+  }
+
+  const linkedPoster = value
+    ? posterUrl(Array.isArray(value.media.images) ? (value.media.images as MediaImage[]) : undefined)
+    : null;
+
   return (
     <div className="rounded-xl border bg-card p-3 space-y-3">
       <label className="flex items-center gap-2">
@@ -548,13 +579,79 @@ function MediaMappingPicker({
             <div className="space-y-1"><Label className="text-xs">Root folder</Label><Select value={effectiveRootFolder} onValueChange={(next) => { setRootFolder(next); onChange(null); }}><SelectTrigger><SelectValue placeholder="Folder" /></SelectTrigger><SelectContent>{rootFolders.map((folder) => <SelectItem key={folder.path} value={folder.path}>{folder.path}</SelectItem>)}</SelectContent></Select></div>
           </div>
           {lookupQuery.isFetching && <p className="text-xs text-muted-foreground">Searching…</p>}
-          {(lookupQuery.data ?? []).slice(0, 8).map((item) => (
-            <button key={`${service}-${item.titleSlug}`} type="button" onClick={() => choose(item)} disabled={item.library?.exists} className="w-full rounded-lg border p-2 text-left text-sm disabled:opacity-50">
-              <span className="font-medium">{item.title}</span> <span className="text-muted-foreground">({item.year})</span>
-              {item.library?.exists && <span className="ml-2 text-xs">Already in library</span>}
-            </button>
-          ))}
-          {value && <p className="rounded-lg bg-muted p-2 text-sm">Linked to <span className="font-medium">{value.title}</span></p>}
+          <div className="space-y-2">
+            {(lookupQuery.data ?? []).slice(0, 8).map((item, index) => {
+              const poster = posterUrl(item.images);
+              const selected = isSelected(item);
+              return (
+                <button
+                  key={`${service}-${item.titleSlug}`}
+                  type="button"
+                  onClick={() => choose(item)}
+                  disabled={item.library?.exists}
+                  aria-pressed={selected}
+                  className={cn(
+                    'flex w-full items-center gap-3 rounded-lg border p-2 text-left text-sm transition-colors disabled:opacity-50',
+                    selected
+                      ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
+                      : 'hover:bg-muted/40',
+                  )}
+                >
+                  <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
+                    {poster ? (
+                      <FadeInImage
+                        src={poster}
+                        alt=""
+                        fill
+                        sizes="40px"
+                        priority={index < 4}
+                        className="object-cover"
+                        unoptimized={isProtectedApiImageSrc(poster)}
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <PosterFallback className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">
+                      {item.title}{' '}
+                      <span className="font-normal text-muted-foreground">({item.year})</span>
+                    </p>
+                    {item.library?.exists && (
+                      <p className="text-xs text-muted-foreground">Already in library</p>
+                    )}
+                  </div>
+                  {selected && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                </button>
+              );
+            })}
+          </div>
+          {value && !(lookupQuery.data ?? []).some((item) => isSelected(item)) && (
+            <div className="flex items-center gap-3 rounded-lg border border-primary/50 bg-primary/10 p-2 text-sm ring-1 ring-primary/30">
+              <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
+                {linkedPoster ? (
+                  <FadeInImage
+                    src={linkedPoster}
+                    alt=""
+                    fill
+                    sizes="40px"
+                    className="object-cover"
+                    unoptimized={isProtectedApiImageSrc(linkedPoster)}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <PosterFallback className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              <p className="min-w-0 flex-1">
+                Linked to <span className="font-medium">{value.title}</span>
+              </p>
+              <Check className="h-4 w-4 shrink-0 text-primary" />
+            </div>
+          )}
         </div>
       )}
     </div>

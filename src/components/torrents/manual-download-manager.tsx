@@ -40,6 +40,7 @@ type Attempt = {
 
 type Mapping = {
   id: string;
+  mode: 'ARR_MANAGED' | 'QBIT_REVIEWED';
   torrentHash: string | null;
   torrentName: string;
   service: 'SONARR' | 'RADARR';
@@ -64,7 +65,7 @@ const BAD = new Set(['BLOCKED', 'IMPORT_BLOCKED', 'FAILED']);
 function statusTone(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'IMPORTED') return 'default';
   if (BAD.has(status)) return 'destructive';
-  if (status === 'IMPORTING' || status === 'READY_TO_IMPORT') return 'secondary';
+  if (status === 'IMPORT_PENDING' || status === 'IMPORTING' || status === 'READY_TO_IMPORT') return 'secondary';
   return 'outline';
 }
 
@@ -75,14 +76,14 @@ function statusLabel(status: string) {
     .replace(/^./, (letter) => letter.toUpperCase());
 }
 
-function Pipeline({ status }: { status: string }) {
+function Pipeline({ status, mode }: { status: string; mode: Mapping['mode'] }) {
   const arrAccepted = !['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE', 'FAILED'].includes(status);
   const downloadDone = ['IMPORT_PENDING', 'IMPORTING', 'IMPORTED'].includes(status);
   const imported = status === 'IMPORTED';
   const arrBad = BAD.has(status);
   return (
     <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-      <span className={arrAccepted ? 'text-foreground' : undefined}>Arr</span>
+      <span className={arrAccepted ? 'text-foreground' : undefined}>{mode === 'QBIT_REVIEWED' ? 'Manual' : 'Arr'}</span>
       <span className={`h-px min-w-4 flex-1 ${arrAccepted ? 'bg-primary' : 'bg-border'}`} />
       <span className={arrBad ? 'text-destructive' : downloadDone ? 'text-foreground' : undefined}>Download</span>
       <span
@@ -250,10 +251,19 @@ export function ManualDownloadManager() {
                         {selected.torrentHash?.slice(0, 12) ?? 'pending'}
                       </span>
                     </div>
-                    <Pipeline status={selected.status} />
+                    <Pipeline status={selected.status} mode={selected.mode} />
+                    {selected.mode === 'QBIT_REVIEWED' && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Arr policy was bypassed for this user-selected magnet. Manual import may still be required.
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground break-all">{selected.torrentName}</p>
                     {selected.lastError && (
-                      <div className="rounded-lg bg-destructive/10 p-3 text-xs text-destructive whitespace-pre-wrap break-words">
+                      <div className={`rounded-lg p-3 text-xs whitespace-pre-wrap break-words ${
+                        BAD.has(selected.status)
+                          ? 'bg-destructive/10 text-destructive'
+                          : 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                      }`}>
                         <AlertTriangle className="h-4 w-4 mb-1" />
                         {selected.lastError}
                       </div>
@@ -303,7 +313,7 @@ export function ManualDownloadManager() {
                             </p>
                           )}
                           {attempt.error && (
-                            <p className="text-destructive mt-1 whitespace-pre-wrap break-words">
+                            <p className={`${attempt.outcome === 'OVERRIDE_QUEUED' ? 'text-amber-700 dark:text-amber-300' : 'text-destructive'} mt-1 whitespace-pre-wrap break-words`}>
                               {attempt.error}
                             </p>
                           )}
