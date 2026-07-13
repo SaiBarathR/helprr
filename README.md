@@ -220,8 +220,9 @@ VAPID_PRIVATE_KEY=generated-private-key
 
 ### 3. Start
 
-The compose file uses the `edge` channel (latest development build) until the
-first stable release; pin a specific version with `HELPRR_VERSION` in `.env`.
+The compose file uses the qualified `stable` channel. Pin a specific version
+with `HELPRR_VERSION` in `.env`, or opt into the unsupported `edge` channel to
+test the latest development build.
 
 ```bash
 docker compose pull
@@ -370,6 +371,8 @@ Prisma migrations are the database source of truth.
 
 - For normal deployment and first setup, use `npm run db:deploy`; the Docker entrypoint runs the same `prisma migrate deploy` command automatically before starting Next.js.
 - When changing `prisma/schema.prisma` during development, run `npm run db:migrate` and commit the generated migration directory.
+- Never edit or remove a migration after it has shipped in a release. Add a new migration instead.
+- Patch releases must not contain destructive schema changes. Changes that drop or rewrite user data require explicit migration and rollback guidance in a minor or major release.
 - A database created by an older `prisma db push` workflow with no migration history must be baselined once before Docker can start it:
   ```bash
   docker compose run --rm helprr npx prisma migrate resolve --applied 0001_init

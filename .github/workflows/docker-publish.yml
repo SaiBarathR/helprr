@@ -52,9 +52,8 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
 
-      # NEXT_PUBLIC_VAPID_PUBLIC_KEY is intentionally NOT passed: published
-      # images have no baked-in VAPID key, so Web Push requires a source build
-      # until the key moves to runtime configuration (release plan 1.3).
+      # VAPID keys are intentionally not passed: every installation injects its
+      # own key pair at runtime, so published images contain no shared key.
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -109,9 +108,11 @@ jobs:
 
       # Tag strategy:
       #   push to development      -> edge
-      #   tag v1.2.3               -> 1.2.3, 1.2, 1, stable
+      #   tag v1.2.3               -> 1.2.3 only until that exact image passes
+      #                                 the production smoke check
       #   tag v1.0.0-rc.1          -> 1.0.0-rc.1 only (no channel tags)
-      # No `latest` tag on purpose — `stable` is the supported channel.
+      # After qualification, the exact digest is manually promoted to the
+      # minor, major, and stable aliases. No `latest` tag on purpose.
       - name: Docker metadata (tags)
         id: meta
         uses: docker/metadata-action@v5
@@ -122,9 +123,6 @@ jobs:
           tags: |
             type=raw,value=edge,enable=${{ github.ref == 'refs/heads/development' }}
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=stable,enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
 
       - name: Create multi-arch manifest
         working-directory: /tmp/digests

@@ -35,11 +35,10 @@ services:
       retries: 5
 
   helprr:
-    # Published image. Pin a version with HELPRR_VERSION (e.g. 1.0.0); the
-    # default channel becomes `stable` with the 1.0.0 release. To build from
-    # source instead:
+    # Published image. The default `stable` channel tracks qualified releases;
+    # pin an exact version with HELPRR_VERSION (e.g. 1.0.0). To build from source:
     #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-    image: ghcr.io/saibarathr/helprr:${HELPRR_VERSION:-edge}
+    image: ghcr.io/saibarathr/helprr:${HELPRR_VERSION:-stable}
     container_name: helprr
     restart: unless-stopped
     # The app drains in-flight polling/cleanup work for up to 30s on SIGTERM

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-13
+
 ### Added
 
 - Lidarr album deletion (with an optional delete-files-from-disk checkbox) and
@@ -23,8 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (including fresh-host disaster recovery), uninstalling (with a
   `down -v` data-loss warning), and a plain-language list of every feature
   that can delete media files.
-- GPL-3.0 license, security policy, changelog, and GitHub issue templates in
-  preparation for the first stable release.
+- GPL-3.0 license, security policy, changelog, and GitHub issue templates.
 - iOS Shortcuts guide (`docs/ios-shortcuts.md`) covering the `/protocol`
   deep-link surface and share-sheet integration.
 - CI workflow (lint + build on pushes and pull requests) and a Docker publish
@@ -70,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accepted). Web Push now works with the prebuilt image, and rotating keys no
   longer requires a rebuild.
 - `docker-compose.yml` now pulls the published `ghcr.io/saibarathr/helprr`
-  image (`HELPRR_VERSION`, default `edge`) instead of building from source.
+  image (`HELPRR_VERSION`, default `stable`) instead of building from source.
   Building from source moved to `docker-compose.dev.yml`.
 - `allowedDevOrigins` in `next.config.ts` is now read from the optional
   `ALLOWED_DEV_ORIGINS` env var (comma-separated) instead of being hardcoded.

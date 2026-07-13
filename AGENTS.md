@@ -20,11 +20,12 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 - `npm ci`: install dependencies with lockfile consistency.
 - `docker compose up -d helprr-db`: start local PostgreSQL.
 - `npm run db:generate`: generate Prisma client.
-- `npm run db:push`: sync Prisma schema to local DB.
 - `npm run db:migrate`: create/apply a Prisma migration during schema changes.
+- `npm run db:deploy`: apply committed migrations (also runs at container startup).
 - `npm run dev`: run Next.js dev server on `http://localhost:3050`.
-- `npm run build` and `npm run start`: production build and local production serve.
+- `npm run build`: create the standalone production build used by Docker.
 - `npm run lint`: run ESLint (`eslint-config-next` + TypeScript rules).
+- `npm test`: run the Vitest suite.
 
 ## Coding Style & Naming Conventions
 - TypeScript is `strict`; keep types explicit at API boundaries and shared library code.
@@ -33,8 +34,8 @@ Helprr is a **PWA primarily targeting iPhone** with push notifications as a core
 - Use PascalCase for React components, `useX` for hooks, camelCase for helpers, and kebab-case for route segments.
 
 ## Testing Guidelines
-- There is currently no dedicated test runner configured.
-- Minimum pre-PR checks: `npm run lint`, `npm run build`, and manual verification of affected UI/API flows.
+- Vitest is configured in `vitest.config.ts`; CI runs it before publishing images.
+- Minimum pre-PR checks: `npm run lint`, `npm test`, `npm run build`, and manual verification of affected UI/API flows.
 - For new tests, prefer `*.test.ts` / `*.test.tsx` naming near the feature or under `src/**/__tests__`.
 
 ## Commit & Pull Request Guidelines
