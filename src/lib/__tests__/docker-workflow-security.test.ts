@@ -17,6 +17,7 @@ describe('Docker publish security gate', () => {
     expect(scan).toBeGreaterThan(build);
     expect(exportDigest).toBeGreaterThan(scan);
     expect(workflow).toContain('image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}');
+    expect(workflow).toContain('TRIVY_PLATFORM: ${{ matrix.platform }}');
   });
 
   it('pins a safe Trivy action and fails on fixable high/critical OS or library findings', () => {
