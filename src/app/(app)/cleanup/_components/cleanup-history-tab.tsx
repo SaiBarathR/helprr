@@ -36,6 +36,7 @@ import {
 import { useUIStore } from '@/lib/store';
 import type { CleanupHistoryFiltersState } from '@/lib/store';
 import { jsonOk } from '@/lib/http';
+import { resolveCleanupHistoryOutcomeStatus } from '@/lib/cleanup/history-status';
 
 interface HistoryRow {
   id: string;
@@ -567,9 +568,10 @@ function HistoryRowCard({
   row: HistoryRow;
   onSelect: (row: HistoryRow) => void;
 }) {
-  const isFailed = row.outcomeStatus === 'failed' || row.action === 'failed';
-  const isPartial = row.outcomeStatus === 'partial';
-  const isStale = row.outcomeStatus === 'stale';
+  const displayedOutcomeStatus = resolveCleanupHistoryOutcomeStatus(row.outcomeStatus, row.action);
+  const isFailed = displayedOutcomeStatus === 'failed';
+  const isPartial = displayedOutcomeStatus === 'partial';
+  const isStale = displayedOutcomeStatus === 'stale';
   const isDryRun = row.action === 'dryRunPreview';
   const isStrikeAdded = row.action === 'strikeAdded';
   const isSkipped = row.action === 'skipped';
@@ -587,7 +589,7 @@ function HistoryRowCard({
             {isFailed && <Badge variant="destructive">failed</Badge>}
             {isPartial && <Badge variant="secondary">partial</Badge>}
             {isStale && <Badge variant="secondary">stale</Badge>}
-            {row.outcomeStatus === 'succeeded' && <Badge variant="default">succeeded</Badge>}
+            {displayedOutcomeStatus === 'succeeded' && <Badge variant="default">succeeded</Badge>}
             {isDryRun && <Badge variant="secondary">dry-run</Badge>}
             {isStrikeAdded && <Badge variant="secondary">strike</Badge>}
             {isSkipped && <Badge variant="secondary">skipped</Badge>}
@@ -632,6 +634,9 @@ function HistoryDetailDrawer({
 }) {
   const [copied, setCopied] = useState(false);
   const open = row !== null;
+  const displayedOutcomeStatus = row
+    ? resolveCleanupHistoryOutcomeStatus(row.outcomeStatus, row.action)
+    : null;
 
   const copyHash = async () => {
     if (!row) return;
@@ -662,10 +667,10 @@ function HistoryDetailDrawer({
               <div className="flex flex-wrap gap-1.5">
                 <Badge variant="outline" className="uppercase tracking-wide">{row.cleaner}</Badge>
                 {row.strikeType && <Badge variant="outline">{row.strikeType}</Badge>}
-                {row.action === 'failed' && <Badge variant="destructive">failed</Badge>}
-                {row.outcomeStatus === 'partial' && <Badge variant="secondary">partial</Badge>}
-                {row.outcomeStatus === 'stale' && <Badge variant="secondary">stale</Badge>}
-                {row.outcomeStatus === 'succeeded' && <Badge variant="default">succeeded</Badge>}
+                {displayedOutcomeStatus === 'failed' && <Badge variant="destructive">failed</Badge>}
+                {displayedOutcomeStatus === 'partial' && <Badge variant="secondary">partial</Badge>}
+                {displayedOutcomeStatus === 'stale' && <Badge variant="secondary">stale</Badge>}
+                {displayedOutcomeStatus === 'succeeded' && <Badge variant="default">succeeded</Badge>}
                 {row.action === 'dryRunPreview' && <Badge variant="secondary">dry-run</Badge>}
                 {row.action === 'strikeAdded' && <Badge variant="secondary">strike</Badge>}
                 {row.action === 'skipped' && <Badge variant="secondary">skipped</Badge>}

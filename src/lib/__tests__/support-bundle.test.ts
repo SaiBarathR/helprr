@@ -121,11 +121,13 @@ describe('support bundle', () => {
       'scrypt-password-hash',
       '0123456789abcdef0123456789abcdef',
       'dXNlcjpvbGQtcGFzc3dvcmQ=',
+      'old-user',
       'old-password',
     ]) {
       expect(serialized, `bundle leaked ${secret}`).not.toContain(secret);
     }
     expect(serialized).not.toContain('sonarr.internal');
+    expect(serialized).toContain('https://[REDACTED]@example.invalid/path');
     expect(serialized).toContain('[REDACTED]');
   });
 

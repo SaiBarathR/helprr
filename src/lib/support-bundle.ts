@@ -194,7 +194,7 @@ function redactKnownSecrets(
     // support-bundle-only backstop. Request UUIDs remain intact.
     output = output
       .replace(/(Basic\s+)[A-Za-z0-9+/=]+/gi, `$1${REDACTED}`)
-      .replace(/([a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:)[^@\s/]+@/gi, `$1${REDACTED}@`)
+      .replace(/([a-z][a-z0-9+.-]*:\/\/)[^:\s/@]+:[^@\s/]+@/gi, `$1${REDACTED}@`)
       .replace(/(?<![A-Za-z0-9])[A-Fa-f0-9]{24,}(?![A-Za-z0-9])/g, REDACTED)
       .replace(/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{40,}(?![A-Za-z0-9_-])/g, REDACTED);
   }
