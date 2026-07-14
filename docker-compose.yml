@@ -36,8 +36,9 @@ services:
 
   helprr:
     # Published image. The default `stable` channel tracks qualified releases;
-    # pin an exact version with HELPRR_VERSION (e.g. 1.0.0). To build from source:
-    #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+    # pin an exact version with HELPRR_VERSION (e.g. 1.0.0). Build source only in
+    # the standalone isolated development stack; never layer it over this file:
+    #   docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build
     image: ghcr.io/saibarathr/helprr:${HELPRR_VERSION:-stable}
     container_name: helprr
     restart: unless-stopped

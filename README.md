@@ -184,23 +184,31 @@ Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 7. It 
 ### 1. Download the deployment files
 
 No clone, no build — Helprr ships as a prebuilt multi-arch image
-(amd64/arm64) on `ghcr.io/saibarathr/helprr`. Download Compose, the environment
-template, and the safe setup helper:
+(amd64/arm64) on `ghcr.io/saibarathr/helprr`. Each tagged release also carries
+the four files needed to install, configure, update, and back up Helprr. Download
+the assets from the latest qualified release into this standalone layout:
 
 ```bash
-mkdir helprr && cd helprr
-curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/SaiBarathR/helprr/main/docker-compose.yml
-curl -fsSL -o .env.example https://raw.githubusercontent.com/SaiBarathR/helprr/main/.env.example
-curl -fsSL -o setup-env.sh https://raw.githubusercontent.com/SaiBarathR/helprr/main/scripts/setup-env.sh
-chmod +x setup-env.sh
+mkdir -p helprr/scripts && cd helprr
+HELPRR_ASSET_BASE=https://github.com/SaiBarathR/helprr/releases/latest/download
+curl -fsSL -o docker-compose.yml "$HELPRR_ASSET_BASE/docker-compose.yml"
+curl -fsSL -o .env.example "$HELPRR_ASSET_BASE/env.example"
+curl -fsSL -o scripts/setup-env.sh "$HELPRR_ASSET_BASE/setup-env.sh"
+curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
+chmod 700 scripts/setup-env.sh scripts/backup.sh
 ```
+
+For an exact release, use
+`HELPRR_ASSET_BASE=https://github.com/SaiBarathR/helprr/releases/download/vX.Y.Z`
+instead, then set `HELPRR_VERSION=X.Y.Z` in `.env` after generating it. Keep the
+Compose file and both helpers from the same release.
 
 ### 2. Configure
 
 Generate all required secrets and create `.env`:
 
 ```bash
-./setup-env.sh
+./scripts/setup-env.sh
 ```
 
 The helper uses independent URL-safe secrets, writes the completed file with mode
@@ -462,12 +470,34 @@ Prisma migrations are the database source of truth.
 
 ## Updating
 
-Create and validate a private database backup, then pull and restart:
+Tagged releases contain `docker-compose.yml`, `env.example`, `setup-env.sh`, and
+`backup.sh`. This lets an installation created without Git update without cloning
+the repository. To install an exact `vX.Y.Z` release from the existing Helprr
+directory, fetch the backup helper first and create a validated backup:
 
 ```bash
+mkdir -p scripts
+HELPRR_RELEASE=vX.Y.Z
+HELPRR_ASSET_BASE="https://github.com/SaiBarathR/helprr/releases/download/$HELPRR_RELEASE"
+curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
+chmod 700 scripts/backup.sh
 ./scripts/backup.sh
+```
+
+Only after that succeeds, replace the non-secret deployment files and helper scripts,
+review the new `.env.example` against the existing `.env`, select the matching exact
+image version in `.env` (without the leading `v`), then pull and restart:
+
+```bash
+curl -fsSL -o docker-compose.yml "$HELPRR_ASSET_BASE/docker-compose.yml"
+curl -fsSL -o .env.example "$HELPRR_ASSET_BASE/env.example"
+curl -fsSL -o scripts/setup-env.sh "$HELPRR_ASSET_BASE/setup-env.sh"
+curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
+chmod 700 scripts/setup-env.sh scripts/backup.sh
+# Set HELPRR_VERSION=X.Y.Z in .env after reviewing the release notes.
 docker compose pull
 docker compose up -d
+docker compose ps
 ```
 
 The helper keeps Helprr online while `pg_dump` takes a consistent snapshot, verifies
@@ -525,6 +555,9 @@ contain users' password hashes, sessions, push subscriptions, or history.
 ./scripts/backup.sh
 ```
 
+The no-clone quick start installs this helper under `scripts/` with mode `0700`.
+If it is missing from an older installation, download `backup.sh` from the exact
+target release as shown in **Updating** before changing Compose or pulling an image.
 Stable backups default to `backups/stable/`. Use
 `./scripts/backup.sh --output-dir /path/to/protected/storage` for a different local or
 mounted destination. Use `./scripts/backup.sh --dev` only for the standalone

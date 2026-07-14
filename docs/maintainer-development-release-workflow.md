@@ -484,7 +484,8 @@ The version-tag push causes Docker publish to:
 1. Build the exact commit natively for amd64 and arm64.
 2. Create the multi-architecture `ghcr.io/saibarathr/helprr:1.1.0` manifest.
 3. Create a draft GitHub release.
-4. Attach `docker-compose.yml` and `env.example` from that exact tag.
+4. Attach `docker-compose.yml`, `env.example`, `setup-env.sh`, and `backup.sh` from
+   that exact tag. These are the complete no-clone install and backup assets.
 
 At this point `stable` still points to the previous qualified release.
 
@@ -616,12 +617,13 @@ The tag workflow creates a draft release. Before publishing it:
 2. Summarize user-visible features and fixes.
 3. Call out configuration changes and migrations.
 4. Include update and backup guidance.
-5. Confirm `docker-compose.yml` and `env.example` are attached.
+5. Confirm `docker-compose.yml`, `env.example`, `setup-env.sh`, and `backup.sh` are
+   attached and downloadable.
 6. Include the qualified multi-arch digest.
 7. Mark a stable release as the latest release, not as a prerelease.
 
 Publish through the GitHub Releases UI, or use `gh release edit` after preparing the
-notes. Verify the public release page and both asset downloads after publication.
+notes. Verify the public release page and all four asset downloads after publication.
 
 ## Part 10: close the release
 

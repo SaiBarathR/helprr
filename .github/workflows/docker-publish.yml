@@ -154,10 +154,9 @@ jobs:
       - name: Inspect
         run: docker buildx imagetools inspect "$IMAGE:${{ steps.meta.outputs.version }}"
 
-  # On version tags, draft a GitHub release carrying the two files a user needs
-  # (docker-compose.yml + .env.example) so installs can fetch the exact files
-  # matching their version. Draft on purpose: finalize notes from CHANGELOG.md
-  # before publishing.
+  # On version tags, draft a GitHub release carrying every file needed for a
+  # no-clone install and pre-upgrade backup. Draft on purpose: finalize notes
+  # from CHANGELOG.md before publishing.
   release:
     needs: merge
     if: github.ref_type == 'tag'
@@ -178,8 +177,10 @@ jobs:
           esac
           # GitHub forbids asset names starting with a dot — ship it as env.example.
           cp .env.example env.example
+          install -m 0755 scripts/setup-env.sh setup-env.sh
+          install -m 0755 scripts/backup.sh backup.sh
           gh release create "$GITHUB_REF_NAME" \
             --draft \
             --generate-notes \
             $prerelease_flag \
-            docker-compose.yml env.example
+            docker-compose.yml env.example setup-env.sh backup.sh
