@@ -59,18 +59,18 @@ services:
       # the password percent-encoded.
       - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@helprr-db:5432/helprr}
       - REDIS_URL=${REDIS_URL:-redis://helprr-redis:6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - APP_PASSWORD=${APP_PASSWORD}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - APP_PASSWORD=${APP_PASSWORD:-}
       - HELPRR_ADMIN_USERNAME=${HELPRR_ADMIN_USERNAME:-}
       - HELPRR_ADMIN_PASSWORD_RESET=${HELPRR_ADMIN_PASSWORD_RESET:-}
       - TRUST_FORWARDED_PROTO=${TRUST_FORWARDED_PROTO:-}
       # Must be >=32 chars or the app refuses to boot. Generate: openssl rand -base64 48
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
       # VAPID_PUBLIC_KEY is runtime config (NEXT_PUBLIC_VAPID_PUBLIC_KEY kept as
       # a fallback for .env files from when it was baked in at build time).
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
-      - VAPID_SUBJECT=${VAPID_SUBJECT}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
       - APP_ORIGIN=${APP_ORIGIN:-}
       - HELPRR_CUSTOM_HEADERS=${HELPRR_CUSTOM_HEADERS:-}
       - EXTRA_ALLOWED_IMAGE_HOSTS=${EXTRA_ALLOWED_IMAGE_HOSTS:-}

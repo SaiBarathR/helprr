@@ -12,6 +12,13 @@ export async function register() {
     net.setDefaultAutoSelectFamily(false);
     dns.setDefaultResultOrder('ipv4first');
 
+    // Configuration failures are permanent until the operator fixes the
+    // environment. Validate before logging timers, bootstrap work, polling,
+    // push initialization, or cleanup jobs start, and do not put these errors
+    // on the transient database retry path below.
+    const { validateRuntimeConfigOrExit } = await import('@/lib/startup-config');
+    validateRuntimeConfigOrExit();
+
     const { initializeServerLogging, configureLogger } = await import('@/lib/logger');
     initializeServerLogging();
 
