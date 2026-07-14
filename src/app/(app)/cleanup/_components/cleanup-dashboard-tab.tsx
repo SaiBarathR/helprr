@@ -8,13 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, AlertTriangle, Eye, ChevronRight } from 'lucide-react';
-import { RunPreviewDialog, QueueDryRunDecision, DownloadDryRunDecision, RunPreviewPendingStrike } from './run-preview-dialog';
+import { RunPreviewDialog, QueueDryRunDecision, DownloadDryRunDecision, RunPreviewPendingStrike, CleanupRunOutcome } from './run-preview-dialog';
 import type { AutoRunMode } from '@/lib/cleanup/types';
 import { formatDelta } from '@/lib/cleanup/format-delta';
 import { jsonOk } from '@/lib/http';
 import { PageControls } from '@/components/ui/page-controls';
 import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
+import { useCan } from '@/components/permission-provider';
 
 const STRIKES_PAGE_SIZE = 30;
 
@@ -68,6 +69,7 @@ interface SchedulerStatusResponse {
 export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queue' | 'download' | 'history') => void }) {
   const [strikePage, setStrikePage] = useState(1);
   const queryClient = useQueryClient();
+  const canManage = useCan('cleanup.manage');
 
   const [queuePreview, setQueuePreview] = useState<{
     open: boolean;
@@ -76,7 +78,9 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     pendingStrikes: RunPreviewPendingStrike[];
     confirming: boolean;
     confirmGate: boolean;
-  }>({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
+    previewToken: string | null;
+    outcomes: CleanupRunOutcome[];
+  }>({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
 
   const [downloadPreview, setDownloadPreview] = useState<{
     open: boolean;
@@ -84,7 +88,9 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     decisions: DownloadDryRunDecision[];
     confirming: boolean;
     confirmGate: boolean;
-  }>({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
+    previewToken: string | null;
+    outcomes: CleanupRunOutcome[];
+  }>({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
 
   // Dashboard stats + strikes + cleaner status, polled every 15s. Keyed by
   // strikePage so a page change auto-refetches (TanStack cancels superseded
@@ -149,14 +155,12 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
   }, [dashboardQuery.isError]);
 
   const startQueueDryRun = async () => {
-    setQueuePreview({ open: true, loading: true, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
+    setQueuePreview({ open: true, loading: true, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     try {
-      const r = await fetch('/api/cleanup/queue/run', {
+      const r = await fetch('/api/cleanup/queue/preview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: true }),
       });
-      const json = await jsonOk<{ decisions?: QueueDryRunDecision[]; pendingStrikes?: RunPreviewPendingStrike[] }>(r);
+      const json = await jsonOk<{ previewToken?: string; decisions?: QueueDryRunDecision[]; pendingStrikes?: RunPreviewPendingStrike[] }>(r);
       setQueuePreview({
         open: true,
         loading: false,
@@ -164,30 +168,39 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         pendingStrikes: json.pendingStrikes ?? [],
         confirming: false,
         confirmGate: false,
+        previewToken: json.previewToken ?? null,
+        outcomes: [],
       });
     } catch {
       toast.error('Queue dry-run failed');
-      setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
+      setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     }
   };
 
   const executeQueueRun = async () => {
+    if (!queuePreview.previewToken) {
+      toast.error('Preview expired. Run a fresh preview.');
+      return;
+    }
     setQueuePreview((p) => ({ ...p, confirming: true, confirmGate: false }));
     try {
       const r = await fetch('/api/cleanup/queue/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false }),
+        body: JSON.stringify({ previewToken: queuePreview.previewToken }),
       });
-      const json = await jsonOk<{ succeeded?: number; failed?: number; decisions?: QueueDryRunDecision[] }>(r);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[] }>(r);
       const succeeded = json.succeeded ?? 0;
       const failed = json.failed ?? 0;
-      toast.success(`Removed ${succeeded} torrent(s)${failed > 0 ? ` — ${failed} failed` : ''}`);
-      setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false });
+      if (failed > 0) toast.warning(`Removed ${succeeded} torrent(s); ${failed} need attention`);
+      else toast.success(`Removed ${succeeded} torrent(s)`);
+      setQueuePreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [] }));
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['cleanup', 'history'] });
+      void queryClient.invalidateQueries({ queryKey: ['cleanup', 'scheduler'] });
     } catch {
-      toast.error('Queue run failed');
-      setQueuePreview((p) => ({ ...p, confirming: false }));
+      toast.error('Queue run failed. Run a fresh preview before retrying.');
+      setQueuePreview((p) => ({ ...p, confirming: false, confirmGate: false, previewToken: null }));
     }
   };
 
@@ -200,44 +213,51 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
   };
 
   const startDownloadDryRun = async () => {
-    setDownloadPreview({ open: true, loading: true, decisions: [], confirming: false, confirmGate: false });
+    setDownloadPreview({ open: true, loading: true, decisions: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     try {
-      const r = await fetch('/api/cleanup/download/run', {
+      const r = await fetch('/api/cleanup/download/preview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: true }),
       });
-      const json = await jsonOk<{ decisions?: DownloadDryRunDecision[] }>(r);
+      const json = await jsonOk<{ previewToken?: string; decisions?: DownloadDryRunDecision[] }>(r);
       setDownloadPreview({
         open: true,
         loading: false,
         decisions: json.decisions ?? [],
         confirming: false,
         confirmGate: false,
+        previewToken: json.previewToken ?? null,
+        outcomes: [],
       });
     } catch {
       toast.error('Download dry-run failed');
-      setDownloadPreview({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
+      setDownloadPreview({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     }
   };
 
   const executeDownloadRun = async () => {
+    if (!downloadPreview.previewToken) {
+      toast.error('Preview expired. Run a fresh preview.');
+      return;
+    }
     setDownloadPreview((p) => ({ ...p, confirming: true, confirmGate: false }));
     try {
       const r = await fetch('/api/cleanup/download/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun: false }),
+        body: JSON.stringify({ previewToken: downloadPreview.previewToken }),
       });
-      const json = await jsonOk<{ succeeded?: number; failed?: number; decisions?: DownloadDryRunDecision[] }>(r);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[] }>(r);
       const succeeded = json.succeeded ?? 0;
       const failed = json.failed ?? 0;
-      toast.success(`Removed ${succeeded} torrent(s)${failed > 0 ? ` — ${failed} failed` : ''}`);
-      setDownloadPreview({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false });
+      if (failed > 0) toast.warning(`Removed ${succeeded} torrent(s); ${failed} need attention`);
+      else toast.success(`Removed ${succeeded} torrent(s)`);
+      setDownloadPreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [] }));
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['cleanup', 'history'] });
+      void queryClient.invalidateQueries({ queryKey: ['cleanup', 'scheduler'] });
     } catch {
-      toast.error('Download run failed');
-      setDownloadPreview((p) => ({ ...p, confirming: false }));
+      toast.error('Download run failed. Run a fresh preview before retrying.');
+      setDownloadPreview((p) => ({ ...p, confirming: false, confirmGate: false, previewToken: null }));
     }
   };
 
@@ -268,18 +288,18 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
               label="Queue Cleaner"
               status={status?.queue}
               scheduler={scheduler?.queue}
-              onConfigure={() => onNavigate('queue')}
+              onConfigure={canManage ? () => onNavigate('queue') : undefined}
             />
             <StatusRow
               label="Download Cleaner"
               status={status?.download}
               scheduler={scheduler?.download}
-              onConfigure={() => onNavigate('download')}
+              onConfigure={canManage ? () => onNavigate('download') : undefined}
             />
           </div>
         </section>
 
-        <section className="grouped-section">
+        {canManage && <section className="grouped-section">
           <div className="grouped-section-title">Manual runs</div>
           <div className="grouped-section-content">
             <div className="grouped-row flex-wrap gap-2">
@@ -289,7 +309,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
                   Preview decisions before applying. Removes files from qBittorrent and (if configured) blocklists in Sonarr/Radarr.
                 </div>
               </div>
-              <Button size="sm" onClick={startQueueDryRun} className="ml-auto shrink-0">
+              <Button size="sm" onClick={startQueueDryRun} disabled={!status?.queue.enabled} className="ml-auto shrink-0">
                 <Eye className="w-4 h-4 mr-1" /> Preview
               </Button>
             </div>
@@ -300,12 +320,12 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
                   Preview seeding rule matches before applying. Removes torrents based on ratio / seed-time policy.
                 </div>
               </div>
-              <Button size="sm" onClick={startDownloadDryRun} className="ml-auto shrink-0">
+              <Button size="sm" onClick={startDownloadDryRun} disabled={!status?.download.enabled} className="ml-auto shrink-0">
                 <Eye className="w-4 h-4 mr-1" /> Preview
               </Button>
             </div>
           </div>
-        </section>
+        </section>}
 
         <section className="grouped-section">
           <div className="grouped-section-title flex items-center justify-between">
@@ -374,24 +394,26 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
 
         <RunPreviewDialog
           cleaner="queue"
-          title="Queue Cleaner — dry-run preview"
+          title={queuePreview.outcomes.length > 0 ? 'Queue Cleaner — execution results' : 'Queue Cleaner — dry-run preview'}
           open={queuePreview.open}
-          onOpenChange={(o) => setQueuePreview((p) => ({ ...p, open: o }))}
+          onOpenChange={(o) => setQueuePreview((p) => ({ ...p, open: o, ...(!o ? { previewToken: null, outcomes: [] } : {}) }))}
           loading={queuePreview.loading}
           decisions={queuePreview.decisions}
           pendingStrikes={queuePreview.pendingStrikes}
           onConfirm={onConfirmQueue}
           confirming={queuePreview.confirming}
+          outcomes={queuePreview.outcomes}
         />
         <RunPreviewDialog
           cleaner="download"
-          title="Download Cleaner — dry-run preview"
+          title={downloadPreview.outcomes.length > 0 ? 'Download Cleaner — execution results' : 'Download Cleaner — dry-run preview'}
           open={downloadPreview.open}
-          onOpenChange={(o) => setDownloadPreview((p) => ({ ...p, open: o }))}
+          onOpenChange={(o) => setDownloadPreview((p) => ({ ...p, open: o, ...(!o ? { previewToken: null, outcomes: [] } : {}) }))}
           loading={downloadPreview.loading}
           decisions={downloadPreview.decisions}
           onConfirm={onConfirmDownload}
           confirming={downloadPreview.confirming}
+          outcomes={downloadPreview.outcomes}
         />
 
         <ConfirmDialog
@@ -439,7 +461,7 @@ function StatusRow({
   label: string;
   status: CleanerStatusLite | undefined;
   scheduler: SchedulerLite | undefined;
-  onConfigure: () => void;
+  onConfigure?: () => void;
 }) {
   if (!status) {
     return (
@@ -462,7 +484,7 @@ function StatusRow({
       </div>
       <div className="flex items-center gap-2 shrink-0 ml-auto">
         <Badge variant={variant.variant} className={variant.className}>{variant.label}</Badge>
-        <Button variant="ghost" size="sm" onClick={onConfigure}>Configure</Button>
+        {onConfigure && <Button variant="ghost" size="sm" onClick={onConfigure}>Configure</Button>}
       </div>
     </div>
   );

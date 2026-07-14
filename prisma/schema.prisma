@@ -598,12 +598,19 @@ model CleanupHistory {
   torrentRatio    Float?
   triggeredBy     String
   errorMessage    String?
+  // Manual cleanup safety metadata. previewId is a non-secret correlation id;
+  // the single-use preview token itself is short-lived in Redis and is never
+  // persisted. Legacy rows keep these fields null.
+  previewId       String?
+  outcomeStatus   String?
+  outcomeDetails  Json?
 
   createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([hash])
   @@index([action])
+  @@index([previewId])
 }
 
 // ==================== File operations: audit trail ====================

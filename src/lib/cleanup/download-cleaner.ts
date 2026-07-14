@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
 import type { QBittorrentTorrent } from '@/types';
 import type { SonarrClient } from '@/lib/sonarr-client';
@@ -29,10 +30,19 @@ import {
   PrivacyType,
   SeedingRuleShape,
   TriggeredBy,
+  CleanupExecutionBinding,
+  CleanupItemOutcome,
 } from './types';
 
 const VALID_PRIVACY_TYPES: PrivacyType[] = ['public', 'private', 'both'];
 import { processWithLimit } from './concurrency';
+import {
+  assertExecutionBinding,
+  buildExecutionBinding,
+  cleanupScopeFingerprint,
+  downloadCandidateBinding,
+  downloadConfigFingerprint,
+} from './binding';
 
 const LOG = 'download-cleaner';
 const SYSTEM_RULE_NAME = 'Auto-remove imported (system)';
@@ -180,26 +190,38 @@ function evaluatePredicate(t: QBittorrentTorrent, rule: SeedingRuleShape): Downl
 export interface RunOptions {
   dryRun: boolean;
   triggeredBy: TriggeredBy;
+  expectedBinding?: CleanupExecutionBinding;
+  previewId?: string;
 }
 
 export async function runDownloadCleanerCycle(opts: RunOptions): Promise<DownloadEvaluationResult> {
   const t0 = Date.now();
-  const cfg = await loadDownloadCleanerConfig();
+  const [cfg, scopeFingerprint] = await Promise.all([
+    loadDownloadCleanerConfig(),
+    cleanupScopeFingerprint(),
+  ]);
   // Honor the master enabled flag for both auto and manual runs; the UI keeps
   // the "Run now" button disabled while cfg.enabled is false, but a stale
   // client or curl call could still hit this path.
   if (!cfg.enabled) {
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0 };
+    const rules = await loadSeedingRules();
+    const binding = buildExecutionBinding('download', downloadConfigFingerprint(cfg, rules), scopeFingerprint, []);
+    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, binding);
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding };
   }
 
   await syncSystemSeedingRule(cfg);
+  const rules = (await loadSeedingRules()).filter((r) => r.enabled);
+  const configFingerprint = downloadConfigFingerprint(cfg, rules);
+  const noCandidatesBinding = buildExecutionBinding('download', configFingerprint, scopeFingerprint, []);
 
   let qbit;
   try {
     qbit = await getQBittorrentClient();
   } catch (err) {
     logger.warn('qBittorrent unavailable', { err: String(err) }, { scope: LOG });
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0 };
+    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding: noCandidatesBinding };
   }
 
   let torrents: QBittorrentTorrent[];
@@ -207,12 +229,11 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     torrents = await qbit.getTorrents();
   } catch (err) {
     logger.warn('qBittorrent listing failed', { err: String(err) }, { scope: LOG });
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0 };
+    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding: noCandidatesBinding };
   }
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
-  const rules = (await loadSeedingRules()).filter((r) => r.enabled);
-
   const decisions: DownloadDecision[] = [];
   // Torrents whose matched rule requires Sonarr/Radarr import confirmation
   // before the predicate runs. Resolved in a concurrent async pass below.
@@ -225,30 +246,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
       if (matchesIgnoredPatterns(t, domains, cfg.ignoredDownloads)) continue;
       if (!isSeedingState(t)) continue;
 
-      const tagsArr = torrentTags(t).map((s) => s.toLowerCase());
-      const cat = (t.category || '').toLowerCase();
-      const matched = rules.find((rule) => {
-        // Empty categories list = apply to any category (cleanuparr-style).
-        if (rule.categories.length > 0) {
-          if (!rule.categories.map((c) => c.toLowerCase()).includes(cat)) return false;
-        }
-        if (rule.trackerPatterns.length > 0) {
-          const matches = rule.trackerPatterns.some((p) =>
-            domains.some((d) => d === p.toLowerCase() || d.endsWith(p.toLowerCase()))
-          );
-          if (!matches) return false;
-        }
-        if (rule.tagsAny.length > 0) {
-          const ok = rule.tagsAny.some((tag) => tagsArr.includes(tag.toLowerCase()));
-          if (!ok) return false;
-        }
-        if (rule.tagsAll.length > 0) {
-          const ok = rule.tagsAll.every((tag) => tagsArr.includes(tag.toLowerCase()));
-          if (!ok) return false;
-        }
-        if (!matchesPrivacy(t, rule.privacyType)) return false;
-        return true;
-      });
+      const matched = matchSeedingRule(t, domains, rules);
 
       if (!matched) continue;
 
@@ -340,8 +338,17 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     }
   }
 
+  const binding = buildExecutionBinding(
+    'download',
+    configFingerprint,
+    scopeFingerprint,
+    decisions.map(downloadCandidateBinding),
+  );
+  if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, binding);
+
   let succeededCount = 0;
   let failedCount = 0;
+  const outcomes: CleanupItemOutcome[] = [];
   const successDecisions: { decision: DownloadDecision; outcome: Extract<DownloadRemovalOutcome, { kind: 'success' }> }[] = [];
   const failureDecisions: { decision: DownloadDecision; errorMessage: string }[] = [];
 
@@ -378,19 +385,35 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
   } else {
     await processWithLimit(decisions, CLEANUP_CONCURRENCY, async (d) => {
       try {
-        const outcome = await executeDownloadCleanerRemoval(d, opts.triggeredBy);
+        const revalidation = await revalidateDownloadDecision(d, configFingerprint, scopeFingerprint);
+        const outcome = revalidation.ok
+          ? await executeDownloadCleanerRemoval(revalidation.decision, opts.triggeredBy, opts.previewId)
+          : await recordDownloadRevalidationOutcome(d, revalidation, opts.triggeredBy, opts.previewId);
         if (outcome.kind === 'success') {
           succeededCount++;
           successDecisions.push({ decision: d, outcome });
+          outcomes.push(toDownloadItemOutcome(d, outcome));
         } else {
           failedCount++;
           failureDecisions.push({ decision: d, errorMessage: outcome.errorMessage });
+          outcomes.push(toDownloadItemOutcome(d, outcome));
         }
       } catch (err) {
         const errorMessage = formatError(err);
         logger.error('Download cleaner removal threw unexpectedly', { hash: d.torrent.hash, err: errorMessage }, { scope: LOG });
         failedCount++;
         failureDecisions.push({ decision: d, errorMessage });
+        outcomes.push({
+          hash: d.torrent.hash.toLowerCase(),
+          torrentName: d.torrent.name,
+          status: 'failed',
+          action: 'failed',
+          filesDeleted: false,
+          reSearched: false,
+          message: 'Cleanup removal threw unexpectedly',
+          errorMessage,
+          targets: [],
+        });
       }
     });
   }
@@ -464,6 +487,8 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     durationMs,
     succeeded: succeededCount,
     failed: failedCount,
+    outcomes,
+    binding,
   };
 }
 
@@ -527,50 +552,215 @@ function isSeedingState(t: QBittorrentTorrent): boolean {
 }
 
 export type DownloadRemovalOutcome =
-  | { kind: 'success'; filesDeleted: boolean }
-  | { kind: 'failure'; errorMessage: string };
+  | {
+      kind: 'success';
+      status: 'succeeded';
+      action: 'removedFromClient';
+      filesDeleted: boolean;
+      message: string;
+      errorMessage: null;
+      targets: CleanupItemOutcome['targets'];
+    }
+  | {
+      kind: 'failure';
+      status: 'partial' | 'failed' | 'stale';
+      action: 'failed' | 'skipped';
+      filesDeleted: false;
+      message: string;
+      errorMessage: string;
+      targets: CleanupItemOutcome['targets'];
+    };
 
-async function executeDownloadCleanerRemoval(d: DownloadDecision, triggeredBy: TriggeredBy): Promise<DownloadRemovalOutcome> {
+function toDownloadItemOutcome(d: DownloadDecision, outcome: DownloadRemovalOutcome): CleanupItemOutcome {
+  return {
+    hash: d.torrent.hash.toLowerCase(),
+    torrentName: d.torrent.name,
+    status: outcome.status,
+    action: outcome.action,
+    filesDeleted: outcome.filesDeleted,
+    reSearched: false,
+    message: outcome.message,
+    errorMessage: outcome.errorMessage,
+    targets: outcome.targets,
+  };
+}
+
+function matchSeedingRule(
+  torrent: QBittorrentTorrent,
+  domains: string[],
+  rules: SeedingRuleShape[],
+): SeedingRuleShape | null {
+  const tags = torrentTags(torrent).map((tag) => tag.toLowerCase());
+  const category = (torrent.category || '').toLowerCase();
+  return rules.find((rule) => {
+    if (rule.categories.length > 0 && !rule.categories.map((value) => value.toLowerCase()).includes(category)) return false;
+    if (
+      rule.trackerPatterns.length > 0
+      && !rule.trackerPatterns.some((pattern) =>
+        domains.some((domain) => domain === pattern.toLowerCase() || domain.endsWith(pattern.toLowerCase())))
+    ) return false;
+    if (rule.tagsAny.length > 0 && !rule.tagsAny.some((tag) => tags.includes(tag.toLowerCase()))) return false;
+    if (rule.tagsAll.length > 0 && !rule.tagsAll.every((tag) => tags.includes(tag.toLowerCase()))) return false;
+    return matchesPrivacy(torrent, rule.privacyType);
+  }) ?? null;
+}
+
+type DownloadRevalidation =
+  | { ok: true; decision: DownloadDecision }
+  | { ok: false; status: 'stale' | 'failed'; message: string; errorMessage: string };
+
+async function revalidateDownloadDecision(
+  expected: DownloadDecision,
+  expectedConfigFingerprint: string,
+  expectedScopeFingerprint: string,
+): Promise<DownloadRevalidation> {
+  try {
+    const [config, scopeFingerprint] = await Promise.all([
+      loadDownloadCleanerConfig(),
+      cleanupScopeFingerprint(),
+    ]);
+    const rules = (await loadSeedingRules()).filter((rule) => rule.enabled);
+    if (
+      !config.enabled
+      || downloadConfigFingerprint(config, rules) !== expectedConfigFingerprint
+      || scopeFingerprint !== expectedScopeFingerprint
+    ) {
+      return { ok: false, status: 'stale', message: 'Cleaner configuration changed after preview', errorMessage: 'Preview configuration no longer matches' };
+    }
+
+    const qbit = await getQBittorrentClient();
+    const torrents = await qbit.getTorrents(undefined, undefined, undefined, undefined, expected.torrent.hash);
+    if (torrents.length !== 1) {
+      return { ok: false, status: 'stale', message: 'Torrent is no longer present', errorMessage: 'Torrent disappeared after preview' };
+    }
+    const torrent = torrents[0];
+    const domains = (await batchFetchTrackerDomains(qbit, [torrent])).get(torrent.hash.toLowerCase()) ?? [];
+    if (matchesIgnoredPatterns(torrent, domains, config.ignoredDownloads) || !isSeedingState(torrent)) {
+      return { ok: false, status: 'stale', message: 'Torrent no longer matches cleanup state', errorMessage: 'Torrent state changed after preview' };
+    }
+    const rule = matchSeedingRule(torrent, domains, rules);
+    if (!rule || rule.id !== expected.rule.id) {
+      return { ok: false, status: 'stale', message: 'Torrent no longer matches the reviewed rule', errorMessage: 'Rule match changed after preview' };
+    }
+
+    let decision = evaluatePredicate(torrent, rule);
+    if (!decision) {
+      return { ok: false, status: 'stale', message: 'Torrent no longer meets the reviewed threshold', errorMessage: 'Cleanup threshold changed after preview' };
+    }
+    if (rule.requireImportedConfirmation) {
+      const confirmation = await confirmImportedViaHistory(torrent.hash, await loadArrClients());
+      if (confirmation.status !== 'imported') {
+        return { ok: false, status: 'stale', message: 'Import confirmation is no longer available', errorMessage: 'Import confirmation changed after preview' };
+      }
+      decision = {
+        ...decision,
+        reason: `${decision.reason} — imported (${confirmation.source} ${confirmation.eventType})`,
+        removalKind: 'imported',
+      };
+    }
+    if (downloadCandidateBinding(decision).removalKind !== downloadCandidateBinding(expected).removalKind) {
+      return { ok: false, status: 'stale', message: 'Cleanup action changed after preview', errorMessage: 'Removal mode changed after preview' };
+    }
+    return { ok: true, decision };
+  } catch (error) {
+    const errorMessage = formatError(error);
+    return { ok: false, status: 'failed', message: 'Could not revalidate the torrent safely', errorMessage };
+  }
+}
+
+async function recordDownloadRevalidationOutcome(
+  decision: DownloadDecision,
+  revalidation: Extract<DownloadRevalidation, { ok: false }>,
+  triggeredBy: TriggeredBy,
+  previewId?: string,
+): Promise<DownloadRemovalOutcome> {
+  const outcome: DownloadRemovalOutcome = {
+    kind: 'failure',
+    status: revalidation.status,
+    action: revalidation.status === 'stale' ? 'skipped' : 'failed',
+    filesDeleted: false,
+    message: revalidation.message,
+    errorMessage: revalidation.errorMessage,
+    targets: [{ target: 'qbittorrent', attempted: false, before: 'unknown', after: 'unknown', errorMessage: revalidation.errorMessage }],
+  };
+  await writeDownloadHistory(decision, outcome, triggeredBy, previewId);
+  return outcome;
+}
+
+export async function executeDownloadCleanerRemoval(
+  d: DownloadDecision,
+  triggeredBy: TriggeredBy,
+  previewId?: string,
+): Promise<DownloadRemovalOutcome> {
   const hashLc = d.torrent.hash.toLowerCase();
   const intendedFilesDeleted = d.rule.deleteSourceFiles;
-
-  // Phase 1: attempt qBit delete. If it fails, audit the failure and keep strikes.
+  let deleteError: string | null = null;
+  let qbit;
   try {
-    const qbit = await getQBittorrentClient();
+    qbit = await getQBittorrentClient();
     await qbit.deleteTorrent(d.torrent.hash, intendedFilesDeleted);
   } catch (err) {
-    const errorMessage = formatError(err);
-    logger.error('qBit delete (download cleaner) failed — keeping strikes for retry', { err: errorMessage, hash: hashLc }, { scope: LOG });
-
-    await prisma.cleanupHistory.create({
-      data: {
-        cleaner: 'download',
-        strikeType: null,
-        ruleId: d.rule.id,
-        ruleName: d.rule.name,
-        hash: hashLc,
-        shortHash: shortHash(hashLc),
-        torrentName: d.torrent.name,
-        reason: d.reason,
-        action: 'failed',
-        filesDeleted: false,
-        reSearched: false,
-        linkedArrSource: null,
-        linkedArrTitle: null,
-        linkedArrItemId: null,
-        torrentSize: BigInt(Math.max(0, Math.floor(d.torrent.size))),
-        torrentProgress: d.torrent.progress,
-        torrentRatio: d.torrent.ratio,
-        triggeredBy: triggeredBy === 'dryRun' ? 'manual' : triggeredBy,
-        errorMessage,
-      },
-    });
-    return { kind: 'failure', errorMessage };
+    deleteError = formatError(err);
+    logger.error('qBit delete (download cleaner) returned an error; reconciling state', { err: deleteError, hash: hashLc }, { scope: LOG });
   }
 
-  // Phase 2: delete succeeded — clear strikes, then audit.
-  await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  let after: 'present' | 'absent' | 'unknown' = 'unknown';
+  let inspectError: string | undefined;
+  try {
+    qbit ??= await getQBittorrentClient();
+    const remaining = await qbit.getTorrents(undefined, undefined, undefined, undefined, d.torrent.hash);
+    after = remaining.length === 0 ? 'absent' : 'present';
+  } catch (error) {
+    inspectError = formatError(error);
+  }
 
+  let outcome: DownloadRemovalOutcome;
+  if (after === 'absent') {
+    outcome = {
+      kind: 'success',
+      status: 'succeeded',
+      action: 'removedFromClient',
+      filesDeleted: intendedFilesDeleted,
+      message: deleteError ? 'Torrent removal confirmed after an upstream error' : 'Torrent removal confirmed',
+      errorMessage: null,
+      targets: [{ target: 'qbittorrent', attempted: true, before: 'present', after, ...(deleteError ? { errorMessage: deleteError } : {}) }],
+    };
+    await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  } else if (after === 'present') {
+    const errorMessage = deleteError ?? 'qBittorrent still reports the torrent after deletion';
+    outcome = {
+      kind: 'failure',
+      status: 'failed',
+      action: 'failed',
+      filesDeleted: false,
+      message: 'Torrent was not removed',
+      errorMessage,
+      targets: [{ target: 'qbittorrent', attempted: true, before: 'present', after, errorMessage }],
+    };
+  } else {
+    const errorMessage = [deleteError, inspectError].filter(Boolean).join('; ') || 'Could not verify qBittorrent state';
+    outcome = {
+      kind: 'failure',
+      status: 'partial',
+      action: 'failed',
+      filesDeleted: false,
+      message: 'Deletion result could not be verified',
+      errorMessage,
+      targets: [{ target: 'qbittorrent', attempted: true, before: 'present', after, errorMessage }],
+    };
+  }
+
+  await writeDownloadHistory(d, outcome, triggeredBy, previewId);
+  return outcome;
+}
+
+async function writeDownloadHistory(
+  d: DownloadDecision,
+  outcome: DownloadRemovalOutcome,
+  triggeredBy: TriggeredBy,
+  previewId?: string,
+): Promise<void> {
+  const hashLc = d.torrent.hash.toLowerCase();
   await prisma.cleanupHistory.create({
     data: {
       cleaner: 'download',
@@ -581,8 +771,8 @@ async function executeDownloadCleanerRemoval(d: DownloadDecision, triggeredBy: T
       shortHash: shortHash(hashLc),
       torrentName: d.torrent.name,
       reason: d.reason,
-      action: 'removedFromClient',
-      filesDeleted: intendedFilesDeleted,
+      action: outcome.action,
+      filesDeleted: outcome.filesDeleted,
       reSearched: false,
       linkedArrSource: null,
       linkedArrTitle: null,
@@ -591,8 +781,10 @@ async function executeDownloadCleanerRemoval(d: DownloadDecision, triggeredBy: T
       torrentProgress: d.torrent.progress,
       torrentRatio: d.torrent.ratio,
       triggeredBy: triggeredBy === 'dryRun' ? 'manual' : triggeredBy,
+      errorMessage: outcome.errorMessage,
+      previewId: previewId ?? null,
+      outcomeStatus: outcome.status,
+      outcomeDetails: { message: outcome.message, targets: outcome.targets } as unknown as Prisma.InputJsonValue,
     },
   });
-
-  return { kind: 'success', filesDeleted: intendedFilesDeleted };
 }

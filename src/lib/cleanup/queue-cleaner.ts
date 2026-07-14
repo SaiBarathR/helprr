@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
 import type { QBittorrentTorrent, QueueItem } from '@/types';
 import { getQBittorrentClient, getSonarrClient, getRadarrClient, getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
@@ -31,6 +32,14 @@ import {
 import { processWithLimit } from './concurrency';
 import { fetchFullQueue, QUEUE_PAGE_SIZE, MAX_QUEUE_PAGES } from './queue-pagination';
 import {
+  assertExecutionBinding,
+  buildExecutionBinding,
+  candidateFingerprint,
+  cleanupScopeFingerprint,
+  queueCandidateBinding,
+  queueConfigFingerprint,
+} from './binding';
+import {
   AutoRunMode,
   AUTO_RUN_MODES,
   DEFAULT_FAILED_IMPORT,
@@ -43,6 +52,8 @@ import {
   StallRuleShape,
   TriggeredBy,
   PendingStrike,
+  CleanupExecutionBinding,
+  CleanupItemOutcome,
 } from './types';
 
 const LOG = 'queue-cleaner';
@@ -150,14 +161,17 @@ export async function loadSlowRules(): Promise<SlowRuleShape[]> {
 async function loadArrQueues(): Promise<{
   sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
   radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
+  complete: boolean;
 }> {
   const sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
   const radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
+  let complete = true;
   for (const { connection, client } of await getSonarrClients()) {
     try {
       const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
       if (records === null) {
         logger.error('Sonarr queue exceeds pagination bound; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
+        complete = false;
         continue;
       }
       sonarr.push({
@@ -166,6 +180,7 @@ async function loadArrQueues(): Promise<{
         queue: records.map((i) => ({ ...i, source: 'sonarr' as const })),
       });
     } catch (err) {
+      complete = false;
       if (!isMissingConfigError(err)) logger.warn('Sonarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
     }
   }
@@ -174,6 +189,7 @@ async function loadArrQueues(): Promise<{
       const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
       if (records === null) {
         logger.error('Radarr queue exceeds pagination bound; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
+        complete = false;
         continue;
       }
       radarr.push({
@@ -182,10 +198,11 @@ async function loadArrQueues(): Promise<{
         queue: records.map((i) => ({ ...i, source: 'radarr' as const })),
       });
     } catch (err) {
+      complete = false;
       if (!isMissingConfigError(err)) logger.warn('Radarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
     }
   }
-  return { sonarr, radarr };
+  return { sonarr, radarr, complete };
 }
 
 function isMissingConfigError(err: unknown): boolean {
@@ -195,13 +212,23 @@ function isMissingConfigError(err: unknown): boolean {
 export interface RunOptions {
   dryRun: boolean;
   triggeredBy: TriggeredBy;
+  expectedBinding?: CleanupExecutionBinding;
+  previewId?: string;
 }
 
 export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvaluationResult> {
   const t0 = Date.now();
-  const cfg = await loadQueueCleanerConfig();
-  if (!cfg.enabled && opts.triggeredBy === 'auto') {
-    return emptyResult(opts);
+  const [cfg, stallRules, slowRules, scopeFingerprint] = await Promise.all([
+    loadQueueCleanerConfig(),
+    loadStallRules(),
+    loadSlowRules(),
+    cleanupScopeFingerprint(),
+  ]);
+  const configFingerprint = queueConfigFingerprint(cfg, stallRules, slowRules);
+  const noCandidatesBinding = buildExecutionBinding('queue', configFingerprint, scopeFingerprint, []);
+  if (!cfg.enabled) {
+    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding);
   }
 
   let qbit;
@@ -209,7 +236,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     qbit = await getQBittorrentClient();
   } catch (err) {
     logger.warn('qBittorrent unavailable', { err: String(err) }, { scope: LOG });
-    return emptyResult(opts);
+    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding);
   }
 
   let torrents: QBittorrentTorrent[];
@@ -217,15 +245,19 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     torrents = await qbit.getTorrents();
   } catch (err) {
     logger.warn('qBittorrent listing failed', { err: String(err) }, { scope: LOG });
-    return emptyResult(opts);
+    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding);
   }
 
-  const [{ sonarr: sonarrInstances, radarr: radarrInstances }, stallRules, slowRules, prevStrikes] = await Promise.all([
+  const [{ sonarr: sonarrInstances, radarr: radarrInstances, complete: arrQueuesComplete }, prevStrikes] = await Promise.all([
     loadArrQueues(),
-    loadStallRules(),
-    loadSlowRules(),
     loadActiveStrikes(),
   ]);
+  if (!arrQueuesComplete) {
+    logger.error('Queue cleaner aborted because at least one configured Arr queue could not be read completely', {}, { scope: LOG });
+    if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding);
+  }
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
   const correlation = buildCorrelationIndex(sonarrInstances, radarrInstances);
@@ -270,6 +302,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
             strikeType: 'downloadingMetadata',
             ruleId: null,
             ruleName: null,
+            strikeCount: newCount,
+            maxStrikes: cfg.downloadingMetadataMaxStrikes,
             reason: buildMetadataReason(newCount, cfg.downloadingMetadataMaxStrikes),
             linked,
             options: {
@@ -329,6 +363,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
                   strikeType: 'failedImport',
                   ruleId: null,
                   ruleName: null,
+                  strikeCount: newCount,
+                  maxStrikes: cfg.failedImport.maxStrikes,
                   reason: buildFailedImportReason(newCount, cfg.failedImport.maxStrikes),
                   linked,
                   options: {
@@ -378,6 +414,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
           strikeType: 'stall',
           ruleId: rule.id,
           ruleName: rule.name,
+          strikeCount: count,
+          maxStrikes: rule.maxStrikes,
           reason: buildStallReason(rule, count),
           linked,
           options: {
@@ -421,6 +459,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
           strikeType: 'slow',
           ruleId: rule.id,
           ruleName: rule.name,
+          strikeCount: count,
+          maxStrikes: rule.maxStrikes,
           reason: buildSlowReason(rule, t, count),
           linked,
           options: {
@@ -436,15 +476,37 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     }
   }
 
+  // A torrent can satisfy more than one strike rule in the same cycle. Keep the
+  // first condition in the documented evaluation order so a single hash never
+  // reaches the concurrent deletion pool twice.
+  const seenDecisionHashes = new Set<string>();
+  for (let index = 0; index < decisions.length;) {
+    const hash = decisions[index].torrent.hash.toLowerCase();
+    if (seenDecisionHashes.has(hash)) {
+      decisions.splice(index, 1);
+    } else {
+      seenDecisionHashes.add(hash);
+      index++;
+    }
+  }
+
   // Attach every instance whose queue holds each torrent's hash so removal can act
   // on all of them (cross-seed / HD+4K). `linked` stays the representative for display.
   for (const d of decisions) {
     d.linkedAll = correlation.byHash.get(d.torrent.hash.toLowerCase()) ?? (d.linked ? [d.linked] : []);
   }
+  const binding = buildExecutionBinding(
+    'queue',
+    configFingerprint,
+    scopeFingerprint,
+    decisions.map(queueCandidateBinding),
+  );
+  if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, binding);
 
   // Track outcomes for end-of-cycle summary notification.
   let succeededCount = 0;
   let failedCount = 0;
+  const outcomes: CleanupItemOutcome[] = [];
   const successOutcomes: { decision: QueueDecision; outcome: Extract<QueueRemovalOutcome, { kind: 'success' }> }[] = [];
   const failureOutcomes: { decision: QueueDecision; errorMessage: string }[] = [];
 
@@ -512,13 +574,18 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
 
     await processWithLimit(decisions, CLEANUP_CONCURRENCY, async (d) => {
       try {
-        const outcome = await executeQueueCleanerRemoval(d, opts.triggeredBy);
+        const revalidation = await revalidateQueueDecision(d, configFingerprint, scopeFingerprint);
+        const outcome = revalidation.ok
+          ? await executeQueueCleanerRemoval(revalidation.decision, opts.triggeredBy, opts.previewId)
+          : await recordQueueRevalidationOutcome(d, revalidation, opts.triggeredBy, opts.previewId);
         if (outcome.kind === 'success') {
           succeededCount++;
           successOutcomes.push({ decision: d, outcome });
+          outcomes.push(toQueueItemOutcome(d, outcome));
         } else {
           failedCount++;
           failureOutcomes.push({ decision: d, errorMessage: outcome.errorMessage });
+          outcomes.push(toQueueItemOutcome(d, outcome));
         }
       } catch (err) {
         // Defensive: executeQueueCleanerRemoval is designed never to throw,
@@ -527,6 +594,17 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
         logger.error('Removal threw unexpectedly', { hash: d.torrent.hash, err: errorMessage }, { scope: LOG });
         failedCount++;
         failureOutcomes.push({ decision: d, errorMessage });
+        outcomes.push({
+          hash: d.torrent.hash.toLowerCase(),
+          torrentName: d.torrent.name,
+          status: 'failed',
+          action: 'failed',
+          filesDeleted: false,
+          reSearched: false,
+          message: 'Cleanup removal threw unexpectedly',
+          errorMessage,
+          targets: [],
+        });
       }
     });
   }
@@ -639,10 +717,12 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     durationMs,
     succeeded: succeededCount,
     failed: failedCount,
+    outcomes,
+    binding,
   };
 }
 
-function emptyResult(opts: RunOptions): QueueEvaluationResult {
+function emptyResult(opts: RunOptions, binding: CleanupExecutionBinding): QueueEvaluationResult {
   return {
     triggeredBy: opts.triggeredBy,
     dryRun: opts.dryRun,
@@ -652,6 +732,8 @@ function emptyResult(opts: RunOptions): QueueEvaluationResult {
     durationMs: 0,
     succeeded: 0,
     failed: 0,
+    outcomes: [],
+    binding,
   };
 }
 
@@ -668,6 +750,166 @@ function shouldSkipFailedImport(
   }
   if (cfg.failedImport.ignorePrivate && t.private) return 'private';
   return null;
+}
+
+type QueueRevalidation =
+  | { ok: true; decision: QueueDecision }
+  | { ok: false; status: 'stale' | 'failed'; message: string; errorMessage: string };
+
+async function revalidateQueueDecision(
+  expected: QueueDecision,
+  expectedConfigFingerprint: string,
+  expectedScopeFingerprint: string,
+): Promise<QueueRevalidation> {
+  try {
+    const [config, stallRules, slowRules, scopeFingerprint] = await Promise.all([
+      loadQueueCleanerConfig(),
+      loadStallRules(),
+      loadSlowRules(),
+      cleanupScopeFingerprint(),
+    ]);
+    if (
+      !config.enabled
+      || queueConfigFingerprint(config, stallRules, slowRules) !== expectedConfigFingerprint
+      || scopeFingerprint !== expectedScopeFingerprint
+    ) {
+      return { ok: false, status: 'stale', message: 'Cleaner configuration changed after preview', errorMessage: 'Preview configuration no longer matches' };
+    }
+
+    const qbit = await getQBittorrentClient();
+    const torrents = await qbit.getTorrents(undefined, undefined, undefined, undefined, expected.torrent.hash);
+    if (torrents.length !== 1) {
+      return { ok: false, status: 'stale', message: 'Torrent is no longer present', errorMessage: 'Torrent disappeared after preview' };
+    }
+    const torrent = torrents[0];
+    const domains = (await batchFetchTrackerDomains(qbit, [torrent])).get(torrent.hash.toLowerCase()) ?? [];
+    if (matchesIgnoredPatterns(torrent, domains, config.ignoredDownloads)) {
+      return { ok: false, status: 'stale', message: 'Torrent is now ignored by cleanup policy', errorMessage: 'Ignored-download scope changed after preview' };
+    }
+
+    const queues = await loadArrQueues();
+    if (!queues.complete) {
+      return { ok: false, status: 'failed', message: 'Could not revalidate all configured Arr queues', errorMessage: 'At least one Arr queue was unavailable' };
+    }
+    const correlation = buildCorrelationIndex(queues.sonarr, queues.radarr);
+    const links = correlation.byHash.get(torrent.hash.toLowerCase()) ?? [];
+    const linked = links.find((link) => link.source === 'sonarr') ?? links[0] ?? null;
+    const activeStrikes = await loadActiveStrikes();
+    const strike = activeStrikes.get(strikeKey(torrent.hash, expected.strikeType, expected.ruleId));
+    const count = strike?.count ?? 0;
+    if (count < expected.maxStrikes) {
+      return { ok: false, status: 'stale', message: 'Strike threshold is no longer met', errorMessage: 'Strike state changed after preview' };
+    }
+
+    let current: QueueDecision | null = null;
+    if (expected.strikeType === 'downloadingMetadata') {
+      if (config.downloadingMetadataMaxStrikes >= 3 && torrent.state === 'metaDL') {
+        current = {
+          torrent,
+          strikeType: 'downloadingMetadata',
+          ruleId: null,
+          ruleName: null,
+          strikeCount: count,
+          maxStrikes: config.downloadingMetadataMaxStrikes,
+          reason: buildMetadataReason(count, config.downloadingMetadataMaxStrikes),
+          linked,
+          linkedAll: links,
+          options: { changeCategory: false, deletePrivate: false, reSearch: config.reSearchAfterRemoval },
+        };
+      }
+    } else if (expected.strikeType === 'failedImport') {
+      if (
+        config.failedImport.maxStrikes >= 3
+        && linked
+        && shouldSkipFailedImport(config, linked, torrent, new Set([torrent.hash.toLowerCase()])) === null
+      ) {
+        const issue = classifyQueueIssue(linked.queueItem.trackedDownloadState, linked.queueItem.trackedDownloadStatus);
+        const messages = collectStatusMessages(linked.queueItem);
+        if (issue && matchesPatterns(messages, config.failedImport.patterns, config.failedImport.patternMode)) {
+          current = {
+            torrent,
+            strikeType: 'failedImport',
+            ruleId: null,
+            ruleName: null,
+            strikeCount: count,
+            maxStrikes: config.failedImport.maxStrikes,
+            reason: buildFailedImportReason(count, config.failedImport.maxStrikes),
+            linked,
+            linkedAll: links,
+            options: {
+              changeCategory: config.failedImport.changeCategory,
+              deletePrivate: config.failedImport.deletePrivate,
+              reSearch: config.reSearchAfterRemoval,
+            },
+          };
+        }
+      }
+    } else if (expected.strikeType === 'stall') {
+      const rule = stallRules.find((candidate) => candidate.id === expected.ruleId && candidate.enabled);
+      if (
+        rule
+        && matchesPrivacy(torrent, rule.privacyType)
+        && inCompletionRange(torrent.progress * 100, rule)
+        && torrent.state === 'stalledDL'
+      ) {
+        current = {
+          torrent,
+          strikeType: 'stall',
+          ruleId: rule.id,
+          ruleName: rule.name,
+          strikeCount: count,
+          maxStrikes: rule.maxStrikes,
+          reason: buildStallReason(rule, count),
+          linked,
+          linkedAll: links,
+          options: {
+            changeCategory: rule.changeCategory,
+            deletePrivate: rule.deletePrivate,
+            reSearch: rule.reSearchOverride ?? config.reSearchAfterRemoval,
+          },
+        };
+      }
+    } else if (expected.strikeType === 'slow') {
+      const rule = slowRules.find((candidate) => candidate.id === expected.ruleId && candidate.enabled);
+      if (rule && matchesPrivacy(torrent, rule.privacyType) && inCompletionRange(torrent.progress * 100, rule)) {
+        const speedThreshold = rule.minSpeedKbps != null ? rule.minSpeedKbps * 1024 : null;
+        const isSlow = speedThreshold != null
+          && torrent.dlspeed < speedThreshold
+          && (torrent.state === 'downloading' || torrent.state === 'stalledDL' || torrent.state === 'forcedDL');
+        const tooLong = rule.maxTimeHours != null && rule.maxTimeHours > 0 && activeHours(torrent) > rule.maxTimeHours;
+        const sizeAllowed = rule.ignoreAboveSizeBytes == null || rule.ignoreAboveSizeBytes <= 0 || torrent.size < rule.ignoreAboveSizeBytes;
+        if ((isSlow || tooLong) && sizeAllowed) {
+          current = {
+            torrent,
+            strikeType: 'slow',
+            ruleId: rule.id,
+            ruleName: rule.name,
+            strikeCount: count,
+            maxStrikes: rule.maxStrikes,
+            reason: buildSlowReason(rule, torrent, count),
+            linked,
+            linkedAll: links,
+            options: {
+              changeCategory: rule.changeCategory,
+              deletePrivate: rule.deletePrivate,
+              reSearch: rule.reSearchOverride ?? config.reSearchAfterRemoval,
+            },
+          };
+        }
+      }
+    }
+
+    if (!current) {
+      return { ok: false, status: 'stale', message: 'Torrent no longer meets the reviewed cleanup condition', errorMessage: 'Cleanup condition changed after preview' };
+    }
+    if (candidateFingerprint([queueCandidateBinding(current)]) !== candidateFingerprint([queueCandidateBinding(expected)])) {
+      return { ok: false, status: 'stale', message: 'Cleanup action or linked queue scope changed after preview', errorMessage: 'Candidate binding changed after preview' };
+    }
+    return { ok: true, decision: current };
+  } catch (error) {
+    const errorMessage = formatError(error);
+    return { ok: false, status: 'failed', message: 'Could not revalidate the torrent safely', errorMessage };
+  }
 }
 
 interface EvaluateRuleCallback<R> {
@@ -766,163 +1008,296 @@ function toPending(
 }
 
 export type QueueRemovalOutcome =
-  | { kind: 'success'; action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged' | 'skipped'; filesDeleted: boolean; reSearched: boolean }
-  | { kind: 'failure'; errorMessage: string };
+  | {
+      kind: 'success';
+      status: 'succeeded';
+      action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged';
+      filesDeleted: boolean;
+      reSearched: boolean;
+      message: string;
+      errorMessage: null;
+      targets: CleanupItemOutcome['targets'];
+    }
+  | {
+      kind: 'failure';
+      status: 'partial' | 'failed' | 'stale' | 'skipped';
+      action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged' | 'skipped' | 'failed';
+      filesDeleted: boolean;
+      reSearched: boolean;
+      message: string;
+      errorMessage: string;
+      targets: CleanupItemOutcome['targets'];
+    };
 
-async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: TriggeredBy): Promise<QueueRemovalOutcome> {
-  // NOT idempotent on partial failure: Sonarr/Radarr's deleteQueueItem with
-  // removeFromClient=true already removes the download from qBittorrent. If a
-  // subsequent step throws, the Arr-side state may not reflect what landed in
-  // qBit. Recovery is operator-driven via the `action: 'failed'` history row
-  // plus structured logs below — there is no automatic retry.
-  const hashLc = d.torrent.hash.toLowerCase();
-  const isPrivate = Boolean(d.torrent.private);
-  const shouldDeleteFromClient = !isPrivate || d.options.deletePrivate;
-  let action: 'removedFromClient' | 'removedFromQueue' | 'categoryChanged' | 'skipped';
-  let reason = d.reason;
-  let filesDeleted = false;
-  let reSearched = false;
+function toQueueItemOutcome(d: QueueDecision, outcome: QueueRemovalOutcome): CleanupItemOutcome {
+  return {
+    hash: d.torrent.hash.toLowerCase(),
+    torrentName: d.torrent.name,
+    status: outcome.status,
+    action: outcome.action,
+    filesDeleted: outcome.filesDeleted,
+    reSearched: outcome.reSearched,
+    message: outcome.message,
+    errorMessage: outcome.errorMessage,
+    targets: outcome.targets,
+  };
+}
 
-  // ─── Phase 1: attempt the destructive action ────────────────────────────
+async function recordQueueRevalidationOutcome(
+  decision: QueueDecision,
+  revalidation: Extract<QueueRevalidation, { ok: false }>,
+  triggeredBy: TriggeredBy,
+  previewId?: string,
+): Promise<QueueRemovalOutcome> {
+  const outcome: QueueRemovalOutcome = {
+    kind: 'failure',
+    status: revalidation.status,
+    action: revalidation.status === 'stale' ? 'skipped' : 'failed',
+    filesDeleted: false,
+    reSearched: false,
+    message: revalidation.message,
+    errorMessage: revalidation.errorMessage,
+    targets: [{ target: 'qbittorrent', attempted: false, before: 'unknown', after: 'unknown', errorMessage: revalidation.errorMessage }],
+  };
+  await writeQueueHistory(decision, outcome, triggeredBy, previewId);
+  return outcome;
+}
+
+async function inspectQbit(hash: string): Promise<{ state: 'present' | 'absent' | 'unknown'; errorMessage?: string }> {
   try {
-    const links = d.linkedAll ?? (d.linked ? [d.linked] : []);
-    if (d.options.changeCategory && links.length > 0) {
-      // changeCategory mode: NEVER fall back to delete. Apply to every linked
-      // instance. The user explicitly chose "change category instead of delete"
-      // and would not want a silent deletion if an arr is unreachable.
-      for (const link of links) {
-        const c = link.source === 'sonarr' ? await getSonarrClient(link.instanceId) : await getRadarrClient(link.instanceId);
-        await c.deleteQueueItem(link.queueItem.id, { removeFromClient: false, blocklist: false, changeCategory: true });
+    const qbit = await getQBittorrentClient();
+    const torrents = await qbit.getTorrents(undefined, undefined, undefined, undefined, hash);
+    return { state: torrents.length === 0 ? 'absent' : 'present' };
+  } catch (error) {
+    return { state: 'unknown', errorMessage: formatError(error) };
+  }
+}
+
+async function inspectQueueLink(link: LinkedArr): Promise<{ state: 'present' | 'absent' | 'unknown'; errorMessage?: string }> {
+  try {
+    const client = link.source === 'sonarr'
+      ? await getSonarrClient(link.instanceId)
+      : await getRadarrClient(link.instanceId);
+    const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
+    if (records === null) return { state: 'unknown', errorMessage: 'Queue exceeded the safe pagination bound' };
+    return { state: records.some((record) => record.id === link.queueItem.id) ? 'present' : 'absent' };
+  } catch (error) {
+    return { state: 'unknown', errorMessage: formatError(error) };
+  }
+}
+
+async function triggerQueueResearch(d: QueueDecision): Promise<{ reSearched: boolean; target: CleanupItemOutcome['targets'][number] | null }> {
+  if (!d.options.reSearch || !d.linked?.contentId) return { reSearched: false, target: null };
+  try {
+    if (d.linked.source === 'sonarr') {
+      const client = await getSonarrClient(d.linked.instanceId);
+      const seriesId = d.linked.contentId;
+      const records = (d.linkedAll ?? [d.linked]).filter(
+        (link) => link.source === 'sonarr' && link.instanceId === d.linked?.instanceId,
+      );
+      const bySeason = new Map<number, Set<number>>();
+      const episodeIds = new Set<number>();
+      for (const record of records) {
+        const episodeId = record.queueItem.episodeId;
+        const season = record.queueItem.seasonNumber;
+        if (typeof season === 'number') {
+          const ids = bySeason.get(season) ?? new Set<number>();
+          if (typeof episodeId === 'number') ids.add(episodeId);
+          bySeason.set(season, ids);
+        } else if (typeof episodeId === 'number') {
+          episodeIds.add(episodeId);
+        }
       }
-      action = 'categoryChanged';
-    } else if (links.length > 0) {
-      // Linked to arr: each instance removes its own queue ref; the qBit torrent
-      // is removed once (the first call that deletes from the client).
-      const blocklist = d.options.reSearch;
-      let removedFromClientOnce = false;
-      for (const link of links) {
-        const removeFromClient = shouldDeleteFromClient && !removedFromClientOnce;
-        const c = link.source === 'sonarr' ? await getSonarrClient(link.instanceId) : await getRadarrClient(link.instanceId);
-        await c.deleteQueueItem(link.queueItem.id, { removeFromClient, blocklist });
-        if (removeFromClient) removedFromClientOnce = true;
+      let issued = 0;
+      for (const [season, ids] of bySeason) {
+        if (ids.size === 1) {
+          for (const id of ids) episodeIds.add(id);
+        } else {
+          await client.searchSeason(seriesId, season);
+          issued++;
+        }
       }
-      action = shouldDeleteFromClient ? 'removedFromClient' : 'removedFromQueue';
-      filesDeleted = shouldDeleteFromClient;
-    } else if (shouldDeleteFromClient) {
-      // Unlinked: direct qBit delete.
+      if (episodeIds.size > 0) {
+        await client.searchEpisode([...episodeIds]);
+        issued++;
+      }
+      if (issued === 0) {
+        return { reSearched: false, target: null };
+      }
+    } else {
+      const client = await getRadarrClient(d.linked.instanceId);
+      await client.searchMovie([d.linked.contentId]);
+    }
+    return {
+      reSearched: true,
+      target: { target: 'reSearch', instanceId: d.linked.instanceId, attempted: true, before: 'absent', after: 'present' },
+    };
+  } catch (error) {
+    const errorMessage = formatError(error);
+    return {
+      reSearched: false,
+      target: { target: 'reSearch', instanceId: d.linked.instanceId, attempted: true, before: 'absent', after: 'unknown', errorMessage },
+    };
+  }
+}
+
+export async function executeQueueCleanerRemoval(
+  d: QueueDecision,
+  triggeredBy: TriggeredBy,
+  previewId?: string,
+): Promise<QueueRemovalOutcome> {
+  const hashLc = d.torrent.hash.toLowerCase();
+  const links = d.linkedAll ?? (d.linked ? [d.linked] : []);
+  const shouldDeleteFromClient = !Boolean(d.torrent.private) || d.options.deletePrivate;
+  const targets: CleanupItemOutcome['targets'] = [];
+
+  if (links.length === 0 && !shouldDeleteFromClient) {
+    const outcome: QueueRemovalOutcome = {
+      kind: 'failure',
+      status: 'skipped',
+      action: 'skipped',
+      filesDeleted: false,
+      reSearched: false,
+      message: 'Private torrent skipped because deletePrivate is disabled',
+      errorMessage: 'No linked Arr queue item could be removed without deleting the private torrent',
+      targets: [{ target: 'qbittorrent', attempted: false, before: 'present', after: 'present' }],
+    };
+    await writeQueueHistory(d, outcome, triggeredBy, previewId);
+    return outcome;
+  }
+
+  let removedFromClientObserved = false;
+  if (links.length > 0) {
+    for (const link of links) {
+      const removeFromClient = !d.options.changeCategory && shouldDeleteFromClient && !removedFromClientObserved;
+      let callError: string | undefined;
+      try {
+        const client = link.source === 'sonarr'
+          ? await getSonarrClient(link.instanceId)
+          : await getRadarrClient(link.instanceId);
+        await client.deleteQueueItem(link.queueItem.id, {
+          removeFromClient,
+          blocklist: !d.options.changeCategory && d.options.reSearch,
+          changeCategory: d.options.changeCategory,
+        });
+      } catch (error) {
+        callError = formatError(error);
+      }
+
+      if (removeFromClient) {
+        const qbitState = await inspectQbit(d.torrent.hash);
+        if (qbitState.state === 'absent') removedFromClientObserved = true;
+        if (qbitState.errorMessage && !callError) callError = qbitState.errorMessage;
+      }
+      const after = await inspectQueueLink(link);
+      targets.push({
+        target: link.source,
+        instanceId: link.instanceId,
+        queueItemId: link.queueItem.id,
+        attempted: true,
+        before: 'present',
+        after: after.state,
+        ...((callError || after.errorMessage) ? { errorMessage: [callError, after.errorMessage].filter(Boolean).join('; ') } : {}),
+      });
+    }
+  } else {
+    let callError: string | undefined;
+    try {
       const qbit = await getQBittorrentClient();
       await qbit.deleteTorrent(d.torrent.hash, true);
-      action = 'removedFromClient';
-      filesDeleted = true;
-    } else {
-      // Unlinked + private + deletePrivate off → nothing to do. Emit a
-      // 'skipped' audit row so operators see the deliberate no-op, rather
-      // than a misleading 'removedFromQueue' claim.
-      action = 'skipped';
-      reason = 'Private torrent skipped (deletePrivate disabled)';
+    } catch (error) {
+      callError = formatError(error);
     }
-  } catch (err) {
-    const errorMessage = formatError(err);
-    logger.error('Queue cleaner action failed', { err: errorMessage, hash: hashLc, intendedAction: d.options.changeCategory ? 'categoryChanged' : (shouldDeleteFromClient ? 'removedFromClient' : 'removedFromQueue') }, { scope: LOG });
-
-    // ─── Phase 1 failure: keep strikes, write failure history, no re-search ─
-    await prisma.cleanupHistory.create({
-      data: {
-        cleaner: 'queue',
-        strikeType: d.strikeType,
-        ruleId: d.ruleId,
-        ruleName: d.ruleName,
-        hash: hashLc,
-        shortHash: shortHash(hashLc),
-        torrentName: d.torrent.name,
-        reason: d.reason,
-        action: 'failed',
-        filesDeleted: false,
-        reSearched: false,
-        linkedArrSource: d.linked?.source ?? null,
-        linkedArrTitle: d.linked?.title ?? null,
-        linkedArrItemId: d.linked?.queueItem.id ?? null,
-        torrentSize: BigInt(Math.max(0, Math.floor(d.torrent.size))),
-        torrentProgress: d.torrent.progress,
-        torrentRatio: d.torrent.ratio,
-        triggeredBy: triggeredBy === 'dryRun' ? 'manual' : triggeredBy,
-        errorMessage,
-      },
+    const after = await inspectQbit(d.torrent.hash);
+    targets.push({
+      target: 'qbittorrent',
+      attempted: true,
+      before: 'present',
+      after: after.state,
+      ...((callError || after.errorMessage) ? { errorMessage: [callError, after.errorMessage].filter(Boolean).join('; ') } : {}),
     });
-
-    return { kind: 'failure', errorMessage };
   }
 
-  // ─── Phase 2: destructive action succeeded — clear strikes, then audit ──
-  // Skipped actions are deliberate no-ops; keep strikes so the next cycle can
-  // re-evaluate if the situation changes (e.g. user toggles deletePrivate on).
-  if (action !== 'skipped') {
-    await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  const qbitAfter = await inspectQbit(d.torrent.hash);
+  if (!targets.some((target) => target.target === 'qbittorrent')) {
+    targets.push({
+      target: 'qbittorrent',
+      attempted: shouldDeleteFromClient && !d.options.changeCategory,
+      before: 'present',
+      after: qbitAfter.state,
+      ...(qbitAfter.errorMessage ? { errorMessage: qbitAfter.errorMessage } : {}),
+    });
+  }
+  const arrTargets = targets.filter((target) => target.target === 'sonarr' || target.target === 'radarr');
+  const allArrAbsent = arrTargets.length > 0 && arrTargets.every((target) => target.after === 'absent');
+  const anyArrAbsent = arrTargets.some((target) => target.after === 'absent');
+  const anyUnknown = targets.some((target) => target.after === 'unknown');
+  const targetErrors = targets.map((target) => target.errorMessage).filter((value): value is string => Boolean(value));
+
+  let action: QueueRemovalOutcome['action'];
+  let status: QueueRemovalOutcome['status'];
+  if (d.options.changeCategory) {
+    action = allArrAbsent ? 'categoryChanged' : anyArrAbsent ? 'categoryChanged' : 'failed';
+    status = allArrAbsent && !anyUnknown ? 'succeeded' : anyArrAbsent || anyUnknown ? 'partial' : 'failed';
+  } else if (shouldDeleteFromClient) {
+    action = qbitAfter.state === 'absent' ? 'removedFromClient' : allArrAbsent ? 'removedFromQueue' : 'failed';
+    const desired = qbitAfter.state === 'absent' && (arrTargets.length === 0 || allArrAbsent);
+    status = desired && !anyUnknown ? 'succeeded' : qbitAfter.state === 'absent' || anyArrAbsent || anyUnknown ? 'partial' : 'failed';
+  } else {
+    action = allArrAbsent ? 'removedFromQueue' : anyArrAbsent ? 'removedFromQueue' : 'failed';
+    status = allArrAbsent && !anyUnknown ? 'succeeded' : anyArrAbsent || anyUnknown ? 'partial' : 'failed';
   }
 
-  // ─── Phase 3: trigger re-search if appropriate ───────────────────────────
-  if (action !== 'categoryChanged' && d.options.reSearch && d.linked?.contentId) {
-    try {
-      if (d.linked.source === 'sonarr') {
-        const c = await getSonarrClient(d.linked.instanceId);
-        const seriesId = d.linked.contentId;
-        const instanceId = d.linked.instanceId;
-        // Search exactly what was removed — never the whole series. A series
-        // search re-evaluates at both season and episode granularity and can
-        // grab a season pack AND a single episode for the same slot (the
-        // reported duplicate-grab). The removed torrent's queue records tell us
-        // the scope: a season pack lands one record per episode under the same
-        // downloadId (all collected in linkedAll), a single release lands one.
-        const records = (d.linkedAll ?? [d.linked]).filter(
-          (l) => l.source === 'sonarr' && l.instanceId === instanceId,
-        );
-        // Group removed episode ids by season. A season with >1 removed episode
-        // (or a season-level record with no episode id) is a pack → search the
-        // season; a lone episode → search just that episode.
-        const bySeason = new Map<number, Set<number>>();
-        const episodeIds = new Set<number>();
-        for (const r of records) {
-          const epId = r.queueItem.episodeId;
-          const season = r.queueItem.seasonNumber;
-          if (typeof season === 'number') {
-            const set = bySeason.get(season) ?? new Set<number>();
-            if (typeof epId === 'number') set.add(epId);
-            bySeason.set(season, set);
-          } else if (typeof epId === 'number') {
-            episodeIds.add(epId);
-          }
-        }
-        let issued = 0;
-        for (const [season, epIds] of bySeason) {
-          if (epIds.size === 1) {
-            for (const id of epIds) episodeIds.add(id);
-          } else {
-            await c.searchSeason(seriesId, season);
-            issued += 1;
-          }
-        }
-        if (episodeIds.size > 0) {
-          await c.searchEpisode([...episodeIds]);
-          issued += 1;
-        }
-        if (issued > 0) {
-          reSearched = true;
-        } else {
-          // No episode/season info on the removed records — don't fall back to
-          // a full-series search (the over-broad scope this fix avoids).
-          logger.warn('Re-search skipped: no episode/season scope on removed Sonarr queue item', { hash: hashLc, seriesId }, { scope: LOG });
-        }
-      } else if (d.linked.source === 'radarr') {
-        const c = await getRadarrClient(d.linked.instanceId);
-        await c.searchMovie([d.linked.contentId]);
-        reSearched = true;
+  let reSearched = false;
+  if (action !== 'failed' && action !== 'categoryChanged') {
+    const research = await triggerQueueResearch(d);
+    reSearched = research.reSearched;
+    if (research.target) {
+      targets.push(research.target);
+      if (research.target.errorMessage) {
+        targetErrors.push(research.target.errorMessage);
+        status = 'partial';
       }
-    } catch (err) {
-      logger.warn('Re-search trigger failed (deletion still succeeded)', { err: formatError(err), hash: hashLc }, { scope: LOG });
     }
   }
 
-  // ─── Phase 4: audit log ──────────────────────────────────────────────────
+  if (action !== 'failed') await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  const filesDeleted = action === 'removedFromClient' && qbitAfter.state === 'absent' && shouldDeleteFromClient;
+  const errorMessage = status === 'succeeded'
+    ? null
+    : targetErrors.join('; ') || 'Cleanup targets did not reach the intended state';
+  const outcome: QueueRemovalOutcome = status === 'succeeded'
+    ? {
+        kind: 'success',
+        status,
+        action: action as 'removedFromClient' | 'removedFromQueue' | 'categoryChanged',
+        filesDeleted,
+        reSearched,
+        message: 'Cleanup action reconciled successfully',
+        errorMessage: null,
+        targets,
+      }
+    : {
+        kind: 'failure',
+        status,
+        action,
+        filesDeleted,
+        reSearched,
+        message: status === 'partial' ? 'Cleanup action partially completed' : 'Cleanup action failed',
+        errorMessage: errorMessage as string,
+        targets,
+      };
+  await writeQueueHistory(d, outcome, triggeredBy, previewId);
+  return outcome;
+}
+
+async function writeQueueHistory(
+  d: QueueDecision,
+  outcome: QueueRemovalOutcome,
+  triggeredBy: TriggeredBy,
+  previewId?: string,
+): Promise<void> {
+  const hashLc = d.torrent.hash.toLowerCase();
   await prisma.cleanupHistory.create({
     data: {
       cleaner: 'queue',
@@ -932,10 +1307,10 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
       hash: hashLc,
       shortHash: shortHash(hashLc),
       torrentName: d.torrent.name,
-      reason,
-      action,
-      filesDeleted,
-      reSearched,
+      reason: d.reason,
+      action: outcome.action,
+      filesDeleted: outcome.filesDeleted,
+      reSearched: outcome.reSearched,
       linkedArrSource: d.linked?.source ?? null,
       linkedArrTitle: d.linked?.title ?? null,
       linkedArrItemId: d.linked?.queueItem.id ?? null,
@@ -943,8 +1318,10 @@ async function executeQueueCleanerRemoval(d: QueueDecision, triggeredBy: Trigger
       torrentProgress: d.torrent.progress,
       torrentRatio: d.torrent.ratio,
       triggeredBy: triggeredBy === 'dryRun' ? 'manual' : triggeredBy,
+      errorMessage: outcome.errorMessage,
+      previewId: previewId ?? null,
+      outcomeStatus: outcome.status,
+      outcomeDetails: { message: outcome.message, targets: outcome.targets } as unknown as Prisma.InputJsonValue,
     },
   });
-
-  return { kind: 'success', action, filesDeleted, reSearched };
 }

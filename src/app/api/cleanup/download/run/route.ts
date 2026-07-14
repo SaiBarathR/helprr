@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { runDownloadCleanerCycle } from '@/lib/cleanup/download-cleaner';
-import { awaitInFlightDownload } from '@/lib/cleanup/scheduler';
+import { runDownloadCleanerExclusive } from '@/lib/cleanup/scheduler';
+import { consumeCleanupPreview, InvalidCleanupPreviewError } from '@/lib/cleanup/preview-store';
+import { StaleCleanupPreviewError } from '@/lib/cleanup/binding';
 
 function serializeResult(r: Awaited<ReturnType<typeof runDownloadCleanerCycle>>) {
   return {
@@ -11,6 +13,7 @@ function serializeResult(r: Awaited<ReturnType<typeof runDownloadCleanerCycle>>)
     durationMs: r.durationMs,
     succeeded: r.succeeded,
     failed: r.failed,
+    outcomes: r.outcomes,
     decisions: r.decisions.map((d) => ({
       hash: d.torrent.hash,
       torrentName: d.torrent.name,
@@ -27,21 +30,40 @@ function serializeResult(r: Awaited<ReturnType<typeof runDownloadCleanerCycle>>)
 }
 
 async function postHandler(req: NextRequest) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.manage');
-  if (capError) return capError;
-  let body: { dryRun?: unknown };
-  try { body = (await req.json()) as { dryRun?: unknown }; }
+  const auth = await requireUserCapability('cleanup.manage');
+  if (!auth.ok) return auth.response;
+  let body: { previewToken?: unknown };
+  try { body = (await req.json()) as { previewToken?: unknown }; }
   catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
-  if (typeof body?.dryRun !== 'boolean') {
-    return NextResponse.json({ error: 'dryRun must be a boolean' }, { status: 400 });
+  if (typeof body?.previewToken !== 'string' || body.previewToken.length < 32 || body.previewToken.length > 256) {
+    return NextResponse.json(
+      { error: 'A valid previewToken is required. Run a fresh cleanup preview first.' },
+      { status: 428 },
+    );
   }
-  const dryRun = body.dryRun;
 
-  await awaitInFlightDownload();
-  const result = await runDownloadCleanerCycle({ dryRun, triggeredBy: dryRun ? 'dryRun' : 'manual' });
-  return NextResponse.json(serializeResult(result));
+  try {
+    const result = await runDownloadCleanerExclusive(async () => {
+      const preview = await consumeCleanupPreview(auth.user.id, 'download', body.previewToken as string);
+      return runDownloadCleanerCycle({
+        dryRun: false,
+        triggeredBy: 'manual',
+        expectedBinding: preview.binding,
+        previewId: preview.previewId,
+      });
+    });
+    return NextResponse.json(serializeResult(result));
+  } catch (error) {
+    if (error instanceof InvalidCleanupPreviewError) {
+      return NextResponse.json({ error: error.message, code: 'PREVIEW_INVALID' }, { status: 409 });
+    }
+    if (error instanceof StaleCleanupPreviewError) {
+      return NextResponse.json({ error: error.message, code: 'PREVIEW_STALE' }, { status: 409 });
+    }
+    throw error;
+  }
 }
 
-export const POST = withApiLogging(postHandler, 'api/cleanup/download/run');
+// previewToken is a short-lived bearer capability; never include this request
+// body in optional failed-request logging.
+export const POST = withApiLogging(postHandler, 'api/cleanup/download/run', { logBodies: false });
