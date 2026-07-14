@@ -12,6 +12,20 @@ concurrency:
 jobs:
   lint-and-build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-migration-password
+          POSTGRES_DB: helprr_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d helprr_migration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v5
 
@@ -36,6 +50,11 @@ jobs:
         run: npx prisma validate
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
+      - name: Test upgrades from released database snapshots
+        run: npm run test:migrations
+        env:
+          MIGRATION_TEST_DATABASE_URL: postgresql://postgres:ci-migration-password@localhost:5432/helprr_migration_test
 
       - name: Build
         run: npm run build

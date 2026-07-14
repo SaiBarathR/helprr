@@ -8,6 +8,7 @@ Dockerfile
 docker-compose.yml
 .claude
 logs
+backups
 anilistCharts
 .playwright-mcp
 .pw-scratch

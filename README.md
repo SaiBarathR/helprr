@@ -69,6 +69,10 @@ All integrations are optional and configured in **Settings → Instances**. Feat
 | AniList     | Anime/manga discovery, schedules, library tracking, and mappings                      |
 | Seerr       | Requests and request workflow                                                         |
 
+See the [upstream compatibility matrix](docs/upstream-compatibility.md) for the exact
+versions and API contracts verified in the isolated development stack. The matrix is a
+point-in-time test record, not an unsupported promise covering older or newer releases.
+
 
 
 
@@ -180,33 +184,45 @@ Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 7. It 
 ### 1. Download the deployment files
 
 No clone, no build — Helprr ships as a prebuilt multi-arch image
-(amd64/arm64) on `ghcr.io/saibarathr/helprr`. You only need two files:
+(amd64/arm64) on `ghcr.io/saibarathr/helprr`. Download Compose, the environment
+template, and the safe setup helper:
 
 ```bash
 mkdir helprr && cd helprr
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/SaiBarathR/helprr/main/docker-compose.yml
-curl -fsSL -o .env https://raw.githubusercontent.com/SaiBarathR/helprr/main/.env.example
+curl -fsSL -o .env.example https://raw.githubusercontent.com/SaiBarathR/helprr/main/.env.example
+curl -fsSL -o setup-env.sh https://raw.githubusercontent.com/SaiBarathR/helprr/main/scripts/setup-env.sh
+chmod +x setup-env.sh
 ```
 
 ### 2. Configure
 
-Generate a JWT secret, then edit `.env`:
+Generate all required secrets and create `.env`:
 
 ```bash
-openssl rand -base64 48
+./setup-env.sh
 ```
 
-Before the first start, set at least:
+The helper uses independent URL-safe secrets, writes the completed file with mode
+`0600`, never prints secret values, and refuses to overwrite an existing `.env`.
+Open `.env` to retrieve the generated bootstrap `APP_PASSWORD`, then review the
+timezone and optional settings before the first start. You may replace the generated
+bootstrap password with your own strong password before first boot.
 
-```dotenv
-POSTGRES_PASSWORD=use-a-long-unique-password
-REDIS_PASSWORD=use-a-different-long-unique-password
-APP_PASSWORD=choose-the-first-admin-password
-JWT_SECRET=paste-the-32-or-more-character-value-generated-above
+The helper fills these required variables:
+
+```text
+POSTGRES_PASSWORD
+REDIS_PASSWORD
+APP_PASSWORD
+JWT_SECRET
 TZ=Etc/UTC
 ```
 
 `APP_PASSWORD` creates the bootstrap administrator on first boot. Its username is `admin` by default, or the value of `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change an existing user's password.
+New local Helprr passwords must contain at least 15 characters; existing shorter
+passwords remain valid until they are reset. Jellyfin sign-in continues to use the
+password policy configured by Jellyfin.
 
 For push notifications, also set the Web Push keys — they are runtime
 configuration, no rebuild needed (generate a pair with
@@ -232,7 +248,11 @@ docker compose ps
 
 Open `http://YOUR_SERVER:3050`, sign in with the bootstrap account, then connect services in **Settings → Instances**.
 
-Use `docker compose logs -f helprr` to follow startup. The application health endpoint is `GET /api/health`.
+Use `docker compose logs -f helprr` to follow startup. `GET /api/health` is an
+unauthenticated liveness probe that checks only whether the Node process responds.
+`GET /api/ready` is a separate unauthenticated readiness probe; it returns HTTP 200
+only when PostgreSQL, Redis, and the shipped Prisma migration history are ready, or
+HTTP 503 with redacted component status otherwise.
 
 ### Isolated development stack
 
@@ -248,11 +268,11 @@ network, database, Redis, volumes, secrets, and ports:
 | Database | `helprr` | `helprr_dev` |
 | Volumes/network | Stable names | Dedicated `helprr-dev-*` names |
 
-Copy and edit the development-only env file. Generate new secrets; do not copy
-the production database, Redis, JWT, or VAPID secrets:
+Generate the development-only env file. The helper refuses to overwrite an existing
+`.env.dev`; do not copy the production database, Redis, JWT, or VAPID secrets:
 
 ```bash
-cp .env.dev.example .env.dev
+./scripts/setup-env.sh --dev
 nano .env.dev
 ```
 
@@ -279,6 +299,10 @@ Then pull and start without building local source:
 docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
 docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
 ```
+
+Before testing a migration or replacing the development image, create a backup of
+only the isolated development database with `./scripts/backup.sh --dev`. Development
+and stable dumps are written to separate private directories.
 
 See [Maintainer development and release workflow](docs/maintainer-development-release-workflow.md)
 for the complete feature, `edge`, release, promotion, rollback, and hotfix process.
@@ -320,7 +344,12 @@ Use Node.js **24** to match the Docker image, plus Docker Compose for the local 
    npm run dev
   ```
 
-Open [http://localhost:3050](http://localhost:3050). Use `npm run db:migrate` only when you are authoring a new Prisma migration; it is not the normal first-run command.
+The two database commands explicitly load `.env.local` and stop if that file is
+missing; Prisma otherwise auto-loads `.env`, which may describe a different Compose
+stack. `.env.dev` is only the isolated Compose interpolation file and intentionally
+does not contain `DATABASE_URL`. Open [http://localhost:3050](http://localhost:3050).
+Use `npm run db:migrate` only when you are authoring a new Prisma migration; it is not
+the normal first-run command.
 
 ## Environment reference
 
@@ -425,7 +454,7 @@ Prisma migrations are the database source of truth.
 - Patch releases must not contain destructive schema changes. Changes that drop or rewrite user data require explicit migration and rollback guidance in a minor or major release.
 - A database created by an older `prisma db push` workflow with no migration history must be baselined once before Docker can start it:
   ```bash
-  docker compose run --rm helprr npx prisma migrate resolve --applied 0001_init
+  docker compose run --rm helprr ./node_modules/.bin/prisma migrate resolve --applied 0001_init
   docker compose up -d
   ```
 
@@ -433,13 +462,18 @@ Prisma migrations are the database source of truth.
 
 ## Updating
 
-Take a database backup, then pull and restart:
+Create and validate a private database backup, then pull and restart:
 
 ```bash
-docker compose exec -T helprr-db pg_dump -U postgres -Fc helprr > "helprr-$(date +%Y%m%d-%H%M%S).dump"
+./scripts/backup.sh
 docker compose pull
 docker compose up -d
 ```
+
+The helper keeps Helprr online while `pg_dump` takes a consistent snapshot, verifies
+that `pg_restore` can read the completed custom-format archive, and atomically writes
+it under `backups/stable/` with private permissions. If backup creation or validation
+fails, the update commands must not be run.
 
 Pending database migrations run automatically before the app starts. The
 container drains background work gracefully on replacement (bounded at 30
@@ -449,6 +483,30 @@ To stay on an exact version instead of a channel, set `HELPRR_VERSION` in
 `.env` (for example `HELPRR_VERSION=1.0.0`) and re-run the two Docker commands
 to move between versions. Downgrading across releases is not supported once a
 newer version has applied its migrations — restore the matching backup instead.
+
+
+## Update notices and support bundles
+
+Admins see a notice on **Settings** and **Settings → Service status** when a newer
+stable Helprr release is available. The server checks Helprr's public GitHub latest-
+release endpoint on an admin visit and caches the result for six hours. It sends no
+installation data and never pulls an image, changes a tag, restarts a container, or
+applies an update. Back up and follow the normal update procedure after reviewing the
+linked release notes.
+
+**Settings → Service status → Support bundle** downloads bounded JSON diagnostics:
+the running version/commit, readiness, migration names, aggregate database counts,
+non-secret runtime settings, configured service types/presence flags, and up to 250
+recent log entries. The bundle never includes service URLs, API/OAuth tokens, custom-
+header values, password hashes, database/Redis credentials, user records, or media and
+request rows. Known current credentials, sensitive structured fields, embedded URL or
+Basic-auth credentials, and long token-shaped historical values are redacted again at
+download time. If Helprr cannot load the service-credential inventory, it omits logs
+instead of weakening redaction.
+
+The remaining service labels, aggregate counts, versions, and redacted log messages can
+still describe your installation. Review the JSON and treat it as private diagnostic
+data before sharing it.
 
 
 
@@ -461,22 +519,31 @@ connections, preferences, rules, watchlists — useful for moving settings
 between installs, but it is **not** a disaster-recovery backup: it does not
 contain users' password hashes, sessions, push subscriptions, or history.
 
-**Back up** (run on a schedule via cron, and copy the dumps off-host):
+**Back up** (run before every upgrade and on a schedule):
 
 ```bash
-docker compose exec -T helprr-db pg_dump -U postgres -Fc helprr > "helprr-$(date +%Y%m%d-%H%M%S).dump"
+./scripts/backup.sh
 ```
+
+Stable backups default to `backups/stable/`. Use
+`./scripts/backup.sh --output-dir /path/to/protected/storage` for a different local or
+mounted destination. Use `./scripts/backup.sh --dev` only for the standalone
+development stack; it explicitly selects `.env.dev`, `docker-compose.dev.yml`, and
+`helprr-dev-db` and defaults to `backups/development/`. The helper never stops,
+restarts, updates, or migrates containers and never overwrites an existing dump.
 
 > [!WARNING]
 > Dumps contain your service API keys and users' password hashes. Treat backup
 > files as secrets: restrict permissions and encrypt them wherever they are
-> stored.
+> stored. Archive validation catches malformed or truncated output at creation time,
+> but it is not a restore test. Periodically restore into an isolated environment and
+> retain an off-host copy according to your own recovery needs.
 
 **Restore over an existing installation** (e.g. roll back after a bad change):
 
 ```bash
 docker compose stop helprr
-docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < helprr-YYYYMMDD-HHMMSS.dump
+docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
 docker compose start helprr
 ```
 
@@ -489,13 +556,31 @@ docker compose start helprr
 #    admin is renamed to that value (default "admin"). Passwords are safe
 #    either way: APP_PASSWORD never overwrites an existing password hash.
 docker compose up -d helprr-db
-docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < helprr-YYYYMMDD-HHMMSS.dump
+docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
 docker compose up -d
 ```
 
 The restored database already contains the applied-migrations history, so the
 app boots without re-running old migrations. Restore with the **same or newer**
 Helprr version than the one that produced the dump.
+
+
+## Automatic retention
+
+Helprr runs a bounded retention sweep once per day. Notification history uses
+the value configured in **Settings → Notifications**. Cleanup history and settled
+scheduled-alert occurrences are kept for 90 days, operation-audit records for
+365 days, and expired session rows are removed after the fixed 30-day login-token
+lifetime. Pending alerts and pending Seerr approvals are live state and are not
+removed by history retention.
+
+The same sweep removes image-cache files that have had no Redis metadata for at
+least 24 hours, temporary image files older than one hour, and cache-generation
+directories abandoned for at least 24 hours. It reads Redis successfully and
+re-checks the active generation before touching files; if Redis is unavailable or
+an admin cache purge races the sweep, filesystem cleanup fails closed and waits for
+a later run. Log files continue to use the separate retention value in
+**Settings → Logging**. Database backups are never removed by Helprr retention.
 
 
 
@@ -519,7 +604,8 @@ docker image rm ghcr.io/saibarathr/helprr:edge   # remove downloaded images
 For clarity, these are the places where Helprr can remove files from your
 disk. All are permission-gated. Manual file/media/torrent/queue actions write
 success or failure to **Settings → Operation audit**; cleaner actions retain
-their reconciled per-item outcomes in **Cleanup → History**:
+their reconciled per-item outcomes in **Cleanup → History**. Operation-audit
+records are retained for 365 days and cleanup history for 90 days:
 
 - **Cleanup** (queue, download, and seeding rules) — can remove downloads from
   qBittorrent *including their files* when a rule says so. Disabled by

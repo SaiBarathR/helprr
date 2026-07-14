@@ -91,6 +91,23 @@ describe('runtime startup configuration', () => {
     });
   });
 
+  it('requires a strong APP_PASSWORD for reset while tolerating an unused legacy value', () => {
+    expect(() =>
+      validateRuntimeConfig({ ...VALID_ENV, APP_PASSWORD: 'legacy-short' }),
+    ).not.toThrow();
+
+    const error = configurationError({
+      ...VALID_ENV,
+      APP_PASSWORD: 'short-reset',
+      HELPRR_ADMIN_PASSWORD_RESET: 'true',
+    });
+    expect(error.issues).toContainEqual({
+      variable: 'APP_PASSWORD',
+      message: 'must be at least 15 characters',
+    });
+    expect(error.message).not.toContain('short-reset');
+  });
+
   it('never includes supplied URLs, passwords, or secrets in validation errors', () => {
     const sensitiveValues = [
       'mysql://helprr:private-db-value@db.internal/helprr',

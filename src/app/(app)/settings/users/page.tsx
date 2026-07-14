@@ -28,6 +28,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CAPABILITY_GROUPS, type Capability } from '@/lib/capabilities';
+import {
+  LOCAL_PASSWORD_MIN_LENGTH,
+  localPasswordValidationError,
+} from '@/lib/password-policy';
 
 interface SafeUser {
   id: string;
@@ -308,6 +312,7 @@ function CreateUserDialog({
   const [role, setRole] = useState<'admin' | 'member'>('member');
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(null);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(null);
+  const passwordError = password ? localPasswordValidationError(password) : null;
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -338,6 +343,10 @@ function CreateUserDialog({
   const busy = createMutation.isPending;
 
   function submit() {
+    if (passwordError) {
+      toast.error(passwordError);
+      return;
+    }
     createMutation.mutate();
   }
 
@@ -364,7 +373,12 @@ function CreateUserDialog({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Leave blank for Jellyfin-only sign in"
+              minLength={LOCAL_PASSWORD_MIN_LENGTH}
+              autoComplete="new-password"
             />
+            <p className={passwordError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+              {passwordError ?? `Use at least ${LOCAL_PASSWORD_MIN_LENGTH} characters, or leave blank for Jellyfin-only sign in.`}
+            </p>
           </div>
           <div className="space-y-2">
             <Label>Role</Label>
@@ -389,7 +403,7 @@ function CreateUserDialog({
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy}>
+          <Button onClick={submit} disabled={busy || passwordError !== null}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Create
           </Button>
@@ -418,6 +432,7 @@ function EditUserDialog({
   const [password, setPassword] = useState('');
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(user.jellyfinUserId);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(user.seerrUserId);
+  const passwordError = password ? localPasswordValidationError(password) : null;
 
   // Permissions editor state. Seeded from the permissions query, then driven by
   // the template/toggle mutations (which return the authoritative effective set).
@@ -524,6 +539,10 @@ function EditUserDialog({
   const permBusy = applyTemplateMutation.isPending || toggleCapMutation.isPending;
 
   function saveIdentity() {
+    if (passwordError) {
+      toast.error(passwordError);
+      return;
+    }
     saveIdentityMutation.mutate();
   }
 
@@ -605,7 +624,12 @@ function EditUserDialog({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Leave blank to keep current"
+              minLength={LOCAL_PASSWORD_MIN_LENGTH}
+              autoComplete="new-password"
             />
+            <p className={passwordError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+              {passwordError ?? `Use at least ${LOCAL_PASSWORD_MIN_LENGTH} characters; leave blank to keep the current password.`}
+            </p>
           </div>
           <ExternalLinkFields
             jellyfinUserId={jellyfinUserId}
@@ -613,7 +637,7 @@ function EditUserDialog({
             onJellyfin={setJellyfinUserId}
             onSeerr={setSeerrUserId}
           />
-          <Button onClick={saveIdentity} disabled={busy} className="w-full">
+          <Button onClick={saveIdentity} disabled={busy || passwordError !== null} className="w-full">
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save details
           </Button>

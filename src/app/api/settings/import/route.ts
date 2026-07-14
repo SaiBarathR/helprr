@@ -63,6 +63,10 @@ import {
   normalizeTagName,
   pickTagColor,
 } from '@/lib/watchlist-helpers';
+import {
+  resolveImportedPasswordHash,
+  validateSettingsImportComplexity,
+} from '@/lib/settings-import-validation';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
@@ -1393,12 +1397,14 @@ async function applyUsersInTxn(
       }
     }
 
-    // Password: exported hash → existing row's hash → null (no local login until
-    // an admin sets one). Same fallback shape as service-connection secrets.
-    const passwordHash =
-      typeof acc.passwordHash === 'string' && acc.passwordHash.length > 0
-        ? acc.passwordHash
-        : target?.passwordHash ?? null;
+    // Password: accept only bounded Helprr scrypt hashes. A malformed or
+    // attacker-amplified cost string must never replace a working credential or
+    // make login spend unbounded CPU/memory.
+    const importedPassword = resolveImportedPasswordHash(acc.passwordHash, target?.passwordHash);
+    const passwordHash = importedPassword.passwordHash;
+    if (importedPassword.rejected) {
+      skipped.push(`User "${username}": invalid password hash dropped`);
+    }
 
     const baseData = {
       username,
@@ -1585,6 +1591,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const complexityError = validateSettingsImportComplexity(body);
+  if (complexityError) {
+    return NextResponse.json({ error: complexityError }, { status: 400 });
   }
 
   // Mirror of the export-side rule: a non-admin with settings.backup may only

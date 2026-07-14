@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { ChevronLeft, Loader2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Download, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { ApiError, ensureArray } from '@/lib/query-fetch';
+import { ApiError, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { cn } from '@/lib/utils';
+import { useMe } from '@/components/permission-provider';
+import type { UpdateCheckResult } from '@/lib/update-check';
 
 // Inlined at build time (see next.config.ts `env`) — identifies the running build.
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'unknown';
@@ -23,6 +25,8 @@ interface ServiceHealthStatus {
 }
 
 export default function ServiceStatusPage() {
+  const me = useMe();
+  const isAdmin = me?.role === 'admin';
   const {
     data: statuses = [],
     isLoading: loading,
@@ -39,6 +43,16 @@ export default function ServiceStatusPage() {
       return (await res.json()) as ServiceHealthStatus[];
     },
     select: ensureArray,
+  });
+  const {
+    data: updateCheck = null,
+    isFetching: checkingUpdate,
+    refetch: recheckUpdate,
+  } = useQuery({
+    queryKey: queryKeys.adminUpdate(),
+    queryFn: jsonFetcher<UpdateCheckResult>('/api/admin/update-check'),
+    enabled: isAdmin,
+    staleTime: 5 * 60 * 1000,
   });
   const refreshing = isFetching && !loading;
 
@@ -141,8 +155,67 @@ export default function ServiceStatusPage() {
               {GIT_SHA && (
                 <div className="text-xs text-muted-foreground font-mono">{GIT_SHA.slice(0, 7)}</div>
               )}
+              {isAdmin && updateCheck?.status === 'up_to_date' && (
+                <div className="mt-0.5 text-xs text-emerald-400">Up to date</div>
+              )}
+              {isAdmin && updateCheck?.status === 'development' && (
+                <div className="mt-0.5 text-xs text-muted-foreground">Development build</div>
+              )}
+              {isAdmin && updateCheck?.status === 'unavailable' && (
+                <div className="mt-0.5 text-xs text-muted-foreground">Check unavailable</div>
+              )}
             </div>
           </div>
+          {isAdmin && updateCheck?.status === 'update_available' && updateCheck.latestVersion && (
+            <div className="grouped-row items-start bg-amber-500/[0.06]">
+              <div className="min-w-0 flex-1 pr-3">
+                <div className="text-sm font-medium text-amber-300">
+                  Helprr {updateCheck.latestVersion} is available
+                </div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Review the release notes, then follow the documented backup and update steps.
+                </div>
+              </div>
+              {updateCheck.releaseUrl && (
+                <Button asChild variant="outline" size="sm" className="shrink-0">
+                  <a href={updateCheck.releaseUrl} target="_blank" rel="noreferrer">
+                    Release <ExternalLink />
+                  </a>
+                </Button>
+              )}
+            </div>
+          )}
+          {isAdmin && updateCheck?.status === 'unavailable' && (
+            <div className="grouped-row items-center">
+              <div className="min-w-0 flex-1 pr-3 text-xs text-muted-foreground">
+                GitHub could not be checked. This does not affect Helprr or connected services.
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={checkingUpdate}
+                onClick={() => void recheckUpdate()}
+              >
+                {checkingUpdate && <Loader2 className="animate-spin" />}
+                Check again
+              </Button>
+            </div>
+          )}
+          {isAdmin && (
+            <div className="grouped-row items-center">
+              <div className="min-w-0 flex-1 pr-3">
+                <div className="text-sm font-medium">Support bundle</div>
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Download redacted diagnostics and recent logs for troubleshooting.
+                </div>
+              </div>
+              <Button asChild variant="outline" size="sm" className="shrink-0">
+                <a href="/api/admin/support-bundle">
+                  <Download /> Download
+                </a>
+              </Button>
+            </div>
+          )}
         </GroupedSection>
       </div>
     </div>

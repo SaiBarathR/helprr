@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/password';
+import { localPasswordValidationError } from '@/lib/password-policy';
 
 // The single admin every Helprr install starts with. Migration 0015 seeds this
 // row (passwordHash NULL); this module hashes APP_PASSWORD into it on boot. The
@@ -36,6 +37,14 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     where: { id: BOOTSTRAP_ADMIN_ID },
     select: { id: true, passwordHash: true, username: true },
   });
+
+  const needsPasswordHash = !existing || !existing.passwordHash || forceReset;
+  if (needsPasswordHash) {
+    const passwordError = localPasswordValidationError(appPassword);
+    if (passwordError) {
+      throw new Error(`APP_PASSWORD ${passwordError.slice('Password '.length).toLowerCase()}`);
+    }
+  }
 
   if (!existing) {
     const passwordHash = await hashPassword(appPassword);

@@ -1,0 +1,21 @@
+{
+  "release": "1.0.0",
+  "migrations": [
+    {
+      "name": "0001_init",
+      "sha256": "d914ed8c4209a78ab8e909eb7efa456c3517e453bc42469b66a6cec3dec19a30"
+    },
+    {
+      "name": "20260706224508_polling_state_queue_baseline_nullable",
+      "sha256": "3a06d48adba32b513a7d5a13809f8ea81ce4bcdf3c296172c138418dc7040135"
+    },
+    {
+      "name": "20260707010000_notification_history_dedupe_unique",
+      "sha256": "1a0b2f4ffdc3474cd48dbb4b0106b776749b17a488541de9ac94aa3ba6dac8aa"
+    },
+    {
+      "name": "20260708155457_add_custom_headers",
+      "sha256": "23065070b1883e0a05653a19d1d4b9f3c1ef2c5c09811551595e1e6b8b2511a4"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { hashPassword } from '@/lib/password';
+import { localPasswordValidationError } from '@/lib/password-policy';
 import { toSafeUser } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -51,8 +52,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       { status: 400 }
     );
   }
-  if (password && password.length < 6) {
-    return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+  const passwordError = password ? localPasswordValidationError(password) : null;
+  if (passwordError) {
+    return NextResponse.json({ error: passwordError }, { status: 400 });
   }
 
   const passwordHash = password ? await hashPassword(password) : null;

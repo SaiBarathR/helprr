@@ -1,3 +1,5 @@
+import { localPasswordValidationError } from '@/lib/password-policy';
+
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 
 export interface StartupConfigurationIssue {
@@ -141,6 +143,14 @@ export function validateRuntimeConfig(env: RuntimeEnvironment = process.env): vo
       variable: 'APP_PASSWORD',
       message: 'is required while HELPRR_ADMIN_PASSWORD_RESET=true',
     });
+  } else if (env.HELPRR_ADMIN_PASSWORD_RESET === 'true') {
+    const passwordError = localPasswordValidationError(env.APP_PASSWORD!);
+    if (passwordError) {
+      issues.push({
+        variable: 'APP_PASSWORD',
+        message: passwordError.slice('Password '.length).toLowerCase(),
+      });
+    }
   }
 
   if (issues.length > 0) throw new StartupConfigurationError(issues);

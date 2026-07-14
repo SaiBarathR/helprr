@@ -124,7 +124,9 @@ async function loadCachedImage(meta: ImageCacheMeta): Promise<Buffer | null> {
 }
 
 async function saveCachedImage(generation: number, keyHash: string, content: Buffer): Promise<string> {
-  const relativePath = path.join(`v${generation}`, `${keyHash}.bin`);
+  // Immutable filenames make metadata replacement and orphan cleanup safe to
+  // race: a refresh never overwrites the file referenced by older metadata.
+  const relativePath = path.join(`v${generation}`, `${keyHash}-${randomUUID()}.bin`);
   const absolutePath = path.join(IMAGE_CACHE_DIR, relativePath);
   const directory = path.dirname(absolutePath);
   const tempPath = `${absolutePath}.tmp-${randomUUID()}`;
