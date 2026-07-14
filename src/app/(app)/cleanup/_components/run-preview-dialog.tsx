@@ -34,6 +34,15 @@ export interface RunPreviewPendingStrike {
   maxStrikes: number;
 }
 
+export interface CleanupRunOutcome {
+  hash: string;
+  torrentName: string;
+  status: 'succeeded' | 'partial' | 'failed' | 'stale' | 'skipped';
+  action: string;
+  message: string;
+  errorMessage: string | null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -44,10 +53,12 @@ interface Props {
   onConfirm: () => void;
   confirming: boolean;
   cleaner: 'queue' | 'download';
+  outcomes?: CleanupRunOutcome[];
 }
 
 export function RunPreviewDialog(props: Props) {
-  const { open, onOpenChange, title, loading, decisions, pendingStrikes, onConfirm, confirming, cleaner } = props;
+  const { open, onOpenChange, title, loading, decisions, pendingStrikes, onConfirm, confirming, cleaner, outcomes = [] } = props;
+  const showingResults = outcomes.length > 0;
 
   // Identify destructive options for an extra warning banner.
   const hasDeleteSourceFiles = cleaner === 'download'
@@ -78,7 +89,36 @@ export function RunPreviewDialog(props: Props) {
               </div>
             )}
 
-            {pendingStrikes && pendingStrikes.length > 0 && (
+            {showingResults && (
+              <section>
+                <h3 className="text-sm font-medium mb-2">Execution results ({outcomes.length})</h3>
+                <div className="rounded-md border sm:max-h-72 sm:overflow-y-auto">
+                  <ul className="divide-y">
+                    {outcomes.map((outcome) => (
+                      <li key={`${outcome.hash}:${outcome.action}`} className="px-3 py-2 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-medium break-words">{outcome.torrentName}</div>
+                            <div className="text-xs text-muted-foreground mt-1 break-words">{outcome.message}</div>
+                            {outcome.errorMessage && (
+                              <div className="text-xs text-destructive mt-1 break-words">{outcome.errorMessage}</div>
+                            )}
+                          </div>
+                          <Badge
+                            variant={outcome.status === 'succeeded' ? 'default' : outcome.status === 'failed' ? 'destructive' : 'secondary'}
+                            className="shrink-0"
+                          >
+                            {outcome.status}
+                          </Badge>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
+
+            {!showingResults && pendingStrikes && pendingStrikes.length > 0 && (
               <section>
                 <h3 className="text-sm font-medium mb-2">Strikes that would accumulate ({pendingStrikes.length})</h3>
                 <div className="rounded-md border sm:max-h-48 sm:overflow-y-auto">
@@ -99,7 +139,7 @@ export function RunPreviewDialog(props: Props) {
               </section>
             )}
 
-            <section>
+            {!showingResults && <section>
               <h3 className="text-sm font-medium mb-2">Would be removed now ({decisions.length})</h3>
               {decisions.length === 0 ? (
                 <div className="text-sm text-muted-foreground rounded-md border px-4 py-6 text-center">
@@ -140,30 +180,32 @@ export function RunPreviewDialog(props: Props) {
                   </ul>
                 </div>
               )}
-            </section>
+            </section>}
           </div>
         )}
 
         <DialogFooter className="flex flex-row flex-wrap justify-end gap-2">
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {showingResults ? 'Close' : 'Cancel'}
           </Button>
-          <Button
-            onClick={onConfirm}
-            disabled={confirming || loading || decisions.length === 0}
-            variant={decisions.length === 0 ? 'outline' : 'destructive'}
-          >
-            {confirming ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-            {decisions.length === 0 ? (
-              'Nothing to remove'
-            ) : (
-              <>
-                <span className="hidden sm:inline">Confirm and remove</span>
-                <span className="sm:hidden">Remove</span>
-                &nbsp;({decisions.length})
-              </>
-            )}
-          </Button>
+          {!showingResults && (
+            <Button
+              onClick={onConfirm}
+              disabled={confirming || loading || decisions.length === 0}
+              variant={decisions.length === 0 ? 'outline' : 'destructive'}
+            >
+              {confirming ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              {decisions.length === 0 ? (
+                'Nothing to remove'
+              ) : (
+                <>
+                  <span className="hidden sm:inline">Confirm and remove</span>
+                  <span className="sm:hidden">Remove</span>
+                  &nbsp;({decisions.length})
+                </>
+              )}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

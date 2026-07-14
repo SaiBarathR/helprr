@@ -132,6 +132,8 @@ export interface QueueDecision {
   strikeType: StrikeType;
   ruleId: string | null;
   ruleName: string | null;
+  strikeCount: number;
+  maxStrikes: number;
   reason: string;
   linked: LinkedArr | null;
   // Every instance whose queue holds this hash (cross-seed / HD+4K both grabbed it).
@@ -161,6 +163,8 @@ export interface QueueEvaluationResult {
   durationMs: number;
   succeeded: number;
   failed: number;
+  outcomes: CleanupItemOutcome[];
+  binding: CleanupExecutionBinding;
 }
 
 export interface DownloadEvaluationResult {
@@ -170,4 +174,63 @@ export interface DownloadEvaluationResult {
   durationMs: number;
   succeeded: number;
   failed: number;
+  outcomes: CleanupItemOutcome[];
+  binding: CleanupExecutionBinding;
+}
+
+export type CleanupOutcomeStatus = 'succeeded' | 'partial' | 'failed' | 'stale' | 'skipped';
+
+export interface CleanupTargetOutcome {
+  target: 'qbittorrent' | 'sonarr' | 'radarr' | 'reSearch';
+  instanceId?: string;
+  queueItemId?: number;
+  attempted: boolean;
+  before: 'present' | 'absent' | 'unknown';
+  after: 'present' | 'absent' | 'unknown';
+  errorMessage?: string;
+}
+
+export interface CleanupItemOutcome {
+  hash: string;
+  torrentName: string;
+  status: CleanupOutcomeStatus;
+  action: RemovalAction;
+  filesDeleted: boolean;
+  reSearched: boolean;
+  message: string;
+  errorMessage: string | null;
+  targets: CleanupTargetOutcome[];
+}
+
+export interface QueueCandidateBinding {
+  cleaner: 'queue';
+  hash: string;
+  strikeType: StrikeType;
+  ruleId: string | null;
+  strikeCount: number;
+  maxStrikes: number;
+  options: QueueDecision['options'];
+  links: Array<{
+    source: 'sonarr' | 'radarr';
+    instanceId: string;
+    queueItemId: number;
+  }>;
+}
+
+export interface DownloadCandidateBinding {
+  cleaner: 'download';
+  hash: string;
+  ruleId: string;
+  removalKind: DownloadDecision['removalKind'];
+  deleteSourceFiles: boolean;
+}
+
+export type CleanupCandidateBinding = QueueCandidateBinding | DownloadCandidateBinding;
+
+export interface CleanupExecutionBinding {
+  cleaner: CleanerKind;
+  configFingerprint: string;
+  scopeFingerprint: string;
+  candidatesFingerprint: string;
+  candidates: CleanupCandidateBinding[];
 }

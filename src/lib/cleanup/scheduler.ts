@@ -31,7 +31,7 @@ async function runWithWatchdog<T>(label: string, fn: () => Promise<T>): Promise<
 interface JobState {
   timer: NodeJS.Timeout | null;
   intervalMinutes: number;
-  inFlight: Promise<QueueEvaluationResult | DownloadEvaluationResult | null> | null;
+  inFlight: Promise<unknown> | null;
   autoRunMode: AutoRunMode;
   // Epoch ms of the last tick (or restart). Drives the dashboard countdown.
   // In-memory only; resets across server restarts.
@@ -110,6 +110,38 @@ export async function awaitInFlightDownload(): Promise<void> {
       /* swallowed */
     }
   }
+}
+
+async function runExclusive<T>(kind: 'queue' | 'download', fn: () => Promise<T>): Promise<T> {
+  const job = getState()[kind];
+  // Wait/recheck in a loop: two manual callers can arrive while a scheduled
+  // cycle is settling. Only the first caller to observe the empty slot claims
+  // it; later callers then wait on that new promise.
+  while (job.inFlight) {
+    try {
+      await job.inFlight;
+    } catch {
+      /* the slot is still released in the owner's finally */
+    }
+  }
+
+  const promise = fn();
+  job.inFlight = promise;
+  try {
+    return await promise;
+  } finally {
+    if (job.inFlight === promise) job.inFlight = null;
+  }
+}
+
+/** Register manual preview/execution in the same slot used by the scheduler. */
+export function runQueueCleanerExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  return runExclusive('queue', fn);
+}
+
+/** Register manual preview/execution in the same slot used by the scheduler. */
+export function runDownloadCleanerExclusive<T>(fn: () => Promise<T>): Promise<T> {
+  return runExclusive('download', fn);
 }
 
 function tickQueue(): void {

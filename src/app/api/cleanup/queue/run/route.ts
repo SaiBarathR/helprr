@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { runQueueCleanerCycle } from '@/lib/cleanup/queue-cleaner';
-import { awaitInFlightQueue } from '@/lib/cleanup/scheduler';
+import { runQueueCleanerExclusive } from '@/lib/cleanup/scheduler';
+import { consumeCleanupPreview, InvalidCleanupPreviewError } from '@/lib/cleanup/preview-store';
+import { StaleCleanupPreviewError } from '@/lib/cleanup/binding';
 
 function serializeResult(r: Awaited<ReturnType<typeof runQueueCleanerCycle>>) {
   return {
@@ -13,6 +15,7 @@ function serializeResult(r: Awaited<ReturnType<typeof runQueueCleanerCycle>>) {
     succeeded: r.succeeded,
     failed: r.failed,
     pendingStrikes: r.pendingStrikes,
+    outcomes: r.outcomes,
     decisions: r.decisions.map((d) => ({
       hash: d.torrent.hash,
       torrentName: d.torrent.name,
@@ -31,21 +34,40 @@ function serializeResult(r: Awaited<ReturnType<typeof runQueueCleanerCycle>>) {
 }
 
 async function postHandler(req: NextRequest) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.manage');
-  if (capError) return capError;
-  let body: { dryRun?: unknown };
-  try { body = (await req.json()) as { dryRun?: unknown }; }
+  const auth = await requireUserCapability('cleanup.manage');
+  if (!auth.ok) return auth.response;
+  let body: { previewToken?: unknown };
+  try { body = (await req.json()) as { previewToken?: unknown }; }
   catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
-  if (typeof body?.dryRun !== 'boolean') {
-    return NextResponse.json({ error: 'dryRun must be a boolean' }, { status: 400 });
+  if (typeof body?.previewToken !== 'string' || body.previewToken.length < 32 || body.previewToken.length > 256) {
+    return NextResponse.json(
+      { error: 'A valid previewToken is required. Run a fresh cleanup preview first.' },
+      { status: 428 },
+    );
   }
-  const dryRun = body.dryRun;
 
-  await awaitInFlightQueue();
-  const result = await runQueueCleanerCycle({ dryRun, triggeredBy: dryRun ? 'dryRun' : 'manual' });
-  return NextResponse.json(serializeResult(result));
+  try {
+    const result = await runQueueCleanerExclusive(async () => {
+      const preview = await consumeCleanupPreview(auth.user.id, 'queue', body.previewToken as string);
+      return runQueueCleanerCycle({
+        dryRun: false,
+        triggeredBy: 'manual',
+        expectedBinding: preview.binding,
+        previewId: preview.previewId,
+      });
+    });
+    return NextResponse.json(serializeResult(result));
+  } catch (error) {
+    if (error instanceof InvalidCleanupPreviewError) {
+      return NextResponse.json({ error: error.message, code: 'PREVIEW_INVALID' }, { status: 409 });
+    }
+    if (error instanceof StaleCleanupPreviewError) {
+      return NextResponse.json({ error: error.message, code: 'PREVIEW_STALE' }, { status: 409 });
+    }
+    throw error;
+  }
 }
 
-export const POST = withApiLogging(postHandler, 'api/cleanup/queue/run');
+// previewToken is a short-lived bearer capability; never include this request
+// body in optional failed-request logging.
+export const POST = withApiLogging(postHandler, 'api/cleanup/queue/run', { logBodies: false });

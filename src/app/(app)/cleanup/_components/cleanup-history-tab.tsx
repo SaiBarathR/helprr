@@ -55,6 +55,20 @@ interface HistoryRow {
   triggeredBy: string;
   createdAt: string;
   errorMessage: string | null;
+  previewId: string | null;
+  outcomeStatus: string | null;
+  outcomeDetails: {
+    message?: string;
+    targets?: Array<{
+      target: string;
+      instanceId?: string;
+      queueItemId?: number;
+      attempted: boolean;
+      before: string;
+      after: string;
+      errorMessage?: string;
+    }>;
+  } | null;
 }
 
 const PAGE_SIZE = 30;
@@ -553,7 +567,9 @@ function HistoryRowCard({
   row: HistoryRow;
   onSelect: (row: HistoryRow) => void;
 }) {
-  const isFailed = row.action === 'failed';
+  const isFailed = row.outcomeStatus === 'failed' || row.action === 'failed';
+  const isPartial = row.outcomeStatus === 'partial';
+  const isStale = row.outcomeStatus === 'stale';
   const isDryRun = row.action === 'dryRunPreview';
   const isStrikeAdded = row.action === 'strikeAdded';
   const isSkipped = row.action === 'skipped';
@@ -569,6 +585,9 @@ function HistoryRowCard({
             <Badge variant="outline" className="uppercase tracking-wide">{row.cleaner}</Badge>
             {row.strikeType && <Badge variant="outline">{row.strikeType}</Badge>}
             {isFailed && <Badge variant="destructive">failed</Badge>}
+            {isPartial && <Badge variant="secondary">partial</Badge>}
+            {isStale && <Badge variant="secondary">stale</Badge>}
+            {row.outcomeStatus === 'succeeded' && <Badge variant="default">succeeded</Badge>}
             {isDryRun && <Badge variant="secondary">dry-run</Badge>}
             {isStrikeAdded && <Badge variant="secondary">strike</Badge>}
             {isSkipped && <Badge variant="secondary">skipped</Badge>}
@@ -592,6 +611,7 @@ function HistoryRowCard({
         <span>{row.filesDeleted ? 'files deleted' : 'files kept'}</span>
         {row.reSearched && <span>re-searched</span>}
         <span>via: {row.triggeredBy}</span>
+        {row.previewId && <span>preview: {row.previewId.slice(0, 8)}</span>}
         <span className="ml-auto whitespace-nowrap">{new Date(row.createdAt).toLocaleString()}</span>
       </div>
       {row.errorMessage && (
@@ -643,6 +663,9 @@ function HistoryDetailDrawer({
                 <Badge variant="outline" className="uppercase tracking-wide">{row.cleaner}</Badge>
                 {row.strikeType && <Badge variant="outline">{row.strikeType}</Badge>}
                 {row.action === 'failed' && <Badge variant="destructive">failed</Badge>}
+                {row.outcomeStatus === 'partial' && <Badge variant="secondary">partial</Badge>}
+                {row.outcomeStatus === 'stale' && <Badge variant="secondary">stale</Badge>}
+                {row.outcomeStatus === 'succeeded' && <Badge variant="default">succeeded</Badge>}
                 {row.action === 'dryRunPreview' && <Badge variant="secondary">dry-run</Badge>}
                 {row.action === 'strikeAdded' && <Badge variant="secondary">strike</Badge>}
                 {row.action === 'skipped' && <Badge variant="secondary">skipped</Badge>}
@@ -687,6 +710,11 @@ function HistoryDetailDrawer({
                 <DetailField label="Triggered by">
                   <div className="text-sm break-words">{row.triggeredBy}</div>
                 </DetailField>
+                {row.outcomeStatus && (
+                  <DetailField label="Outcome">
+                    <div className="text-sm break-words">{row.outcomeStatus}</div>
+                  </DetailField>
+                )}
                 {row.ruleName && (
                   <DetailField label="Rule">
                     <div className="text-sm break-words">{row.ruleName}</div>
@@ -703,6 +731,30 @@ function HistoryDetailDrawer({
                 <DetailField label="Error">
                   <div className="text-sm text-destructive break-words">
                     {row.errorMessage}
+                  </div>
+                </DetailField>
+              )}
+
+              {row.outcomeDetails?.message && (
+                <DetailField label="Reconciliation">
+                  <div className="text-sm break-words">{row.outcomeDetails.message}</div>
+                </DetailField>
+              )}
+
+              {row.outcomeDetails?.targets && row.outcomeDetails.targets.length > 0 && (
+                <DetailField label="Upstream targets">
+                  <div className="space-y-2">
+                    {row.outcomeDetails.targets.map((target, index) => (
+                      <div key={`${target.target}:${target.instanceId ?? ''}:${target.queueItemId ?? index}`} className="rounded-md border px-3 py-2 text-xs">
+                        <div className="font-medium">
+                          {target.target}{target.instanceId ? ` · ${target.instanceId}` : ''}{target.queueItemId != null ? ` · queue ${target.queueItemId}` : ''}
+                        </div>
+                        <div className="text-muted-foreground mt-0.5">
+                          {target.attempted ? 'attempted' : 'not attempted'} · {target.before} → {target.after}
+                        </div>
+                        {target.errorMessage && <div className="text-destructive mt-1 break-words">{target.errorMessage}</div>}
+                      </div>
+                    ))}
                   </div>
                 </DetailField>
               )}
