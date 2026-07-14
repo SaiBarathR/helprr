@@ -326,6 +326,13 @@ Open [http://localhost:3050](http://localhost:3050). Use `npm run db:migrate` on
 
 Copy `.env.example` as a starting point. Never commit `.env`, `.env.local`, API keys, passwords, VAPID private keys, or backups containing credentials.
 
+At startup, Helprr validates the required PostgreSQL, Redis, and session-signing
+configuration before any polling or cleanup work begins. Missing, malformed, or
+shipped example/change-me credentials stop startup with one redacted error that
+names the affected variables without printing their values. `APP_PASSWORD` is
+also checked when supplied, but remains optional after the bootstrap admin has a
+stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
+
 ### Required for a usable installation
 
 
