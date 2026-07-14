@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
+import { requireAuth, requireCapability, getCurrentUser, requireUserCapability } from '@/lib/auth';
 import { diffSeriesEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { runWithOperationAudit } from '@/lib/file-audit';
 
 async function getHandler(
   request: NextRequest,
@@ -80,18 +81,32 @@ async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.delete');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.delete');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
+    const seriesId = Number(id);
+    if (!Number.isInteger(seriesId) || seriesId <= 0) {
+      return NextResponse.json({ error: 'Invalid series id' }, { status: 400 });
+    }
     const { searchParams } = new URL(request.url);
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
-    await client.deleteSeries(Number(id), deleteFiles);
+    const series = await client.getSeriesById(seriesId).catch(() => null);
+    await runWithOperationAudit({
+      user: auth.user,
+      service: 'SONARR',
+      instanceId,
+      operation: 'DELETE_MEDIA',
+      targetType: 'series',
+      targetId: seriesId,
+      targetTitle: series?.title ?? `Series #${seriesId}`,
+      itemCount: 1,
+      filesDeleted: deleteFiles,
+      details: { targetIds: [seriesId], deleteFiles },
+    }, () => client.deleteSeries(seriesId, deleteFiles));
     await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

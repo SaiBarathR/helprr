@@ -619,26 +619,28 @@ enum FileOperation {
   EDIT // bulk metadata edit (quality / language / release group / flags / release type / edition)
   DELETE // remove file(s) from disk (recycle bin or permanent, per the *arr config)
   IMPORT // manual import of loose/unmapped files (moves + renames on disk)
+  DELETE_MEDIA // remove a series / movie / artist / album, optionally with files
+  DELETE_TORRENT // remove one or more torrents, optionally with downloaded data
+  REMOVE_QUEUE // remove an Arr queue item, optionally from the download client
 }
 
-// Accountability log for Manage Episodes / Manage Files. These operations touch
-// the user's own media on disk and are largely irreversible, so every attempt —
-// success OR failure — is recorded with the acting user. userId is a plain
-// (unlinked) string and username is denormalized so a row OUTLIVES the user it
-// references (deleting a user must never erase who deleted a file). No FK/cascade
-// on purpose — mirrors CleanupHistory.triggeredBy.
+// Unified accountability log for file operations and destructive media/download
+// operations. Every authorized, validated upstream attempt — success OR failure —
+// is recorded with the acting user. userId is intentionally not a FK and username
+// is denormalized so the row outlives the user it references.
 model FileOperationAudit {
   id           String        @id @default(cuid())
   userId       String? // acting user id at the time (not a FK — see above)
   username     String // denormalized actor, retained after user deletion
-  service      ServiceType // SONARR | RADARR
+  service      ServiceType // SONARR | RADARR | LIDARR | QBITTORRENT
   instanceId   String? // which ServiceConnection instance the op ran against
   operation    FileOperation
-  mediaType    String // "series" | "movie"
-  mediaId      Int // Sonarr seriesId / Radarr movieId
+  mediaType    String // generic target type: series | movie | artist | album | torrent | queue
+  mediaId      Int? // numeric target id when one exists; torrent hashes live in details
   mediaTitle   String
-  fileCount    Int // number of files targeted
-  details      Json? // file paths, field deltas, recycleBinConfigured, importMode, command id, per-file results
+  fileCount    Int // operation item count (legacy rows use number of files)
+  filesDeleted Boolean? // true/false when the operation exposes a delete-files/data choice
+  details      Json? // target ids/hashes, paths, options, field deltas, command ids, per-item results
   success      Boolean
   errorMessage String?
   createdAt    DateTime      @default(now())

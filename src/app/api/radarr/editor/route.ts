@@ -3,13 +3,14 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { RadarrClient } from '@/lib/radarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireUserCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
 import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } from '@/lib/bulk-editor';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { runWithOperationAudit } from '@/lib/file-audit';
 
 // Bulk monitor/tag across many movies via Radarr's native /movie/editor endpoint.
 async function putHandler(request: NextRequest) {
@@ -53,10 +54,8 @@ async function putHandler(request: NextRequest) {
 }
 
 async function deleteHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.delete');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.delete');
+  if (!auth.ok) return auth.response;
 
   try {
     const json = await readJsonBody(request);
@@ -66,7 +65,18 @@ async function deleteHandler(request: NextRequest) {
 
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getRadarrClient(instanceId);
-    await client.deleteMoviesBulk(parsed.ids, parsed.deleteFiles);
+    await runWithOperationAudit({
+      user: auth.user,
+      service: 'RADARR',
+      instanceId,
+      operation: 'DELETE_MEDIA',
+      targetType: 'movie',
+      targetId: parsed.ids.length === 1 ? parsed.ids[0] : null,
+      targetTitle: `${parsed.ids.length} ${parsed.ids.length === 1 ? 'movie' : 'movies'}`,
+      itemCount: parsed.ids.length,
+      filesDeleted: parsed.deleteFiles,
+      details: { targetIds: parsed.ids, deleteFiles: parsed.deleteFiles, bulk: true },
+    }, () => client.deleteMoviesBulk(parsed.ids, parsed.deleteFiles));
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

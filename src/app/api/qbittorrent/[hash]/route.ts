@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireUserCapability } from '@/lib/auth';
 import type { Capability } from '@/lib/capabilities';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
 
 // Per-action capability: delete is the most destructive, bandwidth-limit changes
 // are their own grant, everything else is general torrent management.
@@ -57,8 +58,8 @@ async function postHandler(
       logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, invalidAction: true });
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
-    const capError = await requireCapability(requiredCap);
-    if (capError) return capError;
+    const auth = await requireUserCapability(requiredCap);
+    if (!auth.ok) return auth.response;
 
     const client = await getQBittorrentClient();
 
@@ -71,9 +72,21 @@ async function postHandler(
       case 'start':
         await client.resumeTorrent(hash);
         break;
-      case 'delete':
-        await client.deleteTorrent(hash, body.deleteFiles ?? false);
+      case 'delete': {
+        const deleteFiles = body.deleteFiles === true;
+        const snapshot = await snapshotTorrentDeleteTargets(client, hash);
+        await runWithOperationAudit({
+          user: auth.user,
+          service: 'QBITTORRENT',
+          operation: 'DELETE_TORRENT',
+          targetType: 'torrent',
+          targetTitle: snapshot.targetTitle,
+          itemCount: snapshot.itemCount,
+          filesDeleted: deleteFiles,
+          details: { ...snapshot.details, deleteFiles },
+        }, () => client.deleteTorrent(hash, deleteFiles));
         break;
+      }
       case 'forceStart':
         await client.forceStartTorrent(hash);
         break;

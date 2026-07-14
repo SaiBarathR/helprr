@@ -110,7 +110,7 @@ export default function SettingsIndexPage() {
             icon={FileStack}
             iconBg="bg-amber-500/10"
             iconColor="text-amber-400"
-            label="File operations"
+            label="Operation audit"
             subtitle="Audit log of manage edits, deletes, imports"
           />
         </GroupedSection>

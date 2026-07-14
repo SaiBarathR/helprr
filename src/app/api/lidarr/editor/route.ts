@@ -3,13 +3,14 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireUserCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
 import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } from '@/lib/bulk-editor';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { runWithOperationAudit } from '@/lib/file-audit';
 
 // Bulk monitor/tag across many artists via Lidarr's native /artist/editor endpoint.
 async function putHandler(request: NextRequest) {
@@ -53,10 +54,8 @@ async function putHandler(request: NextRequest) {
 }
 
 async function deleteHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('music.delete');
-  if (capError) return capError;
+  const auth = await requireUserCapability('music.delete');
+  if (!auth.ok) return auth.response;
 
   try {
     const json = await readJsonBody(request);
@@ -66,7 +65,18 @@ async function deleteHandler(request: NextRequest) {
 
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
-    await client.deleteArtistsBulk(parsed.ids, parsed.deleteFiles);
+    await runWithOperationAudit({
+      user: auth.user,
+      service: 'LIDARR',
+      instanceId,
+      operation: 'DELETE_MEDIA',
+      targetType: 'artist',
+      targetId: parsed.ids.length === 1 ? parsed.ids[0] : null,
+      targetTitle: `${parsed.ids.length} ${parsed.ids.length === 1 ? 'artist' : 'artists'}`,
+      itemCount: parsed.ids.length,
+      filesDeleted: parsed.deleteFiles,
+      details: { targetIds: parsed.ids, deleteFiles: parsed.deleteFiles, bulk: true },
+    }, () => client.deleteArtistsBulk(parsed.ids, parsed.deleteFiles));
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

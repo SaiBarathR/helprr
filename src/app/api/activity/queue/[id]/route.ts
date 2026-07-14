@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQueueCacheVersion } from '@/lib/activity-queue';
+import { runWithOperationAudit } from '@/lib/file-audit';
 
 async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('activity.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.manage');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -38,16 +37,25 @@ async function deleteHandler(
       );
     }
 
-    if (source === 'sonarr') {
-      const sonarr = await getSonarrClient(instanceId);
-      await sonarr.deleteQueueItem(queueId, { removeFromClient, blocklist, changeCategory, skipRedownload });
-    } else if (source === 'lidarr') {
-      const lidarr = await getLidarrClient(instanceId);
-      await lidarr.deleteQueueItem(queueId, { removeFromClient, blocklist, changeCategory, skipRedownload });
-    } else {
-      const radarr = await getRadarrClient(instanceId);
-      await radarr.deleteQueueItem(queueId, { removeFromClient, blocklist, changeCategory, skipRedownload });
-    }
+    const client = source === 'sonarr'
+      ? await getSonarrClient(instanceId)
+      : source === 'lidarr'
+        ? await getLidarrClient(instanceId)
+        : await getRadarrClient(instanceId);
+    const service = source === 'sonarr' ? 'SONARR' : source === 'lidarr' ? 'LIDARR' : 'RADARR';
+    const options = { removeFromClient, blocklist, changeCategory, skipRedownload };
+    await runWithOperationAudit({
+      user: auth.user,
+      service,
+      instanceId,
+      operation: 'REMOVE_QUEUE',
+      targetType: 'queue',
+      targetId: queueId,
+      targetTitle: `${source === 'sonarr' ? 'Sonarr' : source === 'lidarr' ? 'Lidarr' : 'Radarr'} queue item #${queueId}`,
+      itemCount: 1,
+      filesDeleted: removeFromClient,
+      details: { queueId, source, ...options },
+    }, () => client.deleteQueueItem(queueId, options));
 
     // Bump the queue cache version: every cached page seed and any in-flight
     // load become unreachable, so no refetch can resurrect the removed row.
