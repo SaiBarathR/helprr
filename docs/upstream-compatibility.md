@@ -1,7 +1,7 @@
 # Upstream compatibility
 
-Last verified: **2026-07-14**, from Helprr's isolated development stack after the
-Helprr 1.0.0 release.
+Last verified: **2026-07-14**, from Helprr's isolated development stack during the
+Helprr 1.1.0 qualification and release.
 
 ## How to read this matrix
 

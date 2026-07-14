@@ -55,10 +55,12 @@ next-env.d.ts
 /plans
 /docs
 
-# Versioned README captures
+# Versioned project guides and README captures
 !/docs/
+!/docs/*.md
 !/docs/screenshots/
 !/docs/screenshots/*.jpg
+!/docs/screenshots/*.webp
 
 # Captured request artifacts
 *.har
