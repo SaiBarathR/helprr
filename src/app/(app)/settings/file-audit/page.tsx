@@ -11,13 +11,14 @@ import { formatBytes } from '@/lib/format';
 interface AuditRecord {
   id: string;
   username: string;
-  service: 'SONARR' | 'RADARR' | 'LIDARR';
+  service: 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT';
   instanceId: string | null;
-  operation: 'EDIT' | 'DELETE' | 'IMPORT';
+  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE';
   mediaType: string;
-  mediaId: number;
+  mediaId: number | null;
   mediaTitle: string;
   fileCount: number;
+  filesDeleted: boolean | null;
   details: Record<string, unknown> | null;
   success: boolean;
   errorMessage: string | null;
@@ -28,7 +29,35 @@ const OP_VARIANT: Record<AuditRecord['operation'], 'default' | 'secondary' | 'de
   EDIT: 'secondary',
   IMPORT: 'default',
   DELETE: 'destructive',
+  DELETE_MEDIA: 'destructive',
+  DELETE_TORRENT: 'destructive',
+  REMOVE_QUEUE: 'destructive',
 };
+
+const OP_LABEL: Record<AuditRecord['operation'], string> = {
+  EDIT: 'EDIT',
+  IMPORT: 'IMPORT',
+  DELETE: 'FILE DELETE',
+  DELETE_MEDIA: 'MEDIA DELETE',
+  DELETE_TORRENT: 'TORRENT DELETE',
+  REMOVE_QUEUE: 'QUEUE REMOVE',
+};
+
+function serviceLabel(service: AuditRecord['service']): string {
+  if (service === 'QBITTORRENT') return 'qBittorrent';
+  return service[0] + service.slice(1).toLowerCase();
+}
+
+function countLabel(record: AuditRecord): string {
+  const count = record.fileCount;
+  if (record.operation === 'DELETE_MEDIA') {
+    const noun = record.mediaType === 'series' ? 'series' : record.mediaType;
+    return `${count} ${noun}${count === 1 || noun === 'series' ? '' : 's'}`;
+  }
+  if (record.operation === 'DELETE_TORRENT') return `${count} torrent${count === 1 ? '' : 's'}`;
+  if (record.operation === 'REMOVE_QUEUE') return `${count} queue item${count === 1 ? '' : 's'}`;
+  return `${count} file${count === 1 ? '' : 's'}`;
+}
 
 function timeAgo(iso: string): string {
   const d = new Date(iso);
@@ -52,9 +81,9 @@ export default function FileAuditPage() {
       </div>
 
       <div className="mb-4 px-4">
-        <h1 className="text-2xl font-semibold">File operations</h1>
+        <h1 className="text-2xl font-semibold">Operation audit</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Audit trail of Manage Episodes / Manage Files edits, deletes, and imports.
+          File edits/imports and destructive media, torrent, and queue operations.
         </p>
       </div>
 
@@ -74,19 +103,20 @@ export default function FileAuditPage() {
               <div key={r.id} className="rounded-xl border bg-muted/30 p-3.5">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <Badge variant={OP_VARIANT[r.operation]} className="text-[10px]">{r.operation}</Badge>
+                    <Badge variant={OP_VARIANT[r.operation]} className="text-[10px]">{OP_LABEL[r.operation]}</Badge>
                     {!r.success && <Badge variant="destructive" className="text-[10px]">Failed</Badge>}
                     <span className="text-xs text-muted-foreground">
-                      {r.service === 'SONARR' ? 'Sonarr' : r.service === 'RADARR' ? 'Radarr' : 'Lidarr'}
+                      {serviceLabel(r.service)}
                     </span>
                   </div>
                   <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(r.createdAt)}</span>
                 </div>
                 <p className="mt-1.5 break-words text-sm font-medium leading-snug">{r.mediaTitle}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {r.fileCount} file{r.fileCount === 1 ? '' : 's'}
+                  {countLabel(r)}
                   {fields?.length ? ` · ${fields.join(', ')}` : ''}
                   {totalBytes != null ? ` · ${formatBytes(totalBytes)}` : ''}
+                  {r.filesDeleted === true ? ' · files/data deleted' : r.filesDeleted === false ? ' · files/data kept' : ''}
                   {' · by '}{r.username}
                 </p>
                 {paths?.length ? (

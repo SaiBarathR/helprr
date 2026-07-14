@@ -48,7 +48,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 - Installable PWA with Web Push, device preferences, inbox/history, test notifications, digest events, and per-event controls.
 - Per-user accounts, admin/member roles, granular capability overrides, and active-session revocation.
 - Multiple Sonarr, Radarr, and Lidarr instances; service health checks; custom HTTP headers for supported integrations behind an authenticating proxy.
-- Backup/restore, file-operation audit records, log retention, and server-log inspection for the moments when something needs fixing.
+- Backup/restore, operation-audit records, log retention, and server-log inspection for the moments when something needs fixing.
 
 
 
@@ -510,8 +510,9 @@ docker image rm ghcr.io/saibarathr/helprr:edge   # remove downloaded images
 ## Features that can delete media files
 
 For clarity, these are the places where Helprr can remove files from your
-disk (all are permission-gated; most write a record to
-**Settings → File audit**):
+disk. All are permission-gated. Manual file/media/torrent/queue actions write
+success or failure to **Settings → Operation audit**; cleaner actions retain
+their reconciled per-item outcomes in **Cleanup → History**:
 
 - **Cleanup** (queue, download, and seeding rules) — can remove downloads from
   qBittorrent *including their files* when a rule says so. Disabled by
@@ -527,7 +528,7 @@ disk (all are permission-gated; most write a record to
 
 If Sonarr/Radarr has a recycle bin configured, *arr file deletions go there
 instead of being removed outright — Helprr records whether that was the case
-in the file audit entry.
+in the operation-audit entry.
 
 
 

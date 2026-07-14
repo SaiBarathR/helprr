@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
+import { requireAuth, requireCapability, getCurrentUser, requireUserCapability } from '@/lib/auth';
 import { diffMovieEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { runWithOperationAudit } from '@/lib/file-audit';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -92,10 +93,8 @@ async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.delete');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.delete');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -105,7 +104,19 @@ async function deleteHandler(
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getRadarrClient(instanceId);
-    await client.deleteMovie(parsed.value, deleteFiles);
+    const movie = await client.getMovieById(parsed.value).catch(() => null);
+    await runWithOperationAudit({
+      user: auth.user,
+      service: 'RADARR',
+      instanceId,
+      operation: 'DELETE_MEDIA',
+      targetType: 'movie',
+      targetId: parsed.value,
+      targetTitle: movie?.title ?? `Movie #${parsed.value}`,
+      itemCount: 1,
+      filesDeleted: deleteFiles,
+      details: { targetIds: [parsed.value], deleteFiles },
+    }, () => client.deleteMovie(parsed.value, deleteFiles));
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -4,8 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
-// Admin-only viewer for the FileOperationAudit trail (Manage Episodes/Files
-// edits, deletes, imports). Paginated, newest first.
+// Admin-only viewer for the unified file/destructive operation trail.
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;

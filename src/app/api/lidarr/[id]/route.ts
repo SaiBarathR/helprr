@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
+import { requireAuth, requireCapability, getCurrentUser, requireUserCapability } from '@/lib/auth';
 import { diffArtistEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { runWithOperationAudit } from '@/lib/file-audit';
 
 function parsePositiveId(id: string): { value: number } | { error: NextResponse } {
   const parsed = Number(id);
@@ -87,10 +88,8 @@ async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('music.delete');
-  if (capError) return capError;
+  const auth = await requireUserCapability('music.delete');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -100,7 +99,19 @@ async function deleteHandler(
     const deleteFiles = searchParams.get('deleteFiles') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
-    await client.deleteArtist(parsed.value, deleteFiles);
+    const artist = await client.getArtistById(parsed.value).catch(() => null);
+    await runWithOperationAudit({
+      user: auth.user,
+      service: 'LIDARR',
+      instanceId,
+      operation: 'DELETE_MEDIA',
+      targetType: 'artist',
+      targetId: parsed.value,
+      targetTitle: artist?.artistName ?? `Artist #${parsed.value}`,
+      itemCount: 1,
+      filesDeleted: deleteFiles,
+      details: { targetIds: [parsed.value], deleteFiles },
+    }, () => client.deleteArtist(parsed.value, deleteFiles));
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json({ success: true });
   } catch (error) {
