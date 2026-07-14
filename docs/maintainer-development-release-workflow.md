@@ -70,7 +70,7 @@ an external updater they configured themselves.
 | Workflow | Trigger | Result |
 |---|---|---|
 | [CI](../.github/workflows/ci.yml) | Any PR; pushes to `development` or `main` | Installs dependencies, generates Prisma, lints, tests, validates the schema, and builds |
-| [Docker publish](../.github/workflows/docker-publish.yml) | Push to `development` | Builds native amd64/arm64 images and updates `edge` |
+| [Docker publish](../.github/workflows/docker-publish.yml) | Push to `development` | Builds and scans native amd64/arm64 images, then updates `edge` |
 | Docker publish | Push of a `vX.Y.Z` tag | Builds exact `X.Y.Z` image and creates a draft GitHub release with deployment assets |
 | [Docker promote](../.github/workflows/docker-promote.yml) | Manual workflow dispatch | Verifies a qualified digest, then moves minor, major, and `stable` aliases to it |
 
@@ -135,8 +135,8 @@ For a full local source-based container build, initialize the isolated developme
 configuration once:
 
 ```bash
-cp .env.dev.example .env.dev
-# Replace every change-me value with a development-only secret.
+./scripts/setup-env.sh --dev
+# Review the generated development-only values and optional settings.
 nano .env.dev
 
 HELPRR_DEV_GIT_SHA="$(git rev-parse --short HEAD)" \
@@ -154,6 +154,12 @@ If `prisma/schema.prisma` changes, create and review a migration:
 npm run db:migrate
 ```
 
+Host-side `db:migrate` and `db:deploy` explicitly read `.env.local`; confirm its
+`DATABASE_URL` names the intended development database before running either command.
+Do not source `.env.dev` for Prisma: it is a Compose interpolation file and has no
+`DATABASE_URL`, so a raw Prisma command could otherwise fall through to a stale `.env`.
+The isolated Docker app applies migrations internally against `helprr-dev-db`.
+
 Commit the generated `prisma/migrations/<migration-name>/` directory. Never edit or
 delete a migration that has appeared in a published release.
 
@@ -166,6 +172,15 @@ npm run lint
 npm test
 npm run build
 ```
+
+CI also starts a disposable PostgreSQL 16 database and runs
+`npm run test:migrations`. The migration runner reconstructs every recorded release
+snapshot, seeds representative rows, applies the current migrations, and checks both
+data preservation and the new schema. For a local run, point
+`MIGRATION_TEST_DATABASE_URL` at a disposable database named exactly
+`helprr_migration_test`; the script refuses every other database name and clears the
+scratch schema afterward. Never point it at `helprr`, `helprr_dev`, or any database
+containing data you intend to keep.
 
 For database or release-sensitive changes, also run:
 
@@ -214,7 +229,8 @@ After approval and green checks, merge the feature PR into `development`. This p
 starts two workflows:
 
 1. CI checks the merged commit.
-2. Docker publish builds native amd64/arm64 images and updates `edge`.
+2. Docker publish builds native amd64/arm64 images, blocks fixable high/critical
+   vulnerabilities with Trivy, and updates `edge` only after both platform scans pass.
 
 Watch both workflows in the GitHub Actions page, or inspect them with:
 
@@ -255,9 +271,13 @@ HELPRR_DEV_IMAGE=ghcr.io/saibarathr/helprr:edge
 Pull and replace only the isolated development app:
 
 ```bash
+./scripts/backup.sh --dev
 docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
 docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
 ```
+
+The helper selects only `helprr-dev-db`, validates the archive, and stores it separately
+from stable backups. Do not continue to the pull if backup creation fails.
 
 The same `helprr_dev` database is retained when switching between the local source and
 published `edge` modes. It is never the stable `helprr` database.
@@ -306,6 +326,12 @@ Then check:
 - Push notifications still work if the change touches the service worker,
   subscriptions, polling, or notification delivery.
 - No unexpected destructive operation occurs against connected services.
+- Settings → Service status shows the expected Helprr version/update state, and an
+  admin can download a support bundle whose JSON contains no configured credentials.
+- The configured upstream versions still match, or deliberately update, the exact
+  point versions in [Upstream compatibility](upstream-compatibility.md). Re-test the
+  affected feature before changing a row; never infer an inclusive range from two
+  successful versions.
 
 If a problem is found, create another focused branch from the latest `development`,
 fix it, and repeat the PR process. Do not release until the complete contents of
@@ -345,6 +371,8 @@ npm version 1.1.0 --no-git-tag-version
 Update `CHANGELOG.md` with the release date and user-facing changes. Also verify:
 
 - `README.md` documents new configuration or behavior.
+- `docs/upstream-compatibility.md` records any newly qualified upstream version and
+  distinguishes a connection probe from real feature-flow evidence.
 - `.env.example` includes new runtime variables without secrets.
 - `docker-compose.yml` passes any required runtime variables.
 - New Prisma migrations are committed and non-destructive for a patch release.
@@ -481,15 +509,17 @@ the new exact version first.
 From the production Compose directory:
 
 ```bash
-umask 077
-docker compose exec -T helprr-db \
-  pg_dump -U postgres -Fc helprr \
-  > "helprr-pre-1.1.0-$(date +%Y%m%d-%H%M%S).dump"
-ls -lh helprr-pre-1.1.0-*.dump
+./scripts/backup.sh
 ```
 
-Keep this backup until the release has been stable long enough for your risk tolerance.
-Database dumps contain API keys and password hashes and must be treated as secrets.
+The helper creates a transactionally consistent custom-format dump while Helprr stays
+online, validates the archive with `pg_restore --list`, publishes it atomically under
+`backups/stable/`, and applies directory/file permissions `0700`/`0600`. It does not
+stop, restart, update, or migrate any container. Stop qualification if it fails.
+
+Keep the resulting backup until the release has been stable long enough for your risk
+tolerance. Database dumps contain API keys and password hashes and must be treated as
+secrets. Archive validation is not a substitute for periodic isolated restore tests.
 
 ### 2. Pin the exact version
 

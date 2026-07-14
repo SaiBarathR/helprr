@@ -6,8 +6,9 @@
     "dev": "next dev -p 3050",
     "build": "next build --webpack",
     "test": "vitest run",
-    "db:migrate": "npx prisma migrate dev",
-    "db:deploy": "npx prisma migrate deploy",
+    "test:migrations": "node scripts/test-release-migrations.mjs",
+    "db:migrate": "node --env-file=.env.local ./node_modules/prisma/build/index.js migrate dev",
+    "db:deploy": "node --env-file=.env.local ./node_modules/prisma/build/index.js migrate deploy",
     "db:generate": "npx prisma generate",
     "lint": "node scripts/check-settings-export.mjs && eslint"
   },

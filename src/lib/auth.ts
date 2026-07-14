@@ -9,8 +9,9 @@ import { prisma } from '@/lib/db';
 import { verifyPasswordHash } from '@/lib/password';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
+import { SESSION_DURATION_SECONDS } from '@/lib/session-policy';
 
-const SESSION_DURATION = 30 * 24 * 60 * 60; // 30 days in seconds
+const SESSION_DURATION = SESSION_DURATION_SECONDS;
 const COOKIE_NAME = 'helprr-session';
 const LAST_SEEN_DEBOUNCE_MS = 5 * 60 * 1000; // 5 minutes
 

@@ -31,6 +31,7 @@ import {
   type NotificationEventInput,
   type PollNotificationContext,
 } from '@/lib/notification-grouping';
+import { runRetentionSweep } from '@/lib/retention';
 import type { QueueItem, QueueResponse, SonarrSeries, Tag } from '@/types';
 import crypto from 'crypto';
 
@@ -50,12 +51,6 @@ const DISK_ALERT_REMINDER_MS = 6 * 60 * 60 * 1000; // 6 hours
 // How long daily disk-usage snapshots are kept (the trend only needs ~7 days,
 // but a longer tail makes the growth-rate fit more stable + survives gaps).
 const DISK_SNAPSHOT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
-
-// How long CleanupHistory and settled ScheduledAlertOccurrence rows are kept.
-// Both tables otherwise grow unbounded: auto-run cleaners write rows every
-// cycle (including skipped/dryRunPreview), and a standing episode/airing alert
-// accrues one terminal occurrence row per episode forever.
-const AUDIT_HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 function localDateOnly(input: Date, timeZone: string): Date {
   return new Date(`${getLocalDateKey(input, timeZone)}T00:00:00.000Z`);
@@ -217,7 +212,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   checkScheduledAlerts: 30_000,
   checkActivityDigest: 30_000,
   applyBandwidthSchedule: 15_000,
-  checkNotificationRetention: 15_000,
+  checkRetention: 60_000,
   checkAnimeAutoMap: 15_000,
   warmCaches: 60_000,
 };
@@ -440,9 +435,9 @@ export class PollingService {
   // killing DB/notification writes mid-flight.
   private currentPoll: Promise<void> | null = null;
   private activePollSources = new Set<string>();
-  // Epoch ms of the last NotificationHistory retention sweep. The poll loop runs
-  // every ~30s but the sweep is throttled to once/day; 0 = run on first cycle.
-  private lastNotificationPruneAt = 0;
+  // Epoch ms of the last retention sweep. The poll loop runs every ~30s but
+  // the sweep is throttled to once/day; 0 = run on first cycle.
+  private lastRetentionPruneAt = 0;
   // Tracks the bandwidth-schedule rule (and limits) we last pushed to
   // qBittorrent so we only re-send on actual changes. Process-restart loses
   // this — the next cycle will re-apply once (idempotent).
@@ -575,7 +570,7 @@ export class PollingService {
         { source: 'checkScheduledAlerts', run: () => this.runPollSource('checkScheduledAlerts', () => checkScheduledAlerts()) },
         { source: 'checkActivityDigest', run: () => this.runPollSource('checkActivityDigest', () => this.checkActivityDigest()) },
         { source: 'applyBandwidthSchedule', run: () => this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()) },
-        { source: 'checkNotificationRetention', run: () => this.runPollSource('checkNotificationRetention', () => this.checkNotificationRetention()) },
+        { source: 'checkRetention', run: () => this.runPollSource('checkRetention', () => this.checkRetention()) },
         { source: 'checkAnimeAutoMap', run: () => this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()) },
       );
       const pollSources = pollTasks.map((task) => task.source);
@@ -2500,47 +2495,45 @@ export class PollingService {
     await collector.flush({ enabled: settings.notificationGroupingEnabled, notify: this.notifyAndLog.bind(this) });
   }
 
-  // Prune NotificationHistory rows past the configured retention window, plus
-  // CleanupHistory and settled ScheduledAlertOccurrence rows past the fixed
-  // AUDIT_HISTORY_RETENTION_MS window. The poll loop runs every ~30s, so
-  // throttle the actual DELETEs to once/day. Indexed columns (createdAt /
-  // [status, notifyAt]) keep the sweeps cheap even when nothing is due.
-  private async checkNotificationRetention(): Promise<void> {
+  // Run bounded database and image-cache retention once/day. Database errors
+  // leave the throttle untouched so a later poll retries; image cleanup fails
+  // independently so Redis/filesystem trouble cannot block database pruning.
+  private async checkRetention(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastNotificationPruneAt < 86_400_000) return;
+    if (now - this.lastRetentionPruneAt < 86_400_000) return;
 
     const settings = await getOrCreateAppSettings();
-    const days = settings.notificationHistoryRetentionDays;
-    const cutoff = new Date(now - days * 86_400_000);
-    const { count } = await prisma.notificationHistory.deleteMany({
-      where: { createdAt: { lt: cutoff } },
-    });
-
-    const auditCutoff = new Date(now - AUDIT_HISTORY_RETENTION_MS);
-    const { count: cleanupCount } = await prisma.cleanupHistory.deleteMany({
-      where: { createdAt: { lt: auditCutoff } },
-    });
-    // Terminal statuses only — pending rows stay until delivery resolves them.
-    // Safe against re-sends: upsertOccurrencesForAlert never re-creates a
-    // candidate whose notifyAt is in the past.
-    const { count: occurrenceCount } = await prisma.scheduledAlertOccurrence.deleteMany({
-      where: { status: { in: ['sent', 'failed', 'cancelled'] }, notifyAt: { lt: auditCutoff } },
+    const result = await runRetentionSweep({
+      notificationRetentionDays: settings.notificationHistoryRetentionDays,
+      nowMs: now,
     });
 
     // Advance the throttle only after a successful sweep, so a transient DB
     // error retries on the next cycle instead of being skipped for a full day.
-    this.lastNotificationPruneAt = now;
-    if (count > 0 || cleanupCount > 0 || occurrenceCount > 0) {
-      logger.info(
-        'Pruned old history rows',
-        {
-          notifications: count,
-          notificationRetentionDays: days,
-          cleanupHistory: cleanupCount,
-          alertOccurrences: occurrenceCount,
-        },
-        { scope: 'polling' },
-      );
+    this.lastRetentionPruneAt = now;
+
+    if (result.imageCache.status === 'failed') {
+      logger.warn('Image-cache retention failed', {
+        message: result.imageCache.message,
+      }, { scope: 'polling' });
+    }
+
+    const databaseDeleted = Object.values(result.counts).reduce((sum, count) => sum + count, 0);
+    const imageDeleted = result.imageCache.status === 'completed'
+      ? result.imageCache.deletedFiles
+      : 0;
+    if (databaseDeleted > 0 || imageDeleted > 0) {
+      logger.info('Pruned expired runtime data', {
+        ...result.counts,
+        notificationRetentionDays: result.notificationRetentionDays,
+        imageFiles: imageDeleted,
+        imageBytes: result.imageCache.status === 'completed'
+          ? result.imageCache.deletedBytes
+          : 0,
+        imageGenerations: result.imageCache.status === 'completed'
+          ? result.imageCache.deletedGenerations
+          : 0,
+      }, { scope: 'polling' });
     }
   }
 

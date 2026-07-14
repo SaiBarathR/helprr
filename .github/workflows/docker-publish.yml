@@ -68,6 +68,25 @@ jobs:
           cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
 
+      # Scan each native runtime image before its digest is exported to the
+      # manifest job. A finding therefore blocks edge/version tags for both
+      # architectures. Pin the action by commit after the 2026 Trivy ecosystem
+      # incident; the comment records the corresponding immutable release.
+      - name: Scan image for fixable high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_EXIT_ON_EOL: '1'
+        with:
+          version: v0.70.0
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: '1'
+          timeout: 10m0s
+
       - name: Export digest
         run: |
           mkdir -p /tmp/digests

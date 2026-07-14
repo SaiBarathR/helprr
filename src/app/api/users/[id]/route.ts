@@ -3,6 +3,7 @@ import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { hashPassword } from '@/lib/password';
+import { localPasswordValidationError } from '@/lib/password-policy';
 import { toSafeUser } from '@/lib/user-dto';
 import { parsePermissions } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
@@ -92,8 +93,9 @@ async function patchHandler(
         : null;
   }
   if (typeof body.password === 'string' && body.password) {
-    if (body.password.length < 6) {
-      return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+    const passwordError = localPasswordValidationError(body.password);
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 });
     }
     data.passwordHash = await hashPassword(body.password);
   }
@@ -122,6 +124,14 @@ async function patchHandler(
         if (remaining === 0) return { ok: false as const };
       }
       const updated = await tx.user.update({ where: { id }, data });
+      // Admin password resets do not prove possession of any existing session,
+      // so revoke every live session for the target in the same transaction.
+      if (data.passwordHash !== undefined) {
+        await tx.session.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
       return { ok: true as const, updated };
     });
     if (!result.ok) {

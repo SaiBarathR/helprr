@@ -23,6 +23,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { CategoryRow } from '@/components/settings/category-row';
 import { useMe, hasCapability } from '@/components/permission-provider';
+import type { UpdateCheckResult } from '@/lib/update-check';
 
 interface ServiceCount {
   configured: number;
@@ -66,6 +67,13 @@ export default function SettingsIndexPage() {
   const canBackup = hasCapability(me, 'settings.backup');
   // Role-gated, not a capability — /api/users hard-requires the admin role.
   const canUsers = me?.role === 'admin';
+  const { data: updateCheck = null } = useQuery({
+    queryKey: queryKeys.adminUpdate(),
+    queryFn: jsonFetcher<UpdateCheckResult>('/api/admin/update-check'),
+    enabled: canUsers,
+    staleTime: 5 * 60 * 1000,
+  });
+  const updateAvailable = updateCheck?.status === 'update_available';
 
   return (
     <div className="animate-content-in pb-12">
@@ -136,10 +144,13 @@ export default function SettingsIndexPage() {
         <CategoryRow
           href="/settings/status"
           icon={Activity}
-          iconBg="bg-teal-500/10"
-          iconColor="text-teal-400"
+          iconBg={updateAvailable ? 'bg-amber-500/10' : 'bg-teal-500/10'}
+          iconColor={updateAvailable ? 'text-amber-400' : 'text-teal-400'}
           label="Service status"
-          subtitle="Live reachability of connected services"
+          subtitle={updateAvailable && updateCheck.latestVersion
+            ? `Helprr ${updateCheck.latestVersion} is available`
+            : 'Live reachability of connected services'}
+          badge={updateAvailable ? 'Update' : undefined}
         />
         {canStorage && (
           <CategoryRow

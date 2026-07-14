@@ -51,6 +51,13 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
 
+# npm/Corepack are build tools, not runtime requirements. Prisma is invoked via
+# its project-local executable below, so remove the global package managers from
+# the published image to reduce attack surface (including bundled dependencies).
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx
+
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
@@ -59,7 +66,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 
-# Prisma CLI needs node_modules for boot-time migrate deploy
+# Prisma CLI needs node_modules for boot-time migrate deploy. Startup calls the
+# local `.bin/prisma` directly; the runtime image intentionally contains no npm.
 COPY --from=prod-deps /app/node_modules ./node_modules
 
 USER nextjs
