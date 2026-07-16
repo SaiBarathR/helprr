@@ -71,7 +71,9 @@ export default function RandomWatchPage() {
   return (
     <div className="animate-content-in pb-12">
       <div className="px-2 md:px-6 mt-2 space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Single-row control bar: never wraps; overflows into horizontal scroll
+            on very narrow screens instead of breaking onto a second line. */}
+        <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-hide">
           {(['any', 'movie', 'series'] as FilterType[]).map((t) => {
             const active = type === t;
             const label = t === 'any' ? 'All' : t === 'movie' ? 'Movies' : 'Series';
@@ -80,7 +82,8 @@ export default function RandomWatchPage() {
                 key={t}
                 type="button"
                 onClick={() => setType(t)}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${active
+                aria-label={label}
+                className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${active
                   ? 'border border-primary/40 bg-primary/20 text-primary'
                   : 'bg-accent/40 text-muted-foreground'
                   }`}
@@ -93,8 +96,8 @@ export default function RandomWatchPage() {
             );
           })}
           {canFilterUnwatched && (
-            <label className="inline-flex items-center gap-2 rounded-full bg-accent/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-              <span>Unwatched only</span>
+            <label className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent/40 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+              <span>Unwatched</span>
               <Switch
                 size="sm"
                 checked={unwatchedOnly}
@@ -103,22 +106,23 @@ export default function RandomWatchPage() {
               />
             </label>
           )}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 pl-1.5">
             {poolSize !== null && (
-              <span className="rounded-full bg-accent/40 px-2.5 py-1 text-[11px] text-muted-foreground">
+              <span className="whitespace-nowrap rounded-full bg-accent/40 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground">
                 Pool: {poolSize}
               </span>
             )}
             <Button
-              size="sm"
+              size="icon-sm"
               onClick={() => rollQuery.refetch()}
               disabled={loading}
               variant="outline"
+              aria-label="Pick another"
             >
               {loading ? (
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <RefreshCw className="mr-1.5 h-4 w-4" />
+                <RefreshCw className="h-4 w-4" />
               )}
             </Button>
           </div>
@@ -177,9 +181,9 @@ export default function RandomWatchPage() {
                     <Image
                       src={poster}
                       alt={pick.title}
-                      fill
-                      sizes="(max-width: 768px) 120px, 180px"
-                      className="object-cover"
+                      width={360}
+                      height={540}
+                      className="absolute inset-0 h-full w-full object-cover"
                       unoptimized={isProtectedApiImageSrc(poster)}
                       priority
                     />

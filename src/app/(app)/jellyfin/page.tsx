@@ -170,7 +170,7 @@ export default function JellyfinPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pb-4">
+      <div className="flex-1 overflow-y-auto px-2 pt-3 pb-4">
         <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
           {tab === 'overview' && <OverviewTab />}
           {tab === 'users' && <UsersTab />}
