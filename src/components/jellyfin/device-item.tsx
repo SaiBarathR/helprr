@@ -5,9 +5,11 @@ import {
   Tv,
   Smartphone,
   Laptop,
+  Copy,
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   Drawer,
   DrawerContent,
@@ -18,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { timeAgo, formatDateTime } from '@/lib/jellyfin-helpers';
 import type { JellyfinDevice } from '@/types/jellyfin';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 
 // Resolve via an object lookup (not a function returning a component) so the
 // chosen glyph is a stable reference, matching the codebase's icon-map pattern.
@@ -27,6 +30,15 @@ const DEVICE_GLYPHS = {
   laptop: Laptop,
   device: MonitorSmartphone,
 } satisfies Record<string, LucideIcon>;
+
+async function copyDeviceId(device: JellyfinDevice): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(device.Id);
+    toast.success('Device ID copied');
+  } catch {
+    toast.error('Could not copy device ID');
+  }
+}
 
 /** Pick a device glyph key from the device/app name. */
 export function deviceGlyphKey(name: string): keyof typeof DEVICE_GLYPHS {
@@ -66,10 +78,26 @@ export function DeviceItem({ device, variant, isSelf = false, onDelete }: Device
       <Trash2 className="h-3.5 w-3.5" />
     </Button>
   );
+  const actions = [
+    {
+      id: 'copy-id',
+      label: 'Copy device ID',
+      icon: <Copy />,
+      onSelect: () => { void copyDeviceId(device); },
+    },
+    ...(!isSelf && onDelete ? [{
+      id: 'delete',
+      label: 'Delete device',
+      icon: <Trash2 />,
+      destructive: true,
+      onSelect: () => onDelete(device),
+    }] : []),
+  ];
 
   if (variant === 'card') {
     return (
-      <div className="snap-start shrink-0 w-[200px] rounded-xl bg-card p-3 flex flex-col gap-2">
+      <QuickContextMenu label={`${title} device actions`} actions={actions}>
+        <div className="snap-start shrink-0 w-[200px] rounded-xl bg-card p-3 flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
           <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
           {isSelf ? SelfBadge : DeleteBtn}
@@ -82,24 +110,27 @@ export function DeviceItem({ device, variant, isSelf = false, onDelete }: Device
           <span className="truncate">{device.LastUserName || '—'}</span>
           {device.DateLastActivity && <span className="shrink-0">{timeAgo(device.DateLastActivity)}</span>}
         </div>
-      </div>
+        </div>
+      </QuickContextMenu>
     );
   }
 
   return (
-    <div className="rounded-xl bg-card p-3 flex items-center gap-3">
-      <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{title}</p>
-        <p className="text-xs text-muted-foreground truncate">
-          {app || 'Unknown app'}{device.LastUserName && ` · ${device.LastUserName}`}
-        </p>
+    <QuickContextMenu label={`${title} device actions`} actions={actions}>
+      <div className="rounded-xl bg-card p-3 flex items-center gap-3">
+        <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{title}</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {app || 'Unknown app'}{device.LastUserName && ` · ${device.LastUserName}`}
+          </p>
+        </div>
+        {device.DateLastActivity && (
+          <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(device.DateLastActivity)}</span>
+        )}
+        {isSelf ? SelfBadge : DeleteBtn}
       </div>
-      {device.DateLastActivity && (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(device.DateLastActivity)}</span>
-      )}
-      {isSelf ? SelfBadge : DeleteBtn}
-    </div>
+    </QuickContextMenu>
   );
 }
 
@@ -156,7 +187,26 @@ export function DevicesSeeAllDrawer({
             const Icon = DEVICE_GLYPHS[deviceGlyphKey(`${device.Name} ${device.AppName ?? ''}`)];
             const isSelf = device.Id === selfDeviceId;
             return (
-              <div key={device.Id} className="rounded-xl bg-muted/40 p-3">
+              <QuickContextMenu
+                key={device.Id}
+                label={`${device.CustomName || device.Name} device actions`}
+                actions={[
+                  {
+                    id: 'copy-id',
+                    label: 'Copy device ID',
+                    icon: <Copy />,
+                    onSelect: () => { void copyDeviceId(device); },
+                  },
+                  ...(!isSelf && onDelete ? [{
+                    id: 'delete',
+                    label: 'Delete device',
+                    icon: <Trash2 />,
+                    destructive: true,
+                    onSelect: () => onDelete(device),
+                  }] : []),
+                ]}
+              >
+              <div className="rounded-xl bg-muted/40 p-3">
                 <div className="flex items-center gap-3">
                   <div className="rounded-lg bg-[var(--hpr-cyan)]/10 p-2"><Icon className="h-4 w-4 text-[var(--hpr-cyan)]" /></div>
                   <div className="flex-1 min-w-0">
@@ -184,6 +234,7 @@ export function DevicesSeeAllDrawer({
                   <DetailField label="Last active" value={device.DateLastActivity ? formatDateTime(device.DateLastActivity) : undefined} />
                 </div>
               </div>
+              </QuickContextMenu>
             );
           })}
         </div>

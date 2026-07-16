@@ -425,7 +425,7 @@ function OverviewTab() {
               <span className="text-green-400 tabular-nums">{sessions.length}</span>
             </span>
           } />
-          <Carousel>{sessions.map((s) => <SessionCard key={s.Id} session={s} variant="full" onInfoClick={setSelectedSession} />)}</Carousel>
+          <Carousel>{sessions.map((s) => <SessionCard key={s.Id} session={s} variant="full" onInfoClick={setSelectedSession} jellyfinUrl={jellyfinUrl} />)}</Carousel>
         </div>
       )}
 

@@ -36,6 +36,7 @@ import {
   Loader2,
   Trash2,
   Info,
+  ExternalLink,
   Search,
   SlidersHorizontal,
   Layers,
@@ -50,6 +51,7 @@ import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';
 import { EventIcon, getEventColorClass } from '@/components/notifications/event-visuals';
 import { SwipeRow } from '@/components/ui/swipe-row';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { NotificationDetailDrawer, type GroupedNotificationItem } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
@@ -747,43 +749,84 @@ export default function NotificationsPage() {
                   onAction: () => void deleteOne(n),
                 }}
               >
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => void handleNotificationClick(n)}
-                onKeyDown={(e) => {
-                  if (e.currentTarget === e.target && (e.key === 'Enter' || e.key === ' ')) {
-                    e.preventDefault();
-                    void handleNotificationClick(n);
-                  }
-                }}
-                className={`group w-full text-left flex items-start gap-3 py-3 cursor-pointer transition-colors active:bg-muted/50 ${!n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
-                  }`}
-              >
-                <div className={`p-1.5 rounded-lg mt-0.5 ${getEventColorClass(n.eventType)}`}>
-                  <EventIcon type={n.eventType} className="h-4 w-4" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm ${!n.read ? 'font-semibold' : ''} truncate`}>
-                    {n.metadata?.grouped && (
-                      <Layers className="inline-block h-3 w-3 mr-1 -mt-0.5 text-muted-foreground" aria-label="Grouped" />
-                    )}
-                    {n.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">{n.body}</p>
-                </div>
-                <span className="text-[11px] text-muted-foreground shrink-0">
-                  {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
-                </span>
-                <button
-                  type="button"
-                  aria-label="View details"
-                  onClick={(e) => { e.stopPropagation(); handleOpenDetail(n); }}
-                  className="shrink-0 -mr-1 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                <QuickContextMenu
+                  label={`Actions for ${n.title}`}
+                  groups={[
+                    {
+                      id: 'navigation',
+                      actions: [
+                        {
+                          id: 'go-to-item',
+                          label: 'Go to item',
+                          icon: <ExternalLink className="h-4 w-4" />,
+                          onSelect: () => void handleNotificationClick(n),
+                        },
+                        {
+                          id: 'view-details',
+                          label: 'View details',
+                          icon: <Info className="h-4 w-4" />,
+                          onSelect: () => handleOpenDetail(n),
+                        },
+                        ...(!n.read
+                          ? [{
+                              id: 'mark-read',
+                              label: 'Mark as read',
+                              icon: <Check className="h-4 w-4" />,
+                              onSelect: () => void markAsRead(n.id),
+                            }]
+                          : []),
+                      ],
+                    },
+                    {
+                      id: 'destructive',
+                      actions: [{
+                        id: 'delete',
+                        label: 'Delete',
+                        icon: <Trash2 className="h-4 w-4" />,
+                        destructive: true,
+                        onSelect: () => deleteOne(n),
+                      }],
+                    },
+                  ]}
                 >
-                  <Info className="h-4 w-4" />
-                </button>
-              </div>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void handleNotificationClick(n)}
+                    onKeyDown={(e) => {
+                      if (e.currentTarget === e.target && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        void handleNotificationClick(n);
+                      }
+                    }}
+                    className={`group w-full text-left flex items-start gap-3 py-3 cursor-pointer transition-colors active:bg-muted/50 ${!n.read ? 'border-l-2 border-l-primary bg-primary/5' : ''
+                      }`}
+                  >
+                    <div className={`p-1.5 rounded-lg mt-0.5 ${getEventColorClass(n.eventType)}`}>
+                      <EventIcon type={n.eventType} className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm ${!n.read ? 'font-semibold' : ''} truncate`}>
+                        {n.metadata?.grouped && (
+                          <Layers className="inline-block h-3 w-3 mr-1 -mt-0.5 text-muted-foreground" aria-label="Grouped" />
+                        )}
+                        {n.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{n.body}</p>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground shrink-0">
+                      {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="View details"
+                      onClick={(e) => { e.stopPropagation(); handleOpenDetail(n); }}
+                      className="shrink-0 -mr-1 p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      <Info className="h-4 w-4" />
+                    </button>
+                  </div>
+                </QuickContextMenu>
               </SwipeRow>
             ))}
           </div>

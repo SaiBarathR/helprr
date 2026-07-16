@@ -7,6 +7,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer,
@@ -20,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Filter, Loader2, ChevronRight } from 'lucide-react';
+import { Copy, ExternalLink, Filter, Info, Loader2, ChevronRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';
@@ -121,6 +122,31 @@ function eventLabel(eventType: string) {
 
 type HistoryRecord = HistoryItem & { source?: string };
 type HistoryResponse = { records?: HistoryRecord[]; totalRecords?: number };
+
+function getHistoryMediaHref(item: HistoryRecord): string | null {
+  const q = item.instanceId ? `?instance=${item.instanceId}` : '';
+  const seriesId = item.seriesId ?? item.series?.id;
+  if (seriesId) {
+    const episode = item.episode;
+    return episode
+      ? `/series/${seriesId}/season/${episode.seasonNumber}/episode/${episode.id}${q}`
+      : `/series/${seriesId}${q}`;
+  }
+  const movieId = item.movieId ?? item.movie?.id;
+  if (movieId) return `/movies/${movieId}${q}`;
+  const albumId = item.albumId ?? item.album?.id;
+  if (albumId) return `/music/album/${albumId}${q}`;
+  return null;
+}
+
+async function copyHistoryText(value: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label} copied`);
+  } catch {
+    toast.error('Copy failed');
+  }
+}
 
 function buildHistoryUrl(p: number, eventFilter: EventFilterKey, instanceFilter: string) {
   const params = new URLSearchParams({ page: String(p), pageSize: '20' });
@@ -245,9 +271,47 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div className="space-y-1 animate-list-in">
-            {history.map((item, i) => (
+            {history.map((item, i) => {
+              const mediaHref = getHistoryMediaHref(item);
+              return (
+              <QuickContextMenu
+                key={`${item.source}-${item.instanceId ?? ''}-${item.id}-${i}`}
+                label={`Actions for ${item.sourceTitle}`}
+                groups={[
+                  {
+                    id: 'navigation',
+                    actions: [
+                      {
+                        id: 'view-details',
+                        label: 'View details',
+                        icon: <Info className="h-4 w-4" />,
+                        onSelect: () => {
+                          setDrawerMode('basic');
+                          setSelectedItem(item);
+                        },
+                      },
+                      ...(mediaHref
+                        ? [{
+                            id: 'open-media',
+                            label: 'Open related media',
+                            icon: <ExternalLink className="h-4 w-4" />,
+                            href: mediaHref,
+                          }]
+                        : []),
+                    ],
+                  },
+                  {
+                    id: 'copy',
+                    actions: [{
+                      id: 'copy-source-title',
+                      label: 'Copy source title',
+                      icon: <Copy className="h-4 w-4" />,
+                      onSelect: () => void copyHistoryText(item.sourceTitle, 'Source title'),
+                    }],
+                  },
+                ]}
+              >
               <button
-                key={`${item.source}-${item.id}-${i}`}
                 onClick={() => {
                   setDrawerMode('basic');
                   setSelectedItem(item);
@@ -296,7 +360,9 @@ export default function HistoryPage() {
                   {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
                 </span>
               </button>
-            ))}
+              </QuickContextMenu>
+              );
+            })}
 
             {/* Load more */}
             {hasNextPage && (

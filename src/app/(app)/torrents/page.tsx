@@ -44,6 +44,7 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { SwipeRow } from '@/components/ui/swipe-row';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import {
   Play,
   Pause,
@@ -66,6 +67,7 @@ import {
   Megaphone,
   Tag,
   Pencil,
+  Info,
 } from 'lucide-react';
 import type {
   QBittorrentTorrent,
@@ -472,6 +474,119 @@ interface TorrentRowProps {
   onOpenRenameDrawer: (hash: string, name: string) => void;
 }
 
+function torrentContextActionGroups({
+  torrent,
+  selected,
+  onToggleSelect,
+  onFetchDetail,
+  onTorrentAction,
+  onOpenDeleteDrawer,
+  onOpenCategoryDrawer,
+  onOpenRenameDrawer,
+  canManageTorrents,
+  canDeleteTorrents,
+}: TorrentRowProps & {
+  canManageTorrents: boolean;
+  canDeleteTorrents: boolean;
+}): ContextActionGroup[] {
+  return [
+    {
+      id: 'navigation',
+      actions: [
+        {
+          id: 'view-details',
+          label: 'View details',
+          icon: <Info className="h-4 w-4" />,
+          onSelect: () => onFetchDetail(torrent.hash),
+        },
+        {
+          id: 'toggle-selection',
+          label: selected ? 'Deselect' : 'Select',
+          icon: <CheckCircle2 className="h-4 w-4" />,
+          onSelect: () => onToggleSelect(torrent.hash),
+        },
+      ],
+    },
+    {
+      id: 'control',
+      actions: canManageTorrents
+        ? [
+            {
+              id: 'start',
+              label: 'Start',
+              icon: <Play className="h-4 w-4" />,
+              onSelect: () => onTorrentAction(torrent.hash, 'start'),
+            },
+            {
+              id: 'stop',
+              label: 'Stop',
+              icon: <Pause className="h-4 w-4" />,
+              onSelect: () => onTorrentAction(torrent.hash, 'stop'),
+            },
+            {
+              id: 'force-start',
+              label: 'Force Start',
+              icon: <Zap className="h-4 w-4" />,
+              onSelect: () => onTorrentAction(torrent.hash, 'forceStart'),
+            },
+          ]
+        : [],
+    },
+    {
+      id: 'manage',
+      actions: canManageTorrents
+        ? [
+            {
+              id: 'recheck',
+              label: 'Recheck',
+              icon: <CheckCircle2 className="h-4 w-4" />,
+              onSelect: () => onTorrentAction(torrent.hash, 'recheck'),
+            },
+            {
+              id: 'reannounce',
+              label: 'Reannounce',
+              icon: <Megaphone className="h-4 w-4" />,
+              onSelect: () => onTorrentAction(torrent.hash, 'reannounce'),
+            },
+            {
+              id: 'set-category',
+              label: 'Set Category',
+              icon: <Tag className="h-4 w-4" />,
+              onSelect: () => onOpenCategoryDrawer(torrent.hash),
+            },
+            {
+              id: 'rename',
+              label: 'Rename',
+              icon: <Pencil className="h-4 w-4" />,
+              onSelect: () => onOpenRenameDrawer(torrent.hash, torrent.name),
+            },
+          ]
+        : [],
+    },
+    {
+      id: 'destructive',
+      actions: canDeleteTorrents
+        ? [
+            {
+              id: 'delete-keep-files',
+              label: 'Delete (keep files)',
+              icon: <Trash2 className="h-4 w-4" />,
+              destructive: true,
+              onSelect: () => onOpenDeleteDrawer(torrent.hash, torrent.name, false),
+            },
+            {
+              id: 'delete-with-files',
+              label: 'Delete with files',
+              icon: <Trash2 className="h-4 w-4" />,
+              destructive: true,
+              onSelect: () => onOpenDeleteDrawer(torrent.hash, torrent.name, true),
+            },
+          ]
+        : [],
+    },
+  ];
+}
+
 function TorrentRowActions({
   torrent,
   onTorrentAction,
@@ -553,6 +668,18 @@ const TorrentRow = memo(function TorrentRow({
   const canManageTorrents = useCan('torrents.manage');
   const canDeleteTorrents = useCan('torrents.delete');
   const stopped = PAUSED_STATES.has(torrent.state);
+  const contextGroups = torrentContextActionGroups({
+    torrent,
+    selected,
+    onToggleSelect,
+    onFetchDetail,
+    onTorrentAction,
+    onOpenDeleteDrawer,
+    onOpenCategoryDrawer,
+    onOpenRenameDrawer,
+    canManageTorrents,
+    canDeleteTorrents,
+  });
 
   return (
     <SwipeRow
@@ -570,6 +697,7 @@ const TorrentRow = memo(function TorrentRow({
         onAction: () => onOpenDeleteDrawer(torrent.hash, torrent.name, false),
       } : undefined}
     >
+    <QuickContextMenu label={`Actions for ${torrent.name}`} groups={contextGroups}>
     <div className="px-3 py-3 sm:px-4">
       <div className="flex items-start gap-3">
         <input
@@ -646,6 +774,7 @@ const TorrentRow = memo(function TorrentRow({
         </div>
       </div>
     </div>
+    </QuickContextMenu>
     </SwipeRow>
   );
 }, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
@@ -749,8 +878,23 @@ const TorrentTableRow = memo(function TorrentTableRow({
   onOpenRenameDrawer,
 }: TorrentRowProps) {
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
+  const canManageTorrents = useCan('torrents.manage');
+  const canDeleteTorrents = useCan('torrents.delete');
+  const contextGroups = torrentContextActionGroups({
+    torrent,
+    selected,
+    onToggleSelect,
+    onFetchDetail,
+    onTorrentAction,
+    onOpenDeleteDrawer,
+    onOpenCategoryDrawer,
+    onOpenRenameDrawer,
+    canManageTorrents,
+    canDeleteTorrents,
+  });
 
   return (
+    <QuickContextMenu label={`Actions for ${torrent.name}`} groups={contextGroups}>
     <div className="flex items-center gap-2 h-14 px-2 sm:px-3">
       <div className={TABLE_COL.select}>
         <input
@@ -826,6 +970,7 @@ const TorrentTableRow = memo(function TorrentTableRow({
         />
       </div>
     </div>
+    </QuickContextMenu>
   );
 }, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
 

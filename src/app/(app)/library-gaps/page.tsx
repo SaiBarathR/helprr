@@ -29,6 +29,7 @@ import type {
   LibraryGapsResponse,
 } from '@/types';
 import { searchUnits } from '@/lib/library-gaps';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 
 const SECTION_META: Record<LibraryGapSectionId, { title: string; icon: LucideIcon; service: string }> = {
   missingSeasons: { title: 'Missing Seasons', icon: Tv, service: 'Sonarr' },
@@ -66,7 +67,8 @@ function GapCard({
   onToggleSelect?: () => void;
 }) {
   const [searching, setSearching] = useState(false);
-  const selectable = item.search.kind !== 'none';
+  const canSearch = useCan('activity.manage');
+  const selectable = canSearch && item.search.kind !== 'none';
   const FallbackIcon = item.search.kind === 'movie' || item.tmdbId ? Film : Tv;
 
   // A collection-gap card opens the whole collection (showing owned/missing members) rather
@@ -118,7 +120,7 @@ function GapCard({
         <SelectionCheck selected={Boolean(selected)} />
       </div>
     ) : null;
-  } else if (item.search.kind !== 'none') {
+  } else if (canSearch && item.search.kind !== 'none') {
     action = (
       <button
         type="button"
@@ -190,6 +192,46 @@ function GapCard({
   );
 
   const ringClass = selectionMode && selectable && selected ? 'rounded-xl ring-2 ring-primary' : '';
+  const primary = selectionMode && selectable ? (
+    <button
+      type="button"
+      onClick={onToggleSelect}
+      aria-pressed={Boolean(selected)}
+      aria-label={`${selected ? 'Deselect' : 'Select'} ${item.title}`}
+      className={cn('block w-full text-left', ringClass)}
+    >
+      {poster}
+    </button>
+  ) : effectiveHref && !selectionMode ? (
+    <Link href={effectiveHref} className="block">{poster}</Link>
+  ) : (
+    <div className={ringClass}>{poster}</div>
+  );
+  const searchLabel = item.search.kind === 'episodes'
+    ? 'Search missing episodes'
+    : item.search.kind === 'seasons'
+      ? 'Search missing seasons'
+      : 'Search missing movie';
+  const contextActions: ContextAction[] = [
+    ...(effectiveHref ? [{
+      id: 'open',
+      label: 'Open related media',
+      icon: <FallbackIcon className="h-4 w-4" />,
+      href: effectiveHref,
+    }] : []),
+    ...(selectable ? [{
+      id: 'search',
+      label: searchLabel,
+      icon: <Search className="h-4 w-4" />,
+      pending: searching,
+      onSelect: () => void handleSearch(),
+    }, {
+      id: 'select',
+      label: selected ? 'Deselect' : 'Select',
+      icon: <ListChecks className="h-4 w-4" />,
+      onSelect: onToggleSelect,
+    }] : []),
+  ];
 
   return (
     <div
@@ -198,21 +240,13 @@ function GapCard({
         selectionMode && !selectable && 'opacity-40'
       )}
     >
-      {selectionMode && selectable ? (
-        <button
-          type="button"
-          onClick={onToggleSelect}
-          aria-pressed={Boolean(selected)}
-          aria-label={`${selected ? 'Deselect' : 'Select'} ${item.title}`}
-          className={cn('block w-full text-left', ringClass)}
-        >
-          {poster}
-        </button>
-      ) : effectiveHref && !selectionMode ? (
-        <Link href={effectiveHref} className="block">{poster}</Link>
-      ) : (
-        <div className={ringClass}>{poster}</div>
-      )}
+      <QuickContextMenu
+        label={`Actions for ${item.title}`}
+        actions={contextActions}
+        disabled={selectionMode}
+      >
+        {primary}
+      </QuickContextMenu>
       {action}
     </div>
   );
@@ -486,7 +520,10 @@ export default function LibraryGapsPage() {
                 imagePriority={i < 8}
                 selectionMode={selectionMode}
                 selected={selectedKeys.has(item.key)}
-                onToggleSelect={() => toggle(item.key)}
+                onToggleSelect={() => {
+                  if (!selectionMode) enter();
+                  toggle(item.key);
+                }}
               />
             ))}
           </div>

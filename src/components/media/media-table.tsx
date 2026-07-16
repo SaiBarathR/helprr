@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Fragment } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import type { MediaImage } from '@/types';
 import { cn } from '@/lib/utils';
@@ -8,6 +9,7 @@ import { SelectionCheck } from './selection-check';
 import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
 import type { ArrScope } from '@/types/watch-status';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return '0 B';
@@ -56,6 +58,7 @@ export function MediaTable({
   selectable,
   selectedKeys,
   onToggleSelect,
+  getContextActionGroups,
 }: {
   rows: MediaTableRow[];
   visibleFields: string[];
@@ -69,6 +72,7 @@ export function MediaTable({
   selectable?: boolean;
   selectedKeys?: Set<string>;
   onToggleSelect?: (row: MediaTableRow) => void;
+  getContextActionGroups?: (row: MediaTableRow) => ContextActionGroup[];
 }) {
   const lookup = useWatchLookup();
   const show = (field: string) => visibleFields.includes(field);
@@ -98,7 +102,7 @@ export function MediaTable({
             <tr className="border-b border-border/50 text-xs text-muted-foreground">
               {selectable && <th className="w-9 px-3 py-2"></th>}
               {show('monitored') && <th className="w-8 px-3 py-2"></th>}
-              <th className="text-left px-3 py-2 font-medium">{show('title') ? 'Title' : ''}</th>
+              <th className="text-left px-3 py-2 font-medium">{show('title') ? (type === 'artist' ? 'Name' : 'Title') : ''}</th>
               {show('year') && <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Year</th>}
               {show('artistType') && type === 'artist' && <th className="text-left px-3 py-2 font-medium hidden lg:table-cell">Type</th>}
               {show('qualityProfile') && <th className="text-left px-3 py-2 font-medium hidden md:table-cell">Quality</th>}
@@ -131,9 +135,8 @@ export function MediaTable({
                   }`}
                 />
               );
-              return (
+              const tableRow = (
               <tr
-                key={keyOf(row)}
                 onClick={selectable ? () => onToggleSelect?.(row) : undefined}
                 className={cn(
                   'transition-colors',
@@ -200,6 +203,18 @@ export function MediaTable({
                 {show('rating') && <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">{row.rating && row.rating > 0 ? row.rating.toFixed(1) : '-'}</td>}
                 {show('sizeOnDisk') && <td className="px-3 py-2 text-muted-foreground text-right hidden sm:table-cell">{row.sizeOnDisk ? formatBytes(row.sizeOnDisk) : '-'}</td>}
               </tr>
+              );
+              if (selectable || !getContextActionGroups) {
+                return <Fragment key={keyOf(row)}>{tableRow}</Fragment>;
+              }
+              return (
+                <QuickContextMenu
+                  key={keyOf(row)}
+                  label={`${row.title} actions`}
+                  groups={getContextActionGroups(row)}
+                >
+                  {tableRow}
+                </QuickContextMenu>
               );
             })}
             {bottomSpacerHeight > 0 && (

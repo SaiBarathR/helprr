@@ -30,6 +30,8 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { LanguageRegionCombobox } from '@/components/ui/language-region-combobox';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { useCan, useMe, hasCapability } from '@/components/permission-provider';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
@@ -58,7 +60,12 @@ import {
   X,
   User,
   Check,
+  ExternalLink,
+  Plus,
+  Inbox,
 } from 'lucide-react';
+import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
+import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 
 const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' }> = {
@@ -321,21 +328,88 @@ function MediaPoster({
   imagePriority?: boolean;
 }) {
   const isGrid = variant === 'grid';
+  const me = useMe();
+  const { isRequested, markRequested } = useRequestedMedia();
+  const canWatchlist = useCan('watchlist.edit');
+  const canSchedule = useCan('scheduledAlerts.edit');
+  const canAdd = useCan(item.mediaType === 'movie' ? 'movies.add' : 'series.add');
+  const seerrMediaType = item.mediaType === 'movie' ? 'movie' as const : 'tv' as const;
+  const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
+  const requested = isRequested(seerrMediaType, item.tmdbId);
+  const showPosterOverlayActions = !item.library?.exists;
+  const [requestOpen, setRequestOpen] = useState(false);
   const posterSrc = item.posterPath
     ? (toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath)
     : null;
+  const detailHref = `/discover/${item.mediaType === 'movie' ? 'movie' : 'tv'}/${item.tmdbId}`;
+  const mediaType = item.mediaType === 'movie' ? 'movie' : 'series';
+  const draft = {
+    source: 'TMDB' as const,
+    externalId: String(item.tmdbId),
+    mediaType: mediaType as 'movie' | 'series',
+    title: item.title,
+    year: item.year ?? null,
+    posterUrl: item.posterPath,
+    overview: item.overview ?? null,
+    rating: typeof item.rating === 'number' ? item.rating * 10 : null,
+    releaseDate: item.releaseDate ?? null,
+    href: detailHref,
+  };
+  const libraryInstance = item.library?.instances?.[0]
+    ?? (item.library?.id ? {
+      id: item.library.id,
+      instanceId: item.library.instanceId ?? '',
+      instanceLabel: '',
+    } : null);
+  const libraryHref = libraryInstance
+    ? `/${item.mediaType === 'movie' ? 'movies' : 'series'}/${libraryInstance.id}${libraryInstance.instanceId ? `?instance=${libraryInstance.instanceId}` : ''}`
+    : null;
+  const addHref = (() => {
+    const params = new URLSearchParams({ term: item.title, tmdbId: String(item.tmdbId) });
+    if (item.mediaType !== 'movie') params.set('seriesType', 'standard');
+    return `/${item.mediaType === 'movie' ? 'movies' : 'series'}/add?${params.toString()}`;
+  })();
   return (
     <div
       className={isGrid
         ? 'group relative w-full min-w-0'
         : 'group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px]'}
     >
-      <button
-        type="button"
-        onClick={() => onClick(item)}
-        className="block w-full text-left"
+      <QuickContextMenu
+        label={`${item.title} actions`}
+        actions={[
+          {
+            id: 'open',
+            label: 'Open details',
+            icon: <ExternalLink />,
+            onSelect: () => onClick(item),
+          },
+          ...(libraryHref ? [{
+            id: 'library',
+            label: 'Open in library',
+            icon: <Check />,
+            href: libraryHref,
+          }] : !item.library?.exists && canAdd ? [{
+            id: 'add',
+            label: `Add to ${item.mediaType === 'movie' ? 'Radarr' : 'Sonarr'}`,
+            icon: <Plus />,
+            href: addHref,
+          }] : []),
+          ...(!item.library?.exists && canRequest ? [{
+            id: 'request',
+            label: requested ? 'Requested' : 'Request',
+            icon: requested ? <Check /> : <Inbox />,
+            onSelect: () => setRequestOpen(true),
+            disabled: requested,
+          }] : []),
+        ]}
       >
-        <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
+        <button
+          type="button"
+          onClick={() => onClick(item)}
+          className="block w-full text-left"
+        >
+          <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
           {posterSrc ? (
             <FadeInImage
               src={posterSrc}
@@ -363,8 +437,9 @@ function MediaPoster({
               </span>
             </div>
           </div>
-        </div>
-      </button>
+          </div>
+        </button>
+      </QuickContextMenu>
       <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-1.5">
         {item.library?.exists ? (
           <div className="flex items-center justify-center h-5 w-5 rounded-md bg-background/60 backdrop-blur-md">
@@ -372,40 +447,34 @@ function MediaPoster({
           </div>
         ) : (
           <>
-          <WatchlistButton
-            draft={{
-              source: 'TMDB',
-              externalId: String(item.tmdbId),
-              mediaType: item.mediaType === 'movie' ? 'movie' : 'series',
-              title: item.title,
-              year: item.year ?? null,
-              posterUrl: item.posterPath,
-              overview: item.overview ?? null,
-              rating: typeof item.rating === 'number' ? item.rating * 10 : null,
-              releaseDate: item.releaseDate ?? null,
-            }}
-            variant="icon"
-            className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
-          />
+          {canWatchlist && showPosterOverlayActions && (
+            <WatchlistButton
+              draft={draft}
+              variant="icon"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
+            />
+          )}
+          {canSchedule && showPosterOverlayActions && (
           <ScheduledAlertButton
-            draft={{
-              source: 'TMDB',
-              externalId: String(item.tmdbId),
-              mediaType: item.mediaType === 'movie' ? 'movie' : 'series',
-              title: item.title,
-              year: item.year ?? null,
-              posterUrl: item.posterPath,
-              overview: item.overview ?? null,
-              rating: typeof item.rating === 'number' ? item.rating * 10 : null,
-              releaseDate: item.releaseDate ?? null,
-              href: item.mediaType === 'movie' ? `/discover/movie/${item.tmdbId}` : `/discover/tv/${item.tmdbId}`,
-            }}
+            draft={draft}
             variant="icon"
             className="h-5 w-5"
           />
+          )}
           </>
         )}
       </div>
+      {!item.library?.exists && canRequest && (
+        <SeerrRequestModal
+          open={requestOpen}
+          onOpenChange={setRequestOpen}
+          mode="create"
+          mediaType={seerrMediaType}
+          tmdbId={item.tmdbId}
+          title={item.title}
+          onDone={() => markRequested(seerrMediaType, item.tmdbId)}
+        />
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { RandomPick, RandomWatchFilterType as FilterType } from '@/types';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 
 type WatchFilter = 'all' | 'unwatched';
 
@@ -51,6 +52,21 @@ export default function RandomWatchPage() {
   const backdrop = pick?.backdropUrl
     ? toCachedImageSrc(pick.backdropUrl, pick.mediaType === 'movie' ? 'radarr' : 'sonarr', { width: 1280 }) ?? pick.backdropUrl
     : null;
+  const resultActions: ContextAction[] = pick ? [
+    {
+      id: 'open',
+      label: 'Open details',
+      icon: pick.mediaType === 'movie' ? <Film className="h-4 w-4" /> : <Tv className="h-4 w-4" />,
+      href: pick.href,
+    },
+    {
+      id: 'reroll',
+      label: 'Pick another',
+      icon: <RefreshCw className="h-4 w-4" />,
+      pending: loading,
+      onSelect: () => void rollQuery.refetch(),
+    },
+  ] : [];
 
   return (
     <div className="animate-content-in pb-12">
@@ -155,27 +171,29 @@ export default function RandomWatchPage() {
             </div>
 
             <div className="relative -mt-20 flex flex-col gap-4 px-3 md:-mt-28 md:flex-row md:gap-6 md:px-6">
-              <div className="relative mx-auto aspect-[2/3] w-[120px] shrink-0 overflow-hidden rounded-xl bg-muted shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)] ring-1 ring-border md:mx-0 md:w-[180px]">
-                {poster ? (
-                  <Image
-                    src={poster}
-                    alt={pick.title}
-                    fill
-                    sizes="(max-width: 768px) 120px, 180px"
-                    className="object-cover"
-                    unoptimized={isProtectedApiImageSrc(poster)}
-                    priority
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                    {pick.mediaType === 'movie' ? (
-                      <Film className="h-12 w-12" />
-                    ) : (
-                      <Tv className="h-12 w-12" />
-                    )}
-                  </div>
-                )}
-              </div>
+              <QuickContextMenu label={`Actions for ${pick.title}`} actions={resultActions}>
+                <div className="relative mx-auto aspect-[2/3] w-[120px] shrink-0 overflow-hidden rounded-xl bg-muted shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)] ring-1 ring-border md:mx-0 md:w-[180px]">
+                  {poster ? (
+                    <Image
+                      src={poster}
+                      alt={pick.title}
+                      fill
+                      sizes="(max-width: 768px) 120px, 180px"
+                      className="object-cover"
+                      unoptimized={isProtectedApiImageSrc(poster)}
+                      priority
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                      {pick.mediaType === 'movie' ? (
+                        <Film className="h-12 w-12" />
+                      ) : (
+                        <Tv className="h-12 w-12" />
+                      )}
+                    </div>
+                  )}
+                </div>
+              </QuickContextMenu>
 
               <div className="space-y-3 md:pt-24">
                 <div>

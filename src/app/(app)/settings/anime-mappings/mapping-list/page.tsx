@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, Loader2, Trash2 } from 'lucide-react';
+import { ChevronLeft, ExternalLink, Loader2, RotateCcw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher, ApiError } from '@/lib/query-fetch';
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { SearchInput } from '@/components/media/search-input';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type {
   AdminAnimeMappingRow,
   AdminAnimeMappingsResponse,
@@ -263,8 +264,27 @@ export default function AnimeMappingListPage() {
                   const row = filtered[virtualItem.index];
                   const autoCount = row.entries.filter((entry) => entry.source === 'auto').length;
                   return (
-                    <div
+                    <QuickContextMenu
                       key={`${row.sonarrInstanceId}:${row.sonarrSeriesId}`}
+                      label={`${row.seriesTitle} mapping actions`}
+                      actions={[
+                        {
+                          id: 'open',
+                          label: 'Open series',
+                          icon: <ExternalLink />,
+                          href: `/series/${row.sonarrSeriesId}?instance=${row.sonarrInstanceId}`,
+                        },
+                        {
+                          id: 'reset',
+                          label: 'Reset mapping',
+                          icon: <RotateCcw />,
+                          destructive: true,
+                          disabled: busy,
+                          onSelect: () => setConfirmTarget(row),
+                        },
+                      ]}
+                    >
+                    <div
                       ref={rowVirtualizer.measureElement}
                       data-index={virtualItem.index}
                       className="grouped-row gap-2"
@@ -321,6 +341,7 @@ export default function AnimeMappingListPage() {
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
+                    </QuickContextMenu>
                   );
                 })}
               </div>

@@ -5,10 +5,11 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { Sparkles, Loader2, ChevronRight, ExternalLink, AlertTriangle, Check } from 'lucide-react';
+import { Sparkles, Loader2, ChevronRight, ExternalLink, AlertTriangle, Check, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { toast } from 'sonner';
 
 interface ViewerResponse {
@@ -159,38 +160,65 @@ export function AnilistConnectionCard() {
     <div className="grouped-section mb-6">
       <div className="grouped-section-title">AniList Account</div>
       <div className="grouped-section-content">
-        <button
-          type="button"
-          onClick={() => setExpanded((prev) => !prev)}
-          className="grouped-row w-full active:bg-foreground/5 transition-colors"
-          style={!expanded ? { borderBottom: 'none' } : undefined}
+        <QuickContextMenu
+          label="AniList account actions"
+          actions={isConnected && viewer?.user ? [
+            {
+              id: 'toggle-details',
+              label: expanded ? 'Hide account details' : 'Show account details',
+              icon: <ChevronRight className={expanded ? 'rotate-90' : undefined} />,
+              onSelect: () => setExpanded((prev) => !prev),
+            },
+            ...(viewer.user.siteUrl ? [{
+              id: 'profile',
+              label: 'View profile on AniList',
+              icon: <ExternalLink />,
+              href: viewer.user.siteUrl,
+              external: true,
+            }] : []),
+            {
+              id: 'disconnect',
+              label: 'Disconnect AniList',
+              icon: <Unplug />,
+              destructive: true,
+              pending: disconnecting,
+              onSelect: handleDisconnect,
+            },
+          ] : []}
         >
-          <div className="flex items-center gap-3 min-w-0">
-            {isConnected && viewer?.user?.avatar ? (
-              <Image
-                src={viewer.user.avatar}
-                alt={viewer.user.name}
-                width={28}
-                height={28}
-                className="rounded-full object-cover w-7 h-7"
-                unoptimized
-              />
-            ) : (
-              <span className="flex w-7 h-7 items-center justify-center rounded-full bg-pink-500/15 text-pink-400">
-                <Sparkles className="h-4 w-4" />
+          <button
+            type="button"
+            onClick={() => setExpanded((prev) => !prev)}
+            className="grouped-row w-full active:bg-foreground/5 transition-colors"
+            style={!expanded ? { borderBottom: 'none' } : undefined}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              {isConnected && viewer?.user?.avatar ? (
+                <Image
+                  src={viewer.user.avatar}
+                  alt={viewer.user.name}
+                  width={28}
+                  height={28}
+                  className="rounded-full object-cover w-7 h-7"
+                  unoptimized
+                />
+              ) : (
+                <span className="flex w-7 h-7 items-center justify-center rounded-full bg-pink-500/15 text-pink-400">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+              )}
+              <span className="text-sm font-medium truncate">AniList</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-sm ${isConnected ? 'text-emerald-400' : requiresReauth ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                {statusLabel}
               </span>
-            )}
-            <span className="text-sm font-medium truncate">AniList</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`text-sm ${isConnected ? 'text-emerald-400' : requiresReauth ? 'text-amber-400' : 'text-muted-foreground'}`}>
-              {statusLabel}
-            </span>
-            <ChevronRight
-              className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
-            />
-          </div>
-        </button>
+              <ChevronRight
+                className={`h-4 w-4 text-muted-foreground transition-transform ${expanded ? 'rotate-90' : ''}`}
+              />
+            </div>
+          </button>
+        </QuickContextMenu>
 
         {expanded && (
           <div className="px-4 pb-4 pt-2 space-y-3 border-b border-foreground/[0.06] last:border-b-0">

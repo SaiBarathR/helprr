@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ChevronLeft, Sparkles, Star, Clock, BookOpen, Loader2 } from 'lucide-react';
+import { ChevronLeft, Sparkles, Star, Clock, BookOpen, Loader2, ExternalLink, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -22,6 +22,8 @@ import type {
   AniListMediaListStatus,
   AniListMediaType,
 } from '@/lib/anilist-mutations';
+import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 
 interface ViewerResponse {
   configured: boolean;
@@ -143,6 +145,7 @@ export default function AnimeLibraryPage() {
   const [type, setType] = useState<AniListMediaType>('ANIME');
   const [status, setStatus] = useState<AniListMediaListStatus | 'ALL'>('ALL');
   const [hydrated, setHydrated] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<AniListMediaListEntry | null>(null);
 
   // Keep URL in sync with selected tab/type so back navigation lands on the same view
   useEffect(() => {
@@ -512,6 +515,7 @@ export default function AnimeLibraryPage() {
                 entry={entry}
                 imagePriority={i < 4}
                 onNavigate={() => persistTabView(renderedCount, window.scrollY)}
+                onEdit={() => setEditingEntry(entry)}
               />
             ))}
           </div>
@@ -528,6 +532,31 @@ export default function AnimeLibraryPage() {
           )}
         </>
       )}
+
+      {editingEntry ? (
+        <AnilistStatusDrawer
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditingEntry(null);
+          }}
+          mediaId={editingEntry.media.id}
+          mediaTitle={pickTitle(editingEntry.media)}
+          mediaType={type}
+          totalEpisodes={editingEntry.media.episodes}
+          totalChapters={editingEntry.media.chapters}
+          totalVolumes={editingEntry.media.volumes}
+          entry={editingEntry}
+          scoreFormat={viewer.user?.scoreFormat}
+          onSaved={() => {
+            setEditingEntry(null);
+            void libraryQuery.refetch();
+          }}
+          onDeleted={() => {
+            setEditingEntry(null);
+            void libraryQuery.refetch();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -548,11 +577,14 @@ function LibraryEntryCard({
   entry,
   imagePriority,
   onNavigate,
+  onEdit,
 }: {
   entry: AniListMediaListEntry;
   imagePriority?: boolean;
   onNavigate?: () => void;
+  onEdit: () => void;
 }) {
+  const router = useRouter();
   const media = entry.media;
   const title = pickTitle(media);
   const cover = media.coverImage?.large || media.coverImage?.medium || media.coverImage?.extraLarge || null;
@@ -562,37 +594,64 @@ function LibraryEntryCard({
 
   const total = isManga ? media.chapters ?? null : media.episodes ?? null;
   const progressLabel = total != null ? `${entry.progress}/${total}` : `${entry.progress}`;
+  const siteUrl = 'siteUrl' in media && typeof media.siteUrl === 'string' ? media.siteUrl : null;
+  const actions: ContextAction[] = [
+    {
+      id: 'open',
+      label: 'Open details',
+      icon: <BookOpen className="h-4 w-4" />,
+      onSelect: () => {
+        onNavigate?.();
+        router.push(detailHref);
+      },
+    },
+    {
+      id: 'edit',
+      label: 'Edit score & status…',
+      icon: <Pencil className="h-4 w-4" />,
+      onSelect: onEdit,
+    },
+    ...(siteUrl ? [{
+      id: 'anilist',
+      label: 'View on AniList',
+      icon: <ExternalLink className="h-4 w-4" />,
+      href: siteUrl,
+      external: true,
+    }] : []),
+  ];
 
   return (
-    <Link href={detailHref} className="group" onClick={onNavigate}>
-      <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-sm group-hover:shadow-md transition-shadow">
-        {imgSrc ? (
-          <FadeInImage
-            src={imgSrc}
-            alt={title}
-            fill
-            sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, 16vw"
-            priority={imagePriority}
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-            unoptimized={isProtectedApiImageSrc(imgSrc)}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
-            {title}
-          </div>
-        )}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background/70 to-transparent pointer-events-none" />
-        {entry.score > 0 && (
-          <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
-            <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
-            {entry.score}
+    <QuickContextMenu label={`Actions for ${title}`} actions={actions}>
+      <Link href={detailHref} className="group" onClick={onNavigate}>
+        <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-sm group-hover:shadow-md transition-shadow">
+          {imgSrc ? (
+            <FadeInImage
+              src={imgSrc}
+              alt={title}
+              fill
+              sizes="(max-width: 640px) 33vw, (max-width: 768px) 25vw, 16vw"
+              priority={imagePriority}
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+              unoptimized={isProtectedApiImageSrc(imgSrc)}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
+              {title}
+            </div>
+          )}
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background/70 to-transparent pointer-events-none" />
+          {entry.score > 0 && (
+            <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
+              <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
+              {entry.score}
+            </Badge>
+          )}
+          <Badge className="absolute bottom-1 left-1 text-[9px] bg-background/60 text-foreground">
+            {progressLabel}
           </Badge>
-        )}
-        <Badge className="absolute bottom-1 left-1 text-[9px] bg-background/60 text-foreground">
-          {progressLabel}
-        </Badge>
-      </div>
-      <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{title}</p>
-    </Link>
+        </div>
+        <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{title}</p>
+      </Link>
+    </QuickContextMenu>
   );
 }

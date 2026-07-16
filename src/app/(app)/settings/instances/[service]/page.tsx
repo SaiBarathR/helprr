@@ -23,6 +23,10 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
+import {
+  deleteServiceConnection,
+  setServiceConnectionDefault,
+} from '@/lib/service-connection-actions';
 
 interface JellyfinUserOption {
   id: string;
@@ -337,8 +341,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/services/${editingConnId}`, { method: 'DELETE' });
-      if (!res.ok) throw new ApiError(res.status, 'Failed to remove instance');
+      if (!editingConnId) throw new ApiError(400, 'No instance selected');
+      await deleteServiceConnection(editingConnId);
     },
     onSuccess: () => {
       toast.success('Instance removed');
@@ -354,12 +358,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
 
   const makeDefaultMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/services/${editingConnId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isDefault: true }),
-      });
-      if (!res.ok) throw new ApiError(res.status, 'Failed to set default');
+      if (!editingConnId) throw new ApiError(400, 'No instance selected');
+      await setServiceConnectionDefault(editingConnId);
     },
     onSuccess: () => {
       toast.success('Set as default');

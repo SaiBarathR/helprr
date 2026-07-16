@@ -12,6 +12,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { SelectionCheck } from './selection-check';
 import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 function getImageUrl(
   images: MediaImage[],
@@ -76,6 +77,8 @@ export interface MediaOverviewItemProps {
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Native-style actions shown on right-click or touch/pen long-press. */
+  contextActionGroups?: ContextActionGroup[];
 }
 
 export const MediaOverviewItem = memo(function MediaOverviewItem({
@@ -108,6 +111,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
   selectable,
   selected,
   onToggleSelect,
+  contextActionGroups,
 }: MediaOverviewItemProps) {
   const lookup = useWatchLookup();
   const watchStatus = watchLookup ? lookup(watchLookup) : undefined;
@@ -239,13 +243,18 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
   }
 
   return (
-    <Link
-      href={href}
-      onClick={onNavigate}
-      className={rowClass}
-      aria-label={show('title') ? undefined : title}
+    <QuickContextMenu
+      label={`${title} actions`}
+      groups={contextActionGroups}
     >
-      {body}
-    </Link>
+      <Link
+        href={href}
+        onClick={onNavigate}
+        className={rowClass}
+        aria-label={show('title') ? undefined : title}
+      >
+        {body}
+      </Link>
+    </QuickContextMenu>
   );
 }, (p, n) => shallowEqualExcept(p, n, ['onNavigate', 'onToggleSelect', 'watchLookup']));

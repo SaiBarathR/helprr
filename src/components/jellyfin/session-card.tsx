@@ -3,18 +3,20 @@
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { MonitorPlay, Play, Pause, Zap, Info } from 'lucide-react';
+import { ExternalLink, MonitorPlay, Play, Pause, Zap, Info } from 'lucide-react';
 import type { JellyfinSession } from '@/types/jellyfin';
 import { ticksToMinutes, ticksToProgress, getSessionTitle } from '@/lib/jellyfin-helpers';
 import { isProtectedApiImageSrc } from '@/lib/image';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 
 interface SessionCardProps {
   session: JellyfinSession;
   variant: 'full' | 'compact';
   onInfoClick?: (session: JellyfinSession) => void;
+  jellyfinUrl?: string;
 }
 
-export function SessionCard({ session, variant, onInfoClick }: SessionCardProps) {
+export function SessionCard({ session, variant, onInfoClick, jellyfinUrl }: SessionCardProps) {
   const item = session.NowPlayingItem;
   const playState = session.PlayState;
   const progress = item?.RunTimeTicks && playState?.PositionTicks
@@ -33,13 +35,17 @@ export function SessionCard({ session, variant, onInfoClick }: SessionCardProps)
   const primarySrc = imageId
     ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=520&quality=80`
     : '';
+  const targetId = item?.Type === 'Episode' && item.SeriesId ? item.SeriesId : item?.Id;
+  const jellyfinHref = jellyfinUrl && targetId
+    ? `${jellyfinUrl.replace(/\/+$/, '')}/web/index.html#!/details?id=${targetId}`
+    : undefined;
 
   const isFull = variant === 'full';
   const cardWidth = isFull ? 'w-[280px]' : 'w-[260px]';
   const backdropHeight = isFull ? 'h-24' : 'h-20';
   const imgSizes = isFull ? '280px' : '260px';
 
-  return (
+  const card = (
     <div className={`snap-start shrink-0 ${cardWidth} rounded-xl bg-card overflow-hidden`}>
       {/* Backdrop area */}
       <div className={`relative ${backdropHeight} bg-muted overflow-hidden`}>
@@ -121,5 +127,28 @@ export function SessionCard({ session, variant, onInfoClick }: SessionCardProps)
         )}
       </div>
     </div>
+  );
+
+  return (
+    <QuickContextMenu
+      label={`${item ? getSessionTitle(item) : 'Session'} actions`}
+      actions={[
+        ...(onInfoClick ? [{
+          id: 'info',
+          label: 'View stream information',
+          icon: <Info />,
+          onSelect: () => onInfoClick(session),
+        }] : []),
+        ...(jellyfinHref ? [{
+          id: 'jellyfin',
+          label: 'Open in Jellyfin',
+          icon: <ExternalLink />,
+          href: jellyfinHref,
+          external: true,
+        }] : []),
+      ]}
+    >
+      {card}
+    </QuickContextMenu>
   );
 }

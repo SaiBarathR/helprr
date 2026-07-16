@@ -31,6 +31,7 @@ import { handleAuthError } from '@/lib/query-client';
 import { patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
 import { useCan } from '@/components/permission-provider';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
 import { EpisodeWatchIndicator } from '@/components/jellyfin/watch-status-indicator';
 import { episodeKey } from '@/types/watch-status';
@@ -56,6 +57,10 @@ export default function SeasonDetailPage() {
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
+  const [episodeInteractiveTarget, setEpisodeInteractiveTarget] = useState<{
+    episodeId: number;
+    title: string;
+  } | null>(null);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
 
   const canEditMonitoring = useCan('series.editMonitoring');
@@ -270,6 +275,26 @@ export default function SeasonDetailPage() {
 
   const seasonTitle = seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`;
   const fileCount = episodes.filter((e) => e.hasFile).length;
+  const seasonContextGroups: ContextActionGroup[] = [
+    {
+      id: 'activity',
+      actions: [
+        ...(canEditMonitoring ? [{ id: 'monitor', label: isSeasonMonitored ? 'Unmonitor season' : 'Monitor season', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleSeasonMonitor(); }, disabled: actionLoading === 'monitor' }] : []),
+        ...(canManageActivity ? [
+          { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
+          { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true) },
+        ] : []),
+      ],
+    },
+    {
+      id: 'manage',
+      actions: [
+        ...(canScheduleAlert ? [{ id: 'schedule', label: 'Schedule alert…', icon: <Bell className="h-4 w-4" />, onSelect: () => setShowScheduleAlert(true) }] : []),
+        ...(canDeleteSeries ? [{ id: 'unmonitor', label: 'Unmonitor Season…', icon: <Trash2 className="h-4 w-4" />, onSelect: () => setShowDeleteDrawer(true), destructive: true }] : []),
+      ],
+    },
+  ];
 
   return (
     <div className="space-y-4 animate-content-in">
@@ -340,6 +365,7 @@ export default function SeasonDetailPage() {
       />
 
       {/* Metadata line */}
+      <QuickContextMenu label={`${seasonTitle} actions`} groups={seasonContextGroups}>
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span>{series.year}</span>
         <span className="text-muted-foreground/40">|</span>
@@ -353,6 +379,7 @@ export default function SeasonDetailPage() {
         <span className="text-muted-foreground/40">|</span>
         <span>{fileCount}/{episodes.length} episodes</span>
       </div>
+      </QuickContextMenu>
 
       {/* Pill buttons — searching/grabbing is an activity.manage action */}
       {canManageActivity && (
@@ -388,10 +415,27 @@ export default function SeasonDetailPage() {
           const isPremiere = ep.episodeNumber === 1;
           const tmdbEp = tmdbSeason?.episodes.find((e) => e.episodeNumber === ep.episodeNumber);
 
+          const episodeHref = `/series/${id}/season/${seasonNumber}/episode/${ep.id}${instance ? `?instance=${instance}` : ''}`;
+          const episodeActions = [
+            { id: 'open', label: 'Open episode', href: episodeHref },
+            ...(canEditMonitoring ? [{ id: 'monitor', label: ep.monitored ? 'Unmonitor episode' : 'Monitor episode', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleEpisodeMonitor(ep.id, !ep.monitored); } }] : []),
+            ...(canManageActivity ? [{
+              id: 'interactive',
+              label: 'Interactive search…',
+              icon: <Search className="h-4 w-4" />,
+              onSelect: () => {
+                setEpisodeInteractiveTarget({
+                  episodeId: ep.id,
+                  title: ep.title || `Episode ${ep.episodeNumber}`,
+                });
+              },
+            }] : []),
+          ];
+
           return (
+            <QuickContextMenu key={ep.id} label={`${ep.title || `Episode ${ep.episodeNumber}`} actions`} actions={episodeActions}>
             <Link
-              key={ep.id}
-              href={`/series/${id}/season/${seasonNumber}/episode/${ep.id}${instance ? `?instance=${instance}` : ''}`}
+              href={episodeHref}
               className="flex gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
             >
               {/* Episode still image or number fallback (skip for anime) */}
@@ -488,6 +532,7 @@ export default function SeasonDetailPage() {
                 </button>
               )}
             </Link>
+            </QuickContextMenu>
           );
         })}
 
@@ -506,6 +551,17 @@ export default function SeasonDetailPage() {
         service="sonarr"
         searchParams={{ seriesId: series.id, seasonNumber, ...(instance ? { instanceId: instance } : {}) }}
         showSeasonPackFilter
+      />
+
+      <InteractiveSearchDialog
+        open={episodeInteractiveTarget !== null}
+        onOpenChange={(open) => { if (!open) setEpisodeInteractiveTarget(null); }}
+        title={episodeInteractiveTarget ? `${series.title} - ${seasonTitle} - ${episodeInteractiveTarget.title}` : ''}
+        service="sonarr"
+        searchParams={{
+          episodeId: episodeInteractiveTarget?.episodeId ?? 0,
+          ...(instance ? { instanceId: instance } : {}),
+        }}
       />
 
       {canScheduleAlert && (

@@ -5,8 +5,11 @@ import { WidgetGridMobile } from './widget-grid-mobile';
 
 interface WidgetGridProps {
   isMobile: boolean;
+  onConfigureRefresh: () => void;
 }
 
-export function WidgetGrid({ isMobile }: WidgetGridProps) {
-  return isMobile ? <WidgetGridMobile /> : <WidgetGridDesktop />;
+export function WidgetGrid({ isMobile, onConfigureRefresh }: WidgetGridProps) {
+  return isMobile
+    ? <WidgetGridMobile onConfigureRefresh={onConfigureRefresh} />
+    : <WidgetGridDesktop onConfigureRefresh={onConfigureRefresh} />;
 }

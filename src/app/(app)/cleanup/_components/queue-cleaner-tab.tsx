@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/select';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Save, Trash2, AlertTriangle, Info, Pencil, ChevronUp } from 'lucide-react';
+import { Loader2, Plus, Save, Trash2, AlertTriangle, Info, Pencil, ChevronUp, Power } from 'lucide-react';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type {
   AutoRunMode,
   FailedImportConfig,
@@ -677,6 +678,34 @@ function RuleCard<R extends CommonRuleShape>({
   containerRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
+    <QuickContextMenu
+      label={`${rule.name || 'Untitled rule'} actions`}
+      disabled={editing}
+      groups={[
+        {
+          id: 'rule',
+          actions: [
+            { id: 'edit', label: 'Edit rule', icon: <Pencil />, onSelect: onEdit },
+            {
+              id: 'toggle',
+              label: rule.enabled ? 'Turn rule off' : 'Turn rule on',
+              icon: <Power />,
+              onSelect: () => onChange({ ...rule, enabled: !rule.enabled }),
+            },
+          ],
+        },
+        {
+          id: 'danger',
+          actions: [{
+            id: 'delete',
+            label: 'Delete rule',
+            icon: <Trash2 />,
+            destructive: true,
+            onSelect: onDelete,
+          }],
+        },
+      ]}
+    >
     <div
       ref={containerRef}
       className={`grouped-row flex-col items-stretch gap-3 ${error ? 'bg-destructive/5' : ''} ${!rule.enabled ? 'opacity-60' : ''}`}
@@ -723,6 +752,7 @@ function RuleCard<R extends CommonRuleShape>({
         </div>
       )}
     </div>
+    </QuickContextMenu>
   );
 }
 

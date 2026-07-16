@@ -9,8 +9,11 @@ import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
 import { AnimeAddButton } from '@/components/anime/anime-add-button';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
-import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import {
+  ScheduledAlertButton,
+} from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
+import { useAnilistContextMenu } from '@/components/anime/anilist-context-menu';
 import { AnimeCharacterRail } from '@/components/anime/anime-character-rail';
 import { AnimeRelationsSection } from '@/components/anime/anime-relations-section';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
@@ -20,12 +23,19 @@ import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { SonarrMapDrawer } from '@/components/anime/sonarr-map-drawer';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { ExternalLink, Tv, Film, Loader2, Trophy, TrendingUp, Pencil } from 'lucide-react';
+import { QuickContextMenu, type ContextAction, type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { ExternalLink, Tv, Film, Loader2, Plus, Trophy, TrendingUp, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
-import { useMe } from '@/components/permission-provider';
-import { formatAniListRankingLabel, formatFuzzyDate, isMovieFormat } from '@/lib/anilist-helpers';
+import { hasCapability, useMe } from '@/components/permission-provider';
+import {
+  buildRadarrAddParams,
+  buildSonarrAddParams,
+  formatAniListRankingLabel,
+  formatFuzzyDate,
+  isMovieFormat,
+} from '@/lib/anilist-helpers';
 import type { AniListDetailResponse, AnimeSonarrMappingItem, AnimeSonarrMappingsResponse } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 import { useQuery } from '@tanstack/react-query';
@@ -111,7 +121,9 @@ export default function AnimeDetailPage() {
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   // AniList↔Sonarr mappings are global admin state, so the map action is admin-only.
-  const isAdmin = useMe()?.role === 'admin';
+  const me = useMe();
+  const isAdmin = me?.role === 'admin';
+  const { buildAnilistContextAction, drawerNode } = useAnilistContextMenu();
   const [showSonarrMap, setShowSonarrMap] = useState(false);
   // Reverse lookup so the row shows the current mapping without opening the drawer.
   const [sonarrMappings, setSonarrMappings] = useState<AnimeSonarrMappingItem[] | null>(null);
@@ -418,84 +430,135 @@ export default function AnimeDetailPage() {
       .map((l) => ({ label: l.site, url: l.url! })),
   ];
 
+  const isMovie = isMovieFormat(detail.format);
+  const addService = isMovie ? 'Radarr' : 'Sonarr';
+  const serviceAvailable = isMovie
+    ? detail.libraryAvailability?.radarr !== 'unavailable'
+    : detail.libraryAvailability?.sonarr !== 'unavailable';
+  const canAddDirectly = !detail.library?.exists
+    && serviceAvailable
+    && hasCapability(me, isMovie ? 'movies.add' : 'series.add');
+  const addHref = isMovie
+    ? `/movies/add?${buildRadarrAddParams({ title: detail.title, tmdbId: detail.tmdbId })}`
+    : `/series/add?${buildSonarrAddParams({ title: detail.title, tvdbId: detail.tvdbId })}`;
+  const libraryInstances = detail.library?.exists && detail.library.id != null
+    ? detail.library.instances?.length
+      ? detail.library.instances
+      : [{
+          instanceId: detail.library.instanceId ?? '',
+          instanceLabel: '',
+          id: detail.library.id,
+          titleSlug: detail.library.titleSlug,
+        }]
+    : [];
+  const libraryAppActions: ContextAction[] = libraryInstances.map((libraryInstance) => ({
+    id: `library-${libraryInstance.instanceId || libraryInstance.id}`,
+    label: libraryInstances.length > 1 && libraryInstance.instanceLabel
+      ? `Open in ${isMovie ? 'Movies' : 'TV'} · ${libraryInstance.instanceLabel}`
+      : `Open in ${isMovie ? 'Movies' : 'TV'}`,
+    icon: isMovie ? <Film className="h-4 w-4" /> : <Tv className="h-4 w-4" />,
+    href: `${isMovie ? '/movies' : '/series'}/${libraryInstance.id}${libraryInstance.instanceId ? `?instance=${libraryInstance.instanceId}` : ''}`,
+  }));
+  const watchlistDraft = {
+    source: 'ANILIST' as const,
+    externalId: String(detail.id),
+    mediaType: 'anime' as const,
+    title: detail.title,
+    year: detail.seasonYear ?? detail.startDate?.year ?? null,
+    posterUrl: detail.coverImage ?? null,
+    overview: detail.description ?? null,
+    rating: detail.averageScore ?? null,
+    releaseDate: detail.nextAiringEpisode?.airingAt
+      ? new Date(detail.nextAiringEpisode.airingAt * 1000).toISOString()
+      : detail.startDate?.year
+        ? `${detail.startDate.year}-${String(detail.startDate.month ?? 1).padStart(2, '0')}-${String(detail.startDate.day ?? 1).padStart(2, '0')}`
+        : null,
+  };
+  const scheduleDraft = {
+    ...watchlistDraft,
+    href: `/anime/${detail.id}`,
+  };
+  const anilistAction = buildAnilistContextAction({
+    mediaId: detail.id,
+    mediaTitle: detail.title,
+    mediaType: 'ANIME',
+    totalEpisodes: detail.episodes,
+  });
+  const heroContextGroups: ContextActionGroup[] = [
+    {
+      id: 'library',
+      actions: [
+        ...libraryAppActions,
+        ...(canAddDirectly ? [{ id: 'add-library', label: `Add to ${addService}`, icon: <Plus className="h-4 w-4" />, href: addHref }] : []),
+      ],
+    },
+    ...(anilistAction ? [{ id: 'anilist', actions: [anilistAction] }] : []),
+    {
+      id: 'links',
+      actions: [
+        ...libraryLinks.map((link) => ({ id: link.url, label: link.label, icon: link.icon === 'sonarr' ? <Tv className="h-4 w-4" /> : <Film className="h-4 w-4" />, href: link.url, external: true })),
+        ...(showJellyfinLink ? [{ id: 'jellyfin', label: 'Open in Jellyfin', icon: <ExternalLink className="h-4 w-4" />, onSelect: () => { void handleOpenInJellyfin(); }, pending: jellyfinLoading }] : []),
+        { id: 'anilist', label: 'Open in AniList', icon: <ExternalLink className="h-4 w-4" />, href: anilistLink, external: true },
+        ...(malLink ? [{ id: 'mal', label: 'Open in MyAnimeList', icon: <ExternalLink className="h-4 w-4" />, href: malLink, external: true }] : []),
+      ],
+    },
+  ];
+
   return (
     <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
       <PageHeader title={detail.title} />
       {/* Hero */}
-      <AnimeHero
-        title={detail.title}
-        bannerImage={detail.bannerImage}
-        coverImage={detail.coverImage}
-        format={detail.format}
-        averageScore={detail.averageScore}
-        episodes={detail.episodes}
-        status={detail.status}
-        season={detail.season}
-        seasonYear={detail.seasonYear}
-        studios={detail.studios}
-        bannerAction={
-          <div className="flex gap-1.5 items-center">
-            <AnimeAddButton
-              title={detail.title}
-              format={detail.format}
-              tvdbId={detail.tvdbId}
-              tmdbId={detail.tmdbId}
-              library={detail.library ?? undefined}
-              libraryAvailability={detail.libraryAvailability}
-            />
-            <WatchlistButton
-              draft={{
-                source: 'ANILIST',
-                externalId: String(detail.id),
-                mediaType: 'anime',
-                title: detail.title,
-                year: detail.seasonYear ?? detail.startDate?.year ?? null,
-                posterUrl: detail.coverImage ?? null,
-                overview: detail.description ?? null,
-                rating: detail.averageScore ?? null,
-                releaseDate: detail.nextAiringEpisode?.airingAt
-                  ? new Date(detail.nextAiringEpisode.airingAt * 1000).toISOString()
-                  : detail.startDate?.year
-                    ? `${detail.startDate.year}-${String(detail.startDate.month ?? 1).padStart(2, '0')}-${String(detail.startDate.day ?? 1).padStart(2, '0')}`
-                    : null,
-              }}
-              variant="icon"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
-            />
-            <ScheduledAlertButton
-              draft={{
-                source: 'ANILIST',
-                externalId: String(detail.id),
-                mediaType: 'anime',
-                title: detail.title,
-                year: detail.seasonYear ?? detail.startDate?.year ?? null,
-                posterUrl: detail.coverImage ?? null,
-                overview: detail.description ?? null,
-                rating: detail.averageScore ?? null,
-                releaseDate: detail.nextAiringEpisode?.airingAt
-                  ? new Date(detail.nextAiringEpisode.airingAt * 1000).toISOString()
-                  : detail.startDate?.year
-                    ? `${detail.startDate.year}-${String(detail.startDate.month ?? 1).padStart(2, '0')}-${String(detail.startDate.day ?? 1).padStart(2, '0')}`
-                    : null,
-                href: `/anime/${detail.id}`,
-              }}
-              variant="icon"
-              className="h-7 w-7"
-            />
-          </div>
-        }
-        nextAiringSeconds={formatCountdown(nextAiringSeconds ?? 0)}
-        nextAiringEpisode={detail.nextAiringEpisode}
-      />
+      <QuickContextMenu label={`${detail.title} actions`} groups={heroContextGroups}>
+        <div>
+          <AnimeHero
+            title={detail.title}
+            bannerImage={detail.bannerImage}
+            coverImage={detail.coverImage}
+            format={detail.format}
+            averageScore={detail.averageScore}
+            episodes={detail.episodes}
+            status={detail.status}
+            season={detail.season}
+            seasonYear={detail.seasonYear}
+            studios={detail.studios}
+            bannerAction={
+              <div className="flex gap-1.5 items-center">
+                <AnimeAddButton
+                  title={detail.title}
+                  format={detail.format}
+                  tvdbId={detail.tvdbId}
+                  tmdbId={detail.tmdbId}
+                  library={detail.library ?? undefined}
+                  libraryAvailability={detail.libraryAvailability}
+                />
+                <WatchlistButton
+                  draft={watchlistDraft}
+                  variant="icon"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
+                />
+                <ScheduledAlertButton
+                  draft={scheduleDraft}
+                  variant="icon"
+                  className="h-7 w-7"
+                />
+              </div>
+            }
+            nextAiringSeconds={formatCountdown(nextAiringSeconds ?? 0)}
+            nextAiringEpisode={detail.nextAiringEpisode}
+          />
+        </div>
+      </QuickContextMenu>
 
       <div className="space-y-5 mt-4">
         {/* Anilist update form */}
-        <AnilistStatusPanel
-          mediaId={detail.id}
-          mediaTitle={detail.title}
-          mediaType="ANIME"
-          totalEpisodes={detail.episodes}
-        />
+        <div id="anilist-status" className="scroll-mt-20">
+          <AnilistStatusPanel
+            mediaId={detail.id}
+            mediaTitle={detail.title}
+            mediaType="ANIME"
+            totalEpisodes={detail.episodes}
+          />
+        </div>
 
         {/* Trailer */}
         <AnimeTrailerRail
@@ -788,6 +851,7 @@ export default function AnimeDetailPage() {
           onMappingsChanged={setSonarrMappings}
         />
       )}
+      {drawerNode}
     </div>
   );
 }

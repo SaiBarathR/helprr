@@ -13,6 +13,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Bell, Bookmark, Check, ChevronRight, MoreVertical, Plus, Star } from 'lucide-react';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { useAnilistContextMenu } from '@/components/anime/anilist-context-menu';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { buildRadarrAddParams, buildSonarrAddParams, isMovieFormat } from '@/lib/anilist-helpers';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -44,6 +47,8 @@ interface AnimeMediaRailProps {
 function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
   const me = useMe();
   const lookup = useWatchLookup();
+  const isMobile = useIsMobile();
+  const { buildAnilistContextAction, drawerNode } = useAnilistContextMenu();
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
 
@@ -83,9 +88,73 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
   const isMovie = isMovieFormat(item.format ?? null);
   const addService = isMovie ? 'Radarr' : 'Sonarr';
   const canAdd = showActions && !inLibrary && hasCapability(me, isMovie ? 'movies.add' : 'series.add');
+  const canWatchlist = showActions && hasCapability(me, 'watchlist.edit');
+  const canSchedule = showActions && hasCapability(me, 'scheduledAlerts.edit');
   const addHref = isMovie
     ? `/movies/add?${buildRadarrAddParams({ title: item.title, tmdbId: null })}`
     : `/series/add?${buildSonarrAddParams({ title: item.title, tvdbId: null })}`;
+
+  const showDesktopOverlayActions = showActions && !isMobile;
+  const anilistAction = !isManga
+    ? buildAnilistContextAction({
+        mediaId: item.id,
+        mediaTitle: item.title,
+        mediaType: 'ANIME',
+        totalEpisodes: item.episodes,
+      })
+    : null;
+
+  const contextGroups: ContextActionGroup[] = [
+    {
+      id: 'navigation',
+      actions: [
+        {
+          id: 'open-details',
+          label: 'Open details',
+          icon: <ChevronRight className="h-4 w-4" />,
+          href,
+        },
+        ...(libraryHref
+          ? [{
+              id: 'open-library',
+              label: 'Open in library',
+              icon: <Check className="h-4 w-4" />,
+              href: libraryHref,
+            }]
+          : []),
+        ...(canAdd
+          ? [{
+              id: 'add-library',
+              label: `Add to ${addService}`,
+              icon: <Plus className="h-4 w-4" />,
+              href: addHref,
+            }]
+          : []),
+      ],
+    },
+    {
+      id: 'organize',
+      actions: [
+        ...(!showDesktopOverlayActions && canWatchlist
+          ? [{
+              id: 'watchlist',
+              label: 'Add to watchlist',
+              icon: <Bookmark className="h-4 w-4" />,
+              onSelect: () => setWatchlistOpen(true),
+            }]
+          : []),
+        ...(!showDesktopOverlayActions && canSchedule
+          ? [{
+              id: 'schedule',
+              label: 'Schedule alert',
+              icon: <Bell className="h-4 w-4" />,
+              onSelect: () => setScheduleOpen(true),
+            }]
+          : []),
+      ],
+    },
+    ...(anilistAction ? [{ id: 'anilist', actions: [anilistAction] }] : []),
+  ].filter((group) => group.actions.length > 0);
 
   const iconClass =
     'inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80 transition-colors';
@@ -109,56 +178,62 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
               <Check className="h-3 w-3" strokeWidth={3} />
             </Link>
           )}
-          <button
-            type="button"
-            aria-label="Add to watchlist"
-            onClick={() => setWatchlistOpen(true)}
-            className={iconClass}
-          >
-            <Bookmark className="h-3 w-3" />
-          </button>
-          <button
-            type="button"
-            aria-label="Schedule alert"
-            onClick={() => setScheduleOpen(true)}
-            className={iconClass}
-          >
-            <Bell className="h-3 w-3" />
-          </button>
+          {canWatchlist && (
+            <button
+              type="button"
+              aria-label="Add to watchlist"
+              onClick={() => setWatchlistOpen(true)}
+              className={iconClass}
+            >
+              <Bookmark className="h-3 w-3" />
+            </button>
+          )}
+          {canSchedule && (
+            <button
+              type="button"
+              aria-label="Schedule alert"
+              onClick={() => setScheduleOpen(true)}
+              className={iconClass}
+            >
+              <Bell className="h-3 w-3" />
+            </button>
+          )}
         </div>
       )}
-      <Link href={href} className="block">
-        <div className="relative aspect-2/3 rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
-          {imgSrc ? (
-            <FadeInImage
-              src={imgSrc}
-              alt={item.title}
-              fill
-              sizes="(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px"
-              priority={priority}
-              className="object-cover transition-transform duration-300 group-hover:scale-105"
-              unoptimized={isProtectedApiImageSrc(imgSrc)}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
-              {item.title}
-            </div>
-          )}
-          {item.averageScore != null && item.averageScore > 0 && (
-            <Badge className="absolute bottom-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
-              <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
-              {item.averageScore}%
-            </Badge>
-          )}
-          <PosterWatchOverlay status={watchStatus} />
-        </div>
-        <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{item.title}</p>
-      </Link>
+      <QuickContextMenu label={`${item.title} actions`} groups={contextGroups}>
+        <Link href={href} className="block">
+          <div className="relative aspect-2/3 rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
+            {imgSrc ? (
+              <FadeInImage
+                src={imgSrc}
+                alt={item.title}
+                fill
+                sizes="(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px"
+                priority={priority}
+                className="object-cover transition-transform duration-300 group-hover:scale-105"
+                unoptimized={isProtectedApiImageSrc(imgSrc)}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs p-2 text-center">
+                {item.title}
+              </div>
+            )}
+            {item.averageScore != null && item.averageScore > 0 && (
+              <Badge className="absolute bottom-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
+                <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
+                {item.averageScore}%
+              </Badge>
+            )}
+            <PosterWatchOverlay status={watchStatus} />
+          </div>
+          <p className="mt-1 text-xs font-medium leading-tight line-clamp-2">{item.title}</p>
+        </Link>
+      </QuickContextMenu>
       {/* Footer row: format/episode label + (mobile) the compact actions menu.
           Kept OUTSIDE the Link so tapping the menu never navigates. */}
       <div className="flex items-center justify-between gap-1 text-[11px] text-muted-foreground">
         <span className="truncate">{metadata.join(' · ')}</span>
-        {showActions && (
+        {(canAdd || libraryHref || canWatchlist || canSchedule) && (
           <div className="md:hidden shrink-0 -my-1">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -187,50 +262,59 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
                     </Link>
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => setWatchlistOpen(true)}>
-                  <Bookmark className="mr-2 h-4 w-4" />
-                  Add to watchlist
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setScheduleOpen(true)}>
-                  <Bell className="mr-2 h-4 w-4" />
-                  Schedule alert
-                </DropdownMenuItem>
+                {canWatchlist && (
+                  <DropdownMenuItem onClick={() => setWatchlistOpen(true)}>
+                    <Bookmark className="mr-2 h-4 w-4" />
+                    Add to watchlist
+                  </DropdownMenuItem>
+                )}
+                {canSchedule && (
+                  <DropdownMenuItem onClick={() => setScheduleOpen(true)}>
+                    <Bell className="mr-2 h-4 w-4" />
+                    Schedule alert
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
         )}
       </div>
-      {showActions && (
+      {(canWatchlist || canSchedule) && (
         <>
-          <WatchlistAddDialog
-            open={watchlistOpen}
-            onOpenChange={setWatchlistOpen}
-            draft={{
-              source: 'ANILIST',
-              externalId: String(item.id),
-              mediaType: 'anime',
-              title: item.title,
-              year: item.seasonYear ?? null,
-              posterUrl: item.coverImage ?? null,
-              overview: null,
-              rating: item.averageScore ?? null,
-              releaseDate: null,
-            }}
-          />
-          <ScheduledAlertDialog
-            open={scheduleOpen}
-            onOpenChange={setScheduleOpen}
-            draft={{
-              source: 'ANILIST',
-              externalId: String(item.id),
-              mediaType: 'anime',
-              title: item.title,
-              posterUrl: item.coverImage,
-              href: `/anime/${item.id}`,
-            }}
-          />
+          {canWatchlist && (
+            <WatchlistAddDialog
+              open={watchlistOpen}
+              onOpenChange={setWatchlistOpen}
+              draft={{
+                source: 'ANILIST',
+                externalId: String(item.id),
+                mediaType: 'anime',
+                title: item.title,
+                year: item.seasonYear ?? null,
+                posterUrl: item.coverImage ?? null,
+                overview: null,
+                rating: item.averageScore ?? null,
+                releaseDate: null,
+              }}
+            />
+          )}
+          {canSchedule && (
+            <ScheduledAlertDialog
+              open={scheduleOpen}
+              onOpenChange={setScheduleOpen}
+              draft={{
+                source: 'ANILIST',
+                externalId: String(item.id),
+                mediaType: 'anime',
+                title: item.title,
+                posterUrl: item.coverImage,
+                href: `/anime/${item.id}`,
+              }}
+            />
+          )}
         </>
       )}
+      {drawerNode}
     </div>
   );
 }

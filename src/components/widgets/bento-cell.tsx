@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { AMBER_RING, FONT_MONO, HPR, mix } from './bento-primitives';
 
-export interface BentoCellProps {
+export interface BentoCellProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children' | 'style'> {
   /** Effective column span on the current grid. */
   colSpan: number;
   rowSpan?: number;
@@ -30,7 +30,7 @@ export interface BentoCellProps {
   children?: React.ReactNode;
 }
 
-export function BentoCell({
+export const BentoCell = React.forwardRef<HTMLDivElement, BentoCellProps>(function BentoCell({
   colSpan,
   rowSpan = 1,
   pad,
@@ -44,7 +44,8 @@ export function BentoCell({
   style,
   chrome,
   children,
-}: BentoCellProps) {
+  ...rootProps
+}, ref) {
   const effectivePad = pad ?? (narrow || mobile ? 11 : 8);
   const cardBg = raised
     ? HPR.surfaceHi
@@ -53,6 +54,8 @@ export function BentoCell({
       : HPR.surface;
   return (
     <div
+      {...rootProps}
+      ref={ref}
       style={{
         width: '100%',
         height: '100%',
@@ -126,7 +129,9 @@ export function BentoCell({
       )}
     </div>
   );
-}
+});
+
+BentoCell.displayName = 'BentoCell';
 
 // ─── Edit chrome (drag handle bar + remove button) ──
 // Both desktop and mobile grids use react-grid-layout, which listens for

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PageHeader } from '@/components/layout/page-header';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
+import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Drawer,
   DrawerContent,
@@ -63,6 +64,7 @@ import {
 import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 // Known external providers surfaced as link chips (deduped by name, first wins).
 const LINK_LABELS: Record<string, string> = {
@@ -144,6 +146,10 @@ export default function ArtistDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
+  const [albumInteractiveTarget, setAlbumInteractiveTarget] = useState<{
+    albumId: number;
+    title: string;
+  } | null>(null);
   const [albumMonitorPending, setAlbumMonitorPending] = useState<number | null>(null);
   const lidarrExternalUrl = useExternalUrlResolver()('LIDARR', instance);
 
@@ -389,6 +395,35 @@ export default function ArtistDetailPage() {
 
   const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
 
+  const artistContextGroups: ContextActionGroup[] = [
+    {
+      id: 'activity',
+      actions: [
+        ...(canEditMonitoring ? [{ id: 'monitor', label: artist.monitored ? 'Unmonitor' : 'Monitor', icon: artist.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />, onSelect: () => { void handleToggleMonitored(); }, disabled: actionLoading === 'monitor' }] : []),
+        ...(canManageActivity ? [
+          { id: 'refresh', label: 'Refresh & Scan', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
+          { id: 'search', label: 'Search Monitored Albums', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearch(); }, disabled: !!actionLoading },
+        ] : []),
+      ],
+    },
+    {
+      id: 'manage',
+      actions: [
+        ...(canEditArtist ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: `/music/${artist.id}/edit${instance ? `?instance=${instance}` : ''}` }] : []),
+        ...(canManageActivity ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
+        { id: 'files', label: 'Files & information', icon: <FileText className="h-4 w-4" />, href: `/music/${artist.id}/files${instance ? `?instance=${instance}` : ''}` },
+      ],
+    },
+    {
+      id: 'links',
+      actions: [
+        ...(lidarrExternalUrl && artist.foreignArtistId ? [{ id: 'lidarr', label: 'Open in Lidarr', icon: <Disc3 className="h-4 w-4" />, href: `${lidarrExternalUrl}/artist/${artist.foreignArtistId}`, external: true }] : []),
+        ...(artist.foreignArtistId ? [{ id: 'musicbrainz', label: 'Open in MusicBrainz', icon: <ExternalLink className="h-4 w-4" />, href: `https://musicbrainz.org/artist/${artist.foreignArtistId}`, external: true }] : []),
+      ],
+    },
+    ...(canDeleteArtist ? [{ id: 'danger', actions: [{ id: 'delete', label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onSelect: () => setShowDelete(true), destructive: true }] }] : []),
+  ];
+
   return (
     <>
       <PageHeader
@@ -492,6 +527,7 @@ export default function ArtistDetailPage() {
             </div>
             <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
               <div className="w-[100px] shrink-0">
+                <QuickContextMenu label={`${artist.artistName} actions`} groups={artistContextGroups}>
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
                     <Image src={poster} alt={artist.artistName} fill sizes="100px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
@@ -499,6 +535,7 @@ export default function ArtistDetailPage() {
                     <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-8 w-8" /></div>
                   )}
                 </div>
+                </QuickContextMenu>
               </div>
               <div className="flex-1 min-w-0 pt-[60px]">
                 <Badge
@@ -524,6 +561,7 @@ export default function ArtistDetailPage() {
         ) : (
           <div className="flex gap-4">
             <div className="w-[120px] shrink-0">
+              <QuickContextMenu label={`${artist.artistName} actions`} groups={artistContextGroups}>
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                 {poster ? (
                   <Image src={poster} alt={artist.artistName} fill sizes="120px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
@@ -531,6 +569,7 @@ export default function ArtistDetailPage() {
                   <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-10 w-10" /></div>
                 )}
               </div>
+              </QuickContextMenu>
             </div>
             <div className="flex-1 min-w-0 pt-1">
               <Badge
@@ -638,6 +677,19 @@ export default function ArtistDetailPage() {
                     const year = albumYear(album);
                     const aStats = album.statistics;
                     const progress = aStats ? `${aStats.trackFileCount}/${aStats.totalTrackCount}` : '';
+                    const albumHref = `/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`;
+                    const albumActions = [
+                      { id: 'open', label: 'Open album', href: albumHref },
+                      ...(canEditMonitoring ? [{ id: 'monitor', label: album.monitored ? 'Unmonitor album' : 'Monitor album', icon: album.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />, onSelect: () => { void handleToggleAlbumMonitored(album); }, disabled: albumMonitorPending === album.id }] : []),
+                      ...(canManageActivity ? [{
+                        id: 'interactive',
+                        label: 'Interactive search…',
+                        icon: <Search className="h-4 w-4" />,
+                        onSelect: () => {
+                          setAlbumInteractiveTarget({ albumId: album.id, title: album.title });
+                        },
+                      }] : []),
+                    ];
                     return (
                       <div key={album.id} className="flex gap-3 rounded-xl bg-card p-2.5 hover:bg-muted/30 transition-colors">
                         <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
@@ -648,7 +700,8 @@ export default function ArtistDetailPage() {
                           )}
                           {album.monitored === false && <div className="absolute inset-0 bg-background/40" />}
                         </Link>
-                        <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} className="flex-1 min-w-0">
+                        <QuickContextMenu label={`${album.title} actions`} actions={albumActions}>
+                        <Link href={albumHref} className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{album.title}</p>
                           <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                             {year && <span className="text-xs text-muted-foreground">{year}</span>}
@@ -664,6 +717,7 @@ export default function ArtistDetailPage() {
                             ) : null}
                           </div>
                         </Link>
+                        </QuickContextMenu>
                         {canEditMonitoring && (
                           <button
                             onClick={() => handleToggleAlbumMonitored(album)}
@@ -697,6 +751,17 @@ export default function ArtistDetailPage() {
         mediaId={artist.id}
         mediaTitle={artist.artistName}
         instanceId={instance}
+      />
+
+      <InteractiveSearchDialog
+        open={albumInteractiveTarget !== null}
+        onOpenChange={(open) => { if (!open) setAlbumInteractiveTarget(null); }}
+        title={albumInteractiveTarget?.title ?? ''}
+        service="lidarr"
+        searchParams={{
+          albumId: albumInteractiveTarget?.albumId ?? 0,
+          ...(instance ? { instanceId: instance } : {}),
+        }}
       />
 
       <Drawer open={showDelete} onOpenChange={setShowDelete}>

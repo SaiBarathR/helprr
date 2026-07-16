@@ -33,6 +33,7 @@ import { useCan } from '@/components/permission-provider';
 import { useWatchStatus } from '@/components/jellyfin/watch-status-provider';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
 import { episodeKey } from '@/types/watch-status';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -331,6 +332,34 @@ export default function EpisodeDetailPage() {
   const episodeFile = episode.episodeFile;
   const mediaInfo = episodeFile?.mediaInfo;
   const epCode = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
+  const episodeContextGroups: ContextActionGroup[] = [
+    {
+      id: 'state',
+      actions: [
+        ...(canEditMonitoring ? [{ id: 'monitor', label: episode.monitored ? 'Unmonitor episode' : 'Monitor episode', icon: episode.monitored ? <Bookmark className="h-4 w-4" /> : <BookmarkCheck className="h-4 w-4" />, onSelect: () => { void handleToggleMonitor(); }, disabled: actionLoading === 'monitor' }] : []),
+        ...(canSetWatched && epWatch ? [{ id: 'watched', label: epWatch.played ? 'Mark as unwatched' : 'Mark as watched', icon: epWatch.played ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />, onSelect: () => { void setWatched({ jellyfinItemId: epWatch.jellyfinItemId, played: !epWatch.played, seriesId: jellyfinSeriesId ?? undefined }); }, disabled: isWriting }] : []),
+        ...(canManageActivity ? [
+          { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true) },
+        ] : []),
+      ],
+    },
+    {
+      id: 'manage',
+      actions: [
+        ...(canScheduleAlert ? [{ id: 'schedule', label: 'Schedule alert…', icon: <Bell className="h-4 w-4" />, onSelect: () => setShowScheduleAlert(true) }] : []),
+        ...(episodeFile ? [{ id: 'file', label: 'View file details', icon: <Info className="h-4 w-4" />, onSelect: () => setFileDrawerOpen(true) }] : []),
+        ...(episode.hasFile && canDeleteSeries ? [{ id: 'delete-file', label: 'Delete File…', icon: <Trash2 className="h-4 w-4" />, onSelect: () => setShowDeleteDrawer(true), destructive: true }] : []),
+      ],
+    },
+    {
+      id: 'links',
+      actions: [
+        ...(series.imdbId ? [{ id: 'imdb', label: 'Open in IMDb', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.imdb.com/title/${series.imdbId}`, external: true }] : []),
+        ...(series.tvdbId ? [{ id: 'trakt', label: 'Open in Trakt', icon: <ExternalLink className="h-4 w-4" />, href: `https://trakt.tv/search/tvdb/${series.tvdbId}?id_type=show`, external: true }] : []),
+      ],
+    },
+  ];
 
   return (
     <div className="space-y-4 animate-content-in">
@@ -445,6 +474,7 @@ export default function EpisodeDetailPage() {
 
       {/* Episode still image */}
       {tmdbEpisode?.stillPath && (
+        <QuickContextMenu label={`${episode.title || epCode} actions`} groups={episodeContextGroups}>
         <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
           <Image
             src={toCachedImageSrc(tmdbEpisode.stillPath, 'tmdb', { width: 1280 }) || tmdbEpisode.stillPath}
@@ -457,9 +487,11 @@ export default function EpisodeDetailPage() {
           />
           <div className="absolute inset-0 bg-linear-to-t from-background/80 to-transparent" />
         </div>
+        </QuickContextMenu>
       )}
 
       {/* Status badge + rating */}
+      <QuickContextMenu label={`${episode.title || epCode} actions`} groups={episodeContextGroups}>
       <div className="flex items-center gap-2">
         {episode.hasFile ? (
           <Badge className="bg-green-600 hover:bg-green-600 text-foreground">DOWNLOADED</Badge>
@@ -482,6 +514,7 @@ export default function EpisodeDetailPage() {
           </span>
         )}
       </div>
+      </QuickContextMenu>
 
       {/* Episode code + runtime + air date line */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">

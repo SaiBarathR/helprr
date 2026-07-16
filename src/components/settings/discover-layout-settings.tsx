@@ -30,6 +30,8 @@ import {
   Loader2,
   Save,
   Check,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -53,6 +55,7 @@ import {
 } from '@/lib/discover-layout-config';
 import type { DiscoverFiltersResponse } from '@/types';
 import { useUIStore } from '@/lib/store';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -110,51 +113,78 @@ function SortableSection({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-foreground/[0.06] last:border-b-0 ${
-        isDragging ? 'z-50 bg-card shadow-lg rounded-lg opacity-90' : ''
-      } ${!section.enabled ? 'opacity-40' : ''}`}
+    <QuickContextMenu
+      label={`${section.label} carousel actions`}
+      actions={section.type === 'custom' ? [
+        {
+          id: 'edit',
+          label: 'Edit carousel',
+          icon: <Pencil />,
+          disabled: !onEdit,
+          onSelect: onEdit,
+        },
+        {
+          id: 'toggle',
+          label: section.enabled ? 'Disable carousel' : 'Enable carousel',
+          icon: section.enabled ? <EyeOff /> : <Eye />,
+          onSelect: onToggle,
+        },
+        {
+          id: 'delete',
+          label: 'Delete carousel',
+          icon: <Trash2 />,
+          destructive: true,
+          disabled: !onDelete,
+          onSelect: onDelete,
+        },
+      ] : []}
     >
-      <button
-        className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
-        aria-label="Drag to reorder"
-        {...attributes}
-        {...listeners}
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-foreground/[0.06] last:border-b-0 ${
+          isDragging ? 'z-50 bg-card shadow-lg rounded-lg opacity-90' : ''
+        } ${!section.enabled ? 'opacity-40' : ''}`}
       >
-        <GripVertical className="h-4 w-4" />
-      </button>
+        <button
+          className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
 
-      <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium block truncate">{section.label}</span>
-        {section.type === 'custom' && (
-          <span className="text-[10px] text-muted-foreground/60">Custom carousel</span>
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium block truncate">{section.label}</span>
+          {section.type === 'custom' && (
+            <span className="text-[10px] text-muted-foreground/60">Custom carousel</span>
+          )}
+        </div>
+
+        {section.type === 'custom' && onEdit && (
+          <button
+            onClick={onEdit}
+            className="p-1 text-muted-foreground/60 hover:text-foreground"
+            aria-label="Edit custom carousel"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
         )}
+
+        {section.type === 'custom' && onDelete && (
+          <button
+            onClick={onDelete}
+            className="p-1 text-muted-foreground/60 hover:text-red-400"
+            aria-label="Delete custom carousel"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+
+        <Switch checked={section.enabled} onCheckedChange={onToggle} />
       </div>
-
-      {section.type === 'custom' && onEdit && (
-        <button
-          onClick={onEdit}
-          className="p-1 text-muted-foreground/60 hover:text-foreground"
-          aria-label="Edit custom carousel"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-      )}
-
-      {section.type === 'custom' && onDelete && (
-        <button
-          onClick={onDelete}
-          className="p-1 text-muted-foreground/60 hover:text-red-400"
-          aria-label="Delete custom carousel"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
-      )}
-
-      <Switch checked={section.enabled} onCheckedChange={onToggle} />
-    </div>
+    </QuickContextMenu>
   );
 }
 

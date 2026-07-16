@@ -42,6 +42,11 @@ const COMMIT_FRACTION = 0.55;
 let openRowOwner: object | null = null;
 let openRowClose: (() => void) | null = null;
 
+/** Close the currently exposed swipe row before another gesture surface opens. */
+export function closeOpenSwipeRow(): void {
+  openRowClose?.();
+}
+
 /**
  * Touch-only swipe-to-act wrapper for list rows. Swiping reveals an action
  * zone; releasing past the reveal threshold snaps it open (tap to fire), and a

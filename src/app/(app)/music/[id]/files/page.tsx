@@ -6,7 +6,7 @@ import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/que
 import { queryKeys } from '@/lib/query-keys';
 import { useParams, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Copy, Info, Loader2, Search, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,9 @@ import { toast } from 'sonner';
 import type { LidarrArtist, LidarrAlbum, LidarrTrackFile, HistoryItem } from '@/types';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
+import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
 
@@ -75,8 +78,11 @@ export default function ArtistFilesPage() {
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<LidarrTrackFile | null>(null);
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<LidarrTrackFile | null>(null);
+  const [interactiveSearchOpen, setInteractiveSearchOpen] = useState(false);
 
   const canDelete = useCan('music.delete');
+  const canManageActivity = useCan('activity.manage');
   const enabled = Number.isFinite(artistId);
   const inst = instance ?? 'default';
   const trackfilesKey = ['lidarr', 'trackfile', inst, artistId] as const;
@@ -137,6 +143,7 @@ export default function ArtistFilesPage() {
       );
       toast.success('File deleted');
       setSelectedFile(null);
+      setPendingDeleteFile(null);
     },
     onError: (err) => {
       // 401 is handled globally (redirect to /login); only toast other failures.
@@ -165,9 +172,13 @@ export default function ArtistFilesPage() {
     }));
   }, [files, albumTitleById]);
 
-  function handleDelete() {
-    if (!selectedFile) return;
-    deleteMutation.mutate(selectedFile.id);
+  async function copyPath(path: string) {
+    try {
+      await navigator.clipboard.writeText(path);
+      toast.success('Path copied');
+    } catch {
+      toast.error('Failed to copy');
+    }
   }
 
   if (loading && !artist) {
@@ -220,19 +231,54 @@ export default function ArtistFilesPage() {
                     {group.title} · {group.files.length}
                   </h3>
                   <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/40">
-                    {group.files.map((file) => (
-                      <button
+                    {group.files.map((file) => {
+                      const actions: ContextAction[] = [
+                        ...(canManageActivity ? [{
+                          id: 'interactive',
+                          label: 'Interactive search…',
+                          icon: <Search className="h-4 w-4" />,
+                          onSelect: () => setInteractiveSearchOpen(true),
+                        }] : []),
+                        {
+                          id: 'information',
+                          label: 'View information',
+                          icon: <Info className="h-4 w-4" />,
+                          onSelect: () => setSelectedFile(file),
+                        },
+                        {
+                          id: 'copy-path',
+                          label: 'Copy path',
+                          icon: <Copy className="h-4 w-4" />,
+                          onSelect: () => void copyPath(file.path),
+                        },
+                        ...(canDelete ? [{
+                          id: 'delete',
+                          label: 'Delete file…',
+                          icon: <Trash2 className="h-4 w-4" />,
+                          destructive: true,
+                          onSelect: () => setPendingDeleteFile(file),
+                        }] : []),
+                      ];
+                      return (
+                      <QuickContextMenu
                         key={file.id}
-                        onClick={() => setSelectedFile(file)}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/20 transition-colors"
+                        label={`Actions for ${basename(file.path)}`}
+                        actions={actions}
+                        disabled={deleting && pendingDeleteFile?.id === file.id}
                       >
-                        <span className="flex-1 min-w-0 text-sm truncate">{basename(file.path)}</span>
-                        {file.quality?.quality?.name && (
-                          <Badge variant="secondary" className="text-[9px] px-1.5 py-0 shrink-0">{file.quality.quality.name}</Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground shrink-0">{formatBytes(file.size)}</span>
-                      </button>
-                    ))}
+                        <button
+                          onClick={() => setSelectedFile(file)}
+                          className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/20 transition-colors"
+                        >
+                          <span className="flex-1 min-w-0 text-sm truncate">{basename(file.path)}</span>
+                          {file.quality?.quality?.name && (
+                            <Badge variant="secondary" className="text-[9px] px-1.5 py-0 shrink-0">{file.quality.quality.name}</Badge>
+                          )}
+                          <span className="text-xs text-muted-foreground shrink-0">{formatBytes(file.size)}</span>
+                        </button>
+                      </QuickContextMenu>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -284,7 +330,12 @@ export default function ArtistFilesPage() {
             <div className="px-4 pb-4 space-y-4 overflow-y-auto flex-1 min-h-0">
               <DetailRows rows={fileRows(selectedFile)} />
               {canDelete && (
-                <Button variant="destructive" className="w-full" onClick={handleDelete} disabled={deleting}>
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  onClick={() => setPendingDeleteFile(selectedFile)}
+                  disabled={deleting}
+                >
                   {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
                   Delete File
                 </Button>
@@ -296,6 +347,37 @@ export default function ArtistFilesPage() {
           )}
         </DrawerContent>
       </Drawer>
+      {artist && (
+        <InteractiveSearchDialog
+          open={interactiveSearchOpen}
+          onOpenChange={setInteractiveSearchOpen}
+          title={artist.artistName}
+          service="lidarr"
+          searchParams={{
+            artistId: artist.id,
+            ...(instance ? { instanceId: instance } : {}),
+          }}
+        />
+      )}
+      <ConfirmDialog
+        open={pendingDeleteFile !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setPendingDeleteFile(null);
+        }}
+        title="Delete file?"
+        description={pendingDeleteFile ? (
+          <>
+            <span className="break-all font-mono">{basename(pendingDeleteFile.path)}</span>
+            <span className="mt-1 block">The file will be permanently removed from disk.</span>
+          </>
+        ) : undefined}
+        confirmLabel="Delete file"
+        destructive
+        busy={deleting}
+        onConfirm={() => {
+          if (pendingDeleteFile) deleteMutation.mutate(pendingDeleteFile.id);
+        }}
+      />
     </div>
   );
 }

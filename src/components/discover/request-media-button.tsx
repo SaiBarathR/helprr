@@ -11,6 +11,8 @@ interface RequestMediaButtonProps {
   title?: string;
   className?: string;
   label?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -24,8 +26,12 @@ export function RequestMediaButton({
   title = '',
   className,
   label = 'Request',
+  open: controlledOpen,
+  onOpenChange,
 }: RequestMediaButtonProps) {
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const { isRequested, markRequested } = useRequestedMedia();
   // Persisted across remounts/navigation via the shared provider, so a request
   // held for approval keeps reading "Requested" until it's resolved.

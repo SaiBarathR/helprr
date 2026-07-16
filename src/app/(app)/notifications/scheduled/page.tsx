@@ -9,9 +9,12 @@ import {
   ArrowUpDown,
   Bell,
   CalendarClock,
+  CalendarX2,
+  ExternalLink,
   Filter,
   MoreHorizontal,
   Plus,
+  Pencil,
   RefreshCw,
   Search,
   Trash2,
@@ -51,6 +54,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { SerializedAlert } from '@/lib/scheduled-alerts/serialize';
 import type { ReleaseKind } from '@/lib/scheduled-alerts/types';
 import { useCan } from '@/components/permission-provider';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 
 type SortKey = 'nextNotify' | 'title' | 'created';
 type StatusFilter = 'all' | 'active' | 'upcoming' | 'sent' | 'failed' | 'cancelled';
@@ -321,10 +325,61 @@ export default function ScheduledAlertsPage() {
                       : alert.posterUrl
                     : null;
                   return (
-                    <div
+                    <QuickContextMenu
                       key={alert.id}
-                      className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/40 p-3"
+                      label={`Actions for ${alert.title}`}
+                      groups={[
+                        {
+                          id: 'navigation',
+                          actions: alert.href
+                            ? [{
+                                id: 'open-item',
+                                label: 'Open item',
+                                icon: <ExternalLink className="h-4 w-4" />,
+                                href: alert.href,
+                              }]
+                            : [],
+                        },
+                        {
+                          id: 'manage',
+                          actions: canEdit && alert.status === 'active'
+                            ? [
+                                {
+                                  id: 'edit-alert',
+                                  label: 'Edit alert',
+                                  icon: <Pencil className="h-4 w-4" />,
+                                  onSelect: () => setEditTarget(alert),
+                                },
+                                ...(alert.nextOccurrence
+                                  ? [{
+                                      id: 'cancel-next-occurrence',
+                                      label: 'Cancel next occurrence',
+                                      icon: <CalendarX2 className="h-4 w-4" />,
+                                      onSelect: () => setCancelOccurrence({
+                                        alertId: alert.id,
+                                        occurrenceId: alert.nextOccurrence!.id,
+                                        title: alert.title,
+                                      }),
+                                    }]
+                                  : []),
+                              ]
+                            : [],
+                        },
+                        {
+                          id: 'destructive',
+                          actions: canEdit && alert.status === 'active'
+                            ? [{
+                                id: 'cancel-all',
+                                label: 'Cancel all',
+                                icon: <Trash2 className="h-4 w-4" />,
+                                destructive: true,
+                                onSelect: () => setCancelTarget(alert),
+                              }]
+                            : [],
+                        },
+                      ]}
                     >
+                      <div className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/40 p-3">
                       <div className="relative size-12 shrink-0 rounded-md overflow-hidden bg-muted">
                         {poster ? (
                           <FadeInImage
@@ -411,7 +466,8 @@ export default function ScheduledAlertsPage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )}
-                    </div>
+                      </div>
+                    </QuickContextMenu>
                   );
                 })}
               </div>
