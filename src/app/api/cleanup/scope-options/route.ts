@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getQBittorrentClient, getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
-import { torrentTags } from '@/lib/cleanup/helpers';
+import { torrentTags, trackerHostFromUrl } from '@/lib/cleanup/helpers';
 
 // Union tags across every instance, deduped by label (tag ids are per-instance
 // and not comparable; users pick tags by name and matching runs per-instance).
@@ -41,9 +41,10 @@ async function getHandler() {
   const result: {
     qbitCategories: string[];
     qbitTags: string[];
+    trackerDomains: string[];
     sonarrTags: { id: number; label: string }[];
     radarrTags: { id: number; label: string }[];
-  } = { qbitCategories: [], qbitTags: [], sonarrTags: [], radarrTags: [] };
+  } = { qbitCategories: [], qbitTags: [], trackerDomains: [], sonarrTags: [], radarrTags: [] };
 
   try {
     const qbit = await getQBittorrentClient();
@@ -53,10 +54,16 @@ async function getHandler() {
     ]);
     result.qbitCategories = Object.keys(cats || {}).sort();
     const tagSet = new Set<string>();
+    const domainSet = new Set<string>();
     for (const t of torrents) {
       for (const tg of torrentTags(t)) tagSet.add(tg);
+      // torrents/info exposes the working tracker URL per torrent; the host
+      // suffix is exactly what tracker-pattern and ignore fields match on.
+      const host = t.tracker ? trackerHostFromUrl(t.tracker) : null;
+      if (host) domainSet.add(host);
     }
     result.qbitTags = [...tagSet].sort();
+    result.trackerDomains = [...domainSet].sort();
   } catch {
     /* qBit not configured */
   }

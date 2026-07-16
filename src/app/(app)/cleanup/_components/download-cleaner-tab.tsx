@@ -7,8 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
-import { TokenInput } from '@/components/ui/token-input';
+import { TokenInput, type TokenSuggestionGroup } from '@/components/ui/token-input';
 import {
   Select,
   SelectContent,
@@ -27,6 +26,7 @@ import type {
 } from '@/lib/cleanup/types';
 import { FieldRow, isArrayActive, isNumericActive } from './field-row';
 import { SeedingRuleSummary } from './rule-summary';
+import { useScopeOptions } from './use-scope-options';
 import { jsonOk } from '@/lib/http';
 
 const COMMON_CATEGORIES = ['sonarr', 'radarr', 'tv-sonarr'] as const;
@@ -57,6 +57,15 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
 
   const serverSnapshot = useRef<SaveAllResponse | null>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const scope = useScopeOptions();
+  // Live qBit categories when reachable; the usual *arr defaults otherwise.
+  const categorySuggestions = scope.categories.length > 0 ? scope.categories : [...COMMON_CATEGORIES];
+  const ignoreSuggestions = useMemo<TokenSuggestionGroup[]>(() => [
+    { label: 'Categories', options: scope.categories },
+    { label: 'Tags', options: scope.tags },
+    { label: 'Trackers', options: scope.trackerDomains },
+  ], [scope.categories, scope.tags, scope.trackerDomains]);
 
   const isDirty = useMemo(() => {
     if (!serverSnapshot.current || !cfg) return false;
@@ -283,8 +292,8 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
               <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
             </div>
 
-            <div className="grouped-row">
-              <div>
+            <div className="grouped-row grouped-row-stack-mobile gap-2">
+              <div className="min-w-0 sm:flex-1">
                 <Label>Auto-run mode</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">{autoRunHint(cfg.autoRunMode)}</p>
               </div>
@@ -292,7 +301,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 value={cfg.autoRunMode}
                 onValueChange={(v) => setCfg({ ...cfg, autoRunMode: v as AutoRunMode })}
               >
-                <SelectTrigger className="w-44 shrink-0"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-44 shrink-0"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="disabled">Off</SelectItem>
                   <SelectItem value="dryRun">Dry-run (log only)</SelectItem>
@@ -302,7 +311,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
             </div>
 
             <div className="grouped-row">
-              <div>
+              <div className="min-w-0 flex-1">
                 <Label>Run every</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">How often auto-run cycles fire. Manual runs are unaffected.</p>
               </div>
@@ -310,22 +319,23 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Input
                   type="number"
                   min={1}
-                  className="w-24"
+                  className="w-20 sm:w-24"
                   value={cfg.intervalMinutes}
                   onChange={(e) => setCfg({ ...cfg, intervalMinutes: Math.max(1, Number(e.target.value) || 1) })}
                 />
-                <span className="text-sm text-muted-foreground">minutes</span>
+                <span className="text-sm text-muted-foreground">min</span>
               </div>
             </div>
 
-            <div className="grouped-row flex-col items-stretch gap-2">
+            <div className="grouped-row grouped-row-stacked gap-2">
               <Label>Ignored downloads</Label>
-              <p className="text-xs text-muted-foreground -mt-1">One per line. Matches torrent hash, qBittorrent category, qBittorrent tag, or tracker domain suffix.</p>
-              <Textarea
-                value={cfg.ignoredDownloads.join('\n')}
-                onChange={(e) => setCfg({ ...cfg, ignoredDownloads: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
-                placeholder={'aabbccdd00112233\nprivate-tracker.example.org'}
-                className="font-mono text-sm min-h-[88px]"
+              <p className="text-xs text-muted-foreground -mt-1">Type and press Enter to add. Matches torrent hash, qBittorrent category, qBittorrent tag, or tracker domain suffix.</p>
+              <TokenInput
+                value={cfg.ignoredDownloads}
+                onChange={(next) => setCfg({ ...cfg, ignoredDownloads: next })}
+                suggestions={ignoreSuggestions}
+                splitCommas={false}
+                placeholder="Hash, category, tag, or tracker domain"
               />
             </div>
           </div>
@@ -360,29 +370,20 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 }}
               />
             </div>
-            <div className="grouped-row flex-col items-stretch gap-2">
+            <div className="grouped-row grouped-row-stacked gap-2">
               <Label>Categories</Label>
               <p className="text-xs text-muted-foreground -mt-1">qBittorrent categories. Required when this section is on.</p>
               <TokenInput
                 value={cfg.autoRemoveImportedCategories}
                 onChange={(next) => setCfg({ ...cfg, autoRemoveImportedCategories: next })}
-                placeholder="sonarr, radarr, tv-sonarr"
+                suggestions={categorySuggestions}
+                placeholder="Type or pick a category"
                 aria-invalid={cfg.autoRemoveImportedEnabled && cfg.autoRemoveImportedCategories.length === 0}
                 disabled={!cfg.autoRemoveImportedEnabled}
               />
-              <CommonCategoryChips
-                disabled={!cfg.autoRemoveImportedEnabled}
-                present={cfg.autoRemoveImportedCategories}
-                onAdd={(cat) =>
-                  setCfg({
-                    ...cfg,
-                    autoRemoveImportedCategories: [...cfg.autoRemoveImportedCategories, cat],
-                  })
-                }
-              />
             </div>
-            <div className="grouped-row">
-              <div>
+            <div className="grouped-row grouped-row-stack-mobile gap-2">
+              <div className="min-w-0 sm:flex-1">
                 <Label>Tracker privacy</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Which trackers this applies to. Default Public — opt in to Private only if your tracker permits early-deletes (most do not).</p>
               </div>
@@ -391,7 +392,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 onValueChange={(v) => setCfg({ ...cfg, autoRemoveImportedPrivacyType: v as 'public' | 'private' | 'both' })}
                 disabled={!cfg.autoRemoveImportedEnabled}
               >
-                <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-48"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="public">Public only</SelectItem>
                   <SelectItem value="private">Private only</SelectItem>
@@ -487,36 +488,6 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
   );
 }
 
-function CommonCategoryChips({
-  present,
-  onAdd,
-  disabled,
-}: {
-  present: string[];
-  onAdd: (cat: string) => void;
-  disabled?: boolean;
-}) {
-  const lower = present.map((c) => c.toLowerCase());
-  const missing = COMMON_CATEGORIES.filter((c) => !lower.includes(c));
-  if (missing.length === 0) return null;
-  return (
-    <div className="flex flex-wrap gap-1.5 mt-0.5">
-      <span className="text-[11px] text-muted-foreground self-center">Quick add:</span>
-      {missing.map((c) => (
-        <button
-          key={c}
-          type="button"
-          disabled={disabled}
-          onClick={() => onAdd(c)}
-          className="text-[11px] font-medium rounded-full border border-dashed border-muted-foreground/30 px-2 py-0.5 hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          + {c}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function autoRunHint(mode: AutoRunMode): string {
   switch (mode) {
     case 'disabled':
@@ -547,6 +518,9 @@ function SeedingRuleCard({
   error: string | undefined;
   containerRef?: (el: HTMLDivElement | null) => void;
 }) {
+  // Shared react-query cache — every card reads the same scope-options fetch.
+  const scope = useScopeOptions();
+  const categorySuggestions = scope.categories.length > 0 ? scope.categories : [...COMMON_CATEGORIES];
   return (
     <QuickContextMenu
       label={`${rule.name || 'Untitled rule'} actions`}
@@ -578,7 +552,7 @@ function SeedingRuleCard({
     >
     <div
       ref={containerRef}
-      className={`grouped-row flex-col items-stretch gap-3 ${error ? 'bg-destructive/5' : ''} ${!rule.enabled ? 'opacity-60' : ''}`}
+      className={`grouped-row grouped-row-stacked gap-3 ${error ? 'bg-destructive/5' : ''} ${!rule.enabled ? 'opacity-60' : ''}`}
     >
       <div className="flex items-center gap-2 flex-wrap">
         {editing ? (
@@ -586,7 +560,7 @@ function SeedingRuleCard({
             value={rule.name}
             onChange={(e) => onChange({ ...rule, name: e.target.value })}
             placeholder="Rule name"
-            className="font-medium max-w-xs flex-1 min-w-[10rem]"
+            className="font-medium w-full order-last sm:order-none sm:w-auto sm:max-w-xs sm:flex-1 sm:min-w-[10rem]"
             aria-invalid={!!error}
           />
         ) : (
@@ -622,11 +596,8 @@ function SeedingRuleCard({
             <TokenInput
               value={rule.categories}
               onChange={(next) => onChange({ ...rule, categories: next })}
-              placeholder="sonarr, radarr, tv-sonarr"
-            />
-            <CommonCategoryChips
-              present={rule.categories}
-              onAdd={(cat) => onChange({ ...rule, categories: [...rule.categories, cat] })}
+              suggestions={categorySuggestions}
+              placeholder="Type or pick a category"
             />
           </FieldRow>
           <FieldRow
@@ -637,7 +608,8 @@ function SeedingRuleCard({
             <TokenInput
               value={rule.trackerPatterns}
               onChange={(next) => onChange({ ...rule, trackerPatterns: next })}
-              placeholder="example.org, tracker.private.tld"
+              suggestions={scope.trackerDomains}
+              placeholder="Type or pick a tracker domain"
             />
           </FieldRow>
           <FieldRow
@@ -648,7 +620,8 @@ function SeedingRuleCard({
             <TokenInput
               value={rule.tagsAny}
               onChange={(next) => onChange({ ...rule, tagsAny: next })}
-              placeholder="tag-a, tag-b"
+              suggestions={scope.tags}
+              placeholder="Type or pick a tag"
             />
           </FieldRow>
           <FieldRow
@@ -659,7 +632,8 @@ function SeedingRuleCard({
             <TokenInput
               value={rule.tagsAll}
               onChange={(next) => onChange({ ...rule, tagsAll: next })}
-              placeholder="tag-x, tag-y"
+              suggestions={scope.tags}
+              placeholder="Type or pick a tag"
             />
           </FieldRow>
           <FieldRow label="Privacy scope" hint="Limit to public, private, or both kinds of torrents." active>

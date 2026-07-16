@@ -865,6 +865,8 @@ export interface QBittorrentTorrent {
   max_ratio: number;
   max_seeding_time: number;
   private?: boolean;
+  /** Current working tracker URL (empty when qBittorrent has none active). */
+  tracker?: string;
 }
 
 export interface QBittorrentTransferInfo {

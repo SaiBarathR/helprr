@@ -469,6 +469,23 @@ html {
   border-bottom: none;
 }
 
+/* Stacked variants. `.grouped-row` is unlayered so it outranks Tailwind's
+   layered `items-*`/`justify-*` utilities — these modifiers restore full-width
+   stacking. `-stack-mobile` stacks below the `sm` breakpoint only. */
+.grouped-row.grouped-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+@media (width < 40rem) {
+  .grouped-row.grouped-row-stack-mobile {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+}
+
 /* Pill button style (used for Automatic / Interactive) */
 .pill-btn {
   display: inline-flex;
