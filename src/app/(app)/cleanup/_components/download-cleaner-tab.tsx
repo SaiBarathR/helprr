@@ -334,6 +334,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 value={cfg.ignoredDownloads}
                 onChange={(next) => setCfg({ ...cfg, ignoredDownloads: next })}
                 suggestions={ignoreSuggestions}
+                splitCommas={false}
                 placeholder="Hash, category, tag, or tracker domain"
               />
             </div>
