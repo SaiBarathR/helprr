@@ -211,7 +211,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
           dirty={isDirty}
         />
       )}
-      <WidgetGrid isMobile={isMobile} />
+      <WidgetGrid isMobile={isMobile} onConfigureRefresh={() => setRefreshDrawerOpen(true)} />
 
      {!editMode && <FloatingEdit edit={editMode} mobile={isMobile} onClick={handleFloatingToggle} />}
       <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} />

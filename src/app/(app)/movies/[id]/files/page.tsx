@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow } from 'date-fns';
-import { ExternalLink, FileStack } from 'lucide-react';
+import { Copy, ExternalLink, FileStack, Info } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,8 @@ import type { HistoryItem, RadarrMovie } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
+import { toast } from 'sonner';
 
 function formatBytes(bytes: number) {
   if (!bytes) return '0 B';
@@ -116,6 +118,15 @@ export default function MovieFilesPage() {
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
   const canManageFiles = useCan('movies.manageFiles');
 
+  async function copyText(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(label);
+    } catch {
+      toast.error('Failed to copy');
+    }
+  }
+
   // Shares the detail page's cache key so navigating back to the movie is warm.
   const movieQuery = useQuery({
     queryKey: queryKeys.detail('radarr', movieId, instance),
@@ -170,6 +181,27 @@ export default function MovieFilesPage() {
   const subtitles = mediaInfo?.subtitles?.trim() ? mediaInfo.subtitles : 'None';
   const addedLabel = safeFormatDate(movieFile?.dateAdded, "d MMMM yyyy 'at' h:mm a")
     ?? safeFormatDate(movie.added, 'd MMMM yyyy');
+  const manageHref = `/movies/${movieId}/manage?title=${encodeURIComponent(movie.title)}${instance ? `&instance=${instance}` : ''}`;
+  const fileActions: ContextAction[] = movieFile ? [
+    {
+      id: 'information',
+      label: 'View information',
+      icon: <Info className="h-4 w-4" />,
+      onSelect: () => setFileDrawerOpen(true),
+    },
+    ...(canManageFiles ? [{
+      id: 'manage',
+      label: 'Manage file',
+      icon: <FileStack className="h-4 w-4" />,
+      onSelect: () => router.push(manageHref),
+    }] : []),
+    {
+      id: 'copy-path',
+      label: 'Copy path',
+      icon: <Copy className="h-4 w-4" />,
+      onSelect: () => void copyText(movieFile.path || movieFile.relativePath, 'Path copied'),
+    },
+  ] : [];
 
   const informationRows: DrawerRow[] = [
     ...(movieFile?.relativePath
@@ -245,11 +277,7 @@ export default function MovieFilesPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  router.push(
-                    `/movies/${movieId}/manage?title=${encodeURIComponent(movie.title)}${instance ? `&instance=${instance}` : ''}`
-                  )
-                }
+                onClick={() => router.push(manageHref)}
               >
                 <FileStack className="mr-2 h-4 w-4" />
                 Manage
@@ -257,15 +285,20 @@ export default function MovieFilesPage() {
             )}
           </div>
           {movie.hasFile && movieFile ? (
-            <button
-              onClick={() => setFileDrawerOpen(true)}
-              className="w-full rounded-2xl border bg-card p-4 text-left active:bg-muted/50 transition-colors"
+            <QuickContextMenu
+              label={`Actions for ${movieFile.relativePath}`}
+              actions={fileActions}
             >
-              <p className="text-xl font-semibold break-words leading-tight">{movieFile.relativePath}</p>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {[qualityName, fileLanguages, formatBytes(movieFile.size)].filter(Boolean).join(' \u00b7 ')}
-              </p>
-            </button>
+              <button
+                onClick={() => setFileDrawerOpen(true)}
+                className="w-full rounded-2xl border bg-card p-4 text-left active:bg-muted/50 transition-colors"
+              >
+                <p className="text-xl font-semibold break-words leading-tight">{movieFile.relativePath}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {[qualityName, fileLanguages, formatBytes(movieFile.size)].filter(Boolean).join(' \u00b7 ')}
+                </p>
+              </button>
+            </QuickContextMenu>
           ) : (
             <div className="rounded-2xl border px-4 py-6 text-sm text-muted-foreground text-center">
               No file on disk
@@ -283,31 +316,52 @@ export default function MovieFilesPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {history.map((item, index) => (
-                <button
+              {history.map((item, index) => {
+                const historyActions: ContextAction[] = [
+                  {
+                    id: 'details',
+                    label: 'View details',
+                    icon: <Info className="h-4 w-4" />,
+                    onSelect: () => setSelectedHistoryItem(item),
+                  },
+                  {
+                    id: 'copy-source-title',
+                    label: 'Copy source title',
+                    icon: <Copy className="h-4 w-4" />,
+                    onSelect: () => void copyText(item.sourceTitle, 'Source title copied'),
+                  },
+                ];
+                return (
+                <QuickContextMenu
                   key={`${item.id}-${item.date}-${index}`}
-                  onClick={() => setSelectedHistoryItem(item)}
-                  className="w-full rounded-2xl border bg-card px-4 py-3 text-left active:bg-muted/50 transition-colors"
+                  label={`Actions for ${item.sourceTitle}`}
+                  actions={historyActions}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge variant={eventTypeBadgeVariant(item.eventType)} className="text-[10px]">
-                      {eventTypeLabel(item.eventType)}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
-                    </span>
-                  </div>
-                  <p className="text-sm mt-2 break-all leading-tight">
-                    {item.sourceTitle}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {[
-                      item.quality?.quality?.name,
-                      item.data?.languages,
-                    ].filter(Boolean).join(' \u00b7 ')}
-                  </p>
-                </button>
-              ))}
+                  <button
+                    onClick={() => setSelectedHistoryItem(item)}
+                    className="w-full rounded-2xl border bg-card px-4 py-3 text-left active:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant={eventTypeBadgeVariant(item.eventType)} className="text-[10px]">
+                        {eventTypeLabel(item.eventType)}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
+                      </span>
+                    </div>
+                    <p className="text-sm mt-2 break-all leading-tight">
+                      {item.sourceTitle}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {[
+                        item.quality?.quality?.name,
+                        item.data?.languages,
+                      ].filter(Boolean).join(' \u00b7 ')}
+                    </p>
+                  </button>
+                </QuickContextMenu>
+                );
+              })}
             </div>
           )}
         </section>

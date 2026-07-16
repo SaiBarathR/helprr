@@ -23,6 +23,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
+import { AddPageInstanceSelect } from '@/components/media/add-page-instance-select';
 import { Search, Plus, Loader2, Disc3, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LidarrArtistLookupResult, MediaImage } from '@/types';
@@ -32,6 +33,7 @@ import {
   useRootFolders,
 } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { resolveAddPageInstance } from '@/lib/add-page-instances';
 
 const MONITOR_OPTIONS = [
   { value: 'all', label: 'All Albums' },
@@ -54,6 +56,7 @@ function AddArtistPageContent() {
   const queryClient = useQueryClient();
   const [term, setTerm] = useState('');
   const [submittedTerm, setSubmittedTerm] = useState('');
+  const [targetForeignArtistId, setTargetForeignArtistId] = useState<string | null>(null);
   const [selected, setSelected] = useState<LidarrArtistLookupResult | null>(null);
   const [profileId, setProfileId] = useState('');
   const [metadataProfileId, setMetadataProfileId] = useState('');
@@ -94,9 +97,9 @@ function AddArtistPageContent() {
   // instead of via setState-in-effect — see React's "adjusting state when
   // props change" pattern.
 
-  // Default to the marked-default instance once instances load (picker shows when >1).
+  // Respect instance-targeted links, then fall back to the marked default.
   if (instanceId === undefined && instances.length > 0) {
-    setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+    setInstanceId(resolveAddPageInstance(instances, searchParams.get('instance')));
   }
 
   // Surface a non-401 lookup failure (a 401 is handled globally → redirect).
@@ -118,6 +121,13 @@ function AddArtistPageContent() {
     setSelectedTags([]);
   }
 
+  // Keep the selected artist identity across an instance switch, but replace
+  // its library state with the result returned by the newly selected Lidarr.
+  if (targetForeignArtistId && lookupQuery.data) {
+    setSelected(lookupQuery.data.find((artist) => artist.foreignArtistId === targetForeignArtistId) ?? null);
+    setTargetForeignArtistId(null);
+  }
+
   // Default the profile / metadata-profile / root-folder selection to the first
   // option when the instance's reference data arrives. Keep a still-valid user
   // choice on a background refetch; re-default only when it's missing now.
@@ -134,7 +144,15 @@ function AddArtistPageContent() {
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setSelected(null);
+    setTargetForeignArtistId(null);
     setSubmittedTerm(term);
+  }
+
+  function handleInstanceChange(nextInstanceId: string) {
+    if (nextInstanceId === instanceId) return;
+    if (selected) setTargetForeignArtistId(selected.foreignArtistId);
+    setSelected(null);
+    setInstanceId(nextInstanceId);
   }
 
   const addMutation = useMutation({
@@ -190,6 +208,7 @@ function AddArtistPageContent() {
   }
 
   const selectedInLibrary = selected?.library?.exists === true;
+  const selectedInstanceLabel = instances.find((instance) => instance.id === instanceId)?.label;
   const selectedPoster = selected ? posterUrl(selected.images, selected.remotePoster) : null;
 
   // Prefill from the URL (?term=): fill the search box and fire the lookup
@@ -199,6 +218,7 @@ function AddArtistPageContent() {
   if (prevPrefillTerm !== prefillTerm) {
     setPrevPrefillTerm(prefillTerm);
     setSelected(null);
+    setTargetForeignArtistId(null);
     if (prefillTerm) {
       setTerm(prefillTerm);
       setSubmittedTerm(prefillTerm);
@@ -207,7 +227,17 @@ function AddArtistPageContent() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="Add Artist" />
+      <PageHeader
+        title="Add Artist"
+        rightContent={
+          <AddPageInstanceSelect
+            instances={instances}
+            value={instanceId}
+            onChange={handleInstanceChange}
+            disabled={adding}
+          />
+        }
+      />
 
       <div className="space-y-4 mt-1 pb-8">
         <form onSubmit={handleSearch} className="flex gap-2">
@@ -218,6 +248,7 @@ function AddArtistPageContent() {
             historyKey="music-add"
             onSubmit={(t) => {
               setSelected(null);
+              setTargetForeignArtistId(null);
               setSubmittedTerm(t);
             }}
             wrapperClassName="flex-1"
@@ -264,27 +295,12 @@ function AddArtistPageContent() {
 
             {selectedInLibrary ? (
               <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-300">
-                This artist is already in your library.
+                This artist is already in {selectedInstanceLabel ?? 'the selected instance'}.
               </div>
             ) : (
               <div className="grouped-section">
                 <div className="grouped-section-title">Options</div>
                 <div className="grouped-section-content">
-                  {instances.length > 1 && (
-                    <div className="grouped-row">
-                      <Label className="text-sm shrink-0">Instance</Label>
-                      <Select value={instanceId ?? ''} onValueChange={setInstanceId}>
-                        <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                          <SelectValue>{instances.find((i) => i.id === instanceId)?.label ?? 'Select'}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {instances.map((i) => (
-                            <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Quality Profile</Label>
                     <Select value={profileId} onValueChange={setProfileId}>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import {
   Dialog,
   DialogContent,
@@ -137,23 +138,43 @@ export default function UsersAdminPage() {
       ) : (
         <GroupedSection>
           {users?.map((u) => (
-            <button
+            <QuickContextMenu
               key={u.id}
-              className="grouped-row w-full text-left hover:bg-foreground/[0.03] transition-colors"
-              onClick={() => setEditing(u)}
+              label={`${u.displayName} actions`}
+              actions={[
+                {
+                  id: 'edit',
+                  label: 'Edit user',
+                  icon: <Pencil />,
+                  onSelect: () => setEditing(u),
+                },
+                {
+                  id: 'delete',
+                  label: 'Delete user',
+                  icon: <Trash2 />,
+                  destructive: true,
+                  disabled: deleteMutation.isPending,
+                  onSelect: () => setConfirmDelete(u),
+                },
+              ]}
             >
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">
-                  {u.displayName}{' '}
-                  <span className="text-muted-foreground font-normal">@{u.username}</span>
+              <button
+                className="grouped-row w-full text-left hover:bg-foreground/[0.03] transition-colors"
+                onClick={() => setEditing(u)}
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate">
+                    {u.displayName}{' '}
+                    <span className="text-muted-foreground font-normal">@{u.username}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5 capitalize">
+                    {u.role}
+                    {u.status !== 'active' ? ` · ${u.status}` : ''}
+                    {u.hasJellyfinLink ? ' · Jellyfin linked' : ''}
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground mt-0.5 capitalize">
-                  {u.role}
-                  {u.status !== 'active' ? ` · ${u.status}` : ''}
-                  {u.hasJellyfinLink ? ' · Jellyfin linked' : ''}
-                </div>
-              </div>
-            </button>
+              </button>
+            </QuickContextMenu>
           ))}
           {users?.length === 0 && (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">

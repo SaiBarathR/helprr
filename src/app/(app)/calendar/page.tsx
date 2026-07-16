@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, type ReactElement } from 'react';
 import Link from 'next/link';
 import {
   startOfMonth,
@@ -50,6 +50,7 @@ import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
 import { InstanceFilter, deriveInstances } from '@/components/instance-filter';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 import type { CalendarEvent } from '@/types';
 
@@ -130,6 +131,44 @@ function scheduleDraftFromEvent(event: CalendarEvent): ScheduledAlertDraft | nul
     };
   }
   return null;
+}
+
+function CalendarEventContext({
+  event,
+  children,
+  onOpenChange,
+}: {
+  event: CalendarEvent;
+  children: ReactElement;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const href = eventHref(event);
+  const scheduled = event.origin === 'scheduled' || Boolean(event.scheduleLabel);
+
+  return (
+    <>
+      <QuickContextMenu
+        label={`${event.title} calendar actions`}
+        actions={[
+          {
+            id: 'open',
+            label: 'Open details',
+            icon: <Eye />,
+            href,
+          },
+          ...(scheduled ? [{
+            id: 'scheduled',
+            label: 'Manage scheduled alerts',
+            icon: <Bell />,
+            href: '/notifications/scheduled',
+          }] : []),
+        ]}
+        onOpenChange={onOpenChange}
+      >
+        {children}
+      </QuickContextMenu>
+    </>
+  );
 }
 
 /**
@@ -352,6 +391,7 @@ function AgendaView({ events, showImages }: { events: CalendarEvent[]; showImage
               className="relative overflow-hidden flex items-start gap-1 border-b border-border/30"
             >
               {showImages && <RowBackdrop src={backdropFromEvent(event)} />}
+              <CalendarEventContext event={event}>
               <Link href={href} className="relative flex flex-1 min-w-0 active:bg-muted/30">
                 <div
                   className={`flex items-start gap-4 py-3 px-1 w-full ${!event.monitored ? 'opacity-50' : ''
@@ -438,6 +478,7 @@ function AgendaView({ events, showImages }: { events: CalendarEvent[]; showImage
                 )}
               </div>
               </Link>
+              </CalendarEventContext>
               {scheduleDraft && (
                 <div className="relative shrink-0 pt-3 pr-1">
                   <ScheduledAlertButton draft={scheduleDraft} />
@@ -491,14 +532,15 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Link
-          href={href}
-          className="block"
-          onMouseEnter={show}
-          onMouseLeave={hide}
-          onClick={hide}
-        >
+      <CalendarEventContext event={event} onOpenChange={(menuOpen) => { if (menuOpen) hide(); }}>
+        <PopoverTrigger asChild>
+          <Link
+            href={href}
+            className="block"
+            onMouseEnter={show}
+            onMouseLeave={hide}
+            onClick={hide}
+          >
           <div
             className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] leading-tight font-medium truncate transition-opacity hover:opacity-80 ${event.type === 'episode'
               ? 'bg-blue-500/15 text-blue-400'
@@ -519,8 +561,9 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
             )}
             <span className="truncate">{event.title}</span>
           </div>
-        </Link>
-      </PopoverTrigger>
+          </Link>
+        </PopoverTrigger>
+      </CalendarEventContext>
       <PopoverContent
         side="top"
         align="start"
@@ -604,10 +647,11 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
   return (
     <div className="relative overflow-hidden flex items-center gap-1 border-b border-border/30 last:border-b-0">
       {showImages && <RowBackdrop src={backdropFromEvent(event)} />}
-      <Link
-        href={href}
-        className="relative flex flex-1 min-w-0 transition-colors hover:bg-muted/30 active:bg-muted/50"
-      >
+      <CalendarEventContext event={event}>
+        <Link
+          href={href}
+          className="relative flex flex-1 min-w-0 transition-colors hover:bg-muted/30 active:bg-muted/50"
+        >
         <div
           className={`flex items-center gap-3 py-2.5 px-3 w-full ${!event.monitored ? 'opacity-50' : ''
             } ${event.hasFile ? 'opacity-60' : ''}`}
@@ -662,7 +706,8 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
             {format(eventDate, 'h:mm a')}
           </span>
         </div>
-      </Link>
+        </Link>
+      </CalendarEventContext>
       {scheduleDraft && (
         <div className="relative shrink-0 pr-2">
           <ScheduledAlertButton draft={scheduleDraft} />
@@ -966,7 +1011,8 @@ function WeekView({
                   const href = eventHref(event);
                   const poster = posterFromEvent(event);
                   return (
-                    <Link key={event.id} href={href} className="relative block overflow-hidden">
+                    <CalendarEventContext key={event.id} event={event}>
+                    <Link href={href} className="relative block overflow-hidden">
                       {showImages && <RowBackdrop src={backdropFromEvent(event)} />}
                       <div
                         className={`relative flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/30 active:bg-muted/50 ${!event.monitored ? 'opacity-50' : ''
@@ -1022,6 +1068,7 @@ function WeekView({
                         </span>
                       </div>
                     </Link>
+                    </CalendarEventContext>
                   );
                 })}
               </div>

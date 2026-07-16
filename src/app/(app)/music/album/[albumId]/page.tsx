@@ -58,6 +58,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  QuickContextMenu,
+  type ContextAction,
+  type ContextActionGroup,
+} from '@/components/ui/quick-context-menu';
 
 function formatDuration(ms?: number): string {
   if (!ms) return '';
@@ -330,6 +335,45 @@ export default function AlbumDetailPage() {
     ...(stats && stats.sizeOnDisk > 0 ? [{ label: 'Size on Disk', value: formatBytes(stats.sizeOnDisk) }] : []),
   ];
 
+  const albumContextGroups: ContextActionGroup[] = [
+    {
+      id: 'activity',
+      actions: [
+        ...(canEditMonitoring ? [{
+          id: 'monitor',
+          label: album.monitored ? 'Unmonitor album' : 'Monitor album',
+          icon: album.monitored ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />,
+          onSelect: () => { void handleToggleMonitored(); },
+          disabled: actionLoading === 'monitor',
+        }] : []),
+        ...(canManageActivity ? [
+          { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearch(); }, disabled: !!actionLoading },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true) },
+        ] : []),
+      ],
+    },
+    {
+      id: 'links',
+      actions: [
+        ...(lidarrExternalUrl && album.foreignAlbumId ? [{ id: 'lidarr', label: 'Open in Lidarr', icon: <Disc3 className="h-4 w-4" />, href: `${lidarrExternalUrl}/album/${album.foreignAlbumId}`, external: true }] : []),
+        ...(album.foreignAlbumId ? [{ id: 'musicbrainz', label: 'Open in MusicBrainz', icon: <ExternalLink className="h-4 w-4" />, href: `https://musicbrainz.org/release-group/${album.foreignAlbumId}`, external: true }] : []),
+      ],
+    },
+    ...(canDelete ? [{
+      id: 'danger',
+      actions: [{
+        id: 'delete',
+        label: 'Delete Album…',
+        icon: <Trash2 className="h-4 w-4" />,
+        onSelect: () => {
+          setDeleteAlbumFiles(false);
+          setDeleteAlbumOpen(true);
+        },
+        destructive: true,
+      }],
+    }] : []),
+  ];
+
   return (
     <>
       <PageHeader
@@ -408,6 +452,7 @@ export default function AlbumDetailPage() {
         {/* Hero */}
         <div className="flex gap-4">
           <div className="w-[130px] shrink-0">
+            <QuickContextMenu label={`${album.title} actions`} groups={albumContextGroups}>
             <div className="relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm">
               {cover ? (
                 <Image src={cover} alt={album.title} fill sizes="130px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
@@ -416,6 +461,7 @@ export default function AlbumDetailPage() {
               )}
               {album.monitored === false && <div className="absolute inset-0 bg-background/40" />}
             </div>
+            </QuickContextMenu>
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <Badge
@@ -553,8 +599,32 @@ export default function AlbumDetailPage() {
                   {group.tracks.map((track) => {
                     const file = track.trackFileId ? filesByTrackId.get(track.trackFileId) : undefined;
                     const isExpanded = expandedTrack === track.id;
+                    const trackActions: ContextAction[] = [
+                      ...(canManageActivity ? [{
+                        id: 'interactive',
+                        label: 'Interactive search…',
+                        icon: <Search className="h-4 w-4" />,
+                        onSelect: () => setInteractiveSearch(true),
+                      }] : []),
+                      ...(file ? [
+                      {
+                        id: 'details',
+                        label: isExpanded ? 'Hide file details' : 'Show file details',
+                        icon: <ChevronDown className={`h-4 w-4 ${isExpanded ? 'rotate-180' : ''}`} />,
+                        onSelect: () => setExpandedTrack(isExpanded ? null : track.id),
+                      },
+                      ...(canDelete ? [{
+                        id: 'delete',
+                        label: 'Delete Track File…',
+                        icon: <Trash2 className="h-4 w-4" />,
+                        onSelect: () => setDeleteTrack({ track, file }),
+                        destructive: true,
+                      }] : []),
+                    ] : []),
+                    ];
                     return (
                       <div key={track.id}>
+                        <QuickContextMenu label={`${track.title} actions`} actions={trackActions.length > 0 ? trackActions : undefined} disabled={trackActions.length === 0}>
                         <button
                           onClick={() => setExpandedTrack(isExpanded ? null : (file ? track.id : null))}
                           className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-muted/20 transition-colors"
@@ -571,6 +641,7 @@ export default function AlbumDetailPage() {
                           <span className="text-xs text-muted-foreground shrink-0 tabular-nums">{formatDuration(track.duration)}</span>
                           {file && <MoreVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
                         </button>
+                        </QuickContextMenu>
                         {isExpanded && file && (
                           <div className="px-3 pb-3 pt-1 ml-9 space-y-1 text-xs text-muted-foreground">
                             {file.mediaInfo?.audioCodec && (

@@ -4,7 +4,8 @@ import Image from 'next/image';
 import { Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { DiscoverDetail } from '@/types';
-import { DiscoverAddButton } from './discover-add-button';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { DiscoverAddButton, useDiscoverAddController } from './discover-add-button';
 
 interface DiscoverHeroProps {
   title: string;
@@ -33,6 +34,7 @@ export function DiscoverHero({
   genres,
   detail
 }: DiscoverHeroProps) {
+  const addController = useDiscoverAddController(detail);
   const backdropSrc = backdropPath
     ? toCachedImageSrc(backdropPath, 'tmdb', { width: 1280 }) || backdropPath
     : null;
@@ -43,6 +45,7 @@ export function DiscoverHero({
   const mediaLabel = mediaType === 'movie' ? 'Feature Film' : 'Television Series';
 
   return (
+    <QuickContextMenu label={`${title} actions`} groups={addController.contextGroups}>
     <section className="relative -mx-2 md:-mx-6">
       {/* ── Cinematic backdrop ─────────────────────────────────────── */}
       <div className="relative h-[260px] sm:h-[340px] md:h-[420px] lg:h-[480px] w-full overflow-hidden bg-background">
@@ -73,7 +76,7 @@ export function DiscoverHero({
         )}
 
         {/* Open in / Add to button top right */}
-        <DiscoverAddButton detail={detail} />
+        <DiscoverAddButton detail={detail} controller={addController} />
 
         {/* Editorial slug — top left */}
         <div className="absolute top-3 left-3 md:top-5 md:left-6 hero-meta-fade">
@@ -166,5 +169,6 @@ export function DiscoverHero({
         </div>
       </div>
     </section>
+    </QuickContextMenu>
   );
 }

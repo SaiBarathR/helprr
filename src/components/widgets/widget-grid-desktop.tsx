@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { Settings2, TimerReset, Trash2 } from 'lucide-react';
 import GridLayout, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -13,6 +14,7 @@ import { BentoCell, BentoEditChrome } from './bento-cell';
 import { WidgetRenderer } from './widget-renderer';
 import { ThemeInspector } from './theme-inspector';
 import { HPR, mix } from './bento-primitives';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 const ResponsiveGrid = WidthProvider(GridLayout);
 
@@ -33,6 +35,7 @@ export function WidgetGridItem({
   rowSpan,
   narrow = false,
   mobileGrid = false,
+  onConfigureRefresh,
 }: {
   instance: WidgetInstance;
   editMode: boolean;
@@ -46,8 +49,10 @@ export function WidgetGridItem({
   /** True when this item is rendered inside the mobile grid. Drives which
    *  per-instance override field wins. */
   mobileGrid?: boolean;
+  onConfigureRefresh: () => void;
 }) {
   const discoverLayout = useUIStore((s) => s.discoverLayout);
+  const setEditMode = useUIStore((s) => s.setDashboardEditMode);
   const definition = getWidgetDefinition(instance.widgetId, discoverLayout);
   if (!definition) return null;
   const effectiveCol = colSpan ?? instance.colSpan;
@@ -62,33 +67,68 @@ export function WidgetGridItem({
     ? instance.mobileLayoutOverride ?? instance.layoutOverride ?? baseVariant
     : instance.layoutOverride ?? baseVariant;
 
+  const contextGroups: ContextActionGroup[] = [
+    {
+      id: 'dashboard',
+      actions: [
+        {
+          id: 'customize',
+          label: 'Customize dashboard',
+          icon: <Settings2 />,
+          onSelect: () => setEditMode(true),
+        },
+        {
+          id: 'refresh',
+          label: 'Configure refresh intervals',
+          icon: <TimerReset />,
+          onSelect: onConfigureRefresh,
+        },
+      ],
+    },
+    {
+      id: 'danger',
+      actions: [{
+        id: 'remove',
+        label: 'Remove widget',
+        icon: <Trash2 />,
+        destructive: true,
+        onSelect: () => {
+          setEditMode(true);
+          onRemove(instance.id);
+        },
+      }],
+    },
+  ];
+
   return (
-    <BentoCell
-      colSpan={effectiveCol}
-      rowSpan={effectiveRow}
-      edit={editMode}
-      narrow={narrow}
-      hue={WIDGET_HUE[instance.widgetId] ?? null}
-      chrome={
-        <BentoEditChrome
-          onRemove={() => onRemove(instance.id)}
-        />
-      }
-    >
-      <WidgetRenderer
-        instance={instance}
-        editMode={editMode}
-        narrow={narrow}
+    <QuickContextMenu label={`${definition.name} widget actions`} groups={contextGroups} disabled={editMode}>
+      <BentoCell
         colSpan={effectiveCol}
         rowSpan={effectiveRow}
-        layoutVariant={variant}
-        mobileGrid={mobileGrid}
-      />
-    </BentoCell>
+        edit={editMode}
+        narrow={narrow}
+        hue={WIDGET_HUE[instance.widgetId] ?? null}
+        chrome={
+          <BentoEditChrome
+            onRemove={() => onRemove(instance.id)}
+          />
+        }
+      >
+        <WidgetRenderer
+          instance={instance}
+          editMode={editMode}
+          narrow={narrow}
+          colSpan={effectiveCol}
+          rowSpan={effectiveRow}
+          layoutVariant={variant}
+          mobileGrid={mobileGrid}
+        />
+      </BentoCell>
+    </QuickContextMenu>
   );
 }
 
-export function WidgetGridDesktop() {
+export function WidgetGridDesktop({ onConfigureRefresh }: { onConfigureRefresh: () => void }) {
   const { widgets: dashboardLayout, removeWidget, updateWidgetPositions } = useDashboardLayout();
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
@@ -159,6 +199,7 @@ export function WidgetGridDesktop() {
               instance={instance}
               editMode={editMode}
               onRemove={removeWidget}
+              onConfigureRefresh={onConfigureRefresh}
             />
           </div>
         ))}

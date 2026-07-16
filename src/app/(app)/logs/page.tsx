@@ -12,6 +12,7 @@ import { LogsFilesSheet, type LogFile } from './logs-files-sheet';
 import { LogsEntryRow, type LogEntry } from './logs-entry-row';
 import type { LogLevel, LogSource } from './logs-filter-menu';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useCan } from '@/components/permission-provider';
 
 function entryKey(entry: LogEntry, index: number) {
   // Index keeps keys unique even if two lines share a timestamp + requestId.
@@ -75,6 +76,7 @@ async function downloadOrShare(url: string, fallbackName: string) {
 
 export default function LogsPage() {
   const queryClient = useQueryClient();
+  const canManageLogs = useCan('logs.manage');
   const [selectedFile, setSelectedFile] = useState('all');
   const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set());
   const [sources, setSources] = useState<Set<LogSource>>(() => new Set());
@@ -230,6 +232,14 @@ export default function LogsPage() {
     });
   }, []);
 
+  const handleFilterLevel = useCallback((value: LogLevel) => {
+    setLevels(new Set([value]));
+  }, []);
+
+  const handleFilterSource = useCallback((value: LogSource) => {
+    setSources(new Set([value]));
+  }, []);
+
   const handleDateRangeChange = useCallback((nextFrom: string, nextTo: string) => {
     setFrom(nextFrom);
     setTo(nextTo);
@@ -373,6 +383,8 @@ export default function LogsPage() {
                   entry={entry}
                   isExpanded={isExpanded}
                   onToggle={() => toggleExpand(key)}
+                  onFilterLevel={handleFilterLevel}
+                  onFilterSource={handleFilterSource}
                   dataIndex={virtualItem.index}
                   style={{
                     transform: `translateY(${virtualItem.start - (virtualizer.options.scrollMargin ?? 0)}px)`,
@@ -393,6 +405,7 @@ export default function LogsPage() {
         onDownloadFile={downloadFile}
         onDeleteFile={deleteFile}
         deletingFile={deletingFile}
+        canManage={canManageLogs}
       />
       <ConfirmDialog
         open={pendingDeleteFile !== null}

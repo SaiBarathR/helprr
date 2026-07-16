@@ -25,11 +25,13 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { SwipeRow } from '@/components/ui/swipe-row';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import {
   Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Disc3, Scissors,
   Clock, Filter, ArrowUpDown, ChevronRight, Layers,
+  ExternalLink, Info,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -787,6 +789,7 @@ function QueueTab({
 
           // Single-item download → the existing card, opening the detail drawer.
           if (!group.isPack) {
+            const mediaHref = getQueueMediaHref(rep);
             return (
               <SwipeRow
                 key={group.key}
@@ -797,6 +800,42 @@ function QueueTab({
                   className: 'bg-destructive text-destructive-foreground',
                   onAction: () => setRemoveTarget({ kind: 'item', item: rep }),
                 } : undefined}
+              >
+              <QuickContextMenu
+                label={`Actions for ${rep.title}`}
+                groups={[
+                  {
+                    id: 'navigation',
+                    actions: [
+                      {
+                        id: 'view-details',
+                        label: 'View details',
+                        icon: <Info className="h-4 w-4" />,
+                        onSelect: () => setSelectedItem(rep),
+                      },
+                      ...(mediaHref
+                        ? [{
+                            id: 'open-media',
+                            label: 'Open related media',
+                            icon: <ExternalLink className="h-4 w-4" />,
+                            href: mediaHref,
+                          }]
+                        : []),
+                    ],
+                  },
+                  {
+                    id: 'destructive',
+                    actions: canManageActivity
+                      ? [{
+                          id: 'remove',
+                          label: 'Remove from queue',
+                          icon: <Trash2 className="h-4 w-4" />,
+                          destructive: true,
+                          onSelect: () => setRemoveTarget({ kind: 'item', item: rep }),
+                        }]
+                      : [],
+                  },
+                ]}
               >
               <button
                 onClick={() => setSelectedItem(rep)}
@@ -849,6 +888,7 @@ function QueueTab({
                   <span>Total: {formatBytes(rep.size)}</span>
                 </div>
               </button>
+              </QuickContextMenu>
               </SwipeRow>
             );
           }
@@ -875,6 +915,7 @@ function QueueTab({
               (b.episode?.episodeNumber ?? b.episodeNumber ?? 0)
             );
           });
+          const packMediaHref = getQueueMediaHref(rep);
 
           return (
             <SwipeRow
@@ -889,6 +930,48 @@ function QueueTab({
             >
             <div className="rounded-xl bg-muted/30 overflow-hidden">
               <div className="flex items-stretch">
+                <QuickContextMenu
+                  label={`Actions for ${packTitle}`}
+                  groups={[
+                    {
+                      id: 'navigation',
+                      actions: [
+                        {
+                          id: 'view-details',
+                          label: 'View download details',
+                          icon: <Info className="h-4 w-4" />,
+                          onSelect: () => setSelectedItem(rep),
+                        },
+                        {
+                          id: 'toggle-pack',
+                          label: open ? 'Collapse pack' : 'Expand pack',
+                          icon: <ChevronRight className={`h-4 w-4 ${open ? 'rotate-90' : ''}`} />,
+                          onSelect: () => toggleExpand(group.key),
+                        },
+                        ...(packMediaHref
+                          ? [{
+                              id: 'open-media',
+                              label: 'Open related media',
+                              icon: <ExternalLink className="h-4 w-4" />,
+                              href: packMediaHref,
+                            }]
+                          : []),
+                      ],
+                    },
+                    {
+                      id: 'destructive',
+                      actions: canManageActivity
+                        ? [{
+                            id: 'remove-pack',
+                            label: 'Remove pack from queue',
+                            icon: <Trash2 className="h-4 w-4" />,
+                            destructive: true,
+                            onSelect: () => setRemoveTarget({ kind: 'pack', group }),
+                          }]
+                        : [],
+                    },
+                  ]}
+                >
                 <button
                   onClick={() => toggleExpand(group.key)}
                   aria-expanded={open}
@@ -946,6 +1029,7 @@ function QueueTab({
                     <span>Total: {formatBytes(rep.size)}</span>
                   </div>
                 </button>
+                </QuickContextMenu>
                 {canManageActivity && (
                   <button
                     onClick={() => setRemoveTarget({ kind: 'pack', group })}
@@ -961,9 +1045,46 @@ function QueueTab({
                 <div className="border-t border-border/40 divide-y divide-border/30">
                   {episodes.map((ep) => {
                     const label = episodeLabel(ep);
+                    const episodeHref = getQueueMediaHref(ep);
                     return (
+                      <QuickContextMenu
+                        key={`${ep.source}-${ep.instanceId ?? ''}-${ep.id}`}
+                        label={`Actions for ${ep.episode?.title || ep.title}`}
+                        groups={[
+                          {
+                            id: 'navigation',
+                            actions: [
+                              {
+                                id: 'view-details',
+                                label: 'View details',
+                                icon: <Info className="h-4 w-4" />,
+                                onSelect: () => setSelectedItem(ep),
+                              },
+                              ...(episodeHref
+                                ? [{
+                                    id: 'open-media',
+                                    label: 'Open related media',
+                                    icon: <ExternalLink className="h-4 w-4" />,
+                                    href: episodeHref,
+                                  }]
+                                : []),
+                            ],
+                          },
+                          {
+                            id: 'destructive',
+                            actions: canManageActivity
+                              ? [{
+                                  id: 'remove-item',
+                                  label: 'Remove from queue',
+                                  icon: <Trash2 className="h-4 w-4" />,
+                                  destructive: true,
+                                  onSelect: () => setRemoveTarget({ kind: 'item', item: ep }),
+                                }]
+                              : [],
+                          },
+                        ]}
+                      >
                       <button
-                        key={`${ep.source}-${ep.id}`}
                         onClick={() => setSelectedItem(ep)}
                         className="w-full text-left px-3 py-2 flex items-center gap-2 active:bg-muted/50 transition-colors"
                       >
@@ -977,6 +1098,7 @@ function QueueTab({
                         </span>
                         <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       </button>
+                      </QuickContextMenu>
                     );
                   })}
                 </div>
@@ -1222,8 +1344,37 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
 
   return (
     <div className="space-y-2 animate-list-in">
-      {queue.map((item) => (
-        <div key={`${item.source}-${item.id}`} className="rounded-xl bg-muted/30 p-3 space-y-2">
+      {queue.map((item) => {
+        const mediaHref = getQueueMediaHref(item);
+        return (
+        <QuickContextMenu
+          key={`${item.source}-${item.instanceId ?? ''}-${item.id}`}
+          label={`Actions for ${item.title}`}
+          groups={[
+            {
+              id: 'actions',
+              actions: [
+                ...(mediaHref
+                  ? [{
+                      id: 'open-media',
+                      label: 'Open related media',
+                      icon: <ExternalLink className="h-4 w-4" />,
+                      href: mediaHref,
+                    }]
+                  : []),
+                ...(canManageActivity
+                  ? [{
+                      id: 'manual-import',
+                      label: 'Open Manual Import',
+                      icon: <Upload className="h-4 w-4" />,
+                      onSelect: () => openManualImport(item),
+                    }]
+                  : []),
+              ],
+            },
+          ]}
+        >
+        <div className="rounded-xl bg-muted/30 p-3 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{item.title}</p>
@@ -1246,7 +1397,9 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
             )}
           </div>
         </div>
-      ))}
+        </QuickContextMenu>
+        );
+      })}
     </div>
   );
 }
@@ -1291,6 +1444,7 @@ function wantedRecordKey(record: WantedRecord): string {
  */
 function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
+  const canManageActivity = useCan('activity.manage');
   // Keyed per item: overlapping searches on two items must not clear each
   // other's spinner (a single string flag would).
   const [searching, setSearching] = useState<ReadonlySet<string>>(new Set());
@@ -1418,7 +1572,35 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
                 : null;
 
         return (
-          <div key={key} className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
+          <QuickContextMenu
+            key={key}
+            label={`Actions for ${displayTitle}`}
+            groups={[
+              {
+                id: 'actions',
+                actions: [
+                  ...(href
+                    ? [{
+                        id: 'open-media',
+                        label: 'Open related media',
+                        icon: <ExternalLink className="h-4 w-4" />,
+                        href,
+                      }]
+                    : []),
+                  ...(canManageActivity
+                    ? [{
+                        id: 'search-release',
+                        label: 'Search for release',
+                        icon: <Search className="h-4 w-4" />,
+                        pending: searching.has(key),
+                        onSelect: () => void handleSearch(record),
+                      }]
+                    : []),
+                ],
+              },
+            ]}
+          >
+          <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
             {href ? (
               <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
                 {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
@@ -1443,20 +1625,23 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
                 )}
               </div>
             </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 w-7 p-0 shrink-0"
-              onClick={() => handleSearch(record)}
-              disabled={searching.has(key)}
-            >
-              {searching.has(key) ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Search className="h-3.5 w-3.5" />
-              )}
-            </Button>
+            {canManageActivity && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 shrink-0"
+                onClick={() => handleSearch(record)}
+                disabled={searching.has(key)}
+              >
+                {searching.has(key) ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Search className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            )}
           </div>
+          </QuickContextMenu>
         );
       })}
       {wantedQuery.hasNextPage && (

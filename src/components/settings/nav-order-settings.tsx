@@ -19,9 +19,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Home, Lock, RotateCcw } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, GripVertical, Home, Lock, RotateCcw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { useUIStore } from '@/lib/store';
 import {
   type NavItemId,
@@ -43,6 +44,10 @@ function SortableNavItem({
   isDefault,
   onToggle,
   onSetDefault,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
 }: {
   id: NavItemId;
   isDisabled: boolean;
@@ -50,6 +55,10 @@ function SortableNavItem({
   isDefault: boolean;
   onToggle: () => void;
   onSetDefault: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
 }) {
   const item = NAV_ITEM_MAP[id];
   const {
@@ -69,45 +78,80 @@ function SortableNavItem({
   const Icon = item.icon;
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-foreground/[0.06] last:border-b-0 ${
-        isDragging ? 'z-50 bg-card shadow-lg rounded-lg opacity-90' : ''
-      } ${isDisabled ? 'opacity-40' : ''}`}
+    <QuickContextMenu
+      label={`${item.label} navigation actions`}
+      actions={!isPinned ? [
+        {
+          id: 'default',
+          label: 'Set as default page',
+          icon: <Home />,
+          disabled: isDisabled || isDefault,
+          onSelect: onSetDefault,
+        },
+        {
+          id: 'toggle',
+          label: isDisabled ? 'Enable navigation item' : 'Disable navigation item',
+          icon: isDisabled ? <Eye /> : <EyeOff />,
+          onSelect: onToggle,
+        },
+        {
+          id: 'move-up',
+          label: 'Move up',
+          icon: <ArrowUp />,
+          disabled: !canMoveUp,
+          onSelect: onMoveUp,
+        },
+        {
+          id: 'move-down',
+          label: 'Move down',
+          icon: <ArrowDown />,
+          disabled: !canMoveDown,
+          onSelect: onMoveDown,
+        },
+      ] : []}
     >
-      <button
-        className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-foreground/[0.06] last:border-b-0 ${
+          isDragging ? 'z-50 bg-card shadow-lg rounded-lg opacity-90' : ''
+        } ${isDisabled ? 'opacity-40' : ''}`}
       >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <span className="text-sm font-medium flex-1">{item.label}</span>
-      {!isDisabled && !isPinned && (
         <button
-          onClick={onSetDefault}
-          className="p-1 -m-0.5 rounded-md transition-colors"
-          title={isDefault ? 'Default page' : 'Set as default page'}
+          className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
         >
-          <Home
-            className={`h-3.5 w-3.5 ${
-              isDefault ? 'text-primary' : 'text-muted-foreground/30 hover:text-muted-foreground/60'
-            }`}
-            strokeWidth={isDefault ? 2.5 : 2}
-          />
+          <GripVertical className="h-4 w-4" />
         </button>
-      )}
-      {isPinned ? (
-        <Lock className="h-3.5 w-3.5 text-muted-foreground/50" />
-      ) : (
-        <Switch
-          checked={!isDisabled}
-          onCheckedChange={onToggle}
-        />
-      )}
-    </div>
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="text-sm font-medium flex-1">{item.label}</span>
+        {!isDisabled && !isPinned && (
+          <button
+            onClick={onSetDefault}
+            className="p-1 -m-0.5 rounded-md transition-colors"
+            title={isDefault ? 'Default page' : 'Set as default page'}
+            aria-label={isDefault ? 'Default page' : 'Set as default page'}
+          >
+            <Home
+              className={`h-3.5 w-3.5 ${
+                isDefault ? 'text-primary' : 'text-muted-foreground/30 hover:text-muted-foreground/60'
+              }`}
+              strokeWidth={isDefault ? 2.5 : 2}
+            />
+          </button>
+        )}
+        {isPinned ? (
+          <Lock className="h-3.5 w-3.5 text-muted-foreground/50" />
+        ) : (
+          <Switch
+            checked={!isDisabled}
+            onCheckedChange={onToggle}
+          />
+        )}
+      </div>
+    </QuickContextMenu>
   );
 }
 
@@ -215,6 +259,10 @@ export function NavOrderSettings() {
                     isDefault={defaultPage === id}
                     onToggle={() => toggleNavItem(id)}
                     onSetDefault={() => setDefaultPage(id)}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < reconciledOrder.length - 1}
+                    onMoveUp={() => setNavOrder(arrayMove(reconciledOrder, index, index - 1))}
+                    onMoveDown={() => setNavOrder(arrayMove(reconciledOrder, index, index + 1))}
                   />
                   {showDivider && (
                     <div className="flex items-center gap-2 px-3 py-1.5 bg-background/50">

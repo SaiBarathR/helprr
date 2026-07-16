@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WatchlistAddDialog, type WatchlistDraft } from '@/components/watchlist/watchlist-add-dialog';
+import { useCan } from '@/components/permission-provider';
 
 interface Props {
   draft: WatchlistDraft;
@@ -11,6 +12,8 @@ interface Props {
   variant?: 'button' | 'icon';
   label?: string;
   className?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function WatchlistButton({
@@ -19,8 +22,15 @@ export function WatchlistButton({
   variant = 'button',
   label = 'Watchlist',
   className,
+  open: controlledOpen,
+  onOpenChange,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const canEdit = useCan('watchlist.edit');
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
+
+  if (!canEdit) return null;
 
   return (
     <>

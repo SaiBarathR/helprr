@@ -16,6 +16,7 @@ import {
   MoreHorizontal,
   MoreVertical,
   RefreshCw,
+  Plus,
   Search,
   Settings,
   Tag,
@@ -56,6 +57,7 @@ import { reportBulk } from '@/lib/bulk-fan-out';
 import { invalidateWatchlistTagCache } from '@/components/watchlist/watchlist-add-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { cn } from '@/lib/utils';
 
@@ -137,6 +139,26 @@ const DEFAULT_VIEW: ViewState = {
 /** An item is "in library" when its detail page lives in the local library routes. */
 function isInLibrary(item: WatchlistItem): boolean {
   return item.href !== null && /^\/(movies|series)\//.test(item.href);
+}
+
+function watchlistAddHref(item: WatchlistItem): string | null {
+  if (isInLibrary(item)) return null;
+  if (item.mediaType === 'movie') {
+    const params = new URLSearchParams({ term: item.title });
+    if (item.source === 'TMDB') params.set('tmdbId', item.externalId);
+    return `/movies/add?${params.toString()}`;
+  }
+  if (item.mediaType === 'series') {
+    const params = new URLSearchParams({ term: item.title, seriesType: 'standard' });
+    if (item.source === 'TMDB') params.set('tmdbId', item.externalId);
+    if (item.source === 'TVDB') params.set('tvdbId', item.externalId);
+    return `/series/add?${params.toString()}`;
+  }
+  if (item.mediaType === 'anime') {
+    const params = new URLSearchParams({ term: item.title });
+    return `/series/add?${params.toString()}`;
+  }
+  return null;
 }
 
 function loadView(): ViewState {
@@ -936,6 +958,10 @@ export default function WatchlistPage() {
                   <WatchlistCard
                     item={item}
                     imagePriority={priorityIds.has(item.id) && i < 4}
+                    onSelect={() => {
+                      enter();
+                      toggle(item.id);
+                    }}
                     onRemove={() => setRemoveTarget(item)}
                   />
                 </div>
@@ -1017,6 +1043,10 @@ export default function WatchlistPage() {
                             selectable={selectionMode}
                             selected={selectedKeys.has(item.id)}
                             onToggleSelect={() => toggle(item.id)}
+                            onSelect={() => {
+                              enter();
+                              toggle(item.id);
+                            }}
                             onRemove={() => setRemoveTarget(item)}
                           />
                         </div>
@@ -1102,6 +1132,7 @@ function WatchlistCard({
   selectable,
   selected,
   onToggleSelect,
+  onSelect,
   onRemove,
 }: {
   item: WatchlistItem;
@@ -1109,12 +1140,17 @@ function WatchlistCard({
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  onSelect?: () => void;
   onRemove: () => void;
 }) {
   const canEdit = useCan('watchlist.edit');
   const canSchedule = useCan('scheduledAlerts.edit');
+  const canAddMovies = useCan('movies.add');
+  const canAddSeries = useCan('series.add');
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const inLibrary = isInLibrary(item);
+  const addHref = watchlistAddHref(item);
+  const canAdd = (item.mediaType === 'movie' && canAddMovies) || (item.mediaType !== 'movie' && canAddSeries);
   const poster = item.posterUrl
     ? (toCachedImageSrc(
         item.posterUrl,
@@ -1129,6 +1165,51 @@ function WatchlistCard({
           : undefined
       ) ?? item.posterUrl)
     : null;
+  const contextGroups: ContextActionGroup[] = [
+    {
+      id: 'navigation',
+      actions: [
+        ...(item.href
+          ? [{
+              id: inLibrary ? 'library' : 'open',
+              label: inLibrary ? 'Open in library' : 'Open details',
+              icon: inLibrary ? <BadgeCheck className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />,
+              href: item.href,
+            }]
+          : []),
+        ...(addHref && canAdd
+          ? [{
+              id: 'add',
+              label: `Add to ${item.mediaType === 'movie' ? 'Radarr' : 'Sonarr'}`,
+              icon: <Plus className="h-4 w-4" />,
+              href: addHref,
+            }]
+          : []),
+      ],
+    },
+    {
+      id: 'actions',
+      actions: [
+        ...(canEdit && onSelect
+          ? [{
+              id: 'select',
+              label: 'Select',
+              icon: <ListChecks className="h-4 w-4" />,
+              onSelect,
+            }]
+          : []),
+        ...(canEdit
+          ? [{
+              id: 'remove',
+              label: 'Remove from watchlist',
+              icon: <Trash2 className="h-4 w-4" />,
+              onSelect: onRemove,
+              destructive: true,
+            }]
+          : []),
+      ],
+    },
+  ];
   const posterCore = (
     <div
       className={cn(
@@ -1271,11 +1352,15 @@ function WatchlistCard({
   return (
     <div className="group relative">
       {item.href ? (
-        <Link href={item.href} className="block">
-          {posterCore}
-        </Link>
+        <QuickContextMenu label={`${item.title} actions`} groups={contextGroups}>
+          <Link href={item.href} className="block">
+            {posterCore}
+          </Link>
+        </QuickContextMenu>
       ) : (
-        <div className="block">{posterCore}</div>
+        <QuickContextMenu label={`${item.title} actions`} groups={contextGroups}>
+          <div className="block">{posterCore}</div>
+        </QuickContextMenu>
       )}
       {actions}
       {canSchedule && (

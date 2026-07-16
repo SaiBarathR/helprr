@@ -17,6 +17,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 
 export interface LogFile {
   name: string;
@@ -33,6 +34,7 @@ interface LogsFilesSheetProps {
   onDownloadFile: (file: string) => void;
   onDeleteFile: (file: string) => void;
   deletingFile: string | null;
+  canManage: boolean;
 }
 
 function formatBytes(bytes: number) {
@@ -67,6 +69,7 @@ function FileList({
   onDownloadFile,
   onDeleteFile,
   deletingFile,
+  canManage,
   onClose,
 }: FileListProps) {
   return (
@@ -102,6 +105,32 @@ function FileList({
         files.map((file) => {
           const isSelected = selectedFile === file.name;
           const isDeleting = deletingFile === file.name;
+          const selectFile = () => {
+            onSelectFile(file.name);
+            onClose();
+          };
+          const contextActions: ContextAction[] = [
+            {
+              id: 'select',
+              label: isSelected ? 'Selected file' : 'Select file',
+              disabled: isSelected,
+              onSelect: selectFile,
+            },
+            {
+              id: 'download',
+              label: 'Download file',
+              icon: <Download className="h-4 w-4" />,
+              onSelect: () => onDownloadFile(file.name),
+            },
+            ...(canManage ? [{
+              id: 'delete',
+              label: 'Delete file…',
+              icon: <Trash2 className="h-4 w-4" />,
+              destructive: true,
+              pending: isDeleting,
+              onSelect: () => onDeleteFile(file.name),
+            }] : []),
+          ];
           return (
             <div
               key={file.name}
@@ -110,26 +139,29 @@ function FileList({
                 isSelected && 'bg-accent/30'
               )}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  onSelectFile(file.name);
-                  onClose();
-                }}
-                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              <QuickContextMenu
+                label={`Actions for ${file.name}`}
+                actions={contextActions}
+                disabled={isDeleting}
               >
-                {isSelected ? (
-                  <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
-                ) : (
-                  <span className="h-2 w-2 rounded-full bg-transparent shrink-0" />
-                )}
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium font-mono">{file.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatBytes(file.size)} · {formatRelative(file.modifiedAt)}
+                <button
+                  type="button"
+                  onClick={selectFile}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  {isSelected ? (
+                    <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                  ) : (
+                    <span className="h-2 w-2 rounded-full bg-transparent shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium font-mono">{file.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatBytes(file.size)} · {formatRelative(file.modifiedAt)}
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </QuickContextMenu>
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   type="button"
@@ -139,19 +171,21 @@ function FileList({
                 >
                   <Download className="h-4 w-4" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onDeleteFile(file.name)}
-                  disabled={isDeleting}
-                  aria-label={`Delete ${file.name}`}
-                  className="h-9 w-9 flex items-center justify-center rounded-md text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                >
-                  {isDeleting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-4 w-4" />
-                  )}
-                </button>
+                {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() => onDeleteFile(file.name)}
+                    disabled={isDeleting}
+                    aria-label={`Delete ${file.name}`}
+                    className="h-9 w-9 flex items-center justify-center rounded-md text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                  >
+                    {isDeleting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                  </button>
+                ) : null}
               </div>
             </div>
           );
@@ -170,6 +204,7 @@ export function LogsFilesSheet({
   onDownloadFile,
   onDeleteFile,
   deletingFile,
+  canManage,
 }: LogsFilesSheetProps) {
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -189,6 +224,7 @@ export function LogsFilesSheet({
       onDownloadFile={onDownloadFile}
       onDeleteFile={onDeleteFile}
       deletingFile={deletingFile}
+      canManage={canManage}
       onClose={() => onOpenChange(false)}
     />
   );
