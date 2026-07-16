@@ -1207,43 +1207,44 @@ export default function ProwlarrPage() {
     }
   }
 
-  return (
-    <div className="space-y-4 animate-content-in">
-      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['prowlarr'] })} />
-      {/* Action buttons */}
-      {canManage && (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5"
-            onClick={() => sendCommand('ApplicationIndexerSync', 'Sync All', setSyncing)}
-            disabled={syncing}
-          >
-            {syncing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Sync All
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 gap-1.5"
-            onClick={handleTestAll}
-            disabled={testingAll}
-          >
-            {testingAll ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle className="h-4 w-4" />
-            )}
-            Test All
-          </Button>
-        </div>
-      )}
+  // Sync/Test controls live inside the Indexers tab, below the sticky tabs
+  // header, so nothing renders above the page header.
+  const manageActions = canManage && (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 gap-1.5"
+        onClick={() => sendCommand('ApplicationIndexerSync', 'Sync All', setSyncing)}
+        disabled={syncing}
+      >
+        {syncing ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <RefreshCw className="h-4 w-4" />
+        )}
+        Sync All
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 gap-1.5"
+        onClick={handleTestAll}
+        disabled={testingAll}
+      >
+        {testingAll ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <CheckCircle className="h-4 w-4" />
+        )}
+        Test All
+      </Button>
+    </div>
+  );
 
+  return (
+    <div className="animate-content-in">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['prowlarr'] })} />
       <Dialog
         open={!!testAllResults}
         onOpenChange={(open) => {
@@ -1291,7 +1292,7 @@ export default function ProwlarrPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="indexers">
-        <div className="page-toolbar pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TabsList className="w-full">
             <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
             <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>
@@ -1299,7 +1300,8 @@ export default function ProwlarrPage() {
           </TabsList>
         </div>
 
-        <TabsContent value="indexers" className="mt-4">
+        <TabsContent value="indexers" className="mt-4 space-y-4">
+          {manageActions}
           <IndexersTab />
         </TabsContent>
 
