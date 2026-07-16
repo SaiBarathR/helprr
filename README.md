@@ -648,7 +648,7 @@ a later run. Log files continue to use the separate retention value in
 ```bash
 docker compose down          # stops and removes containers; your data volumes remain
 docker compose down -v       # ⚠ ALSO DELETES the database, Redis, and log volumes
-docker image rm ghcr.io/saibarathr/helprr:edge   # remove downloaded images
+docker image rm ghcr.io/saibarathr/helprr:stable   # or your pinned :X.Y.Z tag
 ```
 
 > [!CAUTION]
