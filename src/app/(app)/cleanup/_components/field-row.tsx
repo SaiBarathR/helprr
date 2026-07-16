@@ -12,9 +12,9 @@ interface FieldRowProps {
 
 /**
  * Wraps a single rule field with active/inactive styling. When `active` is true
- * (the field has a meaningfully-set value), the label is rendered at full
- * contrast and the input wrapper gets a subtle primary-tinted ring so the user
- * can pick out configured fields without parsing the helper text.
+ * (the field has a meaningfully-set value), the label and hint are rendered at
+ * full contrast so the user can pick out configured fields without parsing the
+ * helper text.
  */
 export function FieldRow({ label, hint, active, children }: FieldRowProps) {
   return (
@@ -24,13 +24,7 @@ export function FieldRow({ label, hint, active, children }: FieldRowProps) {
       >
         {label}
       </Label>
-      <div
-        className={
-          active
-            ? 'rounded-md ring-1 ring-primary/40 ring-offset-1 ring-offset-background'
-            : ''
-        }
-      >
+      <div>
         {children}
       </div>
       {hint && (
