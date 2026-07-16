@@ -23,11 +23,13 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { TagSelector } from '@/components/media/tag-selector';
+import { AddPageInstanceSelect } from '@/components/media/add-page-instance-select';
 import { Search, Plus, Loader2, Tv, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SonarrLookupResult } from '@/types';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { resolveAddPageInstance } from '@/lib/add-page-instances';
 
 function AddSeriesPageContent() {
   const router = useRouter();
@@ -76,9 +78,9 @@ function AddSeriesPageContent() {
   // instead of via setState-in-effect — see React's "adjusting state when
   // props change" pattern.
 
-  // Default to the marked-default instance once instances load (picker shows when >1).
+  // Respect instance-targeted links, then fall back to the marked default.
   if (instanceId === undefined && instances.length > 0) {
-    setInstanceId(instances.find((i) => i.isDefault)?.id ?? instances[0]?.id);
+    setInstanceId(resolveAddPageInstance(instances, searchParams.get('instance')));
   }
 
   // Switching instances invalidates the previously-picked (instance-local)
@@ -128,6 +130,16 @@ function AddSeriesPageContent() {
     setTargetTvdbId(null);
     setTargetTmdbId(null);
     setSubmittedTerm(term);
+  }
+
+  function handleInstanceChange(nextInstanceId: string) {
+    if (nextInstanceId === instanceId) return;
+    if (selected) {
+      setTargetTvdbId(selected.tvdbId);
+      setTargetTmdbId(selected.tmdbId ?? null);
+    }
+    setSelected(null);
+    setInstanceId(nextInstanceId);
   }
 
   const addMutation = useMutation({
@@ -229,6 +241,7 @@ function AddSeriesPageContent() {
   }
 
   const selectedInLibrary = selected?.library?.exists === true;
+  const selectedInstanceLabel = instances.find((instance) => instance.id === instanceId)?.label;
   const selectedPoster = selected
     ? posterUrl(selected.images as { coverType: string; remoteUrl: string }[])
     : null;
@@ -274,7 +287,17 @@ function AddSeriesPageContent() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="Add Series" />
+      <PageHeader
+        title="Add Series"
+        rightContent={
+          <AddPageInstanceSelect
+            instances={instances}
+            value={instanceId}
+            onChange={handleInstanceChange}
+            disabled={adding}
+          />
+        }
+      />
 
       <div className="space-y-4 mt-2 pb-8">
         {/* Search form */}
@@ -337,27 +360,12 @@ function AddSeriesPageContent() {
 
             {selectedInLibrary ? (
               <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-700 dark:text-green-300">
-                This series is already in your library.
+                This series is already in {selectedInstanceLabel ?? 'the selected instance'}.
               </div>
             ) : (
               <div className="grouped-section">
                 <div className="grouped-section-title">Options</div>
                 <div className="grouped-section-content">
-                  {instances.length > 1 && (
-                    <div className="grouped-row">
-                      <Label className="text-sm shrink-0">Instance</Label>
-                      <Select value={instanceId ?? ''} onValueChange={setInstanceId}>
-                        <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
-                          <SelectValue>{instances.find((i) => i.id === instanceId)?.label ?? 'Select'}</SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                          {instances.map((i) => (
-                            <SelectItem key={i.id} value={i.id}>{i.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Quality Profile</Label>
                     <Select value={profileId} onValueChange={setProfileId}>
