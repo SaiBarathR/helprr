@@ -638,6 +638,13 @@ html {
   }
 }
 
+/* Like-button pop on the recommendations feed (TikTok-style feedback) */
+@keyframes like-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.45); }
+  100% { transform: scale(1); }
+}
+
 /* Shimmer animation for skeleton loaders */
 @keyframes shimmer {
   0% {

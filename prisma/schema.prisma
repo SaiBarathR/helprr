@@ -54,6 +54,8 @@ model User {
   aniListLink    UserAniListLink?
   settings       UserSettings?
   scheduledAlerts ScheduledAlert[]
+  recommendationEvents RecommendationEvent[]
+  tasteProfile   UserTasteProfile?
 
   @@index([jellyfinUserId])
   @@index([status])
@@ -414,6 +416,50 @@ model PendingRequest {
 
   @@index([userId, createdAt])
   @@index([createdAt])
+}
+
+// ==================== Recommendations: learning pipeline ====================
+
+// Per-user recommendation interaction log — the raw signal stream the taste
+// profile learns from. itemKey is the canonical cross-source identity
+// ("tmdb:movie:<id>" | "tmdb:tv:<id>" | "anilist:<id>") so one title keeps one
+// history regardless of which surface produced the event. Rows are pruned by
+// retention (impressions 90d, clicks/plays 365d); explicit feedback
+// (like/dislike/not_interested) is kept forever — "never show me this again"
+// must not expire.
+model RecommendationEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemKey   String
+  // impression | click | play | like | dislike | not_interested |
+  // watchlist_add | request — validated at the API layer.
+  eventType String
+  // Rail/surface that produced the event ("top-picks", "because:tmdb:tv:1399",
+  // "feed", "random"), so exploration slots can be measured per rail.
+  railId    String?
+  context   Json?    // { position, mode: 'rails'|'feed', exploration?: true }
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, itemKey, eventType])
+  // Retention prunes by type+age across all users.
+  @@index([eventType, createdAt])
+}
+
+// Cached output of the per-user profile build (genre/mood vectors, seeds,
+// negatives). Versioned JSON — bump `version` when the payload shape changes so
+// stale rows rebuild instead of misparse. Durable in Postgres (not Redis): a
+// profile is expensive to build (Jellyfin scans + Playback Reporting + AniList)
+// and must survive restarts/cache purges.
+model UserTasteProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile   Json
+  version   Int      @default(1)
+  builtAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AniListSeriesMapping {
