@@ -73,6 +73,8 @@ export interface JellyfinUserData {
   PlayedPercentage?: number | null;
   /** Unwatched leaf episodes — only present on Series/Season items (PlayedPercentage is null there). */
   UnplayedItemCount?: number;
+  /** ISO timestamp of the most recent play, when Jellyfin has one. */
+  LastPlayedDate?: string;
 }
 
 export interface JellyfinMediaStream {

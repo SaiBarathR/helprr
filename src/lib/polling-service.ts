@@ -32,6 +32,9 @@ import {
   type PollNotificationContext,
 } from '@/lib/notification-grouping';
 import { runRetentionSweep } from '@/lib/retention';
+import { rebuildTasteProfile, PROFILE_MAX_AGE_MS } from '@/lib/recommendations/profile-store';
+import { PROFILE_VERSION } from '@/lib/recommendations/profile-types';
+import { can } from '@/lib/permissions';
 import type { QueueItem, QueueResponse, SonarrSeries, Tag } from '@/types';
 import crypto from 'crypto';
 
@@ -51,6 +54,14 @@ const DISK_ALERT_REMINDER_MS = 6 * 60 * 60 * 1000; // 6 hours
 // How long daily disk-usage snapshots are kept (the trend only needs ~7 days,
 // but a longer tail makes the growth-rate fit more stable + survives gaps).
 const DISK_SNAPSHOT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+// Taste-profile background sweep: how often to look for stale profiles, which
+// users qualify (a session seen inside the window = "active"), and how many
+// rebuilds one sweep may run (each costs Jellyfin scans + AniList reads, so
+// the tail drains over subsequent sweeps instead of spiking one).
+const TASTE_PROFILE_SWEEP_INTERVAL_MS = 30 * 60 * 1000;
+const TASTE_PROFILE_ACTIVE_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const TASTE_PROFILE_MAX_REBUILDS_PER_SWEEP = 5;
 
 function localDateOnly(input: Date, timeZone: string): Date {
   return new Date(`${getLocalDateKey(input, timeZone)}T00:00:00.000Z`);
@@ -214,6 +225,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   applyBandwidthSchedule: 15_000,
   checkRetention: 60_000,
   checkAnimeAutoMap: 15_000,
+  sweepTasteProfiles: 120_000,
   warmCaches: 60_000,
 };
 
@@ -572,6 +584,7 @@ export class PollingService {
         { source: 'applyBandwidthSchedule', run: () => this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()) },
         { source: 'checkRetention', run: () => this.runPollSource('checkRetention', () => this.checkRetention()) },
         { source: 'checkAnimeAutoMap', run: () => this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()) },
+        { source: 'sweepTasteProfiles', run: () => this.runPollSource('sweepTasteProfiles', () => this.sweepTasteProfiles()) },
       );
       const pollSources = pollTasks.map((task) => task.source);
       logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
@@ -856,6 +869,57 @@ export class PollingService {
   // them directly; when already warm each is one Redis GET. The activity queue
   // is deliberately NOT warmed: its 5s TTL expires long before the next 30s
   // cycle, so warming it would cost a full fan-out for a mostly-dead entry.
+  // Keeps recently-active users' taste profiles warm so /recommendations is a
+  // cache hit instead of a multi-service scan on first open. Self-throttled;
+  // rebuilds run sequentially and are capped per sweep (the tail drains over
+  // subsequent sweeps). Lazy rebuild on read remains the correctness backstop —
+  // this is purely a latency optimization.
+  private lastTasteProfileSweepAt = 0;
+  private async sweepTasteProfiles(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastTasteProfileSweepAt < TASTE_PROFILE_SWEEP_INTERVAL_MS) return;
+    this.lastTasteProfileSweepAt = now;
+
+    const activeCutoff = new Date(now - TASTE_PROFILE_ACTIVE_WINDOW_MS);
+    const staleBefore = new Date(now - PROFILE_MAX_AGE_MS);
+    const users = await prisma.user.findMany({
+      where: {
+        status: 'active',
+        sessions: { some: { lastSeenAt: { gte: activeCutoff }, revokedAt: null } },
+      },
+      select: {
+        id: true,
+        role: true,
+        template: true,
+        permissions: true,
+        jellyfinUserId: true,
+        tasteProfile: { select: { builtAt: true, version: true } },
+      },
+    });
+
+    const due = users
+      // Only users who can actually see recommendations — rebuilding a
+      // profile nobody can read wastes Jellyfin/AniList calls every sweep.
+      .filter((user) => can(user, 'recommendations.view'))
+      .filter((user) =>
+        !user.tasteProfile
+        || user.tasteProfile.version !== PROFILE_VERSION
+        || user.tasteProfile.builtAt < staleBefore
+      )
+      .slice(0, TASTE_PROFILE_MAX_REBUILDS_PER_SWEEP);
+
+    for (const user of due) {
+      try {
+        await rebuildTasteProfile(user);
+      } catch (error) {
+        logger.warn('Taste profile rebuild failed', {
+          userId: user.id,
+          reason: errorMessage(error),
+        }, { scope: 'polling' });
+      }
+    }
+  }
+
   private async warmCaches(): Promise<void> {
     // allSettled + per-scope logging: one failing scope must not abort or mask
     // the other warmups.

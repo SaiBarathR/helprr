@@ -10,6 +10,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const CLEANUP_HISTORY_RETENTION_DAYS = 90;
 export const FILE_OPERATION_AUDIT_RETENTION_DAYS = 365;
+// Recommendation events: impressions are only useful while fatigue decay can
+// still see them; clicks/plays age out after a year. Explicit feedback
+// (like/dislike/not_interested) is deliberately NOT pruned — "never show me
+// this again" must not expire.
+export const RECOMMENDATION_IMPRESSION_RETENTION_DAYS = 90;
+export const RECOMMENDATION_ACTIVITY_RETENTION_DAYS = 365;
 
 type RetentionDatabase = Pick<
   PrismaClient,
@@ -18,6 +24,7 @@ type RetentionDatabase = Pick<
   | 'scheduledAlertOccurrence'
   | 'session'
   | 'fileOperationAudit'
+  | 'recommendationEvent'
 >;
 
 export interface RetentionCounts {
@@ -26,6 +33,7 @@ export interface RetentionCounts {
   alertOccurrences: number;
   expiredSessions: number;
   operationAudit: number;
+  recommendationEvents: number;
 }
 
 export type RetentionImageResult = ImageCacheRetentionResult | {
@@ -75,12 +83,20 @@ export async function runRetentionSweep(
     nowMs - notificationRetentionDays * DAY_MS,
   );
 
+  const impressionCutoff = new Date(
+    nowMs - RECOMMENDATION_IMPRESSION_RETENTION_DAYS * DAY_MS,
+  );
+  const recommendationActivityCutoff = new Date(
+    nowMs - RECOMMENDATION_ACTIVITY_RETENTION_DAYS * DAY_MS,
+  );
+
   const [
     notifications,
     cleanupHistory,
     alertOccurrences,
     expiredSessions,
     operationAudit,
+    recommendationEvents,
   ] = await Promise.all([
     database.notificationHistory.deleteMany({
       where: { createdAt: { lt: notificationCutoff } },
@@ -103,6 +119,17 @@ export async function runRetentionSweep(
     database.fileOperationAudit.deleteMany({
       where: { createdAt: { lt: operationAuditCutoff } },
     }),
+    database.recommendationEvent.deleteMany({
+      where: {
+        OR: [
+          { eventType: 'impression', createdAt: { lt: impressionCutoff } },
+          {
+            eventType: { in: ['click', 'play', 'watchlist_add', 'request'] },
+            createdAt: { lt: recommendationActivityCutoff },
+          },
+        ],
+      },
+    }),
   ]);
 
   let imageCache: RetentionImageResult;
@@ -123,6 +150,7 @@ export async function runRetentionSweep(
       alertOccurrences: alertOccurrences.count,
       expiredSessions: expiredSessions.count,
       operationAudit: operationAudit.count,
+      recommendationEvents: recommendationEvents.count,
     },
     imageCache,
   };

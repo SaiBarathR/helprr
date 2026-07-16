@@ -242,11 +242,11 @@ export class JellyfinClient {
     });
   }
 
-  async getResumeItems(params: { limit?: number } = {}): Promise<JellyfinItemsResponse> {
+  async getResumeItems(params: { limit?: number; extraFields?: string } = {}): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/UserItems/Resume`, {
       UserId: this.requireUserId(),
       Limit: params.limit ?? 10,
-      Fields: 'Overview,ImageTags',
+      Fields: params.extraFields ? `Overview,ImageTags,${params.extraFields}` : 'Overview,ImageTags',
       EnableImageTypes: 'Primary,Backdrop',
       MediaTypes: 'Video',
     });

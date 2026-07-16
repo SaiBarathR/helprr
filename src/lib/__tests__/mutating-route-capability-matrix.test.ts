@@ -139,6 +139,12 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/prowlarr/indexers',
     'POST /api/prowlarr/indexers/testall',
   ],
+  'cap:recommendations.view': [
+    // Events/rebuild are per-user writes scoped to the caller (no ownership
+    // params to escalate), so the read capability is the right gate.
+    'POST /api/recommendations/events',
+    'POST /api/recommendations/rebuild',
+  ],
   'cap:requests.approve': [
     'POST /api/seerr/pending-requests/[id]/approve',
     'POST /api/seerr/requests/[id]/approve',
@@ -396,7 +402,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(148);
+    expect(handlers.size).toBe(150);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
