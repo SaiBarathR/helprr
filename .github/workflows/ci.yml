@@ -66,3 +66,44 @@ jobs:
           REDIS_PASSWORD: ci-dummy-password
           APP_PASSWORD: ci-dummy-password
           JWT_SECRET: ci-dummy-jwt-secret-at-least-32-characters-long
+
+  # PR-time image scan: builds the amd64 image without pushing and runs the
+  # same pinned, blocking Trivy gate that guards publishes, so vulnerabilities
+  # surface at review time instead of at the first post-merge image build.
+  # (Publishes still scan both native platforms in docker-publish.yml.)
+  image-scan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (amd64, not pushed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: helprr-pr-scan:local
+          # Read the publish workflow's build cache for this platform; the PR
+          # scan never writes cache so it cannot churn the publish cache.
+          cache-from: type=gha,scope=linux-amd64
+
+      - name: Scan image for fixable high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_EXIT_ON_EOL: '1'
+        with:
+          version: v0.70.0
+          image-ref: helprr-pr-scan:local
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: '1'
+          timeout: 10m0s

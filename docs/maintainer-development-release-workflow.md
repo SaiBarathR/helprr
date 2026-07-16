@@ -111,13 +111,32 @@ external updater they configured themselves. For the maintainer stack, use the s
 
 | Workflow | Trigger | Result |
 |---|---|---|
-| [CI](../.github/workflows/ci.yml) | Any PR; pushes to `development` or `main` | Installs dependencies, generates Prisma, lints, tests, validates the schema, and builds |
+| [CI](../.github/workflows/ci.yml) | Any PR; pushes to `development` or `main` | Installs dependencies, generates Prisma, lints, tests, validates the schema, runs migration-upgrade tests, and builds |
+| CI (`image-scan` job) | Any PR only | Builds the amd64 image without pushing and runs the same pinned, blocking Trivy gate as publishes, so vulnerabilities surface at review time |
 | [Docker publish](../.github/workflows/docker-publish.yml) | Push to `development` | Builds and scans native amd64/arm64 images, then updates `edge` |
-| Docker publish | Push of a `vX.Y.Z` tag | Builds exact `X.Y.Z` image and creates a draft GitHub release with deployment assets |
+| Docker publish | Push of a `vX.Y.Z` tag | Builds exact `X.Y.Z` image and creates a draft GitHub release with deployment assets (re-running on an existing tag skips creation instead of failing) |
 | [Docker promote](../.github/workflows/docker-promote.yml) | Manual workflow dispatch | Verifies a qualified digest, then moves minor, major, and `stable` aliases to it |
 
 A push to `main` runs CI but does **not** publish an image. A version tag is required
 to publish an exact release image.
+
+### Branch protection
+
+Enforcement (configured 2026-07-16 in the repository settings; also enforced for
+administrators):
+
+- **`main`** — direct pushes are blocked: changes land only through a pull request
+  (no approval count required — solo maintainer), and the `lint-and-build` and
+  `image-scan` checks must pass before merging. Force pushes and deletion are
+  blocked. This means every release commit has passed the full gate, including the
+  PR-time image scan, before it can reach `main`.
+- **`development`** — force pushes and branch deletion are blocked. Direct pushes
+  remain allowed (this branch is the day-to-day integration target), so CI on
+  `development` stays advisory; the preferred feature-branch PR flow gets the full
+  required-check treatment.
+
+Version tags are not covered by branch protection; only the maintainer pushes tags,
+and the tag build re-runs the complete scan gate anyway.
 
 On a push to `development`, CI and Docker publish are separate workflows. Treat the
 new `edge` image as deployable only after both workflows are green. The preferred PR

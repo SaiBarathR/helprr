@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Context actions across the app.
+- CI: pull requests now build the amd64 image and run the same pinned,
+  blocking Trivy scan as publishes, so vulnerabilities surface at review time.
+- Branch protection on `main` (PR + passing `lint-and-build` and `image-scan`
+  checks required, admins included) and on `development` (force pushes and
+  deletion blocked).
+
+### Fixed
+
+- Add pages preserve the selected instance.
+- Re-running the publish workflow on an existing tag no longer fails the
+  release-draft job; it skips creation when the release already exists.
+- Uninstall docs referenced the `edge` image tag; the stable stack uses
+  `stable` (or a pinned version).
+- `.env.example` no longer suggests pointing the stable stack's
+  `HELPRR_VERSION` at `edge`; development builds belong to the isolated dev
+  stack.
+
 ## [1.1.0] - 2026-07-14
 
 ### Added
