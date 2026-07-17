@@ -351,6 +351,9 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
         });
       } catch (err) {
         logger.warn('cleanupFailed (unreachable) notify failed', { err: String(err) }, { scope: LOG });
+        // Nothing was delivered — re-arm so the next cycle can retry instead
+        // of staying silent for the whole throttle window.
+        resetFailureNotify('download');
       }
     }
   }
@@ -487,7 +490,10 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
       }
     }
 
-    if (failedCount === 0 && succeededCount > 0) resetFailureNotify('download');
+    // Only a fully clean cycle re-arms the throttle: warnings (e.g. arr
+    // unreachable) may have consumed it above, and resetting here would let
+    // that notice re-fire every cycle that also removes something.
+    if (failedCount === 0 && succeededCount > 0 && warnings.length === 0) resetFailureNotify('download');
     if (failedCount > 0 && shouldNotifyFailure('download')) {
       try {
         const firstError = failureDecisions[0]?.errorMessage ?? 'unknown error';
@@ -502,6 +508,8 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
         });
       } catch (err) {
         logger.warn('cleanupFailed (download) notify failed', { err: String(err) }, { scope: LOG });
+        // Nothing was delivered — re-arm so the next failing cycle can retry.
+        resetFailureNotify('download');
       }
     }
   }

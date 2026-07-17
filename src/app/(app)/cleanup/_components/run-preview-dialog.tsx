@@ -65,8 +65,10 @@ export function RunPreviewDialog(props: Props) {
   // Identify destructive options for an extra warning banner.
   const hasDeleteSourceFiles = cleaner === 'download'
     && (decisions as DownloadDryRunDecision[]).some((d) => d.deleteSourceFiles);
+  // Only warn when a matched torrent is actually private — deletePrivate on a
+  // rule that matched only public torrents is not an H&R risk.
   const hasDeletePrivate = cleaner === 'queue'
-    && (decisions as QueueDryRunDecision[]).some((d) => d.options.deletePrivate);
+    && (decisions as QueueDryRunDecision[]).some((d) => d.private && d.options.deletePrivate);
   const hasQueueDataDeletes = cleaner === 'queue'
     && (decisions as QueueDryRunDecision[]).some((d) => !d.options.changeCategory && (!d.private || d.options.deletePrivate));
 

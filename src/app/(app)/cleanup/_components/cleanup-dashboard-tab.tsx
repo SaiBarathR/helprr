@@ -109,7 +109,9 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     queryKey: ['cleanup', 'dashboard', strikePage],
     queryFn: async ({ signal }) => {
       const [statsRes, strikesRes, queueCfg, downloadCfg] = await Promise.all([
-        fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date().getTimezoneOffset()}`, { signal }).then(jsonOk<Stats>),
+        // Offset at local *midnight*, not now — on DST-transition days the
+        // current offset would shift the server's "today" boundary by an hour.
+        fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }).then(jsonOk<Stats>),
         fetch(`/api/cleanup/strikes?page=${strikePage}&pageSize=${STRIKES_PAGE_SIZE}`, { signal }).then(
           jsonOk<{ records: StrikeRow[]; total: number }>
         ),
@@ -200,12 +202,14 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ previewToken: queuePreview.previewToken }),
       });
-      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[] }>(r);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[]; warnings?: string[] }>(r);
       const succeeded = json.succeeded ?? 0;
       const failed = json.failed ?? 0;
       if (failed > 0) toast.warning(`Removed ${succeeded} torrent(s); ${failed} need attention`);
       else toast.success(`Removed ${succeeded} torrent(s)`);
-      setQueuePreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [] }));
+      // Replace the preview's warnings with the execution's own — the results
+      // dialog must reflect what the run actually saw, not the stale dry-run.
+      setQueuePreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [], warnings: json.warnings ?? [] }));
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'history'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'scheduler'] });
@@ -258,12 +262,13 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ previewToken: downloadPreview.previewToken }),
       });
-      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[] }>(r);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[]; warnings?: string[] }>(r);
       const succeeded = json.succeeded ?? 0;
       const failed = json.failed ?? 0;
       if (failed > 0) toast.warning(`Removed ${succeeded} torrent(s); ${failed} need attention`);
       else toast.success(`Removed ${succeeded} torrent(s)`);
-      setDownloadPreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [] }));
+      // See the queue handler: execution warnings replace the preview's.
+      setDownloadPreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [], warnings: json.warnings ?? [] }));
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'history'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'scheduler'] });

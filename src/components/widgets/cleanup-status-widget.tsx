@@ -51,7 +51,9 @@ async function fetchCleanupStatus(): Promise<CleanupStatusData> {
     fetch('/api/cleanup/scheduler-status').catch(() => null),
     // Compact preview: top 5 strikes; the header count comes from the response total.
     fetch('/api/cleanup/strikes?limit=5').catch(() => null),
-    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date().getTimezoneOffset()}`).catch(() => null),
+    // Offset at local midnight (not now) so DST-transition days keep the
+    // server's "today" boundary aligned with the user's calendar day.
+    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`).catch(() => null),
   ]);
   const strikesJson = strikesRes?.ok
     ? ((await strikesRes.json()) as { records?: StrikeRow[]; total?: number })

@@ -72,14 +72,15 @@ function getState(): SchedulerState {
   return s;
 }
 
-// setInterval delays overflow a signed 32-bit int (~24.8 days) and Node then
-// clamps to ~1ms — which would turn an "every N months" config into a
-// continuous deletion loop. The API validators reject such intervals; this is
-// the defensive backstop for legacy rows.
-const MAX_TIMER_MS = 2_147_483_647;
+// The API validators cap intervals at 7 days; clamp defensively for legacy
+// rows so the stored interval, the dashboard countdown (nextRunAt), and the
+// actual timer delay all agree — and stay far below the signed 32-bit
+// setInterval limit (~24.8 days), where Node clamps the delay to ~1ms and an
+// "every N months" config would become a continuous deletion loop.
+const MAX_INTERVAL_MINUTES = 10_080;
 
-function clampIntervalMs(intervalMinutes: number): number {
-  return Math.min(Math.max(1, intervalMinutes) * 60_000, MAX_TIMER_MS);
+function clampIntervalMinutes(intervalMinutes: number): number {
+  return Math.min(Math.max(1, intervalMinutes), MAX_INTERVAL_MINUTES);
 }
 
 function clear(job: JobState) {
@@ -214,7 +215,8 @@ export async function restartQueueCleaner(): Promise<void> {
   const s = getState();
   const cfg = await loadQueueCleanerConfig();
   clear(s.queue);
-  s.queue.intervalMinutes = cfg.intervalMinutes;
+  const intervalMinutes = clampIntervalMinutes(cfg.intervalMinutes);
+  s.queue.intervalMinutes = intervalMinutes;
   s.queue.autoRunMode = cfg.autoRunMode;
   s.queue.lastRunAt = null;
   if (!cfg.enabled || cfg.autoRunMode === 'disabled') {
@@ -224,13 +226,12 @@ export async function restartQueueCleaner(): Promise<void> {
     }, { scope: LOG });
     return;
   }
-  const ms = clampIntervalMs(cfg.intervalMinutes);
   // Anchor the countdown at the moment the timer is installed so the dashboard
   // can show "next run in N min" honestly until the first tick fires.
   s.queue.lastRunAt = Date.now();
-  s.queue.timer = setInterval(tickQueue, ms);
+  s.queue.timer = setInterval(tickQueue, intervalMinutes * 60_000);
   logger.info('Queue cleaner timer started', {
-    intervalMinutes: cfg.intervalMinutes,
+    intervalMinutes,
     autoRunMode: cfg.autoRunMode,
   }, { scope: LOG });
 }
@@ -239,7 +240,8 @@ export async function restartDownloadCleaner(): Promise<void> {
   const s = getState();
   const cfg = await loadDownloadCleanerConfig();
   clear(s.download);
-  s.download.intervalMinutes = cfg.intervalMinutes;
+  const intervalMinutes = clampIntervalMinutes(cfg.intervalMinutes);
+  s.download.intervalMinutes = intervalMinutes;
   s.download.autoRunMode = cfg.autoRunMode;
   s.download.lastRunAt = null;
   if (!cfg.enabled || cfg.autoRunMode === 'disabled') {
@@ -249,11 +251,10 @@ export async function restartDownloadCleaner(): Promise<void> {
     }, { scope: LOG });
     return;
   }
-  const ms = clampIntervalMs(cfg.intervalMinutes);
   s.download.lastRunAt = Date.now();
-  s.download.timer = setInterval(tickDownload, ms);
+  s.download.timer = setInterval(tickDownload, intervalMinutes * 60_000);
   logger.info('Download cleaner timer started', {
-    intervalMinutes: cfg.intervalMinutes,
+    intervalMinutes,
     autoRunMode: cfg.autoRunMode,
   }, { scope: LOG });
 }

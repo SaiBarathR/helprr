@@ -716,6 +716,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
         });
       } catch (err) {
         logger.warn('cleanupFailed notify failed', { err: String(err) }, { scope: LOG });
+        // Nothing was delivered — re-arm so the next failing cycle can retry.
+        resetFailureNotify('queue');
       }
     }
 
