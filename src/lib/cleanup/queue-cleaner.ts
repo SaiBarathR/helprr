@@ -16,6 +16,7 @@ import {
   collectStatusMessages,
   formatError,
   inCompletionRange,
+  isTorrentPrivate,
   matchesIgnoredPatterns,
   matchesPatterns,
   matchesPrivacy,
@@ -29,6 +30,7 @@ import {
   strikeKey,
   StrikeJournal,
 } from './strikes';
+import { resetFailureNotify, shouldNotifyFailure } from './notify-throttle';
 import { processWithLimit } from './concurrency';
 import { fetchFullQueue, QUEUE_PAGE_SIZE, MAX_QUEUE_PAGES } from './queue-pagination';
 import {
@@ -209,6 +211,17 @@ function isMissingConfigError(err: unknown): boolean {
   return err instanceof Error && err.message.includes('is not configured');
 }
 
+// qBittorrent metadata-download states: metaDL plus its force-started variant.
+function isMetadataState(state: string): boolean {
+  return state === 'metaDL' || state === 'forcedMetaDL';
+}
+
+// States in which a torrent is actively trying to download. Slow-rule
+// triggers (speed AND max-active-hours) only make sense here.
+function isActiveDownloadState(state: string): boolean {
+  return state === 'downloading' || state === 'stalledDL' || state === 'forcedDL';
+}
+
 export interface RunOptions {
   dryRun: boolean;
   triggeredBy: TriggeredBy;
@@ -228,7 +241,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   const noCandidatesBinding = buildExecutionBinding('queue', configFingerprint, scopeFingerprint, []);
   if (!cfg.enabled) {
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return emptyResult(opts, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding, ['Queue Cleaner is disabled']);
   }
 
   let qbit;
@@ -237,7 +250,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   } catch (err) {
     logger.warn('qBittorrent unavailable', { err: String(err) }, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return emptyResult(opts, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding, ['qBittorrent is unavailable — nothing was evaluated']);
   }
 
   let torrents: QBittorrentTorrent[];
@@ -246,7 +259,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   } catch (err) {
     logger.warn('qBittorrent listing failed', { err: String(err) }, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return emptyResult(opts, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding, ['qBittorrent torrent listing failed — nothing was evaluated']);
   }
 
   const [{ sonarr: sonarrInstances, radarr: radarrInstances, complete: arrQueuesComplete }, prevStrikes] = await Promise.all([
@@ -256,22 +269,30 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   if (!arrQueuesComplete) {
     logger.error('Queue cleaner aborted because at least one configured Arr queue could not be read completely', {}, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return emptyResult(opts, noCandidatesBinding);
+    return emptyResult(opts, noCandidatesBinding, ['At least one Sonarr/Radarr queue could not be read — cycle aborted as a safety measure']);
   }
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
   const correlation = buildCorrelationIndex(sonarrInstances, radarrInstances);
-  const inClientHashes = new Set(torrents.map((t) => t.hash.toLowerCase()));
 
   const journal = new StrikeJournal();
   const decisions: QueueDecision[] = [];
   const pendingStrikes: PendingStrike[] = [];
+  const warnings: string[] = [];
   let skippedFailedImport = 0;
+  let skippedTrackerUnknown = 0;
 
   for (const t of torrents) {
     try {
       const hashLc = t.hash.toLowerCase();
-      const domains = trackerDomains.get(hashLc) ?? [];
+      const fetchedDomains = trackerDomains.get(hashLc) ?? null;
+      // Tracker lookup failed: with ignore patterns configured we cannot tell
+      // whether this torrent is protected, so fail closed and skip it.
+      if (fetchedDomains === null && cfg.ignoredDownloads.length > 0) {
+        skippedTrackerUnknown++;
+        continue;
+      }
+      const domains = fetchedDomains ?? [];
 
       if (matchesIgnoredPatterns(t, domains, cfg.ignoredDownloads)) continue;
 
@@ -283,7 +304,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
       const linked = links.find((l) => l.source === 'sonarr') ?? links[0] ?? null;
 
       // 1) Downloading Metadata (qBit-only, global)
-      if (cfg.downloadingMetadataMaxStrikes >= 3 && t.state === 'metaDL') {
+      if (cfg.downloadingMetadataMaxStrikes >= 3 && isMetadataState(t.state)) {
         const key = strikeKey(t.hash, 'downloadingMetadata', null);
         const prev = prevStrikes.get(key);
         const newCount = (prev?.count ?? 0) + 1;
@@ -313,7 +334,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
             },
           });
         }
-      } else if (t.state !== 'metaDL') {
+      } else if (!isMetadataState(t.state)) {
         if (prevStrikes.has(strikeKey(t.hash, 'downloadingMetadata', null))) {
           journal.clear({ hash: hashLc, torrentName: t.name, strikeType: 'downloadingMetadata', ruleId: null });
         }
@@ -321,12 +342,10 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
 
       // 2) Failed Import (opt-in via maxStrikes >= 3)
       if (cfg.failedImport.maxStrikes >= 3 && linked?.queueItem) {
-        const skip = shouldSkipFailedImport(cfg, linked, t, inClientHashes);
+        const skip = shouldSkipFailedImport(cfg, linked, t);
         if (skip === 'contentId') {
           // ignored — never strikes when content ID missing & processNoContentId off
         } else if (skip === 'private') {
-          skippedFailedImport++;
-        } else if (skip === 'notInClient') {
           skippedFailedImport++;
         } else {
           // Original check was `tds === 'importFailed' || tds === 'downloadFailed'`
@@ -440,12 +459,16 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
           if (!inCompletionRange(t.progress * 100, rule)) return null;
           if (rule.ignoreAboveSizeBytes != null && rule.ignoreAboveSizeBytes > 0 && t.size >= rule.ignoreAboveSizeBytes) return null;
 
+          // Slow rules police *downloads*. Both triggers require an active
+          // download state — without this gate, "max active hours" would
+          // strike completed/seeding torrents (time_active keeps growing
+          // while seeding) and delete them with their files.
           const speedThresh = rule.minSpeedKbps != null ? rule.minSpeedKbps * 1024 : null;
-          const isSlow =
-            speedThresh != null &&
-            t.dlspeed < speedThresh &&
-            (t.state === 'downloading' || t.state === 'stalledDL' || t.state === 'forcedDL');
-          const tooLong = rule.maxTimeHours != null && rule.maxTimeHours > 0 && activeHours(t) > rule.maxTimeHours;
+          const isSlow = speedThresh != null && t.dlspeed < speedThresh && isActiveDownloadState(t.state);
+          const tooLong =
+            rule.maxTimeHours != null && rule.maxTimeHours > 0
+            && isActiveDownloadState(t.state)
+            && activeHours(t) > rule.maxTimeHours;
           if (!isSlow && !tooLong) return 'clear';
 
           const prev = prevStrikes.get(strikeKey(t.hash, 'slow', rule.id));
@@ -676,8 +699,10 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
       }
     }
 
-    // Failures: one summary if any occurred.
-    if (failedCount > 0) {
+    // Failures: one summary if any occurred — throttled, because a broken
+    // removal retries every cycle and must not notify once per interval.
+    if (failedCount === 0 && succeededCount > 0) resetFailureNotify('queue');
+    if (failedCount > 0 && shouldNotifyFailure('queue')) {
       try {
         const firstError = failureOutcomes[0]?.errorMessage ?? 'unknown error';
         await notifyEvent({
@@ -691,11 +716,17 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
         });
       } catch (err) {
         logger.warn('cleanupFailed notify failed', { err: String(err) }, { scope: LOG });
+        // Nothing was delivered — re-arm so the next failing cycle can retry.
+        resetFailureNotify('queue');
       }
     }
 
     await pruneOrphanStrikes(torrents.map((t) => t.hash));
     await pruneStrikesForMissingRules();
+  }
+
+  if (skippedTrackerUnknown > 0) {
+    warnings.push(`${skippedTrackerUnknown} torrent${skippedTrackerUnknown === 1 ? '' : 's'} skipped: tracker data could not be read while an ignore list is configured`);
   }
 
   const durationMs = Date.now() - t0;
@@ -706,6 +737,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     decisions: decisions.length,
     pendingStrikes: pendingStrikes.length,
     skippedFailedImport,
+    skippedTrackerUnknown,
   }, { scope: LOG });
 
   return {
@@ -719,10 +751,11 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     failed: failedCount,
     outcomes,
     binding,
+    warnings,
   };
 }
 
-function emptyResult(opts: RunOptions, binding: CleanupExecutionBinding): QueueEvaluationResult {
+function emptyResult(opts: RunOptions, binding: CleanupExecutionBinding, warnings: string[] = []): QueueEvaluationResult {
   return {
     triggeredBy: opts.triggeredBy,
     dryRun: opts.dryRun,
@@ -734,21 +767,23 @@ function emptyResult(opts: RunOptions, binding: CleanupExecutionBinding): QueueE
     failed: 0,
     outcomes: [],
     binding,
+    warnings,
   };
 }
 
+// NOTE: evaluation is driven from torrents present in qBittorrent and queue
+// items are correlated BY the torrent's own hash, so a queue item whose
+// download is missing from the client never reaches this check. The old
+// `skipIfNotFoundInClient` toggle was therefore inert (always effectively on)
+// and has been removed from the UI; the config field is retained only for
+// stored-config/settings-export compatibility.
 function shouldSkipFailedImport(
   cfg: QueueCleanerConfigShape,
   linked: LinkedArr,
   t: QBittorrentTorrent,
-  inClientHashes: Set<string>,
-): 'contentId' | 'private' | 'notInClient' | null {
+): 'contentId' | 'private' | null {
   if (!cfg.processNoContentId && linked.contentId == null) return 'contentId';
-  if (cfg.failedImport.skipIfNotFoundInClient) {
-    const dlId = (linked.queueItem.downloadId ?? '').toLowerCase();
-    if (!dlId || !inClientHashes.has(dlId)) return 'notInClient';
-  }
-  if (cfg.failedImport.ignorePrivate && t.private) return 'private';
+  if (cfg.failedImport.ignorePrivate && isTorrentPrivate(t) !== false) return 'private';
   return null;
 }
 
@@ -782,8 +817,11 @@ async function revalidateQueueDecision(
       return { ok: false, status: 'stale', message: 'Torrent is no longer present', errorMessage: 'Torrent disappeared after preview' };
     }
     const torrent = torrents[0];
-    const domains = (await batchFetchTrackerDomains(qbit, [torrent])).get(torrent.hash.toLowerCase()) ?? [];
-    if (matchesIgnoredPatterns(torrent, domains, config.ignoredDownloads)) {
+    const fetchedDomains = (await batchFetchTrackerDomains(qbit, [torrent])).get(torrent.hash.toLowerCase()) ?? null;
+    if (fetchedDomains === null && config.ignoredDownloads.length > 0) {
+      return { ok: false, status: 'failed', message: 'Could not read tracker data to re-check the ignore list', errorMessage: 'Tracker lookup failed during revalidation' };
+    }
+    if (matchesIgnoredPatterns(torrent, fetchedDomains ?? [], config.ignoredDownloads)) {
       return { ok: false, status: 'stale', message: 'Torrent is now ignored by cleanup policy', errorMessage: 'Ignored-download scope changed after preview' };
     }
 
@@ -803,7 +841,7 @@ async function revalidateQueueDecision(
 
     let current: QueueDecision | null = null;
     if (expected.strikeType === 'downloadingMetadata') {
-      if (config.downloadingMetadataMaxStrikes >= 3 && torrent.state === 'metaDL') {
+      if (config.downloadingMetadataMaxStrikes >= 3 && isMetadataState(torrent.state)) {
         current = {
           torrent,
           strikeType: 'downloadingMetadata',
@@ -821,7 +859,7 @@ async function revalidateQueueDecision(
       if (
         config.failedImport.maxStrikes >= 3
         && linked
-        && shouldSkipFailedImport(config, linked, torrent, new Set([torrent.hash.toLowerCase()])) === null
+        && shouldSkipFailedImport(config, linked, torrent) === null
       ) {
         const issue = classifyQueueIssue(linked.queueItem.trackedDownloadState, linked.queueItem.trackedDownloadStatus);
         const messages = collectStatusMessages(linked.queueItem);
@@ -846,8 +884,20 @@ async function revalidateQueueDecision(
       }
     } else if (expected.strikeType === 'stall') {
       const rule = stallRules.find((candidate) => candidate.id === expected.ruleId && candidate.enabled);
+      // Mirror the evaluation-time reset check: if the torrent progressed
+      // enough since its last strike, evaluation would have cleared it — a
+      // removal in that window must be refused as stale.
+      const progressReset =
+        rule?.resetStrikesOnProgress
+        && strike != null
+        && progressedEnough(
+          Math.floor(torrent.downloaded),
+          strike.lastDownloadedBytes != null ? Number(strike.lastDownloadedBytes) : null,
+          rule.minimumProgressBytes,
+        );
       if (
         rule
+        && !progressReset
         && matchesPrivacy(torrent, rule.privacyType)
         && inCompletionRange(torrent.progress * 100, rule)
         && torrent.state === 'stalledDL'
@@ -875,10 +925,14 @@ async function revalidateQueueDecision(
         const speedThreshold = rule.minSpeedKbps != null ? rule.minSpeedKbps * 1024 : null;
         const isSlow = speedThreshold != null
           && torrent.dlspeed < speedThreshold
-          && (torrent.state === 'downloading' || torrent.state === 'stalledDL' || torrent.state === 'forcedDL');
-        const tooLong = rule.maxTimeHours != null && rule.maxTimeHours > 0 && activeHours(torrent) > rule.maxTimeHours;
+          && isActiveDownloadState(torrent.state);
+        const tooLong = rule.maxTimeHours != null && rule.maxTimeHours > 0
+          && isActiveDownloadState(torrent.state)
+          && activeHours(torrent) > rule.maxTimeHours;
         const sizeAllowed = rule.ignoreAboveSizeBytes == null || rule.ignoreAboveSizeBytes <= 0 || torrent.size < rule.ignoreAboveSizeBytes;
-        if ((isSlow || tooLong) && sizeAllowed) {
+        // Mirror the evaluation-time speed-recovery reset.
+        const speedRecovered = rule.resetStrikesOnProgress && speedThreshold != null && torrent.dlspeed >= speedThreshold;
+        if ((isSlow || tooLong) && sizeAllowed && !speedRecovered) {
           current = {
             torrent,
             strikeType: 'slow',
@@ -930,7 +984,16 @@ function evaluateRules<R extends { id: string; enabled: boolean; priority: numbe
     if (!rule.enabled) continue;
     const verdict = classify(rule);
 
-    if (verdict === null) continue; // not in scope, try next rule
+    if (verdict === null) {
+      // Not in scope. Clear any strikes this rule accumulated earlier —
+      // progress only moves forward, so a torrent that left the completion
+      // range would otherwise show a frozen "active strike" forever.
+      const outOfScopeKey = strikeKey(t.hash, strikeType, rule.id);
+      if (prevStrikes.has(outOfScopeKey)) {
+        journal.clear({ hash: t.hash.toLowerCase(), torrentName: t.name, strikeType, ruleId: rule.id });
+      }
+      continue; // try next rule
+    }
 
     const key = strikeKey(t.hash, strikeType, rule.id);
     if (verdict === 'clear') {
@@ -1148,7 +1211,9 @@ export async function executeQueueCleanerRemoval(
 ): Promise<QueueRemovalOutcome> {
   const hashLc = d.torrent.hash.toLowerCase();
   const links = d.linkedAll ?? (d.linked ? [d.linked] : []);
-  const shouldDeleteFromClient = !Boolean(d.torrent.private) || d.options.deletePrivate;
+  // Fail closed on unknown privacy (older qBittorrent omits the field):
+  // only a confirmed-public torrent may be deleted without deletePrivate.
+  const shouldDeleteFromClient = isTorrentPrivate(d.torrent) === false || d.options.deletePrivate;
   const targets: CleanupItemOutcome['targets'] = [];
 
   if (links.length === 0 && !shouldDeleteFromClient) {

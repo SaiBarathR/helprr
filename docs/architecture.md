@@ -141,6 +141,18 @@ Scheduled cleanup is a separate trusted background path and must not be forced
 through an interactive token. Scheduler locking and watchdogs prevent overlapping
 or indefinitely stuck cleanup cycles.
 
+Cleanup evaluation fails closed on missing upstream data: a torrent whose
+tracker lookup failed is skipped whenever the ignore list or a tracker-scoped
+rule is configured; a torrent whose `private` flag is absent (qBittorrent < 5)
+is treated as private for deletion gating and matches only `both`-scoped rules;
+seed time uses qBittorrent's `seeding_time` (not wall-clock since completion);
+import confirmation only accepts Sonarr/Radarr history events dated at/after
+the torrent's `added_on` (re-grabs must re-import); and slow-rule triggers only
+apply in active download states so completed/seeding torrents are never struck.
+Cleaner intervals are validated to at most 7 days and defensively clamped below
+the 32-bit `setInterval` limit. Cycles report `warnings` for anything skipped
+or aborted, surfaced in the preview dialog and the dashboard's last-cycle line.
+
 ## PWA and Push
 
 Production uses `src/app/sw.ts`, compiled by Serwist for precaching, runtime

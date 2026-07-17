@@ -59,6 +59,14 @@ interface SchedulerLite {
   lastRunAt: number | null;
   nextRunAt: number | null;
   running: boolean;
+  lastCycle: {
+    finishedAt: number;
+    decisions: number;
+    succeeded: number;
+    failed: number;
+    warnings: string[];
+    errored: boolean;
+  } | null;
 }
 
 interface SchedulerStatusResponse {
@@ -76,21 +84,23 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     loading: boolean;
     decisions: QueueDryRunDecision[];
     pendingStrikes: RunPreviewPendingStrike[];
+    warnings: string[];
     confirming: boolean;
     confirmGate: boolean;
     previewToken: string | null;
     outcomes: CleanupRunOutcome[];
-  }>({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
+  }>({ open: false, loading: false, decisions: [], pendingStrikes: [], warnings: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
 
   const [downloadPreview, setDownloadPreview] = useState<{
     open: boolean;
     loading: boolean;
     decisions: DownloadDryRunDecision[];
+    warnings: string[];
     confirming: boolean;
     confirmGate: boolean;
     previewToken: string | null;
     outcomes: CleanupRunOutcome[];
-  }>({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
+  }>({ open: false, loading: false, decisions: [], warnings: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
 
   // Dashboard stats + strikes + cleaner status, polled every 15s. Keyed by
   // strikePage so a page change auto-refetches (TanStack cancels superseded
@@ -99,7 +109,9 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
     queryKey: ['cleanup', 'dashboard', strikePage],
     queryFn: async ({ signal }) => {
       const [statsRes, strikesRes, queueCfg, downloadCfg] = await Promise.all([
-        fetch('/api/cleanup/stats', { signal }).then(jsonOk<Stats>),
+        // Offset at local *midnight*, not now — on DST-transition days the
+        // current offset would shift the server's "today" boundary by an hour.
+        fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }).then(jsonOk<Stats>),
         fetch(`/api/cleanup/strikes?page=${strikePage}&pageSize=${STRIKES_PAGE_SIZE}`, { signal }).then(
           jsonOk<{ records: StrikeRow[]; total: number }>
         ),
@@ -155,17 +167,18 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
   }, [dashboardQuery.isError]);
 
   const startQueueDryRun = async () => {
-    setQueuePreview({ open: true, loading: true, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
+    setQueuePreview({ open: true, loading: true, decisions: [], pendingStrikes: [], warnings: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     try {
       const r = await fetch('/api/cleanup/queue/preview', {
         method: 'POST',
       });
-      const json = await jsonOk<{ previewToken?: string; decisions?: QueueDryRunDecision[]; pendingStrikes?: RunPreviewPendingStrike[] }>(r);
+      const json = await jsonOk<{ previewToken?: string; decisions?: QueueDryRunDecision[]; pendingStrikes?: RunPreviewPendingStrike[]; warnings?: string[] }>(r);
       setQueuePreview({
         open: true,
         loading: false,
         decisions: json.decisions ?? [],
         pendingStrikes: json.pendingStrikes ?? [],
+        warnings: json.warnings ?? [],
         confirming: false,
         confirmGate: false,
         previewToken: json.previewToken ?? null,
@@ -173,7 +186,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
       });
     } catch {
       toast.error('Queue dry-run failed');
-      setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
+      setQueuePreview({ open: false, loading: false, decisions: [], pendingStrikes: [], warnings: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     }
   };
 
@@ -189,12 +202,14 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ previewToken: queuePreview.previewToken }),
       });
-      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[] }>(r);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[]; warnings?: string[] }>(r);
       const succeeded = json.succeeded ?? 0;
       const failed = json.failed ?? 0;
       if (failed > 0) toast.warning(`Removed ${succeeded} torrent(s); ${failed} need attention`);
       else toast.success(`Removed ${succeeded} torrent(s)`);
-      setQueuePreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [] }));
+      // Replace the preview's warnings with the execution's own — the results
+      // dialog must reflect what the run actually saw, not the stale dry-run.
+      setQueuePreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [], warnings: json.warnings ?? [] }));
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'history'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'scheduler'] });
@@ -213,16 +228,17 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
   };
 
   const startDownloadDryRun = async () => {
-    setDownloadPreview({ open: true, loading: true, decisions: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
+    setDownloadPreview({ open: true, loading: true, decisions: [], warnings: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     try {
       const r = await fetch('/api/cleanup/download/preview', {
         method: 'POST',
       });
-      const json = await jsonOk<{ previewToken?: string; decisions?: DownloadDryRunDecision[] }>(r);
+      const json = await jsonOk<{ previewToken?: string; decisions?: DownloadDryRunDecision[]; warnings?: string[] }>(r);
       setDownloadPreview({
         open: true,
         loading: false,
         decisions: json.decisions ?? [],
+        warnings: json.warnings ?? [],
         confirming: false,
         confirmGate: false,
         previewToken: json.previewToken ?? null,
@@ -230,7 +246,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
       });
     } catch {
       toast.error('Download dry-run failed');
-      setDownloadPreview({ open: false, loading: false, decisions: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
+      setDownloadPreview({ open: false, loading: false, decisions: [], warnings: [], confirming: false, confirmGate: false, previewToken: null, outcomes: [] });
     }
   };
 
@@ -246,12 +262,13 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ previewToken: downloadPreview.previewToken }),
       });
-      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[] }>(r);
+      const json = await jsonOk<{ succeeded?: number; failed?: number; outcomes?: CleanupRunOutcome[]; warnings?: string[] }>(r);
       const succeeded = json.succeeded ?? 0;
       const failed = json.failed ?? 0;
       if (failed > 0) toast.warning(`Removed ${succeeded} torrent(s); ${failed} need attention`);
       else toast.success(`Removed ${succeeded} torrent(s)`);
-      setDownloadPreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [] }));
+      // See the queue handler: execution warnings replace the preview's.
+      setDownloadPreview((preview) => ({ ...preview, confirming: false, confirmGate: false, previewToken: null, outcomes: json.outcomes ?? [], warnings: json.warnings ?? [] }));
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'dashboard'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'history'] });
       void queryClient.invalidateQueries({ queryKey: ['cleanup', 'scheduler'] });
@@ -400,6 +417,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
           loading={queuePreview.loading}
           decisions={queuePreview.decisions}
           pendingStrikes={queuePreview.pendingStrikes}
+          warnings={queuePreview.warnings}
           onConfirm={onConfirmQueue}
           confirming={queuePreview.confirming}
           outcomes={queuePreview.outcomes}
@@ -411,6 +429,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
           onOpenChange={(o) => setDownloadPreview((p) => ({ ...p, open: o, ...(!o ? { previewToken: null, outcomes: [] } : {}) }))}
           loading={downloadPreview.loading}
           decisions={downloadPreview.decisions}
+          warnings={downloadPreview.warnings}
           onConfirm={onConfirmDownload}
           confirming={downloadPreview.confirming}
           outcomes={downloadPreview.outcomes}
@@ -481,6 +500,9 @@ function StatusRow({
         {showCountdown && (
           <NextRunLine scheduler={scheduler} />
         )}
+        {scheduler?.lastCycle && (scheduler.lastCycle.errored || scheduler.lastCycle.warnings.length > 0) && (
+          <LastCycleWarning lastCycle={scheduler.lastCycle} />
+        )}
       </div>
       <div className="flex items-center gap-2 shrink-0 ml-auto">
         <Badge variant={variant.variant} className={variant.className}>{variant.label}</Badge>
@@ -508,6 +530,21 @@ function NextRunLine({ scheduler }: { scheduler: SchedulerLite | undefined }) {
   return (
     <div className="text-xs text-muted-foreground mt-0.5">
       Next run in <span className="font-mono">{formatDelta(deltaMs)}</span>
+    </div>
+  );
+}
+
+function LastCycleWarning({ lastCycle }: { lastCycle: NonNullable<SchedulerLite['lastCycle']> }) {
+  const text = lastCycle.errored
+    ? 'Last cycle errored — check server logs'
+    : `Last cycle: ${lastCycle.warnings[0]}${lastCycle.warnings.length > 1 ? ` (+${lastCycle.warnings.length - 1} more)` : ''}`;
+  return (
+    <div
+      className="text-xs text-amber-600 dark:text-amber-500 mt-0.5 flex items-start gap-1"
+      title={lastCycle.warnings.join('; ')}
+    >
+      <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+      <span>{text}</span>
     </div>
   );
 }

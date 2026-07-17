@@ -13,6 +13,7 @@ function serializeResult(r: Awaited<ReturnType<typeof runDownloadCleanerCycle>>)
     durationMs: r.durationMs,
     succeeded: r.succeeded,
     failed: r.failed,
+    warnings: r.warnings,
     outcomes: r.outcomes,
     decisions: r.decisions.map((d) => ({
       hash: d.torrent.hash,

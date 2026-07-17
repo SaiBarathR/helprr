@@ -28,6 +28,18 @@ async function runWithWatchdog<T>(label: string, fn: () => Promise<T>): Promise<
   }
 }
 
+// Summary of the most recent completed auto cycle. In-memory only — powers
+// the dashboard's "last cycle" line so silent fail-safe aborts are visible.
+export interface LastCycleSummary {
+  finishedAt: number;
+  decisions: number;
+  succeeded: number;
+  failed: number;
+  warnings: string[];
+  // True when the cycle threw instead of returning a result.
+  errored: boolean;
+}
+
 interface JobState {
   timer: NodeJS.Timeout | null;
   intervalMinutes: number;
@@ -36,6 +48,7 @@ interface JobState {
   // Epoch ms of the last tick (or restart). Drives the dashboard countdown.
   // In-memory only; resets across server restarts.
   lastRunAt: number | null;
+  lastCycle: LastCycleSummary | null;
 }
 
 interface SchedulerState {
@@ -51,12 +64,23 @@ function getState(): SchedulerState {
   let s = globalAny[GLOBAL_KEY] as SchedulerState | undefined;
   if (!s) {
     s = {
-      queue: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled', lastRunAt: null },
-      download: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled', lastRunAt: null },
+      queue: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled', lastRunAt: null, lastCycle: null },
+      download: { timer: null, intervalMinutes: 0, inFlight: null, autoRunMode: 'disabled', lastRunAt: null, lastCycle: null },
     };
     globalAny[GLOBAL_KEY] = s;
   }
   return s;
+}
+
+// The API validators cap intervals at 7 days; clamp defensively for legacy
+// rows so the stored interval, the dashboard countdown (nextRunAt), and the
+// actual timer delay all agree — and stay far below the signed 32-bit
+// setInterval limit (~24.8 days), where Node clamps the delay to ~1ms and an
+// "every N months" config would become a continuous deletion loop.
+const MAX_INTERVAL_MINUTES = 10_080;
+
+function clampIntervalMinutes(intervalMinutes: number): number {
+  return Math.min(Math.max(1, intervalMinutes), MAX_INTERVAL_MINUTES);
 }
 
 function clear(job: JobState) {
@@ -66,15 +90,31 @@ function clear(job: JobState) {
   }
 }
 
+function recordLastCycle(job: JobState, result: QueueEvaluationResult | DownloadEvaluationResult | null): void {
+  job.lastCycle = result
+    ? {
+        finishedAt: Date.now(),
+        decisions: result.decisions.length,
+        succeeded: result.succeeded,
+        failed: result.failed,
+        warnings: result.warnings,
+        errored: false,
+      }
+    : { finishedAt: Date.now(), decisions: 0, succeeded: 0, failed: 0, warnings: [], errored: true };
+}
+
 async function safeRunQueue(): Promise<QueueEvaluationResult | null> {
   const job = getState().queue;
   // dryRun mode runs the cycle without actually deleting; the cycle itself
   // writes dryRunPreview history rows so users can see what would happen.
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    return await runWithWatchdog('Queue cleaner', () => runQueueCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    const result = await runWithWatchdog('Queue cleaner', () => runQueueCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    recordLastCycle(job, result);
+    return result;
   } catch (err) {
     logger.error('Queue cleaner cycle threw', { err: String(err) }, { scope: LOG });
+    recordLastCycle(job, null);
     return null;
   }
 }
@@ -83,9 +123,12 @@ async function safeRunDownload(): Promise<DownloadEvaluationResult | null> {
   const job = getState().download;
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    return await runWithWatchdog('Download cleaner', () => runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    const result = await runWithWatchdog('Download cleaner', () => runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    recordLastCycle(job, result);
+    return result;
   } catch (err) {
     logger.error('Download cleaner cycle threw', { err: String(err) }, { scope: LOG });
+    recordLastCycle(job, null);
     return null;
   }
 }
@@ -172,7 +215,8 @@ export async function restartQueueCleaner(): Promise<void> {
   const s = getState();
   const cfg = await loadQueueCleanerConfig();
   clear(s.queue);
-  s.queue.intervalMinutes = cfg.intervalMinutes;
+  const intervalMinutes = clampIntervalMinutes(cfg.intervalMinutes);
+  s.queue.intervalMinutes = intervalMinutes;
   s.queue.autoRunMode = cfg.autoRunMode;
   s.queue.lastRunAt = null;
   if (!cfg.enabled || cfg.autoRunMode === 'disabled') {
@@ -182,13 +226,12 @@ export async function restartQueueCleaner(): Promise<void> {
     }, { scope: LOG });
     return;
   }
-  const ms = Math.max(1, cfg.intervalMinutes) * 60_000;
   // Anchor the countdown at the moment the timer is installed so the dashboard
   // can show "next run in N min" honestly until the first tick fires.
   s.queue.lastRunAt = Date.now();
-  s.queue.timer = setInterval(tickQueue, ms);
+  s.queue.timer = setInterval(tickQueue, intervalMinutes * 60_000);
   logger.info('Queue cleaner timer started', {
-    intervalMinutes: cfg.intervalMinutes,
+    intervalMinutes,
     autoRunMode: cfg.autoRunMode,
   }, { scope: LOG });
 }
@@ -197,7 +240,8 @@ export async function restartDownloadCleaner(): Promise<void> {
   const s = getState();
   const cfg = await loadDownloadCleanerConfig();
   clear(s.download);
-  s.download.intervalMinutes = cfg.intervalMinutes;
+  const intervalMinutes = clampIntervalMinutes(cfg.intervalMinutes);
+  s.download.intervalMinutes = intervalMinutes;
   s.download.autoRunMode = cfg.autoRunMode;
   s.download.lastRunAt = null;
   if (!cfg.enabled || cfg.autoRunMode === 'disabled') {
@@ -207,11 +251,10 @@ export async function restartDownloadCleaner(): Promise<void> {
     }, { scope: LOG });
     return;
   }
-  const ms = Math.max(1, cfg.intervalMinutes) * 60_000;
   s.download.lastRunAt = Date.now();
-  s.download.timer = setInterval(tickDownload, ms);
+  s.download.timer = setInterval(tickDownload, intervalMinutes * 60_000);
   logger.info('Download cleaner timer started', {
-    intervalMinutes: cfg.intervalMinutes,
+    intervalMinutes,
     autoRunMode: cfg.autoRunMode,
   }, { scope: LOG });
 }
@@ -234,6 +277,7 @@ export interface CleanerSchedulerStatus {
   lastRunAt: number | null;
   nextRunAt: number | null;
   running: boolean;
+  lastCycle: LastCycleSummary | null;
 }
 
 export interface SchedulerStatusSnapshot {
@@ -252,6 +296,7 @@ function snapshotJob(j: JobState): CleanerSchedulerStatus {
     lastRunAt: j.lastRunAt,
     nextRunAt,
     running: j.inFlight != null,
+    lastCycle: j.lastCycle,
   };
 }
 
