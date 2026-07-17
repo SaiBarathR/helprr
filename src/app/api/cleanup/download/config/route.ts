@@ -13,7 +13,9 @@ function validate(body: unknown): { ok: true; value: DownloadCleanerConfigShape 
   const b = body as Record<string, unknown>;
   const enabled = Boolean(b.enabled);
   const intervalMinutes = Number(b.intervalMinutes);
-  if (!Number.isFinite(intervalMinutes) || intervalMinutes < 1) return { ok: false, error: 'intervalMinutes must be >= 1' };
+  // Upper bound keeps the scheduler delay far below the 32-bit setInterval
+  // limit (~24.8 days), where Node would clamp to ~1ms and run continuously.
+  if (!Number.isFinite(intervalMinutes) || intervalMinutes < 1 || intervalMinutes > 10080) return { ok: false, error: 'intervalMinutes must be between 1 and 10080 (7 days)' };
   const ignoredDownloads = Array.isArray(b.ignoredDownloads)
     ? (b.ignoredDownloads as unknown[]).map(String).map((s) => s.trim()).filter(Boolean)
     : [];

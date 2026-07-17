@@ -17,6 +17,7 @@ import {
   formatError,
   matchesIgnoredPatterns,
   matchesPrivacy,
+  matchesTrackerDomain,
   seedingHours,
   shortHash,
   torrentTags,
@@ -36,6 +37,7 @@ import {
 
 const VALID_PRIVACY_TYPES: PrivacyType[] = ['public', 'private', 'both'];
 import { processWithLimit } from './concurrency';
+import { resetFailureNotify, shouldNotifyFailure } from './notify-throttle';
 import {
   assertExecutionBinding,
   buildExecutionBinding,
@@ -207,7 +209,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     const rules = await loadSeedingRules();
     const binding = buildExecutionBinding('download', downloadConfigFingerprint(cfg, rules), scopeFingerprint, []);
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, binding);
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding };
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding, warnings: ['Download Cleaner is disabled'] };
   }
 
   await syncSystemSeedingRule(cfg);
@@ -221,7 +223,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
   } catch (err) {
     logger.warn('qBittorrent unavailable', { err: String(err) }, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding: noCandidatesBinding };
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding: noCandidatesBinding, warnings: ['qBittorrent is unavailable — nothing was evaluated'] };
   }
 
   let torrents: QBittorrentTorrent[];
@@ -230,11 +232,18 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
   } catch (err) {
     logger.warn('qBittorrent listing failed', { err: String(err) }, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding: noCandidatesBinding };
+    return { triggeredBy: opts.triggeredBy, dryRun: opts.dryRun, decisions: [], durationMs: 0, succeeded: 0, failed: 0, outcomes: [], binding: noCandidatesBinding, warnings: ['qBittorrent torrent listing failed — nothing was evaluated'] };
   }
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
   const decisions: DownloadDecision[] = [];
+  const warnings: string[] = [];
+  // Tracker data is load-bearing when the ignore list or any enabled rule
+  // matches on trackers; a torrent whose lookup failed must then be skipped
+  // (fail closed) rather than evaluated against incomplete data.
+  const trackerDataRequired = cfg.ignoredDownloads.length > 0
+    || rules.some((rule) => rule.trackerPatterns.length > 0);
+  let skippedTrackerUnknown = 0;
   // Torrents whose matched rule requires Sonarr/Radarr import confirmation
   // before the predicate runs. Resolved in a concurrent async pass below.
   const pendingConfirmation: { torrent: QBittorrentTorrent; rule: SeedingRuleShape }[] = [];
@@ -242,7 +251,12 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
   for (const t of torrents) {
     try {
       const hashLc = t.hash.toLowerCase();
-      const domains = trackerDomains.get(hashLc) ?? [];
+      const fetchedDomains = trackerDomains.get(hashLc) ?? null;
+      if (fetchedDomains === null && trackerDataRequired) {
+        skippedTrackerUnknown++;
+        continue;
+      }
+      const domains = fetchedDomains ?? [];
       if (matchesIgnoredPatterns(t, domains, cfg.ignoredDownloads)) continue;
       if (!isSeedingState(t)) continue;
 
@@ -275,7 +289,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     const arrs = await loadArrClients();
     await processWithLimit(pendingConfirmation, CLEANUP_CONCURRENCY, async ({ torrent: t, rule }) => {
       try {
-        const confirmation = await confirmImportedViaHistory(t.hash, arrs);
+        const confirmation = await confirmImportedViaHistory(t.hash, arrs, t.added_on);
         if (confirmation.status === 'imported') {
           const decision = evaluatePredicate(t, rule);
           if (decision) {
@@ -325,17 +339,23 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
   }
 
   if (skippedUnreachable > 0) {
-    try {
-      await notifyEvent({
-        eventType: 'cleanupFailed',
-        title: 'Cleanup: arr unreachable',
-        body: `${skippedUnreachable} torrent${skippedUnreachable === 1 ? '' : 's'} skipped — could not reach Sonarr/Radarr to confirm import. See History → Skipped.`,
-        metadata: { cleaner: 'download', skippedUnreachable },
-        url: '/cleanup',
-      });
-    } catch (err) {
-      logger.warn('cleanupFailed (unreachable) notify failed', { err: String(err) }, { scope: LOG });
+    warnings.push(`${skippedUnreachable} torrent${skippedUnreachable === 1 ? '' : 's'} skipped — Sonarr/Radarr unreachable, import unconfirmed`);
+    if (shouldNotifyFailure('download')) {
+      try {
+        await notifyEvent({
+          eventType: 'cleanupFailed',
+          title: 'Cleanup: arr unreachable',
+          body: `${skippedUnreachable} torrent${skippedUnreachable === 1 ? '' : 's'} skipped — could not reach Sonarr/Radarr to confirm import. See History → Skipped.`,
+          metadata: { cleaner: 'download', skippedUnreachable },
+          url: '/cleanup',
+        });
+      } catch (err) {
+        logger.warn('cleanupFailed (unreachable) notify failed', { err: String(err) }, { scope: LOG });
+      }
     }
+  }
+  if (skippedTrackerUnknown > 0) {
+    warnings.push(`${skippedTrackerUnknown} torrent${skippedTrackerUnknown === 1 ? '' : 's'} skipped: tracker data could not be read while tracker-based matching is configured`);
   }
 
   const binding = buildExecutionBinding(
@@ -354,10 +374,25 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
 
   if (opts.dryRun) {
     // Auto-scheduler dry-run: persist a preview row per decision so the user
-    // can review what would have been removed via the History tab.
+    // can review what would have been removed via the History tab. Unlike the
+    // queue cleaner (whose strike-clear naturally spaces preview rows), the
+    // same seeding torrent re-qualifies every cycle — dedupe to one row per
+    // hash+rule per 24h so dry-run mode doesn't flood history.
     if (opts.triggeredBy === 'auto' && decisions.length > 0) {
+      const dedupeSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
       for (const d of decisions) {
         const hashLc = d.torrent.hash.toLowerCase();
+        const recent = await prisma.cleanupHistory.findFirst({
+          where: {
+            cleaner: 'download',
+            action: 'dryRunPreview',
+            hash: hashLc,
+            ruleId: d.rule.id,
+            createdAt: { gte: dedupeSince },
+          },
+          select: { id: true },
+        });
+        if (recent) continue;
         await prisma.cleanupHistory.create({
           data: {
             cleaner: 'download',
@@ -452,7 +487,8 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
       }
     }
 
-    if (failedCount > 0) {
+    if (failedCount === 0 && succeededCount > 0) resetFailureNotify('download');
+    if (failedCount > 0 && shouldNotifyFailure('download')) {
       try {
         const firstError = failureDecisions[0]?.errorMessage ?? 'unknown error';
         await notifyEvent({
@@ -489,6 +525,7 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
     failed: failedCount,
     outcomes,
     binding,
+    warnings,
   };
 }
 
@@ -597,7 +634,7 @@ function matchSeedingRule(
     if (
       rule.trackerPatterns.length > 0
       && !rule.trackerPatterns.some((pattern) =>
-        domains.some((domain) => domain === pattern.toLowerCase() || domain.endsWith(pattern.toLowerCase())))
+        domains.some((domain) => matchesTrackerDomain(domain, pattern)))
     ) return false;
     if (rule.tagsAny.length > 0 && !rule.tagsAny.some((tag) => tags.includes(tag.toLowerCase()))) return false;
     if (rule.tagsAll.length > 0 && !rule.tagsAll.every((tag) => tags.includes(tag.toLowerCase()))) return false;
@@ -634,7 +671,13 @@ async function revalidateDownloadDecision(
       return { ok: false, status: 'stale', message: 'Torrent is no longer present', errorMessage: 'Torrent disappeared after preview' };
     }
     const torrent = torrents[0];
-    const domains = (await batchFetchTrackerDomains(qbit, [torrent])).get(torrent.hash.toLowerCase()) ?? [];
+    const fetchedDomains = (await batchFetchTrackerDomains(qbit, [torrent])).get(torrent.hash.toLowerCase()) ?? null;
+    const trackerDataRequired = config.ignoredDownloads.length > 0
+      || rules.some((candidate) => candidate.trackerPatterns.length > 0);
+    if (fetchedDomains === null && trackerDataRequired) {
+      return { ok: false, status: 'failed', message: 'Could not read tracker data to re-check tracker-based matching', errorMessage: 'Tracker lookup failed during revalidation' };
+    }
+    const domains = fetchedDomains ?? [];
     if (matchesIgnoredPatterns(torrent, domains, config.ignoredDownloads) || !isSeedingState(torrent)) {
       return { ok: false, status: 'stale', message: 'Torrent no longer matches cleanup state', errorMessage: 'Torrent state changed after preview' };
     }
@@ -648,7 +691,7 @@ async function revalidateDownloadDecision(
       return { ok: false, status: 'stale', message: 'Torrent no longer meets the reviewed threshold', errorMessage: 'Cleanup threshold changed after preview' };
     }
     if (rule.requireImportedConfirmation) {
-      const confirmation = await confirmImportedViaHistory(torrent.hash, await loadArrClients());
+      const confirmation = await confirmImportedViaHistory(torrent.hash, await loadArrClients(), torrent.added_on);
       if (confirmation.status !== 'imported') {
         return { ok: false, status: 'stale', message: 'Import confirmation is no longer available', errorMessage: 'Import confirmation changed after preview' };
       }

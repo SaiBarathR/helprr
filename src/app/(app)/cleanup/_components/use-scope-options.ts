@@ -7,8 +7,6 @@ interface ScopeOptionsResponse {
   qbitCategories: string[];
   qbitTags: string[];
   trackerDomains: string[];
-  sonarrTags: { id: number; label: string }[];
-  radarrTags: { id: number; label: string }[];
 }
 
 const EMPTY: string[] = [];

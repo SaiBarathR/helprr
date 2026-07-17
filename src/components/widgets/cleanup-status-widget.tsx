@@ -51,7 +51,7 @@ async function fetchCleanupStatus(): Promise<CleanupStatusData> {
     fetch('/api/cleanup/scheduler-status').catch(() => null),
     // Compact preview: top 5 strikes; the header count comes from the response total.
     fetch('/api/cleanup/strikes?limit=5').catch(() => null),
-    fetch('/api/cleanup/stats').catch(() => null),
+    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date().getTimezoneOffset()}`).catch(() => null),
   ]);
   const strikesJson = strikesRes?.ok
     ? ((await strikesRes.json()) as { records?: StrikeRow[]; total?: number })

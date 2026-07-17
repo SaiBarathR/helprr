@@ -39,16 +39,22 @@ export function torrentTags(t: QBittorrentTorrent): string[] {
     .filter((s) => s.length > 0);
 }
 
-export function isTorrentPrivate(t: QBittorrentTorrent): boolean {
-  return Boolean(t.private);
+/**
+ * Tri-state privacy: qBittorrent only exposes `private` on 5.0+; on older
+ * versions the field is absent. Destructive decisions must fail closed on
+ * `null` (unknown), never assume public.
+ */
+export function isTorrentPrivate(t: QBittorrentTorrent): boolean | null {
+  return typeof t.private === 'boolean' ? t.private : null;
 }
 
 export function matchesPrivacy(t: QBittorrentTorrent, type: PrivacyType): boolean {
+  const priv = isTorrentPrivate(t);
   switch (type) {
     case 'public':
-      return !isTorrentPrivate(t);
+      return priv === false;
     case 'private':
-      return isTorrentPrivate(t);
+      return priv === true;
     case 'both':
     default:
       return true;
@@ -86,9 +92,21 @@ export function matchesIgnoredPatterns(
     if (hash === p) return true;
     if (category === p) return true;
     if (tags.includes(p)) return true;
-    if (trackers.some((dom) => dom === p || dom.endsWith(p))) return true;
+    if (trackers.some((dom) => matchesTrackerDomain(dom, p))) return true;
   }
   return false;
+}
+
+/**
+ * Suffix-match a tracker hostname against a user pattern with a dot boundary:
+ * "example.org" matches "example.org" and "tracker.example.org" but NOT
+ * "notexample.org". A leading dot on the pattern is tolerated.
+ */
+export function matchesTrackerDomain(domain: string, pattern: string): boolean {
+  const p = pattern.toLowerCase().replace(/^\.+/, '');
+  if (!p) return false;
+  const dom = domain.toLowerCase();
+  return dom === p || dom.endsWith(`.${p}`);
 }
 
 export function matchesPatterns(
@@ -150,13 +168,22 @@ export function hoursSinceAdded(t: QBittorrentTorrent): number {
  * if the field is unavailable.
  */
 export function activeHours(t: QBittorrentTorrent): number {
-  if (typeof t.time_active === 'number' && t.time_active > 0) {
-    return t.time_active / 3600;
+  // A present numeric value is authoritative — 0 means "not active yet", not
+  // "unknown". Falling back on 0 would count paused wall-clock age as active
+  // time, contradicting the UI's "pause time is excluded".
+  if (typeof t.time_active === 'number') {
+    return Math.max(0, t.time_active) / 3600;
   }
   return hoursSinceAdded(t);
 }
 
 export function seedingHours(t: QBittorrentTorrent): number {
+  // Prefer qBittorrent's actual seeding_time (seconds spent seeding); a
+  // torrent stopped right after completion has seeding_time 0 and must not
+  // satisfy "seeded ≥ N hours" just because it completed long ago.
+  if (typeof t.seeding_time === 'number') {
+    return Math.max(0, t.seeding_time) / 3600;
+  }
   if (!t.completion_on || t.completion_on <= 0) return 0;
   return (Date.now() / 1000 - t.completion_on) / 3600;
 }
@@ -174,12 +201,19 @@ export function trackerHostFromUrl(url: string): string | null {
   }
 }
 
+/**
+ * Fetch tracker hostnames per torrent. A failed lookup stores `null` (NOT an
+ * empty list): tracker domains feed ignore-list and tracker-pattern matching,
+ * and substituting [] would silently disable a protection the user configured.
+ * Callers must fail closed (skip the torrent) when domains are null and any
+ * tracker-based pattern is in play.
+ */
 export async function batchFetchTrackerDomains(
   qbit: QBittorrentClient,
   torrents: QBittorrentTorrent[],
   concurrency: number = 6,
-): Promise<Map<string, string[]>> {
-  const map = new Map<string, string[]>();
+): Promise<Map<string, string[] | null>> {
+  const map = new Map<string, string[] | null>();
   const queue = [...torrents];
   async function worker() {
     while (queue.length > 0) {
@@ -194,7 +228,7 @@ export async function batchFetchTrackerDomains(
         }
         map.set(t.hash.toLowerCase(), domains);
       } catch {
-        map.set(t.hash.toLowerCase(), []);
+        map.set(t.hash.toLowerCase(), null);
       }
     }
   }
@@ -317,6 +351,9 @@ export function formatError(err: unknown): string {
 
 export type ImportConfirmationSource = 'sonarr' | 'radarr';
 
+// Clock-skew allowance between qBittorrent (added_on) and arr history dates.
+const IMPORT_EVENT_SKEW_SECONDS = 300;
+
 export type ImportConfirmation =
   | { status: 'imported'; source: ImportConfirmationSource; eventType: string }
   | { status: 'unconfirmed' } // at least one arr was reachable and reported no import
@@ -338,12 +375,23 @@ export type ImportConfirmation =
  *
  * Callers distinguish the latter two so an arr outage can be surfaced
  * (`unreachable`) while routine "not imported yet" silence stays quiet.
+ *
+ * `addedOnEpochSeconds` (torrent added_on) guards against stale history: a
+ * re-grab of the same infohash still has the months-old import event under
+ * this downloadId, and treating it as confirmation would delete the torrent
+ * while the CURRENT grab is mid-import. Only events dated at/after the
+ * torrent was added count (5-minute skew allowance between qBit and arr).
  */
 export async function confirmImportedViaHistory(
   hash: string,
   arrs: { sonarr: SonarrClient[]; radarr: RadarrClient[] },
+  addedOnEpochSeconds?: number,
 ): Promise<ImportConfirmation> {
   const downloadId = hash.toUpperCase();
+  const minEventEpochMs =
+    typeof addedOnEpochSeconds === 'number' && addedOnEpochSeconds > 0
+      ? (addedOnEpochSeconds - IMPORT_EVENT_SKEW_SECONDS) * 1000
+      : null;
   let anyReachable = false;
   let anyConfigured = false;
 
@@ -358,7 +406,14 @@ export async function confirmImportedViaHistory(
     try {
       const res = await client.getHistory(1, 50, 'date', 'descending', { downloadId });
       anyReachable = true;
-      const hit = (res.records || []).find((r) => IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType));
+      const hit = (res.records || []).find((r) => {
+        if (!IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType)) return false;
+        if (minEventEpochMs === null) return true;
+        const eventMs = Date.parse(r.date);
+        // Unparseable dates fail closed — better to wait a cycle than to
+        // delete on a confirmation we cannot time-order.
+        return Number.isFinite(eventMs) && eventMs >= minEventEpochMs;
+      });
       if (hit) {
         return { status: 'imported', source, eventType: hit.eventType };
       }

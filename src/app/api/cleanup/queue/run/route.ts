@@ -14,6 +14,7 @@ function serializeResult(r: Awaited<ReturnType<typeof runQueueCleanerCycle>>) {
     skippedFailedImport: r.skippedFailedImport,
     succeeded: r.succeeded,
     failed: r.failed,
+    warnings: r.warnings,
     pendingStrikes: r.pendingStrikes,
     outcomes: r.outcomes,
     decisions: r.decisions.map((d) => ({

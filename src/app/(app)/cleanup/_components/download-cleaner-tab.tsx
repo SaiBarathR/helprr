@@ -268,6 +268,15 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
     [rules],
   );
 
+  if (!cfg && configQuery.isError) {
+    return (
+      <div className="py-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+        <span>Failed to load Download Cleaner settings.</span>
+        <Button variant="outline" size="sm" onClick={() => void configQuery.refetch()}>Retry</Button>
+      </div>
+    );
+  }
+
   if (loading || !cfg) {
     return <div className="py-12 flex items-center justify-center text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…</div>;
   }
@@ -319,9 +328,10 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Input
                   type="number"
                   min={1}
+                  max={10080}
                   className="w-20 sm:w-24"
                   value={cfg.intervalMinutes}
-                  onChange={(e) => setCfg({ ...cfg, intervalMinutes: Math.max(1, Number(e.target.value) || 1) })}
+                  onChange={(e) => setCfg({ ...cfg, intervalMinutes: Math.min(10080, Math.max(1, Number(e.target.value) || 1)) })}
                 />
                 <span className="text-sm text-muted-foreground">min</span>
               </div>
@@ -590,7 +600,7 @@ function SeedingRuleCard({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           <FieldRow
             label="Categories"
-            hint="qBittorrent categories. Empty = applies to all categories."
+            hint="Empty = any category. The rule must keep at least one filter overall (categories, trackers, or tags)."
             active={isArrayActive(rule.categories)}
           >
             <TokenInput
@@ -655,7 +665,7 @@ function SeedingRuleCard({
           </FieldRow>
           <FieldRow
             label="Max ratio"
-            hint="-1 disables the ratio check. Use with Min seed time below."
+            hint="-1 disables the ratio check. At least one of Max ratio / Max seed time must be enabled."
             active={isNumericActive(rule.maxRatio)}
           >
             <Input
@@ -667,7 +677,7 @@ function SeedingRuleCard({
           </FieldRow>
           <FieldRow
             label="Min seed time (hours)"
-            hint="Used together with Max ratio (both must be met for ratio-based removal)."
+            hint="Only gates the Max ratio condition (both must be met for ratio-based removal)."
             active={rule.minSeedTimeHours > 0}
           >
             <Input
@@ -726,16 +736,16 @@ function SeedingRuleCard({
 function makeDefaultSeeding(): Omit<SeedingRuleShape, 'id' | 'isSystem'> {
   return {
     name: 'Seeding rule',
-    enabled: true,
+    enabled: false,
     priority: 0,
-    // The validator now rejects a rule with no category/tracker/tag filter,
-    // so seed a sensible default the user can adjust.
+    // The validator rejects rules with no filter or no reachable trigger,
+    // so seed a valid default — created disabled so nothing acts until the user reviews and enables it.
     categories: ['sonarr'],
     trackerPatterns: [],
     tagsAny: [],
     tagsAll: [],
     privacyType: 'both',
-    maxRatio: -1,
+    maxRatio: 1,
     minSeedTimeHours: 0,
     maxSeedTimeHours: -1,
     deleteSourceFiles: true,

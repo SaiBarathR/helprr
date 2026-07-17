@@ -352,9 +352,10 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 <Input
                   type="number"
                   min={1}
+                  max={10080}
                   className="w-20 sm:w-24"
                   value={cfg.intervalMinutes}
-                  onChange={(e) => setCfg({ ...cfg, intervalMinutes: Math.max(1, Number(e.target.value) || 1) })}
+                  onChange={(e) => setCfg({ ...cfg, intervalMinutes: Math.min(10080, Math.max(1, Number(e.target.value) || 1)) })}
                 />
                 <span className="text-sm text-muted-foreground">min</span>
               </div>
@@ -580,14 +581,6 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
             <p className="text-xs text-muted-foreground mt-0.5">Skip Failed Import handling entirely on private trackers.</p>
           </div>
           <Switch checked={fi.ignorePrivate} onCheckedChange={(v) => set({ ignorePrivate: v })} />
-        </div>
-
-        <div className="grouped-row">
-          <div>
-            <Label>Skip if not found in client</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">If a queue item refers to a hash not currently in qBittorrent, leave it alone.</p>
-          </div>
-          <Switch checked={fi.skipIfNotFoundInClient} onCheckedChange={(v) => set({ skipIfNotFoundInClient: v })} />
         </div>
 
         <div className="grouped-row">
@@ -871,7 +864,7 @@ function StallRuleFields({ rule, onChange }: { rule: StallRuleShape; onChange: (
       </FieldRow>
       <FieldRow
         label="Re-search override"
-        hint="Override the global &quot;Re-search after removal&quot; for matches of this rule."
+        hint="Override the global &quot;Re-search after removal&quot; for matches of this rule. Not applied when &quot;Change category&quot; is on."
         active={rule.reSearchOverride !== null}
       >
         <Select
@@ -961,8 +954,8 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
           onChange={(e) => onChange({ ...rule, priority: Number(e.target.value) || 0 })}
         />
       </FieldRow>
-      <FieldRow label="Reset strikes on speed recovery" hint="Clears accumulated strikes if speed climbs back over the threshold." active={rule.resetStrikesOnProgress}>
-        <Switch checked={rule.resetStrikesOnProgress} onCheckedChange={(v) => onChange({ ...rule, resetStrikesOnProgress: v })} />
+      <FieldRow label="Reset strikes on speed recovery" hint="Clears accumulated strikes if speed climbs back over the threshold. Requires a Min speed value." active={rule.resetStrikesOnProgress}>
+        <Switch checked={rule.resetStrikesOnProgress} disabled={rule.minSpeedKbps == null} onCheckedChange={(v) => onChange({ ...rule, resetStrikesOnProgress: v })} />
       </FieldRow>
       <FieldRow label="Change category on removal" active={rule.changeCategory}>
         <Switch
@@ -978,7 +971,11 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
           onCheckedChange={(v) => onChange({ ...rule, deletePrivate: v })}
         />
       </FieldRow>
-      <FieldRow label="Re-search override" active={rule.reSearchOverride !== null}>
+      <FieldRow
+        label="Re-search override"
+        hint="Override the global &quot;Re-search after removal&quot; for matches of this rule. Not applied when &quot;Change category&quot; is on."
+        active={rule.reSearchOverride !== null}
+      >
         <Select
           value={rule.reSearchOverride === null ? 'inherit' : rule.reSearchOverride ? 'true' : 'false'}
           onValueChange={(v) => onChange({ ...rule, reSearchOverride: v === 'inherit' ? null : v === 'true' })}
